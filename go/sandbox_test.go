@@ -80,23 +80,6 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			params:  SandboxCreateParams{CustomDomain: "example.com"},
 			wantErr: "custom domains are not supported",
 		},
-		{
-			name:    "include oidc identity token",
-			params:  SandboxCreateParams{IncludeOidcIdentityToken: true},
-			wantErr: "IncludeOidcIdentityToken is not supported",
-		},
-		{
-			name: "cloud bucket mount with oidc auth role",
-			params: func() SandboxCreateParams {
-				role := "arn:aws:iam::123:role/r"
-				return SandboxCreateParams{
-					CloudBucketMounts: map[string]*CloudBucketMount{
-						"/bucket": {BucketName: "bucket", OidcAuthRoleArn: &role},
-					},
-				}
-			}(),
-			wantErr: "CloudBucketMount with OidcAuthRoleArn is not supported",
-		},
 	}
 
 	for _, tt := range tests {
@@ -130,6 +113,23 @@ func TestSandboxCreateV2RequestProto_VolumesAndCloudBucketMounts(t *testing.T) {
 	g.Expect(cloudBucketMounts).To(gomega.HaveLen(1))
 	g.Expect(cloudBucketMounts[0].GetMountPath()).To(gomega.Equal("/mnt/s3"))
 	g.Expect(cloudBucketMounts[0].GetBucketName()).To(gomega.Equal("my-bucket"))
+}
+
+func TestSandboxCreateV2RequestProto_OidcIdentityToken(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	role := "arn:aws:iam::123:role/r"
+	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
+		IncludeOidcIdentityToken: true,
+		CloudBucketMounts:        map[string]*CloudBucketMount{"/mnt/s3": {BucketName: "my-bucket", OidcAuthRoleArn: &role}},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetIncludeOidcIdentityToken()).To(gomega.BeTrue())
+
+	cloudBucketMounts := req.GetDefinition().GetCloudBucketMounts()
+	g.Expect(cloudBucketMounts).To(gomega.HaveLen(1))
+	g.Expect(cloudBucketMounts[0].GetOidcAuthRoleArn()).To(gomega.Equal(role))
 }
 
 func TestGetSandboxVersion(t *testing.T) {

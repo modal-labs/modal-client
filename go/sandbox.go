@@ -473,17 +473,6 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 	if params.CustomDomain != "" {
 		return nil, fmt.Errorf("custom domains are not supported by ExperimentalCreate")
 	}
-	// The V2 backend does not propagate oidc_identity_token from server to worker
-	// (WorkerSandboxCreateRequest has no such field). Reject inputs that would silently
-	// break at sandbox startup so the caller gets a clear error here instead.
-	if params.IncludeOidcIdentityToken {
-		return nil, fmt.Errorf("IncludeOidcIdentityToken is not supported by ExperimentalCreate")
-	}
-	for mountPath, cbm := range params.CloudBucketMounts {
-		if cbm != nil && cbm.OidcAuthRoleArn != nil {
-			return nil, fmt.Errorf("CloudBucketMount with OidcAuthRoleArn is not supported by ExperimentalCreate (at mount path %q)", mountPath)
-		}
-	}
 
 	req, err := buildSandboxCreateRequestProto(appID, imageID, params)
 	if err != nil {
@@ -537,11 +526,11 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 //
 // Supported features include exec, encrypted tunnels, wait/poll/terminate,
 // CPU and memory configuration, region placement, volumes, cloud bucket
-// mounts (with static credentials via Secret), proxies, and filesystem
-// snapshots.
+// mounts (with static credentials via Secret or OidcAuthRoleArn), OIDC identity
+// tokens, proxies, and filesystem snapshots.
 //
-// Features like tags, memory snapshots, GPUs, custom domains, and OIDC identity
-// tokens (including OidcAuthRoleArn on a CloudBucketMount) are not supported.
+// Features like tags, memory snapshots, GPUs, and custom domains are not
+// supported.
 //
 // V2 sandboxes created with this method are not currently returned by List and
 // cannot be looked up with FromName. Store Sandbox.SandboxID if you need to

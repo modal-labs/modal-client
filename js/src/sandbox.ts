@@ -631,23 +631,6 @@ export async function buildSandboxCreateV2RequestProto(
   if (params.customDomain) {
     throw new Error("custom domains are not supported by experimentalCreate");
   }
-  // The V2 backend does not propagate oidc_identity_token from server to worker
-  // (WorkerSandboxCreateRequest has no such field). Reject inputs that would
-  // silently break at sandbox startup so the caller gets a clear error here.
-  if (params.includeOidcIdentityToken) {
-    throw new Error(
-      "includeOidcIdentityToken is not supported by experimentalCreate",
-    );
-  }
-  if (params.cloudBucketMounts) {
-    for (const [mountPath, cbm] of Object.entries(params.cloudBucketMounts)) {
-      if (cbm.oidcAuthRoleArn) {
-        throw new Error(
-          `CloudBucketMount with oidcAuthRoleArn is not supported by experimentalCreate (at mount path "${mountPath}")`,
-        );
-      }
-    }
-  }
 
   const req = await buildSandboxCreateRequestProto(appId, imageId, params);
   return SandboxCreateV2Request.create({
@@ -720,12 +703,11 @@ export class SandboxService {
    *
    * Supported features include exec, encrypted tunnels, wait/poll/terminate,
    * CPU and memory configuration, region placement, volumes, cloud bucket
-   * mounts (with static credentials via {@link Secret}), {@link Proxy proxies},
-   * and filesystem snapshots.
+   * mounts (with static credentials via {@link Secret} or `oidcAuthRoleArn`),
+   * OIDC identity tokens, {@link Proxy proxies}, and filesystem snapshots.
    *
-   * Features like tags, memory snapshots, GPUs, custom domains, and OIDC
-   * identity tokens (including `oidcAuthRoleArn` on a {@link CloudBucketMount})
-   * are not supported.
+   * Features like tags, memory snapshots, GPUs, and custom domains are not
+   * supported.
    *
    * V2 sandboxes created with this method are not currently returned by
    * {@link SandboxService#list client.sandboxes.list()} and cannot be looked up

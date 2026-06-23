@@ -1139,23 +1139,6 @@ test.each([
     { customDomain: "example.com" },
     "custom domains are not supported",
   ],
-  [
-    "includeOidcIdentityToken",
-    { includeOidcIdentityToken: true },
-    "includeOidcIdentityToken is not supported",
-  ],
-  [
-    "cloud bucket mount with oidcAuthRoleArn",
-    {
-      cloudBucketMounts: {
-        "/bucket": {
-          bucketName: "bucket",
-          oidcAuthRoleArn: "arn:aws:iam::123:role/r",
-        } as any,
-      },
-    },
-    "CloudBucketMount with oidcAuthRoleArn is not supported",
-  ],
 ])(
   "buildSandboxCreateV2RequestProto rejects unsupported option %s",
   async (_name, params, expectedError) => {
@@ -1179,6 +1162,21 @@ test("buildSandboxCreateV2RequestProto supports volumes and cloud bucket mounts"
   expect(req.definition?.cloudBucketMounts).toHaveLength(1);
   expect(req.definition?.cloudBucketMounts?.[0].mountPath).toBe("/mnt/s3");
   expect(req.definition?.cloudBucketMounts?.[0].bucketName).toBe("my-bucket");
+});
+
+test("buildSandboxCreateV2RequestProto supports OIDC identity tokens", async () => {
+  const cbm = tc.cloudBucketMounts.create("my-bucket", {
+    oidcAuthRoleArn: "arn:aws:iam::123:role/r",
+  });
+  const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+    includeOidcIdentityToken: true,
+    cloudBucketMounts: { "/mnt/s3": cbm },
+  });
+
+  expect(req.definition?.includeOidcIdentityToken).toBe(true);
+  expect(req.definition?.cloudBucketMounts?.[0].oidcAuthRoleArn).toBe(
+    "arn:aws:iam::123:role/r",
+  );
 });
 
 test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
