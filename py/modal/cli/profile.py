@@ -2,13 +2,21 @@
 
 import asyncio
 import os
+from contextlib import suppress
 
 import click
 from rich.json import JSON
 from rich.table import Table
 
 from modal._utils.async_utils import synchronizer
-from modal.config import Config, _lookup_workspace, _profile, config_profiles, config_set_active_profile
+from modal.config import (
+    Config,
+    _lookup_workspace,
+    _profile,
+    config_profiles,
+    config_set_active_profile,
+)
+from modal.environments import Environment
 from modal.exception import AuthError
 from modal.output import OutputManager
 
@@ -21,7 +29,14 @@ profile_cli = ModalGroup(name="profile", help="Switch between Modal profiles.")
 @click.argument("profile")
 def activate(profile: str):
     config_set_active_profile(profile)
+    config = Config()
     click.echo(f"Active profile: {profile}")
+    env = config.get("environment", profile)
+    if not env:
+        with suppress(Exception):
+            env = Environment.from_context().hydrate().name
+    if env:
+        click.echo(f"Active environment: {env}")
 
 
 @profile_cli.command("current", help="Print the currently active Modal profile.")

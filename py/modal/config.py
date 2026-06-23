@@ -216,6 +216,8 @@ def config_set_active_profile(profile: str) -> None:
         profile_data.pop("active", None)
 
     _user_config[profile]["active"] = True  # type: ignore
+    global _profile
+    _profile = profile
     _write_user_config(_user_config)
 
 
