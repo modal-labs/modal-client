@@ -119,21 +119,21 @@ async def report(
 
     Examples:
 
-        ```bash
-        modal billing report --start 2025-12-01 --end 2026-01-01
+    ```bash
+    modal billing report --start 2025-12-01 --end 2026-01-01
 
-        modal billing report --for "last month" --tag-names team,project
+    modal billing report --for "last month" --tag-names team,project
 
-        modal billing report --for today --resolution h
+    modal billing report --for today --resolution h
 
-        modal billing report --for "this month" --show-resources
+    modal billing report --for "this month" --show-resources
 
-        modal billing report --for yesterday -r h --tz local
+    modal billing report --for yesterday -r h --tz local
 
-        modal billing report --for "last month" --csv > report.csv
+    modal billing report --for "last month" --csv > report.csv
 
-        modal billing report --start 2025-12-01 --json > report.json
-        ```
+    modal billing report --start 2025-12-01 --json > report.json
+    ```
 
     """
     # Validate mutually exclusive output formats

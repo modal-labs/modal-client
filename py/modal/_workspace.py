@@ -9,7 +9,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
-from ._billing import BILLING_DOCSTRING, BillingReportItem
+from ._billing import BillingReportItem
 from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
@@ -283,26 +283,33 @@ class _WorkspaceBillingManager:
         resolution: str = "d",  # Resolution, e.g. "d" for daily or "h" for hourly
         tag_names: list[str] | None = None,  # Optional additional metadata to include
     ) -> list[BillingReportItem]:
-        (
-            """Return a report of workspace usage by object and time.
+        """Return a cost report for all Workspace usage, broken down by object and time.
 
-            The result will be a list of dataclasses for each interval (determined by `resolution`)
-            between the `start` and `end` limits. Each item represents a single (Modal object, time interval)
-            pair that billing can be attributed to (e.g., an App) along with metadata (including user-defined
-            tags) to identify that object. The dataclass also contains a breakdown of the cost value
-            attributed to individual resources (for an App, this can be CPU, Memory, specific GPU types,
-            etc.). The specific resource types included in the breakdown are subject to change as
-            Modal's billing model evolves.
+        Args:
+            start: Start of the report, inclusive and rounded to the beginning of the interval.
+                Must be in UTC or timezone-naive (interpreted as UTC).
+            end: End of the report, exclusive. Must be in UTC or timezone-naive. Partial final
+                intervals will be excluded from the report.
+            resolution: Resolution, e.g. "d" for daily or "h" for hourly.
+            tag_names: List of tag names; each row will include the tag name and value in use
+                for that object during the relevant time interval. Pass `["*"]` to include all
+                tags in the report.
 
-            It's also possible to generate reports using the
-            [`modal billing report`](https://modal.com/docs/cli/latest/billing#modal-billing-report)
-            CLI command. The CLI has a few convenience features for generating reports across relative
-            time ranges.
+        Returns:
+            A list of `BillingReportItem` dataclasses. Each item reports the cost attributed to
+            a specific Modal object during a given time interval. Cost is further broken down by
+            the resource type that generated it (e.g. CPU, Memory, specific GPU usage). Note that
+            the specific resource types included in the breakdown are subject to change as Modal's
+            billing model evolves.
 
-            """
-            + BILLING_DOCSTRING
-        )
+        See also:
+            - [`modal billing report`](https://modal.com/docs/cli/latest/billing#modal-billing-report):
+              A workspace report CLI that has convenience features around relative time range queries
+              and JSON/CSV output.
+            - [`Environment.billing.report()`](https://modal.com/docs/sdk/py/latest/modal.Environment#billingreport):
+              An analogous report API that is scoped to a specific Environment.
 
+        """
         if tag_names is None:
             tag_names = []
 

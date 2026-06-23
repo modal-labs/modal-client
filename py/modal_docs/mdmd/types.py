@@ -31,3 +31,4 @@ class ParsedDoc:
     returns: Optional[str]
     raises: list[ParsedRaise]
     examples: Optional[str]
+    see_also: Optional[str]

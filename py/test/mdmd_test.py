@@ -587,6 +587,42 @@ def test_parse_docstring_yields_section():
     assert parsed.returns == "bytes: Next chunk from the stream."
 
 
+def test_parse_docstring_see_also_section():
+    docstring = """
+    Do the thing.
+
+    Args:
+        x: The input.
+
+    Returns:
+        The result.
+
+    Raises:
+        ValueError: If x is bad.
+
+    See Also:
+        - [`other_func`](/docs/reference/other_func)
+        - [`Foo`](/docs/reference/Foo)
+    """
+    parsed = mdmd.parse_docstring("do_thing", "def do_thing(x):", docstring)
+    assert parsed.see_also is not None
+    assert not parsed.see_also.startswith("See Also:")
+    assert "- [`other_func`](/docs/reference/other_func)" in parsed.see_also
+    assert "- [`Foo`](/docs/reference/Foo)" in parsed.see_also
+    # The See Also content must not leak into the description.
+    assert "other_func" not in (parsed.description or "")
+
+    rendered = mdmd._markdown_body_from_parsed_doc(parsed)
+    assert "**See Also**" in rendered
+    # See Also must come after Parameters, Returns, and Raises.
+    assert (
+        rendered.index("**Parameters**")
+        < rendered.index("**Returns**")
+        < rendered.index("**Raises**")
+        < rendered.index("**See Also**")
+    )
+
+
 def test_function_str_escapes_braces_in_parameter_attributes_for_svelte():
     """Braces in defaults (e.g. ``{}``) must not be parsed as Svelte ``{expr}``."""
 

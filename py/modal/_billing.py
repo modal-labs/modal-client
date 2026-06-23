@@ -9,24 +9,6 @@ from modal_proto import api_pb2
 from ._utils.deprecation import deprecation_warning
 from .client import _Client
 
-BILLING_DOCSTRING = """
-            The `start` and `end` parameters are required to either have a UTC timezone or to be
-            timezone-naive (which will be interpreted as UTC times). The timestamps in the result will
-            be in UTC. Cost will be reported for full intervals, even if the provided `start` or `end`
-            parameters are partial: `start` will be rounded to the beginning of its interval, while
-            partial `end` intervals will be excluded.
-
-            Additional user-provided metadata can be included in the report if the objects have tags
-            and `tag_names` (i.e., keys) are specified in the request. Alternatively, pass `tag_names=["*"]`
-            to include all tags in the report. Note that tags will be attributed to the entire interval even
-            if they were added or removed at some point within it. If the tag name was not in use during an
-            interval, it will be absent from the tags dictionary in that output row.
-
-            In most cases, billing data will be available in the database that this API queries within
-            minutes, although there may be collection delays. If completeness is important for your use
-            case, we recommend leaving a buffer after the end of the query interval.
-"""
-
 
 class WorkspaceBillingReportItem(TypedDict):
     object_id: str
@@ -115,10 +97,6 @@ async def _workspace_billing_report(
     if they were added or removed at some point within it. If the tag name was not in use during an
     interval, it will be absent from the tags dictionary in that output row.
 
-    In most cases, billing data will be available in the database that this API queries within
-    minutes, although there may be collection delays. If completeness is important for your use
-    case, we recommend leaving a buffer after the end of the query interval.
-
     It's also possible to generate reports using the
     [`modal billing report`](https://modal.com/docs/cli/latest/billing) CLI command. The CLI
     has a few convenience features for generating reports across relative time ranges.
@@ -127,7 +105,8 @@ async def _workspace_billing_report(
 
     deprecation_warning(
         (2026, 6, 18),
-        "`workspace_billing_report()` is deprecated. Use `Workspace.billing.report()` instead.",
+        "The `modal.billing.workspace_billing_report()` function is deprecated. "
+        "Use the `workspace.billing.report()` method on the `modal.Workspace` object instead.",
     )
 
     from ._workspace import _Workspace

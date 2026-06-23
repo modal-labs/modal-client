@@ -104,9 +104,12 @@ def parse_docstring(name: str, signature: str, docstring: str) -> ParsedDoc:
     returns_section, returns_range = extract_section(["Returns:", "Yields:"])
     raises_section, raises_range = extract_section(["Raises:"])
     examples_section, examples_range = extract_section(["Examples:", "Example:"])
+    see_also_section, see_also_range = extract_section(["See Also:", "See also:"])
 
     section_ranges = [
-        section_range for section_range in [args_range, returns_range, raises_range, examples_range] if section_range
+        section_range
+        for section_range in [args_range, returns_range, raises_range, examples_range, see_also_range]
+        if section_range
     ]
 
     description_lines = []
@@ -231,6 +234,7 @@ def parse_docstring(name: str, signature: str, docstring: str) -> ParsedDoc:
         returns=section_body_without_header(returns_section),
         raises=parse_raises(raises_section),
         examples=section_body_without_header(examples_section),
+        see_also=section_body_without_header(see_also_section),
     )
 
 
@@ -265,6 +269,11 @@ def _markdown_body_from_parsed_doc(parsed: ParsedDoc) -> str:
     if parsed.examples:
         output.append("**Usage**\n")
         output.append(parsed.examples)
+        output.append("")
+
+    if parsed.see_also:
+        output.append("**See Also**\n")
+        output.append(parsed.see_also)
         output.append("")
 
     return "\n".join(output)
