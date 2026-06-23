@@ -1313,6 +1313,8 @@ class _App:
         Unlike `@app.cls()`, servers only expose HTTP endpoints and do not
         support `.remote()` method calls.
 
+        See the [guide](https://modal.com/docs/guide/servers) for more information.
+
         Args:
             image: The image to run as the container for the server.
             env: Environment variables to set in the container.

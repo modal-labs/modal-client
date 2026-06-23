@@ -4,6 +4,22 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.5.1 (2026-06-23)
+
+This release includes several major new features, including the debut of a new serverless compute primitive for low-latency HTTP applications (`@app.server()`) and a new CLI for deploying production-ready LLM inference endpoints with minimal configuration (`modal endpoint`).
+
+- We're introducing a new `@app.server()` decorator (and `modal.Server` object), representing a serverless compute primitive that shares many features with Modal Functions while being optimized for serving HTTP-based applications with ultra-low latency. Read the [guide](https://modal.com/docs/guide/servers) for more information.
+- We're also introducing the `modal endpoint` CLI, providing programmatic access to our new [Endpoints](https://modal.com/docs/guide/endpoints) product. Endpoints let you deploy production-ready LLM inference servers with minimal configuration.
+- We've added several new SDK features for workspace configuration and observability:
+  - We've added new billing API methods on the `modal.Workspace` and `modal.Environment` objects (`workspace.billing.report()` and `environment.billing.report()`, respectively). The new APIs include a resource-level cost breakdown (CPU, memory, and specific GPU types). We've also added a `modal environment billing` CLI for generating environment-scoped billing reports. The new workspace-level API replaces the existing `modal.billing.workspace_billing_report` function.
+  - We've added support for creating and managing [proxy tokens](https://modal.com/docs/guide/webhook-proxy-auth) via the `modal.Workspace` object (`workspace.proxy_tokens.create()`, `workspace.proxy_tokens.list()`, etc.) and a new `modal workspace proxy-tokens` CLI. Modal Servers and Endpoints are authenticated via proxy tokens by default.
+  - We've added a new `modal workspace members` CLI for querying information about workspace membership.
+- The new `modal curl` CLI command allows you to make requests to authenticated endpoints without explicitly passing proxy token headers. This is an experimental feature and may change in the future.
+- The `modal app rollback` command now accepts a `--strategy` (`rolling` or `recreate`), like `modal deploy` and `modal app rollover`.
+- Sandbox connect tokens can now be scoped to a custom port (`modal.Sandbox.create_connect_token(port=...)`).
+- It is now possible to call `image.publish()` on an Image constructed using `modal.Image.from_id()` without first calling `image.build()`.
+- The Modal Python client now respects standard environment variables for HTTP CONNECT and SOCKS4/5 proxies (`HTTPS_PROXY` and `ALL_PROXY`). Proxy support requires installing extra dependencies, i.e. using `uv pip install 'modal[api-proxy-support]'`. To opt out of proxy support, set `MODAL_DISABLE_API_PROXY=1` or put `disable_api_proxy = true` in your `.modal.toml` profile.
+
 ### 1.5.0 (2026-06-09)
 
 This is a major release that includes several new features (named Images, version-pinned Function lookups, Sandbox domain allowlists), a new `modal skills` CLI, and a small number of breaking changes.

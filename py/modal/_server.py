@@ -46,7 +46,7 @@ def validate_http_server_config(
 class _Server:
     """Server runs an HTTP server started in an `@modal.enter` method.
 
-    See [lifecycle hooks](https://modal.com/docs/guide/lifecycle-functions) for more information.
+    See the [guide](https://modal.com/docs/guide/servers) for more information.
 
     Generally, you will not construct a Server directly.
     Instead, use the [`@app.server()`](https://modal.com/docs/sdk/py/latest/modal.App#server) decorator.
