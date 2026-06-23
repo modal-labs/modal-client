@@ -1454,6 +1454,7 @@ message EndpointCreateRequest {
 message EndpointCreateResponse {
   string endpoint_id = 1;
   string endpoint_page_url = 2;
+  string name = 3;
 }
 
 message EndpointCustomModelSource {
@@ -1508,6 +1509,7 @@ message EndpointListItem {
   string function_id = 8;
   string created_by_avatar_url = 9;
   EndpointProvisioningStatus provisioning_status = 10;
+  string status = 11;
 }
 
 message EndpointListRequest {

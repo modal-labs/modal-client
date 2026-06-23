@@ -17801,6 +17801,7 @@ type EndpointCreateResponse struct {
 	state                      protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_EndpointId      string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointId,proto3"`
 	xxx_hidden_EndpointPageUrl string                 `protobuf:"bytes,2,opt,name=endpoint_page_url,json=endpointPageUrl,proto3"`
+	xxx_hidden_Name            string                 `protobuf:"bytes,3,opt,name=name,proto3"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -17844,6 +17845,13 @@ func (x *EndpointCreateResponse) GetEndpointPageUrl() string {
 	return ""
 }
 
+func (x *EndpointCreateResponse) GetName() string {
+	if x != nil {
+		return x.xxx_hidden_Name
+	}
+	return ""
+}
+
 func (x *EndpointCreateResponse) SetEndpointId(v string) {
 	x.xxx_hidden_EndpointId = v
 }
@@ -17852,11 +17860,16 @@ func (x *EndpointCreateResponse) SetEndpointPageUrl(v string) {
 	x.xxx_hidden_EndpointPageUrl = v
 }
 
+func (x *EndpointCreateResponse) SetName(v string) {
+	x.xxx_hidden_Name = v
+}
+
 type EndpointCreateResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	EndpointId      string
 	EndpointPageUrl string
+	Name            string
 }
 
 func (b0 EndpointCreateResponse_builder) Build() *EndpointCreateResponse {
@@ -17865,6 +17878,7 @@ func (b0 EndpointCreateResponse_builder) Build() *EndpointCreateResponse {
 	_, _ = b, x
 	x.xxx_hidden_EndpointId = b.EndpointId
 	x.xxx_hidden_EndpointPageUrl = b.EndpointPageUrl
+	x.xxx_hidden_Name = b.Name
 	return m0
 }
 
@@ -18544,6 +18558,7 @@ type EndpointListItem struct {
 	xxx_hidden_FunctionId         string                     `protobuf:"bytes,8,opt,name=function_id,json=functionId,proto3"`
 	xxx_hidden_CreatedByAvatarUrl string                     `protobuf:"bytes,9,opt,name=created_by_avatar_url,json=createdByAvatarUrl,proto3"`
 	xxx_hidden_ProvisioningStatus EndpointProvisioningStatus `protobuf:"varint,10,opt,name=provisioning_status,json=provisioningStatus,proto3,enum=modal.client.EndpointProvisioningStatus"`
+	xxx_hidden_Status             string                     `protobuf:"bytes,11,opt,name=status,proto3"`
 	unknownFields                 protoimpl.UnknownFields
 	sizeCache                     protoimpl.SizeCache
 }
@@ -18643,6 +18658,13 @@ func (x *EndpointListItem) GetProvisioningStatus() EndpointProvisioningStatus {
 	return EndpointProvisioningStatus_ENDPOINT_PROVISIONING_STATUS_UNSPECIFIED
 }
 
+func (x *EndpointListItem) GetStatus() string {
+	if x != nil {
+		return x.xxx_hidden_Status
+	}
+	return ""
+}
+
 func (x *EndpointListItem) SetEndpointId(v string) {
 	x.xxx_hidden_EndpointId = v
 }
@@ -18683,6 +18705,10 @@ func (x *EndpointListItem) SetProvisioningStatus(v EndpointProvisioningStatus) {
 	x.xxx_hidden_ProvisioningStatus = v
 }
 
+func (x *EndpointListItem) SetStatus(v string) {
+	x.xxx_hidden_Status = v
+}
+
 func (x *EndpointListItem) HasMetadata() bool {
 	if x == nil {
 		return false
@@ -18707,6 +18733,7 @@ type EndpointListItem_builder struct {
 	FunctionId         string
 	CreatedByAvatarUrl string
 	ProvisioningStatus EndpointProvisioningStatus
+	Status             string
 }
 
 func (b0 EndpointListItem_builder) Build() *EndpointListItem {
@@ -18723,6 +18750,7 @@ func (b0 EndpointListItem_builder) Build() *EndpointListItem {
 	x.xxx_hidden_FunctionId = b.FunctionId
 	x.xxx_hidden_CreatedByAvatarUrl = b.CreatedByAvatarUrl
 	x.xxx_hidden_ProvisioningStatus = b.ProvisioningStatus
+	x.xxx_hidden_Status = b.Status
 	return m0
 }
 
@@ -60104,11 +60132,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\fapi_surfaces\x18\x06 \x03(\x0e2 .modal.client.EndpointApiSurfaceR\vapiSurfaces\x12N\n" +
 	"\x10input_modalities\x18\a \x03(\x0e2#.modal.client.EndpointInputModalityR\x0finputModalities\x12)\n" +
 	"\x10environment_name\x18\b \x01(\tR\x0fenvironmentName\x12(\n" +
-	"\x0funauthenticated\x18\t \x01(\bR\x0funauthenticated\"e\n" +
+	"\x0funauthenticated\x18\t \x01(\bR\x0funauthenticated\"y\n" +
 	"\x16EndpointCreateResponse\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
 	"endpointId\x12*\n" +
-	"\x11endpoint_page_url\x18\x02 \x01(\tR\x0fendpointPageUrl\"\xf9\x01\n" +
+	"\x11endpoint_page_url\x18\x02 \x01(\tR\x0fendpointPageUrl\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\"\xf9\x01\n" +
 	"\x19EndpointCustomModelSource\x12+\n" +
 	"\x12base_model_repo_id\x18\x01 \x01(\tR\x0fbaseModelRepoId\x12P\n" +
 	"\vhuggingface\x18\x02 \x01(\v2,.modal.client.EndpointHuggingFaceModelSourceH\x00R\vhuggingface\x12Q\n" +
@@ -60141,7 +60170,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"stopped_at\x18\x04 \x01(\x01R\tstoppedAt\x12\x1d\n" +
 	"\n" +
 	"stopped_by\x18\x05 \x01(\tR\tstoppedBy\x12)\n" +
-	"\x10environment_name\x18\x06 \x01(\tR\x0fenvironmentName\"\xda\x03\n" +
+	"\x10environment_name\x18\x06 \x01(\tR\x0fenvironmentName\"\xf2\x03\n" +
 	"\x10EndpointListItem\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
 	"endpointId\x12\x12\n" +
@@ -60156,7 +60185,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"functionId\x121\n" +
 	"\x15created_by_avatar_url\x18\t \x01(\tR\x12createdByAvatarUrl\x12Y\n" +
 	"\x13provisioning_status\x18\n" +
-	" \x01(\x0e2(.modal.client.EndpointProvisioningStatusR\x12provisioningStatus\"~\n" +
+	" \x01(\x0e2(.modal.client.EndpointProvisioningStatusR\x12provisioningStatus\x12\x16\n" +
+	"\x06status\x18\v \x01(\tR\x06status\"~\n" +
 	"\x13EndpointListRequest\x12)\n" +
 	"\x10environment_name\x18\x01 \x01(\tR\x0fenvironmentName\x12<\n" +
 	"\n" +
