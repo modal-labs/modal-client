@@ -16,6 +16,7 @@ from .changelog import changelog
 from .cluster import cluster_cli
 from .config import config_cli
 from .container import container_cli
+from .curl import curl
 from .dashboard import dashboard
 from .dict import dict_cli
 from .endpoint import endpoint_cli
@@ -97,6 +98,7 @@ async def setup(profile: str | None = None):
     await _new_token(profile=profile, next_url="/home")
 
 
+entrypoint_cli.add_command(curl, "curl", panel="Commands")
 entrypoint_cli.add_command(run.deploy, "deploy", panel="Commands")
 entrypoint_cli.add_command(run.serve, "serve", panel="Commands")
 entrypoint_cli.add_command(shell_module.shell, "shell", panel="Commands")

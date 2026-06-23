@@ -246,6 +246,135 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("command_args", "flash_endpoint_auth_token", "expected_cmd"),
+    [
+        (
+            ["curl", "https://workspace--app.modal.direct", "-X", "POST"],
+            "flash-token",
+            [
+                "curl",
+                "-H",
+                "Modal-Authorization: Bearer flash-token",
+                "https://workspace--app.modal.direct",
+                "-X",
+                "POST",
+            ],
+        ),
+        (
+            ["curl", "-X", "GET", "https://workspace--app.modal.direct"],
+            "flash-token",
+            [
+                "curl",
+                "-H",
+                "Modal-Authorization: Bearer flash-token",
+                "-X",
+                "GET",
+                "https://workspace--app.modal.direct",
+            ],
+        ),
+        (
+            ["curl", "--url=https://workspace--app.modal.direct", "-X", "GET"],
+            "flash-token",
+            [
+                "curl",
+                "-H",
+                "Modal-Authorization: Bearer flash-token",
+                "--url=https://workspace--app.modal.direct",
+                "-X",
+                "GET",
+            ],
+        ),
+        (
+            ["curl", "https://workspace--app.modal.direct", "-X", "POST"],
+            "",
+            ["curl", "https://workspace--app.modal.direct", "-X", "POST"],
+        ),
+    ],
+)
+def test_curl_uses_flash_endpoint_auth_token(
+    servicer, set_env_client, monkeypatch, tmp_path, command_args, flash_endpoint_auth_token, expected_cmd
+):
+    curl_calls = []
+    servicer.flash_endpoint_auth_token = flash_endpoint_auth_token
+    monkeypatch.setenv("XDG_CACHE_HOME", tmp_path.as_posix())
+
+    def fake_subprocess_call(cmd):
+        curl_calls.append(cmd)
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_subprocess_call)
+
+    run_cli_command(command_args)
+
+    assert [request.url for request in servicer.cli_get_flash_endpoint_auth_token_requests] == [
+        "https://workspace--app.modal.direct"
+    ]
+    assert curl_calls == [expected_cmd]
+
+
+def test_curl_skips_flash_endpoint_auth_token_for_non_direct_url(servicer, set_env_client, monkeypatch, tmp_path):
+    curl_calls = []
+    servicer.flash_endpoint_auth_token = "flash-token"
+    monkeypatch.setenv("XDG_CACHE_HOME", tmp_path.as_posix())
+
+    def fake_subprocess_call(cmd):
+        curl_calls.append(cmd)
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_subprocess_call)
+
+    run_cli_command(["curl", "https://workspace--app.modal.run", "-X", "POST"])
+
+    assert servicer.cli_get_flash_endpoint_auth_token_requests == []
+    assert curl_calls == [["curl", "https://workspace--app.modal.run", "-X", "POST"]]
+
+
+def test_curl_caches_flash_endpoint_auth_token(servicer, set_env_client, monkeypatch, tmp_path):
+    import modal.cli.curl as curl_module
+
+    curl_calls = []
+    servicer.flash_endpoint_auth_token = "flash-token"
+    monkeypatch.setenv("XDG_CACHE_HOME", tmp_path.as_posix())
+
+    def fake_subprocess_call(cmd):
+        curl_calls.append(cmd)
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_subprocess_call)
+
+    run_cli_command(["curl", "https://workspace--app.modal.direct", "-X", "POST"])
+
+    async def unexpected_from_env():
+        raise AssertionError("cached curl token should not need a Modal client")
+
+    monkeypatch.setattr(curl_module._Client, "from_env", unexpected_from_env)
+
+    run_cli_command(["curl", "https://workspace--app.modal.direct", "-X", "POST"])
+
+    assert [request.url for request in servicer.cli_get_flash_endpoint_auth_token_requests] == [
+        "https://workspace--app.modal.direct"
+    ]
+    assert curl_calls == [
+        [
+            "curl",
+            "-H",
+            "Modal-Authorization: Bearer flash-token",
+            "https://workspace--app.modal.direct",
+            "-X",
+            "POST",
+        ],
+        [
+            "curl",
+            "-H",
+            "Modal-Authorization: Bearer flash-token",
+            "https://workspace--app.modal.direct",
+            "-X",
+            "POST",
+        ],
+    ]
+
+
+@pytest.mark.parametrize(
     ("env_content", "expected_exit_code", "expected_stderr"),
     [
         ("KEY1=VAL1\nKEY2=VAL2", 0, None),

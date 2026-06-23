@@ -852,6 +852,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # Value returned by AuthTokenGet
         self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
+        self.flash_endpoint_auth_token = "flash-endpoint-auth-token"
+        self.cli_get_flash_endpoint_auth_token_requests: list[api_pb2.CurlAuthTokenRequest] = []
         self.function_id_to_definition_id: dict[str, str] = {}
         self.auth_token_delay = 0.0
         # Number of times AttemptAwait was called.
@@ -1349,6 +1351,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         response = api_pb2.AuthTokenGetResponse(token=self.auth_token)
         await asyncio.sleep(self.auth_token_delay)
         self.auth_tokens_generated += 1
+        await stream.send_message(response)
+
+    async def CurlGetAuthToken(self, stream):
+        request: api_pb2.CurlAuthTokenRequest = await stream.recv_message()
+        self.cli_get_flash_endpoint_auth_token_requests.append(request)
+        response = api_pb2.CurlAuthTokenResponse(token=self.flash_endpoint_auth_token)
         await stream.send_message(response)
 
     ### Checkpoint
