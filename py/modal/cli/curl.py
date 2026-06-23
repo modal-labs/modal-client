@@ -100,17 +100,22 @@ def _run_curl(curl_args: tuple[str, ...], token: str | None = None) -> None:
 @click.argument("curl_args", nargs=-1, required=True, type=click.UNPROCESSED)
 @synchronizer.create_blocking
 async def curl(curl_args: tuple[str, ...]):
-    """Send an authenticated curl request to a Modal web endpoint.
+    """Send an authenticated request to a Modal endpoint.
 
-    All arguments are passed directly to curl.
+    Experimental: This command may change or be removed in the future.
 
-    Note:
-        This command requires that you have the `curl` command-line tool installed locally.
+    This command allows you to send authenticated requests without including proxy token
+    headers. Authentication is managed via your local Modal API credentials. API-based
+    authentication adds latency to requests, so this utility is recommended only for
+    experimentation and debugging purposes.
+
+    All arguments are passed directly to `curl`, which must be installed locally.
 
     Examples:
-
-        modal curl https://user--my-app.modal.run
-        modal curl -X GET https://user--my-app.modal.run
+        ```bash
+        modal curl https://user--my-app.us-west.modal.direct
+        modal curl -X GET https://user--my-app.us-west.modal.direct
+        ```
     """
     url = find_url(curl_args)
     if url is None:
@@ -127,7 +132,6 @@ async def curl(curl_args: tuple[str, ...]):
     try:
         token = await _get_flash_endpoint_auth_token(client, url, cache_key, now)
     except Exception as e:
-        click.echo(f"[Modal CLI] error getting Flash endpoint auth token with error: {e}", err=True)
-        sys.exit(1)
+        raise click.ClickException(f"Error getting proxy token: {e}") from e
 
     _run_curl(curl_args, token)

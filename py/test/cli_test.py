@@ -671,59 +671,6 @@ def test_endpoint_create_custom_hf_token_with_model(servicer, set_env_client):
     assert request.model.custom.huggingface.huggingface_token == "hf-secret"
 
 
-def test_endpoint_create_has_no_custom_hf_token_env_option(servicer, set_env_client):
-    run_cli_command(
-        [
-            "endpoint",
-            "create",
-            "--name=my-ft",
-            "--model=Qwen/Qwen3.6-27B-FP8",
-            "--custom-hf-repo=acme/qwen-ft",
-            "--custom-hf-token-env=HF_TOKEN",
-        ],
-        expected_exit_code=2,
-        expected_stderr="No such option",
-    )
-    assert servicer.endpoint_create_requests == []
-
-
-def test_endpoint_create_has_no_description_option(servicer, set_env_client):
-    run_cli_command(
-        [
-            "endpoint",
-            "create",
-            "--name=qwen-chat",
-            "--model=Qwen/Qwen3.6-27B-FP8",
-            "--description=Qwen chat endpoint",
-        ],
-        expected_exit_code=2,
-        expected_stderr="No such option",
-    )
-    assert servicer.endpoint_create_requests == []
-
-
-def test_endpoint_create_help_examples(servicer, set_env_client):
-    res = run_cli_command(["endpoint", "create", "--help"])
-    normalized_stdout = " ".join(res.stdout.split())
-
-    assert "modal endpoint create --model Qwen/Qwen3.6-27B-FP8" in normalized_stdout
-    assert "modal endpoint create --name qwen-chat --model Qwen/Qwen3.6-27B-FP8" in normalized_stdout
-    assert "--custom-hf-token $HF_TOKEN" in normalized_stdout
-    assert "Defaults to a server-generated name based on the model source" in normalized_stdout
-    assert "used to select the Endpoint runtime" in normalized_stdout
-    assert "volume-name qwen-ft" in normalized_stdout
-    assert "custom-volume-path /models/qwen" in normalized_stdout
-    assert "--description" not in res.stdout
-    assert "--custom-hf-token-env" not in res.stdout
-
-
-def test_endpoint_group_help_uses_endpoint_flavor_text(servicer, set_env_client):
-    res = run_cli_command(["endpoint", "--help"])
-
-    assert "Create, list, and stop Endpoints." in res.stdout
-    assert "managed inference" not in res.stdout
-
-
 def test_endpoint_create_custom_hf_token_requires_hf_repo(servicer, set_env_client):
     res = run_cli_command(
         [

@@ -1195,10 +1195,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         its static configuration.
 
         Args:
-            min_containers: Minimum number of containers to keep running, or `None` to leave unchanged.
-            max_containers: Maximum concurrent containers, or `None` to leave unchanged.
-            buffer_containers: Extra containers to keep warm beyond demand, or `None` to leave unchanged.
-            scaledown_window: Seconds idle containers wait before scaling down, or `None` to leave unchanged.
+            min_containers: Minimum number of containers to keep running.
+            max_containers: Maximum concurrent containers.
+            buffer_containers: Extra containers to keep warm beyond current demand.
+            scaledown_window: Maximum duration (in seconds) idle containers wait before scaling down.
 
         Examples:
             ```python notest
@@ -1212,7 +1212,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             # Extend the scaledown window to increase the amount of time that idle containers stay alive
             f.update_autoscaler(scaledown_window=300)
-        ```
+            ```
 
         """
         # Assert .update_autoscaler() is not called on a method as opposed to the Object. Applicable for Cls only.

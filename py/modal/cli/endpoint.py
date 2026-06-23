@@ -19,7 +19,17 @@ from modal_proto import api_pb2
 
 from ._help import ModalGroup
 
-endpoint_cli = ModalGroup(name="endpoint", help="Create, list, and stop Endpoints.")
+_ENDPOINT_HELP = """
+Create and manage LLM inference endpoints.
+
+Modal Endpoints deploy production-ready LLM inference servers with minimal coding or configuration.
+Endpoints support pre-trained open models along with custom weights from a private Hugging Face repo
+or Modal Volume.
+
+See https://modal.com/docs/guide/endpoints for more information.
+"""
+
+endpoint_cli = ModalGroup(name="endpoint", help=_ENDPOINT_HELP)
 
 _ENDPOINT_ID_RE = re.compile(r"^ep-[a-zA-Z0-9]{22}$")
 _DEFAULT_ROUTING_REGION = "us-west"
@@ -97,12 +107,12 @@ def _endpoint_already_stopped_message(
 @click.option(
     "--name",
     default=None,
-    help="Endpoint name. Defaults to a server-generated name based on the model source.",
+    help="Endpoint name. If not provided, a default will be derived from the model name.",
 )
 @click.option(
     "--model",
     required=True,
-    help="Base model HuggingFace repo ID used to select the Endpoint runtime (e.g., Qwen/Qwen3.6-27B-FP8).",
+    help="Hugging Face repo ID for the base model architecture (e.g., 'Qwen/Qwen3.6-27B-FP8').",
 )
 @click.option(
     "--routing-region",
@@ -123,11 +133,11 @@ def _endpoint_already_stopped_message(
     default=False,
     help="Allow unauthenticated HTTP requests to the endpoint.",
 )
-@click.option("--custom-hf-repo", default=None, help="Fine-tuned model HuggingFace repo ID.")
+@click.option("--custom-hf-repo", default=None, help="Hugging Face repo ID for fine-tuned model weights.")
 @click.option("--custom-hf-revision", default=None, help="Git revision for --custom-hf-repo.")
-@click.option("--custom-hf-token", default=None, help="HuggingFace token for private --custom-hf-repo.")
-@click.option("--custom-volume-name", default=None, help="Modal volume name containing custom model weights.")
-@click.option("--custom-volume-path", default=None, help="Path within volume to model weights.")
+@click.option("--custom-hf-token", default=None, help="Hugging Face token for private --custom-hf-repo.")
+@click.option("--custom-volume-name", default=None, help="Modal Volume name containing custom model weights.")
+@click.option("--custom-volume-path", default=None, help="Path within Volume containing model weights.")
 @synchronizer.create_blocking
 async def create(
     name: Optional[str],
@@ -142,32 +152,28 @@ async def create(
     custom_volume_path: Optional[str] = None,
     env: Optional[str] = None,
 ):
-    """Create a new Endpoint.
+    """Deploy a new Endpoint.
 
     Examples:
 
     Create an Endpoint from a base model:
-
-    ```
+    ```bash
     modal endpoint create --model Qwen/Qwen3.6-27B-FP8
     ```
 
     Create an Endpoint with an explicit name:
-
-    ```
+    ```bash
     modal endpoint create --name qwen-chat --model Qwen/Qwen3.6-27B-FP8
     ```
 
     Create an Endpoint from a private Hugging Face model:
-
-    ```
+    ```bash
     modal endpoint create --name my-ft --model Qwen/Qwen3.6-27B-FP8 \\
       --custom-hf-repo acme/qwen-ft --custom-hf-token $HF_TOKEN
     ```
 
     Create an Endpoint from custom weights in a Modal Volume:
-
-    ```
+    ```bash
     modal endpoint create --name my-ft --model Qwen/Qwen3.6-27B-FP8 \\
       --custom-volume-name qwen-ft --custom-volume-path /models/qwen
     ```
@@ -238,12 +244,12 @@ async def create(
         output.print("  → The Endpoint will appear in [cyan]modal endpoint list[/cyan].")
 
 
-@endpoint_cli.command("list", help="List Endpoints.", panel="Management")
+@endpoint_cli.command("list", panel="Management")
 @click.option("--json", is_flag=True, default=False)
 @env_option
 @synchronizer.create_blocking
 async def list_(*, json: bool = False, env: Optional[str] = None):
-    """List active Endpoints."""
+    """List Endpoints that are provisioning or running in an environment."""
     env_name = ensure_env(env)
     environment_name = _get_environment_name(env_name) or ""
     client = await _Client.from_env()
@@ -305,7 +311,7 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
         )
 
 
-@endpoint_cli.command("stop", help="Stop an Endpoint.", panel="Management", no_args_is_help=True)
+@endpoint_cli.command("stop", panel="Management", no_args_is_help=True)
 @click.argument("endpoint_identifier")
 @yes_option
 @env_option
@@ -316,6 +322,7 @@ async def stop(
     yes: bool = False,
     env: str | None = None,
 ):
+    """Permanently stop an Endpoint and terminate any running containers."""
     env_name = ensure_env(env)
     client = await _Client.from_env()
     endpoint_id, endpoint_name, environment_name, lifecycle = await _resolve_endpoint_identifier(

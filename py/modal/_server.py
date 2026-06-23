@@ -77,6 +77,7 @@ class _Server:
 
     @property
     def object_id(self) -> str:
+        """Modal's internal ID for this Server instance."""
         return self._service_function.object_id
 
     @staticmethod
@@ -91,6 +92,7 @@ class _Server:
 
     @live_method
     async def get_url(self) -> str | None:
+        """The URL for making requests to this Server."""
         urls = await self._get_service_function()._experimental_get_flash_urls()
         # Return the first URL if it exists. Servers should only have one URL
         # since they only have one region.
@@ -101,16 +103,28 @@ class _Server:
     async def update_autoscaler(
         self,
         *,
+        target_concurrency: int | None = None,
         min_containers: int | None = None,
         max_containers: int | None = None,
         buffer_containers: int | None = None,
         scaleup_window: int | None = None,
         scaledown_window: int | None = None,
-        target_concurrency: int | None = None,
     ) -> None:
         """Override the current autoscaler behavior for this Server.
 
-        Unspecified parameters will retain their current value.
+        Unspecified parameters will retain their current value, i.e. either the static value
+        from the `@app.server()` decorator, or an override value from a previous call to this method.
+
+        Subsequent deployments of the App containing this Server will reset the autoscaler back to
+        its static configuration.
+
+        Args:
+            target_concurrency: Target number of concurrent requests per container.
+            min_containers: Minimum number of containers to keep running regardless of demand.
+            max_containers: Limit on the number of containers that can be concurrently running.
+            buffer_containers: Extra containers to scale up beyond current demand.
+            scaleup_window: Seconds of sustained demand required before scaling up new containers.
+            scaledown_window: Maximum duration (in seconds) idle containers wait before scaling down.
 
         Examples:
             ```python notest
@@ -130,7 +144,7 @@ class _Server:
 
             # Disable the Server autoscaling by setting target_concurrency to 0
             server.update_autoscaler(target_concurrency=0)
-        ```
+            ```
 
         """
         return await self._get_service_function()._update_autoscaler(
@@ -144,6 +158,13 @@ class _Server:
 
     # ============ Hydration ============
     async def hydrate(self, client: _Client | None = None) -> "_Server":
+        """Synchronize the local object with its identity on the Modal server.
+
+        It is rarely necessary to call this method explicitly, as most operations will
+        lazily hydrate when needed. The main use case is when you need to access object
+        metadata, such as its ID.
+
+        """
         # This is required since we want to support @livemethod() decorated methods
         service_function = self._get_service_function()
         await service_function.hydrate(client)
@@ -182,6 +203,12 @@ class _Server:
         This is a lazy method that defers hydrating the local
         object with metadata from Modal servers until the first
         time it is actually used.
+
+        Args:
+            app_name: Name of the App containing the Server.
+            name: Name of the Server within the App.
+            environment_name: Name of the Environment where the App is deployed.
+            client: Modal client instance for this session.
 
         ```python notest
         server = modal.Server.from_name("other-app", "Server")
