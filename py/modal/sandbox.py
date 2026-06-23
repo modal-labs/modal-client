@@ -845,6 +845,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         encrypted_ports: Sequence[int] = [],
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
+        proxy: _Proxy | None = None,
         readiness_probe: Probe | None = None,
         include_oidc_identity_token: bool = False,
         verbose: bool = False,
@@ -855,10 +856,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         Supported features include exec, encrypted tunnels, wait/poll/terminate,
         CPU and memory configuration, region placement, volumes, cloud bucket mounts
         (with static credentials via `secret=...` or `oidc_auth_role_arn`), OIDC
-        identity tokens, and filesystem snapshots.
+        identity tokens, proxies, and filesystem snapshots.
 
-        Features like tags, memory snapshots, network file systems, GPUs, custom
-        domains, and proxies are not supported.
+        Features like tags, memory snapshots, network file systems, GPUs, and custom
+        domains are not supported.
 
         V2 sandboxes created with this method are not currently returned by
         `Sandbox.list()` and cannot be looked up with `Sandbox.from_name()`.
@@ -941,6 +942,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             for _, cloud_bucket_mount in cloud_bucket_mounts:
                 if cloud_bucket_mount.secret:
                     dep_tasks.append(resolver.load(cloud_bucket_mount.secret, load_context))
+            if proxy:
+                dep_tasks.append(resolver.load(proxy, load_context))
             dep_timings = await _gather_load_with_timings(dep_tasks) if dep_tasks else []
 
             validate_volumes_by_object_id(validated_volumes)
@@ -964,6 +967,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
+                proxy_id=(proxy.object_id if proxy else None),
                 verbose=verbose,
                 name=name,
                 include_oidc_identity_token=include_oidc_identity_token,

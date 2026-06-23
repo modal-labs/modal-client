@@ -1058,6 +1058,20 @@ def test_experimental_sandbox_create_cloud_bucket_mount(app, servicer):
         assert req.definition.cloud_bucket_mounts[0].bucket_type == api_pb2.CloudBucketMount.BucketType.S3
 
 
+def test_experimental_sandbox_create_proxy(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, proxy=Proxy.from_name("my-proxy"))
+        req = ctx.pop_request("SandboxCreateV2")
+        assert req.definition.proxy_id == "pr-123"
+
+
+def test_experimental_sandbox_create_no_proxy_by_default(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert req.definition.proxy_id == ""
+
+
 def test_experimental_sandbox_create_no_oidc_identity_token_by_default(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app)
