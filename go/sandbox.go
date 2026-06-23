@@ -473,9 +473,6 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 	if params.CustomDomain != "" {
 		return nil, fmt.Errorf("custom domains are not supported by ExperimentalCreate")
 	}
-	if params.Proxy != nil {
-		return nil, fmt.Errorf("proxies are not supported by ExperimentalCreate")
-	}
 	// The V2 backend does not propagate oidc_identity_token from server to worker
 	// (WorkerSandboxCreateRequest has no such field). Reject inputs that would silently
 	// break at sandbox startup so the caller gets a clear error here instead.
@@ -540,11 +537,11 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 //
 // Supported features include exec, encrypted tunnels, wait/poll/terminate,
 // CPU and memory configuration, region placement, volumes, cloud bucket
-// mounts (with static credentials via Secret), and filesystem snapshots.
+// mounts (with static credentials via Secret), proxies, and filesystem
+// snapshots.
 //
-// Features like tags, memory snapshots, GPUs, custom domains, OIDC identity
-// tokens (including OidcAuthRoleArn on a CloudBucketMount), and proxies are not
-// supported.
+// Features like tags, memory snapshots, GPUs, custom domains, and OIDC identity
+// tokens (including OidcAuthRoleArn on a CloudBucketMount) are not supported.
 //
 // V2 sandboxes created with this method are not currently returned by List and
 // cannot be looked up with FromName. Store Sandbox.SandboxID if you need to

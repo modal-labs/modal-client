@@ -1123,6 +1123,14 @@ test("buildSandboxCreateV2RequestProto", async () => {
   expect(req.definition?.timeoutSecs).toBe(600);
 });
 
+test("buildSandboxCreateV2RequestProto supports a proxy", async () => {
+  const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+    proxy: { proxyId: "pr-123" } as any,
+  });
+
+  expect(req.definition?.proxyId).toBe("pr-123");
+});
+
 test.each([
   ["tags", { tags: { key: "value" } }, "tags are not supported"],
   ["gpu", { gpu: "A10G" }, "GPUs are not supported"],
@@ -1130,11 +1138,6 @@ test.each([
     "custom domain",
     { customDomain: "example.com" },
     "custom domains are not supported",
-  ],
-  [
-    "proxy",
-    { proxy: { proxyId: "pr-123" } as any },
-    "proxies are not supported",
   ],
   [
     "includeOidcIdentityToken",

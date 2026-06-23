@@ -631,9 +631,6 @@ export async function buildSandboxCreateV2RequestProto(
   if (params.customDomain) {
     throw new Error("custom domains are not supported by experimentalCreate");
   }
-  if (params.proxy) {
-    throw new Error("proxies are not supported by experimentalCreate");
-  }
   // The V2 backend does not propagate oidc_identity_token from server to worker
   // (WorkerSandboxCreateRequest has no such field). Reject inputs that would
   // silently break at sandbox startup so the caller gets a clear error here.
@@ -723,12 +720,12 @@ export class SandboxService {
    *
    * Supported features include exec, encrypted tunnels, wait/poll/terminate,
    * CPU and memory configuration, region placement, volumes, cloud bucket
-   * mounts (with static credentials via {@link Secret}), and filesystem
-   * snapshots.
+   * mounts (with static credentials via {@link Secret}), {@link Proxy proxies},
+   * and filesystem snapshots.
    *
-   * Features like tags, memory snapshots, GPUs, custom domains, OIDC identity
-   * tokens (including `oidcAuthRoleArn` on a {@link CloudBucketMount}), and
-   * proxies are not supported.
+   * Features like tags, memory snapshots, GPUs, custom domains, and OIDC
+   * identity tokens (including `oidcAuthRoleArn` on a {@link CloudBucketMount})
+   * are not supported.
    *
    * V2 sandboxes created with this method are not currently returned by
    * {@link SandboxService#list client.sandboxes.list()} and cannot be looked up

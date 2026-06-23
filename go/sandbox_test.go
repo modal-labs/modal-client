@@ -46,6 +46,17 @@ func TestSandboxCreateV2RequestProto(t *testing.T) {
 	g.Expect(req.GetDefinition().GetTimeoutSecs()).To(gomega.Equal(uint32(600)))
 }
 
+func TestSandboxCreateV2RequestProto_WithProxy(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
+		Proxy: &Proxy{ProxyID: "pr-123"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetProxyId()).To(gomega.Equal("pr-123"))
+}
+
 func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 	t.Parallel()
 
@@ -68,11 +79,6 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			name:    "custom domain",
 			params:  SandboxCreateParams{CustomDomain: "example.com"},
 			wantErr: "custom domains are not supported",
-		},
-		{
-			name:    "proxy",
-			params:  SandboxCreateParams{Proxy: &Proxy{ProxyID: "pr-123"}},
-			wantErr: "proxies are not supported",
 		},
 		{
 			name:    "include oidc identity token",
