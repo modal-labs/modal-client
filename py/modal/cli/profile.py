@@ -31,7 +31,7 @@ def activate(profile: str):
     config_set_active_profile(profile)
     config = Config()
     click.echo(f"Active profile: {profile}")
-    env = config.get("environment", profile)
+    env = config.get("environment", profile=profile)
     if not env:
         with suppress(Exception):
             env = Environment.from_context().hydrate().name
@@ -52,9 +52,9 @@ async def list_(json: bool | None = False):
     profiles = config_profiles()
     lookup_coros = [
         _lookup_workspace(
-            config.get("server_url", profile),
-            config.get("token_id", profile, use_env=False),
-            config.get("token_secret", profile, use_env=False),
+            config.get("server_url", profile=profile),
+            config.get("token_id", profile=profile, use_env=False),
+            config.get("token_secret", profile=profile, use_env=False),
         )
         for profile in profiles
     ]
@@ -80,7 +80,7 @@ async def list_(json: bool | None = False):
     if "MODAL_TOKEN_ID" in os.environ:
         try:
             env_based_resp = await _lookup_workspace(
-                config.get("server_url", _profile),
+                config.get("server_url", profile=_profile),
                 os.environ.get("MODAL_TOKEN_ID"),
                 os.environ.get("MODAL_TOKEN_SECRET"),
             )

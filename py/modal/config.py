@@ -314,7 +314,7 @@ class Config:
     def __init__(self):
         pass
 
-    def get(self, key, profile=None, use_env=True):
+    def get(self, key: str, *, profile: str | None = None, use_env: bool = True) -> Any:
         """Look up a configuration value.
 
         Resolution order (highest priority first):

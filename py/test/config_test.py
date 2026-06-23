@@ -160,7 +160,7 @@ def test_config_boolean(modal_config, arg):
     force_build = {arg}
     """
     with modal_config(modal_toml):
-        assert not Config().get("force_build", "prof-1")
+        assert not Config().get("force_build", profile="prof-1")
 
 
 def test_malformed_config_better(modal_config):
