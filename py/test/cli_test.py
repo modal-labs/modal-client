@@ -26,7 +26,7 @@ from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 from . import helpers
-from .conftest import run_cli_command
+from .conftest import Volume, run_cli_command
 from .supports.skip import skip_windows
 
 dummy_app_file = """
@@ -321,6 +321,639 @@ def test_token_info(servicer, set_env_client):
     assert "ak-test123" in res.stdout
     assert "test-workspace" in res.stdout
     assert "test-user" in res.stdout
+
+
+def test_endpoint_create(servicer, set_env_client):
+    res = run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--routing-region=us-east",
+            "--env=main",
+        ]
+    )
+
+    assert "Endpoint 'qwen-chat'" in res.stdout
+    assert "started provisioning" in " ".join(res.stdout.split())
+    (request,) = servicer.endpoint_create_requests
+    assert request.name == "qwen-chat"
+    assert request.description == ""
+    assert list(request.proxy_regions) == ["us-east"]
+    assert request.compute_region.WhichOneof("placement") == "auto"
+    assert request.model.base_model_repo_id == "Qwen/Qwen3.6-27B-FP8"
+    # api_surfaces and input_modalities are defaulted by the server, not the client.
+    assert list(request.api_surfaces) == []
+    assert list(request.input_modalities) == []
+    assert request.environment_name == "main"
+    assert request.unauthenticated is False
+
+
+def test_endpoint_create_shows_url(servicer, set_env_client):
+    # Omit --routing-region to exercise the default (us-west).
+    res = run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+        ]
+    )
+
+    # Collapse whitespace since the rich console wraps long lines at the test terminal width.
+    normalized_stdout = " ".join(res.stdout.split())
+    assert "Endpoint 'qwen-chat'" in normalized_stdout
+    assert "started provisioning" in normalized_stdout
+    assert "View progress at" in normalized_stdout
+    assert "https://modal.com/endpoints/test-user/main/ep-0000000000000000000001" in normalized_stdout
+    assert "modal endpoint list" in normalized_stdout
+    (request,) = servicer.endpoint_create_requests
+    assert list(request.proxy_regions) == ["us-west"]
+    assert request.compute_region.WhichOneof("placement") == "auto"
+
+
+def test_endpoint_create_rejects_multiple_routing_regions(servicer, set_env_client):
+    res = run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--routing-region=us-east",
+            "--routing-region=us-west",
+        ],
+        expected_exit_code=2,
+    )
+
+    assert "--routing-region can only be specified once" in res.stderr
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_colocates_compute(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--colocate-compute",
+        ]
+    )
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.compute_region.WhichOneof("placement") == "colocated"
+
+
+def test_endpoint_create_has_no_compute_region_option(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--compute-region=us-east",
+        ],
+        expected_exit_code=2,
+        expected_stderr="No such option",
+    )
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_unauthenticated(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--unauthenticated",
+        ]
+    )
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.unauthenticated is True
+
+
+def test_endpoint_create_defaults_name_from_model(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+        ]
+    )
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.name == ""
+    assert "qwen3-6-27b-fp8" in servicer.endpoint_ids_by_name["main"]
+
+
+def test_endpoint_create_uses_empty_environment_without_default(servicer, set_env_client, modal_config):
+    with modal_config():
+        run_cli_command(
+            [
+                "endpoint",
+                "create",
+                "--model=Qwen/Qwen3.6-27B-FP8",
+            ]
+        )
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.environment_name == ""
+
+
+def test_endpoint_create_custom_hf_requires_model(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ft",
+            "--custom-hf-repo=acme/qwen-ft",
+        ],
+        expected_exit_code=2,
+        expected_stderr="Missing option.*--model",
+    )
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_custom_sources_are_exclusive(servicer, set_env_client):
+    res = run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ft",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-hf-repo=acme/qwen-ft",
+            "--custom-volume-name=qwen-ft",
+        ],
+        expected_exit_code=2,
+    )
+    assert "--custom-hf-repo and --custom-volume-name are mutually exclusive" in res.stderr
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_custom_volume_path_requires_name(servicer, set_env_client):
+    res = run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ep",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-volume-path=/models/qwen",
+        ],
+        expected_exit_code=2,
+    )
+    assert "--custom-volume-path requires --custom-volume-name" in res.stderr
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_custom_hf_with_model(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ft",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-hf-repo=acme/qwen-ft",
+            "--custom-hf-revision=abc123",
+        ]
+    )
+    (request,) = servicer.endpoint_create_requests
+    assert request.model.WhichOneof("source") == "custom"
+    assert request.model.custom.base_model_repo_id == "Qwen/Qwen3.6-27B-FP8"
+    assert request.model.custom.huggingface.repo_id == "acme/qwen-ft"
+    assert request.model.custom.huggingface.revision == "abc123"
+
+
+def test_endpoint_create_custom_hf_token_with_model(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ft",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-hf-repo=acme/qwen-ft",
+            "--custom-hf-token=hf-secret",
+        ]
+    )
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.model.custom.huggingface.huggingface_token == "hf-secret"
+
+
+def test_endpoint_create_has_no_custom_hf_token_env_option(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ft",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-hf-repo=acme/qwen-ft",
+            "--custom-hf-token-env=HF_TOKEN",
+        ],
+        expected_exit_code=2,
+        expected_stderr="No such option",
+    )
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_has_no_description_option(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--description=Qwen chat endpoint",
+        ],
+        expected_exit_code=2,
+        expected_stderr="No such option",
+    )
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_help_examples(servicer, set_env_client):
+    res = run_cli_command(["endpoint", "create", "--help"])
+    normalized_stdout = " ".join(res.stdout.split())
+
+    assert "modal endpoint create --model Qwen/Qwen3.6-27B-FP8" in normalized_stdout
+    assert "modal endpoint create --name qwen-chat --model Qwen/Qwen3.6-27B-FP8" in normalized_stdout
+    assert "--custom-hf-token $HF_TOKEN" in normalized_stdout
+    assert "Defaults to a server-generated name based on the model source" in normalized_stdout
+    assert "used to select the Endpoint runtime" in normalized_stdout
+    assert "volume-name qwen-ft" in normalized_stdout
+    assert "custom-volume-path /models/qwen" in normalized_stdout
+    assert "--description" not in res.stdout
+    assert "--custom-hf-token-env" not in res.stdout
+
+
+def test_endpoint_group_help_uses_endpoint_flavor_text(servicer, set_env_client):
+    res = run_cli_command(["endpoint", "--help"])
+
+    assert "Create, list, and stop Endpoints." in res.stdout
+    assert "managed inference" not in res.stdout
+
+
+def test_endpoint_create_custom_hf_token_requires_hf_repo(servicer, set_env_client):
+    res = run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ft",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-hf-token=hf-secret",
+        ],
+        expected_exit_code=2,
+    )
+
+    assert "--custom-hf-revision and --custom-hf-token require --custom-hf-repo" in res.stderr
+    assert servicer.endpoint_create_requests == []
+
+
+def test_endpoint_create_custom_volume_with_model(servicer, set_env_client):
+    servicer.deployed_volumes[("qwen-ft", "main")] = "vo-123"
+    servicer.volumes["vo-123"] = Volume(version=api_pb2.VOLUME_FS_VERSION_V1, files={})
+
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-volume-name=qwen-ft",
+            "--custom-volume-path=/models/qwen",
+        ]
+    )
+    (request,) = servicer.endpoint_create_requests
+    assert request.name == ""
+    assert request.model.WhichOneof("source") == "custom"
+    assert request.model.custom.base_model_repo_id == "Qwen/Qwen3.6-27B-FP8"
+    assert request.model.custom.modal_volume.volume_id == "vo-123"
+    assert request.model.custom.modal_volume.model_path == "/models/qwen"
+    assert "qwen3-6-27b-fp8" in servicer.endpoint_ids_by_name["main"]
+
+
+def test_endpoint_create_custom_volume_requires_path(servicer, set_env_client):
+    res = run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=my-ft",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--custom-volume-name=qwen-ft",
+        ],
+        expected_exit_code=2,
+    )
+    assert "--custom-volume-path is required with --custom-volume-name" in res.stderr
+    assert servicer.endpoint_create_requests == []
+
+
+def _add_endpoint_list_item(
+    servicer,
+    *,
+    endpoint_id: str,
+    name: str,
+    environment_name: str = "main",
+    description: str = "",
+    app_state: api_pb2.AppState.ValueType = api_pb2.APP_STATE_DEPLOYED,
+    provisioning_status: api_pb2.EndpointProvisioningStatus.ValueType = api_pb2.ENDPOINT_PROVISIONING_STATUS_SUCCEEDED,
+    status: str = "live",
+    created_at: float | None = None,
+) -> None:
+    servicer.endpoint_list_items.append(
+        api_pb2.EndpointListItem(
+            endpoint_id=endpoint_id,
+            name=name,
+            description=description,
+            app_state=app_state,
+            provisioning_status=provisioning_status,
+            status=status,
+            metadata=api_pb2.EndpointMetadata(
+                name=name,
+                creation_info=api_pb2.CreationInfo(
+                    created_at=time.time() if created_at is None else created_at,
+                    created_by="test-user",
+                ),
+            ),
+        )
+    )
+    servicer.endpoint_list_item_environments[endpoint_id] = environment_name
+
+
+def test_endpoint_list(servicer, server_url_env, set_env_client):
+    # Inject endpoints directly into the servicer so we can test list without
+    # needing to exercise the full EndpointCreate argument surface.
+    endpoint_id_foo = "ep-0000000000000000000101"
+    endpoint_id_bar = "ep-0000000000000000000102"
+    endpoint_id_other_env = "ep-0000000000000000000103"
+    endpoint_id_stopped = "ep-0000000000000000000104"
+    endpoint_id_initializing = "ep-0000000000000000000105"
+    endpoint_id_failed_initializing = "ep-0000000000000000000106"
+    endpoint_id_stopping = "ep-0000000000000000000107"
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id=endpoint_id_foo,
+        name="foo-endpoint",
+        description="Foo endpoint",
+    )
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id=endpoint_id_bar,
+        name="bar-endpoint",
+        provisioning_status=api_pb2.ENDPOINT_PROVISIONING_STATUS_RUNNING,
+        status="provisioning",
+    )
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id=endpoint_id_other_env,
+        name="other-env-endpoint",
+        environment_name="other-env",
+    )
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id=endpoint_id_stopped,
+        name="stopped-endpoint",
+        app_state=api_pb2.APP_STATE_STOPPED,
+    )
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id=endpoint_id_stopping,
+        name="stopping-endpoint",
+        app_state=api_pb2.APP_STATE_STOPPING,
+    )
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id=endpoint_id_initializing,
+        name="initializing-endpoint",
+        app_state=api_pb2.APP_STATE_INITIALIZING,
+        provisioning_status=api_pb2.ENDPOINT_PROVISIONING_STATUS_SUCCEEDED,
+        status="provisioning",
+    )
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id=endpoint_id_failed_initializing,
+        name="failed-initializing-endpoint",
+        app_state=api_pb2.APP_STATE_INITIALIZING,
+        provisioning_status=api_pb2.ENDPOINT_PROVISIONING_STATUS_FAILED,
+        status="failed",
+    )
+
+    res = run_cli_command(["endpoint", "list"])
+    assert "foo-endpoint" in res.stdout
+    assert "bar-endpoint" in res.stdout
+    assert "other-env-endpoint" not in res.stdout
+    assert "stopped-endpoint" not in res.stdout
+    assert "stopping-endpoint" not in res.stdout
+    assert endpoint_id_foo in res.stdout
+    assert endpoint_id_bar in res.stdout
+    assert endpoint_id_initializing in res.stdout
+    assert endpoint_id_failed_initializing in res.stdout
+    assert "live" in res.stdout
+    assert "provisioning" in res.stdout
+    assert "failed" in res.stdout
+
+    # JSON output includes both endpoints with expected keys
+    res = run_cli_command(["endpoint", "list", "--json"])
+
+    data = json.loads(res.stdout)
+    names = {item["name"] for item in data}
+    assert names == {"foo-endpoint", "bar-endpoint", "initializing-endpoint", "failed-initializing-endpoint"}
+    foo = next(item for item in data if item["name"] == "foo-endpoint")
+    initializing = next(item for item in data if item["name"] == "initializing-endpoint")
+    failed_initializing = next(item for item in data if item["name"] == "failed-initializing-endpoint")
+    assert foo["status"] == "live"
+    assert initializing["status"] == "provisioning"
+    assert failed_initializing["status"] == "failed"
+
+
+def test_endpoint_list_paginates(servicer, server_url_env, set_env_client):
+    base_time = time.time() - 1000
+    for i in range(101):
+        _add_endpoint_list_item(
+            servicer,
+            endpoint_id=f"ep-{i + 1:022d}",
+            name=f"endpoint-{i:03d}",
+            created_at=base_time + i,
+        )
+
+    res = run_cli_command(["endpoint", "list", "--json"])
+
+    data = json.loads(res.stdout)
+    assert len(data) == 101
+    assert {item["name"] for item in data} == {f"endpoint-{i:03d}" for i in range(101)}
+    assert len(servicer.endpoint_list_requests) == 2
+    assert servicer.endpoint_list_requests[0].pagination.max_objects == 100
+    assert servicer.endpoint_list_requests[1].pagination.created_before < (
+        servicer.endpoint_list_requests[0].pagination.created_before
+    )
+
+
+def test_endpoint_list_uses_empty_environment_without_default(servicer, server_url_env, set_env_client, modal_config):
+    _add_endpoint_list_item(
+        servicer,
+        endpoint_id="ep-0000000000000000000201",
+        name="default-env-endpoint",
+    )
+
+    with modal_config():
+        res = run_cli_command(["endpoint", "list", "--json"])
+
+    data = json.loads(res.stdout)
+    assert [item["name"] for item in data] == ["default-env-endpoint"]
+    (request,) = servicer.endpoint_list_requests
+    assert request.environment_name == ""
+
+
+def _add_endpoint_lifecycle(
+    servicer,
+    *,
+    endpoint_id: str = "ep-aaaaaaaaaaaaaaaaaaaaaa",
+    name: str = "qwen-chat",
+    environment_name: str = "main",
+    status: api_pb2.EndpointLifecycleStatus.ValueType = api_pb2.ENDPOINT_LIFECYCLE_STATUS_ACTIVE,
+) -> None:
+    servicer.endpoint_ids_by_name[environment_name][name] = endpoint_id
+    servicer.endpoint_lifecycles[endpoint_id] = api_pb2.EndpointLifecycle(
+        status=status,
+        created_at=datetime.now().timestamp(),
+        created_by="test-user",
+        environment_name=environment_name,
+    )
+    if status == api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED:
+        servicer.endpoint_lifecycles[endpoint_id].stopped_at = datetime.now().timestamp()
+
+
+def test_endpoint_stop_by_id(servicer, set_env_client):
+    endpoint_id = "ep-aaaaaaaaaaaaaaaaaaaaaa"
+    _add_endpoint_lifecycle(servicer, endpoint_id=endpoint_id)
+    res = run_cli_command(["endpoint", "stop", endpoint_id, "--yes"])
+
+    assert f"Stopped Endpoint {endpoint_id}." in res.stdout
+    assert servicer.endpoint_get_by_name_requests == []
+    (lifecycle_request,) = servicer.endpoint_get_lifecycle_requests
+    assert lifecycle_request.endpoint_id == endpoint_id
+    (request,) = servicer.endpoint_stop_requests
+    assert request.endpoint_id == endpoint_id
+    assert request.source == api_pb2.ENDPOINT_STOP_SOURCE_CLI
+    assert servicer.endpoint_lifecycles[endpoint_id].status == api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED
+    assert servicer.endpoint_lifecycles[endpoint_id].stopped_at > 0
+
+
+def test_endpoint_stop_id_returned_by_create(servicer, set_env_client):
+    run_cli_command(["endpoint", "create", "--name=qwen-chat", "--model=Qwen/Qwen3.6-27B-FP8"])
+
+    endpoint_id = "ep-0000000000000000000001"
+    res = run_cli_command(["endpoint", "stop", endpoint_id, "--yes"])
+
+    assert f"Stopped Endpoint {endpoint_id}." in res.stdout
+    assert servicer.endpoint_get_by_name_requests == []
+    (stop_request,) = servicer.endpoint_stop_requests
+    assert stop_request.endpoint_id == endpoint_id
+
+
+def test_endpoint_stop_by_name(servicer, set_env_client):
+    _add_endpoint_lifecycle(servicer, endpoint_id="ep-bbbbbbbbbbbbbbbbbbbbbb")
+
+    res = run_cli_command(["endpoint", "stop", "qwen-chat", "--env", "main", "--yes"])
+
+    normalized_stdout = " ".join(res.stdout.split())
+    assert "Stopped Endpoint 'qwen-chat' in environment 'main' (ID: ep-bbbbbbbbbbbbbbbbbbbbbb)." in normalized_stdout
+    (get_by_name_request,) = servicer.endpoint_get_by_name_requests
+    assert get_by_name_request.name == "qwen-chat"
+    assert get_by_name_request.environment_name == "main"
+    (lifecycle_request,) = servicer.endpoint_get_lifecycle_requests
+    assert lifecycle_request.endpoint_id == "ep-bbbbbbbbbbbbbbbbbbbbbb"
+    (stop_request,) = servicer.endpoint_stop_requests
+    assert stop_request.endpoint_id == "ep-bbbbbbbbbbbbbbbbbbbbbb"
+    assert stop_request.source == api_pb2.ENDPOINT_STOP_SOURCE_CLI
+
+
+def test_endpoint_stop_by_name_uses_server_default_environment(servicer, set_env_client):
+    _add_endpoint_lifecycle(servicer, endpoint_id="ep-ffffffffffffffffffffff")
+
+    res = run_cli_command(["endpoint", "stop", "qwen-chat", "--yes"])
+
+    normalized_stdout = " ".join(res.stdout.split())
+    assert "Stopped Endpoint 'qwen-chat' in environment 'main' (ID: ep-ffffffffffffffffffffff)." in normalized_stdout
+    (get_by_name_request,) = servicer.endpoint_get_by_name_requests
+    assert get_by_name_request.name == "qwen-chat"
+    assert get_by_name_request.environment_name == ""
+    (stop_request,) = servicer.endpoint_stop_requests
+    assert stop_request.endpoint_id == "ep-ffffffffffffffffffffff"
+
+
+def test_endpoint_stop_ep_prefixed_name_resolves_by_name(servicer, set_env_client):
+    _add_endpoint_lifecycle(servicer, endpoint_id="ep-cccccccccccccccccccccc", name="ep-backup")
+
+    run_cli_command(["endpoint", "stop", "ep-backup", "--env", "main", "--yes"])
+
+    (get_by_name_request,) = servicer.endpoint_get_by_name_requests
+    assert get_by_name_request.name == "ep-backup"
+    (stop_request,) = servicer.endpoint_stop_requests
+    assert stop_request.endpoint_id == "ep-cccccccccccccccccccccc"
+
+
+def test_endpoint_stop_id_shaped_name_falls_back_to_name(servicer, set_env_client):
+    endpoint_name = "ep-dddddddddddddddddddddd"
+    endpoint_id = "ep-cccccccccccccccccccccc"
+    _add_endpoint_lifecycle(servicer, endpoint_id=endpoint_id, name=endpoint_name)
+
+    res = run_cli_command(["endpoint", "stop", endpoint_name, "--env", "main", "--yes"])
+
+    normalized_stdout = " ".join(res.stdout.split())
+    assert f"Stopped Endpoint '{endpoint_name}' in environment 'main' (ID: {endpoint_id})." in normalized_stdout
+    (get_by_name_request,) = servicer.endpoint_get_by_name_requests
+    assert get_by_name_request.name == endpoint_name
+    assert get_by_name_request.environment_name == "main"
+    assert [request.endpoint_id for request in servicer.endpoint_get_lifecycle_requests] == [
+        endpoint_name,
+        endpoint_id,
+    ]
+    (stop_request,) = servicer.endpoint_stop_requests
+    assert stop_request.endpoint_id == endpoint_id
+
+
+def test_endpoint_stop_missing_id_fails_before_confirmation(servicer, set_env_client):
+    endpoint_id = "ep-dddddddddddddddddddddd"
+
+    res = run_cli_command(["endpoint", "stop", endpoint_id], expected_exit_code=1)
+
+    assert f"Endpoint '{endpoint_id}' not found." in res.stderr
+    assert servicer.endpoint_stop_requests == []
+
+
+def test_endpoint_stop_already_stopped_skips_stop_rpc(servicer, set_env_client):
+    endpoint_id = "ep-eeeeeeeeeeeeeeeeeeeeee"
+    _add_endpoint_lifecycle(
+        servicer,
+        endpoint_id=endpoint_id,
+        status=api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED,
+    )
+
+    res = run_cli_command(
+        ["endpoint", "stop", endpoint_id],
+        expected_exit_code=1,
+    )
+
+    assert f"Endpoint {endpoint_id} is already stopped." in res.stderr
+    assert servicer.endpoint_stop_requests == []
+
+
+def test_endpoint_stop_stopped_name_is_not_found(servicer, set_env_client):
+    _add_endpoint_lifecycle(
+        servicer,
+        endpoint_id="ep-ffffffffffffffffffffff",
+        status=api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED,
+    )
+
+    res = run_cli_command(["endpoint", "stop", "qwen-chat", "--env", "main", "--yes"], expected_exit_code=1)
+
+    assert "Endpoint 'qwen-chat' not found in environment 'main'." in res.stderr
+    assert servicer.endpoint_stop_requests == []
+
+
+def test_endpoint_stop_has_no_json_option(servicer, set_env_client):
+    run_cli_command(["endpoint", "stop", "qwen-chat", "--json"], expected_exit_code=2, expected_stderr="No such option")
 
 
 def test_token_identity_from_env(servicer, set_env_client, monkeypatch):

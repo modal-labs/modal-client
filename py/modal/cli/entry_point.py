@@ -18,6 +18,7 @@ from .config import config_cli
 from .container import container_cli
 from .dashboard import dashboard
 from .dict import dict_cli
+from .endpoint import endpoint_cli
 from .environment import environment_cli
 from .image import image_cli
 from .launch import launch_cli
@@ -105,6 +106,7 @@ entrypoint_cli.add_command(launch_cli, hidden=True)
 
 entrypoint_cli.add_command(app_cli, panel="Deployments")
 entrypoint_cli.add_command(container_cli, panel="Deployments")
+entrypoint_cli.add_command(endpoint_cli, panel="Deployments")
 # cluster is hidden while multi-node is in beta/experimental
 entrypoint_cli.add_command(cluster_cli, panel="Deployments", hidden=True)
 

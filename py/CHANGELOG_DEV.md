@@ -2,6 +2,7 @@
 
 **When releasing, move these changelog items to `CHANGELOG.md`.**
 - `Image.from_id(...)` references can now `.publish()` an image by ID without first calling `.build()` on the Image.
+- Added `modal endpoint create`, `modal endpoint list`, and `modal endpoint stop` for managing inference Endpoints.
 - Improves `Sandbox.exec` latency when passing in `Secret.from_dict`, `Secret.from_dotenv`, and `Secret.from_local_environ`.
 - `Sandbox.create_connect_token` now accepts a `port` keyword argument (default `8080`) that specifies the container port that requests are routed to when using the token. Port can be between 1 and 65535.
 - Added proxy support for the Modal Python client. All Modal API access now respect standard proxy environment variables (`HTTPS_PROXY`, `ALL_PROXY`). HTTP CONNECT and SOCKS4/5 proxies are supported. Support requires the `api-proxy-support` extra dependencies, e.g. `pip install 'modal[api-proxy-support]'`. Set `MODAL_DISABLE_API_PROXY=1` to disable proxy support entirely.

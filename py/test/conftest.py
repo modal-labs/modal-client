@@ -863,6 +863,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.flash_container_registrations = {}
         self.flash_rpc_calls: list[str] = []  # Track Flash RPC calls in order
         self.template_list_items: list[api_pb2.TemplateListResponse.TemplateListItem] = []
+        self.endpoint_create_requests: list[api_pb2.EndpointCreateRequest] = []
+        self.endpoint_list_requests: list[api_pb2.EndpointListRequest] = []
+        self.endpoint_list_items: list[api_pb2.EndpointListItem] = []
+        self.endpoint_list_item_environments: dict[str, str] = {}
+        self.endpoint_get_by_name_requests: list[api_pb2.EndpointGetByNameRequest] = []
+        self.endpoint_get_lifecycle_requests: list[api_pb2.EndpointGetLifecycleRequest] = []
+        self.endpoint_stop_requests: list[api_pb2.EndpointStopRequest] = []
+        self.endpoint_ids_by_name: defaultdict[str, dict[str, str]] = defaultdict(dict)
+        self.endpoint_lifecycles: dict[str, api_pb2.EndpointLifecycle] = {}
+        self.n_endpoints = 0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -1649,6 +1659,117 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         for k, v in self.dicts[request.dict_id].items():
             await stream.send_message(api_pb2.DictEntry(key=k, value=v))
+
+    ### Endpoint
+
+    async def EndpointCreate(self, stream):
+        request: api_pb2.EndpointCreateRequest = await stream.recv_message()
+        self.endpoint_create_requests.append(request)
+        self.n_endpoints += 1
+        endpoint_id = f"ep-{self.n_endpoints:022d}"
+        environment_name = self.get_environment(request.environment_name)
+        endpoint_name = request.name
+        if not endpoint_name:
+            if request.model.WhichOneof("source") == "custom":
+                if request.model.custom.WhichOneof("location") == "huggingface":
+                    model_name = request.model.custom.huggingface.repo_id
+                else:
+                    model_name = request.model.custom.base_model_repo_id
+            else:
+                model_name = request.model.base_model_repo_id
+            endpoint_name = (
+                re.sub(r"[^a-z0-9]+", "-", model_name.rsplit("/", 1)[-1].lower()).strip("-")[:64].rstrip("-")
+            )
+        self.endpoint_ids_by_name[environment_name][endpoint_name] = endpoint_id
+        self.endpoint_lifecycles[endpoint_id] = api_pb2.EndpointLifecycle(
+            status=api_pb2.ENDPOINT_LIFECYCLE_STATUS_ACTIVE,
+            created_at=datetime.datetime.now().timestamp(),
+            created_by="test-user",
+            environment_name=environment_name,
+        )
+        self.endpoint_list_items.append(
+            api_pb2.EndpointListItem(
+                endpoint_id=endpoint_id,
+                name=endpoint_name,
+                description=request.description,
+                active_deployment_id=f"ed-{self.n_endpoints}",
+                updated_at=datetime.datetime.now().timestamp(),
+                app_state=api_pb2.APP_STATE_DEPLOYED,
+                provisioning_status=api_pb2.ENDPOINT_PROVISIONING_STATUS_SUCCEEDED,
+                status="live",
+                metadata=api_pb2.EndpointMetadata(
+                    name=endpoint_name,
+                    creation_info=api_pb2.CreationInfo(
+                        created_at=datetime.datetime.now().timestamp(),
+                        created_by="test-user",
+                    ),
+                ),
+            )
+        )
+        self.endpoint_list_item_environments[endpoint_id] = environment_name
+        endpoint_page_url = f"https://modal.com/endpoints/test-user/{environment_name}/{endpoint_id}"
+        await stream.send_message(
+            api_pb2.EndpointCreateResponse(
+                endpoint_id=endpoint_id,
+                endpoint_page_url=endpoint_page_url,
+                name=endpoint_name,
+            )
+        )
+
+    async def EndpointList(self, stream):
+        request: api_pb2.EndpointListRequest = await stream.recv_message()
+        self.endpoint_list_requests.append(request)
+        environment_name = self.get_environment(request.environment_name)
+        created_before = request.pagination.created_before or float("inf")
+        max_objects = request.pagination.max_objects or len(self.endpoint_list_items)
+        items = sorted(
+            (
+                item
+                for item in self.endpoint_list_items
+                if self.endpoint_list_item_environments.get(item.endpoint_id, "main") == environment_name
+                and item.metadata.creation_info.created_at < created_before
+            ),
+            key=lambda item: item.metadata.creation_info.created_at,
+            reverse=True,
+        )
+        await stream.send_message(
+            api_pb2.EndpointListResponse(items=items[:max_objects], environment_name=environment_name)
+        )
+
+    async def EndpointGetByName(self, stream):
+        request: api_pb2.EndpointGetByNameRequest = await stream.recv_message()
+        self.endpoint_get_by_name_requests.append(request)
+        environment_name = self.get_environment(request.environment_name)
+        endpoint_id = self.endpoint_ids_by_name[environment_name].get(request.name, "")
+        lifecycle = self.endpoint_lifecycles.get(endpoint_id)
+        if lifecycle is not None and lifecycle.status == api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED:
+            endpoint_id = ""
+        await stream.send_message(
+            api_pb2.EndpointGetByNameResponse(
+                endpoint_id=endpoint_id,
+                environment_name=environment_name,
+            )
+        )
+
+    async def EndpointGetLifecycle(self, stream):
+        request: api_pb2.EndpointGetLifecycleRequest = await stream.recv_message()
+        self.endpoint_get_lifecycle_requests.append(request)
+        lifecycle = self.endpoint_lifecycles.get(request.endpoint_id)
+        if lifecycle is None:
+            raise GRPCError(Status.NOT_FOUND, f"Endpoint '{request.endpoint_id}' not found")
+        await stream.send_message(api_pb2.EndpointGetLifecycleResponse(lifecycle=lifecycle))
+
+    async def EndpointStop(self, stream):
+        request: api_pb2.EndpointStopRequest = await stream.recv_message()
+        self.endpoint_stop_requests.append(request)
+        lifecycle = self.endpoint_lifecycles.get(request.endpoint_id)
+        if lifecycle is None:
+            raise GRPCError(Status.NOT_FOUND, f"Endpoint '{request.endpoint_id}' not found")
+        if lifecycle.status != api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED:
+            lifecycle.status = api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED
+            lifecycle.stopped_at = datetime.datetime.now().timestamp()
+            lifecycle.stopped_by = "test-user"
+        await stream.send_message(api_pb2.EndpointStopResponse())
 
     ### Environment
 
