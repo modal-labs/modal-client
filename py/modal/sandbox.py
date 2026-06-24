@@ -849,6 +849,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         proxy: _Proxy | None = None,
         readiness_probe: Probe | None = None,
+        experimental_options: dict[str, Any] | None = None,
         include_oidc_identity_token: bool = False,
         verbose: bool = False,
         client: _Client | None = None,
@@ -994,6 +995,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 volume_mounts=volume_mounts,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 readiness_probe=(readiness_probe._to_proto() if readiness_probe else None),
+                experimental_options_v2=(
+                    {k: str(v) for k, v in experimental_options.items()} if experimental_options else None
+                ),
             )
 
             create_req = api_pb2.SandboxCreateV2Request(

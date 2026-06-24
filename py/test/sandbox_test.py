@@ -1032,6 +1032,20 @@ def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
         assert req.definition.resources.milli_cpu == 2000
 
 
+def test_experimental_sandbox_create_experimental_options(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, experimental_options={"enable_docker": True})
+        req = ctx.pop_request("SandboxCreateV2")
+        assert req.definition.experimental_options_v2 == {"enable_docker": "True"}
+
+
+def test_experimental_sandbox_create_no_experimental_options_by_default(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert dict(req.definition.experimental_options_v2) == {}
+
+
 @pytest.mark.parametrize("read_only", [True, False])
 def test_experimental_sandbox_create_volume(app, servicer, read_only):
     volume = Volume.from_name("my-volume", create_if_missing=True)
