@@ -840,6 +840,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
+        i6pn: bool = False,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
         encrypted_ports: Sequence[int] = [],
@@ -854,12 +855,19 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Create a sandbox using the V2 backend.
 
         Supported features include exec, encrypted tunnels, wait/poll/terminate,
-        CPU and memory configuration, region placement, volumes, cloud bucket mounts
-        (with static credentials via `secret=...` or `oidc_auth_role_arn`), OIDC
-        identity tokens, proxies, and filesystem snapshots.
+        CPU and memory configuration, region placement, private IPv6 networking
+        (i6pn), volumes, cloud bucket mounts (with static credentials via
+        `secret=...` or `oidc_auth_role_arn`), OIDC identity tokens, proxies, and
+        filesystem snapshots.
 
         Features like tags, memory snapshots, network file systems, GPUs, and custom
         domains are not supported.
+
+        Set `i6pn=True` to enable private IPv6 networking so sandboxes in the same
+        workspace can address each other directly at their `i6pn.modal.local`
+        address. i6pn only connects sandboxes co-located on the same routable
+        network, so pin every sandbox in the group to the same specific region
+        (e.g. `region="us-east-1"`).
 
         V2 sandboxes created with this method are not currently returned by
         `Sandbox.list()` and cannot be looked up with `Sandbox.from_name()`.
@@ -877,6 +885,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
+
+        if block_network and i6pn:
+            raise InvalidError(
+                "`block_network` disables all networking, including i6pn. To keep i6pn while blocking "
+                "public egress, use an empty outbound allowlist (`outbound_cidr_allowlist=[]`) instead."
+            )
 
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
@@ -972,6 +986,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 name=name,
                 include_oidc_identity_token=include_oidc_identity_token,
                 inbound_cidr_allowlist=list(inbound_cidr_allowlist) if inbound_cidr_allowlist is not None else [],
+                i6pn_enabled=i6pn,
                 volume_mounts=volume_mounts,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 readiness_probe=(readiness_probe._to_proto() if readiness_probe else None),

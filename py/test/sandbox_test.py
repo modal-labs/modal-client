@@ -1086,6 +1086,25 @@ def test_experimental_sandbox_create_include_oidc_identity_token(app, servicer):
         assert req.definition.include_oidc_identity_token is True
 
 
+def test_experimental_sandbox_create_no_i6pn_by_default(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert req.definition.i6pn_enabled is False
+
+
+def test_experimental_sandbox_create_i6pn(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, i6pn=True)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert req.definition.i6pn_enabled is True
+
+
+def test_experimental_sandbox_create_i6pn_with_block_network_raises(app, servicer):
+    with pytest.raises(InvalidError, match="`block_network` disables all networking, including i6pn"):
+        Sandbox._experimental_create("echo", "hi", app=app, i6pn=True, block_network=True)
+
+
 def test_experimental_sandbox_create_cloud_bucket_mount_oidc_auth_role_arn(app, servicer):
     cbm = modal.CloudBucketMount(bucket_name="my-bucket", oidc_auth_role_arn="arn:aws:iam::123456789012:role/r")
     with servicer.intercept() as ctx:
