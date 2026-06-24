@@ -4614,7 +4614,7 @@ service ModalClient {
   rpc VolumeRemoveFile2(VolumeRemoveFile2Request) returns (google.protobuf.Empty);
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
 
-  // Webhook tokens (proxy auth tokens)
+  // Webhook tokens (proxy tokens)
   rpc WebhookTokenCreate(WebhookTokenCreateRequest) returns (TokenCreateResponse);
   rpc WebhookTokenDelete(TokenDeleteRequest) returns (google.protobuf.Empty);
   rpc WebhookTokenEnvironmentAdd(WebhookTokenEnvironmentAddRequest) returns (google.protobuf.Empty);
