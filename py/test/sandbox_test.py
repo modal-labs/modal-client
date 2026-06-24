@@ -1168,6 +1168,34 @@ def test_experimental_sandbox_create_env_rejects_value_too_long(app, servicer):
         Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "x" * (2**15 + 1)})
 
 
+def test_experimental_sandbox_create_outbound_domain_allowlist(app, servicer):
+    # Cannot combine with block_network.
+    with pytest.raises(InvalidError, match="`outbound_domain_allowlist` cannot be used when `block_network`"):
+        Sandbox._experimental_create(
+            "echo", "hi", app=app, block_network=True, outbound_domain_allowlist=["example.com"]
+        )
+
+    # Domain allowlist maps to an ALLOWLIST with allowed_domains set.
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, outbound_domain_allowlist=["example.com", "*.modal.com"])
+        req = ctx.pop_request("SandboxCreateV2")
+    net = req.definition.network_access
+    assert net.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(net.allowed_domains) == ["example.com", "*.modal.com"]
+    assert len(net.allowed_cidrs) == 0
+
+    # Domains and CIDRs combine into a single ALLOWLIST.
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create(
+            "echo", "hi", app=app, outbound_domain_allowlist=["example.com"], outbound_cidr_allowlist=["8.8.8.8/32"]
+        )
+        req = ctx.pop_request("SandboxCreateV2")
+    net = req.definition.network_access
+    assert net.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(net.allowed_domains) == ["example.com"]
+    assert list(net.allowed_cidrs) == ["8.8.8.8/32"]
+
+
 @skip_non_subprocess
 def test_sandbox_exec_pty(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
