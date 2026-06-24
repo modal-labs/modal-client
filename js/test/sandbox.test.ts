@@ -1077,7 +1077,9 @@ test("testSandboxExperimentalDockerMock", async () => {
 
   const options = { enable_docker: true };
   mock.handleUnary("/SandboxCreate", (req: any): SandboxCreateResponse => {
-    expect(req.definition?.experimentalOptions).toMatchObject(options);
+    expect(req.definition?.experimentalOptionsV2).toMatchObject({
+      enable_docker: "true",
+    });
     return { sandboxId: "sb-1234" };
   });
 
@@ -1146,6 +1148,24 @@ test("buildSandboxCreateV2RequestProto supports a proxy", async () => {
   });
 
   expect(req.definition?.proxyId).toBe("pr-123");
+});
+
+test("buildSandboxCreateV2RequestProto supports experimental options", async () => {
+  const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+    experimentalOptions: { enable_docker: true },
+  });
+
+  expect(req.definition?.experimentalOptionsV2).toMatchObject({
+    enable_docker: "true",
+  });
+});
+
+test("buildSandboxCreateV2RequestProto rejects non-boolean experimental options", async () => {
+  await expect(
+    buildSandboxCreateV2RequestProto("app-123", "img-456", {
+      experimentalOptions: { enable_docker: "not-a-bool" as any },
+    }),
+  ).rejects.toThrow("must be a boolean");
 });
 
 test.each([

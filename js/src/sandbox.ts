@@ -563,9 +563,9 @@ export async function buildSandboxCreateRequestProto(
   }
 
   // The public interface uses Record<string, any> so that we can add support for any experimental
-  // option type in the future. Currently, the proto only supports Record<string, boolean> so we validate
-  // the input here.
-  const protoExperimentalOptions: Record<string, boolean> =
+  // option type in the future. The experimental_options_v2 proto map accepts arbitrary strings, but
+  // for now we deliberately restrict values to booleans and serialize them as strings.
+  const protoExperimentalOptions: Record<string, string> =
     params.experimentalOptions
       ? Object.entries(params.experimentalOptions).reduce(
           (acc, [name, value]) => {
@@ -574,10 +574,10 @@ export async function buildSandboxCreateRequestProto(
                 `experimental option '${name}' must be a boolean, got ${value}`,
               );
             }
-            acc[name] = Boolean(value);
+            acc[name] = String(value);
             return acc;
           },
-          {} as Record<string, boolean>,
+          {} as Record<string, string>,
         )
       : {};
 
@@ -620,7 +620,7 @@ export async function buildSandboxCreateRequestProto(
       proxyId: params.proxy?.proxyId,
       readinessProbe: params.readinessProbe?.toProto(),
       name: params.name,
-      experimentalOptions: protoExperimentalOptions,
+      experimentalOptionsV2: protoExperimentalOptions,
       customDomain: params.customDomain,
       includeOidcIdentityToken: params.includeOidcIdentityToken ?? false,
       inboundCidrAllowlist: params.inboundCidrAllowlist ?? [],
