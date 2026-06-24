@@ -340,6 +340,11 @@ export type SandboxCreateParams = {
   /** List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
   inboundCidrAllowlist?: string[];
 
+  /** Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can address each
+   * other directly at their `i6pn.modal.local` address. Pin every Sandbox in the group to the same specific region
+   * (e.g. `regions: ["us-east-1"]`). Cannot be used with blockNetwork. */
+  i6pn?: boolean;
+
   /** Cloud provider to run the Sandbox on. */
   cloud?: string;
 
@@ -461,6 +466,12 @@ export async function buildSandboxCreateRequestProto(
 
   let networkAccess: NetworkAccess;
   if (params.blockNetwork) {
+    if (params.i6pn) {
+      throw new InvalidError(
+        "blockNetwork disables all networking, including i6pn. To keep i6pn while blocking " +
+          "public egress, use an empty outbound allowlist (outboundCidrAllowlist: []) instead.",
+      );
+    }
     if (params.outboundCidrAllowlist) {
       throw new Error(
         "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
@@ -613,6 +624,7 @@ export async function buildSandboxCreateRequestProto(
       customDomain: params.customDomain,
       includeOidcIdentityToken: params.includeOidcIdentityToken ?? false,
       inboundCidrAllowlist: params.inboundCidrAllowlist ?? [],
+      i6pnEnabled: params.i6pn ?? false,
     },
   });
 }

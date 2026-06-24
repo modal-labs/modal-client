@@ -457,6 +457,23 @@ test("buildSandboxCreateRequestProto rejects removed cidrAllowlist", async () =>
   );
 });
 
+test("buildSandboxCreateRequestProto sets i6pn", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    i6pn: true,
+  });
+  expect(req.definition?.i6pnEnabled).toBe(true);
+
+  const req2 = await buildSandboxCreateRequestProto("app-123", "img-456", {});
+  expect(req2.definition?.i6pnEnabled).toBe(false);
+
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      blockNetwork: true,
+      i6pn: true,
+    }),
+  ).rejects.toThrow("blockNetwork disables all networking, including i6pn");
+});
+
 test("SandboxPollAndReturnCode", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
