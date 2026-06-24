@@ -1,6 +1,10 @@
 #!/bin/bash
 set -o errexit
 
+# Run from client/go (the parent of this script's directory) so the relative
+# paths below work regardless of the caller's working directory.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
 mkdir -p proto && find proto -type f -name '*.go' -delete
 
 protoc \

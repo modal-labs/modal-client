@@ -3428,6 +3428,8 @@ message SandboxRestoreRequest {
   string sandbox_name_override = 2;
   SandboxNameOverrideType sandbox_name_override_type = 3;
   string worker_id = 4; // For internal debugging use only.
+  bool replace_volume_mounts = 5;
+  repeated VolumeMount volume_mounts = 6;
 }
 
 message SandboxRestoreResponse {
