@@ -209,6 +209,7 @@ type SandboxCreateParams struct {
 	OutboundCIDRAllowlist    []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
 	OutboundDomainAllowlist  []string                     // List of domain names the Sandbox is allowed to access. Supports wildcard prefixes (*.example.com). Cannot be used with BlockNetwork.
 	InboundCIDRAllowlist     []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
+	I6PN                     bool                         // Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can reach each other at their i6pn.modal.local address. Pin every Sandbox in the group to the same specific region. Cannot be used with BlockNetwork.
 	Cloud                    string                       // Cloud provider to run the Sandbox on.
 	Regions                  []string                     // Region(s) to run the Sandbox on.
 	Verbose                  bool                         // Enable verbose logging.
@@ -289,13 +290,16 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 
 	var networkAccess *pb.NetworkAccess
 	if params.BlockNetwork {
-		if len(params.OutboundCIDRAllowlist) > 0 {
+		if params.I6PN {
+			return nil, fmt.Errorf("BlockNetwork disables all networking, including i6pn. To keep i6pn while blocking public egress, use an empty outbound allowlist (OutboundCIDRAllowlist: []string{}) instead")
+		}
+		if params.OutboundCIDRAllowlist != nil {
 			return nil, fmt.Errorf("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
-		if len(params.OutboundDomainAllowlist) > 0 {
+		if params.OutboundDomainAllowlist != nil {
 			return nil, fmt.Errorf("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled")
 		}
-		if len(params.InboundCIDRAllowlist) > 0 {
+		if params.InboundCIDRAllowlist != nil {
 			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
 		networkAccess = pb.NetworkAccess_builder{
@@ -303,7 +307,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			AllowedCidrs:      []string{},
 			AllowedDomains:    []string{},
 		}.Build()
-	} else if len(params.OutboundCIDRAllowlist) > 0 || len(params.OutboundDomainAllowlist) > 0 {
+	} else if params.OutboundCIDRAllowlist != nil || params.OutboundDomainAllowlist != nil {
 		networkAccess = pb.NetworkAccess_builder{
 			NetworkAccessType: pb.NetworkAccess_ALLOWLIST,
 			AllowedCidrs:      params.OutboundCIDRAllowlist,
@@ -459,6 +463,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			CustomDomain:             params.CustomDomain,
 			IncludeOidcIdentityToken: params.IncludeOidcIdentityToken,
 			InboundCidrAllowlist:     params.InboundCIDRAllowlist,
+			I6PnEnabled:              params.I6PN,
 		}.Build(),
 	}.Build(), nil
 }

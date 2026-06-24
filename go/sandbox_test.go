@@ -827,6 +827,21 @@ func TestSandboxCreateRequestProto_OutboundCIDRAllowlist(t *testing.T) {
 	g.Expect(def.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
 	g.Expect(def.GetNetworkAccess().GetAllowedCidrs()).To(gomega.Equal([]string{"10.0.0.0/8", "192.168.0.0/16"}))
 
+	// An explicit empty allowlist restricts egress to nothing, blocking all
+	// public egress while leaving i6pn intact.
+	req, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		OutboundCIDRAllowlist: []string{},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	def = req.GetDefinition()
+	g.Expect(def.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
+	g.Expect(def.GetNetworkAccess().GetAllowedCidrs()).To(gomega.BeEmpty())
+
+	// A nil allowlist leaves egress open.
+	req, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_OPEN))
+
 	// Cannot be combined with BlockNetwork.
 	_, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
 		BlockNetwork:          true,
@@ -893,6 +908,28 @@ func TestSandboxCreateRequestProto_InboundCIDRAllowlist(t *testing.T) {
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled"))
+}
+
+func TestSandboxCreateRequestProto_I6PN(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		I6PN: true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetI6PnEnabled()).To(gomega.BeTrue())
+
+	req, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetI6PnEnabled()).To(gomega.BeFalse())
+
+	_, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		BlockNetwork: true,
+		I6PN:         true,
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("BlockNetwork disables all networking, including i6pn"))
 }
 
 func TestSandboxCreateRequestProto_WithTags(t *testing.T) {
