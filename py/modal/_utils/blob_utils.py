@@ -138,6 +138,13 @@ async def _upload_to_s3_url(
                     text = await resp.text()
                 except Exception:
                     text = "<no body>"
+
+                if "The Content-MD5 you specified did not match what we received." in text:
+                    raise ExecutionError(
+                        "Hash mismatch during upload. This may be caused by files changing while an upload is in "
+                        "progress. Please try again."
+                    )
+
                 raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
 
             # client side ETag checksum verification
