@@ -4,7 +4,12 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
+No unreleased changes.
+
+## js/v0.8.1, go/v0.8.1
+
 - (Go, JS) `Sandbox.CreateConnectToken` (Go) / `Sandbox.createConnectToken` (JS) now accept an optional `Port` / `port` parameter on their params struct, controlling which container port requests are routed to when using the token. Defaults to 8080.
+- (Go) Fixed a bug in `Function.Spawn` such that results are now accessible via `FunctionCall.Get` for up to 7 days after completion.
 
 ## js/v0.8.0, go/v0.8.0
 
