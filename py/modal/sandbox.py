@@ -2282,6 +2282,62 @@ class _Sandbox(_Object, type_prefix="sb"):
             # Fetch the next batch starting from the end of the current one.
             before_timestamp = resp.sandboxes[-1].created_at
 
+    @staticmethod
+    async def _experimental_list(
+        *, app_id: str | None = None, client: _Client | None = None
+    ) -> AsyncGenerator["_Sandbox", None]:
+        """List v2 Sandboxes in an App.
+
+        This function lists v2 sandboxes, ie sandboxes created via modal.Sandbox._experimental_create.
+        Filtering based on tags is not yet supported.
+
+        Args:
+            app_id: The App to list Sandboxes under.
+            client: Optional client to use for the session.
+
+        Yields:
+            `Sandbox` objects that are currently running in the App.
+        """
+        if not app_id:
+            raise InvalidError(
+                "Sandbox._experimental_list requires an `app_id`:\n\n"
+                'app = modal.App.lookup("my-app")\n'
+                "Sandbox._experimental_list(app_id=app.app_id)"
+            )
+
+        before_timestamp = None
+        if client is None:
+            client = await _Client.from_env()
+
+        assert client._auth_token_manager
+        while True:
+            req = api_pb2.SandboxListRequest(
+                app_id=app_id,
+                before_timestamp=before_timestamp,
+                include_finished=False,
+            )
+
+            # Fetches a batch of sandboxes. SandboxListV2 authenticates via the
+            # auth-token metadata, like the other V2 sandbox RPCs.
+            auth_token = await client._auth_token_manager.get_token()
+            resp = await client.stub.SandboxListV2(req, metadata=[("x-modal-auth-token", auth_token)])
+
+            if not resp.sandboxes:
+                return
+
+            for sandbox_info in resp.sandboxes:
+                sandbox_info: api_pb2.SandboxInfo
+                obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
+                # SandboxListV2 only returns V2 sandboxes; mark them as such so
+                # operations like wait/terminate/exec use the V2 RPCs and stdio.
+                obj._is_v2 = True
+                obj._hydrate_metadata_v2()
+                obj._result = sandbox_info.task_info.result
+                yield obj
+
+            # Fetch the next batch starting from the end of the current one.
+            before_timestamp = resp.sandboxes[-1].created_at
+
 
 class _SidecarContainer:
     """Handle to an additional container running in a Sandbox."""

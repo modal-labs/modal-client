@@ -2721,6 +2721,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]
         await stream.send_message(api_pb2.SandboxListResponse(sandboxes=sandboxes))
 
+    async def SandboxListV2(self, stream):
+        request: api_pb2.SandboxListRequest = await stream.recv_message()
+        if request.tags:
+            raise GRPCError(Status.INVALID_ARGUMENT, "SandboxListV2 does not support tag filtering")
+        if self._sandbox_terminated or request.before_timestamp == 1:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        if request.app_id and request.app_id != self.sandbox_app_id:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        sandboxes = [
+            api_pb2.SandboxInfo(id=sandbox_id, created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result))
+            for sandbox_id in self.sandbox_tags
+        ]
+        await stream.send_message(api_pb2.SandboxListResponse(sandboxes=sandboxes))
+
     async def SandboxTagsGet(self, stream):
         request: api_pb2.SandboxTagsGetRequest = await stream.recv_message()
         tags = self.sandbox_tags.get(request.sandbox_id, {})

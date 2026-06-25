@@ -583,6 +583,29 @@ def test_sandbox_list_tags(app, client, servicer):
     assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
 
 
+@pytest.mark.parametrize("app_id", [None, ""])
+def test_sandbox_experimental_list_requires_app_id(app_id, client, servicer):
+    # Outside a Modal container there is no default App to deduce, so a
+    # non-empty app_id is required. An empty string must not silently widen
+    # the listing to the whole environment.
+    with pytest.raises(InvalidError, match="requires an `app_id`"):
+        list(Sandbox._experimental_list(app_id=app_id, client=client))
+
+
+def test_sandbox_experimental_list_app(client, servicer):
+    image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, "/xyz")
+    secret = Secret.from_dict({"FOO": "bar"})
+
+    app = App()
+
+    with app.run(client=client):
+        sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
+        assert len(list(Sandbox._experimental_list(app_id=app.app_id, client=client))) == 1
+        sb.terminate()
+        sb.wait(raise_on_termination=False)
+        assert not list(Sandbox._experimental_list(app_id=app.app_id, client=client))
+
+
 def test_sandbox_create_with_tags(app, client, servicer):
     tags = {"env": "prod", "team": "core"}
     with servicer.intercept() as ctx:
