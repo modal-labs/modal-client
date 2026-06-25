@@ -2056,7 +2056,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns:
             A `SandboxFilesystem` helper bound to this sandbox.
         """
-        self._ensure_v1("filesystem")
         self._ensure_attached()
         if self._filesystem is None:
             self._filesystem = _SandboxFilesystem(self)

@@ -264,7 +264,7 @@ class IOContext:
         if not inspect.isasyncgen(expected_async_gen):
             raise InvalidError(f"Async generator function returned value of type {type(expected_async_gen)}")
 
-        async with aclosing(expected_async_gen) as gen:
+        async with aclosing(cast(AsyncGenerator[Any, None], expected_async_gen)) as gen:
             async for result in gen:
                 yield result
         logger.debug(f"Finished generator input {self.input_ids}")

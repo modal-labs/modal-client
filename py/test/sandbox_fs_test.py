@@ -1612,3 +1612,32 @@ def test_sidecar_write_to_directory_raises(sidecar, sandbox_fs_tools, tmp_path):
 def test_sidecar_relative_path_rejected(sidecar):
     with pytest.raises(InvalidError):
         sidecar.filesystem.read_text("relative/path.txt")
+
+
+@pytest.fixture
+def sandbox_v2(app):
+    sb = None
+    try:
+        sb = Sandbox._experimental_create(app=app)
+        yield sb
+    finally:
+        if sb:
+            sb.terminate()
+
+
+def test_sandbox_fs_v2_filesystem_property_does_not_raise(sandbox_v2):
+    assert sandbox_v2.filesystem is not None
+
+
+@skip_non_subprocess
+def test_sandbox_fs_v2_read_write_text(sandbox_v2, sandbox_fs_tools, tmp_path):
+    path = str(tmp_path / "v2-text.txt")
+    sandbox_v2.filesystem.write_text("hello v2\n", path)
+    assert sandbox_v2.filesystem.read_text(path) == "hello v2\n"
+
+
+@skip_non_subprocess
+def test_sandbox_fs_v2_read_write_bytes(sandbox_v2, sandbox_fs_tools, tmp_path):
+    path = str(tmp_path / "v2-blob.bin")
+    sandbox_v2.filesystem.write_bytes(b"\x00\x01\x02", path)
+    assert sandbox_v2.filesystem.read_bytes(path) == b"\x00\x01\x02"
