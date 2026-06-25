@@ -1307,6 +1307,16 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
   await expect(sb.createConnectToken()).rejects.toThrow(expectedError);
 });
 
+test("V2 Sandbox supports filesystem", () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+  expect(() => sb.filesystem).not.toThrow();
+  expect(sb.filesystem).toBeDefined();
+});
+
 test.each([
   [V1_SANDBOX_ID, SandboxVersion.V1],
   [V2_SANDBOX_ID, SandboxVersion.V2],
