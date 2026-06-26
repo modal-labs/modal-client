@@ -231,6 +231,13 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         self._unmount_requests.append(request)
         await stream.send_message(Empty())
 
+    async def TaskReloadVolumes(self, stream) -> None:
+        request: sr_pb2.TaskReloadVolumesRequest = await stream.recv_message()
+        if not hasattr(self, "_reload_volumes_requests"):
+            self._reload_volumes_requests = []
+        self._reload_volumes_requests.append(request)
+        await stream.send_message(sr_pb2.TaskReloadVolumesResponse())
+
     async def TaskSetNetworkAccess(self, stream) -> None:
         request: sr_pb2.TaskSetNetworkAccessRequest = await stream.recv_message()
         if not hasattr(self, "_set_network_access_requests"):
