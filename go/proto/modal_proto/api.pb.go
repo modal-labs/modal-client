@@ -14625,10 +14625,11 @@ func (b0 ContainerReloadVolumesResponse_builder) Build() *ContainerReloadVolumes
 }
 
 type ContainerStopRequest struct {
-	state             protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId   string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_Graceful bool                   `protobuf:"varint,2,opt,name=graceful,proto3"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ContainerStopRequest) Reset() {
@@ -14663,14 +14664,26 @@ func (x *ContainerStopRequest) GetTaskId() string {
 	return ""
 }
 
+func (x *ContainerStopRequest) GetGraceful() bool {
+	if x != nil {
+		return x.xxx_hidden_Graceful
+	}
+	return false
+}
+
 func (x *ContainerStopRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
+}
+
+func (x *ContainerStopRequest) SetGraceful(v bool) {
+	x.xxx_hidden_Graceful = v
 }
 
 type ContainerStopRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	TaskId string
+	TaskId   string
+	Graceful bool
 }
 
 func (b0 ContainerStopRequest_builder) Build() *ContainerStopRequest {
@@ -14678,6 +14691,7 @@ func (b0 ContainerStopRequest_builder) Build() *ContainerStopRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_TaskId = b.TaskId
+	x.xxx_hidden_Graceful = b.Graceful
 	return m0
 }
 
@@ -60021,9 +60035,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x04logs\x18\x03 \x03(\v2\x16.modal.client.TaskLogsR\x04logs\"8\n" +
 	"\x1dContainerReloadVolumesRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\" \n" +
-	"\x1eContainerReloadVolumesResponse\"/\n" +
+	"\x1eContainerReloadVolumesResponse\"K\n" +
 	"\x14ContainerStopRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1a\n" +
+	"\bgraceful\x18\x02 \x01(\bR\bgraceful\"\x17\n" +
 	"\x15ContainerStopResponse\"L\n" +
 	"\fCreationInfo\x12\x1d\n" +
 	"\n" +

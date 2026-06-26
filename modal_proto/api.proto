@@ -1235,6 +1235,7 @@ message ContainerReloadVolumesResponse { }
 
 message ContainerStopRequest {
   string task_id = 1;
+  bool graceful = 2; // Let a Function container finish processing any inputs before exiting.
 }
 
 message ContainerStopResponse {
