@@ -3,9 +3,9 @@
 
 import html
 import inspect
+import logging
 import re
 import typing
-import warnings
 from collections.abc import Callable
 from enum import Enum, EnumMeta
 from types import ModuleType
@@ -14,6 +14,8 @@ import synchronicity.synchronizer
 
 from .signatures import get_signature, parse_params_from_signature, strip_signature
 from .types import ParsedDoc, ParsedParam, ParsedRaise
+
+logger = logging.getLogger(__name__)
 
 
 def _escape_svelte_html_attr(value: str) -> str:
@@ -475,7 +477,7 @@ def module_str(header, module, title_level="#", filter_items: Callable[[ModuleTy
                 object_docs.append(f"{member_title_level} {qual_name}\n\n")
                 object_docs.append(item_doc)
             else:
-                warnings.warn(f"Not sure how to document: {name} ({item}")
+                logger.warning(f"[mdmd] Not sure how to document {name} ({item.__class__.__name__})")
 
     if object_docs:
         return "".join(header + object_docs)
