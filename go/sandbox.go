@@ -27,6 +27,7 @@ type SandboxService interface {
 	FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error)
 	FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error)
 	List(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error)
+	ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error)
 }
 
 type sandboxServiceImpl struct{ client *Client }
@@ -1622,6 +1623,57 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 			}
 			for _, info := range sandboxes {
 				if !yield(newSandbox(s.client, info.GetId()), nil) {
+					return
+				}
+			}
+			before = sandboxes[len(sandboxes)-1].GetCreatedAt()
+		}
+	}, nil
+}
+
+// SandboxExperimentalListParams are options for SandboxService.ExperimentalList.
+type SandboxExperimentalListParams struct {
+	AppID string // The App to list Sandboxes under.
+}
+
+// ExperimentalList lists the V2 Sandboxes in an App, i.e. Sandboxes created via
+// ExperimentalCreate. Filtering based on tags is not yet supported.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error) {
+	if params == nil {
+		params = &SandboxExperimentalListParams{}
+	}
+	if params.AppID == "" {
+		return nil, InvalidError{Exception: "ExperimentalList requires an `AppID`:\n\n" +
+			"app, err := mc.Apps.FromName(ctx, \"my-app\", nil)\n" +
+			"sandboxes, err := mc.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{AppID: app.AppID})"}
+	}
+
+	return func(yield func(*Sandbox, error) bool) {
+		var before float64
+		for {
+			if err := ctx.Err(); err != nil {
+				yield(nil, err)
+				return
+			}
+
+			resp, err := s.client.cpClient.SandboxListV2(ctx, pb.SandboxListRequest_builder{
+				AppId:           params.AppID,
+				BeforeTimestamp: before,
+				IncludeFinished: false,
+			}.Build())
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			sandboxes := resp.GetSandboxes()
+			if len(sandboxes) == 0 {
+				return
+			}
+			for _, info := range sandboxes {
+				// SandboxListV2 only returns V2 Sandboxes, so mark them as such.
+				if !yield(newSandboxV2(s.client, info.GetId(), ""), nil) {
 					return
 				}
 			}

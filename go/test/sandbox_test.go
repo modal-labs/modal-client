@@ -834,6 +834,52 @@ func TestSandboxListByAppId(t *testing.T) {
 	g.Expect(count).ToNot(gomega.Equal(0))
 }
 
+func TestSandboxExperimentalListMock(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "SandboxListV2",
+		func(req *pb.SandboxListRequest) (*pb.SandboxListResponse, error) {
+			g.Expect(req.GetAppId()).To(gomega.Equal("ap-1234"))
+			g.Expect(req.GetIncludeFinished()).To(gomega.BeFalse())
+			g.Expect(req.GetBeforeTimestamp()).To(gomega.Equal(float64(0)))
+			return pb.SandboxListResponse_builder{
+				Sandboxes: []*pb.SandboxInfo{
+					pb.SandboxInfo_builder{Id: validV2SandboxID, CreatedAt: 100}.Build(),
+				},
+			}.Build(), nil
+		})
+	grpcmock.HandleUnary(mock, "SandboxListV2",
+		func(req *pb.SandboxListRequest) (*pb.SandboxListResponse, error) {
+			g.Expect(req.GetAppId()).To(gomega.Equal("ap-1234"))
+			g.Expect(req.GetBeforeTimestamp()).To(gomega.Equal(float64(100)))
+			return pb.SandboxListResponse_builder{}.Build(), nil
+		})
+
+	it, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{AppID: "ap-1234"})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	var ids []string
+	for s, err := range it {
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		ids = append(ids, s.SandboxID)
+	}
+	g.Expect(ids).To(gomega.Equal([]string{validV2SandboxID}))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxExperimentalListRequiresAppID(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	_, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{})
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("ExperimentalList requires an `AppID`")))
+}
+
 func TestNamedSandbox(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
