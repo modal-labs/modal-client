@@ -18,6 +18,30 @@ def get_current_js_version(package_path: Path):
         return json_package["version"]
 
 
+# Checked-in version literals in the JS and Go SDKs. js/package.json is the
+# source of truth the release tooling tags both SDKs from; these constants
+# mirror it and are kept in sync by `update-version-go-js` and `lint-versions`.
+JS_VERSION_PATH = Path("js/src/version.ts")
+GO_VERSION_PATH = Path("go/version.go")
+JS_VERSION_RE = re.compile(r'const SDK_VERSION = "([^"]+)"')
+GO_VERSION_RE = re.compile(r'const sdkVersion = "([^"]+)"')
+
+
+def get_checked_in_version(path: Path, pattern: re.Pattern) -> str:
+    match = pattern.search(path.read_text())
+    if match is None:
+        raise RuntimeError(f"Could not find a version literal matching {pattern.pattern!r} in {path}")
+    return match.group(1)
+
+
+def set_checked_in_version(path: Path, pattern: re.Pattern, new_version: str):
+    text = path.read_text()
+    new_text, count = pattern.subn(lambda m: m.group(0).replace(m.group(1), new_version), text)
+    if count != 1:
+        raise RuntimeError(f"Expected exactly one version literal in {path}, found {count}")
+    path.write_text(new_text)
+
+
 def check_unreleased_has_items(changelog_content: str):
     """Check that there are items in the Unreleased section."""
 
@@ -80,15 +104,25 @@ def update_version_go_js(
                 ctx.run(f"npm version pre{update} --preid=dev --no-git-tag-version", echo=True)
         else:
             ctx.run(f"npm version {update} --no-git-tag-version", echo=True)
-            new_version = get_current_js_version(package_json)
 
+        new_version = get_current_js_version(package_json)
+
+        # Keep the checked-in JS and Go version literals in sync with package.json.
+        set_checked_in_version(JS_VERSION_PATH, JS_VERSION_RE, new_version)
+        set_checked_in_version(GO_VERSION_PATH, GO_VERSION_RE, new_version)
+
+        if not dev:
             changelog_path = Path("CHANGELOG_GO_JS.md")
             update_changelog(changelog_path, new_version)
 
         ctx.run("git diff", echo=True)
 
     if dry_run:
-        ctx.run("git restore -- js/package.json js/package-lock.json CHANGELOG_GO_JS.md", echo=True)
+        ctx.run(
+            "git restore -- js/package.json js/package-lock.json"
+            f" {JS_VERSION_PATH} {GO_VERSION_PATH} CHANGELOG_GO_JS.md",
+            echo=True,
+        )
 
 
 def lint_protos_impl(ctx, proto_fname: str):
@@ -145,3 +179,34 @@ def lint_protos(ctx):
     """
     lint_protos_impl(ctx, "modal_proto/api.proto")
     lint_protos_impl(ctx, "modal_proto/task_command_router.proto")
+
+
+@task
+def lint_versions(ctx):
+    """Ensure the JS and Go SDK versions are consistent.
+
+    js/package.json is the source of truth the release tooling tags both SDKs
+    from. This checks that the checked-in literals in js/src/version.ts and
+    go/version.go match it, so the SDKs always report the same version.
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    package_json = Path("js/package.json")
+    versions = {
+        str(package_json): get_current_js_version(package_json),
+        str(JS_VERSION_PATH): get_checked_in_version(JS_VERSION_PATH, JS_VERSION_RE),
+        str(GO_VERSION_PATH): get_checked_in_version(GO_VERSION_PATH, GO_VERSION_RE),
+    }
+
+    if len(set(versions.values())) > 1:
+        console.print("[bold red]Version lint error:[/bold red] SDK versions are inconsistent:")
+        for path, version in versions.items():
+            console.print(f"  {path}: {version}")
+        console.print(
+            f"\nUpdate the checked-in versions to match {package_json} (the release source of "
+            "truth). Running `inv update-version-go-js` keeps all three in sync automatically.",
+            style="dim",
+        )
+        sys.exit(1)

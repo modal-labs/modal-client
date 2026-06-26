@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
-import packageJson from "./package.json" with { type: "json" };
 
 export default defineConfig({
   test: {
@@ -13,8 +12,5 @@ export default defineConfig({
     alias: {
       modal: path.resolve(__dirname, "./src/index.ts"),
     },
-  },
-  define: {
-    __MODAL_SDK_VERSION__: JSON.stringify(packageJson.version), // also set in tsup.config.ts
   },
 });

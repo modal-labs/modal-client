@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,19 +24,6 @@ import (
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 )
-
-var sdkVersion = sync.OnceValue(func() string {
-	const mod = "github.com/modal-labs/modal-client/go"
-
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, dep := range info.Deps {
-			if dep.Path == mod {
-				return dep.Version
-			}
-		}
-	}
-	return "v0.0.0"
-})
 
 // clientWithConn wraps a ModalClientClient and its underlying gRPC connection
 // to enable proper cleanup of connection-owned goroutines.
@@ -161,14 +147,14 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 	c := &Client{
 		config:                       cfg,
 		profile:                      profile,
-		sdkVersion:                   sdkVersion(),
+		sdkVersion:                   sdkVersion,
 		logger:                       logger,
 		ipClients:                    map[string]*clientWithConn{},
 		additionalUnaryInterceptors:  params.GRPCUnaryInterceptors,
 		additionalStreamInterceptors: params.GRPCStreamInterceptors,
 	}
 
-	logger.DebugContext(ctx, "Initializing Modal client", "version", sdkVersion(), "server_url", profile.ServerURL)
+	logger.DebugContext(ctx, "Initializing Modal client", "version", sdkVersion, "server_url", profile.ServerURL)
 
 	if params.ControlPlaneClient != nil {
 		c.cpClient = &clientWithConn{
