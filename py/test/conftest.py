@@ -2390,6 +2390,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.NOT_FOUND, f"Image {request.tag!r} not found")
         await stream.send_message(api_pb2.ImageGetByTagResponse(image_id=image_id))
 
+    async def ImageFromId(self, stream):
+        request: api_pb2.ImageFromIdRequest = await stream.recv_message()
+        if request.image_id not in self.images:
+            raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
+        await stream.send_message(api_pb2.ImageFromIdResponse(image_id=request.image_id))
+
     async def ImageListTags(self, stream):
         request: api_pb2.ImageListTagsRequest = await stream.recv_message()
         self.image_list_tags_requests.append(

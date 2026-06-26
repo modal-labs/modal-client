@@ -10,10 +10,12 @@ from typing import Optional
 import click
 
 from modal._environments import ensure_env
+from modal._image import _parse_named_image_ref
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import display_table, env_option
 from modal.client import _Client
+from modal.exception import InvalidError
 from modal.output import OutputManager
 from modal_proto import api_pb2
 
@@ -21,6 +23,8 @@ from ._help import ModalGroup
 
 IMAGE_NAMES_LIST_PAGE_SIZE = 100
 IMAGE_NAMES_LIST_PAGE_DELAY_SECONDS = 1.0
+IMAGE_NAMES_HISTORY_PAGE_SIZE = 100
+IMAGE_NAMES_HISTORY_PAGE_DELAY_SECONDS = 1.0
 
 image_cli = ModalGroup(name="image", help="Manage Images.")
 image_names_cli = ModalGroup(name="names", help="Manage Modal Image names.")
@@ -49,6 +53,20 @@ def _tag_item_row(item: api_pb2.ImageListTagsItem) -> tuple[str, str, str]:
     )
 
 
+def _history_item_json(item: api_pb2.ImageTagRevisionsItem) -> dict[str, str]:
+    return {
+        "image_id": item.image_id,
+        "published_at": timestamp_to_localized_str(item.created_at, True) or "-",
+    }
+
+
+def _history_item_row(item: api_pb2.ImageTagRevisionsItem) -> tuple[str, str]:
+    return (
+        item.image_id,
+        timestamp_to_localized_str(item.created_at, False) or "-",
+    )
+
+
 async def _iter_tag_pages(
     client: _Client, env: str, prefix: str
 ) -> AsyncIterator[tuple[str, list[api_pb2.ImageListTagsItem]]]:
@@ -71,6 +89,36 @@ async def _iter_tag_pages(
         if not page_token:
             return
         await asyncio.sleep(IMAGE_NAMES_LIST_PAGE_DELAY_SECONDS)
+
+
+async def _fetch_history_page(
+    client: _Client,
+    env: str,
+    tag: str,
+    page_token: str,
+) -> api_pb2.ImageTagRevisionsResponse:
+    return await client.stub.ImageTagRevisions(
+        api_pb2.ImageTagRevisionsRequest(
+            tag=tag,
+            environment_name=env,
+            max_objects=IMAGE_NAMES_HISTORY_PAGE_SIZE,
+            page_token=page_token,
+        )
+    )
+
+
+async def _iter_history_pages(
+    client: _Client, env: str, tag: str, first_page: api_pb2.ImageTagRevisionsResponse
+) -> AsyncIterator[api_pb2.ImageTagRevisionsResponse]:
+    response = first_page
+
+    while True:
+        yield response
+
+        if not response.next_page_token:
+            return
+        await asyncio.sleep(IMAGE_NAMES_HISTORY_PAGE_DELAY_SECONDS)
+        response = await _fetch_history_page(client, env, tag, response.next_page_token)
 
 
 @image_names_cli.command("list", help="List named Images.")
@@ -106,5 +154,54 @@ async def list_(
             display_table(["Tag", "Image ID", "Updated at"], [_tag_item_row(item) for item in page_items], title=title)
             first_page = False
         count += len(page_items)
+
+    _print_result_summary(count)
+
+
+@image_names_cli.command("history", help="Show publishing history for a named Image.", hidden=True)
+@click.argument("name")
+@env_option
+@click.option("--json", is_flag=True, default=False)
+@synchronizer.create_blocking
+async def history(
+    name: str,
+    env: Optional[str] = None,
+    json: bool = False,
+):
+    env = ensure_env(env)
+    try:
+        name_tag = _parse_named_image_ref(name)
+    except InvalidError as exc:
+        raise click.UsageError(str(exc)) from exc
+    client = await _Client.from_env()
+
+    first_page = await _fetch_history_page(client, env, name_tag, "")
+    if not first_page.items:
+        raise click.ClickException(f"No publishing history found for named image {first_page.tag!r}.")
+
+    if json:
+        click.echo("[", nl=False)
+        count = 0
+        async for response in _iter_history_pages(client, env, name_tag, first_page):
+            for item in response.items:
+                if count:
+                    click.echo(",", nl=False)
+                click.echo(json_module.dumps(_history_item_json(item)), nl=False)
+                count += 1
+        click.echo("]")
+        return
+
+    count = 0
+    show_title = True
+    async for response in _iter_history_pages(client, env, name_tag, first_page):
+        if response.items:
+            title = f"History for {response.tag}" if show_title else ""
+            display_table(
+                ["Image ID", "Published at"],
+                [_history_item_row(item) for item in response.items],
+                title=title,
+            )
+            show_title = False
+        count += len(response.items)
 
     _print_result_summary(count)
