@@ -707,6 +707,35 @@ def test_sandbox__experimental_set_outbound_network_policy(app, servicer):
     sb.terminate()
 
 
+def test_sandbox__experimental_set_outbound_network_policy_v2(app, servicer):
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+
+    # Allowlist mode
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            sb._experimental_set_outbound_network_policy(
+                outbound_domain_allowlist=["example.com"], outbound_cidr_allowlist=["8.8.8.8/32"]
+            )
+
+    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
+    assert access_req.sandbox_id == "sb-v2-123"
+
+    (req,) = tcr_ctx.get_requests("TaskSetNetworkAccess")
+    assert req.task_id == "ta-v2-123"
+    net = req.network_access
+    assert net.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(net.allowed_domains) == ["example.com"]
+    assert list(net.allowed_cidrs) == ["8.8.8.8/32"]
+
+    # No arguments sends OPEN type
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_set_outbound_network_policy()
+        (req,) = tcr_ctx.get_requests("TaskSetNetworkAccess")
+    assert req.network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+
+    sb.terminate()
+
+
 @skip_non_subprocess
 def test_sandbox_inbound_cidr_allowlist(app, servicer):
     # Cannot combine with block_network

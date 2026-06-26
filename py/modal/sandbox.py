@@ -1284,7 +1284,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             outbound_domain_allowlist: List of domain names the Sandbox is allowed to access. Supports
                 wildcard prefixes (``*.``); a bare ``"*"`` allows all domains.
         """
-        self._ensure_v1("_experimental_set_outbound_network_policy")
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
 
