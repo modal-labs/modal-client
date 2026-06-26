@@ -1291,6 +1291,42 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   mock.assertExhausted();
 });
 
+test("ExperimentalList yields V2 Sandboxes and paginates", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  // First batch returns a Sandbox; the empty second batch terminates the loop.
+  mock.handleUnary("/SandboxListV2", (req: any) => {
+    expect(req.appId).toBe("ap-1234");
+    expect(req.includeFinished).toBe(false);
+    expect(req.beforeTimestamp).toBeFalsy();
+    return { sandboxes: [{ id: V2_SANDBOX_ID, createdAt: 100 }] };
+  });
+  mock.handleUnary("/SandboxListV2", (req: any) => {
+    expect(req.appId).toBe("ap-1234");
+    expect(req.beforeTimestamp).toBe(100);
+    return { sandboxes: [] };
+  });
+
+  const ids: string[] = [];
+  for await (const sb of mc.sandboxes.experimentalList({ appId: "ap-1234" })) {
+    expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+    // Listed Sandboxes are marked V2, so V1-only stdio getters reject.
+    expect(() => sb.stdin).toThrow("not supported for V2 sandboxes");
+    ids.push(sb.sandboxId);
+  }
+
+  expect(ids).toEqual([V2_SANDBOX_ID]);
+  mock.assertExhausted();
+});
+
+test("ExperimentalList requires an appId", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const iter = mc.sandboxes.experimentalList({ appId: "" });
+  await expect(iter.next()).rejects.toThrow(
+    "experimentalList requires an `appId`",
+  );
+});
+
 test("V2 Sandbox rejects V1-only runtime methods", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {

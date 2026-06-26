@@ -80,6 +80,7 @@ export type {
   StreamMode,
   Tunnel,
   SandboxListParams,
+  SandboxExperimentalListParams,
   SandboxCreateParams,
 } from "./sandbox";
 export { ContainerProcess, Probe, Sandbox, SandboxService } from "./sandbox";

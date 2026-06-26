@@ -868,6 +868,53 @@ export class SandboxService {
       }
     }
   }
+
+  /**
+   * List the V2 {@link Sandbox}es in an {@link App}.
+   *
+   * This lists V2 Sandboxes, i.e. Sandboxes created via
+   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
+   * Such Sandboxes are not returned by
+   * {@link SandboxService#list client.sandboxes.list()}. Filtering based on tags
+   * is not yet supported.
+   *
+   * Yields {@link Sandbox} objects that are currently running in the App.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   */
+  async *experimentalList(
+    params: SandboxExperimentalListParams,
+  ): AsyncGenerator<Sandbox, void, unknown> {
+    if (!params?.appId) {
+      throw new InvalidError(
+        "experimentalList requires an `appId`:\n\n" +
+          'const app = await modal.apps.fromName("my-app");\n' +
+          "modal.sandboxes.experimentalList({ appId: app.appId });",
+      );
+    }
+
+    let beforeTimestamp: number | undefined = undefined;
+    while (true) {
+      // Fetches a batch of Sandboxes. SandboxListV2 authenticates via the
+      // auth-token metadata (attached automatically by the client), like the
+      // other V2 Sandbox RPCs.
+      const resp = await this.#client.cpClient.sandboxListV2({
+        appId: params.appId,
+        beforeTimestamp,
+        includeFinished: false,
+      });
+      if (!resp.sandboxes || resp.sandboxes.length === 0) {
+        return;
+      }
+      for (const info of resp.sandboxes) {
+        // SandboxListV2 only returns V2 Sandboxes; mark them as such so
+        // operations like wait/terminate/exec use the V2 RPCs.
+        yield new Sandbox(this.#client, info.id, { isV2: true });
+      }
+      // Fetch the next batch starting from the end of the current one.
+      beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
+    }
+  }
 }
 
 /** Optional parameters for {@link SandboxService#list client.sandboxes.list()}. */
@@ -878,6 +925,12 @@ export type SandboxListParams = {
   tags?: Record<string, string>;
   /** Override environment for the request; defaults to current profile. */
   environment?: string;
+};
+
+/** Parameters for {@link SandboxService#experimentalList client.sandboxes.experimentalList()}. */
+export type SandboxExperimentalListParams = {
+  /** The App to list Sandboxes under. */
+  appId: string;
 };
 
 /** Optional parameters for {@link SandboxService#fromName client.sandboxes.fromName()}. */
