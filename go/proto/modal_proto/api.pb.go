@@ -28316,6 +28316,7 @@ type FunctionOptions struct {
 	xxx_hidden_ReplaceCloudBucketMounts bool                   `protobuf:"varint,19,opt,name=replace_cloud_bucket_mounts,json=replaceCloudBucketMounts,proto3"`
 	xxx_hidden_CloudBucketMounts        *[]*CloudBucketMount   `protobuf:"bytes,20,rep,name=cloud_bucket_mounts,json=cloudBucketMounts,proto3"`
 	xxx_hidden_PinnedAppVersion         int32                  `protobuf:"varint,21,opt,name=pinned_app_version,json=pinnedAppVersion,proto3,oneof"`
+	xxx_hidden_RoutingRegion            *string                `protobuf:"bytes,22,opt,name=routing_region,json=routingRegion,proto3,oneof"`
 	XXX_raceDetectHookData              protoimpl.RaceDetectHookData
 	XXX_presence                        [1]uint32
 	unknownFields                       protoimpl.UnknownFields
@@ -28501,6 +28502,16 @@ func (x *FunctionOptions) GetPinnedAppVersion() int32 {
 	return 0
 }
 
+func (x *FunctionOptions) GetRoutingRegion() string {
+	if x != nil {
+		if x.xxx_hidden_RoutingRegion != nil {
+			return *x.xxx_hidden_RoutingRegion
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *FunctionOptions) SetSecretIds(v []string) {
 	x.xxx_hidden_SecretIds = v
 }
@@ -28519,22 +28530,22 @@ func (x *FunctionOptions) SetRetryPolicy(v *FunctionRetryPolicy) {
 
 func (x *FunctionOptions) SetConcurrencyLimit(v uint32) {
 	x.xxx_hidden_ConcurrencyLimit = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 22)
 }
 
 func (x *FunctionOptions) SetTimeoutSecs(v uint32) {
 	x.xxx_hidden_TimeoutSecs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 22)
 }
 
 func (x *FunctionOptions) SetTaskIdleTimeoutSecs(v uint32) {
 	x.xxx_hidden_TaskIdleTimeoutSecs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 22)
 }
 
 func (x *FunctionOptions) SetWarmPoolSize(v uint32) {
 	x.xxx_hidden_WarmPoolSize = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 22)
 }
 
 func (x *FunctionOptions) SetVolumeMounts(v []*VolumeMount) {
@@ -28543,7 +28554,7 @@ func (x *FunctionOptions) SetVolumeMounts(v []*VolumeMount) {
 
 func (x *FunctionOptions) SetTargetConcurrentInputs(v uint32) {
 	x.xxx_hidden_TargetConcurrentInputs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 9, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 9, 22)
 }
 
 func (x *FunctionOptions) SetReplaceVolumeMounts(v bool) {
@@ -28556,22 +28567,22 @@ func (x *FunctionOptions) SetReplaceSecretIds(v bool) {
 
 func (x *FunctionOptions) SetBufferContainers(v uint32) {
 	x.xxx_hidden_BufferContainers = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 22)
 }
 
 func (x *FunctionOptions) SetMaxConcurrentInputs(v uint32) {
 	x.xxx_hidden_MaxConcurrentInputs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 13, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 13, 22)
 }
 
 func (x *FunctionOptions) SetBatchMaxSize(v uint32) {
 	x.xxx_hidden_BatchMaxSize = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 14, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 14, 22)
 }
 
 func (x *FunctionOptions) SetBatchLingerMs(v uint64) {
 	x.xxx_hidden_BatchLingerMs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 15, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 15, 22)
 }
 
 func (x *FunctionOptions) SetSchedulerPlacement(v *SchedulerPlacement) {
@@ -28580,7 +28591,7 @@ func (x *FunctionOptions) SetSchedulerPlacement(v *SchedulerPlacement) {
 
 func (x *FunctionOptions) SetCloudProviderStr(v string) {
 	x.xxx_hidden_CloudProviderStr = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 22)
 }
 
 func (x *FunctionOptions) SetReplaceCloudBucketMounts(v bool) {
@@ -28593,7 +28604,12 @@ func (x *FunctionOptions) SetCloudBucketMounts(v []*CloudBucketMount) {
 
 func (x *FunctionOptions) SetPinnedAppVersion(v int32) {
 	x.xxx_hidden_PinnedAppVersion = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 20, 21)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 20, 22)
+}
+
+func (x *FunctionOptions) SetRoutingRegion(v string) {
+	x.xxx_hidden_RoutingRegion = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 21, 22)
 }
 
 func (x *FunctionOptions) HasResources() bool {
@@ -28694,6 +28710,13 @@ func (x *FunctionOptions) HasPinnedAppVersion() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 20)
 }
 
+func (x *FunctionOptions) HasRoutingRegion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 21)
+}
+
 func (x *FunctionOptions) ClearResources() {
 	x.xxx_hidden_Resources = nil
 }
@@ -28761,6 +28784,11 @@ func (x *FunctionOptions) ClearPinnedAppVersion() {
 	x.xxx_hidden_PinnedAppVersion = 0
 }
 
+func (x *FunctionOptions) ClearRoutingRegion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 21)
+	x.xxx_hidden_RoutingRegion = nil
+}
+
 type FunctionOptions_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -28785,6 +28813,7 @@ type FunctionOptions_builder struct {
 	ReplaceCloudBucketMounts bool
 	CloudBucketMounts        []*CloudBucketMount
 	PinnedAppVersion         *int32
+	RoutingRegion            *string
 }
 
 func (b0 FunctionOptions_builder) Build() *FunctionOptions {
@@ -28796,54 +28825,58 @@ func (b0 FunctionOptions_builder) Build() *FunctionOptions {
 	x.xxx_hidden_Resources = b.Resources
 	x.xxx_hidden_RetryPolicy = b.RetryPolicy
 	if b.ConcurrencyLimit != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 22)
 		x.xxx_hidden_ConcurrencyLimit = *b.ConcurrencyLimit
 	}
 	if b.TimeoutSecs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 22)
 		x.xxx_hidden_TimeoutSecs = *b.TimeoutSecs
 	}
 	if b.TaskIdleTimeoutSecs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 22)
 		x.xxx_hidden_TaskIdleTimeoutSecs = *b.TaskIdleTimeoutSecs
 	}
 	if b.WarmPoolSize != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 22)
 		x.xxx_hidden_WarmPoolSize = *b.WarmPoolSize
 	}
 	x.xxx_hidden_VolumeMounts = &b.VolumeMounts
 	if b.TargetConcurrentInputs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 9, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 9, 22)
 		x.xxx_hidden_TargetConcurrentInputs = *b.TargetConcurrentInputs
 	}
 	x.xxx_hidden_ReplaceVolumeMounts = b.ReplaceVolumeMounts
 	x.xxx_hidden_ReplaceSecretIds = b.ReplaceSecretIds
 	if b.BufferContainers != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 22)
 		x.xxx_hidden_BufferContainers = *b.BufferContainers
 	}
 	if b.MaxConcurrentInputs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 13, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 13, 22)
 		x.xxx_hidden_MaxConcurrentInputs = *b.MaxConcurrentInputs
 	}
 	if b.BatchMaxSize != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 14, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 14, 22)
 		x.xxx_hidden_BatchMaxSize = *b.BatchMaxSize
 	}
 	if b.BatchLingerMs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 15, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 15, 22)
 		x.xxx_hidden_BatchLingerMs = *b.BatchLingerMs
 	}
 	x.xxx_hidden_SchedulerPlacement = b.SchedulerPlacement
 	if b.CloudProviderStr != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 22)
 		x.xxx_hidden_CloudProviderStr = b.CloudProviderStr
 	}
 	x.xxx_hidden_ReplaceCloudBucketMounts = b.ReplaceCloudBucketMounts
 	x.xxx_hidden_CloudBucketMounts = &b.CloudBucketMounts
 	if b.PinnedAppVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 20, 21)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 20, 22)
 		x.xxx_hidden_PinnedAppVersion = *b.PinnedAppVersion
+	}
+	if b.RoutingRegion != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 21, 22)
+		x.xxx_hidden_RoutingRegion = b.RoutingRegion
 	}
 	return m0
 }
@@ -61064,7 +61097,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\fretry_policy\x18\x03 \x01(\v2!.modal.client.FunctionRetryPolicyR\vretryPolicy\x12*\n" +
 	"\x11function_call_jwt\x18\x04 \x01(\tR\x0ffunctionCallJwt\x12=\n" +
 	"\x1bsync_client_retries_enabled\x18\x05 \x01(\bR\x18syncClientRetriesEnabled\x124\n" +
-	"\x16max_inputs_outstanding\x18\x06 \x01(\rR\x14maxInputsOutstanding\"\xb2\v\n" +
+	"\x16max_inputs_outstanding\x18\x06 \x01(\rR\x14maxInputsOutstanding\"\xf1\v\n" +
 	"\x0fFunctionOptions\x12\x1d\n" +
 	"\n" +
 	"secret_ids\x18\x01 \x03(\tR\tsecretIds\x12\x1b\n" +
@@ -61089,7 +61122,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12cloud_provider_str\x18\x12 \x01(\tH\fR\x10cloudProviderStr\x88\x01\x01\x12=\n" +
 	"\x1breplace_cloud_bucket_mounts\x18\x13 \x01(\bR\x18replaceCloudBucketMounts\x12N\n" +
 	"\x13cloud_bucket_mounts\x18\x14 \x03(\v2\x1e.modal.client.CloudBucketMountR\x11cloudBucketMounts\x121\n" +
-	"\x12pinned_app_version\x18\x15 \x01(\x05H\rR\x10pinnedAppVersion\x88\x01\x01B\f\n" +
+	"\x12pinned_app_version\x18\x15 \x01(\x05H\rR\x10pinnedAppVersion\x88\x01\x01\x12*\n" +
+	"\x0erouting_region\x18\x16 \x01(\tH\x0eR\rroutingRegion\x88\x01\x01B\f\n" +
 	"\n" +
 	"_resourcesB\x0f\n" +
 	"\r_retry_policyB\x14\n" +
@@ -61104,7 +61138,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10_batch_linger_msB\x16\n" +
 	"\x14_scheduler_placementB\x15\n" +
 	"\x13_cloud_provider_strB\x15\n" +
-	"\x13_pinned_app_version\"\xa7\x06\n" +
+	"\x13_pinned_app_versionB\x11\n" +
+	"\x0f_routing_region\"\xa7\x06\n" +
 	"\x18FunctionPrecreateRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12#\n" +
 	"\rfunction_name\x18\x02 \x01(\tR\ffunctionName\x120\n" +

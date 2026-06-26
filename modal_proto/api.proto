@@ -2298,6 +2298,7 @@ message FunctionOptions {
   bool replace_cloud_bucket_mounts = 19;
   repeated CloudBucketMount cloud_bucket_mounts = 20;
   optional int32 pinned_app_version = 21;
+  optional string routing_region = 22;
 }
 
 message FunctionPrecreateRequest {
