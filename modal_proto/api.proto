@@ -4346,6 +4346,23 @@ message WorkspaceNameLookupResponse {
   string username = 2;
 }
 
+message WorkspaceSetDefaultEnvironmentRequest {
+  string environment_name = 1;
+}
+
+message WorkspaceSetImageBuilderVersionRequest {
+  string new_image_builder_version = 1;
+}
+
+message WorkspaceSetImageBuilderVersionResponse {
+  string image_builder_version = 1;
+}
+
+message WorkspaceSettingsResponse {
+  string default_environment_name = 1;
+  string image_builder_version = 2;
+}
+
 
 service ModalClient {
   // Apps
@@ -4629,4 +4646,7 @@ service ModalClient {
   rpc WorkspaceDashboardUrlGet(WorkspaceDashboardUrlRequest) returns (WorkspaceDashboardUrlResponse);
   rpc WorkspaceMembersList(google.protobuf.Empty) returns (WorkspaceMembersListResponse);
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
+  rpc WorkspaceSetDefaultEnvironment(WorkspaceSetDefaultEnvironmentRequest) returns (google.protobuf.Empty);
+  rpc WorkspaceSetImageBuilderVersion(WorkspaceSetImageBuilderVersionRequest) returns (WorkspaceSetImageBuilderVersionResponse);
+  rpc WorkspaceSettings(google.protobuf.Empty) returns (WorkspaceSettingsResponse);
 }

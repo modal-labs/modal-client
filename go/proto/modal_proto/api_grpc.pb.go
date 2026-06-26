@@ -238,6 +238,9 @@ const (
 	ModalClient_WorkspaceDashboardUrlGet_FullMethodName         = "/modal.client.ModalClient/WorkspaceDashboardUrlGet"
 	ModalClient_WorkspaceMembersList_FullMethodName             = "/modal.client.ModalClient/WorkspaceMembersList"
 	ModalClient_WorkspaceNameLookup_FullMethodName              = "/modal.client.ModalClient/WorkspaceNameLookup"
+	ModalClient_WorkspaceSetDefaultEnvironment_FullMethodName   = "/modal.client.ModalClient/WorkspaceSetDefaultEnvironment"
+	ModalClient_WorkspaceSetImageBuilderVersion_FullMethodName  = "/modal.client.ModalClient/WorkspaceSetImageBuilderVersion"
+	ModalClient_WorkspaceSettings_FullMethodName                = "/modal.client.ModalClient/WorkspaceSettings"
 )
 
 // ModalClientClient is the client API for ModalClient service.
@@ -494,6 +497,9 @@ type ModalClientClient interface {
 	WorkspaceDashboardUrlGet(ctx context.Context, in *WorkspaceDashboardUrlRequest, opts ...grpc.CallOption) (*WorkspaceDashboardUrlResponse, error)
 	WorkspaceMembersList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceMembersListResponse, error)
 	WorkspaceNameLookup(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceNameLookupResponse, error)
+	WorkspaceSetDefaultEnvironment(ctx context.Context, in *WorkspaceSetDefaultEnvironmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	WorkspaceSetImageBuilderVersion(ctx context.Context, in *WorkspaceSetImageBuilderVersionRequest, opts ...grpc.CallOption) (*WorkspaceSetImageBuilderVersionResponse, error)
+	WorkspaceSettings(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceSettingsResponse, error)
 }
 
 type modalClientClient struct {
@@ -2792,6 +2798,36 @@ func (c *modalClientClient) WorkspaceNameLookup(ctx context.Context, in *emptypb
 	return out, nil
 }
 
+func (c *modalClientClient) WorkspaceSetDefaultEnvironment(ctx context.Context, in *WorkspaceSetDefaultEnvironmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_WorkspaceSetDefaultEnvironment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WorkspaceSetImageBuilderVersion(ctx context.Context, in *WorkspaceSetImageBuilderVersionRequest, opts ...grpc.CallOption) (*WorkspaceSetImageBuilderVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceSetImageBuilderVersionResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WorkspaceSetImageBuilderVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WorkspaceSettings(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceSettingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceSettingsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WorkspaceSettings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ModalClientServer is the server API for ModalClient service.
 // All implementations must embed UnimplementedModalClientServer
 // for forward compatibility.
@@ -3046,6 +3082,9 @@ type ModalClientServer interface {
 	WorkspaceDashboardUrlGet(context.Context, *WorkspaceDashboardUrlRequest) (*WorkspaceDashboardUrlResponse, error)
 	WorkspaceMembersList(context.Context, *emptypb.Empty) (*WorkspaceMembersListResponse, error)
 	WorkspaceNameLookup(context.Context, *emptypb.Empty) (*WorkspaceNameLookupResponse, error)
+	WorkspaceSetDefaultEnvironment(context.Context, *WorkspaceSetDefaultEnvironmentRequest) (*emptypb.Empty, error)
+	WorkspaceSetImageBuilderVersion(context.Context, *WorkspaceSetImageBuilderVersionRequest) (*WorkspaceSetImageBuilderVersionResponse, error)
+	WorkspaceSettings(context.Context, *emptypb.Empty) (*WorkspaceSettingsResponse, error)
 	mustEmbedUnimplementedModalClientServer()
 }
 
@@ -3709,6 +3748,15 @@ func (UnimplementedModalClientServer) WorkspaceMembersList(context.Context, *emp
 }
 func (UnimplementedModalClientServer) WorkspaceNameLookup(context.Context, *emptypb.Empty) (*WorkspaceNameLookupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method WorkspaceNameLookup not implemented")
+}
+func (UnimplementedModalClientServer) WorkspaceSetDefaultEnvironment(context.Context, *WorkspaceSetDefaultEnvironmentRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method WorkspaceSetDefaultEnvironment not implemented")
+}
+func (UnimplementedModalClientServer) WorkspaceSetImageBuilderVersion(context.Context, *WorkspaceSetImageBuilderVersionRequest) (*WorkspaceSetImageBuilderVersionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WorkspaceSetImageBuilderVersion not implemented")
+}
+func (UnimplementedModalClientServer) WorkspaceSettings(context.Context, *emptypb.Empty) (*WorkspaceSettingsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WorkspaceSettings not implemented")
 }
 func (UnimplementedModalClientServer) mustEmbedUnimplementedModalClientServer() {}
 func (UnimplementedModalClientServer) testEmbeddedByValue()                     {}
@@ -7571,6 +7619,60 @@ func _ModalClient_WorkspaceNameLookup_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_WorkspaceSetDefaultEnvironment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkspaceSetDefaultEnvironmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WorkspaceSetDefaultEnvironment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WorkspaceSetDefaultEnvironment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WorkspaceSetDefaultEnvironment(ctx, req.(*WorkspaceSetDefaultEnvironmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WorkspaceSetImageBuilderVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkspaceSetImageBuilderVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WorkspaceSetImageBuilderVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WorkspaceSetImageBuilderVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WorkspaceSetImageBuilderVersion(ctx, req.(*WorkspaceSetImageBuilderVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WorkspaceSettings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WorkspaceSettings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WorkspaceSettings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WorkspaceSettings(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ModalClient_ServiceDesc is the grpc.ServiceDesc for ModalClient service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -8401,6 +8503,18 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WorkspaceNameLookup",
 			Handler:    _ModalClient_WorkspaceNameLookup_Handler,
+		},
+		{
+			MethodName: "WorkspaceSetDefaultEnvironment",
+			Handler:    _ModalClient_WorkspaceSetDefaultEnvironment_Handler,
+		},
+		{
+			MethodName: "WorkspaceSetImageBuilderVersion",
+			Handler:    _ModalClient_WorkspaceSetImageBuilderVersion_Handler,
+		},
+		{
+			MethodName: "WorkspaceSettings",
+			Handler:    _ModalClient_WorkspaceSettings_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
