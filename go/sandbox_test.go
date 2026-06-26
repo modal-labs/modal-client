@@ -205,6 +205,23 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 }
 
+func TestSandboxV2FilesystemSupported(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	sb := newSandbox(&Client{}, "sb-v2-123")
+	sb.isV2 = true
+	sb.taskID = "ta-v2-123"
+
+	g.Expect(sb.Filesystem).ShouldNot(gomega.BeNil())
+
+	_, err := sb.Filesystem.ReadText(ctx, "relative/path", nil)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).NotTo(gomega.ContainSubstring("not supported for V2 sandboxes"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring("absolute"))
+}
+
 // mockWaitUntilReadyStub embeds pb.TaskCommandRouterClient so unused methods
 // inherit nil stubs (calling them would panic). Only SandboxWaitUntilReady is
 // overridden.
