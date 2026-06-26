@@ -33024,12 +33024,13 @@ func (b0 ImageRegistryConfig_builder) Build() *ImageRegistryConfig {
 }
 
 type ImageTagRevisionsItem struct {
-	state                 protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_ImageId    string                 `protobuf:"bytes,1,opt,name=image_id,json=imageId,proto3"`
-	xxx_hidden_RevisionId string                 `protobuf:"bytes,2,opt,name=revision_id,json=revisionId,proto3"`
-	xxx_hidden_CreatedAt  float64                `protobuf:"fixed64,3,opt,name=created_at,json=createdAt,proto3"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_ImageId     string                 `protobuf:"bytes,1,opt,name=image_id,json=imageId,proto3"`
+	xxx_hidden_RevisionId  string                 `protobuf:"bytes,2,opt,name=revision_id,json=revisionId,proto3"`
+	xxx_hidden_CreatedAt   float64                `protobuf:"fixed64,3,opt,name=created_at,json=createdAt,proto3"`
+	xxx_hidden_PublishedBy string                 `protobuf:"bytes,4,opt,name=published_by,json=publishedBy,proto3"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ImageTagRevisionsItem) Reset() {
@@ -33078,6 +33079,13 @@ func (x *ImageTagRevisionsItem) GetCreatedAt() float64 {
 	return 0
 }
 
+func (x *ImageTagRevisionsItem) GetPublishedBy() string {
+	if x != nil {
+		return x.xxx_hidden_PublishedBy
+	}
+	return ""
+}
+
 func (x *ImageTagRevisionsItem) SetImageId(v string) {
 	x.xxx_hidden_ImageId = v
 }
@@ -33090,12 +33098,17 @@ func (x *ImageTagRevisionsItem) SetCreatedAt(v float64) {
 	x.xxx_hidden_CreatedAt = v
 }
 
+func (x *ImageTagRevisionsItem) SetPublishedBy(v string) {
+	x.xxx_hidden_PublishedBy = v
+}
+
 type ImageTagRevisionsItem_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	ImageId    string
-	RevisionId string
-	CreatedAt  float64
+	ImageId     string
+	RevisionId  string
+	CreatedAt   float64
+	PublishedBy string
 }
 
 func (b0 ImageTagRevisionsItem_builder) Build() *ImageTagRevisionsItem {
@@ -33105,6 +33118,7 @@ func (b0 ImageTagRevisionsItem_builder) Build() *ImageTagRevisionsItem {
 	x.xxx_hidden_ImageId = b.ImageId
 	x.xxx_hidden_RevisionId = b.RevisionId
 	x.xxx_hidden_CreatedAt = b.CreatedAt
+	x.xxx_hidden_PublishedBy = b.PublishedBy
 	return m0
 }
 
@@ -61335,13 +61349,14 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"revisionId\"\x80\x01\n" +
 	"\x13ImageRegistryConfig\x12L\n" +
 	"\x12registry_auth_type\x18\x01 \x01(\x0e2\x1e.modal.client.RegistryAuthTypeR\x10registryAuthType\x12\x1b\n" +
-	"\tsecret_id\x18\x02 \x01(\tR\bsecretId\"r\n" +
+	"\tsecret_id\x18\x02 \x01(\tR\bsecretId\"\x95\x01\n" +
 	"\x15ImageTagRevisionsItem\x12\x19\n" +
 	"\bimage_id\x18\x01 \x01(\tR\aimageId\x12\x1f\n" +
 	"\vrevision_id\x18\x02 \x01(\tR\n" +
 	"revisionId\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\x01R\tcreatedAt\"\x97\x01\n" +
+	"created_at\x18\x03 \x01(\x01R\tcreatedAt\x12!\n" +
+	"\fpublished_by\x18\x04 \x01(\tR\vpublishedBy\"\x97\x01\n" +
 	"\x18ImageTagRevisionsRequest\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12)\n" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\x12\x1f\n" +

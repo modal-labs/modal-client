@@ -2631,6 +2631,7 @@ message ImageTagRevisionsItem {
   string image_id = 1;
   string revision_id = 2;
   double created_at = 3;
+  string published_by = 4;
 }
 
 message ImageTagRevisionsRequest {
