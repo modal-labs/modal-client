@@ -1,5 +1,13 @@
 #!/bin/bash
 set -o errexit
+set -o pipefail
+set -o nounset
+
+# Download the pinned protoc + plugins (sets PROTOC and TOOLS_BIN). The shared
+# toolchain lives alongside this script so it is mirrored to the public
+# modal-client repo and gen-proto.sh stays self-contained there.
+# shellcheck source=client/go/scripts/proto_toolchain.sh
+source "$(dirname "$0")/proto_toolchain.sh"
 
 # Run from client/go (the parent of this script's directory) so the relative
 # paths below work regardless of the caller's working directory.
@@ -7,7 +15,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 mkdir -p proto && find proto -type f -name '*.go' -delete
 
-protoc \
+"$PROTOC" \
+  --plugin=protoc-gen-go="$TOOLS_BIN/protoc-gen-go" \
+  --plugin=protoc-gen-go-grpc="$TOOLS_BIN/protoc-gen-go-grpc" \
   --go_out=paths=source_relative:proto \
   --go_opt=default_api_level=API_OPAQUE \
   --go-grpc_out=paths=source_relative:proto \
