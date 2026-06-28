@@ -103,6 +103,7 @@ def test_function_with_options(client, servicer):
         secrets=[unhydrated_secret],
         region="us-east-1",
         cloud="aws",
+        routing_region="us-east",
     )
     assert optioned is not foo
 
@@ -124,6 +125,7 @@ def test_function_with_options(client, servicer):
         assert bind_req.function_options.secret_ids == [unhydrated_secret.object_id]
         assert bind_req.function_options.scheduler_placement.regions == ["us-east-1"]
         assert bind_req.function_options.cloud_provider_str == "aws"
+        assert bind_req.function_options.routing_region == "us-east"
 
         assert foo.remote(2, 4) == 20
         assert optioned.remote(2, 4) == 20

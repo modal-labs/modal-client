@@ -1519,6 +1519,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         timeout: int | None = None,
         region: str | Sequence[str] | None = None,
         cloud: str | None = None,
+        routing_region: str | None = None,
     ) -> "_Function[P, ReturnType, OriginalReturnType]":
         """Dynamically override the static Function configuration with invocation-specific values.
 
@@ -1567,6 +1568,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             timeout=timeout,
             region=region,
             cloud=cloud,
+            routing_region=routing_region,
         )
 
         return self._apply_dynamic_config(options, "with_options")

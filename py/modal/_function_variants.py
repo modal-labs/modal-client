@@ -51,6 +51,7 @@ class _FunctionOptions:
     target_concurrent_inputs: int | None = None
     batch_max_size: int | None = None
     batch_wait_ms: int | None = None
+    routing_region: str | None = None
 
     @classmethod
     def new(
@@ -73,6 +74,7 @@ class _FunctionOptions:
         target_concurrent_inputs: int | None = None,
         batch_max_size: int | None = None,
         batch_wait_ms: int | None = None,
+        routing_region: str | None = None,
     ) -> "_FunctionOptions":
         """Internal constructor that validates and normalizes public parameters."""
         retry_policy = _parse_retries(retries)
@@ -119,6 +121,7 @@ class _FunctionOptions:
             target_concurrent_inputs=target_concurrent_inputs,
             batch_max_size=batch_max_size,
             batch_wait_ms=batch_wait_ms,
+            routing_region=routing_region,
         )
 
     def merge_options(self, new_options: "_FunctionOptions") -> "_FunctionOptions":
@@ -182,6 +185,7 @@ class _FunctionOptions:
             batch_linger_ms=self.batch_wait_ms,
             scheduler_placement=self.scheduler_placement,
             cloud_provider_str=self.cloud,
+            routing_region=self.routing_region,
         )
 
 
