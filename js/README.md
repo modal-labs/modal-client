@@ -61,6 +61,7 @@ We also provide a number of examples:
   and same but
   [with an ephemeral Volume](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-volume-ephemeral.ts)
 - [Mount a cloud bucket to a Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-cloud-bucket.ts)
+- [Update the outbound network policy of a running Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-network-policy.ts)
 - [Eagerly build an Image for a Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-prewarm.ts)
 - [Building custom Images](https://github.com/modal-labs/modal-client/blob/main/js/examples/image-building.ts)
 - [Add telemetry and tracing with custom middleware](https://github.com/modal-labs/modal-client/blob/main/js/examples/telemetry.ts)

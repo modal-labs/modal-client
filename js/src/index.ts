@@ -82,6 +82,7 @@ export type {
   SandboxListParams,
   SandboxExperimentalListParams,
   SandboxCreateParams,
+  SandboxUpdateNetworkPolicyParams,
 } from "./sandbox";
 export { ContainerProcess, Probe, Sandbox, SandboxService } from "./sandbox";
 export { SidecarService, SidecarContainer } from "./sandbox_sidecar";

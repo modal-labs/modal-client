@@ -28,6 +28,7 @@ import {
   TaskSnapshotDirectoryRequest,
   TaskSnapshotFilesystemRequest,
   TaskUnmountDirectoryRequest,
+  TaskSetNetworkAccessRequest,
 } from "../proto/modal_proto/task_command_router";
 import { TaskCommandRouterClientImpl } from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
@@ -1020,6 +1021,22 @@ export type SandboxCreateConnectTokenParams = {
   port?: number;
 };
 
+/**
+ * Parameters for {@link Sandbox#updateNetworkPolicy Sandbox.updateNetworkPolicy()}.
+ *
+ * Each dimension is independent: `undefined` leaves that dimension unchanged,
+ * while a defined value replaces it (an empty array blocks all egress for that
+ * dimension; a wildcard entry such as `"0.0.0.0/0"` or `"*"` allows everything).
+ *
+ * Currently, both dimensions must be provided (the underlying transport does
+ * not yet support partial updates). This requirement will be relaxed in a
+ * future release.
+ */
+export type SandboxUpdateNetworkPolicyParams = {
+  outboundCidrAllowlist?: string[];
+  outboundDomainAllowlist?: string[];
+};
+
 /** Credentials returned by {@link Sandbox#createConnectToken Sandbox.createConnectToken()}. */
 export type SandboxCreateConnectCredentials = {
   url: string;
@@ -1778,6 +1795,38 @@ export class Sandbox {
       path: pathBytes,
     });
     await commandRouterClient.unmountDirectory(request);
+  }
+
+  /**
+   * Updates the outbound network policy of a running Sandbox.
+   *
+   * Established connections that the new policy no longer permits are terminated.
+   *
+   * @param params - Both `outboundCidrAllowlist` and `outboundDomainAllowlist` must be provided.
+   */
+  async updateNetworkPolicy(
+    params: SandboxUpdateNetworkPolicyParams,
+  ): Promise<void> {
+    this.#ensureAttached();
+    if (
+      params.outboundCidrAllowlist === undefined ||
+      params.outboundDomainAllowlist === undefined
+    ) {
+      throw new InvalidError(
+        "updateNetworkPolicy currently requires both outboundCidrAllowlist and outboundDomainAllowlist to be set",
+      );
+    }
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
+
+    const request = TaskSetNetworkAccessRequest.create({
+      taskId,
+      networkAccess: NetworkAccess.create({
+        networkAccessType: NetworkAccess_NetworkAccessType.ALLOWLIST,
+        allowedCidrs: params.outboundCidrAllowlist,
+        allowedDomains: params.outboundDomainAllowlist,
+      }),
+    });
+    await commandRouterClient.setNetworkAccess(request);
   }
 
   /**

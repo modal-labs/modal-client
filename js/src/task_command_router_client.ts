@@ -37,6 +37,7 @@ import {
   TaskSnapshotFilesystemRequest,
   TaskSnapshotFilesystemResponse,
   TaskUnmountDirectoryRequest,
+  TaskSetNetworkAccessRequest,
   SandboxWaitUntilReadyTcrRequest,
   SandboxWaitUntilReadyTcrResponse,
 } from "../proto/modal_proto/task_command_router";
@@ -560,6 +561,10 @@ export class TaskCommandRouterClientImpl {
 
   async unmountDirectory(request: TaskUnmountDirectoryRequest): Promise<void> {
     await this.callUnary(() => this.stub.taskUnmountDirectory(request));
+  }
+
+  async setNetworkAccess(request: TaskSetNetworkAccessRequest): Promise<void> {
+    await this.callUnary(() => this.stub.taskSetNetworkAccess(request));
   }
 
   async sandboxWaitUntilReady(

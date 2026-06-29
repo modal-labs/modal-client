@@ -13,7 +13,7 @@ import {
   Probe,
   Sandbox,
 } from "../src/sandbox";
-import { expect, test, onTestFinished } from "vitest";
+import { expect, test, onTestFinished, vi } from "vitest";
 import {
   GPUConfig,
   PTYInfo_PTYType,
@@ -25,6 +25,8 @@ import {
   SandboxCreateV2Response,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
+import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
+import { TaskSetNetworkAccessRequest } from "../proto/modal_proto/task_command_router";
 import { TimeoutError } from "modal";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
@@ -1873,9 +1875,68 @@ test("SandboxDetachForbidsAllOperations", async () => {
   await expect(sb.tunnels()).rejects.toThrow(errorMsg);
   await expect(sb.snapshotFilesystem()).rejects.toThrow(errorMsg);
   await expect(sb.mountImage("/abc")).rejects.toThrow(errorMsg);
+  await expect(
+    sb.updateNetworkPolicy({
+      outboundCidrAllowlist: [],
+      outboundDomainAllowlist: [],
+    }),
+  ).rejects.toThrow(errorMsg);
   await expect(sb.snapshotDirectory("/abc")).rejects.toThrow(errorMsg);
   await expect(sb.poll()).rejects.toThrow(errorMsg);
   await expect(sb.setTags({})).rejects.toThrow(errorMsg);
   await expect(sb.getTags()).rejects.toThrow(errorMsg);
   await expect(sb.waitUntilReady()).rejects.toThrow(errorMsg);
+});
+
+test("updateNetworkPolicy sends correct request via mocked command router", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+
+  const setNetworkAccess = vi.fn().mockResolvedValue(undefined);
+  // Mock out the task command router so the test doesn't touch real infra.
+  const tryInit = vi
+    .spyOn(TaskCommandRouterClientImpl, "tryInit")
+    .mockResolvedValue({
+      setNetworkAccess,
+      close: vi.fn(),
+    } as unknown as TaskCommandRouterClientImpl);
+  onTestFinished(() => tryInit.mockRestore());
+
+  await sb.updateNetworkPolicy({
+    outboundCidrAllowlist: ["10.0.0.0/8"],
+    outboundDomainAllowlist: ["example.com"],
+  });
+
+  expect(setNetworkAccess).toHaveBeenCalledTimes(1);
+  const request = setNetworkAccess.mock
+    .calls[0][0] as TaskSetNetworkAccessRequest;
+  expect(request.taskId).toBe("ta-v2-123");
+  expect(request.networkAccess?.networkAccessType).toBe(
+    NetworkAccess_NetworkAccessType.ALLOWLIST,
+  );
+  expect(request.networkAccess?.allowedCidrs).toEqual(["10.0.0.0/8"]);
+  expect(request.networkAccess?.allowedDomains).toEqual(["example.com"]);
+});
+
+test("updateNetworkPolicy rejects when a dimension is missing", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+
+  await expect(
+    sb.updateNetworkPolicy({ outboundDomainAllowlist: ["example.com"] }),
+  ).rejects.toThrow("both outboundCidrAllowlist and outboundDomainAllowlist");
+
+  await expect(
+    sb.updateNetworkPolicy({ outboundCidrAllowlist: ["10.0.0.0/8"] }),
+  ).rejects.toThrow("both outboundCidrAllowlist and outboundDomainAllowlist");
+
+  await expect(sb.updateNetworkPolicy({})).rejects.toThrow(
+    "both outboundCidrAllowlist and outboundDomainAllowlist",
+  );
 });
