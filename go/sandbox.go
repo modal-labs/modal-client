@@ -187,6 +187,12 @@ func (p *Probe) toProto() (*pb.Probe, error) {
 	}.Build(), nil
 }
 
+// Allowlist is a set of allowed values for one dimension of network
+// access (CIDRs or domain names).
+type Allowlist struct {
+	Entries []string
+}
+
 // SandboxCreateParams are options for creating a Modal Sandbox.
 type SandboxCreateParams struct {
 	CPU                      float64                      // CPU request in fractional, physical cores.
@@ -809,6 +815,20 @@ type SandboxUnmountImageParams struct{}
 
 // SandboxReloadVolumesParams are options for Sandbox.ReloadVolumes.
 type SandboxReloadVolumesParams struct{}
+
+// SandboxUpdateNetworkPolicyParams are options for Sandbox.UpdateNetworkPolicy.
+//
+// Each dimension is independent: a nil *Allowlist leaves that dimension
+// unchanged, while a non-nil value replaces it (an empty Entries blocks all
+// egress; an allow-all entry such as "0.0.0.0/0" or "*" allows everything).
+//
+// Currently, both dimensions must be provided (the underlying transport does
+// not yet support partial updates). This requirement will be relaxed in a
+// future release.
+type SandboxUpdateNetworkPolicyParams struct {
+	OutboundCIDRAllowlist   *Allowlist
+	OutboundDomainAllowlist *Allowlist
+}
 
 // SandboxPollParams are options for Sandbox.Poll.
 type SandboxPollParams struct{}
@@ -1503,6 +1523,35 @@ func (sb *Sandbox) ReloadVolumes(ctx context.Context, params *SandboxReloadVolum
 		TaskId: sb.taskID,
 	}.Build())
 	return err
+}
+
+func buildUpdateNetworkPolicyProto(taskID string, params SandboxUpdateNetworkPolicyParams) *pb.TaskSetNetworkAccessRequest {
+	return pb.TaskSetNetworkAccessRequest_builder{
+		TaskId: taskID,
+		NetworkAccess: pb.NetworkAccess_builder{
+			NetworkAccessType: pb.NetworkAccess_ALLOWLIST,
+			AllowedCidrs:      params.OutboundCIDRAllowlist.Entries,
+			AllowedDomains:    params.OutboundDomainAllowlist.Entries,
+		}.Build(),
+	}.Build()
+}
+
+// UpdateNetworkPolicy updates the outbound network policy of a running Sandbox.
+//
+// Established connections that the new policy no longer permits are terminated.
+func (sb *Sandbox) UpdateNetworkPolicy(ctx context.Context, params *SandboxUpdateNetworkPolicyParams) error {
+	if params == nil {
+		params = &SandboxUpdateNetworkPolicyParams{}
+	}
+	if params.OutboundCIDRAllowlist == nil || params.OutboundDomainAllowlist == nil {
+		return InvalidError{Exception: "UpdateNetworkPolicy currently requires both OutboundCIDRAllowlist and OutboundDomainAllowlist to be set"}
+	}
+	taskID, crClient, err := sb.getCommandRouter(ctx)
+	if err != nil {
+		return err
+	}
+	request := buildUpdateNetworkPolicyProto(taskID, *params)
+	return crClient.SetNetworkAccess(ctx, request)
 }
 
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.

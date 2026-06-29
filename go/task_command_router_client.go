@@ -379,6 +379,14 @@ func callCommandRouterUnary[T any](ctx context.Context, c *taskCommandRouterClie
 	}, defaultRetryOptions(), &c.closed)
 }
 
+// SetNetworkAccess replaces the task's outbound network allowlist (domains + CIDRs).
+func (c *taskCommandRouterClient) SetNetworkAccess(ctx context.Context, request *pb.TaskSetNetworkAccessRequest) error {
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskSetNetworkAccessResponse, error) {
+		return c.stub.TaskSetNetworkAccess(authCtx, request)
+	})
+	return err
+}
+
 // MountDirectory mounts an image at a directory in the container.
 func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *pb.TaskMountDirectoryRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {

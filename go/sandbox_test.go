@@ -902,6 +902,106 @@ func TestSandboxCreateRequestProto_OutboundDomainAllowlist(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled"))
 }
 
+func TestUpdateNetworkPolicyProto(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// Both dimensions set.
+	req := buildUpdateNetworkPolicyProto("ta-123", SandboxUpdateNetworkPolicyParams{
+		OutboundCIDRAllowlist:   &Allowlist{Entries: []string{"8.8.8.8/32"}},
+		OutboundDomainAllowlist: &Allowlist{Entries: []string{"example.com"}},
+	})
+	g.Expect(req.GetTaskId()).To(gomega.Equal("ta-123"))
+	g.Expect(req.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
+	g.Expect(req.GetNetworkAccess().GetAllowedCidrs()).To(gomega.Equal([]string{"8.8.8.8/32"}))
+	g.Expect(req.GetNetworkAccess().GetAllowedDomains()).To(gomega.Equal([]string{"example.com"}))
+
+	// Empty Entries blocks that dimension.
+	req = buildUpdateNetworkPolicyProto("ta-123", SandboxUpdateNetworkPolicyParams{
+		OutboundCIDRAllowlist:   &Allowlist{},
+		OutboundDomainAllowlist: &Allowlist{},
+	})
+	g.Expect(req.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
+	g.Expect(req.GetNetworkAccess().GetAllowedCidrs()).To(gomega.BeEmpty())
+	g.Expect(req.GetNetworkAccess().GetAllowedDomains()).To(gomega.BeEmpty())
+}
+
+// mockSetNetworkAccessStub embeds pb.TaskCommandRouterClient so unused methods
+// inherit nil stubs. Only TaskSetNetworkAccess is overridden, capturing the
+// request it receives.
+type mockSetNetworkAccessStub struct {
+	pb.TaskCommandRouterClient
+	gotRequest *pb.TaskSetNetworkAccessRequest
+	fn         func(ctx context.Context, in *pb.TaskSetNetworkAccessRequest, opts ...grpc.CallOption) (*pb.TaskSetNetworkAccessResponse, error)
+}
+
+func (m *mockSetNetworkAccessStub) TaskSetNetworkAccess(
+	ctx context.Context,
+	in *pb.TaskSetNetworkAccessRequest,
+	opts ...grpc.CallOption,
+) (*pb.TaskSetNetworkAccessResponse, error) {
+	m.gotRequest = in
+	return m.fn(ctx, in, opts...)
+}
+
+func newSetNetworkAccessClient(stub *mockSetNetworkAccessStub) *taskCommandRouterClient {
+	client := &taskCommandRouterClient{stub: stub}
+	jwt := "fake-jwt"
+	client.jwt.Store(&jwt)
+	return client
+}
+
+func TestUpdateNetworkPolicyMockedCommandRouter(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &mockSetNetworkAccessStub{
+		fn: func(_ context.Context, _ *pb.TaskSetNetworkAccessRequest, _ ...grpc.CallOption) (*pb.TaskSetNetworkAccessResponse, error) {
+			return &pb.TaskSetNetworkAccessResponse{}, nil
+		},
+	}
+
+	sb := &Sandbox{
+		SandboxID:           "sb-123",
+		taskID:              "ta-123",
+		commandRouterClient: newSetNetworkAccessClient(stub),
+	}
+	sb.attached.Store(true)
+
+	err := sb.UpdateNetworkPolicy(context.Background(), &SandboxUpdateNetworkPolicyParams{
+		OutboundCIDRAllowlist:   &Allowlist{Entries: []string{"10.0.0.0/8"}},
+		OutboundDomainAllowlist: &Allowlist{Entries: []string{"example.com"}},
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(stub.gotRequest).ToNot(gomega.BeNil())
+	g.Expect(stub.gotRequest.GetTaskId()).To(gomega.Equal("ta-123"))
+	g.Expect(stub.gotRequest.GetNetworkAccess().GetAllowedCidrs()).To(gomega.Equal([]string{"10.0.0.0/8"}))
+	g.Expect(stub.gotRequest.GetNetworkAccess().GetAllowedDomains()).To(gomega.Equal([]string{"example.com"}))
+}
+
+func TestUpdateNetworkPolicyValidation(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	sb := &Sandbox{SandboxID: "sb-123"}
+	sb.attached.Store(true)
+
+	// Missing a dimension is an error (partial updates not yet supported).
+	err := sb.UpdateNetworkPolicy(context.Background(), &SandboxUpdateNetworkPolicyParams{
+		OutboundDomainAllowlist: &Allowlist{Entries: []string{"example.com"}},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("both OutboundCIDRAllowlist and OutboundDomainAllowlist"))
+
+	// Neither dimension set is also an error.
+	err = sb.UpdateNetworkPolicy(context.Background(), &SandboxUpdateNetworkPolicyParams{})
+	g.Expect(err).Should(gomega.HaveOccurred())
+
+	// Nil params is also an error.
+	err = sb.UpdateNetworkPolicy(context.Background(), nil)
+	g.Expect(err).Should(gomega.HaveOccurred())
+}
+
 func TestSandboxCreateRequestProto_InboundCIDRAllowlist(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

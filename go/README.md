@@ -82,6 +82,7 @@ We also provide a number of examples:
 - [Mount a Volume to a Sandbox](./examples/sandbox-volume/main.go), and same but
   [with an ephemeral Volume](./examples/sandbox-volume-ephemeral/main.go)
 - [Mount a cloud bucket to a Sandbox](./examples/sandbox-cloud-bucket/main.go)
+- [Update the outbound network policy of a running Sandbox](./examples/sandbox-network-policy/main.go)
 - [Eagerly build an Image for a Sandbox](./examples/sandbox-prewarm/main.go)
 - [Building custom Images](./examples/image-building/main.go)
 - [Add telemetry and tracing with custom interceptors](./examples/telemetry/main.go)

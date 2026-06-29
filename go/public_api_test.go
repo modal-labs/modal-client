@@ -124,6 +124,7 @@ var excludedTypes = map[string]string{
 	"StdioBehavior":                   "string enum type",
 	"TokenAndExpiry":                  "internal data type",
 	"InternalFailure":                 "error type (name does not end in Error)",
+	"Allowlist":                       "configuration value type, no public methods",
 	"FileType":                        "string enum, no public methods",
 	"FileInfo":                        "data type, no public methods",
 	"VolumeMountOptions":              "configuration value type",
