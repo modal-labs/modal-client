@@ -333,6 +333,74 @@ func TestSandboxWithSubPathVolume(t *testing.T) {
 	g.Expect(strings.TrimSpace(string(stdout))).Should(gomega.Equal("subpath-works"))
 }
 
+func TestSandboxReloadVolumes(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	volume, err := tc.Volumes.Ephemeral(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer volume.CloseEphemeral()
+
+	ls := func(sb *modal.Sandbox) []string {
+		p, err := sb.Exec(ctx, []string{"ls", "-1", "/volume"}, nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		out, err := io.ReadAll(p.Stdout)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		exitCode, err := p.Wait(ctx, nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(exitCode).Should(gomega.Equal(0))
+		return strings.Fields(string(out))
+	}
+
+	sb1, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command: []string{"sleep", "120"},
+		Volumes: map[string]*modal.Volume{"/volume": volume},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb1)
+
+	sb2, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command: []string{"sleep", "120"},
+		Volumes: map[string]*modal.Volume{"/volume": volume},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb2)
+
+	g.Expect(ls(sb1)).Should(gomega.BeEmpty())
+	g.Expect(ls(sb2)).Should(gomega.BeEmpty())
+
+	// Touch a file from sb1.
+	p, err := sb1.Exec(ctx, []string{"touch", "/volume/test.txt"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	exitCode, err := p.Wait(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).Should(gomega.Equal(0))
+	g.Expect(ls(sb1)).Should(gomega.ConsistOf("test.txt"))
+	g.Expect(ls(sb2)).Should(gomega.BeEmpty())
+
+	// Reloading sb1 commits its write to the volume; sb2 is unaffected
+	// until it reloads too.
+	err = sb1.ReloadVolumes(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	time.Sleep(500 * time.Millisecond)
+	g.Expect(ls(sb1)).Should(gomega.ConsistOf("test.txt"))
+	g.Expect(ls(sb2)).Should(gomega.BeEmpty())
+
+	// sb2 sees the file only after it reloads.
+	err = sb2.ReloadVolumes(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	time.Sleep(500 * time.Millisecond)
+	g.Expect(ls(sb1)).Should(gomega.ConsistOf("test.txt"))
+	g.Expect(ls(sb2)).Should(gomega.ConsistOf("test.txt"))
+}
+
 func TestSandboxWithTunnels(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

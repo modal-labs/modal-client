@@ -807,6 +807,9 @@ type SandboxMountImageParams struct {
 // SandboxUnmountImageParams are options for Sandbox.UnmountImage.
 type SandboxUnmountImageParams struct{}
 
+// SandboxReloadVolumesParams are options for Sandbox.ReloadVolumes.
+type SandboxReloadVolumesParams struct{}
+
 // SandboxPollParams are options for Sandbox.Poll.
 type SandboxPollParams struct{}
 
@@ -1477,6 +1480,29 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *Sandbo
 	}.Build()
 
 	return crClient.UnmountDirectory(ctx, request)
+}
+
+// ReloadVolumes reloads all Volumes mounted in the Sandbox.
+func (sb *Sandbox) ReloadVolumes(ctx context.Context, params *SandboxReloadVolumesParams) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if err := sb.ensureTaskID(ctx); err != nil {
+		return err
+	}
+	if sb.isV2 {
+		crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+		if err != nil {
+			return err
+		}
+		return crClient.ReloadVolumes(ctx, pb.TaskReloadVolumesRequest_builder{
+			TaskId: sb.taskID,
+		}.Build())
+	}
+	_, err := sb.client.cpClient.ContainerReloadVolumes(ctx, pb.ContainerReloadVolumesRequest_builder{
+		TaskId: sb.taskID,
+	}.Build())
+	return err
 }
 
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.

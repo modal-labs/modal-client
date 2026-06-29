@@ -395,6 +395,14 @@ func (c *taskCommandRouterClient) UnmountDirectory(ctx context.Context, request 
 	return err
 }
 
+// ReloadVolumes reloads all Volumes mounted in the task to reflect their latest committed state.
+func (c *taskCommandRouterClient) ReloadVolumes(ctx context.Context, request *pb.TaskReloadVolumesRequest) error {
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskReloadVolumesResponse, error) {
+		return c.stub.TaskReloadVolumes(authCtx, request)
+	})
+	return err
+}
+
 // SnapshotDirectory snapshots a directory into a new image.
 //
 // Mirrors SnapshotFilesystem: `timeout` is the overall budget across all

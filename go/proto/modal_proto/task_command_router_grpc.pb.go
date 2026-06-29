@@ -36,6 +36,7 @@ const (
 	TaskCommandRouter_TaskExecStdioRead_FullMethodName        = "/modal.task_command_router.TaskCommandRouter/TaskExecStdioRead"
 	TaskCommandRouter_TaskExecWait_FullMethodName             = "/modal.task_command_router.TaskCommandRouter/TaskExecWait"
 	TaskCommandRouter_TaskMountDirectory_FullMethodName       = "/modal.task_command_router.TaskCommandRouter/TaskMountDirectory"
+	TaskCommandRouter_TaskReloadVolumes_FullMethodName        = "/modal.task_command_router.TaskCommandRouter/TaskReloadVolumes"
 	TaskCommandRouter_TaskSetNetworkAccess_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskSetNetworkAccess"
 	TaskCommandRouter_TaskSnapshotDirectory_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotDirectory"
 	TaskCommandRouter_TaskSnapshotFilesystem_FullMethodName   = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotFilesystem"
@@ -79,6 +80,8 @@ type TaskCommandRouterClient interface {
 	TaskExecWait(ctx context.Context, in *TaskExecWaitRequest, opts ...grpc.CallOption) (*TaskExecWaitResponse, error)
 	// Mount an image at a directory in the container.
 	TaskMountDirectory(ctx context.Context, in *TaskMountDirectoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Reload all Volumes mounted in the task to reflect their latest committed state.
+	TaskReloadVolumes(ctx context.Context, in *TaskReloadVolumesRequest, opts ...grpc.CallOption) (*TaskReloadVolumesResponse, error)
 	// Replace the task's outbound network allowlist (domains + CIDRs).
 	TaskSetNetworkAccess(ctx context.Context, in *TaskSetNetworkAccessRequest, opts ...grpc.CallOption) (*TaskSetNetworkAccessResponse, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
@@ -278,6 +281,16 @@ func (c *taskCommandRouterClient) TaskMountDirectory(ctx context.Context, in *Ta
 	return out, nil
 }
 
+func (c *taskCommandRouterClient) TaskReloadVolumes(ctx context.Context, in *TaskReloadVolumesRequest, opts ...grpc.CallOption) (*TaskReloadVolumesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskReloadVolumesResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskReloadVolumes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *taskCommandRouterClient) TaskSetNetworkAccess(ctx context.Context, in *TaskSetNetworkAccessRequest, opts ...grpc.CallOption) (*TaskSetNetworkAccessResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TaskSetNetworkAccessResponse)
@@ -355,6 +368,8 @@ type TaskCommandRouterServer interface {
 	TaskExecWait(context.Context, *TaskExecWaitRequest) (*TaskExecWaitResponse, error)
 	// Mount an image at a directory in the container.
 	TaskMountDirectory(context.Context, *TaskMountDirectoryRequest) (*emptypb.Empty, error)
+	// Reload all Volumes mounted in the task to reflect their latest committed state.
+	TaskReloadVolumes(context.Context, *TaskReloadVolumesRequest) (*TaskReloadVolumesResponse, error)
 	// Replace the task's outbound network allowlist (domains + CIDRs).
 	TaskSetNetworkAccess(context.Context, *TaskSetNetworkAccessRequest) (*TaskSetNetworkAccessResponse, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
@@ -420,6 +435,9 @@ func (UnimplementedTaskCommandRouterServer) TaskExecWait(context.Context, *TaskE
 }
 func (UnimplementedTaskCommandRouterServer) TaskMountDirectory(context.Context, *TaskMountDirectoryRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskMountDirectory not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskReloadVolumes(context.Context, *TaskReloadVolumesRequest) (*TaskReloadVolumesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskReloadVolumes not implemented")
 }
 func (UnimplementedTaskCommandRouterServer) TaskSetNetworkAccess(context.Context, *TaskSetNetworkAccessRequest) (*TaskSetNetworkAccessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskSetNetworkAccess not implemented")
@@ -717,6 +735,24 @@ func _TaskCommandRouter_TaskMountDirectory_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TaskCommandRouter_TaskReloadVolumes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskReloadVolumesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskReloadVolumes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskReloadVolumes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskReloadVolumes(ctx, req.(*TaskReloadVolumesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _TaskCommandRouter_TaskSetNetworkAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TaskSetNetworkAccessRequest)
 	if err := dec(in); err != nil {
@@ -847,6 +883,10 @@ var TaskCommandRouter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TaskMountDirectory",
 			Handler:    _TaskCommandRouter_TaskMountDirectory_Handler,
+		},
+		{
+			MethodName: "TaskReloadVolumes",
+			Handler:    _TaskCommandRouter_TaskReloadVolumes_Handler,
 		},
 		{
 			MethodName: "TaskSetNetworkAccess",
