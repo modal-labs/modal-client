@@ -1022,7 +1022,7 @@ class _Image(_Object, type_prefix="im"):
             ```
         """
         if app.app_id is None:
-            raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
+            raise InvalidError("App has not been initialized yet. Use the context manager `app.run()` or `App.lookup`")
 
         resolver = Resolver()
         async with TaskContext() as tc:
