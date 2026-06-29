@@ -39,7 +39,12 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
-from ._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
+from ._utils.mount_utils import (
+    validate_network_file_systems,
+    validate_only_modal_volumes,
+    validate_volumes,
+    validate_volumes_by_object_id,
+)
 from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
@@ -2538,12 +2543,33 @@ class _SidecarManager:
         env: dict[str, str] | None = None,
         secrets: Collection[_Secret] | None = None,
         workdir: str | None = None,
+        volumes: dict[str | os.PathLike, _Volume] | None = None,
     ) -> _SidecarContainer:
+        """Create a sidecar container running alongside the Sandbox's main container.
+
+        Sidecar containers share the Sandbox's lifecycle but run their own Image and command. They
+        can be used to run auxiliary processes, such as a database or a service the main container
+        depends on.
+
+        Args:
+            *args: Command and arguments to run inside the sidecar container.
+            name: Unique name for the sidecar container. The name ``"main"`` is reserved.
+            image: Image to run the sidecar container with. Must be a pre-built or referenced Image.
+            env: Environment variables to set in the sidecar container.
+            secrets: Secrets to inject as environment variables in the sidecar container.
+            workdir: Working directory for the command; must be absolute if set.
+            volumes: Mapping of mount paths to `Volume` objects to mount in the sidecar container.
+
+        Returns:
+            A `SidecarContainer` handle for the running container.
+        """
         if name == _MAIN_CONTAINER_NAME:
             raise InvalidError(f"The name {_MAIN_CONTAINER_NAME!r} is reserved for the sandbox's main container.")
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
         _validate_exec_args(args)
+
+        validated_volumes = validate_only_modal_volumes(volumes, "Sandbox._experimental_sidecars.create(volumes=...)")
 
         if image._mount_layers:
             raise InvalidError(
@@ -2564,8 +2590,17 @@ class _SidecarManager:
             )
 
         secrets = secrets or []
-        secret_coros = [secret.hydrate(client=self._sandbox._client) for secret in secrets]
-        await TaskContext.gather(*secret_coros)
+        hydrate_coros = [secret.hydrate(client=self._sandbox._client) for secret in secrets] + [
+            volume.hydrate(client=self._sandbox._client) for _, volume in validated_volumes
+        ]
+        await TaskContext.gather(*hydrate_coros)
+
+        # Validate that the same volume (by object_id) isn't mounted at multiple paths. This relies on
+        # the volumes being hydrated above, since it compares object_ids.
+        validate_volumes_by_object_id(validated_volumes)
+
+        # Relies on dicts being ordered (true as of Python 3.6).
+        volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
 
         task_id, command_router_client = await self._get_command_router()
 
@@ -2577,6 +2612,7 @@ class _SidecarManager:
             env=env or {},
             workdir=workdir or "",
             secret_ids=[secret.object_id for secret in secrets],
+            volume_mounts=volume_mounts,
         )
         create_resp = await command_router_client.container_create(create_req)
         container_id = create_resp.container_id

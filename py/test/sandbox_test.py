@@ -1823,6 +1823,41 @@ def test_sandbox_container_create_rejects_mounts_kwarg(app):
         create(name="worker", image=image, mounts=())
 
 
+@skip_non_subprocess
+def test_sandbox_container_volume_mounts(app, servicer):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    read_only_volume = Volume.from_name("sidecar-ro-volume", create_if_missing=True).with_mount_options(read_only=True)
+    writable_volume = Volume.from_name("sidecar-rw-volume", create_if_missing=True)
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_sidecars.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="worker",
+            image=image,
+            volumes={"/mnt/ro": read_only_volume, "/mnt/rw": writable_volume},
+        )
+
+    (req,) = tcr_ctx.get_requests("TaskContainerCreate")
+    mounts_by_id = {mount.volume_id: mount for mount in req.volume_mounts}
+    assert len(mounts_by_id) == 2
+
+    ro_mount = mounts_by_id[read_only_volume.object_id]
+    assert ro_mount.mount_path == "/mnt/ro"
+    assert ro_mount.read_only is True
+
+    # Writable volumes are now supported in sidecars.
+    rw_mount = mounts_by_id[writable_volume.object_id]
+    assert rw_mount.mount_path == "/mnt/rw"
+    assert rw_mount.read_only is False
+
+
 def test_sandbox_wait_allowed_after_detached(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
     sb.terminate()
