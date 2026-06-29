@@ -216,13 +216,18 @@ message TaskExecStdinWriteRequest {
 
 message TaskExecStdinWriteResponse { }
 
+message TaskExecStdinWriteStreamEnd { }
+
 message TaskExecStdinWriteStreamRequest {
-  // First message must be `start`; subsequent messages must be `data`.
+  // First message must be `start`; subsequent messages are `data`; a final `end`
+  // signals EOF.
   oneof payload {
     // Start of a stdin write stream. Includes task_id, exec_id, and offset to write to.
     TaskExecStdinWriteStreamStart start = 1;
     // A chunk of stdin data to write to the exec'd command.
     bytes data = 2;
+    // Signals EOF: close stdin after the data sent so far.
+    TaskExecStdinWriteStreamEnd end = 3;
   }
 }
 
