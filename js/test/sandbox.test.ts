@@ -14,6 +14,7 @@ import {
   Sandbox,
 } from "../src/sandbox";
 import { expect, test, onTestFinished, vi } from "vitest";
+import { setTimeout } from "timers/promises";
 import {
   GPUConfig,
   PTYInfo_PTYType,
@@ -256,6 +257,59 @@ test("SandboxWithSubPathVolume", async () => {
   onTestFinished(async () => await reader.terminate());
   expect(await reader.wait()).toBe(0);
   expect((await reader.stdout.readText()).trim()).toBe("subpath-works");
+});
+
+test("SandboxReloadVolumes", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  const volume = await tc.volumes.ephemeral();
+  onTestFinished(() => volume.closeEphemeral());
+
+  const ls = async (sb: Sandbox): Promise<string[]> => {
+    const p = await sb.exec(["ls", "-1", "/volume"]);
+    const out = await p.stdout.readText();
+    expect(await p.wait()).toBe(0);
+    return out
+      .split(/\s+/)
+      .filter((name) => name)
+      .sort();
+  };
+
+  const sb1 = await tc.sandboxes.create(app, image, {
+    command: ["sleep", "120"],
+    volumes: { "/volume": volume },
+  });
+  onTestFinished(async () => await sb1.terminate());
+  const sb2 = await tc.sandboxes.create(app, image, {
+    command: ["sleep", "120"],
+    volumes: { "/volume": volume },
+  });
+  onTestFinished(async () => await sb2.terminate());
+
+  expect(await ls(sb1)).toEqual([]);
+  expect(await ls(sb2)).toEqual([]);
+
+  // Touch a file from sb1.
+  const touch = await sb1.exec(["touch", "/volume/test.txt"]);
+  expect(await touch.wait()).toBe(0);
+  expect(await ls(sb1)).toEqual(["test.txt"]);
+  expect(await ls(sb2)).toEqual([]);
+
+  // Reloading sb1 commits its write to the volume; sb2 is unaffected
+  // until it reloads too.
+  await sb1.reloadVolumes();
+  await setTimeout(500);
+  expect(await ls(sb1)).toEqual(["test.txt"]);
+  expect(await ls(sb2)).toEqual([]);
+
+  // sb2 sees the file only after it reloads.
+  await sb2.reloadVolumes();
+  await setTimeout(500);
+  expect(await ls(sb1)).toEqual(["test.txt"]);
+  expect(await ls(sb2)).toEqual(["test.txt"]);
 });
 
 test("SandboxWithTunnels", async () => {

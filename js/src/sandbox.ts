@@ -19,12 +19,14 @@ import {
   Resources,
   PortSpecs,
   Probe as ProbeProto,
+  ContainerReloadVolumesRequest,
 } from "../proto/modal_proto/api";
 import {
   TaskExecStartRequest,
   TaskExecStdoutConfig,
   TaskExecStderrConfig,
   TaskMountDirectoryRequest,
+  TaskReloadVolumesRequest,
   TaskSnapshotDirectoryRequest,
   TaskSnapshotFilesystemRequest,
   TaskUnmountDirectoryRequest,
@@ -1827,6 +1829,25 @@ export class Sandbox {
       }),
     });
     await commandRouterClient.setNetworkAccess(request);
+  }
+
+  /**
+   * Reload all Volumes mounted in the Sandbox.
+   */
+  async reloadVolumes(): Promise<void> {
+    this.#ensureAttached();
+    const taskId = await this.#getTaskId();
+    if (this.#isV2) {
+      const commandRouterClient =
+        await this.#getOrCreateCommandRouterClient(taskId);
+      await commandRouterClient.reloadVolumes(
+        TaskReloadVolumesRequest.create({ taskId }),
+      );
+    } else {
+      await this.#client.cpClient.containerReloadVolumes(
+        ContainerReloadVolumesRequest.create({ taskId }),
+      );
+    }
   }
 
   /**

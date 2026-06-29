@@ -32,6 +32,7 @@ import {
   TaskExecWaitRequest,
   TaskExecWaitResponse,
   TaskMountDirectoryRequest,
+  TaskReloadVolumesRequest,
   TaskSnapshotDirectoryRequest,
   TaskSnapshotDirectoryResponse,
   TaskSnapshotFilesystemRequest,
@@ -565,6 +566,11 @@ export class TaskCommandRouterClientImpl {
 
   async setNetworkAccess(request: TaskSetNetworkAccessRequest): Promise<void> {
     await this.callUnary(() => this.stub.taskSetNetworkAccess(request));
+  }
+
+  /** Reload all Volumes mounted in the task to reflect their latest committed state. */
+  async reloadVolumes(request: TaskReloadVolumesRequest): Promise<void> {
+    await this.callUnary(() => this.stub.taskReloadVolumes(request));
   }
 
   async sandboxWaitUntilReady(
