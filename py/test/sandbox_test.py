@@ -948,6 +948,18 @@ def test_sandbox_snapshot_fs_v2(app, servicer, monkeypatch, legacy_env_var):
     sb.terminate()
 
 
+def test_sandbox_reload_volumes_v2(app, servicer):
+    """V2 sandboxes route reload_volumes() through the command router."""
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb.reload_volumes()
+
+    (req,) = tcr_ctx.get_requests("TaskReloadVolumes")
+    assert req.task_id == "ta-v2-123"
+
+    sb.terminate()
+
+
 def test_sandbox_snapshot_fs_legacy_env_var(app, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT", "1")
 

@@ -1643,13 +1643,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         Added in v1.1.0.
 
         """
-        self._ensure_v1("reload_volumes")
         task_id = await self._get_task_id()
-        await self._client.stub.ContainerReloadVolumes(
-            api_pb2.ContainerReloadVolumesRequest(
-                task_id=task_id,
-            ),
-        )
+        if self._is_v2:
+            command_router_client = await self._get_command_router_client(task_id)
+            await command_router_client.reload_volumes(task_id)
+        else:
+            await self._client.stub.ContainerReloadVolumes(
+                api_pb2.ContainerReloadVolumesRequest(
+                    task_id=task_id,
+                ),
+            )
 
     @overload
     async def terminate(
