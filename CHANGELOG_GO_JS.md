@@ -4,9 +4,11 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-- (JS) Added `Sandbox.updateNetworkPolicy` to replace the outbound network policy of a running Sandbox. Both `outboundCidrAllowlist` and `outboundDomainAllowlist` must be provided.
-- (Go) Added `Sandbox.UpdateNetworkPolicy` to update the outbound network policy of a running Sandbox at runtime. Both `OutboundCIDRAllowlist` and `OutboundDomainAllowlist` must be provided.
-- (Go) Added `Allowlist` type for use in `SandboxUpdateNetworkPolicyParams`.
+No unreleased changes.
+
+## js/v0.8.2, go/v0.8.2
+
+- Added `Sandbox.updateNetworkPolicy` (JS) and `Sandbox.UpdateNetworkPolicy` (Go) to update the outbound network policy of a running Sandbox. Both `outboundCidrAllowlist` and `outboundDomainAllowlist` must be provided.
 
 ## js/v0.8.1, go/v0.8.1
 

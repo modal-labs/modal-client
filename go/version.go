@@ -6,4 +6,4 @@ package modal
 // version in client/js/package.json — the release tooling derives both the
 // js/vX.Y.Z and go/vX.Y.Z tags from js/package.json. The `inv lint-versions`
 // linter enforces that this constant matches js/package.json.
-const sdkVersion = "0.8.1"
+const sdkVersion = "0.8.2"
