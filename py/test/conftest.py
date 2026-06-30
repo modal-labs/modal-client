@@ -1015,6 +1015,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     is_method=True,
                     use_method_name=method_name,
                     function_schema=method_definition.function_schema,
+                    input_plane_url=self.client_addr if function_proto.routing_region else None,
+                    input_plane_region=function_proto.routing_region,
                     supported_input_formats=method_definition.supported_input_formats,
                     supported_output_formats=method_definition.supported_output_formats,
                 )
@@ -1908,22 +1910,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
             bound_func = api_pb2.Function()
             bound_func.CopyFrom(base_function)
+            if request.function_options.HasField("routing_region"):
+                bound_func.routing_region = request.function_options.routing_region
             self.app_functions[function_id] = bound_func
             self.function_id_to_definition_id[function_id] = self.function_id_to_definition_id[request.function_id]
             self.bound_functions[bind_params_key] = function_id
             self.function_params[function_id] = deserialize_params(request.serialized_params, bound_func, None)
             self.function_options[function_id] = request.function_options
 
+        handle_metadata = self.get_function_metadata(function_id)
+        handle_metadata.use_function_id = function_id
+        handle_metadata.use_method_name = ""
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
                 bound_function_id=function_id,
-                handle_metadata=api_pb2.FunctionHandleMetadata(
-                    function_name=base_function.function_name,
-                    function_type=base_function.function_type,
-                    web_url=base_function.web_url,
-                    use_function_id=function_id,
-                    use_method_name="",
-                ),
+                handle_metadata=handle_metadata,
             )
         )
 

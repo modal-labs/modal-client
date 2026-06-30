@@ -83,10 +83,8 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
     def hydrate_from_instance_service_function(new_function: _Function):
         assert service_function.is_hydrated
         assert cls.is_hydrated
-        # After 0.67 is minimum required version, we should be able to use method metadata directly
-        # from the service_function instead (see _Cls._hydrate_metadata), but for now we use the Cls
-        # since it can take the data from the cls metadata OR function metadata depending on source
-        method_metadata = cls._method_metadata[method_name]
+
+        method_metadata = service_function._method_handle_metadata[method_name]
         new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
 
     async def _load(fun: "_Function", resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
@@ -734,6 +732,7 @@ More information on class parameterization can be found here: https://modal.com/
         timeout: int | None = None,
         region: str | Sequence[str] | None = None,
         cloud: str | None = None,
+        routing_region: str | None = None,
     ) -> "_Cls":
         """Override the static Cls configuration with invocation-specific values.
 
@@ -759,6 +758,7 @@ More information on class parameterization can be found here: https://modal.com/
             timeout: Function timeout in seconds.
             region: One region or a list of regions to schedule on.
             cloud: Cloud provider (for example ``aws``, ``gcp``, ``oci``, or ``auto``).
+            routing_region: Region that inputs and outputs are routed through for this Cls.
 
         Returns:
             A new ``Cls`` with the merged options.
@@ -793,6 +793,7 @@ More information on class parameterization can be found here: https://modal.com/
             timeout=timeout,
             region=region,
             cloud=cloud,
+            routing_region=routing_region,
         )
 
         return self._apply_dynamic_config(options, "with_options")

@@ -220,6 +220,32 @@ def test_class_with_options(client, servicer):
             Foo.with_options(concurrency_limit=10)()  # type: ignore
 
 
+def test_class_with_options_routing_region(client, servicer):
+    with app.run(client=client):
+        obj = Foo.with_options(routing_region="us-east")()  # type: ignore
+        with servicer.intercept() as ctx:
+            method = obj.bar
+            method.hydrate()
+            (bind_req,) = ctx.get_requests("FunctionBindParams")
+            assert bind_req.function_options.routing_region == "us-east"
+
+        # The bound method must inherit input-plane routing from the bound instance service
+        # function, otherwise `routing_region` would be silently ignored at invocation time.
+        _method = synchronizer._translate_in(method)  # type: ignore
+        assert _method._input_plane_region == "us-east"  # type: ignore
+        assert _method._input_plane_url  # type: ignore
+
+        service_fn = synchronizer._translate_in(obj)._cached_service_function()  # type: ignore
+        assert service_fn._input_plane_region == "us-east"  # type: ignore
+        assert service_fn._input_plane_url == _method._input_plane_url  # type: ignore
+
+        plain_method = Foo().bar  # type: ignore
+        plain_method.hydrate()
+        _plain_method = synchronizer._translate_in(plain_method)  # type: ignore
+        assert _plain_method._input_plane_region == ""  # type: ignore
+        assert not _plain_method._input_plane_url  # type: ignore
+
+
 def test_class_multiple_dynamic_parameterization_methods(client, servicer):
     foo = (
         Foo.with_options(max_containers=1)  # type: ignore
@@ -306,7 +332,21 @@ def test_with_options_from_name(servicer, client):
                 ),
             ),
         )
-        ctx.add_response("FunctionBindParams", api_pb2.FunctionBindParamsResponse(bound_function_id="fu-124"))
+        ctx.add_response(
+            "FunctionBindParams",
+            api_pb2.FunctionBindParamsResponse(
+                bound_function_id="fu-124",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    method_handle_metadata={
+                        "some_method": api_pb2.FunctionHandleMetadata(
+                            use_function_id="fu-124",
+                            use_method_name="some_method",
+                            function_name="SomeClass.some_method",
+                        )
+                    }
+                ),
+            ),
+        )
         inst.some_method.remote()
 
     function_bind_params: api_pb2.FunctionBindParamsRequest
