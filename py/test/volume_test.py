@@ -815,6 +815,17 @@ def test_volume_list(servicer, client):
     assert len(volume_list) == 2
 
 
+def test_volume_list_metadata_version(servicer, client):
+    modal.Volume.from_name("v1-volume", create_if_missing=True).hydrate(client)
+    modal.Volume.from_name("v2-volume", create_if_missing=True, version=api_pb2.VOLUME_FS_VERSION_V2).hydrate(client)
+
+    volume_list = modal.Volume.objects.list(client=client)
+    volumes_by_name = {v.name: v for v in volume_list}
+
+    assert volumes_by_name["v1-volume"]._is_v1
+    assert not volumes_by_name["v2-volume"]._is_v1
+
+
 def test_volume_create(servicer, client):
     modal.Volume.objects.create(name="test-volume-create", client=client)
     modal.Volume.from_name("test-volume-create").hydrate(client)

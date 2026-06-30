@@ -3223,7 +3223,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 continue
 
             creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
-            metadata = api_pb2.VolumeMetadata(name=name, creation_info=creation_info)
+            volume_version = self.volumes[obj_id].version
+            metadata = api_pb2.VolumeMetadata(name=name, creation_info=creation_info, version=volume_version)
             volumes.append(api_pb2.VolumeListItem(label=name, volume_id=obj_id, metadata=metadata))
             if request.pagination.max_objects and len(volumes) >= request.pagination.max_objects:
                 break
