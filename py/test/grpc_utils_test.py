@@ -42,6 +42,10 @@ async def test_http_channel(servicer, credentials):
     resp = await client_stub.BlobCreate(req, metadata=metadata)
     assert len(resp.blob_ids) > 0
 
+    # The endpoint hostname is injected as a header on every request.
+    host = urllib.parse.urlparse(servicer.client_addr).hostname
+    assert servicer.blob_create_metadata.get("x-modal-host") == host
+
     channel.close()
 
 

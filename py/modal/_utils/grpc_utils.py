@@ -289,6 +289,12 @@ def create_channel(
         for k, v in metadata.items():
             event.metadata[k] = v
 
+        if o.hostname is not None:
+            # GRPC actually injects a :authority pseudo-header containing the hostname.
+            # But this gets stripped out by the C/C++ extension server-side and is hard to fix.
+            # So let's just add a separate header we can parse easily.
+            event.metadata["x-modal-host"] = o.hostname
+
         idempotency_key = typing.cast(Optional[str], event.metadata.get("x-idempotency-key"))
         if idempotency_key is None:
             logger.debug(f"Sending request to {event.method_name}")
