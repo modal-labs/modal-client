@@ -1637,22 +1637,23 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await self._client.stub.SandboxCreateConnectToken(req)
         return SandboxConnectCredentials(resp.url, resp.token)
 
-    async def reload_volumes(self) -> None:
+    async def reload_volumes(self, *, timeout: int = 55) -> None:
         """Reload all Volumes mounted in the Sandbox.
 
         Added in v1.1.0.
 
+        Blocks until the Volumes have been reloaded, bounded by `timeout` (55 seconds by default). If the reload
+        does not complete within that window, `modal.exception.TimeoutError` is raised; note that the reload may
+        still complete in the background.
+
+        Args:
+            timeout: Maximum time in seconds to wait for the reload. Must be positive.
         """
+        if timeout <= 0:
+            raise InvalidError("The `timeout` argument to `Sandbox.reload_volumes` must be positive.")
         task_id = await self._get_task_id()
-        if self._is_v2:
-            command_router_client = await self._get_command_router_client(task_id)
-            await command_router_client.reload_volumes(task_id)
-        else:
-            await self._client.stub.ContainerReloadVolumes(
-                api_pb2.ContainerReloadVolumesRequest(
-                    task_id=task_id,
-                ),
-            )
+        command_router_client = await self._get_command_router_client(task_id)
+        await command_router_client.reload_volumes(task_id, timeout=float(timeout))
 
     @overload
     async def terminate(

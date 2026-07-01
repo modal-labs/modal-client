@@ -948,6 +948,20 @@ def test_sandbox_snapshot_fs_v2(app, servicer, monkeypatch, legacy_env_var):
     sb.terminate()
 
 
+def test_sandbox_reload_volumes(app, servicer):
+    """V1 sandboxes route reload_volumes() through the command router."""
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb.reload_volumes()
+        sb.reload_volumes(timeout=17)
+
+    reqs = tcr_ctx.get_requests("TaskReloadVolumes")
+    assert len(reqs) == 2
+    assert all(req.task_id for req in reqs)
+
+    sb.terminate()
+
+
 def test_sandbox_reload_volumes_v2(app, servicer):
     """V2 sandboxes route reload_volumes() through the command router."""
     sb = Sandbox._experimental_create("sleep", "infinity", app=app)
@@ -956,6 +970,18 @@ def test_sandbox_reload_volumes_v2(app, servicer):
 
     (req,) = tcr_ctx.get_requests("TaskReloadVolumes")
     assert req.task_id == "ta-v2-123"
+
+    sb.terminate()
+
+
+@pytest.mark.parametrize("create", [Sandbox.create, Sandbox._experimental_create], ids=["v1", "v2"])
+def test_sandbox_reload_volumes_timeout_validation(app, servicer, create):
+    """A non-positive `timeout` is rejected for all sandboxes."""
+    sb = create("sleep", "infinity", app=app)
+    with pytest.raises(InvalidError, match="must be positive"):
+        sb.reload_volumes(timeout=0)
+    with pytest.raises(InvalidError, match="must be positive"):
+        sb.reload_volumes(timeout=-5)
 
     sb.terminate()
 
