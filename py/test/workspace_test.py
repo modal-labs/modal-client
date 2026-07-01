@@ -2,6 +2,8 @@
 import pytest
 from datetime import datetime, timezone
 
+from grpclib import GRPCError, Status
+
 from modal._utils.time_utils import timestamp_to_localized_dt
 from modal._workspace import _member_role_from_proto
 from modal.workspace import ProxyTokenInfo, TokenData, Workspace, WorkspaceMemberInfo
@@ -117,6 +119,40 @@ def test_workspace_proxy_tokens_delete(servicer, client):
 
     workspace.proxy_tokens.delete(token.token_id)
     assert token.token_id not in servicer.webhook_tokens
+
+
+def test_workspace_settings_list(servicer, client):
+    settings = Workspace.from_context(client=client).settings.list()
+    assert settings.image_builder_version == "2024.10"
+    assert settings.default_environment == "main"
+
+
+def test_workspace_settings_set_image_builder_version(servicer, client):
+    Workspace.from_context(client=client).settings.set("image-builder-version", "2025.06")
+    assert servicer.workspace_image_builder_version == "2025.06"
+    assert servicer.workspace_default_environment_name == "main"  # unchanged
+
+
+def test_workspace_settings_set_default_environment(servicer, client):
+    Workspace.from_context(client=client).settings.set("default-environment", "prod")
+    assert servicer.workspace_default_environment_name == "prod"
+    assert servicer.workspace_image_builder_version == "2024.10"  # unchanged
+
+
+def test_workspace_settings_set_unknown_raises(servicer, client):
+    with pytest.raises(ValueError, match="Unknown setting"):
+        Workspace.from_context(client=client).settings.set("nonexistent", "value")
+
+
+def test_workspace_settings_set_raises_on_rpc_failure(servicer, client):
+    async def bad_handler(self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.INVALID_ARGUMENT, "invalid version")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("WorkspaceSetImageBuilderVersion", bad_handler)
+        with pytest.raises(Exception, match="invalid version"):
+            Workspace.from_context(client=client).settings.set("image-builder-version", "bad")
 
 
 def test_member_role_from_proto():

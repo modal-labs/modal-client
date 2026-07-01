@@ -125,6 +125,10 @@ class _Workspace(_Object, type_prefix="ac"):
     def proxy_tokens(self) -> "_WorkspaceProxyTokenManager":
         return _WorkspaceProxyTokenManager(self)
 
+    @property
+    def settings(self) -> "_WorkspaceSettingsManager":
+        return _WorkspaceSettingsManager(self)
+
 
 @dataclass(frozen=True)
 class TokenData:
@@ -340,3 +344,79 @@ class _WorkspaceBillingManager:
             BillingReportItem._from_proto(pb_item)
             async for pb_item in self._workspace.client.stub.WorkspaceBillingReport.unary_stream(request)
         ]
+
+
+@dataclass(frozen=True)
+class WorkspaceSettings:
+    """Current settings for the workspace."""
+
+    default_environment: str
+    image_builder_version: str
+
+
+class _WorkspaceSettingsManager:
+    """mdmd:namespace
+    Namespace for Workspace settings APIs.
+    """
+
+    @classmethod
+    def valid_settings(cls):
+        return ("default-environment", "image-builder-version")
+
+    def __init__(self, workspace: _Workspace):
+        """mdmd:hidden"""
+        self._workspace = workspace
+
+    async def list(self):
+        """Return a the current workspace settings.
+
+        Returns:
+            A `WorkspaceSettings` dataclass.
+        """
+        if not self._workspace.is_hydrated:
+            await self._workspace.hydrate()
+        resp = await self._workspace.client.stub.WorkspaceSettings(Empty())
+        return WorkspaceSettings(
+            default_environment=resp.default_environment_name, image_builder_version=resp.image_builder_version
+        )
+
+    async def _set_image_builder_version(self, version: str) -> None:
+        """mdmd:hidden
+        Set the image builder version for the Workspace.
+        """
+        if not self._workspace.is_hydrated:
+            await self._workspace.hydrate()
+        req = api_pb2.WorkspaceSetImageBuilderVersionRequest(new_image_builder_version=version)
+        await self._workspace.client.stub.WorkspaceSetImageBuilderVersion(req)
+
+    async def _set_default_environment(self, name: str) -> None:
+        """Set the default environment for the Workspace."""
+        if not self._workspace.is_hydrated:
+            await self._workspace.hydrate()
+        req = api_pb2.WorkspaceSetDefaultEnvironmentRequest(environment_name=name)
+        await self._workspace.client.stub.WorkspaceSetDefaultEnvironment(req)
+
+    async def set(self, name: str, value: str) -> None:
+        """Set a workspace setting to a new value. Must be workspace manager or owner.
+
+        The following settings can be updated:
+
+        - image-builder-version: The image builder version determines the software included in our base images.
+        - default-environment: The default environment when the environment is omitted from SDK or CLI methods.
+
+        Args:
+            name: The name of the setting.
+            value: The new value of the setting.
+
+        Examples:
+            ```python notest
+            modal.Workspace.from_context().settings.set("default-environment", "dev")
+            ```
+        """
+        match name:
+            case "image-builder-version":
+                await self._set_image_builder_version(value)
+            case "default-environment":
+                await self._set_default_environment(value)
+            case _:
+                raise ValueError(f"Unknown setting {name!r}. Valid settings: {', '.join(self.valid_settings())}")

@@ -154,6 +154,48 @@ def test_workspace_proxy_tokens_allow_revoke_cli(servicer, set_env_client):
     assert json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "-e", "main", "--json"]).stdout) == []
 
 
+def test_workspace_settings_fetch_cli(servicer, set_env_client):
+    res = run_cli_command(["workspace", "settings", "list"])
+    assert "image-builder-version" in res.stdout
+    assert "2024.10" in res.stdout
+    assert "default-environment" in res.stdout
+    assert "main" in res.stdout
+
+    # --json emits machine-readable output with "setting" and "value" keys
+    rows = json.loads(run_cli_command(["workspace", "settings", "list", "--json"]).stdout)
+    by_setting = {r["setting"]: r["value"] for r in rows}
+    assert by_setting["image-builder-version"] == "2024.10"
+    assert by_setting["default-environment"] == "main"
+
+
+def test_workspace_settings_set_cli(servicer, set_env_client):
+    res = run_cli_command(["workspace", "settings", "set", "image-builder-version", "2025.06"])
+    assert "image-builder-version" in res.stdout
+    assert "✓" in res.stdout
+    assert servicer.workspace_image_builder_version == "2025.06"
+
+    run_cli_command(["workspace", "settings", "set", "default-environment", "prod"])
+    assert servicer.workspace_default_environment_name == "prod"
+
+
+def test_workspace_settings_set_failure_cli(servicer, set_env_client):
+    async def bad_handler(self, stream):
+        from grpclib import GRPCError, Status
+
+        await stream.recv_message()
+        raise GRPCError(Status.INVALID_ARGUMENT, "invalid version")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("WorkspaceSetImageBuilderVersion", bad_handler)
+        res = run_cli_command(
+            ["workspace", "settings", "set", "image-builder-version", "bad"],
+            expected_exit_code=1,
+        )
+
+    assert "image-builder-version" in res.stdout
+    assert "✗" in res.stdout
+
+
 def test_image_cli_list(servicer, set_env_client, monkeypatch):
     sleep_calls: list[float] = []
 

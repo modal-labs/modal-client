@@ -738,6 +738,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.webhook_tokens: dict[str, dict] = {}
         # token_id -> set of environment_ids the token is associated with
         self.webhook_token_environments: dict[str, set[str]] = {}
+        self.workspace_image_builder_version: str = "2024.10"
+        self.workspace_default_environment_name: str = "main"
         self.workspace_members: list[api_pb2.WorkspaceMembersListItem] = [
             api_pb2.WorkspaceMembersListItem(
                 user_id="us-1",
@@ -3091,6 +3093,27 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def WorkspaceMembersList(self, stream):
         await stream.recv_message()
         await stream.send_message(api_pb2.WorkspaceMembersListResponse(members=self.workspace_members))
+
+    async def WorkspaceSettings(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.WorkspaceSettingsResponse(
+                default_environment_name=self.workspace_default_environment_name,
+                image_builder_version=self.workspace_image_builder_version,
+            )
+        )
+
+    async def WorkspaceSetImageBuilderVersion(self, stream):
+        request: api_pb2.WorkspaceSetImageBuilderVersionRequest = await stream.recv_message()
+        self.workspace_image_builder_version = request.new_image_builder_version
+        await stream.send_message(
+            api_pb2.WorkspaceSetImageBuilderVersionResponse(image_builder_version=request.new_image_builder_version)
+        )
+
+    async def WorkspaceSetDefaultEnvironment(self, stream):
+        request: api_pb2.WorkspaceSetDefaultEnvironmentRequest = await stream.recv_message()
+        self.workspace_default_environment_name = request.environment_name
+        await stream.send_message(Empty())
 
     ### Proxy auth (webhook) tokens
 

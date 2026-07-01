@@ -127,3 +127,49 @@ def proxy_tokens_delete(token_id: str, yes: bool = False):
         confirm_or_suggest_yes(message)
     Workspace.from_context().proxy_tokens.delete(token_id)
     rich.print(f"[green]✓[/green] Deleted proxy token {token_id!r}")
+
+
+settings_cli = ModalGroup(name="settings", help="Manage workspace settings. Must be workspace manager or owner.")
+workspace_cli.add_command(settings_cli)
+
+
+@settings_cli.command("list")
+@click.option("--json", is_flag=True, default=False)
+@click.pass_context
+def settings_group(
+    ctx: click.Context,
+    json: bool,
+):
+    """View the current settings for the workspace."""
+    if ctx.invoked_subcommand is not None:
+        return
+    s = Workspace.from_context().settings.list()
+    rows = [
+        ["default-environment", s.default_environment],
+        ["image-builder-version", s.image_builder_version],
+    ]
+    display_table(["Setting", "Value"], rows, json=json)
+
+
+@settings_cli.command("set", no_args_is_help=True)
+@click.argument("setting")
+@click.argument("value")
+def settings_set(setting: str, value: str):
+    """Update a workspace setting. Must be workspace manager or owner.
+
+    The following settings can be updated:
+    - `image-builder-version`: The image builder version determines the software included in our base images.
+    - `default-environment`: The default environment to use when the environment is omitted from SDK or CLI methods.
+
+    Usage:
+    - `modal workspace settings set image-builder-version 2025.06`
+    - `modal workspace settings set default-environment main`
+    """
+    ws = Workspace.from_context().hydrate()
+    s = ws.settings.list()
+    try:
+        ws.settings.set(setting, value)
+        rich.print(f"[green]✓[/green] {setting}: updated from {getattr(s, setting.replace('-', '_'))} to {value}")
+    except Exception as e:
+        rich.print(f"[red]✗[/red] {setting}: {e}")
+        raise SystemExit(1)
