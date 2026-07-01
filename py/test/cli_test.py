@@ -2602,6 +2602,24 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
         assert "Traceback" not in err
 
 
+def test_container_stop(servicer, set_env_client):
+    running_task_info = api_pb2.TaskGetInfoResponse(
+        app_id="ap-123", info=api_pb2.TaskInfo(id="ta-123", started_at=1700000000.0)
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("TaskGetInfo", running_task_info)
+        ctx.add_response("TaskGetInfo", running_task_info)
+        run_cli_command(["container", "stop", "ta-123", "--yes"])
+        run_cli_command(["container", "stop", "ta-123", "--graceful", "--yes"])
+
+    first_request, second_request = ctx.get_requests("ContainerStop")
+    assert first_request.task_id == "ta-123"
+    assert not first_request.graceful
+    assert second_request.task_id == "ta-123"
+    assert second_request.graceful
+
+
 @skip_windows("modal shell is not supported on Windows.")
 def test_container_exec(servicer, set_env_client):
     # Test non-PTY path: runs the command and waits for exit

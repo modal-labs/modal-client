@@ -332,14 +332,25 @@ def exec(
 
 @container_cli.command("stop")
 @click.argument("container_id")
+@click.option(
+    "--graceful",
+    is_flag=True,
+    default=False,
+    help="Let the container finish its current inputs before exiting, instead of cancelling them.",
+)
 @yes_option
 @synchronizer.create_blocking
-async def stop(container_id: str = "", *, yes: bool = False):
+async def stop(container_id: str = "", *, graceful: bool = False, yes: bool = False):
     """Terminate a running container.
 
-    This will send the container a SIGINT signal that Modal will handle.
-    Any inputs that are currently running on the container will be cancelled and rescheduled
-    on other containers.
+    By default, this will send the container a SIGINT signal that Modal will handle.
+    For Functions, any inputs that are currently running on the container will be cancelled
+    and rescheduled on other containers.
+
+    With `--graceful`, the container will be allowed to finish the inputs it is currently
+    running, exiting once they complete. Graceful stops are only supported for containers
+    running a Modal Function.
+
     """
     client = await _Client.from_env()
     resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=container_id))
@@ -347,5 +358,5 @@ async def stop(container_id: str = "", *, yes: bool = False):
         raise SystemExit(f"Container '{container_id}' is already stopped.")
     if not yes:
         confirm_or_suggest_yes(f"Are you sure you want to stop container '{container_id}'?")
-    request = api_pb2.ContainerStopRequest(task_id=container_id)
+    request = api_pb2.ContainerStopRequest(task_id=container_id, graceful=graceful)
     await client.stub.ContainerStop(request)
