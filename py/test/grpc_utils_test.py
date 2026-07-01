@@ -15,6 +15,7 @@ from modal._utils.grpc_utils import (
     Retry,
     connect_channel,
     create_channel,
+    create_channel_with_fallbacks,
     get_server_retry_policy,
 )
 from modal.exception import ClientClosed, InvalidError
@@ -375,3 +376,35 @@ async def test_ModalChannel(servicer):
 
     with pytest.raises(ClientClosed, match=error_msg):
         await client_stub.BlobCreate(req, metadata=metadata)
+
+
+@pytest.mark.asyncio
+async def test_create_channel_with_fallbacks_single_url(servicer):
+    # With a single URL, the channel is created and connected normally.
+    channel = await create_channel_with_fallbacks(servicer.client_addr)
+    try:
+        assert channel is not None
+    finally:
+        channel.close()
+
+
+@pytest.mark.asyncio
+async def test_create_channel_with_fallbacks_falls_back(servicer, monkeypatch):
+    # Keep each candidate's connect budget short so the unreachable URL loses the race quickly.
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
+    # The primary URL is unresolvable; the working servicer address should win the race.
+    # stagger_delay=0 starts both attempts immediately to keep the test fast.
+    channel = await create_channel_with_fallbacks(f"https://xyz.invalid,{servicer.client_addr}", stagger_delay=0)
+    try:
+        assert channel is not None
+    finally:
+        channel.close()
+
+
+@pytest.mark.asyncio
+async def test_create_channel_with_fallbacks_all_unreachable(monkeypatch):
+    from modal.exception import ConnectionError as ModalConnectionError
+
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
+    with pytest.raises(ModalConnectionError):
+        await create_channel_with_fallbacks("https://xyz.invalid,https://abc.invalid", stagger_delay=0)

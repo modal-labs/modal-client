@@ -31,7 +31,7 @@ from modal_version import __version__
 
 from .._traceback import suppress_tb_frame
 from ..config import config
-from .async_utils import retry
+from .async_utils import TaskContext, retry
 from .logger import logger
 
 RequestType = TypeVar("RequestType", bound=Message)
@@ -190,14 +190,7 @@ class ConnectionManager:
 
     async def get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
         if server_url not in self._channels:
-            self._channels[server_url] = create_channel(
-                server_url,
-                self._metadata,
-            )
-            try:
-                await connect_channel(self._channels[server_url])
-            except (OSError, asyncio.TimeoutError) as exc:
-                raise ConnectionError("Could not connect to the Modal server.") from exc
+            self._channels[server_url] = await create_channel_with_fallbacks(server_url, self._metadata)
         return self._channels[server_url]
 
     def close(self):
@@ -312,6 +305,47 @@ def create_channel(
 async def connect_channel(channel: grpclib.client.Channel):
     """Connect to socket and raise exceptions when there is a connection issue."""
     await channel.__connect__()
+
+
+async def create_channel_with_fallbacks(
+    server_url: str,
+    metadata: dict[str, str] = {},
+    stagger_delay: float = 1.0,
+) -> grpclib.client.Channel:
+    """Create a connected channel, supporting comma-separated fallback URLs.
+
+    `server_url` may be a single URL or a comma-separated list of URLs. The connection attempts
+    are raced against each other and the first one to connect wins, which lets the client fail
+    over to a secondary endpoint when the primary is unreachable (e.g. a DNS outage on the
+    primary's domain). Attempts are staggered: the candidate at index `i` waits `i * stagger_delay`
+    seconds before starting, so earlier URLs (e.g. the primary) get a head start and are preferred
+    when reachable. Losing attempts are cancelled and their channels closed.
+    """
+    urls = [url.strip() for url in server_url.split(",")]
+
+    async def connect(index: int, url: str) -> grpclib.client.Channel:
+        # Stagger the start so earlier URLs are preferred; once started, all attempts race.
+        await asyncio.sleep(index * stagger_delay)
+        channel = create_channel(url, metadata)
+        try:
+            await connect_channel(channel)
+        except BaseException:
+            # Close the channel of a losing/cancelled attempt so its socket doesn't leak.
+            channel.close()
+            raise
+        return channel
+
+    first_exc: BaseException | None = None
+    async with TaskContext() as tc:
+        tasks = [tc.create_task(connect(i, url)) for i, url in enumerate(urls)]
+        for attempt in asyncio.as_completed(tasks):
+            try:
+                return await attempt
+            except Exception as exc:
+                if first_exc is None:
+                    first_exc = exc
+
+    raise ConnectionError("Could not connect to the Modal server.") from first_exc
 
 
 if typing.TYPE_CHECKING:
