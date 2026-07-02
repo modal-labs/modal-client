@@ -96,7 +96,12 @@ def _run_curl(curl_args: tuple[str, ...], token: str | None = None) -> None:
     sys.exit(subprocess.call(cmd))
 
 
-@click.command("curl", cls=ModalCommand, context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+@click.command(
+    "curl",
+    cls=ModalCommand,
+    no_args_is_help=True,
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+)
 @click.argument("curl_args", nargs=-1, required=True, type=click.UNPROCESSED)
 @synchronizer.create_blocking
 async def curl(curl_args: tuple[str, ...]):

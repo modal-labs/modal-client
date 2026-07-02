@@ -59,7 +59,7 @@ async def list_(env: str | None = None, json: bool = False):
     display_table(column_names, rows, json=json, title=f"Active Multi-node Clusters in environment: {environment_name}")
 
 
-@cluster_cli.command("shell")
+@cluster_cli.command("shell", no_args_is_help=True)
 @click.argument("cluster_id")
 @click.option("--rank", default=0, help="Rank of the node to shell into")
 @synchronizer.create_blocking

@@ -32,7 +32,7 @@ def partition_option(func):
     )(func)
 
 
-@queue_cli.command("create", panel="Management")
+@queue_cli.command("create", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @env_option
 @synchronizer.create_blocking
@@ -49,7 +49,7 @@ async def create(name: str, *, env: str | None = None):
         await resolver.load(q, load_context)
 
 
-@queue_cli.command("delete", panel="Management")
+@queue_cli.command("delete", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Queue doesn't exist.")
 @yes_option
@@ -122,7 +122,7 @@ async def list_(*, json: bool = False, env: str | None = None):
     display_table(["Name", "Created at", "Created by", "Partitions", "Total size"], rows, json)
 
 
-@queue_cli.command("clear", panel="Management")
+@queue_cli.command("clear", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @partition_option
 @click.option("-a", "--all", "all", is_flag=True, default=False, help="Clear the contents of all partitions.")
@@ -148,7 +148,7 @@ async def clear(
     await q.clear(partition=partition, all=all)
 
 
-@queue_cli.command("peek", panel="Inspection")
+@queue_cli.command("peek", panel="Inspection", no_args_is_help=True)
 @click.argument("name")
 @click.argument("n", default=1, type=int)
 @partition_option
@@ -166,7 +166,7 @@ async def peek(name: str, n: int = 1, partition: str | None = None, *, env: str 
             break
 
 
-@queue_cli.command("len", panel="Inspection")
+@queue_cli.command("len", panel="Inspection", no_args_is_help=True)
 @click.argument("name")
 @partition_option
 @click.option(

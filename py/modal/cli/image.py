@@ -158,7 +158,9 @@ async def list_(
     _print_result_summary(count)
 
 
-@image_names_cli.command("history", help="Show publishing history for a named Image.", hidden=True)
+@image_names_cli.command(
+    "history", help="Show publishing history for a named Image.", hidden=True, no_args_is_help=True
+)
 @click.argument("name")
 @env_option
 @click.option("--json", is_flag=True, default=False)

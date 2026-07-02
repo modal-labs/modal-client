@@ -46,7 +46,7 @@ def humanize_filesize(value: int) -> str:
     return format % (base * bytes_ / unit) + s
 
 
-@volume_cli.command("create", help="Create a named, persistent modal.Volume.", panel="Management")
+@volume_cli.command("create", help="Create a named, persistent modal.Volume.", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @env_option
 @click.option("--version", default=None, type=int, help="VolumeFS version. (Experimental)")
@@ -69,7 +69,7 @@ def some_func():
     output.print(usage)
 
 
-@volume_cli.command("get", panel="File operations")
+@volume_cli.command("get", panel="File operations", no_args_is_help=True)
 @click.argument("volume_name")
 @click.argument("remote_path")
 @click.argument("local_destination", default=".")
@@ -127,7 +127,9 @@ async def list_(env: str | None = None, json: bool = False):
     display_table(["Name", "Created at", "Created by"], rows, json)
 
 
-@volume_cli.command("ls", help="List files and directories in a modal.Volume volume.", panel="File operations")
+@volume_cli.command(
+    "ls", help="List files and directories in a modal.Volume volume.", panel="File operations", no_args_is_help=True
+)
 @click.argument("volume_name")
 @click.argument("path", default="/")
 @click.option("--json", is_flag=True, default=False)
@@ -173,7 +175,7 @@ async def ls(
         display_table(columns, rows, json, title=title)
 
 
-@volume_cli.command("put", panel="File operations")
+@volume_cli.command("put", panel="File operations", no_args_is_help=True)
 @click.argument("volume_name")
 @click.argument("local_path")
 @click.argument("remote_path", default="/")
@@ -234,7 +236,9 @@ async def put(
         output.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'")
 
 
-@volume_cli.command("rm", help="Delete a file or directory from a modal.Volume.", panel="File operations")
+@volume_cli.command(
+    "rm", help="Delete a file or directory from a modal.Volume.", panel="File operations", no_args_is_help=True
+)
 @click.argument("volume_name")
 @click.argument("remote_path")
 @click.option("-r", "--recursive", is_flag=True, default=False, help="Delete directory recursively")
@@ -252,7 +256,7 @@ async def rm(
     OutputManager.get().step_completed(f"{remote_path} was deleted successfully!")
 
 
-@volume_cli.command("cp", panel="File operations")
+@volume_cli.command("cp", panel="File operations", no_args_is_help=True)
 @click.argument("volume_name")
 @click.argument("paths", nargs=-1, required=True)
 @click.option("-r", "--recursive", is_flag=True, default=False, help="Copy directories recursively")
@@ -274,7 +278,9 @@ async def cp(
     await volume.copy_files(src_paths, dst_path, recursive)
 
 
-@volume_cli.command("delete", help="Delete a named Volume and all of its data.", panel="Management")
+@volume_cli.command(
+    "delete", help="Delete a named Volume and all of its data.", panel="Management", no_args_is_help=True
+)
 @click.argument("name")
 @click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Volume doesn't exist.")
 @yes_option
@@ -298,7 +304,7 @@ async def delete(
     await _Volume.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
-@volume_cli.command("rename", help="Rename a modal.Volume.", panel="Management")
+@volume_cli.command("rename", help="Rename a modal.Volume.", panel="Management", no_args_is_help=True)
 @click.argument("old_name")
 @click.argument("new_name")
 @yes_option
@@ -320,7 +326,9 @@ async def rename(
     await _Volume.rename(old_name, new_name, environment_name=env)
 
 
-@volume_cli.command("dashboard", help="Open the Volume's dashboard page in your web browser.", panel="Management")
+@volume_cli.command(
+    "dashboard", help="Open the Volume's dashboard page in your web browser.", panel="Management", no_args_is_help=True
+)
 @click.argument("volume_name")
 @env_option
 @synchronizer.create_blocking

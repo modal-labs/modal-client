@@ -40,7 +40,7 @@ when running a command that requires an environment.
 """
 
 
-@config_cli.command("set-environment", help=SET_DEFAULT_ENV_HELP)
+@config_cli.command("set-environment", help=SET_DEFAULT_ENV_HELP, no_args_is_help=True)
 @click.argument("environment_name")
 def set_environment(environment_name: str):
     # Confirm that the environment exists by looking it up
@@ -49,7 +49,7 @@ def set_environment(environment_name: str):
     click.echo(f"New default environment for profile {_profile}: {environment_name}")
 
 
-@config_cli.command("set", hidden=True)
+@config_cli.command("set", hidden=True, no_args_is_help=True)
 @click.argument("key")
 @click.argument("value")
 def set(key: str, value: str):

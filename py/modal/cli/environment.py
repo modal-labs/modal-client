@@ -63,7 +63,7 @@ def list_(json: bool = False):
     display_table(["name", "web suffix", "active"], table_data, json=json)
 
 
-@environment_cli.command("create", help="Create a new environment in the current workspace.")
+@environment_cli.command("create", help="Create a new environment in the current workspace.", no_args_is_help=True)
 @click.argument("name")
 @click.option("--restricted", is_flag=True, default=False, help="Enable RBAC restrictions on the new environment")
 def create(name: str, restricted: bool = False):
@@ -79,7 +79,7 @@ Deletes all apps in the selected environment and deletes the environment irrevoc
 """
 
 
-@environment_cli.command("delete", help=ENVIRONMENT_DELETE_HELP)
+@environment_cli.command("delete", help=ENVIRONMENT_DELETE_HELP, no_args_is_help=True)
 @click.argument("name")
 @yes_option
 def delete(
@@ -100,7 +100,7 @@ def delete(
     rich.print(f"[green]✓[/green] Environment deleted: {name}")
 
 
-@environment_cli.command("update", help="Update environment-level settings.")
+@environment_cli.command("update", help="Update environment-level settings.", no_args_is_help=True)
 @click.argument("current_name")
 @click.option("--set-name", default=None, help="New name of the environment")
 @click.option("--set-web-suffix", default=None, help="New web suffix of environment (empty string is no suffix)")

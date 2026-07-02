@@ -317,7 +317,7 @@ async def _exec_impl(
         ).wait()
 
 
-@container_cli.command("exec")
+@container_cli.command("exec", no_args_is_help=True)
 @click.option("--pty/--no-pty", default=None, help="Run the command using a PTY.")
 @click.argument("container_id")
 @click.argument("command", nargs=-1, required=True)
@@ -330,7 +330,7 @@ def exec(
     _exec_impl(pty=pty, container_id=container_id, command=command)
 
 
-@container_cli.command("stop")
+@container_cli.command("stop", no_args_is_help=True)
 @click.argument("container_id")
 @click.option(
     "--graceful",

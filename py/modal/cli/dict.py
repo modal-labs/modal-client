@@ -21,7 +21,7 @@ dict_cli = ModalGroup(
 )
 
 
-@dict_cli.command("create", panel="Management")
+@dict_cli.command("create", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @env_option
 @synchronizer.create_blocking
@@ -55,7 +55,7 @@ async def list_(*, json: bool = False, env: str | None = None):
     display_table(["Name", "Created at", "Created by"], rows, json)
 
 
-@dict_cli.command("clear", panel="Management")
+@dict_cli.command("clear", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @yes_option
 @env_option
@@ -72,7 +72,7 @@ async def clear(name: str, *, yes: bool = False, env: str | None = None):
     await d.clear()
 
 
-@dict_cli.command("delete", panel="Management")
+@dict_cli.command("delete", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Dict doesn't exist.")
 @yes_option
@@ -95,7 +95,7 @@ async def delete(
     await _Dict.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
-@dict_cli.command("get", panel="Inspection")
+@dict_cli.command("get", panel="Inspection", no_args_is_help=True)
 @click.argument("name")
 @click.argument("key")
 @env_option
@@ -115,7 +115,7 @@ def _display(input: str, use_repr: bool) -> str:
     return val[:80] + "..." if len(val) > 80 else val
 
 
-@dict_cli.command("items", panel="Inspection")
+@dict_cli.command("items", panel="Inspection", no_args_is_help=True)
 @click.argument("name")
 @click.argument("n", default=20, type=int)
 @click.option(

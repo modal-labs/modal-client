@@ -25,7 +25,7 @@ from ._help import ModalGroup
 profile_cli = ModalGroup(name="profile", help="Switch between Modal profiles.")
 
 
-@profile_cli.command("activate", help="Change the active Modal profile.")
+@profile_cli.command("activate", help="Change the active Modal profile.", no_args_is_help=True)
 @click.argument("profile")
 def activate(profile: str):
     config_set_active_profile(profile)

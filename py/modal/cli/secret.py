@@ -73,7 +73,7 @@ async def list_(env: str | None = None, json: bool = False):
     display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
-@secret_cli.command("create", help="Create a new secret.")
+@secret_cli.command("create", help="Create a new secret.", no_args_is_help=True)
 @click.argument("secret_name")
 @click.argument("keyvalues", nargs=-1)
 @env_option
@@ -179,7 +179,7 @@ def some_function():
     output.print(Syntax(example_code, "python"))
 
 
-@secret_cli.command("delete", help="Delete a named Secret.")
+@secret_cli.command("delete", help="Delete a named Secret.", no_args_is_help=True)
 @click.argument("name")
 @click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Secret doesn't exist.")
 @yes_option

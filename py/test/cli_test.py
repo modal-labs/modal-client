@@ -3038,3 +3038,23 @@ def test_short_help_fits_max_help_width():
 
     check(entrypoint_cli, "modal")
     assert not offenders, "short help would wrap in --help:\n" + "\n".join(offenders)
+
+
+def test_commands_with_required_arguments_show_help_with_no_args():
+    import click
+
+    from modal.cli.entry_point import entrypoint_cli
+
+    offenders: list[str] = []
+
+    def check(command: click.Command, path: str) -> None:
+        required_args = [param.name for param in command.params if isinstance(param, click.Argument) and param.required]
+        if required_args and getattr(command, "no_args_is_help", False) is not True:
+            offenders.append(f"{path}: required arguments {', '.join(required_args)}")
+
+        if isinstance(command, click.Group):
+            for name, subcommand in command.commands.items():
+                check(subcommand, f"{path} {name}")
+
+    check(entrypoint_cli, "modal")
+    assert not offenders, "commands with required arguments need no_args_is_help=True:\n" + "\n".join(offenders)

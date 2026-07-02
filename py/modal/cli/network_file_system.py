@@ -56,7 +56,7 @@ def some_func():
 """
 
 
-@nfs_cli.command("create", help="Create a named network file system.", panel="Management")
+@nfs_cli.command("create", help="Create a named network file system.", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @env_option
 def create(
@@ -71,7 +71,9 @@ def create(
     output.print(usage)
 
 
-@nfs_cli.command("ls", help="List files and directories in a network file system.", panel="File operations")
+@nfs_cli.command(
+    "ls", help="List files and directories in a network file system.", panel="File operations", no_args_is_help=True
+)
 @click.argument("volume_name")
 @click.argument("path", default="/")
 @env_option
@@ -102,7 +104,7 @@ async def ls(
             print(entry.path)  # noqa: T201
 
 
-@nfs_cli.command("put", panel="File operations")
+@nfs_cli.command("put", panel="File operations", no_args_is_help=True)
 @click.argument("volume_name")
 @click.argument("local_path")
 @click.argument("remote_path", default="/")
@@ -147,7 +149,7 @@ class CliError(Exception):
         self.message = message
 
 
-@nfs_cli.command("get", panel="File operations")
+@nfs_cli.command("get", panel="File operations", no_args_is_help=True)
 @click.argument("volume_name")
 @click.argument("remote_path")
 @click.argument("local_destination", default=".")
@@ -183,7 +185,9 @@ async def get(
     output.step_completed("Finished downloading files to local!")
 
 
-@nfs_cli.command("rm", help="Delete a file or directory from a network file system.", panel="File operations")
+@nfs_cli.command(
+    "rm", help="Delete a file or directory from a network file system.", panel="File operations", no_args_is_help=True
+)
 @click.argument("volume_name")
 @click.argument("remote_path")
 @click.option("-r", "--recursive", is_flag=True, default=False, help="Delete directory recursively")
@@ -201,7 +205,9 @@ async def rm(
     OutputManager.get().step_completed(f"{remote_path} was deleted successfully!")
 
 
-@nfs_cli.command("delete", help="Delete a named, persistent modal.NetworkFileSystem.", panel="Management")
+@nfs_cli.command(
+    "delete", help="Delete a named, persistent modal.NetworkFileSystem.", panel="Management", no_args_is_help=True
+)
 @click.argument("nfs_name")
 @yes_option
 @env_option
