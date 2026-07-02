@@ -2976,7 +2976,7 @@ class _Image(_Object, type_prefix="im"):
             api_pb2.ImagePublishRequest(
                 image_id=self._object_id,
                 environment_name=resolved_env,
-                is_public=False,
+                allow_public=False,
                 tag=tag,
             )
         )

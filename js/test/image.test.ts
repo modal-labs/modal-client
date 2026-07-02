@@ -103,7 +103,7 @@ test("ImagePublish", async () => {
     expect(req).toMatchObject({
       imageId: "im-built",
       environmentName: "dev",
-      isPublic: false,
+      allowPublic: false,
       tag: "analytics-runtime:v1",
     });
     return {

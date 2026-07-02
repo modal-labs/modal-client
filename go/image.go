@@ -463,7 +463,7 @@ func (image *Image) Publish(ctx context.Context, name string, params *ImagePubli
 	_, err = image.client.cpClient.ImagePublish(ctx, pb.ImagePublishRequest_builder{
 		ImageId:         image.ImageID,
 		EnvironmentName: firstNonEmpty(params.Environment, image.client.profile.Environment),
-		IsPublic:        false,
+		AllowPublic:     false,
 		Tag:             tag,
 	}.Build())
 	return err

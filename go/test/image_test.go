@@ -97,7 +97,7 @@ func TestImagePublish(t *testing.T) {
 		func(req *pb.ImagePublishRequest) (*pb.ImagePublishResponse, error) {
 			g.Expect(req.GetImageId()).To(gomega.Equal("im-built"))
 			g.Expect(req.GetEnvironmentName()).To(gomega.Equal("dev"))
-			g.Expect(req.GetIsPublic()).To(gomega.BeFalse())
+			g.Expect(req.GetAllowPublic()).To(gomega.BeFalse())
 			g.Expect(req.GetTag()).To(gomega.Equal("analytics-runtime:v1"))
 			return pb.ImagePublishResponse_builder{
 				ImageId:    req.GetImageId(),

@@ -471,7 +471,7 @@ export class Image {
     await this.#client.cpClient.imagePublish({
       imageId: this.#imageId,
       environmentName,
-      isPublic: false,
+      allowPublic: false,
       tag,
     });
   }

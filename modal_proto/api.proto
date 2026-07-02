@@ -163,6 +163,14 @@ enum EnvironmentRole {
   ENVIRONMENT_ROLE_CONTRIBUTOR = 2;
 }
 
+// Creation-time environment classification. Captures whether an environment
+// is public. is_managed and machine_generated may be folded in as future
+// values.
+enum EnvironmentType {
+  ENVIRONMENT_TYPE_UNSPECIFIED = 0;
+  ENVIRONMENT_TYPE_PUBLIC = 1;
+}
+
 enum ExecOutputOption {
   EXEC_OUTPUT_OPTION_UNSPECIFIED = 0;
   EXEC_OUTPUT_OPTION_DEVNULL = 1;
@@ -1551,6 +1559,7 @@ message EnvironmentCreateRequest {
   string name = 1;
   bool is_managed = 2;
   EnvironmentSettings settings = 3;
+  EnvironmentType environment_type = 4;
 }
 
 message EnvironmentDeleteRequest {
@@ -1616,6 +1625,7 @@ message EnvironmentListItem {
   double effective_cycle_spend_limit = 12;
   double current_cycle_usage = 13;
   bool spend_limit_reached = 14;
+  EnvironmentType environment_type = 15;
 }
 
 message EnvironmentListResponse {
@@ -1625,6 +1635,7 @@ message EnvironmentListResponse {
 message EnvironmentMetadata{
   string name = 1;
   EnvironmentSettings settings = 2;
+  EnvironmentType environment_type = 3;
 }
 
 message EnvironmentRoleSetRequest {
@@ -2611,11 +2622,11 @@ message ImageMetadata {
 
 message ImagePublishRequest {
   string image_id = 1;
-  // Full "name:tag" string. Must be non-empty. Each ImagePublish RPC writes exactly one tag.
+  // Full "name:tag" string. Must be non-empty.
   string tag = 2;
   string environment_name = 3;
-  // Marks the published tag as public. Public read protocol is defined separately.
-  bool is_public = 4;
+  // Explicit opt-in required when publishing to a public environment.
+  bool allow_public = 4;
 }
 
 message ImagePublishResponse {
