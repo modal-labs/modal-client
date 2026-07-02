@@ -1267,11 +1267,6 @@ def test_experimental_sandbox_create_env_rejects_empty_key(app, servicer):
         Sandbox._experimental_create("echo", "hi", app=app, env={"": "value"})
 
 
-def test_experimental_sandbox_create_env_rejects_value_too_long(app, servicer):
-    with pytest.raises(InvalidError, match="is too long"):
-        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "x" * (2**15 + 1)})
-
-
 def test_experimental_sandbox_create_outbound_domain_allowlist(app, servicer):
     # Cannot combine with block_network.
     with pytest.raises(InvalidError, match="`outbound_domain_allowlist` cannot be used when `block_network`"):

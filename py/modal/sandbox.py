@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import re
-import textwrap
 import time
 import typing
 import uuid
@@ -128,20 +127,12 @@ TTL_NO_EXPIRY_SENTINEL = -1
 
 
 _SECRET_KEYNAME_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-_SECRET_KEYNAME_MAX_LEN = 2**14
-_SECRET_VALUE_MAX_LEN = 2**15
 
 
 def _validate_sandbox_env(env: dict[str, str]) -> None:
-    for key, value in env.items():
+    for key in env:
         if not key:
             raise InvalidError("Secret key name cannot be empty")
-        if len(key) > _SECRET_KEYNAME_MAX_LEN:
-            shortkey = textwrap.shorten(key, width=32)
-            raise InvalidError(f"Secret key name {shortkey!r} is too long (max {_SECRET_KEYNAME_MAX_LEN})")
-        if len(value) > _SECRET_VALUE_MAX_LEN:
-            shortkey = textwrap.shorten(key, width=32)
-            raise InvalidError(f"Secret value for key {shortkey!r} is too long (max {_SECRET_VALUE_MAX_LEN})")
         if not _SECRET_KEYNAME_REGEX.match(key):
             raise InvalidError(
                 f"Secret key name {key!r} is invalid for environment variables. "
