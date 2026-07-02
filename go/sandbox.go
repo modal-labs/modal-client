@@ -814,7 +814,12 @@ type SandboxMountImageParams struct {
 type SandboxUnmountImageParams struct{}
 
 // SandboxReloadVolumesParams are options for Sandbox.ReloadVolumes.
-type SandboxReloadVolumesParams struct{}
+type SandboxReloadVolumesParams struct {
+	// Timeout bounds how long the call waits for the reload to complete.
+	// Defaults to 55 seconds. If the reload does not complete within this
+	// window, the call is cancelled and a TimeoutError is returned.
+	Timeout time.Duration
+}
 
 // SandboxUpdateNetworkPolicyParams are options for Sandbox.UpdateNetworkPolicy.
 //
@@ -1503,26 +1508,28 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *Sandbo
 }
 
 // ReloadVolumes reloads all Volumes mounted in the Sandbox.
+//
+// Blocks until the Volumes have been reloaded, bounded by the timeout (55
+// seconds by default; see [SandboxReloadVolumesParams]). If the reload does not
+// complete within that window, a TimeoutError is returned; note that the reload
+// may still complete in the background.
 func (sb *Sandbox) ReloadVolumes(ctx context.Context, params *SandboxReloadVolumesParams) error {
-	if err := sb.ensureAttached(); err != nil {
-		return err
-	}
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return err
-	}
-	if sb.isV2 {
-		crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
-		if err != nil {
-			return err
+	timeout := 55 * time.Second
+	if params != nil {
+		if params.Timeout < 0 {
+			return InvalidError{Exception: "Timeout must not be negative"}
 		}
-		return crClient.ReloadVolumes(ctx, pb.TaskReloadVolumesRequest_builder{
-			TaskId: sb.taskID,
-		}.Build())
+		if params.Timeout != 0 {
+			timeout = params.Timeout
+		}
 	}
-	_, err := sb.client.cpClient.ContainerReloadVolumes(ctx, pb.ContainerReloadVolumesRequest_builder{
-		TaskId: sb.taskID,
-	}.Build())
-	return err
+	taskID, crClient, err := sb.getCommandRouter(ctx)
+	if err != nil {
+		return err
+	}
+	return crClient.ReloadVolumes(ctx, pb.TaskReloadVolumesRequest_builder{
+		TaskId: taskID,
+	}.Build(), timeout)
 }
 
 func buildUpdateNetworkPolicyProto(taskID string, params SandboxUpdateNetworkPolicyParams) *pb.TaskSetNetworkAccessRequest {

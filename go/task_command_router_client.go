@@ -404,10 +404,25 @@ func (c *taskCommandRouterClient) UnmountDirectory(ctx context.Context, request 
 }
 
 // ReloadVolumes reloads all Volumes mounted in the task to reflect their latest committed state.
-func (c *taskCommandRouterClient) ReloadVolumes(ctx context.Context, request *pb.TaskReloadVolumesRequest) error {
-	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskReloadVolumesResponse, error) {
-		return c.stub.TaskReloadVolumes(authCtx, request)
-	})
+//
+// timeout is the client-side deadline. If the reload does not complete within
+// this window, the call is cancelled and a TimeoutError is returned.
+func (c *taskCommandRouterClient) ReloadVolumes(ctx context.Context, request *pb.TaskReloadVolumesRequest, timeout time.Duration) error {
+	overallDeadline := time.Now().Add(timeout)
+	opts := defaultRetryOptions()
+	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
+	opts.Deadline = &overallDeadline
+	_, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskReloadVolumesResponse, error) {
+		remaining := time.Until(overallDeadline)
+		callCtx, cancel := context.WithTimeout(ctx, remaining)
+		defer cancel()
+		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskReloadVolumesResponse, error) {
+			return c.stub.TaskReloadVolumes(authCtx, request)
+		})
+	}, opts, &c.closed)
+	if err != nil && time.Now().After(overallDeadline) {
+		return TimeoutError{Exception: "Timeout expired"}
+	}
 	return err
 }
 

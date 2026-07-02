@@ -19,7 +19,6 @@ import {
   Resources,
   PortSpecs,
   Probe as ProbeProto,
-  ContainerReloadVolumesRequest,
 } from "../proto/modal_proto/api";
 import {
   TaskExecStartRequest,
@@ -984,6 +983,17 @@ export type SandboxSnapshotFilesystemParams = {
   ttlMs?: number | null;
 };
 
+/** Optional parameters for {@link Sandbox#reloadVolumes Sandbox.reloadVolumes()}. */
+export type SandboxReloadVolumesParams = {
+  /**
+   * Overall budget for the reload call, in milliseconds. Defaults to 55000.
+   * If the reload does not complete within this window, the call is cancelled
+   * and a `TimeoutError` is thrown; note that the reload may still complete in
+   * the background.
+   */
+  timeoutMs?: number;
+};
+
 /** Optional parameters for {@link Sandbox#snapshotDirectory Sandbox.snapshotDirectory()}. */
 export type SandboxSnapshotDirectoryParams = {
   /**
@@ -1833,21 +1843,27 @@ export class Sandbox {
 
   /**
    * Reload all Volumes mounted in the Sandbox.
+   *
+   * Blocks until the Volumes have been reloaded, bounded by `timeoutMs` (55000
+   * by default). If the reload does not complete within that window, a
+   * `TimeoutError` is thrown; note that the reload may still complete in the
+   * background.
+   *
+   * @param params - Optional parameters; see {@link SandboxReloadVolumesParams}.
    */
-  async reloadVolumes(): Promise<void> {
+  async reloadVolumes(params?: SandboxReloadVolumesParams): Promise<void> {
     this.#ensureAttached();
-    const taskId = await this.#getTaskId();
-    if (this.#isV2) {
-      const commandRouterClient =
-        await this.#getOrCreateCommandRouterClient(taskId);
-      await commandRouterClient.reloadVolumes(
-        TaskReloadVolumesRequest.create({ taskId }),
-      );
-    } else {
-      await this.#client.cpClient.containerReloadVolumes(
-        ContainerReloadVolumesRequest.create({ taskId }),
-      );
+    if (params?.timeoutMs !== undefined && params.timeoutMs < 0) {
+      throw new InvalidError("`timeoutMs` must not be negative");
     }
+    // Both undefined and 0 fall back to the default, matching the Go
+    // `Timeout time.Duration` zero-value convention.
+    const timeoutMs = params?.timeoutMs || 55000;
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
+    await commandRouterClient.reloadVolumes(
+      TaskReloadVolumesRequest.create({ taskId }),
+      { timeoutMs },
+    );
   }
 
   /**

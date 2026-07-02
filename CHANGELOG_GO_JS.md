@@ -4,7 +4,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-No unreleased changes.
+- (Go, JS) `Sandbox.ReloadVolumes` (Go) / `Sandbox.reloadVolumes` (JS) now blocks until the Volumes have been reloaded, bounded by a new timeout (55 seconds by default) that is configurable via `SandboxReloadVolumesParams.Timeout` (Go) / `SandboxReloadVolumesParams.timeoutMs` (JS). If the reload does not complete within that window, a `TimeoutError` is raised.
 
 ## js/v0.8.2, go/v0.8.2
 

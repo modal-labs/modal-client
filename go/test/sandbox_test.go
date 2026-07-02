@@ -386,17 +386,16 @@ func TestSandboxReloadVolumes(t *testing.T) {
 	g.Expect(ls(sb2)).Should(gomega.BeEmpty())
 
 	// Reloading sb1 commits its write to the volume; sb2 is unaffected
-	// until it reloads too.
+	// until it reloads too. The reload is synchronous, so the committed
+	// state is observable as soon as the call returns.
 	err = sb1.ReloadVolumes(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	time.Sleep(500 * time.Millisecond)
 	g.Expect(ls(sb1)).Should(gomega.ConsistOf("test.txt"))
 	g.Expect(ls(sb2)).Should(gomega.BeEmpty())
 
 	// sb2 sees the file only after it reloads.
 	err = sb2.ReloadVolumes(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	time.Sleep(500 * time.Millisecond)
 	g.Expect(ls(sb1)).Should(gomega.ConsistOf("test.txt"))
 	g.Expect(ls(sb2)).Should(gomega.ConsistOf("test.txt"))
 }

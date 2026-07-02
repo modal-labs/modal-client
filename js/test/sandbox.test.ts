@@ -14,7 +14,6 @@ import {
   Sandbox,
 } from "../src/sandbox";
 import { expect, test, onTestFinished, vi } from "vitest";
-import { setTimeout } from "timers/promises";
 import {
   GPUConfig,
   PTYInfo_PTYType,
@@ -299,15 +298,14 @@ test("SandboxReloadVolumes", async () => {
   expect(await ls(sb2)).toEqual([]);
 
   // Reloading sb1 commits its write to the volume; sb2 is unaffected
-  // until it reloads too.
+  // until it reloads too. The reload is synchronous, so the committed
+  // state is observable as soon as the call returns.
   await sb1.reloadVolumes();
-  await setTimeout(500);
   expect(await ls(sb1)).toEqual(["test.txt"]);
   expect(await ls(sb2)).toEqual([]);
 
   // sb2 sees the file only after it reloads.
   await sb2.reloadVolumes();
-  await setTimeout(500);
   expect(await ls(sb1)).toEqual(["test.txt"]);
   expect(await ls(sb2)).toEqual(["test.txt"]);
 });

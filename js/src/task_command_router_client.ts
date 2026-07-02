@@ -568,9 +568,44 @@ export class TaskCommandRouterClientImpl {
     await this.callUnary(() => this.stub.taskSetNetworkAccess(request));
   }
 
-  /** Reload all Volumes mounted in the task to reflect their latest committed state. */
-  async reloadVolumes(request: TaskReloadVolumesRequest): Promise<void> {
-    await this.callUnary(() => this.stub.taskReloadVolumes(request));
+  /**
+   * Reload all Volumes mounted in the task to reflect their latest committed state.
+   *
+   * `timeoutMs` is the client-side deadline. If the reload does not complete
+   * within this window, the call is cancelled and a TimeoutError is thrown.
+   */
+  async reloadVolumes(
+    request: TaskReloadVolumesRequest,
+    options?: TimeoutOptions,
+  ): Promise<void> {
+    const overallDeadlineMs =
+      options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
+    try {
+      await callWithRetriesOnTransientErrors(
+        () =>
+          this.callWithAuthRetry(() => {
+            const remainingMs =
+              overallDeadlineMs !== null
+                ? Math.max(1, overallDeadlineMs - Date.now())
+                : options?.timeoutMs;
+            return this.stub.taskReloadVolumes(request, {
+              ...options,
+              timeoutMs: remainingMs,
+            } as CallOptions & TimeoutOptions);
+          }),
+        10,
+        2,
+        10,
+        overallDeadlineMs,
+        () => this.closed,
+        [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
+      );
+    } catch (err) {
+      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+        throw new TimeoutError("Timeout expired");
+      }
+      throw err;
+    }
   }
 
   async sandboxWaitUntilReady(

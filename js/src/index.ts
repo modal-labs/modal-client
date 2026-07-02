@@ -74,6 +74,7 @@ export type {
   SandboxCreateConnectCredentials,
   SandboxCreateConnectTokenParams,
   SandboxMountImageParams,
+  SandboxReloadVolumesParams,
   SandboxSnapshotDirectoryParams,
   SandboxSnapshotFilesystemParams,
   StdioBehavior,
