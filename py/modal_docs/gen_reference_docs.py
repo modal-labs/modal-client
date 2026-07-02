@@ -44,6 +44,185 @@ def validate_doc_item(docitem: DocItem) -> DocItem:
     return docitem
 
 
+# Curated landing page for the Python SDK reference. Each section has a title and
+# either a table of entries or a set of subsections (each with its own table).
+# Entries are (name, path, description): `path` is appended to `_INTRO_BASE` to
+# form the link, and `description` may contain inline Markdown.
+_INTRO_BASE = "/docs/sdk/py/latest"
+
+_INTRO_FRONTMATTER = {
+    "description": (
+        "Complete API reference for the Modal Python SDK. "
+        "Documentation for App, Function, Image, Sandbox, Volume, and other Modal primitives."
+    ),
+}
+
+_INTRO_PREAMBLE = """\
+# Python SDK Reference
+
+This is the API reference for the [`modal`](https://pypi.org/project/modal/)
+Python SDK, which allows you to programmatically interact with Modal.
+"""
+
+_INTRO_SECTIONS: list[dict] = [
+    {
+        "title": "Application construction",
+        "entries": [
+            ("App", "modal.App", "The main unit of deployment for code on Modal"),
+            ("App.function", "modal.App#function", "Decorator for registering a function with an App"),
+            ("App.cls", "modal.App#cls", "Decorator for registering a class with an App"),
+            ("App.server", "modal.App#server", "Decorator for registering a server with an App"),
+        ],
+    },
+    {
+        "title": "Serverless execution",
+        "entries": [
+            ("Function", "modal.Function", "A serverless function backed by an autoscaling container pool"),
+            ("Cls", "modal.Cls", "A serverless class supporting parametrization and lifecycle hooks"),
+            ("Server", "modal.Server", "A serverless HTTP application with low-latency request routing"),
+        ],
+    },
+    {
+        "title": "Extended Function configuration",
+        "subsections": [
+            {
+                "title": "Class parametrization",
+                "entries": [
+                    ("parameter", "modal.parameter", "Used to define class parameters, akin to a Dataclass field"),
+                ],
+            },
+            {
+                "title": "Lifecycle hooks",
+                "entries": [
+                    ("enter", "modal.enter", "Decorator for a method that will be executed during container startup"),
+                    ("exit", "modal.exit", "Decorator for a method that will be executed during container shutdown"),
+                    ("method", "modal.method", "Decorator for exposing a method as an invokable function"),
+                ],
+            },
+            {
+                "title": "Web integrations",
+                "entries": [
+                    (
+                        "fastapi_endpoint",
+                        "modal.fastapi_endpoint",
+                        "Decorator for exposing a simple FastAPI-based endpoint",
+                    ),
+                    ("asgi_app", "modal.asgi_app", "Decorator for functions that construct an ASGI web application"),
+                    ("wsgi_app", "modal.wsgi_app", "Decorator for functions that construct a WSGI web application"),
+                    ("web_server", "modal.web_server", "Decorator for functions that construct an HTTP web server"),
+                ],
+            },
+            {
+                "title": "Function semantics",
+                "entries": [
+                    (
+                        "batched",
+                        "modal.batched",
+                        "Decorator that enables [dynamic input batching](/docs/guide/dynamic-batching)",
+                    ),
+                    (
+                        "concurrent",
+                        "modal.concurrent",
+                        "Decorator that enables [input concurrency](/docs/guide/concurrent-inputs)",
+                    ),
+                ],
+            },
+            {
+                "title": "Scheduling",
+                "entries": [
+                    ("Cron", "modal.Cron", "A schedule that runs based on cron syntax"),
+                    ("Period", "modal.Period", "A schedule that runs at a fixed interval"),
+                ],
+            },
+            {
+                "title": "Exception handling",
+                "entries": [
+                    ("Retries", "modal.Retries", "Function retry policy for input failures"),
+                ],
+            },
+        ],
+    },
+    {
+        "title": "Sandboxed execution",
+        "entries": [
+            ("Sandbox", "modal.Sandbox", "An interface for restricted code execution"),
+            (
+                "ContainerProcess",
+                "modal.container_process#modalcontainer_processcontainerprocess",
+                "An object representing a sandboxed process",
+            ),
+            ("FileIO", "modal.file_io#modalfile_iofileio", "A handle for a file in the Sandbox filesystem"),
+        ],
+    },
+    {
+        "title": "Container configuration",
+        "entries": [
+            ("Image", "modal.Image", "An API for specifying container images"),
+            ("Secret", "modal.Secret", "A pointer to secrets that will be exposed as environment variables"),
+        ],
+    },
+    {
+        "title": "Data primitives",
+        "subsections": [
+            {
+                "title": "Persistent storage",
+                "entries": [
+                    ("Volume", "modal.Volume", "Distributed storage supporting highly performant parallel reads"),
+                    (
+                        "CloudBucketMount",
+                        "modal.CloudBucketMount",
+                        "Storage backed by a third-party cloud bucket (S3, etc.)",
+                    ),
+                ],
+            },
+            {
+                "title": "In-memory storage",
+                "entries": [
+                    ("Dict", "modal.Dict", "A distributed key-value store"),
+                    ("Queue", "modal.Queue", "A distributed FIFO queue"),
+                ],
+            },
+        ],
+    },
+    {
+        "title": "Account configuration",
+        "entries": [
+            ("Workspace", "modal.Workspace", "Workspace-level configuration and observability"),
+            ("Environment", "modal.Environment", "Manage workspace subdivisions"),
+        ],
+    },
+    {
+        "title": "Networking",
+        "entries": [
+            ("Proxy", "modal.Proxy", "An object that provides a static outbound IP address for containers"),
+            ("forward", "modal.forward", "A context manager for publicly exposing a port from a container"),
+        ],
+    },
+]
+
+
+def _intro_entry_table(entries) -> str:
+    rows = ["|  |  |", "| --- | --- |"]
+    for name, path, description in entries:
+        rows.append(f"| [`{name}`]({_INTRO_BASE}/{path}) | {description} |")
+    return "\n".join(rows)
+
+
+def get_intro_docs() -> str:
+    """Render the curated Python SDK reference landing page (`intro.md`)."""
+    frontmatter = "\n".join(f"{key}: {value}" for key, value in _INTRO_FRONTMATTER.items())
+    sections = [f"---\n{frontmatter}\n---\n\n{_INTRO_PREAMBLE}"]
+    for section in _INTRO_SECTIONS:
+        if "entries" in section:
+            sections.append(f"## {section['title']}\n\n" + _intro_entry_table(section["entries"]) + "\n")
+        else:
+            block = f"## {section['title']}\n"
+            for sub in section["subsections"]:
+                block += f"\n### {sub['title']}\n\n" + _intro_entry_table(sub["entries"]) + "\n"
+            sections.append(block)
+    return "\n".join(sections)
+
+
 def run(output_dir: str | None = None):
     """Generate Modal docs."""
     import modal
@@ -171,6 +350,10 @@ def make_markdown_docs(items: list[DocItem], output_dir: str = None):
 
     sidebar_data = {"items": sidebar_items}
     _write_file("sidebar.json", json.dumps(sidebar_data))
+
+    # The curated reference landing page, generated as `intro.md` alongside the
+    # per-symbol pages (mirroring how the CLI reference index is generated).
+    _write_file("intro.md", get_intro_docs())
 
 
 if __name__ == "__main__":

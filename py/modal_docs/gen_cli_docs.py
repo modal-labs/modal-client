@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import inspect
+import json
 import re
 import sys
 from pathlib import Path
@@ -148,20 +149,34 @@ def run(output_dirname: str | None) -> None:
     commands = entrypoint.list_commands(ctx)
 
     pages = {"intro": get_intro_docs()}
+    # Top-level command names that get their own sidebar entry, in display order.
+    sidebar_commands: list[str] = []
     for command in commands:
         command_obj = entrypoint.get_command(ctx, command)
         if command_obj.hidden:
             continue
         pages[command] = get_docs_for_click(obj=command_obj, ctx=ctx, call_prefix="modal")
+        sidebar_commands.append(command)
+
+    # The CLI sidebar is a flat, alphabetical list of commands. `list_commands`
+    # already returns them sorted, but sort defensively in case that changes.
+    sidebar_data = {"items": [{"label": name} for name in sorted(sidebar_commands)]}
+
+    def _write_file(rel_path: str, data: str) -> None:
+        if output_dirname is None:
+            print(f"<<< {rel_path}")
+            print(data)
+            print(f">>> {rel_path}")
+            return
+
+        output_dir = Path(output_dirname)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / rel_path).write_text(data)
 
     for name, docs in pages.items():
-        if output_dirname:
-            output_dir = Path(output_dirname)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_file = output_dir / f"{name}.md"
-            output_file.write_text(docs)
-        else:
-            print(docs)
+        _write_file(f"{name}.md", docs)
+
+    _write_file("sidebar.json", json.dumps(sidebar_data))
 
 
 if __name__ == "__main__":
