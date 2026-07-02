@@ -58,7 +58,7 @@ from .exception import (
     SandboxTerminatedError,
     SandboxTimeoutError,
 )
-from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
+from .file_io import _FileIO, ls, mkdir, rm, watch
 from .io_streams import (
     StreamReader,
     StreamWriter,
@@ -75,6 +75,7 @@ from .sandbox_fs import _SandboxFilesystem
 from .secret import _Secret
 from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
+from .types import FileWatchEvent, FileWatchEventType, SandboxConnectCredentials
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -253,14 +254,6 @@ class DefaultSandboxNameOverride(str):
 
 
 _DEFAULT_SANDBOX_NAME_OVERRIDE = DefaultSandboxNameOverride()
-
-
-@dataclass(frozen=True)
-class SandboxConnectCredentials:
-    """Simple data structure storing credentials for making HTTP connections to a sandbox."""
-
-    url: str
-    token: str
 
 
 @dataclass(frozen=True)

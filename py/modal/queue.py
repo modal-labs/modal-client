@@ -4,7 +4,6 @@ import queue  # The system library
 import time
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -31,18 +30,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .exception import AlreadyExistsError, Error, InvalidError, NotFoundError, RequestSizeError, ResourceExhaustedError
-
-
-@dataclass
-class QueueInfo:
-    """Information about the Queue object."""
-
-    # This dataclass should be limited to information that is unchanging over the lifetime of the Queue,
-    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
-
-    name: str | None
-    created_at: datetime
-    created_by: str | None
+from .types import QueueInfo
 
 
 class _QueueManager:

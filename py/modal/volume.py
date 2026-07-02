@@ -2,7 +2,6 @@
 import asyncio
 import builtins
 import concurrent.futures
-import enum
 import functools
 import multiprocessing
 import os
@@ -72,6 +71,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
+from .types import FileEntry, FileEntryType as FileEntryType, VolumeInfo
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
@@ -118,48 +118,6 @@ def _validate_volume_version(
             f"Volume '{volume_name}' exists but has version v{n_actual}, not v{n_requested} as requested. "
             f"To access this Volume, either omit the version parameter or use the correct version."
         )
-
-
-class FileEntryType(enum.IntEnum):
-    """Type of a file entry listed from a Modal volume."""
-
-    UNSPECIFIED = 0
-    FILE = 1
-    DIRECTORY = 2
-    SYMLINK = 3
-    FIFO = 4
-    SOCKET = 5
-
-
-@dataclass(frozen=True)
-class FileEntry:
-    """A file or directory entry listed from a Modal volume."""
-
-    path: str
-    type: FileEntryType
-    mtime: int
-    size: int
-
-    @classmethod
-    def _from_proto(cls, proto: api_pb2.FileEntry) -> "FileEntry":
-        return cls(
-            path=proto.path,
-            type=FileEntryType(proto.type),
-            mtime=proto.mtime,
-            size=proto.size,
-        )
-
-
-@dataclass
-class VolumeInfo:
-    """Information about the Volume object."""
-
-    # This dataclass should be limited to information that is unchanging over the lifetime of the Volume,
-    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
-
-    name: str | None
-    created_at: datetime
-    created_by: str | None
 
 
 class _VolumeManager:

@@ -13,7 +13,6 @@ from synchronicity import classproperty
 
 from modal_proto import api_pb2
 
-from ._billing import BillingReportItem
 from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
@@ -21,6 +20,7 @@ from ._utils.name_utils import check_environment_name
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, WorkspaceManagementError
+from .types import BillingReportItem
 
 
 @dataclass(frozen=True)

@@ -1,13 +1,11 @@
 # Copyright Modal Labs 2026
 import asyncio
-import enum
 import json
 import os
 import random
 import string
 import time
 import weakref
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, Union, cast
 
@@ -36,68 +34,7 @@ from ._utils.sandbox_fs_utils import (
 )
 from .exception import ConflictError
 from .io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE
-
-
-class FileType(enum.Enum):
-    """Type of a filesystem entry."""
-
-    FILE = "file"
-    DIRECTORY = "directory"
-    SYMLINK = "symlink"
-
-
-@dataclass(frozen=True)
-class FileInfo:
-    """Metadata for a file or directory entry in a Sandbox."""
-
-    name: str
-    path: str
-    type: FileType
-    size: int
-    mode: int
-    permissions: str
-    owner: str
-    group: str
-    modified_time: float
-    symlink_target: str | None
-
-    def is_file(self) -> bool:
-        """Return `True` if this entry is a regular file."""
-        return self.type == FileType.FILE
-
-    def is_dir(self) -> bool:
-        """Return `True` if this entry is a directory."""
-        return self.type == FileType.DIRECTORY
-
-    def is_symlink(self) -> bool:
-        """Return `True` if this entry is a symbolic link."""
-        return self.type == FileType.SYMLINK
-
-
-class FileWatchEventType(enum.Enum):
-    """Type of a filesystem watch event reported by `Sandbox.filesystem.watch()`."""
-
-    Unknown = "Unknown"
-    Access = "Access"
-    Create = "Create"
-    Modify = "Modify"
-    Remove = "Remove"
-
-
-@dataclass
-class FileWatchEvent:
-    """A filesystem change event reported by `Sandbox.filesystem.watch()`.
-
-    `paths` contains the absolute path(s) affected by the event. For most
-    event types it holds a single entry. Rename operations are reported as
-    `Modify` events: when both the source and destination fall within the
-    watched scope, `paths` holds `[source, destination]`; when only one
-    side of the rename is visible, `paths` holds that single path.
-    """
-
-    paths: list[str]
-    type: FileWatchEventType
-
+from .types import FileInfo, FileType, FileWatchEvent, FileWatchEventType
 
 _SANDBOX_FS_TOOLS_PATH = "/__modal/.bin/modal-sandbox-fs-tools"
 

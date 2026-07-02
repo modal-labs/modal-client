@@ -1,10 +1,7 @@
 # Copyright Modal Labs 2025
-from dataclasses import FrozenInstanceError, dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Iterable, TypedDict
-
-from modal_proto import api_pb2
+from typing import TypedDict
 
 from ._utils.deprecation import deprecation_warning
 from .client import _Client
@@ -17,54 +14,6 @@ class WorkspaceBillingReportItem(TypedDict):
     interval_start: datetime
     cost: Decimal
     tags: dict[str, str]
-
-
-@dataclass(slots=True, frozen=True)
-class BillingReportItem:
-    object_id: str
-    description: str
-    environment_name: str
-    interval_start: datetime
-    cost: Decimal
-    cost_by_resource: dict[str, Decimal]
-    tags: dict[str, str]
-
-    def __getitem__(self, key: str) -> Any:
-        """mdmd:ignore"""
-        if key not in self.__slots__:
-            raise KeyError(key)
-
-        return getattr(self, key)
-
-    def __setitem__(self, key: str, _: Any):
-        """mdmd:ignore"""
-        raise FrozenInstanceError(f"cannot assign to field {key!r}")
-
-    def keys(self) -> Iterable[str]:
-        """mdmd:ignore"""
-        yield from self.__slots__
-
-    def values(self) -> Iterable[Any]:
-        """mdmd:ignore"""
-        for k in self.__slots__:
-            yield getattr(self, k)
-
-    def items(self) -> Iterable[tuple[str, Any]]:
-        """mdmd:ignore"""
-        for k in self.__slots__:
-            yield k, getattr(self, k)
-
-    @classmethod
-    def _from_proto(cls, pb_item: api_pb2.WorkspaceBillingReportItem) -> "BillingReportItem":
-        return cls(
-            object_id=pb_item.object_id,
-            description=pb_item.description,
-            environment_name=pb_item.environment_name,
-            interval_start=pb_item.interval.ToDatetime().replace(tzinfo=timezone.utc),
-            cost=Decimal(pb_item.cost),
-            cost_by_resource={k: Decimal(v) for k, v in pb_item.cost_by_resource.items()},
-            tags=dict(pb_item.tags),
-        )
 
 
 async def _workspace_billing_report(

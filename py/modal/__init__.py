@@ -9,7 +9,7 @@ if sys.version_info[:2] >= (3, 15):
 from modal_version import __version__
 
 try:
-    from . import billing
+    from . import billing, types
     from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
     from .app import App
@@ -100,6 +100,7 @@ __all__ = [
     "interact",
     "method",
     "parameter",
+    "types",
     "web_endpoint",
     "web_server",
     "wsgi_app",

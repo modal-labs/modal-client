@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import builtins
 import os
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
@@ -19,20 +18,9 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .exception import AlreadyExistsError, InvalidError, NotFoundError
+from .types import SecretInfo
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
-
-
-@dataclass
-class SecretInfo:
-    """Information about the Secret object."""
-
-    # This dataclass should be limited to information that is unchanging over the lifetime of the Secret,
-    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
-
-    name: str | None
-    created_at: datetime
-    created_by: str | None
 
 
 class _SecretManager:

@@ -13,7 +13,7 @@ from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.async_utils import TaskContext
 from modal.exception import ClientClosed
-from modal.sandbox_fs import FileWatchEvent, FileWatchEventType
+from modal.types import FileWatchEvent, FileWatchEventType
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api

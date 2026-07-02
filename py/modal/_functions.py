@@ -90,6 +90,7 @@ from .proxy import _Proxy
 from .retries import Retries, RetryManager
 from .schedule import Schedule
 from .secret import _Secret
+from .types import FunctionStats
 from .volume import _Volume, _volume_to_mount_proto
 
 if TYPE_CHECKING:
@@ -539,17 +540,6 @@ class _InputPlaneInvocation:
         assert client._auth_token_manager, "Client is not open"
         token = await client._auth_token_manager.get_token()
         return [("x-modal-input-plane-region", input_plane_region), ("x-modal-auth-token", token)]
-
-
-# Wrapper type for api_pb2.FunctionStats
-@dataclass(frozen=True)
-class FunctionStats:
-    """Simple data structure storing stats for a running function."""
-
-    backlog: int
-    num_total_runners: int
-    num_running_inputs: int
-    input_headroom: int
 
 
 @dataclass

@@ -1,22 +1,19 @@
 # Copyright Modal Labs 2025
 import builtins
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Optional
 
 from google.protobuf.empty_pb2 import Empty
 
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
-from ._billing import BillingReportItem
 from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.time_utils import timestamp_to_localized_dt
 from .client import _Client
-
-MemberRole = Literal["user", "manager", "owner"]
+from .types import BillingReportItem, MemberRole, ProxyTokenInfo, TokenData, WorkspaceMemberInfo, WorkspaceSettings
 
 
 def _member_role_from_proto(proto_value: int) -> MemberRole:
@@ -29,18 +26,6 @@ def _member_role_from_proto(proto_value: int) -> MemberRole:
             return "owner"
         case _:
             raise ValueError(f"Unknown workspace member role: {proto_value}")
-
-
-@dataclass(frozen=True)
-class WorkspaceMemberInfo:
-    """Metadata about a Workspace member."""
-
-    name: str
-    email: str
-    user_id: str
-    role: MemberRole
-    joined_at: datetime
-    last_active_at: Optional[datetime]  # None if the member has never been active
 
 
 class _WorkspaceMembersManager:
@@ -128,23 +113,6 @@ class _Workspace(_Object, type_prefix="ac"):
     @property
     def settings(self) -> "_WorkspaceSettingsManager":
         return _WorkspaceSettingsManager(self)
-
-
-@dataclass(frozen=True)
-class TokenData:
-    """A token ID / secret pair."""
-
-    token_id: str
-    token_secret: str
-
-
-@dataclass(frozen=True)
-class ProxyTokenInfo:
-    """Metadata about a proxy token, not including the token secret."""
-
-    token_id: str
-    created_at: datetime
-    scoped: bool
 
 
 class _WorkspaceProxyTokenManager:
@@ -344,14 +312,6 @@ class _WorkspaceBillingManager:
             BillingReportItem._from_proto(pb_item)
             async for pb_item in self._workspace.client.stub.WorkspaceBillingReport.unary_stream(request)
         ]
-
-
-@dataclass(frozen=True)
-class WorkspaceSettings:
-    """Current settings for the workspace."""
-
-    default_environment: str
-    image_builder_version: str
 
 
 class _WorkspaceSettingsManager:

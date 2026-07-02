@@ -81,6 +81,7 @@ def run(output_dir: str | None = None):
         ("modal.exception", "modal.exception"),
         ("modal.file_io", "modal.file_io"),
         ("modal.io_streams", "modal.io_streams"),
+        ("modal.types", "modal.types"),
     ]
     # These aren't defined in `modal`, but should still be documented as top-level entries.
     forced_members: set[str] = set()

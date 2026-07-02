@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import builtins
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -35,6 +34,7 @@ from .exception import (
     NotFoundError,
     RequestSizeError,
 )
+from .types import DictInfo
 
 
 class _NoDefaultSentinel:
@@ -66,18 +66,6 @@ def _deserialize_dict_value(dict: "_Dict", data: bytes, key: Any = _NO_DEFAULT) 
         raise DeserializationError(
             f"Failed to deserialize value{key_identifier} from {dict_identifier}: {exc}"
         ) from exc
-
-
-@dataclass
-class DictInfo:
-    """Information about a Dict object."""
-
-    # This dataclass should be limited to information that is unchanging over the lifetime of the Dict,
-    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
-
-    name: str | None
-    created_at: datetime
-    created_by: str | None
 
 
 class _DictManager:

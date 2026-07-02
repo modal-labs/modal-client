@@ -22,7 +22,7 @@ from modal.exception import (
 # types, so mypy cannot see this plain module-level constant. We suppress the
 # error here rather than defining a separate constant we'd have to keep in sync.
 from modal.io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE  # type: ignore[attr-defined]
-from modal.sandbox_fs import FileInfo, FileType, FileWatchEvent, FileWatchEventType
+from modal.types import FileInfo, FileType, FileWatchEvent, FileWatchEventType
 
 from .supports.skip import skip_windows
 

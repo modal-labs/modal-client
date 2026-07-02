@@ -185,6 +185,34 @@ def strip_signature(signature: str) -> str:
     return _wrap_stripped_call_signature(single)
 
 
+def get_dataclass_field_annotations(cls) -> dict[str, str]:
+    """Map each field name to its verbatim annotation source for a dataclass.
+
+    Reads annotations from the class source so forms like ``str | None`` or
+    ``InputStatus`` are preserved rather than rendered as fully-qualified,
+    runtime-resolved types (``modal.types.InputStatus``). Only annotations
+    declared directly in the class body are returned; callers should fall back
+    to the runtime field type for anything missing (e.g. inherited fields).
+    """
+    try:
+        src = textwrap.dedent(inspect.getsource(cls))
+        tree = ast.parse(src)
+    except (OSError, TypeError, SyntaxError):
+        return {}
+
+    class_def = next((node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)), None)
+    if class_def is None:
+        return {}
+
+    annotations: dict[str, str] = {}
+    for node in class_def.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            annotation = _annotation_source(src, node.annotation)
+            if annotation:
+                annotations[node.target.id] = annotation
+    return annotations
+
+
 def parse_params_from_signature(signature: str) -> list[ParsedParam]:
     signature = "\n".join(l for l in signature.split("\n") if "mdmd:line-hidden" not in l)
     token_stream = tokenize.generate_tokens(io.StringIO(signature).readline)
