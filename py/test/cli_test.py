@@ -283,7 +283,11 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
     now = time.time()
 
     def history_response(
-        tag: str, image_ids: list[str], created_at: list[float], next_page_token: str = ""
+        tag: str,
+        image_ids: list[str],
+        created_at: list[float],
+        next_page_token: str = "",
+        published_by: list[str] | None = None,
     ) -> api_pb2.ImageTagRevisionsResponse:
         return api_pb2.ImageTagRevisionsResponse(
             items=[
@@ -291,6 +295,7 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
                     image_id=image_id,
                     revision_id=f"ir-test-{index:04d}",
                     created_at=created_at[index],
+                    published_by=published_by[index] if published_by else "",
                 )
                 for index, image_id in enumerate(image_ids)
             ],
@@ -299,17 +304,26 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
             environment_name="main",
         )
 
-    demo_history = history_response("demo-image:latest", ["im-named-b", "im-named-a"], [now, now - 60])
+    demo_history = history_response(
+        "demo-image:latest",
+        ["im-named-b", "im-named-a"],
+        [now, now - 60],
+        published_by=["alice@example.com", "bob@example.com"],
+    )
     with servicer.intercept() as ctx:
         ctx.add_response("ImageTagRevisions", demo_history)
         history_json = json.loads(run_cli_command(["image", "names", "history", "demo-image", "--json"]).stdout)
     assert [item["image_id"] for item in history_json] == ["im-named-b", "im-named-a"]
     assert all("published_at" in item for item in history_json)
+    assert all("published_by" in item for item in history_json)
+    assert [item["published_by"] for item in history_json] == ["alice@example.com", "bob@example.com"]
 
     with servicer.intercept() as ctx:
         ctx.add_response("ImageTagRevisions", demo_history)
         history_table = run_cli_command(["image", "names", "history", "demo-image"]).stdout
     assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", history_table)
+    assert "Published by" in history_table
+    assert "alice@example.com" in history_table
     assert "Showing 2 results" in history_table
 
     empty_history = history_response("missing-image:latest", [], [])

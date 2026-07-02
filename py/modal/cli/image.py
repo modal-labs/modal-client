@@ -57,14 +57,12 @@ def _history_item_json(item: api_pb2.ImageTagRevisionsItem) -> dict[str, str]:
     return {
         "image_id": item.image_id,
         "published_at": timestamp_to_localized_str(item.created_at, True) or "-",
+        "published_by": item.published_by or "-",
     }
 
 
-def _history_item_row(item: api_pb2.ImageTagRevisionsItem) -> tuple[str, str]:
-    return (
-        item.image_id,
-        timestamp_to_localized_str(item.created_at, False) or "-",
-    )
+def _history_item_row(item: api_pb2.ImageTagRevisionsItem) -> tuple[str, str, str]:
+    return (item.image_id, timestamp_to_localized_str(item.created_at, False) or "-", item.published_by or "-")
 
 
 async def _iter_tag_pages(
@@ -199,7 +197,7 @@ async def history(
         if response.items:
             title = f"History for {response.tag}" if show_title else ""
             display_table(
-                ["Image ID", "Published at"],
+                ["Image ID", "Published at", "Published by"],
                 [_history_item_row(item) for item in response.items],
                 title=title,
             )
