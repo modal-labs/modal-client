@@ -888,7 +888,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         secrets = secrets or []
-        ephemeral_env: dict[str, str] = {}
+
+        env_dict, resolvable_secrets = _split_env_dict_and_resolvable_secrets(secrets)
         if env:
             env_type_err = "the env argument to Sandbox must be a dict[str, str | None]"
             if not isinstance(env, dict):
@@ -899,6 +900,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             ):
                 raise InvalidError(env_type_err)
             _validate_sandbox_env(ephemeral_env)
+            # `env` has a higher precedience over environment variables from secrets
+            env_dict |= ephemeral_env
 
         image = image or _default_image
 
@@ -943,7 +946,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             dep_tasks: list = []
             if not image._is_hydrated:
                 dep_tasks.append(resolver.load(image, load_context))
-            for secret in secrets:
+            for secret in resolvable_secrets:
                 dep_tasks.append(resolver.load(secret, load_context))
             for _, vol in validated_volumes:
                 dep_tasks.append(resolver.load(vol, load_context))
@@ -962,7 +965,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 entrypoint_args=args,
                 image_id=image.object_id,
                 mount_ids=[mount.object_id for mount in image._mount_layers],
-                secret_ids=[secret.object_id for secret in secrets],
+                secret_ids=[secret.object_id for secret in resolvable_secrets],
                 timeout_secs=timeout,
                 idle_timeout_secs=idle_timeout,
                 workdir=workdir,
@@ -992,7 +995,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             create_req = api_pb2.SandboxCreateV2Request(
                 app_id=load_context.app_id,
                 definition=definition,
-                ephemeral_secrets=api_pb2.StringMap(contents=ephemeral_env) if ephemeral_env else None,
+                ephemeral_secrets=api_pb2.StringMap(contents=env_dict) if env_dict else None,
             )
             assert load_context.client._auth_token_manager
             auth_token = await load_context.client._auth_token_manager.get_token()

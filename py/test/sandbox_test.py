@@ -1236,12 +1236,51 @@ def test_experimental_sandbox_create_env_drops_none_values(app, servicer):
     assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar"}
 
 
+def test_experimental_sandbox_create_secret_from_dict_uses_ephemeral_secrets(app, servicer):
+    secret = Secret.from_dict({"DB_PASSWORD": "hunter2"})
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, secrets=[secret])
+        req = ctx.pop_request("SandboxCreateV2")
+
+    # `Secret.from_dict` is resolvable locally, so its contents are inlined into the request
+    # as ephemeral secrets rather than being created server-side and referenced by id.
+    assert dict(req.ephemeral_secrets.contents) == {"DB_PASSWORD": "hunter2"}
+    assert ctx.get_requests("SecretGetOrCreate") == []
+    assert list(req.definition.secret_ids) == []
+
+
+def test_experimental_sandbox_create_multiple_secrets_from_dict_merge(app, servicer):
+    secrets = [Secret.from_dict({"FOO": "bar"}), Secret.from_dict({"BAZ": "qux"})]
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar", "BAZ": "qux"}
+    assert ctx.get_requests("SecretGetOrCreate") == []
+    assert list(req.definition.secret_ids) == []
+
+
 def test_experimental_sandbox_create_env_and_secrets_coexist(app, servicer):
     secret = Secret.from_dict({"DB_PASSWORD": "hunter2"})
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar"}, secrets=[secret])
         req = ctx.pop_request("SandboxCreateV2")
 
+    # Both the `env` argument and `Secret.from_dict` contents are merged into ephemeral secrets.
+    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar", "DB_PASSWORD": "hunter2"}
+    assert ctx.get_requests("SecretGetOrCreate") == []
+    assert list(req.definition.secret_ids) == []
+
+
+def test_experimental_sandbox_create_secret_from_dict_and_from_name(app, servicer, client):
+    Secret.objects.create("my-secret", {"DB_PASSWORD": "hunter2"}, client=client)
+    secrets = [Secret.from_dict({"FOO": "bar"}), Secret.from_name("my-secret")]
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        req = ctx.pop_request("SandboxCreateV2")
+
+    # `from_dict` is inlined as an ephemeral secret; `from_name` is resolved server-side
+    # and referenced by id.
     assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar"}
     assert len(req.definition.secret_ids) == 1
 
@@ -2015,12 +2054,15 @@ def test_sandbox_create_logs_per_dependency_timing(app, servicer, caplog):
     sb.terminate()
 
 
-def test_experimental_sandbox_create_logs_per_dependency_timing(app, servicer, caplog):
+def test_experimental_sandbox_create_logs_per_dependency_timing(app, servicer, client, caplog):
     """V2 Sandbox._experimental_create emits the same per-dependency debug log."""
     import logging
 
     image = Image.debian_slim().add_local_python_source("modal", copy=True)
-    secret = Secret.from_dict({"FOO": "bar"})
+    # Use a named secret: `Secret.from_dict` is inlined as an ephemeral secret and never
+    # resolved as a dependency, so it would not appear in the per-dependency timing log.
+    Secret.objects.create("my-secret", {"FOO": "bar"}, client=client)
+    secret = Secret.from_name("my-secret")
 
     with caplog.at_level(logging.DEBUG, logger="modal-client"):
         sb = Sandbox._experimental_create("echo", "hi", app=app, image=image, secrets=[secret])
