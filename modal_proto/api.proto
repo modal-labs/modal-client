@@ -1241,6 +1241,11 @@ message ContainerReloadVolumesRequest {
 
 message ContainerReloadVolumesResponse { }
 
+// Sent by server containers once lifecycle enter methods have completed.
+// Only handled on worker by server_io_manager.
+message ContainerServerLifecycleReadyRequest {
+}
+
 message ContainerStopRequest {
   string task_id = 1;
   bool graceful = 2; // Let a Function container finish processing any inputs before exiting.
@@ -4437,6 +4442,7 @@ service ModalClient {
   rpc ContainerHello(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
   rpc ContainerReloadVolumes(ContainerReloadVolumesRequest) returns (ContainerReloadVolumesResponse);
+  rpc ContainerServerLifecycleReady(ContainerServerLifecycleReadyRequest) returns (google.protobuf.Empty);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Curl

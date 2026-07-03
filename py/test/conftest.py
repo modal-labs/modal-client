@@ -845,6 +845,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
         self.container_hello_event = threading.Event()
+        self.container_server_lifecycle_ready_count = 0
         self.container_stop_ids = []
 
         self.image_join_sleep_duration = None
@@ -1551,6 +1552,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ContainerHello(self, stream):
         await stream.recv_message()
         self.container_hello_event.set()
+        await stream.send_message(Empty())
+
+    async def ContainerServerLifecycleReady(self, stream):
+        await stream.recv_message()
+        self.container_server_lifecycle_ready_count += 1
         await stream.send_message(Empty())
 
     async def ContainerStop(self, stream):

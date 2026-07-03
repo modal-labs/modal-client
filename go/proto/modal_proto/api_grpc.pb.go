@@ -64,6 +64,7 @@ const (
 	ModalClient_ContainerHello_FullMethodName                   = "/modal.client.ModalClient/ContainerHello"
 	ModalClient_ContainerLog_FullMethodName                     = "/modal.client.ModalClient/ContainerLog"
 	ModalClient_ContainerReloadVolumes_FullMethodName           = "/modal.client.ModalClient/ContainerReloadVolumes"
+	ModalClient_ContainerServerLifecycleReady_FullMethodName    = "/modal.client.ModalClient/ContainerServerLifecycleReady"
 	ModalClient_ContainerStop_FullMethodName                    = "/modal.client.ModalClient/ContainerStop"
 	ModalClient_CurlGetAuthToken_FullMethodName                 = "/modal.client.ModalClient/CurlGetAuthToken"
 	ModalClient_DictClear_FullMethodName                        = "/modal.client.ModalClient/DictClear"
@@ -299,6 +300,7 @@ type ModalClientClient interface {
 	ContainerHello(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContainerLog(ctx context.Context, in *ContainerLogRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContainerReloadVolumes(ctx context.Context, in *ContainerReloadVolumesRequest, opts ...grpc.CallOption) (*ContainerReloadVolumesResponse, error)
+	ContainerServerLifecycleReady(ctx context.Context, in *ContainerServerLifecycleReadyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContainerStop(ctx context.Context, in *ContainerStopRequest, opts ...grpc.CallOption) (*ContainerStopResponse, error)
 	// Curl
 	CurlGetAuthToken(ctx context.Context, in *CurlAuthTokenRequest, opts ...grpc.CallOption) (*CurlAuthTokenResponse, error)
@@ -971,6 +973,16 @@ func (c *modalClientClient) ContainerReloadVolumes(ctx context.Context, in *Cont
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ContainerReloadVolumesResponse)
 	err := c.cc.Invoke(ctx, ModalClient_ContainerReloadVolumes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) ContainerServerLifecycleReady(ctx context.Context, in *ContainerServerLifecycleReadyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_ContainerServerLifecycleReady_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2884,6 +2896,7 @@ type ModalClientServer interface {
 	ContainerHello(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	ContainerLog(context.Context, *ContainerLogRequest) (*emptypb.Empty, error)
 	ContainerReloadVolumes(context.Context, *ContainerReloadVolumesRequest) (*ContainerReloadVolumesResponse, error)
+	ContainerServerLifecycleReady(context.Context, *ContainerServerLifecycleReadyRequest) (*emptypb.Empty, error)
 	ContainerStop(context.Context, *ContainerStopRequest) (*ContainerStopResponse, error)
 	// Curl
 	CurlGetAuthToken(context.Context, *CurlAuthTokenRequest) (*CurlAuthTokenResponse, error)
@@ -3226,6 +3239,9 @@ func (UnimplementedModalClientServer) ContainerLog(context.Context, *ContainerLo
 }
 func (UnimplementedModalClientServer) ContainerReloadVolumes(context.Context, *ContainerReloadVolumesRequest) (*ContainerReloadVolumesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ContainerReloadVolumes not implemented")
+}
+func (UnimplementedModalClientServer) ContainerServerLifecycleReady(context.Context, *ContainerServerLifecycleReadyRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ContainerServerLifecycleReady not implemented")
 }
 func (UnimplementedModalClientServer) ContainerStop(context.Context, *ContainerStopRequest) (*ContainerStopResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ContainerStop not implemented")
@@ -4546,6 +4562,24 @@ func _ModalClient_ContainerReloadVolumes_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).ContainerReloadVolumes(ctx, req.(*ContainerReloadVolumesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_ContainerServerLifecycleReady_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ContainerServerLifecycleReadyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ContainerServerLifecycleReady(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ContainerServerLifecycleReady_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ContainerServerLifecycleReady(ctx, req.(*ContainerServerLifecycleReadyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7843,6 +7877,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ContainerReloadVolumes",
 			Handler:    _ModalClient_ContainerReloadVolumes_Handler,
+		},
+		{
+			MethodName: "ContainerServerLifecycleReady",
+			Handler:    _ModalClient_ContainerServerLifecycleReady_Handler,
 		},
 		{
 			MethodName: "ContainerStop",
