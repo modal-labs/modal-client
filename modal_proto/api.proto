@@ -3774,6 +3774,7 @@ message TaskClusterHelloRequest {
   string task_id = 1;
   string container_ip = 2;
   string imex_host_ip = 3;
+  string imex_fabric_id = 4;
 }
 
 message TaskClusterHelloResponse {
@@ -3782,7 +3783,7 @@ message TaskClusterHelloResponse {
   // All IPv6 addresses in cluster, ordered by cluster rank
   repeated string container_ips = 3;
   repeated string container_ipv4_ips = 4;
-  // Host IPs of every gang member's nvidia-imex daemon, ordered by cluster rank,
+  // All nvidia-imex IPs in fabric, ordered by cluster rank,
   // and otherwise absent on non-NVL72 systems
   repeated string imex_peer_ips = 5;
 }

@@ -48070,12 +48070,13 @@ func (b0 SystemErrorMessage_builder) Build() *SystemErrorMessage {
 }
 
 type TaskClusterHelloRequest struct {
-	state                  protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_TaskId      string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
-	xxx_hidden_ContainerIp string                 `protobuf:"bytes,2,opt,name=container_ip,json=containerIp,proto3"`
-	xxx_hidden_ImexHostIp  string                 `protobuf:"bytes,3,opt,name=imex_host_ip,json=imexHostIp,proto3"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId       string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_ContainerIp  string                 `protobuf:"bytes,2,opt,name=container_ip,json=containerIp,proto3"`
+	xxx_hidden_ImexHostIp   string                 `protobuf:"bytes,3,opt,name=imex_host_ip,json=imexHostIp,proto3"`
+	xxx_hidden_ImexFabricId string                 `protobuf:"bytes,4,opt,name=imex_fabric_id,json=imexFabricId,proto3"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *TaskClusterHelloRequest) Reset() {
@@ -48124,6 +48125,13 @@ func (x *TaskClusterHelloRequest) GetImexHostIp() string {
 	return ""
 }
 
+func (x *TaskClusterHelloRequest) GetImexFabricId() string {
+	if x != nil {
+		return x.xxx_hidden_ImexFabricId
+	}
+	return ""
+}
+
 func (x *TaskClusterHelloRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -48136,12 +48144,17 @@ func (x *TaskClusterHelloRequest) SetImexHostIp(v string) {
 	x.xxx_hidden_ImexHostIp = v
 }
 
+func (x *TaskClusterHelloRequest) SetImexFabricId(v string) {
+	x.xxx_hidden_ImexFabricId = v
+}
+
 type TaskClusterHelloRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	TaskId      string
-	ContainerIp string
-	ImexHostIp  string
+	TaskId       string
+	ContainerIp  string
+	ImexHostIp   string
+	ImexFabricId string
 }
 
 func (b0 TaskClusterHelloRequest_builder) Build() *TaskClusterHelloRequest {
@@ -48151,6 +48164,7 @@ func (b0 TaskClusterHelloRequest_builder) Build() *TaskClusterHelloRequest {
 	x.xxx_hidden_TaskId = b.TaskId
 	x.xxx_hidden_ContainerIp = b.ContainerIp
 	x.xxx_hidden_ImexHostIp = b.ImexHostIp
+	x.xxx_hidden_ImexFabricId = b.ImexFabricId
 	return m0
 }
 
@@ -48253,7 +48267,7 @@ type TaskClusterHelloResponse_builder struct {
 	// All IPv6 addresses in cluster, ordered by cluster rank
 	ContainerIps     []string
 	ContainerIpv4Ips []string
-	// Host IPs of every gang member's nvidia-imex daemon, ordered by cluster rank,
+	// All nvidia-imex IPs in fabric, ordered by cluster rank,
 	// and otherwise absent on non-NVL72 systems
 	ImexPeerIps []string
 }
@@ -62329,12 +62343,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12SystemErrorMessage\x12<\n" +
 	"\n" +
 	"error_code\x18\x01 \x01(\x0e2\x1d.modal.client.SystemErrorCodeR\terrorCode\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"w\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\x9d\x01\n" +
 	"\x17TaskClusterHelloRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
 	"\fcontainer_ip\x18\x02 \x01(\tR\vcontainerIp\x12 \n" +
 	"\fimex_host_ip\x18\x03 \x01(\tR\n" +
-	"imexHostIp\"\xd3\x01\n" +
+	"imexHostIp\x12$\n" +
+	"\x0eimex_fabric_id\x18\x04 \x01(\tR\fimexFabricId\"\xd3\x01\n" +
 	"\x18TaskClusterHelloResponse\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12!\n" +
