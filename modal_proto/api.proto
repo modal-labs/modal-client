@@ -4568,6 +4568,7 @@ service ModalClient {
   rpc SandboxCreateV2(SandboxCreateV2Request) returns (SandboxCreateV2Response);
   rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
+  rpc SandboxGetFromNameV2(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec

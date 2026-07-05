@@ -161,6 +161,7 @@ const (
 	ModalClient_SandboxCreateV2_FullMethodName                  = "/modal.client.ModalClient/SandboxCreateV2"
 	ModalClient_SandboxGetCommandRouterAccess_FullMethodName    = "/modal.client.ModalClient/SandboxGetCommandRouterAccess"
 	ModalClient_SandboxGetFromName_FullMethodName               = "/modal.client.ModalClient/SandboxGetFromName"
+	ModalClient_SandboxGetFromNameV2_FullMethodName             = "/modal.client.ModalClient/SandboxGetFromNameV2"
 	ModalClient_SandboxGetLogs_FullMethodName                   = "/modal.client.ModalClient/SandboxGetLogs"
 	ModalClient_SandboxGetResourceUsage_FullMethodName          = "/modal.client.ModalClient/SandboxGetResourceUsage"
 	ModalClient_SandboxGetTaskId_FullMethodName                 = "/modal.client.ModalClient/SandboxGetTaskId"
@@ -411,6 +412,7 @@ type ModalClientClient interface {
 	SandboxCreateV2(ctx context.Context, in *SandboxCreateV2Request, opts ...grpc.CallOption) (*SandboxCreateV2Response, error)
 	SandboxGetCommandRouterAccess(ctx context.Context, in *SandboxGetCommandRouterAccessRequest, opts ...grpc.CallOption) (*SandboxGetCommandRouterAccessResponse, error)
 	SandboxGetFromName(ctx context.Context, in *SandboxGetFromNameRequest, opts ...grpc.CallOption) (*SandboxGetFromNameResponse, error)
+	SandboxGetFromNameV2(ctx context.Context, in *SandboxGetFromNameRequest, opts ...grpc.CallOption) (*SandboxGetFromNameResponse, error)
 	SandboxGetLogs(ctx context.Context, in *SandboxGetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskLogsBatch], error)
 	SandboxGetResourceUsage(ctx context.Context, in *SandboxGetResourceUsageRequest, opts ...grpc.CallOption) (*SandboxGetResourceUsageResponse, error)
 	SandboxGetTaskId(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error)
@@ -1985,6 +1987,16 @@ func (c *modalClientClient) SandboxGetFromName(ctx context.Context, in *SandboxG
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxGetFromNameV2(ctx context.Context, in *SandboxGetFromNameRequest, opts ...grpc.CallOption) (*SandboxGetFromNameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxGetFromNameResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxGetFromNameV2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxGetLogs(ctx context.Context, in *SandboxGetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskLogsBatch], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[7], ModalClient_SandboxGetLogs_FullMethodName, cOpts...)
@@ -3007,6 +3019,7 @@ type ModalClientServer interface {
 	SandboxCreateV2(context.Context, *SandboxCreateV2Request) (*SandboxCreateV2Response, error)
 	SandboxGetCommandRouterAccess(context.Context, *SandboxGetCommandRouterAccessRequest) (*SandboxGetCommandRouterAccessResponse, error)
 	SandboxGetFromName(context.Context, *SandboxGetFromNameRequest) (*SandboxGetFromNameResponse, error)
+	SandboxGetFromNameV2(context.Context, *SandboxGetFromNameRequest) (*SandboxGetFromNameResponse, error)
 	SandboxGetLogs(*SandboxGetLogsRequest, grpc.ServerStreamingServer[TaskLogsBatch]) error
 	SandboxGetResourceUsage(context.Context, *SandboxGetResourceUsageRequest) (*SandboxGetResourceUsageResponse, error)
 	SandboxGetTaskId(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error)
@@ -3530,6 +3543,9 @@ func (UnimplementedModalClientServer) SandboxGetCommandRouterAccess(context.Cont
 }
 func (UnimplementedModalClientServer) SandboxGetFromName(context.Context, *SandboxGetFromNameRequest) (*SandboxGetFromNameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetFromName not implemented")
+}
+func (UnimplementedModalClientServer) SandboxGetFromNameV2(context.Context, *SandboxGetFromNameRequest) (*SandboxGetFromNameResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxGetFromNameV2 not implemented")
 }
 func (UnimplementedModalClientServer) SandboxGetLogs(*SandboxGetLogsRequest, grpc.ServerStreamingServer[TaskLogsBatch]) error {
 	return status.Error(codes.Unimplemented, "method SandboxGetLogs not implemented")
@@ -6284,6 +6300,24 @@ func _ModalClient_SandboxGetFromName_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxGetFromNameV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxGetFromNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxGetFromNameV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxGetFromNameV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxGetFromNameV2(ctx, req.(*SandboxGetFromNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxGetLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SandboxGetLogsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -8249,6 +8283,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SandboxGetFromName",
 			Handler:    _ModalClient_SandboxGetFromName_Handler,
+		},
+		{
+			MethodName: "SandboxGetFromNameV2",
+			Handler:    _ModalClient_SandboxGetFromNameV2_Handler,
 		},
 		{
 			MethodName: "SandboxGetResourceUsage",
