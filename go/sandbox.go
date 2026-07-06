@@ -213,8 +213,8 @@ type SandboxCreateParams struct {
 	H2Ports                  []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
 	UnencryptedPorts         []int                        // List of ports to tunnel into the Sandbox without encryption.
 	BlockNetwork             bool                         // Whether to block all network access from the Sandbox.
-	OutboundCIDRAllowlist    []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
-	OutboundDomainAllowlist  []string                     // List of domain names the Sandbox is allowed to access. Supports wildcard prefixes (*.example.com). Cannot be used with BlockNetwork.
+	OutboundCIDRAllowlist    *Allowlist                   // CIDRs the Sandbox is allowed to access. Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
+	OutboundDomainAllowlist  *Allowlist                   // Domain names the Sandbox is allowed to access (supports wildcard prefixes like *.example.com). Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
 	InboundCIDRAllowlist     []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
 	I6PN                     bool                         // Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can reach each other at their i6pn.modal.local address. Pin every Sandbox in the group to the same specific region. Cannot be used with BlockNetwork.
 	Cloud                    string                       // Cloud provider to run the Sandbox on.
@@ -298,7 +298,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	var networkAccess *pb.NetworkAccess
 	if params.BlockNetwork {
 		if params.I6PN {
-			return nil, fmt.Errorf("BlockNetwork disables all networking, including i6pn. To keep i6pn while blocking public egress, use an empty outbound allowlist (OutboundCIDRAllowlist: []string{}) instead")
+			return nil, fmt.Errorf("BlockNetwork disables all networking, including i6pn. To keep i6pn while blocking public egress, use an empty outbound allowlist (OutboundCIDRAllowlist: &Allowlist{}) instead")
 		}
 		if params.OutboundCIDRAllowlist != nil {
 			return nil, fmt.Errorf("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
@@ -315,10 +315,18 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			AllowedDomains:    []string{},
 		}.Build()
 	} else if params.OutboundCIDRAllowlist != nil || params.OutboundDomainAllowlist != nil {
+		var cidrs []string
+		var domains []string
+		if params.OutboundCIDRAllowlist != nil {
+			cidrs = params.OutboundCIDRAllowlist.Entries
+		}
+		if params.OutboundDomainAllowlist != nil {
+			domains = params.OutboundDomainAllowlist.Entries
+		}
 		networkAccess = pb.NetworkAccess_builder{
 			NetworkAccessType: pb.NetworkAccess_ALLOWLIST,
-			AllowedCidrs:      params.OutboundCIDRAllowlist,
-			AllowedDomains:    params.OutboundDomainAllowlist,
+			AllowedCidrs:      cidrs,
+			AllowedDomains:    domains,
 		}.Build()
 	} else {
 		networkAccess = pb.NetworkAccess_builder{

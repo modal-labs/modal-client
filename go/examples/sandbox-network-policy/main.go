@@ -26,8 +26,8 @@ func main() {
 	// Create a sandbox with only modal.com allowed (empty CIDR list blocks raw IP traffic).
 	sb, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:                 []string{"sleep", "infinity"},
-		OutboundDomainAllowlist: []string{"modal.com"},
-		OutboundCIDRAllowlist:   []string{},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"modal.com"}},
+		OutboundCIDRAllowlist:   &modal.Allowlist{},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create Sandbox: %v", err)

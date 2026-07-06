@@ -550,7 +550,7 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:               []string{"echo", "hello, network access"},
 		BlockNetwork:          false,
-		OutboundCIDRAllowlist: []string{"10.0.0.0/8", "192.168.0.0/16"},
+		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"10.0.0.0/8", "192.168.0.0/16"}},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb)
@@ -564,14 +564,14 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		BlockNetwork:          false,
-		OutboundCIDRAllowlist: []string{"not-an-ip/8"},
+		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"not-an-ip/8"}},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("Invalid CIDR: not-an-ip/8"))
 
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		BlockNetwork:          true,
-		OutboundCIDRAllowlist: []string{"10.0.0.0/8"},
+		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"10.0.0.0/8"}},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled"))
@@ -594,7 +594,7 @@ func TestCreateSandboxWithDomainAllowlist(t *testing.T) {
 	// Domain-only allowlist.
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:                 []string{"echo", "hello, domain allowlist"},
-		OutboundDomainAllowlist: []string{"example.com", "*.github.com"},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"example.com", "*.github.com"}},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb)
@@ -609,8 +609,8 @@ func TestCreateSandboxWithDomainAllowlist(t *testing.T) {
 	// Domain + CIDR combined.
 	sb2, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:                 []string{"echo", "hello, domain+cidr"},
-		OutboundDomainAllowlist: []string{"api.example.com"},
-		OutboundCIDRAllowlist:   []string{"10.0.0.0/8"},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"api.example.com"}},
+		OutboundCIDRAllowlist:   &modal.Allowlist{Entries: []string{"10.0.0.0/8"}},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb2)
@@ -622,14 +622,14 @@ func TestCreateSandboxWithDomainAllowlist(t *testing.T) {
 	// Cannot combine with BlockNetwork.
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		BlockNetwork:            true,
-		OutboundDomainAllowlist: []string{"example.com"},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"example.com"}},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled"))
 
 	// Invalid domain triggers server-side validation error.
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
-		OutboundDomainAllowlist: []string{"not a valid domain!"},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"not a valid domain!"}},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 }

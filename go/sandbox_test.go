@@ -835,26 +835,26 @@ func TestSandboxCreateRequestProto_OutboundCIDRAllowlist(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
-	// OutboundCIDRAllowlist is reflected in the network access proto.
+	// CIDRs are reflected in the network access proto.
 	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
-		OutboundCIDRAllowlist: []string{"10.0.0.0/8", "192.168.0.0/16"},
+		OutboundCIDRAllowlist: &Allowlist{Entries: []string{"10.0.0.0/8", "192.168.0.0/16"}},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	def := req.GetDefinition()
 	g.Expect(def.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
 	g.Expect(def.GetNetworkAccess().GetAllowedCidrs()).To(gomega.Equal([]string{"10.0.0.0/8", "192.168.0.0/16"}))
 
-	// An explicit empty allowlist restricts egress to nothing, blocking all
-	// public egress while leaving i6pn intact.
+	// An empty Allowlist blocks all public egress while leaving i6pn intact.
 	req, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
-		OutboundCIDRAllowlist: []string{},
+		OutboundCIDRAllowlist: &Allowlist{},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	def = req.GetDefinition()
 	g.Expect(def.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
-	g.Expect(def.GetNetworkAccess().GetAllowedCidrs()).To(gomega.BeEmpty())
+	g.Expect(def.GetNetworkAccess().GetAllowedCidrs()).To(gomega.BeNil())
+	g.Expect(def.GetNetworkAccess().GetAllowedDomains()).To(gomega.BeNil())
 
-	// A nil allowlist leaves egress open.
+	// A nil OutboundCIDRAllowlist leaves egress open.
 	req, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(req.GetDefinition().GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_OPEN))
@@ -862,7 +862,7 @@ func TestSandboxCreateRequestProto_OutboundCIDRAllowlist(t *testing.T) {
 	// Cannot be combined with BlockNetwork.
 	_, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
 		BlockNetwork:          true,
-		OutboundCIDRAllowlist: []string{"10.0.0.0/8"},
+		OutboundCIDRAllowlist: &Allowlist{Entries: []string{"10.0.0.0/8"}},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled"))
@@ -874,7 +874,7 @@ func TestSandboxCreateRequestProto_OutboundDomainAllowlist(t *testing.T) {
 
 	// Domain-only allowlist.
 	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
-		OutboundDomainAllowlist: []string{"example.com", "*.github.com"},
+		OutboundDomainAllowlist: &Allowlist{Entries: []string{"example.com", "*.github.com"}},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	def := req.GetDefinition()
@@ -884,8 +884,8 @@ func TestSandboxCreateRequestProto_OutboundDomainAllowlist(t *testing.T) {
 
 	// Domain + CIDR combined.
 	req, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
-		OutboundDomainAllowlist: []string{"api.example.com"},
-		OutboundCIDRAllowlist:   []string{"10.0.0.0/8"},
+		OutboundDomainAllowlist: &Allowlist{Entries: []string{"api.example.com"}},
+		OutboundCIDRAllowlist:   &Allowlist{Entries: []string{"10.0.0.0/8"}},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	def = req.GetDefinition()
@@ -896,7 +896,7 @@ func TestSandboxCreateRequestProto_OutboundDomainAllowlist(t *testing.T) {
 	// Cannot be combined with BlockNetwork.
 	_, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
 		BlockNetwork:            true,
-		OutboundDomainAllowlist: []string{"example.com"},
+		OutboundDomainAllowlist: &Allowlist{Entries: []string{"example.com"}},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled"))
