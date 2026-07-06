@@ -44,6 +44,8 @@ def test_environment_name():
     assert not is_valid_environment_name("/env")
     assert not is_valid_environment_name("env/env")
     assert not is_valid_environment_name("")
+    assert not is_valid_environment_name("en-some-env")
+    assert not is_valid_environment_name("EN-some-env")
 
 
 def test_tag():

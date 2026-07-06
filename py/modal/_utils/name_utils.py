@@ -29,7 +29,13 @@ def is_valid_object_name(name: str) -> bool:
 
 def is_valid_environment_name(name: str) -> bool:
     # first char is alnum, the rest allows other chars
-    return len(name) <= 64 and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.]+$", name) is not None
+    # The "en-" prefix is reserved for environment IDs, so that references
+    # to environments can be resolved by either name or ID unambiguously.
+    return (
+        len(name) <= 64
+        and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.]+$", name) is not None
+        and not name.lower().startswith("en-")
+    )
 
 
 def is_valid_tag(tag: str, max_length: int = 50) -> bool:
@@ -66,7 +72,7 @@ def check_environment_name(name: str) -> None:
         f"Invalid Environment name: '{name}'."
         "\n\nEnvironment names can only start with alphanumeric characters,"
         " may contain only alphanumeric characters, dashes, periods, and underscores,"
-        " and must be shorter than 64 characters."
+        " must be shorter than 64 characters, and cannot start with 'en-'."
     )
     if not is_valid_environment_name(name):
         raise InvalidError(message)
