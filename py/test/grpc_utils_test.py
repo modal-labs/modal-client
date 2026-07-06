@@ -13,7 +13,6 @@ from modal._utils.grpc_utils import (
     CustomProtoStatusDetailsCodec,
     ModalChannel,
     Retry,
-    connect_channel,
     create_channel,
     create_channel_with_fallbacks,
     get_server_retry_policy,
@@ -69,11 +68,12 @@ async def test_unix_channel(servicer):
 
 
 @pytest.mark.asyncio
-async def test_http_broken_channel(monkeypatch):
-    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
+async def test_http_broken_channel():
+    # A single connection attempt to a broken URL raises immediately (retries and failover live in
+    # create_channel_with_fallbacks).
     ch = create_channel("https://xyz.invalid")
     with pytest.raises(OSError):
-        await connect_channel(ch)
+        await ch.__connect__()
 
 
 @pytest.mark.asyncio

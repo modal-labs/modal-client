@@ -32,8 +32,8 @@ from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 async def _connect_channel(channel: grpclib.client.Channel):
     """Connect to the command router channel.
 
-    Uses a longer retry budget than grpc_utils.connect_channel. In rare cases the sandbox
-    may take a long time to start on the worker after scheduling.
+    Uses a longer retry budget than grpc_utils.create_channel_with_fallbacks. In rare cases the
+    sandbox may take a long time to start on the worker after scheduling.
 
     Retries with exponential backoff (1, 2, 4, 8, 10, 10, ...) capped at 10s per delay.
     Total sleep between attempts: 1 + 2 + 4 + 8 + 10*29 = 305s (~5 min).

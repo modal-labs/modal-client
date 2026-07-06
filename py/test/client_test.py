@@ -63,9 +63,9 @@ async def test_container_client_type(servicer, container_client):
 
 @pytest.fixture
 def no_retry_connect_channel(monkeypatch):
-    # Make the error appear faster during test
-    org_connect_channel = modal._utils.grpc_utils.connect_channel
-    monkeypatch.setattr(modal._utils.grpc_utils, "connect_channel", org_connect_channel.__wrapped__)
+    # Make the error appear faster during test by skipping the connection retry/backoff.
+    org_create_channel = modal._utils.grpc_utils.create_channel_with_fallbacks
+    monkeypatch.setattr(modal._utils.grpc_utils, "create_channel_with_fallbacks", org_create_channel.__wrapped__)
 
 
 @pytest.mark.asyncio

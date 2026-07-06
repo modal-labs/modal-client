@@ -163,7 +163,6 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.UNKNOWN,
 ]
 SERVER_RETRY_WARNING_TIME_INTERVAL = 30.0
-# Initial per-attempt timeout for TCP/TLS handshake in connect_channel.
 DEFAULT_MAX_RETRIES = 3
 
 
@@ -308,11 +307,6 @@ def create_channel(
 
 # With 18 attempts, the max delays between calls is: 0.1 + 0.2 + 0.4 + 0.8 + 1.6 + 3.2 + 5*11 ~ 62
 @retry(n_attempts=18, base_delay=0.1, attempt_timeout=10.0, max_delay=5.0, total_timeout=63.0)
-async def connect_channel(channel: grpclib.client.Channel):
-    """Connect to socket and raise exceptions when there is a connection issue."""
-    await channel.__connect__()
-
-
 async def create_channel_with_fallbacks(
     server_url: str,
     metadata: dict[str, str] = {},
@@ -347,7 +341,7 @@ async def create_channel_with_fallbacks(
                 pass
         channel = create_channel(url, metadata)
         try:
-            await connect_channel(channel)
+            await channel.__connect__()
         except BaseException:
             # Close the channel of a losing/cancelled attempt so its socket doesn't leak.
             channel.close()
