@@ -1266,9 +1266,6 @@ class _App:
 
         return wrapper
 
-    def _experimental_server(self, **kwargs):
-        return self.server(**kwargs)
-
     def server(
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
