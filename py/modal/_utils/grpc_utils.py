@@ -323,21 +323,35 @@ async def create_channel_with_fallbacks(
     `server_url` may be a single URL or a comma-separated list of URLs. The connection attempts
     are raced against each other and the first one to connect wins, which lets the client fail
     over to a secondary endpoint when the primary is unreachable (e.g. a DNS outage on the
-    primary's domain). Attempts are staggered: the candidate at index `i` waits `i * stagger_delay`
-    seconds before starting, so earlier URLs (e.g. the primary) get a head start and are preferred
-    when reachable. Losing attempts are cancelled and their channels closed.
+    primary's domain).
+
+    Attempts are staggered so earlier URLs (e.g. the primary) get a head start and are preferred
+    when reachable: the candidate at index `i` waits up to `i * stagger_delay` seconds before
+    starting. That wait is cut short as soon as the previous candidate *fails*, so a fast failure
+    falls over to the next URL immediately instead of waiting out the full stagger. Losing attempts
+    are cancelled and their channels closed.
     """
     urls = [url.strip() for url in server_url.split(",")]
 
+    # Set when a candidate's connection attempt fails, letting the next candidate start immediately
+    # instead of waiting out its stagger delay.
+    failed = [asyncio.Event() for _ in urls]
+
     async def connect(index: int, url: str) -> grpclib.client.Channel:
-        # Stagger the start so earlier URLs are preferred; once started, all attempts race.
-        await asyncio.sleep(index * stagger_delay)
+        if index > 0:
+            # Stagger the start so earlier URLs are preferred, but start early if the previous
+            # candidate has already failed.
+            try:
+                await asyncio.wait_for(failed[index - 1].wait(), timeout=index * stagger_delay)
+            except asyncio.TimeoutError:
+                pass
         channel = create_channel(url, metadata)
         try:
             await connect_channel(channel)
         except BaseException:
             # Close the channel of a losing/cancelled attempt so its socket doesn't leak.
             channel.close()
+            failed[index].set()
             raise
         return channel
 

@@ -406,6 +406,21 @@ async def test_create_channel_with_fallbacks_falls_back(servicer, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_create_channel_with_fallbacks_fast_failover(servicer, monkeypatch):
+    # A failing primary should fall over immediately, without waiting out the full stagger delay.
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
+    t0 = time.monotonic()
+    channel = await create_channel_with_fallbacks(f"https://xyz.invalid,{servicer.client_addr}", stagger_delay=1.0)
+    elapsed = time.monotonic() - t0
+    try:
+        assert channel is not None
+        # If the fallback had waited for the stagger, this would take ~1s.
+        assert elapsed < 0.5
+    finally:
+        channel.close()
+
+
+@pytest.mark.asyncio
 async def test_create_channel_with_fallbacks_all_unreachable(monkeypatch):
     from modal.exception import ConnectionError as ModalConnectionError
 
