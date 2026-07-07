@@ -287,6 +287,32 @@ func TestFunctionGetWebURL(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestFunctionFromNameWithVersion(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock, "FunctionGet",
+		func(req *pb.FunctionGetRequest) (*pb.FunctionGetResponse, error) {
+			g.Expect(req.GetAppName()).To(gomega.Equal("libmodal-test-support"))
+			g.Expect(req.GetObjectTag()).To(gomega.Equal("echo_string"))
+			g.Expect(req.GetAppVersion()).To(gomega.Equal(int32(3)))
+			return pb.FunctionGetResponse_builder{
+				FunctionId: "fid-versioned",
+			}.Build(), nil
+		},
+	)
+
+	f, err := mock.Functions.FromName(ctx, "libmodal-test-support", "echo_string", &modal.FunctionFromNameParams{Version: 3})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(f.FunctionID).To(gomega.Equal("fid-versioned"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestFunctionFromNameWithDotNotation(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

@@ -41,6 +41,8 @@ type Cls struct {
 type ClsFromNameParams struct {
 	Environment     string
 	CreateIfMissing bool
+	// Version looks up a version-pinned Cls deployed at this App version.
+	Version int
 }
 
 // FromName references a Cls from a deployed App by its name.
@@ -60,6 +62,7 @@ func (s *clsServiceImpl) FromName(ctx context.Context, appName string, name stri
 		AppName:         appName,
 		ObjectTag:       serviceFunctionName,
 		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
+		AppVersion:      int32(params.Version),
 	}.Build())
 
 	if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {

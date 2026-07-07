@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import { tc } from "../test-support/test-client";
 import { NotFoundError } from "modal";
+import { createMockModalClients } from "../test-support/grpc_mock";
 
 test("ClsCall", async () => {
   const cls = await tc.cls.fromName("libmodal-test-support", "EchoCls");
@@ -28,6 +29,26 @@ test("ClsCall", async () => {
 test("ClsNotFound", async () => {
   const cls = tc.cls.fromName("libmodal-test-support", "NotRealClassName");
   await expect(cls).rejects.toThrowError(NotFoundError);
+});
+
+test("ClsFromNameWithVersion", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("FunctionGet", (req) => {
+    expect(req).toMatchObject({
+      appName: "libmodal-test-support",
+      objectTag: "EchoCls.*",
+      appVersion: 3,
+    });
+    return {
+      functionId: "fid-versioned",
+      handleMetadata: {},
+    };
+  });
+
+  await mc.cls.fromName("libmodal-test-support", "EchoCls", { version: 3 });
+
+  mock.assertExhausted();
 });
 
 test("ClsCallInputPlane", async () => {

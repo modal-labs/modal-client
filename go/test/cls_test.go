@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	modal "github.com/modal-labs/modal-client/go"
+	"github.com/modal-labs/modal-client/go/internal/grpcmock"
+	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
 )
 
@@ -49,6 +51,31 @@ func TestClsNotFound(t *testing.T) {
 
 	_, err := tc.Cls.FromName(t.Context(), "libmodal-test-support", "NotRealClassName", nil)
 	g.Expect(err).Should(gomega.BeAssignableToTypeOf(modal.NotFoundError{}))
+}
+
+func TestClsFromNameWithVersion(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock, "FunctionGet",
+		func(req *pb.FunctionGetRequest) (*pb.FunctionGetResponse, error) {
+			g.Expect(req.GetAppName()).To(gomega.Equal("libmodal-test-support"))
+			g.Expect(req.GetObjectTag()).To(gomega.Equal("EchoCls.*"))
+			g.Expect(req.GetAppVersion()).To(gomega.Equal(int32(3)))
+			return pb.FunctionGetResponse_builder{
+				FunctionId: "fid-versioned",
+			}.Build(), nil
+		},
+	)
+
+	_, err := mock.Cls.FromName(ctx, "libmodal-test-support", "EchoCls", &modal.ClsFromNameParams{Version: 3})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestClsCallInputPlane(t *testing.T) {

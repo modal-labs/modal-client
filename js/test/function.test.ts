@@ -168,6 +168,31 @@ test("FunctionGetWebUrlOnNonWebFunction", async () => {
   expect(await function_.getWebUrl()).toBeUndefined();
 });
 
+test("FunctionFromNameWithVersion", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("FunctionGet", (req) => {
+    expect(req).toMatchObject({
+      appName: "libmodal-test-support",
+      objectTag: "echo_string",
+      appVersion: 3,
+    });
+    return {
+      functionId: "fid-versioned",
+      handleMetadata: {},
+    };
+  });
+
+  const function_ = await mc.functions.fromName(
+    "libmodal-test-support",
+    "echo_string",
+    { version: 3 },
+  );
+  expect(function_.functionId).toBe("fid-versioned");
+
+  mock.assertExhausted();
+});
+
 test("FunctionFromNameWithDotNotation", async () => {
   const promise = tc.functions.fromName(
     "libmodal-test-support",

@@ -41,6 +41,8 @@ const maxSystemRetries = 8;
 export type FunctionFromNameParams = {
   environment?: string;
   createIfMissing?: boolean;
+  /** Look up a version-pinned Function deployed at this App version. */
+  version?: number;
 };
 
 /**
@@ -77,6 +79,7 @@ export class FunctionService {
         appName,
         objectTag: name,
         environmentName: this.#client.environmentName(params.environment),
+        appVersion: params.version,
       });
       this.#client.logger.debug(
         "Retrieved Function",

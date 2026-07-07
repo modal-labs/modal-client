@@ -64,6 +64,8 @@ type Function struct {
 type FunctionFromNameParams struct {
 	Environment     string
 	CreateIfMissing bool
+	// Version looks up a version-pinned Function deployed at this App version.
+	Version int
 }
 
 func hasOptions(o *functionOptions) bool {
@@ -87,6 +89,7 @@ func (s *functionServiceImpl) FromName(ctx context.Context, appName string, name
 		AppName:         appName,
 		ObjectTag:       name,
 		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
+		AppVersion:      int32(params.Version),
 	}.Build())
 
 	if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {

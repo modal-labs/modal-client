@@ -21,6 +21,8 @@ import {
 export type ClsFromNameParams = {
   environment?: string;
   createIfMissing?: boolean;
+  /** Look up a version-pinned Cls deployed at this App version. */
+  version?: number;
 };
 
 /**
@@ -52,6 +54,7 @@ export class ClsService {
         appName,
         objectTag: serviceFunctionName,
         environmentName: this.#client.environmentName(params.environment),
+        appVersion: params.version,
       });
 
       const parameterInfo = serviceFunction.handleMetadata?.classParameterInfo;
