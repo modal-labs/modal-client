@@ -43,7 +43,7 @@ def test_workspace_members_list(servicer, client):
             user_id="us-2",
             name="Bob",
             email="bob@example.com",
-            role="user",
+            role="member",
             joined_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
             last_active_at=None,  # Bob has never been active
         ),
@@ -156,7 +156,7 @@ def test_workspace_settings_set_raises_on_rpc_failure(servicer, client):
 
 
 def test_member_role_from_proto():
-    assert _member_role_from_proto(api_pb2.MEMBER_ROLE_USER) == "user"
+    assert _member_role_from_proto(api_pb2.MEMBER_ROLE_USER) == "member"
     assert _member_role_from_proto(api_pb2.MEMBER_ROLE_MANAGER) == "manager"
     assert _member_role_from_proto(api_pb2.MEMBER_ROLE_OWNER) == "owner"
 

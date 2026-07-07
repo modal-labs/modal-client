@@ -13,13 +13,19 @@ from ._object import _Object
 from ._resolver import Resolver
 from ._utils.time_utils import timestamp_to_localized_dt
 from .client import _Client
-from .types import BillingReportItem, MemberRole, ProxyTokenInfo, TokenData, WorkspaceMemberInfo, WorkspaceSettings
+from .types import (
+    BillingReportItem,
+    ProxyTokenInfo,
+    TokenData,
+    WorkspaceMemberInfo,
+    WorkspaceSettings,
+)
 
 
-def _member_role_from_proto(proto_value: int) -> MemberRole:
+def _member_role_from_proto(proto_value: int) -> str:
     match proto_value:
         case api_pb2.MEMBER_ROLE_USER:
-            return "user"
+            return "member"
         case api_pb2.MEMBER_ROLE_MANAGER:
             return "manager"
         case api_pb2.MEMBER_ROLE_OWNER:

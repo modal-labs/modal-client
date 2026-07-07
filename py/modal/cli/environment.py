@@ -7,7 +7,7 @@ from click import UsageError
 from rich.text import Text
 
 from modal import environments
-from modal._environments import MemberRole, _Environment
+from modal._environments import _Environment
 from modal._utils.async_utils import synchronizer
 from modal._utils.name_utils import check_environment_name
 from modal._utils.time_utils import format_interval
@@ -158,7 +158,7 @@ def members_list(environment: str, json: bool = False):
     "--role", type=click.Choice(["contributor", "viewer"]), required=True, help="Role to assign to the member"
 )
 @service_user_option
-def members_update(environment: str, member: str, role: MemberRole, service_user: bool = False):
+def members_update(environment: str, member: str, role: str, service_user: bool = False):
     env = Environment.from_name(environment)
     if service_user:
         env.members.update(service_users={member: role})

@@ -106,7 +106,7 @@ def test_workspace_members_list_cli(servicer, set_env_client):
     by_name = {m["name"]: m for m in members}
     assert by_name["Alice"]["role"] == "owner"
     assert by_name["Alice"]["email"] == "alice@example.com"
-    assert by_name["Bob"]["role"] == "user"
+    assert by_name["Bob"]["role"] == "member"
     # Members who have never been active have a null timestamp
     assert by_name["Bob"]["last_active"] is None
 

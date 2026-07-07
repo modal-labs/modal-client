@@ -5,7 +5,7 @@ import enum
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Iterable, Optional
 
 from modal_proto import api_pb2
 
@@ -52,9 +52,6 @@ class FileWatchEventType(enum.Enum):
     Create = "Create"
     Modify = "Modify"
     Remove = "Remove"
-
-
-MemberRole = Literal["user", "manager", "owner"]
 
 
 @dataclass
@@ -206,7 +203,7 @@ class WorkspaceMemberInfo:
     name: str
     email: str
     user_id: str
-    role: MemberRole
+    role: str
     joined_at: datetime
     last_active_at: Optional[datetime]  # None if the member has never been active
 

@@ -103,9 +103,6 @@ class _EnvironmentManager:
         await client.stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
 
 
-MemberRole = Literal["viewer", "contributor"]
-
-
 def _role_to_proto(role: str) -> "api_pb2.EnvironmentRole.ValueType":
     match role:
         case "viewer":
@@ -116,7 +113,7 @@ def _role_to_proto(role: str) -> "api_pb2.EnvironmentRole.ValueType":
             raise InvalidError(f"Invalid Environment role: {role!r} (expected 'viewer' or 'contributor')")
 
 
-def _role_from_proto(proto_value: int) -> MemberRole:
+def _role_from_proto(proto_value: int) -> str:
     match proto_value:
         case api_pb2.ENVIRONMENT_ROLE_VIEWER:
             return "viewer"
@@ -137,7 +134,7 @@ class _EnvironmentMembersManager:
         """mdmd:hidden"""
         self._environment = environment
 
-    async def list(self) -> dict[Literal["users", "service_users"], dict[str, MemberRole]]:
+    async def list(self) -> dict[Literal["users", "service_users"], dict[str, str]]:
         """Return the members of a restricted Environment with their roles.
 
         **Examples:**
@@ -155,8 +152,8 @@ class _EnvironmentMembersManager:
         req = api_pb2.EnvironmentGetManagedRequest(environment_id=self._environment.object_id)
         resp = await self._environment.client.stub.EnvironmentGetManaged(req)
 
-        users: dict[str, MemberRole] = {}
-        service_users: dict[str, MemberRole] = {}
+        users: dict[str, str] = {}
+        service_users: dict[str, str] = {}
         for principal in resp.principal_roles:
             role = _role_from_proto(principal.role)
             if principal.user_id:
@@ -169,8 +166,8 @@ class _EnvironmentMembersManager:
     async def update(
         self,
         *,
-        users: Mapping[str, MemberRole] | None = None,
-        service_users: Mapping[str, MemberRole] | None = None,
+        users: Mapping[str, str] | None = None,
+        service_users: Mapping[str, str] | None = None,
     ) -> None:
         """Add or modify roles for members of a restricted Environment.
 
