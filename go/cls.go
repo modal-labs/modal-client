@@ -39,8 +39,7 @@ type Cls struct {
 
 // ClsFromNameParams are options for client.Cls.FromName.
 type ClsFromNameParams struct {
-	Environment     string
-	CreateIfMissing bool
+	Environment string
 	// Version looks up a version-pinned Cls deployed at this App version.
 	Version int
 }

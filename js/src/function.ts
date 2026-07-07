@@ -40,7 +40,6 @@ const maxSystemRetries = 8;
 /** Optional parameters for `client.functions.fromName()`. */
 export type FunctionFromNameParams = {
   environment?: string;
-  createIfMissing?: boolean;
   /** Look up a version-pinned Function deployed at this App version. */
   version?: number;
 };

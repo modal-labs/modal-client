@@ -62,8 +62,7 @@ type Function struct {
 
 // FunctionFromNameParams are options for client.Functions.FromName.
 type FunctionFromNameParams struct {
-	Environment     string
-	CreateIfMissing bool
+	Environment string
 	// Version looks up a version-pinned Function deployed at this App version.
 	Version int
 }

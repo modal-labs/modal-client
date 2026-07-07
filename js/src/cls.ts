@@ -20,7 +20,6 @@ import {
 /** Optional parameters for {@link ClsService#fromName client.cls.fromName()}. */
 export type ClsFromNameParams = {
   environment?: string;
-  createIfMissing?: boolean;
   /** Look up a version-pinned Cls deployed at this App version. */
   version?: number;
 };
