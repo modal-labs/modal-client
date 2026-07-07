@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
-import type { Secret, Volume } from "modal";
+import type { Volume } from "modal";
 import { createMockModalClients } from "../test-support/grpc_mock";
-import { Retries } from "modal";
+import { Retries, Secret } from "modal";
 
 const _mockFunctionProto = {
   functionId: "fid",
@@ -42,7 +42,7 @@ test("Cls.withOptions stacking", async () => {
     return { boundFunctionId: "fid-1", handleMetadata: {} };
   });
 
-  const secret = { secretId: "sec-1" } as Secret;
+  const secret = new Secret("sec-1");
   const volume = { volumeId: "vol-1" } as Volume;
 
   const optioned = cls

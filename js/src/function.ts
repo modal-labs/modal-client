@@ -26,7 +26,7 @@ import {
 } from "./invocation";
 import { checkForRenamedParams } from "./validation";
 import { blobUpload } from "./blob";
-import { mergeEnvIntoSecrets, Secret } from "./secret";
+import { mergeEnvIntoSecrets, hydrateSecrets, Secret } from "./secret";
 import { Volume, volumeToMountProto } from "./volume";
 import { parseRetries, Retries } from "./retries";
 import { parseGpuConfig } from "./app";
@@ -385,6 +385,11 @@ export async function bindParameters(
     options?.env,
     options?.secrets,
   );
+
+  // FunctionOptions only carries secret IDs, so any locally-created Secrets
+  // (and env vars) must be hydrated into server-side Secrets first.
+  await hydrateSecrets(client, mergedSecrets);
+
   const mergedOptions = mergeServiceOptions(options, {
     secrets: mergedSecrets,
     env: undefined, // setting env to undefined just to clarify it's not needed anymore

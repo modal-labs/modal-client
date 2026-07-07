@@ -6,14 +6,13 @@ const app = await modal.apps.fromName("libmodal-example", {
   createIfMissing: true,
 });
 
+const curlVersionSecret = await modal.secrets.fromObject({
+  CURL_VERSION: "8.12.1-r1",
+});
 const image = modal.images
   .fromRegistry("alpine:3.21")
   .dockerfileCommands(["RUN apk add --no-cache curl=$CURL_VERSION"], {
-    secrets: [
-      await modal.secrets.fromObject({
-        CURL_VERSION: "8.12.1-r1",
-      }),
-    ],
+    secrets: [curlVersionSecret],
   })
   .dockerfileCommands(["ENV SERVER=ipconfig.me"]);
 

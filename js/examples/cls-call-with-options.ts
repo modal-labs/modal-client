@@ -12,11 +12,12 @@ const cls = await modal.cls.fromName(
 const instance = await cls.instance();
 const method = instance.method("echo_env_var");
 
+const secret = await modal.secrets.fromObject({
+  SECRET_MESSAGE: "hello, Secret",
+});
 const instanceWithOptions = await cls
   .withOptions({
-    secrets: [
-      await modal.secrets.fromObject({ SECRET_MESSAGE: "hello, Secret" }),
-    ],
+    secrets: [secret],
   })
   .withConcurrency({ maxInputs: 1 })
   .instance();

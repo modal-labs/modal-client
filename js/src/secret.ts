@@ -3,6 +3,33 @@ import { ClientError, Status } from "nice-grpc";
 import { InvalidError, NotFoundError } from "./errors";
 import { ObjectCreationType } from "../proto/modal_proto/api";
 
+// Environment variable names must consist of letters, numbers, and
+// underscores, and may not start with a number. Mirrors the server-side
+// validation in modal_server (SECRET_KEYNAME_REGEX).
+const ENV_VAR_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/**
+ * Validate that every key in an env dict is a valid environment variable name
+ * (letters, numbers, and underscores, not starting with a number). Throws an
+ * {@link InvalidError} on the first invalid key. Mirrors the server-side
+ * validation, and is applied client-side wherever env vars are sent directly to
+ * a worker without a `SecretGetOrCreate` round-trip to validate them.
+ *
+ * @internal
+ * @hidden
+ */
+export function validateEnvVarKeys(env: Record<string, string>): void {
+  for (const key of Object.keys(env)) {
+    if (!ENV_VAR_KEY_REGEX.test(key)) {
+      throw new InvalidError(
+        `Secret key name ${JSON.stringify(key)} is invalid for environment ` +
+          "variables. Only letters, numbers, and underscores are allowed, and " +
+          "the name may not start with a number.",
+      );
+    }
+  }
+}
+
 /** Optional parameters for {@link SecretService#fromName client.secrets.fromName()}. */
 export type SecretFromNameParams = {
   environment?: string;
@@ -64,7 +91,16 @@ export class SecretService {
     }
   }
 
-  /** Create a {@link Secret} from a plain object of key-value pairs. */
+  /**
+   * Create a {@link Secret} from a plain object of key-value pairs.
+   *
+   * The returned Secret is lazy: no server-side Secret is created (and
+   * {@link Secret#secretId secretId} stays empty) until it is first used. When
+   * used with {@link Sandbox#exec Sandbox.exec()} or
+   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()},
+   * the values are sent directly to the worker as environment variables,
+   * avoiding a `SecretGetOrCreate` round-trip entirely.
+   */
   async fromObject(
     entries: Record<string, string>,
     params?: SecretFromObjectParams,
@@ -77,28 +113,12 @@ export class SecretService {
         );
       }
     }
+    validateEnvVarKeys(entries);
 
-    try {
-      const resp = await this.#client.cpClient.secretGetOrCreate({
-        objectCreationType: ObjectCreationType.OBJECT_CREATION_TYPE_EPHEMERAL,
-        envDict: entries as Record<string, string>,
-        environmentName: this.#client.environmentName(params?.environment),
-      });
-      this.#client.logger.debug(
-        "Created ephemeral Secret",
-        "secret_id",
-        resp.secretId,
-      );
-      return new Secret(resp.secretId);
-    } catch (err) {
-      if (
-        err instanceof ClientError &&
-        (err.code === Status.INVALID_ARGUMENT ||
-          err.code === Status.FAILED_PRECONDITION)
-      )
-        throw new InvalidError(err.details);
-      throw err;
-    }
+    // Copy the entries so later mutations of the caller's object don't leak in.
+    const envDict = { ...entries };
+    const environment = this.#client.environmentName(params?.environment);
+    return secretFromOptions(envDict, environment);
   }
 
   /**
@@ -135,16 +155,129 @@ export class SecretService {
 
 /** Secrets provide a dictionary of environment variables for {@link Image}s. */
 export class Secret {
-  readonly secretId: string;
+  #secretId: string;
   readonly name?: string;
 
+  // Environment variables for a Secret created locally via fromObject. Such
+  // Secrets are lazy: no secretId is allocated until they are hydrated. When
+  // used with Sandbox.exec or experimentalCreate the env dict is passed directly
+  // to the worker, avoiding a SecretGetOrCreate round-trip.
+  readonly #envDict?: Record<string, string>;
+  readonly #environment?: string;
+
+  // Caches the single in-flight (or successfully completed) hydration so the
+  // ephemeral Secret is created at most once, even if multiple callers hydrate
+  // the same Secret concurrently. Cleared on failure so a transient error
+  // doesn't permanently break the Secret; subsequent calls can retry.
+  #hydratePromise?: Promise<void>;
+
   /** @ignore */
-  constructor(secretId: string, name?: string) {
-    this.secretId = secretId;
+  constructor(
+    secretId: string,
+    name?: string,
+    options?: {
+      envDict?: Record<string, string>;
+      environment?: string;
+    },
+  ) {
+    this.#secretId = secretId;
     this.name = name;
+    this.#envDict = options?.envDict;
+    this.#environment = options?.environment;
+  }
+
+  /** The ID of the server-side Secret, or an empty string if not yet hydrated. */
+  get secretId(): string {
+    return this.#secretId;
+  }
+
+  /**
+   * The environment variables backing a lazy fromObject Secret, or `undefined`
+   * for Secrets that already reference a server-side Secret (e.g. from fromName).
+   *
+   * @internal
+   * @hidden
+   */
+  get _envDict(): Record<string, string> | undefined {
+    return this.#envDict;
+  }
+
+  /**
+   * Lazily create the ephemeral server-side Secret backing a fromObject Secret
+   * and populate {@link Secret#secretId secretId}. A no-op once secretId is set
+   * (e.g. for Secrets returned by fromName).
+   *
+   * @internal
+   * @hidden
+   */
+  async _hydrate(client: ModalClient): Promise<void> {
+    if (this.#secretId !== "" || this.#envDict === undefined) {
+      return;
+    }
+    if (this.#hydratePromise === undefined) {
+      this.#hydratePromise = this.#doHydrate(client);
+    }
+    const promise = this.#hydratePromise;
+    try {
+      await promise;
+    } catch (err) {
+      // Clear the cached Promise so a transient failure doesn't permanently
+      // break this Secret; subsequent calls can retry hydration.
+      if (this.#hydratePromise === promise) {
+        this.#hydratePromise = undefined;
+      }
+      throw err;
+    }
+  }
+
+  async #doHydrate(client: ModalClient): Promise<void> {
+    try {
+      const resp = await client.cpClient.secretGetOrCreate({
+        objectCreationType: ObjectCreationType.OBJECT_CREATION_TYPE_EPHEMERAL,
+        envDict: this.#envDict,
+        environmentName: this.#environment,
+      });
+      client.logger.debug(
+        "Created ephemeral Secret",
+        "secret_id",
+        resp.secretId,
+      );
+      this.#secretId = resp.secretId;
+    } catch (err) {
+      if (
+        err instanceof ClientError &&
+        (err.code === Status.INVALID_ARGUMENT ||
+          err.code === Status.FAILED_PRECONDITION)
+      )
+        throw new InvalidError(err.details);
+      throw err;
+    }
   }
 }
 
+/**
+ * Construct a lazy Secret backed by an env dict, without contacting the
+ * control plane.
+ *
+ * @internal
+ * @hidden
+ */
+export function secretFromOptions(
+  envDict: Record<string, string>,
+  environment?: string,
+): Secret {
+  return new Secret("", undefined, { envDict, environment });
+}
+
+/**
+ * Merge environment variables into a list of Secrets. If `env` is non-empty, a
+ * lazy Secret is created from it (via {@link SecretService#fromObject}) and
+ * appended. The appended Secret is hydrated together with the others when its
+ * secretId is needed.
+ *
+ * @internal
+ * @hidden
+ */
 export async function mergeEnvIntoSecrets(
   client: ModalClient,
   env?: Record<string, string>,
@@ -155,4 +288,73 @@ export async function mergeEnvIntoSecrets(
     result.push(await client.secrets.fromObject(env));
   }
   return result;
+}
+
+/**
+ * Hydrate each Secret in the list so its {@link Secret#secretId secretId} is
+ * available, running the hydrations concurrently. Rejects if any Secret is
+ * null/undefined.
+ *
+ * @internal
+ * @hidden
+ */
+export async function hydrateSecrets(
+  client: ModalClient,
+  secrets: Secret[],
+): Promise<void> {
+  secrets.forEach((secret, i) => {
+    if (secret == null) {
+      throw new InvalidError(`secret at index ${i} must not be null`);
+    }
+  });
+  await Promise.all(secrets.map((secret) => secret._hydrate(client)));
+}
+
+/**
+ * Collect the secretIds from a list of Secrets, rejecting any that are
+ * null/undefined or have not yet been hydrated.
+ *
+ * @internal
+ * @hidden
+ */
+export function collectSecretIds(secrets: Secret[]): string[] {
+  return secrets.map((secret, i) => {
+    if (secret == null) {
+      throw new InvalidError(`secret at index ${i} must not be null`);
+    }
+    if (secret.secretId === "") {
+      throw new InvalidError(`secret at index ${i} has not been hydrated`);
+    }
+    return secret.secretId;
+  });
+}
+
+/**
+ * Partition secrets into a merged env dict (from Secrets created locally via
+ * {@link SecretService#fromObject}) and the remaining "resolvable" Secrets that
+ * must be hydrated to a secretId before use (e.g. from
+ * {@link SecretService#fromName}).
+ *
+ * Locally-created Secrets can be passed directly to the worker as environment
+ * variables, avoiding a SecretGetOrCreate round-trip. Local Secrets are merged
+ * in list order (so later ones win on key collisions). This function does not
+ * validate its input: null/undefined Secrets are placed in the resolvable list
+ * rather than dropped, leaving it to {@link hydrateSecrets} to reject them.
+ *
+ * @internal
+ * @hidden
+ */
+export function splitEnvDictAndResolvableSecrets(
+  secrets: Secret[],
+): [Record<string, string>, Secret[]] {
+  const envDict: Record<string, string> = {};
+  const resolvable: Secret[] = [];
+  for (const secret of secrets) {
+    if (secret != null && secret._envDict !== undefined) {
+      Object.assign(envDict, secret._envDict);
+    } else {
+      resolvable.push(secret);
+    }
+  }
+  return [envDict, resolvable];
 }

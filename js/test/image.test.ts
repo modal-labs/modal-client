@@ -427,11 +427,12 @@ test("DockerfileCommandsChaining", async () => {
     createIfMissing: true,
   });
 
+  const secret = await tc.secrets.fromObject({ SECRET: "hello" });
   const image = tc.images
     .fromRegistry("alpine:3.21")
     .dockerfileCommands(["RUN echo ${SECRET:-unset} > /root/layer1.txt"])
     .dockerfileCommands(["RUN echo ${SECRET:-unset} > /root/layer2.txt"], {
-      secrets: [await tc.secrets.fromObject({ SECRET: "hello" })],
+      secrets: [secret],
     })
     .dockerfileCommands(["RUN echo ${SECRET:-unset} > /root/layer3.txt"]);
 

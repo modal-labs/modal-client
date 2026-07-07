@@ -19,6 +19,7 @@ import {
   Resources,
   PortSpecs,
   Probe as ProbeProto,
+  StringMap,
 } from "../proto/modal_proto/api";
 import {
   TaskExecStartRequest,
@@ -43,7 +44,13 @@ import {
   toModalReadStream,
   toModalWriteStream,
 } from "./streams";
-import { type Secret, mergeEnvIntoSecrets } from "./secret";
+import {
+  type Secret,
+  mergeEnvIntoSecrets,
+  hydrateSecrets,
+  splitEnvDictAndResolvableSecrets,
+  validateEnvVarKeys,
+} from "./secret";
 import {
   InvalidError,
   NotFoundError,
@@ -647,9 +654,18 @@ export async function buildSandboxCreateV2RequestProto(
   }
 
   const req = await buildSandboxCreateRequestProto(appId, imageId, params);
+
+  // V2 sandboxes support ephemeral env vars natively, so env vars are passed
+  // directly rather than via a server-side Secret.
+  const ephemeralSecrets =
+    params.env && Object.keys(params.env).length > 0
+      ? StringMap.create({ contents: params.env })
+      : undefined;
+
   return SandboxCreateV2Request.create({
     appId: req.appId,
     definition: req.definition,
+    ephemeralSecrets,
   });
 }
 
@@ -683,6 +699,15 @@ export class SandboxService {
       params.env,
       params.secrets,
     );
+
+    // The SandboxCreate request only carries secret IDs, so any locally-created
+    // Secrets (and env vars) must be hydrated into server-side Secrets first.
+    await hydrateSandboxSecrets(
+      this.#client,
+      mergedSecrets,
+      params.cloudBucketMounts,
+    );
+
     const mergedParams = {
       ...params,
       secrets: mergedSecrets,
@@ -737,15 +762,28 @@ export class SandboxService {
   ): Promise<Sandbox> {
     await image.build(app);
 
-    const mergedSecrets = await mergeEnvIntoSecrets(
-      this.#client,
-      params.env,
-      params.secrets,
+    // V2 supports ephemeral env vars natively (passed via ephemeralSecrets in
+    // the request), so unlike create() we don't fold env vars into a server-side
+    // Secret. Locally-created Secrets (fromObject) and params.env are sent
+    // directly as ephemeral env vars, avoiding a SecretGetOrCreate round-trip;
+    // params.env takes precedence on key collisions. Only the remaining
+    // resolvable Secrets (e.g. from fromName) need hydrating to secret IDs.
+    validateEnvVarKeys(params.env ?? {});
+    const [envDict, resolvableSecrets] = splitEnvDictAndResolvableSecrets(
+      params.secrets ?? [],
     );
+    Object.assign(envDict, params.env ?? {});
+
+    await hydrateSandboxSecrets(
+      this.#client,
+      resolvableSecrets,
+      params.cloudBucketMounts,
+    );
+
     const mergedParams = {
       ...params,
-      secrets: mergedSecrets,
-      env: undefined, // setting env to undefined just to clarify it's not needed anymore
+      secrets: resolvableSecrets,
+      env: envDict,
     };
 
     const createReq = await buildSandboxCreateV2RequestProto(
@@ -1129,6 +1167,31 @@ export function validateWorkdir(workdir: string | undefined): void {
   }
 }
 
+/**
+ * Hydrate the given Secrets together with the credential Secrets of any cloud
+ * bucket mounts, so all their secretIds are available before building the
+ * SandboxCreate request. Gathers them into a fresh list to avoid mutating the
+ * caller's secrets array.
+ *
+ * @internal
+ * @hidden
+ */
+export async function hydrateSandboxSecrets(
+  client: ModalClient,
+  secrets: Secret[],
+  mounts?: Record<string, CloudBucketMount>,
+): Promise<void> {
+  const toHydrate = [...secrets];
+  if (mounts) {
+    for (const mount of Object.values(mounts)) {
+      if (mount?.secret) {
+        toHydrate.push(mount.secret);
+      }
+    }
+  }
+  await hydrateSecrets(client, toHydrate);
+}
+
 export function getReturnCode(
   result: GenericResult | undefined,
 ): number | null {
@@ -1357,6 +1420,7 @@ export class Sandbox {
     this.#ensureAttached();
     if (!this.#sidecars) {
       this.#sidecars = new SidecarService({
+        client: this.#client,
         exec: (command, params, containerId) =>
           this.#execInternal(command, params, containerId),
         commandRouter: () => this.#getCommandRouter(),
@@ -1434,6 +1498,23 @@ export class Sandbox {
   ): Promise<ContainerProcess> {
     this.#ensureAttached();
     validateExecArgs(command);
+
+    // Locally-created Secrets (fromObject) are passed directly to the worker as
+    // environment variables, so only the remaining Secrets need hydrating. This
+    // avoids a SecretGetOrCreate round-trip for env-dict Secrets.
+    validateEnvVarKeys(params?.env ?? {});
+    const [envDict, resolvableSecrets] = splitEnvDictAndResolvableSecrets(
+      params?.secrets ?? [],
+    );
+    Object.assign(envDict, params?.env ?? {});
+    await hydrateSecrets(this.#client, resolvableSecrets);
+
+    const execParams: SandboxExecParams = {
+      ...params,
+      env: envDict,
+      secrets: resolvableSecrets,
+    };
+
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     const execId = uuidv4();
@@ -1441,7 +1522,7 @@ export class Sandbox {
       taskId,
       execId,
       command,
-      params,
+      execParams,
       containerId,
     );
 

@@ -8,7 +8,7 @@ import {
 } from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
 import { App, parseGpuConfig } from "./app";
-import { Secret, mergeEnvIntoSecrets } from "./secret";
+import { Secret, mergeEnvIntoSecrets, hydrateSecrets } from "./secret";
 import { ClientError } from "nice-grpc";
 import { Status } from "nice-grpc";
 import { NotFoundError, InvalidError } from "./errors";
@@ -79,6 +79,38 @@ export type ImageFromNameParams = {
   /** Modal Environment to resolve the named Image in. */
   environment?: string;
 };
+
+/**
+ * A closure that hydrates the registry-auth {@link Secret} (if any) and builds
+ * the {@link ImageRegistryConfig} for the base build layer. It runs at build
+ * time rather than when the Image is constructed, since the Secret may be lazy
+ * (created via {@link SecretService#fromObject}).
+ */
+type BuildRegistryConfig = (
+  client: ModalClient,
+) => Promise<ImageRegistryConfig>;
+
+/**
+ * Returns a closure that hydrates the registry-auth Secret (if any) and builds
+ * the ImageRegistryConfig. It runs at build time so that lazy Secrets (created
+ * via fromObject) are resolved against the build's client.
+ */
+function registryConfigBuilder(
+  authType: RegistryAuthType,
+  secret?: Secret,
+): BuildRegistryConfig {
+  return async (client: ModalClient) => {
+    let secretId = "";
+    if (secret) {
+      await hydrateSecrets(client, [secret]);
+      secretId = secret.secretId;
+    }
+    return ImageRegistryConfig.create({
+      registryAuthType: authType,
+      secretId,
+    });
+  };
+}
 
 /**
  * Service for managing {@link Image}s.
@@ -162,19 +194,19 @@ export class ImageService {
    * @param secret - Optional. A Secret containing credentials for registry authentication.
    */
   fromRegistry(tag: string, secret?: Secret): Image {
-    let imageRegistryConfig;
+    let buildRegistryConfig;
     if (secret) {
       if (!(secret instanceof Secret)) {
         throw new TypeError(
           "secret must be a reference to an existing Secret, e.g. `await client.secrets.fromName('my_secret')`",
         );
       }
-      imageRegistryConfig = {
-        registryAuthType: RegistryAuthType.REGISTRY_AUTH_TYPE_STATIC_CREDS,
-        secretId: secret.secretId,
-      };
+      buildRegistryConfig = registryConfigBuilder(
+        RegistryAuthType.REGISTRY_AUTH_TYPE_STATIC_CREDS,
+        secret,
+      );
     }
-    return new Image(this.#client, "", tag, imageRegistryConfig);
+    return new Image(this.#client, "", tag, buildRegistryConfig);
   }
 
   /**
@@ -184,19 +216,16 @@ export class ImageService {
    * @param secret - A Secret containing credentials for registry authentication.
    */
   fromAwsEcr(tag: string, secret: Secret): Image {
-    let imageRegistryConfig;
-    if (secret) {
-      if (!(secret instanceof Secret)) {
-        throw new TypeError(
-          "secret must be a reference to an existing Secret, e.g. `await client.secrets.fromName('my_secret')`",
-        );
-      }
-      imageRegistryConfig = {
-        registryAuthType: RegistryAuthType.REGISTRY_AUTH_TYPE_AWS,
-        secretId: secret.secretId,
-      };
+    if (!(secret instanceof Secret)) {
+      throw new TypeError(
+        "secret must be a reference to an existing Secret, e.g. `await client.secrets.fromName('my_secret')`",
+      );
     }
-    return new Image(this.#client, "", tag, imageRegistryConfig);
+    const buildRegistryConfig = registryConfigBuilder(
+      RegistryAuthType.REGISTRY_AUTH_TYPE_AWS,
+      secret,
+    );
+    return new Image(this.#client, "", tag, buildRegistryConfig);
   }
 
   /**
@@ -206,19 +235,16 @@ export class ImageService {
    * @param secret - A Secret containing credentials for registry authentication.
    */
   fromGcpArtifactRegistry(tag: string, secret: Secret): Image {
-    let imageRegistryConfig;
-    if (secret) {
-      if (!(secret instanceof Secret)) {
-        throw new TypeError(
-          "secret must be a reference to an existing Secret, e.g. `await client.secrets.fromName('my_secret')`",
-        );
-      }
-      imageRegistryConfig = {
-        registryAuthType: RegistryAuthType.REGISTRY_AUTH_TYPE_GCP,
-        secretId: secret.secretId,
-      };
+    if (!(secret instanceof Secret)) {
+      throw new TypeError(
+        "secret must be a reference to an existing Secret, e.g. `await client.secrets.fromName('my_secret')`",
+      );
     }
-    return new Image(this.#client, "", tag, imageRegistryConfig);
+    const buildRegistryConfig = registryConfigBuilder(
+      RegistryAuthType.REGISTRY_AUTH_TYPE_GCP,
+      secret,
+    );
+    return new Image(this.#client, "", tag, buildRegistryConfig);
   }
 
   /**
@@ -288,7 +314,10 @@ export class Image {
   #tag: string;
   // Image ID of the parent image layer to use as `FROM base`.
   #baseImageId: string;
-  #imageRegistryConfig?: ImageRegistryConfig;
+  // When set, hydrates the registry-auth Secret (if any) and returns the
+  // ImageRegistryConfig for the base build layer. Runs at build time, since the
+  // Secret may be lazy. Undefined when not pulling from a private registry.
+  #buildRegistryConfig?: BuildRegistryConfig;
   #layers: Layer[];
 
   /** @ignore */
@@ -296,7 +325,7 @@ export class Image {
     client: ModalClient,
     imageId: string,
     tag: string,
-    imageRegistryConfig?: ImageRegistryConfig,
+    buildRegistryConfig?: BuildRegistryConfig,
     layers?: Layer[],
     baseImageId?: string,
   ) {
@@ -304,7 +333,7 @@ export class Image {
     this.#imageId = imageId;
     this.#tag = tag;
     this.#baseImageId = baseImageId || "";
-    this.#imageRegistryConfig = imageRegistryConfig;
+    this.#buildRegistryConfig = buildRegistryConfig;
     this.#layers = layers || [
       {
         commands: [],
@@ -365,7 +394,7 @@ export class Image {
       this.#client,
       "",
       this.#tag,
-      this.#imageRegistryConfig,
+      this.#buildRegistryConfig,
       [...layers, newLayer],
       baseImageId,
     );
@@ -397,6 +426,7 @@ export class Image {
         layer.env,
         layer.secrets,
       );
+      await hydrateSecrets(this.#client, mergedSecrets);
 
       const secretIds = mergedSecrets.map((secret) => secret.secretId);
       const gpuConfig = layer.gpuConfig;
@@ -416,7 +446,9 @@ export class Image {
       }
 
       const imageRegistryConfig =
-        i === 0 && !baseImageId ? this.#imageRegistryConfig : undefined;
+        i === 0 && !baseImageId && this.#buildRegistryConfig
+          ? await this.#buildRegistryConfig(this.#client)
+          : undefined;
 
       const resp = await this.#client.cpClient.imageGetOrCreate({
         appId: app.appId,

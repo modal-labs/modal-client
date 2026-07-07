@@ -28,7 +28,14 @@ import {
   NotFoundError,
 } from "./errors";
 import type { Image } from "./image";
-import type { Secret } from "./secret";
+import type { ModalClient } from "./client";
+import {
+  collectSecretIds,
+  hydrateSecrets,
+  splitEnvDictAndResolvableSecrets,
+  validateEnvVarKeys,
+  type Secret,
+} from "./secret";
 
 /** Reserved name of a Sandbox's main container. */
 const MAIN_CONTAINER_NAME = "main";
@@ -49,6 +56,7 @@ type SandboxSidecarCommandRouter = Pick<
 >;
 
 type SandboxSidecarAccess = {
+  client: ModalClient;
   exec(
     command: string[],
     params: SandboxExecParams | undefined,
@@ -148,7 +156,16 @@ export class SidecarService {
     validateExecArgs(command);
     validateWorkdir(params?.workdir);
 
-    const secretIds = (params?.secrets ?? []).map((secret) => secret.secretId);
+    // Locally-created Secrets (fromObject) are passed directly to the worker as
+    // environment variables, so only the remaining Secrets need hydrating. This
+    // avoids a SecretGetOrCreate round-trip for env-dict Secrets.
+    validateEnvVarKeys(params?.env ?? {});
+    const [envDict, resolvableSecrets] = splitEnvDictAndResolvableSecrets(
+      params?.secrets ?? [],
+    );
+    Object.assign(envDict, params?.env ?? {});
+    await hydrateSecrets(this.#access.client, resolvableSecrets);
+    const secretIds = collectSecretIds(resolvableSecrets);
 
     const [taskId, client] = await this.#access.commandRouter();
 
@@ -160,7 +177,7 @@ export class SidecarService {
           containerName: name,
           imageId: image.imageId,
           args: command,
-          env: params?.env ?? {},
+          env: envDict,
           workdir: params?.workdir ?? "",
           secretIds,
         }),
