@@ -3815,7 +3815,7 @@ message TaskGetInfoResponse {
 
 message TaskInfo {
   string id = 1;
-  double started_at = 2;
+  double started_at = 2;  // For Function containers, this corresponds to the "ready" time, after startup phase
   double finished_at = 3;
   modal.client.GenericResult result = 4;
   double enqueued_at = 5;

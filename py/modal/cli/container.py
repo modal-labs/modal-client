@@ -202,20 +202,20 @@ async def logs(
         task_info_resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=task_id))
         app_id = task_info_resp.app_id
 
-        if not task_info_resp.info.started_at:
-            # Unlikely race or Modal backend issue, don't treat as a usage exception
+        if not task_info_resp.info.enqueued_at:
             return
-        container_started_dt = datetime.fromtimestamp(task_info_resp.info.started_at, timezone.utc)
+
+        container_enqueued_dt = datetime.fromtimestamp(task_info_resp.info.enqueued_at, timezone.utc)
 
         now = datetime.now(timezone.utc)
         if all_logs:
-            since_dt = container_started_dt
+            since_dt = container_enqueued_dt
             if task_info_resp.info.finished_at:
                 until_dt = datetime.fromtimestamp(task_info_resp.info.finished_at, timezone.utc)
             else:
                 until_dt = now
         else:
-            since_dt = _parse_time_arg(since, default=container_started_dt)
+            since_dt = _parse_time_arg(since, default=container_enqueued_dt)
             if task_info_resp.info.finished_at:
                 default_until_dt = datetime.fromtimestamp(task_info_resp.info.finished_at, timezone.utc)
             else:

@@ -2825,7 +2825,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 app_id="ap-test-container-app",
                 info=api_pb2.TaskInfo(
                     id=_request.task_id,
-                    started_at=1700000000.0,
+                    enqueued_at=1700000000.0,
+                    started_at=1700000001.0,
                     finished_at=1700003600.0,
                 ),
             )

@@ -1311,7 +1311,7 @@ def _make_task_get_info_responder(app_id="ap-test123", started_at=_TEST_TIMESTAM
                 app_id=app_id,
                 info=api_pb2.TaskInfo(
                     id=req.task_id,
-                    started_at=started_at,
+                    enqueued_at=started_at,
                     finished_at=finished_at,
                 ),
             )
@@ -1548,7 +1548,7 @@ def test_container_logs_sandbox_id(servicer, server_url_env, set_env_client):
         await stream.send_message(
             api_pb2.TaskGetInfoResponse(
                 app_id="ap-sandbox-app",
-                info=api_pb2.TaskInfo(id=req.task_id, started_at=_TEST_TIMESTAMP - 3600, finished_at=_TEST_TIMESTAMP),
+                info=api_pb2.TaskInfo(id=req.task_id, enqueued_at=_TEST_TIMESTAMP - 3600, finished_at=_TEST_TIMESTAMP),
             )
         )
 
