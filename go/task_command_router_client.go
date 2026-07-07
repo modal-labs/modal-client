@@ -283,7 +283,7 @@ func getCommandRouterAccess(
 ) (*commandRouterAccess, error) {
 	if isV2 {
 		resp, err := serverClient.SandboxGetCommandRouterAccess(ctx, pb.SandboxGetCommandRouterAccessRequest_builder{
-			SandboxId: sandboxID,
+			SandboxId: &sandboxID,
 		}.Build())
 		if err != nil {
 			return nil, err

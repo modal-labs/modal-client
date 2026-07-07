@@ -42033,10 +42033,10 @@ func (b0 SandboxCreateV2Response_builder) Build() *SandboxCreateV2Response {
 // Used by the sandbox controller to get command router access for V2 sandboxes.
 // For all other use cases, use TaskGetCommandRouterAccess instead.
 type SandboxGetCommandRouterAccessRequest struct {
-	state                protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_SandboxId string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state             protoimpl.MessageState                        `protogen:"opaque.v1"`
+	xxx_hidden_Target isSandboxGetCommandRouterAccessRequest_Target `protobuf_oneof:"target"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SandboxGetCommandRouterAccessRequest) Reset() {
@@ -42066,28 +42066,135 @@ func (x *SandboxGetCommandRouterAccessRequest) ProtoReflect() protoreflect.Messa
 
 func (x *SandboxGetCommandRouterAccessRequest) GetSandboxId() string {
 	if x != nil {
-		return x.xxx_hidden_SandboxId
+		if x, ok := x.xxx_hidden_Target.(*sandboxGetCommandRouterAccessRequest_SandboxId); ok {
+			return x.SandboxId
+		}
+	}
+	return ""
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) GetTaskId() string {
+	if x != nil {
+		if x, ok := x.xxx_hidden_Target.(*sandboxGetCommandRouterAccessRequest_TaskId); ok {
+			return x.TaskId
+		}
 	}
 	return ""
 }
 
 func (x *SandboxGetCommandRouterAccessRequest) SetSandboxId(v string) {
-	x.xxx_hidden_SandboxId = v
+	x.xxx_hidden_Target = &sandboxGetCommandRouterAccessRequest_SandboxId{v}
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) SetTaskId(v string) {
+	x.xxx_hidden_Target = &sandboxGetCommandRouterAccessRequest_TaskId{v}
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) HasTarget() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Target != nil
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) HasSandboxId() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Target.(*sandboxGetCommandRouterAccessRequest_SandboxId)
+	return ok
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) HasTaskId() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Target.(*sandboxGetCommandRouterAccessRequest_TaskId)
+	return ok
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) ClearTarget() {
+	x.xxx_hidden_Target = nil
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) ClearSandboxId() {
+	if _, ok := x.xxx_hidden_Target.(*sandboxGetCommandRouterAccessRequest_SandboxId); ok {
+		x.xxx_hidden_Target = nil
+	}
+}
+
+func (x *SandboxGetCommandRouterAccessRequest) ClearTaskId() {
+	if _, ok := x.xxx_hidden_Target.(*sandboxGetCommandRouterAccessRequest_TaskId); ok {
+		x.xxx_hidden_Target = nil
+	}
+}
+
+const SandboxGetCommandRouterAccessRequest_Target_not_set_case case_SandboxGetCommandRouterAccessRequest_Target = 0
+const SandboxGetCommandRouterAccessRequest_SandboxId_case case_SandboxGetCommandRouterAccessRequest_Target = 1
+const SandboxGetCommandRouterAccessRequest_TaskId_case case_SandboxGetCommandRouterAccessRequest_Target = 2
+
+func (x *SandboxGetCommandRouterAccessRequest) WhichTarget() case_SandboxGetCommandRouterAccessRequest_Target {
+	if x == nil {
+		return SandboxGetCommandRouterAccessRequest_Target_not_set_case
+	}
+	switch x.xxx_hidden_Target.(type) {
+	case *sandboxGetCommandRouterAccessRequest_SandboxId:
+		return SandboxGetCommandRouterAccessRequest_SandboxId_case
+	case *sandboxGetCommandRouterAccessRequest_TaskId:
+		return SandboxGetCommandRouterAccessRequest_TaskId_case
+	default:
+		return SandboxGetCommandRouterAccessRequest_Target_not_set_case
+	}
 }
 
 type SandboxGetCommandRouterAccessRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	SandboxId string
+	// Fields of oneof xxx_hidden_Target:
+	SandboxId *string
+	TaskId    *string
+	// -- end of xxx_hidden_Target
 }
 
 func (b0 SandboxGetCommandRouterAccessRequest_builder) Build() *SandboxGetCommandRouterAccessRequest {
 	m0 := &SandboxGetCommandRouterAccessRequest{}
 	b, x := &b0, m0
 	_, _ = b, x
-	x.xxx_hidden_SandboxId = b.SandboxId
+	if b.SandboxId != nil {
+		x.xxx_hidden_Target = &sandboxGetCommandRouterAccessRequest_SandboxId{*b.SandboxId}
+	}
+	if b.TaskId != nil {
+		x.xxx_hidden_Target = &sandboxGetCommandRouterAccessRequest_TaskId{*b.TaskId}
+	}
 	return m0
 }
+
+type case_SandboxGetCommandRouterAccessRequest_Target protoreflect.FieldNumber
+
+func (x case_SandboxGetCommandRouterAccessRequest_Target) String() string {
+	md := file_modal_proto_api_proto_msgTypes[352].Descriptor()
+	if x == 0 {
+		return "not set"
+	}
+	return protoimpl.X.MessageFieldStringOf(md, protoreflect.FieldNumber(x))
+}
+
+type isSandboxGetCommandRouterAccessRequest_Target interface {
+	isSandboxGetCommandRouterAccessRequest_Target()
+}
+
+type sandboxGetCommandRouterAccessRequest_SandboxId struct {
+	SandboxId string `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3,oneof"`
+}
+
+type sandboxGetCommandRouterAccessRequest_TaskId struct {
+	TaskId string `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3,oneof"`
+}
+
+func (*sandboxGetCommandRouterAccessRequest_SandboxId) isSandboxGetCommandRouterAccessRequest_Target() {
+}
+
+func (*sandboxGetCommandRouterAccessRequest_TaskId) isSandboxGetCommandRouterAccessRequest_Target() {}
 
 type SandboxGetCommandRouterAccessResponse struct {
 	state                        protoimpl.MessageState `protogen:"opaque.v1"`
@@ -62118,10 +62225,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x122\n" +
 	"\atunnels\x18\x02 \x03(\v2\x18.modal.client.TunnelDataR\atunnels\x12\x17\n" +
-	"\atask_id\x18\x03 \x01(\tR\x06taskId\"E\n" +
-	"$SandboxGetCommandRouterAccessRequest\x12\x1d\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\"l\n" +
+	"$SandboxGetCommandRouterAccessRequest\x12\x1f\n" +
 	"\n" +
-	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"{\n" +
+	"sandbox_id\x18\x01 \x01(\tH\x00R\tsandboxId\x12\x19\n" +
+	"\atask_id\x18\x02 \x01(\tH\x00R\x06taskIdB\b\n" +
+	"\x06target\"{\n" +
 	"%SandboxGetCommandRouterAccessResponse\x12\x10\n" +
 	"\x03jwt\x18\x01 \x01(\tR\x03jwt\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12.\n" +
@@ -65081,6 +65190,10 @@ func file_modal_proto_api_proto_init() {
 		(*sandbox_OpenPorts)(nil),
 	}
 	file_modal_proto_api_proto_msgTypes[346].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[352].OneofWrappers = []any{
+		(*sandboxGetCommandRouterAccessRequest_SandboxId)(nil),
+		(*sandboxGetCommandRouterAccessRequest_TaskId)(nil),
+	}
 	file_modal_proto_api_proto_msgTypes[358].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[359].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[360].OneofWrappers = []any{}

@@ -3348,7 +3348,10 @@ message SandboxCreateV2Response {
 // Used by the sandbox controller to get command router access for V2 sandboxes.
 // For all other use cases, use TaskGetCommandRouterAccess instead.
 message SandboxGetCommandRouterAccessRequest {
-  string sandbox_id = 1;
+  oneof target {
+    string sandbox_id = 1;
+    string task_id = 2;
+  }
 }
 
 message SandboxGetCommandRouterAccessResponse {
