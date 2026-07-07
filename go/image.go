@@ -26,8 +26,8 @@ type imageServiceImpl struct{ client *Client }
 const defaultImageTag = "latest"
 
 func validateImageName(name string) error {
-	if name == "" {
-		return InvalidError{Exception: "Image name must be non-empty."}
+	if err := checkObjectName(name, "Image"); err != nil {
+		return err
 	}
 	if strings.HasPrefix(name, "im-") {
 		return InvalidError{Exception: "Image name cannot start with 'im-' (reserved for image IDs)."}
@@ -36,30 +36,44 @@ func validateImageName(name string) error {
 }
 
 func validateImageTag(tag string) error {
-	if tag == "" {
-		return InvalidError{Exception: "Image tag must be non-empty."}
-	}
-	return nil
+	return checkObjectName(tag, "Image tag")
 }
 
-func parseNamedImageRef(value string) (string, error) {
-	separatorIndex := strings.Index(value, ":")
-	if separatorIndex == -1 {
-		if err := validateImageName(value); err != nil {
-			return "", err
-		}
-		return value + ":" + defaultImageTag, nil
+// parseNamedImageRef parses an image reference, returning (namespacePrefix, nameTag).
+// If the name contains a '/', the part before the last '/' is extracted as a
+// namespace prefix (intended for environment/name or workspace/env/name syntax).
+// The actual image name (after the last '/') is validated as a standard image name.
+func parseNamedImageRef(value string) (string, string, error) {
+	imageName, tag, found := strings.Cut(value, ":")
+	if !found {
+		tag = defaultImageTag
 	}
 
-	name := value[:separatorIndex]
-	tag := value[separatorIndex+1:]
-	if err := validateImageName(name); err != nil {
-		return "", err
+	prefix := ""
+	if lastSlash := strings.LastIndex(imageName, "/"); lastSlash != -1 {
+		prefix = imageName[:lastSlash]
+		after := imageName[lastSlash+1:]
+		if prefix == "" {
+			return "", "", InvalidError{Exception: "Invalid Image name: '/' prefix must be non-empty."}
+		}
+		if after == "" {
+			return "", "", InvalidError{Exception: "Invalid Image name: name after '/' must be non-empty."}
+		}
+		imageName = after
+	}
+
+	if err := validateImageName(imageName); err != nil {
+		return "", "", err
 	}
 	if err := validateImageTag(tag); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return name + ":" + tag, nil
+
+	fullName := imageName
+	if prefix != "" {
+		fullName = prefix + "/" + imageName
+	}
+	return prefix, fullName + ":" + tag, nil
 }
 
 // ImageDockerfileCommandsParams are options for Image.DockerfileCommands().
@@ -204,13 +218,23 @@ func (s *imageServiceImpl) FromName(ctx context.Context, name string, params *Im
 	if params == nil {
 		params = &ImageFromNameParams{}
 	}
-	tag, err := parseNamedImageRef(name)
+	namespacePrefix, tag, err := parseNamedImageRef(name)
 	if err != nil {
 		return nil, err
 	}
 
+	var environmentName string
+	if namespacePrefix != "" {
+		if params.Environment != "" {
+			return nil, InvalidError{Exception: "Cannot specify 'Environment' when the image name contains a '/'."}
+		}
+		environmentName = ""
+	} else {
+		environmentName = firstNonEmpty(params.Environment, s.client.profile.Environment)
+	}
+
 	resp, err := s.client.cpClient.ImageGetByTag(ctx, pb.ImageGetByTagRequest_builder{
-		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
+		EnvironmentName: environmentName,
 		Tag:             tag,
 	}.Build())
 	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
@@ -452,7 +476,7 @@ func (image *Image) Publish(ctx context.Context, name string, params *ImagePubli
 	if params == nil {
 		params = &ImagePublishParams{}
 	}
-	tag, err := parseNamedImageRef(name)
+	namespacePrefix, tag, err := parseNamedImageRef(name)
 	if err != nil {
 		return err
 	}
@@ -460,9 +484,19 @@ func (image *Image) Publish(ctx context.Context, name string, params *ImagePubli
 		return InvalidError{Exception: "Cannot publish an image that has not been built yet. Call Build() first."}
 	}
 
+	var environmentName string
+	if namespacePrefix != "" {
+		if params.Environment != "" {
+			return InvalidError{Exception: "Cannot specify 'Environment' when the image name contains a '/'."}
+		}
+		environmentName = ""
+	} else {
+		environmentName = firstNonEmpty(params.Environment, image.client.profile.Environment)
+	}
+
 	_, err = image.client.cpClient.ImagePublish(ctx, pb.ImagePublishRequest_builder{
 		ImageId:         image.ImageID,
-		EnvironmentName: firstNonEmpty(params.Environment, image.client.profile.Environment),
+		EnvironmentName: environmentName,
 		AllowPublic:     false,
 		Tag:             tag,
 	}.Build())

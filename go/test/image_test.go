@@ -2,6 +2,7 @@ package test
 
 import (
 	"io"
+	"strings"
 	"testing"
 
 	modal "github.com/modal-labs/modal-client/go"
@@ -125,6 +126,99 @@ func TestImagePublishRequiresBuiltImage(t *testing.T) {
 	image := mock.Images.FromRegistry("alpine:3.21", nil)
 	err := image.Publish(ctx, "analytics-runtime", nil)
 	g.Expect(err).Should(gomega.BeAssignableToTypeOf(modal.InvalidError{}))
+}
+
+func TestImageFromNameAllowsSlash(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImageGetByTag",
+		func(req *pb.ImageGetByTagRequest) (*pb.ImageGetByTagResponse, error) {
+			g.Expect(req.GetEnvironmentName()).To(gomega.Equal(""))
+			g.Expect(req.GetTag()).To(gomega.Equal("my-env/my-image:latest"))
+			return pb.ImageGetByTagResponse_builder{ImageId: "im-slash"}.Build(), nil
+		},
+	)
+
+	image, err := mock.Images.FromName(ctx, "my-env/my-image", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(image.ImageID).To(gomega.Equal("im-slash"))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestImageFromNameRejectsInvalidNames(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	badNames := []string{"name with spaces", strings.Repeat("a", 65), "ap-" + strings.Repeat("a", 22), ":latest"}
+	for _, bad := range badNames {
+		_, err := mock.Images.FromName(ctx, bad, nil)
+		g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("Invalid Image")), "expected error for %q", bad)
+	}
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestImageFromNameRejectsEnvironmentWithSlash(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	_, err := mock.Images.FromName(ctx, "my-env/my-image", &modal.ImageFromNameParams{
+		Environment: "other-env",
+	})
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("Cannot specify 'Environment'")))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestImageFromNameAllowsMultiSlash(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImageGetByTag",
+		func(req *pb.ImageGetByTagRequest) (*pb.ImageGetByTagResponse, error) {
+			g.Expect(req.GetEnvironmentName()).To(gomega.Equal(""))
+			g.Expect(req.GetTag()).To(gomega.Equal("my-workspace/my-env/my-image:latest"))
+			return pb.ImageGetByTagResponse_builder{ImageId: "im-multi-slash"}.Build(), nil
+		},
+	)
+
+	image, err := mock.Images.FromName(ctx, "my-workspace/my-env/my-image", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(image.ImageID).To(gomega.Equal("im-multi-slash"))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestImageFromNameRejectsEmptyPartsInSlashName(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	_, err := mock.Images.FromName(ctx, "/my-image", nil)
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("prefix must be non-empty")))
+
+	_, err = mock.Images.FromName(ctx, "my-env/", nil)
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("name after '/' must be non-empty")))
+
+	_, err = mock.Images.FromName(ctx, "/", nil)
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("prefix must be non-empty")))
+
+	_, err = mock.Images.FromName(ctx, "my-workspace/my-env/", nil)
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("name after '/' must be non-empty")))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestImageFromRegistryWithSecret(t *testing.T) {

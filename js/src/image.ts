@@ -12,13 +12,12 @@ import { Secret, mergeEnvIntoSecrets } from "./secret";
 import { ClientError } from "nice-grpc";
 import { Status } from "nice-grpc";
 import { NotFoundError, InvalidError } from "./errors";
+import { checkObjectName } from "./name_utils";
 
 const DEFAULT_IMAGE_TAG = "latest";
 
 function validateImageName(name: string): void {
-  if (name === "") {
-    throw new InvalidError("Image name must be non-empty.");
-  }
+  checkObjectName(name, "Image");
   if (name.startsWith("im-")) {
     throw new InvalidError(
       "Image name cannot start with 'im-' (reserved for image IDs).",
@@ -27,22 +26,52 @@ function validateImageName(name: string): void {
 }
 
 function validateImageTag(tag: string): void {
-  if (tag === "") {
-    throw new InvalidError("Image tag must be non-empty.");
-  }
+  checkObjectName(tag, "Image tag");
 }
 
-function parseNamedImageRef(value: string): string {
+/**
+ * Parse an image reference, returning [namespacePrefix, nameTag].
+ *
+ * If the name contains a '/', the part before the last '/' is extracted as
+ * a namespace prefix (intended for environment/name or workspace/env/name
+ * syntax). The actual image name (after the last '/') is validated as a
+ * standard image name.
+ */
+function parseNamedImageRef(value: string): [string, string] {
   const separatorIndex = value.indexOf(":");
+  let imageName: string;
+  let tag: string;
   if (separatorIndex === -1) {
-    validateImageName(value);
-    return `${value}:${DEFAULT_IMAGE_TAG}`;
+    imageName = value;
+    tag = DEFAULT_IMAGE_TAG;
+  } else {
+    imageName = value.slice(0, separatorIndex);
+    tag = value.slice(separatorIndex + 1);
   }
-  const name = value.slice(0, separatorIndex);
-  const tag = value.slice(separatorIndex + 1);
-  validateImageName(name);
+
+  let prefix = "";
+  const lastSlashIndex = imageName.lastIndexOf("/");
+  if (lastSlashIndex !== -1) {
+    prefix = imageName.slice(0, lastSlashIndex);
+    const after = imageName.slice(lastSlashIndex + 1);
+    if (prefix === "") {
+      throw new InvalidError(
+        "Invalid Image name: '/' prefix must be non-empty.",
+      );
+    }
+    if (after === "") {
+      throw new InvalidError(
+        "Invalid Image name: name after '/' must be non-empty.",
+      );
+    }
+    imageName = after;
+  }
+
+  validateImageName(imageName);
   validateImageTag(tag);
-  return `${name}:${tag}`;
+
+  const fullName = prefix ? `${prefix}/${imageName}` : imageName;
+  return [prefix, `${fullName}:${tag}`];
 }
 
 /** Optional parameters for {@link ImageService#fromName client.images.fromName()}. */
@@ -99,11 +128,23 @@ export class ImageService {
     name: string,
     params: ImageFromNameParams = {},
   ): Promise<Image> {
-    const tag = parseNamedImageRef(name);
+    const [namespacePrefix, tag] = parseNamedImageRef(name);
+
+    let environmentName: string;
+    if (namespacePrefix) {
+      if (params.environment) {
+        throw new InvalidError(
+          "Cannot specify 'environment' when the image name contains a '/'.",
+        );
+      }
+      environmentName = "";
+    } else {
+      environmentName = this.#client.environmentName(params.environment);
+    }
 
     try {
       const resp = await this.#client.cpClient.imageGetByTag({
-        environmentName: this.#client.environmentName(params.environment),
+        environmentName,
         tag,
       });
       return new Image(this.#client, resp.imageId, "");
@@ -459,7 +500,7 @@ export class Image {
    * @param params - Optional environment.
    */
   async publish(name: string, params: ImagePublishParams = {}): Promise<void> {
-    const tag = parseNamedImageRef(name);
+    const [namespacePrefix, tag] = parseNamedImageRef(name);
 
     if (this.#imageId === "") {
       throw new InvalidError(
@@ -467,7 +508,18 @@ export class Image {
       );
     }
 
-    const environmentName = this.#client.environmentName(params.environment);
+    let environmentName: string;
+    if (namespacePrefix) {
+      if (params.environment) {
+        throw new InvalidError(
+          "Cannot specify 'environment' when the image name contains a '/'.",
+        );
+      }
+      environmentName = "";
+    } else {
+      environmentName = this.#client.environmentName(params.environment);
+    }
+
     await this.#client.cpClient.imagePublish({
       imageId: this.#imageId,
       environmentName,

@@ -117,13 +117,34 @@ def _validate_image_tag(tag: str) -> None:
     check_object_name(tag, "Image tag")
 
 
-def _parse_named_image_ref(name: str) -> str:
+def _parse_named_image_ref(name: str) -> tuple[str, str]:
+    """Parse an image reference, returning (namespace_prefix, name_tag).
+
+    If the name contains a '/', the part before the last '/' is extracted as
+    a namespace prefix (intended for environment/name or workspace/env/name
+    syntax). The actual image name (after the last '/') is validated as a
+    standard object name.
+
+    Returns a tuple of (prefix, "full_name:tag") where prefix is empty string
+    if no '/' is present.
+    """
     image_name, sep, tag = name.partition(":")
     if not sep:
         tag = "latest"
+
+    prefix = ""
+    if "/" in image_name:
+        prefix, image_name = image_name.rsplit("/", 1)
+        if not prefix:
+            raise InvalidError("Invalid Image name: '/' prefix must be non-empty.")
+        if not image_name:
+            raise InvalidError("Invalid Image name: name after '/' must be non-empty.")
+
     _validate_image_name(image_name)
     _validate_image_tag(tag)
-    return f"{image_name}:{tag}"
+
+    full_name = f"{prefix}/{image_name}" if prefix else image_name
+    return prefix, f"{full_name}:{tag}"
 
 
 def _validate_python_version(
@@ -2923,12 +2944,15 @@ class _Image(_Object, type_prefix="im"):
             ...
         ```
         """
-        tag = _parse_named_image_ref(name)
+        namespace_prefix, tag = _parse_named_image_ref(name)
+
+        if namespace_prefix and environment_name:
+            raise InvalidError("Cannot specify 'environment_name' when the image name contains a '/'.")
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.ImageGetByTagRequest(
                 tag=tag,
-                environment_name=load_context.environment_name,
+                environment_name="" if namespace_prefix else load_context.environment_name,
             )
             response = await load_context.client.stub.ImageGetByTag(req)
             self._hydrate(response.image_id, load_context.client, None)
@@ -2963,14 +2987,19 @@ class _Image(_Object, type_prefix="im"):
         image.publish("my-image-with-numpy:v1")
         ```
         """
-        tag = _parse_named_image_ref(name)
+        namespace_prefix, tag = _parse_named_image_ref(name)
+
+        if namespace_prefix:
+            if environment_name:
+                raise InvalidError("Cannot specify 'environment_name' when the image name contains a '/'.")
+            resolved_env = ""
+        else:
+            resolved_env = environment_name or config.get("environment") or ""
 
         if self._object_id is None:
             raise InvalidError("Cannot publish an image that has not been created yet. Call `.build()` first.")
 
         _client = client or await _Client.from_env()
-
-        resolved_env = environment_name or config.get("environment") or ""
 
         await _client.stub.ImagePublish(
             api_pb2.ImagePublishRequest(

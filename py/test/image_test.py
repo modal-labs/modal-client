@@ -2198,7 +2198,7 @@ def test_image_publish_requires_hydrated(client):
         image.publish("my-image", client=client)
 
 
-@pytest.mark.parametrize("bad_name", ["my/image", "name with spaces", "a" * 65, "ap-" + "a" * 22, ":latest"])
+@pytest.mark.parametrize("bad_name", ["name with spaces", "a" * 65, "ap-" + "a" * 22, ":latest"])
 def test_image_publish_rejects_invalid_names(client, servicer, bad_name):
     image = Image.debian_slim()
     build_image(image, client)
@@ -2272,7 +2272,7 @@ def test_image_from_name_not_found(client, servicer):
         build_image(retrieved, client)
 
 
-@pytest.mark.parametrize("bad_name", ["my/image", "name with spaces", "a" * 65, "ap-" + "a" * 22, ":latest"])
+@pytest.mark.parametrize("bad_name", ["name with spaces", "a" * 65, "ap-" + "a" * 22, ":latest"])
 def test_image_from_name_rejects_invalid_names(bad_name):
     with pytest.raises(InvalidError, match="Invalid Image name"):
         Image.from_name(bad_name)
@@ -2292,3 +2292,36 @@ def test_image_from_name_rejects_invalid_tag(bad_tag):
 def test_image_from_name_rejects_empty_tag():
     with pytest.raises(InvalidError, match="Invalid Image tag name"):
         Image.from_name("my-image:")
+
+
+def test_image_from_name_allows_slash_in_name():
+    # Slash in name should be allowed (environment/name syntax)
+    image = Image.from_name("my-env/my-image")
+    assert image is not None
+
+    image_with_tag = Image.from_name("my-env/my-image:v1")
+    assert image_with_tag is not None
+
+    # Multi-slash: workspace/env/name syntax
+    image_multi = Image.from_name("my-workspace/my-env/my-image")
+    assert image_multi is not None
+
+    image_multi_tag = Image.from_name("my-workspace/my-env/my-image:v2")
+    assert image_multi_tag is not None
+
+
+def test_image_from_name_rejects_environment_with_slash():
+    with pytest.raises(InvalidError, match="Cannot specify 'environment_name'"):
+        Image.from_name("my-env/my-image", environment_name="other-env")
+
+
+@pytest.mark.parametrize("bad_name", ["/my-image", "my-env/", "/", "my-workspace/my-env/"])
+def test_image_from_name_rejects_empty_parts_in_slash_name(bad_name):
+    with pytest.raises(InvalidError, match="must be non-empty"):
+        Image.from_name(bad_name)
+
+
+def test_image_from_name_validates_name_after_slash():
+    # The actual name part (after slash) should still be validated as a standard object name
+    with pytest.raises(InvalidError, match="Invalid Image name"):
+        Image.from_name("my-env/name with spaces")

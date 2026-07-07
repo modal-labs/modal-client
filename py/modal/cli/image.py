@@ -168,11 +168,18 @@ async def history(
     env: Optional[str] = None,
     json: bool = False,
 ):
+    explicit_env = env  # None when --env is not passed by the user
     env = ensure_env(env)
     try:
-        name_tag = _parse_named_image_ref(name)
+        namespace_prefix, name_tag = _parse_named_image_ref(name)
     except InvalidError as exc:
         raise click.UsageError(str(exc)) from exc
+
+    if namespace_prefix:
+        if explicit_env is not None:
+            raise click.UsageError("Cannot specify '--env' when the image name contains a '/'.")
+        env = ""
+
     client = await _Client.from_env()
 
     first_page = await _fetch_history_page(client, env, name_tag, "")

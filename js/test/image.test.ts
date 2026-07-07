@@ -54,6 +54,111 @@ test("ImageNamedRefsRejectImageIDNames", async () => {
   mock.assertExhausted();
 });
 
+test("ImageFromNameAllowsSlash", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageGetByTag", (req: any) => {
+    expect(req).toMatchObject({
+      environmentName: "",
+      tag: "my-env/my-image:latest",
+    });
+    return { imageId: "im-slash" };
+  });
+
+  const image = await mc.images.fromName("my-env/my-image");
+  expect(image.imageId).toBe("im-slash");
+
+  mock.assertExhausted();
+});
+
+test("ImageFromNameAllowsSlashWithTag", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageGetByTag", (req: any) => {
+    expect(req).toMatchObject({
+      environmentName: "",
+      tag: "my-env/my-image:v1",
+    });
+    return { imageId: "im-slash-tagged" };
+  });
+
+  const image = await mc.images.fromName("my-env/my-image:v1");
+  expect(image.imageId).toBe("im-slash-tagged");
+
+  mock.assertExhausted();
+});
+
+test("ImageFromNameRejectsInvalidNames", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  await expect(mc.images.fromName("name with spaces")).rejects.toThrow(
+    "Invalid Image name",
+  );
+
+  await expect(mc.images.fromName("a".repeat(65))).rejects.toThrow(
+    "Invalid Image name",
+  );
+
+  await expect(mc.images.fromName("ap-" + "a".repeat(22))).rejects.toThrow(
+    "Invalid Image name",
+  );
+
+  await expect(mc.images.fromName(":latest")).rejects.toThrow(
+    "Invalid Image name",
+  );
+
+  mock.assertExhausted();
+});
+
+test("ImageFromNameRejectsEnvironmentWithSlash", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  await expect(
+    mc.images.fromName("my-env/my-image", { environment: "other-env" }),
+  ).rejects.toThrow("Cannot specify 'environment'");
+
+  mock.assertExhausted();
+});
+
+test("ImageFromNameAllowsMultiSlash", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageGetByTag", (req: any) => {
+    expect(req).toMatchObject({
+      environmentName: "",
+      tag: "my-workspace/my-env/my-image:latest",
+    });
+    return { imageId: "im-multi-slash" };
+  });
+
+  const image = await mc.images.fromName("my-workspace/my-env/my-image");
+  expect(image.imageId).toBe("im-multi-slash");
+
+  mock.assertExhausted();
+});
+
+test("ImageFromNameRejectsEmptyPartsInSlashName", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  await expect(mc.images.fromName("/my-image")).rejects.toThrow(
+    "prefix must be non-empty",
+  );
+
+  await expect(mc.images.fromName("my-env/")).rejects.toThrow(
+    "name after '/' must be non-empty",
+  );
+
+  await expect(mc.images.fromName("/")).rejects.toThrow(
+    "prefix must be non-empty",
+  );
+
+  await expect(mc.images.fromName("my-workspace/my-env/")).rejects.toThrow(
+    "name after '/' must be non-empty",
+  );
+
+  mock.assertExhausted();
+});
+
 test("ImageFromRegistry", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
