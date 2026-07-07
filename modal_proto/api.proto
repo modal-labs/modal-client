@@ -2758,6 +2758,14 @@ message MethodDefinition {
   repeated DataFormat supported_output_formats = 9;
 }
 
+message MountBatchedCheckExistenceRequest {
+  repeated string sha256_hex_hashes = 1;
+}
+
+message MountBatchedCheckExistenceResponse {
+  repeated string missing_sha256_hex_hashes = 1;
+}
+
 message MountFile {
   string filename = 1;
   string sha256_hex = 3; // SHA-256 checksum of the file.
@@ -4534,6 +4542,7 @@ service ModalClient {
   rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
 
   // Mounts
+  rpc MountBatchedCheckExistence(MountBatchedCheckExistenceRequest) returns (MountBatchedCheckExistenceResponse);
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 

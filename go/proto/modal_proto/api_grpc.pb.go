@@ -136,6 +136,7 @@ const (
 	ModalClient_MapAwait_FullMethodName                         = "/modal.client.ModalClient/MapAwait"
 	ModalClient_MapCheckInputs_FullMethodName                   = "/modal.client.ModalClient/MapCheckInputs"
 	ModalClient_MapStartOrContinue_FullMethodName               = "/modal.client.ModalClient/MapStartOrContinue"
+	ModalClient_MountBatchedCheckExistence_FullMethodName       = "/modal.client.ModalClient/MountBatchedCheckExistence"
 	ModalClient_MountGetOrCreate_FullMethodName                 = "/modal.client.ModalClient/MountGetOrCreate"
 	ModalClient_MountPutFile_FullMethodName                     = "/modal.client.ModalClient/MountPutFile"
 	ModalClient_NotebookKernelPublishResults_FullMethodName     = "/modal.client.ModalClient/NotebookKernelPublishResults"
@@ -383,6 +384,7 @@ type ModalClientClient interface {
 	MapCheckInputs(ctx context.Context, in *MapCheckInputsRequest, opts ...grpc.CallOption) (*MapCheckInputsResponse, error)
 	MapStartOrContinue(ctx context.Context, in *MapStartOrContinueRequest, opts ...grpc.CallOption) (*MapStartOrContinueResponse, error)
 	// Mounts
+	MountBatchedCheckExistence(ctx context.Context, in *MountBatchedCheckExistenceRequest, opts ...grpc.CallOption) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(ctx context.Context, in *MountGetOrCreateRequest, opts ...grpc.CallOption) (*MountGetOrCreateResponse, error)
 	MountPutFile(ctx context.Context, in *MountPutFileRequest, opts ...grpc.CallOption) (*MountPutFileResponse, error)
 	// Notebooks
@@ -1737,6 +1739,16 @@ func (c *modalClientClient) MapStartOrContinue(ctx context.Context, in *MapStart
 	return out, nil
 }
 
+func (c *modalClientClient) MountBatchedCheckExistence(ctx context.Context, in *MountBatchedCheckExistenceRequest, opts ...grpc.CallOption) (*MountBatchedCheckExistenceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MountBatchedCheckExistenceResponse)
+	err := c.cc.Invoke(ctx, ModalClient_MountBatchedCheckExistence_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) MountGetOrCreate(ctx context.Context, in *MountGetOrCreateRequest, opts ...grpc.CallOption) (*MountGetOrCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MountGetOrCreateResponse)
@@ -2990,6 +3002,7 @@ type ModalClientServer interface {
 	MapCheckInputs(context.Context, *MapCheckInputsRequest) (*MapCheckInputsResponse, error)
 	MapStartOrContinue(context.Context, *MapStartOrContinueRequest) (*MapStartOrContinueResponse, error)
 	// Mounts
+	MountBatchedCheckExistence(context.Context, *MountBatchedCheckExistenceRequest) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(context.Context, *MountGetOrCreateRequest) (*MountGetOrCreateResponse, error)
 	MountPutFile(context.Context, *MountPutFileRequest) (*MountPutFileResponse, error)
 	// Notebooks
@@ -3468,6 +3481,9 @@ func (UnimplementedModalClientServer) MapCheckInputs(context.Context, *MapCheckI
 }
 func (UnimplementedModalClientServer) MapStartOrContinue(context.Context, *MapStartOrContinueRequest) (*MapStartOrContinueResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MapStartOrContinue not implemented")
+}
+func (UnimplementedModalClientServer) MountBatchedCheckExistence(context.Context, *MountBatchedCheckExistenceRequest) (*MountBatchedCheckExistenceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MountBatchedCheckExistence not implemented")
 }
 func (UnimplementedModalClientServer) MountGetOrCreate(context.Context, *MountGetOrCreateRequest) (*MountGetOrCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MountGetOrCreate not implemented")
@@ -5850,6 +5866,24 @@ func _ModalClient_MapStartOrContinue_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_MountBatchedCheckExistence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MountBatchedCheckExistenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).MountBatchedCheckExistence(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_MountBatchedCheckExistence_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).MountBatchedCheckExistence(ctx, req.(*MountBatchedCheckExistenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_MountGetOrCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MountGetOrCreateRequest)
 	if err := dec(in); err != nil {
@@ -8183,6 +8217,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MapStartOrContinue",
 			Handler:    _ModalClient_MapStartOrContinue_Handler,
+		},
+		{
+			MethodName: "MountBatchedCheckExistence",
+			Handler:    _ModalClient_MountBatchedCheckExistence_Handler,
 		},
 		{
 			MethodName: "MountGetOrCreate",
