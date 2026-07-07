@@ -105,27 +105,32 @@ func (c *Cls) Instance(ctx context.Context, parameters map[string]any) (*ClsInst
 		return nil, err
 	}
 
-	var functionID string
-	if len(schema) == 0 && !hasOptions(c.serviceOptions) {
-		functionID = c.serviceFunctionID
-	} else {
-		opts := c.serviceOptions
-		if opts == nil {
-			opts = &functionOptions{}
-		}
-		boundFunctionID, err := c.bindParameters(ctx, parameters, opts)
-		if err != nil {
-			return nil, err
-		}
-		functionID = boundFunctionID
-	}
-
 	metadata, err := c.getServiceFunctionMetadata()
 	if err != nil {
 		return nil, err
 	}
 
-	methodHandleMetadata := metadata.GetMethodHandleMetadata()
+	var functionID string
+	var methodHandleMetadata map[string]*pb.FunctionHandleMetadata
+	if len(schema) == 0 && !hasOptions(c.serviceOptions) {
+		functionID = c.serviceFunctionID
+		methodHandleMetadata = metadata.GetMethodHandleMetadata()
+	} else {
+		opts := c.serviceOptions
+		if opts == nil {
+			opts = &functionOptions{}
+		}
+		bindResp, err := c.bindParameters(ctx, parameters, opts)
+		if err != nil {
+			return nil, err
+		}
+		functionID = bindResp.GetBoundFunctionId()
+		// Use the bound variant's per-method metadata so dynamic options such as
+		// RoutingRegion (surfaced as input_plane_url/input_plane_region) take
+		// effect at invocation time.
+		methodHandleMetadata = bindResp.GetHandleMetadata().GetMethodHandleMetadata()
+	}
+
 	methods := make(map[string]*Function, len(methodHandleMetadata))
 	for name, methodMetadata := range methodHandleMetadata {
 		methods[name] = &Function{
@@ -173,6 +178,7 @@ func (c *Cls) WithOptions(params *ClsWithOptionsParams) *Cls {
 		bufferContainers: params.BufferContainers,
 		scaledownWindow:  params.ScaledownWindow,
 		timeout:          params.Timeout,
+		routingRegion:    params.RoutingRegion,
 	})
 
 	return &Cls{
@@ -222,10 +228,10 @@ func (c *Cls) WithBatching(params *ClsWithBatchingParams) *Cls {
 }
 
 // bindParameters processes the parameters and binds them to the class function.
-func (c *Cls) bindParameters(ctx context.Context, parameters map[string]any, opts *functionOptions) (string, error) {
+func (c *Cls) bindParameters(ctx context.Context, parameters map[string]any, opts *functionOptions) (*pb.FunctionBindParamsResponse, error) {
 	schema, err := c.getSchema()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	return bindParameters(ctx, c.client, c.serviceFunctionID, opts, schema, parameters)

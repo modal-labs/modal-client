@@ -282,6 +282,7 @@ type FunctionWithOptionsParams struct {
 	BufferContainers *int
 	ScaledownWindow  *time.Duration
 	Timeout          *time.Duration
+	RoutingRegion    *string
 }
 
 // FunctionWithConcurrencyParams represents concurrency configuration for a Modal Function.
@@ -314,6 +315,7 @@ type functionOptions struct {
 	targetConcurrentInputs *int
 	batchMaxSize           *int
 	batchWait              *time.Duration
+	routingRegion          *string
 }
 
 func mergeFunctionOptions(base, new *functionOptions) *functionOptions {
@@ -342,6 +344,7 @@ func mergeFunctionOptions(base, new *functionOptions) *functionOptions {
 		targetConcurrentInputs: base.targetConcurrentInputs,
 		batchMaxSize:           base.batchMaxSize,
 		batchWait:              base.batchWait,
+		routingRegion:          base.routingRegion,
 	}
 
 	if new.cpu != nil {
@@ -394,6 +397,9 @@ func mergeFunctionOptions(base, new *functionOptions) *functionOptions {
 	}
 	if new.batchWait != nil {
 		merged.batchWait = new.batchWait
+	}
+	if new.routingRegion != nil {
+		merged.routingRegion = new.routingRegion
 	}
 
 	return merged
@@ -535,6 +541,10 @@ func buildFunctionOptionsProto(options *functionOptions) (*pb.FunctionOptions, e
 		builder.BatchLingerMs = &v
 	}
 
+	if options.routingRegion != nil {
+		builder.RoutingRegion = options.routingRegion
+	}
+
 	return builder.Build(), nil
 }
 
@@ -546,14 +556,14 @@ func bindParameters(
 	options *functionOptions,
 	schema []*pb.ClassParameterSpec,
 	parameters map[string]any,
-) (string, error) {
+) (*pb.FunctionBindParamsResponse, error) {
 	if options == nil {
 		options = &functionOptions{}
 	}
 
 	mergedSecrets, err := mergeEnvIntoSecrets(ctx, client, options.env, options.secrets)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	mergedOptions := mergeFunctionOptions(options, &functionOptions{
@@ -563,12 +573,12 @@ func bindParameters(
 
 	serializedParams, err := encodeParameterSet(schema, parameters)
 	if err != nil {
-		return "", fmt.Errorf("failed to serialize parameters: %w", err)
+		return nil, fmt.Errorf("failed to serialize parameters: %w", err)
 	}
 
 	functionOptions, err := buildFunctionOptionsProto(mergedOptions)
 	if err != nil {
-		return "", fmt.Errorf("failed to build function options: %w", err)
+		return nil, fmt.Errorf("failed to build function options: %w", err)
 	}
 
 	bindResp, err := client.cpClient.FunctionBindParams(ctx, pb.FunctionBindParamsRequest_builder{
@@ -579,10 +589,10 @@ func bindParameters(
 	}.Build())
 
 	if err != nil {
-		return "", fmt.Errorf("failed to bind parameters: %w", err)
+		return nil, fmt.Errorf("failed to bind parameters: %w", err)
 	}
 
-	return bindResp.GetBoundFunctionId(), nil
+	return bindResp, nil
 }
 
 func (f *Function) WithOptions(options *FunctionWithOptionsParams) *Function {
@@ -620,6 +630,7 @@ func (f *Function) WithOptions(options *FunctionWithOptionsParams) *Function {
 		bufferContainers: options.BufferContainers,
 		scaledownWindow:  options.ScaledownWindow,
 		timeout:          options.Timeout,
+		routingRegion:    options.RoutingRegion,
 	})
 
 	return &Function{
@@ -672,19 +683,21 @@ func (f *Function) Instance(ctx context.Context) (*Function, error) {
 	}
 
 	boundFnID := f.FunctionID
+	handleMetadata := f.handleMetadata
 
 	if hasOptions(f.options) {
-		fnID, err := bindParameters(ctx, f.client, f.FunctionID, f.options, []*pb.ClassParameterSpec{}, map[string]any{})
+		bindResp, err := bindParameters(ctx, f.client, f.FunctionID, f.options, []*pb.ClassParameterSpec{}, map[string]any{})
 		if err != nil {
 			return nil, err
 		}
 
-		boundFnID = fnID
+		boundFnID = bindResp.GetBoundFunctionId()
+		handleMetadata = bindResp.GetHandleMetadata()
 	}
 
 	return &Function{
 		FunctionID:     boundFnID,
-		handleMetadata: f.handleMetadata,
+		handleMetadata: handleMetadata,
 		client:         f.client,
 		options:        &functionOptions{},
 	}, nil

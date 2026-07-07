@@ -43,6 +43,7 @@ We also provide a number of examples:
 - [Spawn a deployed Function](https://github.com/modal-labs/modal-client/blob/main/js/examples/function-spawn.ts)
 - [Call a deployed Cls](https://github.com/modal-labs/modal-client/blob/main/js/examples/cls-call.ts)
 - [Call a deployed Cls, and override its options](https://github.com/modal-labs/modal-client/blob/main/js/examples/cls-call-with-options.ts)
+- [Call a deployed Cls, and override its routing region](https://github.com/modal-labs/modal-client/blob/main/js/examples/cls-routing-region.ts)
 - [Create a Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox.ts)
 - [Create a named Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-named.ts)
 - [Create a Sandbox with GPU](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-gpu.ts)

@@ -130,6 +130,7 @@ export type FunctionWithOptionsParams = {
   bufferContainers?: number;
   scaledownWindowMs?: number;
   timeoutMs?: number;
+  routingRegion?: string;
 };
 
 /** Configuration options for {@link Function_#withConcurrency Function_.withConcurrency()}. */
@@ -290,6 +291,7 @@ export async function buildFunctionOptionsProto(
     targetConcurrentInputs: o.targetConcurrentInputs,
     batchMaxSize: o.batchMaxSize,
     batchLingerMs: o.batchWaitMs,
+    routingRegion: o.routingRegion,
   });
 
   return functionOptions;
@@ -481,6 +483,7 @@ export class Function_ {
    * and/or {@link Function_#withBatching withBatching}. */
   async instance(): Promise<Function_> {
     let newFnId = this.functionId;
+    let handleMetadata = this.#handleMetadata;
 
     if (this.#options != null && Object.entries(this.#options).length > 0) {
       const boundF = await bindParameters(
@@ -490,13 +493,14 @@ export class Function_ {
       );
 
       newFnId = boundF.boundFunctionId;
+      handleMetadata = boundF.handleMetadata;
     }
 
     return new Function_(
       this.#client,
       newFnId,
       this.methodName,
-      this.#handleMetadata,
+      handleMetadata,
     );
   }
 

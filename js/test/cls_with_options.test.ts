@@ -56,6 +56,49 @@ test("Cls.withOptions stacking", async () => {
   mock.assertExhausted();
 });
 
+test("Cls.withOptions routingRegion", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("FunctionGet", (_: any) => {
+    return _mockFunctionProto;
+  });
+
+  const cls = await mc.cls.fromName("libmodal-test-support", "EchoCls");
+
+  mock.handleUnary("FunctionBindParams", (req: any) => {
+    expect(req).toMatchObject({ functionId: "fid" });
+    // routingRegion must be forwarded to the server so the bound variant is
+    // created with input-plane routing.
+    expect(req.functionOptions.routingRegion).toBe("us-east");
+    return {
+      boundFunctionId: "fid-1",
+      // for testing: The bound variant returns per-method input-plane routing metadata under
+      // a method name that differs from the base service metadata, so the
+      // assertions below can distinguish which source the instance used.
+      handleMetadata: {
+        methodHandleMetadata: {
+          routed_method: {
+            inputPlaneUrl: "https://us-east.modal.example",
+            inputPlaneRegion: "us-east",
+          },
+        },
+      },
+    };
+  });
+
+  const instance = await cls
+    .withOptions({ routingRegion: "us-east" })
+    .instance();
+  // for testing: The bound variant's method is exposed, confirming the instance sources its
+  // methods from the bind response.
+  expect(instance.method("routed_method")).toBeTruthy();
+  // for testing: The base service metadata's method is NOT exposed, confirming the instance
+  // does not fall back to the base metadata.
+  expect(() => instance.method("echo_string")).toThrow();
+
+  mock.assertExhausted();
+});
+
 test("Cls.withConcurrency/withConcurrency/withBatching chaining", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 

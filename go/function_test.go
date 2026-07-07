@@ -24,15 +24,18 @@ func TestFunctionWithOptions(t *testing.T) {
 
 	cpu := 2.0
 	cpuLimit := 4.5
+	routingRegion := "us-east"
 
 	echoWithOptions := echo.WithOptions(&FunctionWithOptionsParams{
-		CPU:      &cpu,
-		CPULimit: &cpuLimit,
+		CPU:           &cpu,
+		CPULimit:      &cpuLimit,
+		RoutingRegion: &routingRegion,
 	})
 
 	g.Expect(echoWithOptions.options).To(gomega.Equal(&functionOptions{
-		cpu:      &cpu,
-		cpuLimit: &cpuLimit,
+		cpu:           &cpu,
+		cpuLimit:      &cpuLimit,
+		routingRegion: &routingRegion,
 	}))
 }
 

@@ -7,6 +7,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 - (Go, JS) `Sandbox.ReloadVolumes` (Go) / `Sandbox.reloadVolumes` (JS) now blocks until the Volumes have been reloaded, bounded by a new timeout (55 seconds by default) that is configurable via `SandboxReloadVolumesParams.Timeout` (Go) / `SandboxReloadVolumesParams.timeoutMs` (JS). If the reload does not complete within that window, a `TimeoutError` is raised.
 - (JS) `client.secrets.fromObject` is now lazy, so the returned `Secret` has an empty `secretId` until it is first used. Latency for `Sandbox.experimentalCreate` and `Sandbox.exec` is improved by sending the secrets directly to the Sandbox.
 - **Breaking:** (Go) Changed `OutboundCIDRAllowlist` and `OutboundDomainAllowlist` in `SandboxCreateParams` from `[]string` to `*Allowlist`. A non-nil `*Allowlist` enables allowlist mode (even with empty `Entries`, which blocks all traffic of that type); `nil` means open access. Migrate `OutboundCIDRAllowlist: []string{"10.0.0.0/8"}` to `OutboundCIDRAllowlist: &Allowlist{Entries: []string{"10.0.0.0/8"}}`.
+- (Go, JS) `Function.WithOptions` / `Cls.WithOptions` (Go) and `Function_.withOptions` / `Cls.withOptions` (JS) now accept a `RoutingRegion` / `routingRegion` option to override the region the Function's or Cls's inputs and outputs are routed through.
 
 ## js/v0.8.2, go/v0.8.2
 

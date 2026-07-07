@@ -2,6 +2,7 @@ import { ClientError, Status } from "nice-grpc";
 import {
   ClassParameterInfo_ParameterSerializationFormat,
   ClassParameterSpec,
+  FunctionBindParamsResponse,
   FunctionHandleMetadata,
 } from "../proto/modal_proto/api";
 import { NotFoundError } from "./errors";
@@ -119,19 +120,25 @@ export class Cls {
   /** Create a new instance of the Cls with parameters and/or runtime options. */
   async instance(parameters: Record<string, any> = {}): Promise<ClsInstance> {
     let functionId: string;
+    let methodHandleMetadata: { [key: string]: FunctionHandleMetadata };
     if (
       this.#schema.length === 0 &&
       this.#serviceFunctionOptions === undefined
     ) {
       functionId = this.#serviceFunctionId;
+      methodHandleMetadata = this.#serviceFunctionMetadata.methodHandleMetadata;
     } else {
-      functionId = await this.#bindParameters(parameters);
+      const bindResp = await this.#bindParameters(parameters);
+      functionId = bindResp.boundFunctionId;
+      // Use the bound variant's per-method metadata so dynamic options such as
+      // routingRegion (surfaced as inputPlaneUrl/inputPlaneRegion) take effect
+      // at invocation time.
+      methodHandleMetadata =
+        bindResp.handleMetadata?.methodHandleMetadata ?? {};
     }
 
     const methods = new Map<string, Function_>();
-    for (const [name, methodMetadata] of Object.entries(
-      this.#serviceFunctionMetadata.methodHandleMetadata,
-    )) {
+    for (const [name, methodMetadata] of Object.entries(methodHandleMetadata)) {
       methods.set(
         name,
         new Function_(this.#client, functionId, name, methodMetadata),
@@ -180,16 +187,16 @@ export class Cls {
   }
 
   /** Bind parameters to the Cls function. */
-  async #bindParameters(parameters: Record<string, any>): Promise<string> {
-    const bindResp = await bindParameters(
+  async #bindParameters(
+    parameters: Record<string, any>,
+  ): Promise<FunctionBindParamsResponse> {
+    return await bindParameters(
       this.#client,
       this.#serviceFunctionId,
       this.#serviceFunctionOptions,
       this.#schema,
       parameters,
     );
-
-    return bindResp.boundFunctionId;
   }
 }
 

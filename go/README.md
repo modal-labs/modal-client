@@ -65,6 +65,7 @@ We also provide a number of examples:
 - [Spawn a deployed Function](./examples/function-spawn/main.go)
 - [Call a deployed Cls](./examples/cls-call/main.go)
 - [Call a deployed Cls, and override its options](./examples/cls-call-with-options/main.go)
+- [Call a deployed Cls, and override its routing region](./examples/cls-routing-region/main.go)
 - [Create a Sandbox](./examples/sandbox/main.go)
 - [Create a named Sandbox](./examples/sandbox-named/main.go)
 - [Create a Sandbox with GPU](./examples/sandbox-gpu/main.go)

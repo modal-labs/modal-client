@@ -1,9 +1,12 @@
 package modal
 
 import (
+	"context"
 	"testing"
 
+	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
+	"google.golang.org/grpc"
 )
 
 func TestBuildFunctionOptionsProto_NilOptions(t *testing.T) {
@@ -138,4 +141,77 @@ func TestBuildFunctionOptionsProto_ZeroMemory(t *testing.T) {
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("must be a positive number"))
+}
+
+// mockClsRoutingClient is a minimal control-plane stub for a parameter-less
+// Cls. It records the routing_region forwarded on FunctionBindParams and
+// returns a bound variant whose per-method handle metadata carries input-plane
+// routing fields.
+type mockClsRoutingClient struct {
+	pb.ModalClientClient
+	gotRoutingRegion string
+}
+
+func (m *mockClsRoutingClient) FunctionGet(ctx context.Context, req *pb.FunctionGetRequest, opts ...grpc.CallOption) (*pb.FunctionGetResponse, error) {
+	return pb.FunctionGetResponse_builder{
+		FunctionId: "fid",
+		HandleMetadata: pb.FunctionHandleMetadata_builder{
+			MethodHandleMetadata: map[string]*pb.FunctionHandleMetadata{"echo_string": {}},
+			ClassParameterInfo:   pb.ClassParameterInfo_builder{Schema: []*pb.ClassParameterSpec{}}.Build(),
+		}.Build(),
+	}.Build(), nil
+}
+
+func (m *mockClsRoutingClient) FunctionBindParams(ctx context.Context, req *pb.FunctionBindParamsRequest, opts ...grpc.CallOption) (*pb.FunctionBindParamsResponse, error) {
+	m.gotRoutingRegion = req.GetFunctionOptions().GetRoutingRegion()
+	inputPlaneURL := "https://us-east.modal.example"
+	inputPlaneRegion := "us-east"
+	return pb.FunctionBindParamsResponse_builder{
+		BoundFunctionId: "fid-1",
+		HandleMetadata: pb.FunctionHandleMetadata_builder{
+			MethodHandleMetadata: map[string]*pb.FunctionHandleMetadata{
+				"echo_string": pb.FunctionHandleMetadata_builder{
+					InputPlaneUrl:    &inputPlaneURL,
+					InputPlaneRegion: &inputPlaneRegion,
+				}.Build(),
+			},
+		}.Build(),
+	}.Build(), nil
+}
+
+// TestClsWithOptionsRoutingRegion verifies that RoutingRegion is forwarded to
+// FunctionBindParams and that the instance's methods adopt the bound variant's
+// per-method handle metadata (so input-plane routing takes effect at invocation
+// time).
+func TestClsWithOptionsRoutingRegion(t *testing.T) {
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mockClient := &mockClsRoutingClient{}
+	client, err := NewClientWithOptions(&ClientParams{
+		TokenID:            "test-token-id",
+		TokenSecret:        "test-token-secret",
+		Environment:        "test",
+		ControlPlaneClient: mockClient,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer client.Close()
+
+	cls, err := client.Cls.FromName(ctx, "libmodal-test-support", "EchoCls", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	region := "us-east"
+	instance, err := cls.WithOptions(&ClsWithOptionsParams{RoutingRegion: &region}).Instance(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	// routingRegion must be forwarded so the server creates a bound variant
+	// with input-plane routing.
+	g.Expect(mockClient.gotRoutingRegion).To(gomega.Equal("us-east"))
+
+	// The instance's methods adopt the bound variant's per-method metadata.
+	method, err := instance.Method("echo_string")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(method.FunctionID).To(gomega.Equal("fid-1"))
+	g.Expect(method.handleMetadata.GetInputPlaneUrl()).To(gomega.Equal("https://us-east.modal.example"))
+	g.Expect(method.handleMetadata.GetInputPlaneRegion()).To(gomega.Equal("us-east"))
 }

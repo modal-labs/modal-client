@@ -271,6 +271,40 @@ test("DynamicConfigurationE2ETest", async () => {
   expect(boundF.functionId).not.toBe(f.functionId);
 });
 
+test("Function.withOptions routingRegion", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("FunctionGet", (req) => {
+    expect(req).toMatchObject({
+      appName: "libmodal-test-support",
+      objectTag: "echo_string",
+    });
+    return {
+      functionId: "fid-unbound",
+      handleMetadata: {},
+    };
+  });
+
+  mock.handleUnary("FunctionBindParams", (req) => {
+    expect(req).toMatchObject({
+      functionId: "fid-unbound",
+      functionOptions: { routingRegion: "us-east" },
+    });
+    return {
+      boundFunctionId: "fid-bound",
+      handleMetadata: {
+        inputPlaneUrl: "https://us-east.modal.example",
+        inputPlaneRegion: "us-east",
+      },
+    };
+  });
+
+  const f = await mc.functions.fromName("libmodal-test-support", "echo_string");
+  const boundF = await f.withOptions({ routingRegion: "us-east" }).instance();
+
+  expect(boundF.functionId).toBe("fid-bound");
+});
+
 test("TestOptionsMutations", async () => {
   const { mockClient: mc } = createMockModalClients();
 
