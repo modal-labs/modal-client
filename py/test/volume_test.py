@@ -44,6 +44,43 @@ def assert_eq_large(left, right):
         raise AssertionError(ndiff(left.splitlines(), right.splitlines()))
 
 
+def test_volume_create_options_match_objects_create_signature():
+    """The VolumeCreateOptions TypedDict must stay in sync with _VolumeManager.create's options.
+
+    `Volume.from_name(create_options=...)` takes the TypedDict, while `Volume.objects.create(...)`
+    accepts the same options as explicit keyword arguments; every TypedDict field must correspond
+    to a matching parameter of `objects.create`.
+    """
+    import inspect
+    import typing
+
+    from modal.types import VolumeCreateOptions
+    from modal.volume import _VolumeManager
+
+    def unwrap(annotation):
+        # Strip an Optional/None union (from the `= None` defaults on create) to the underlying type.
+        args = typing.get_args(annotation)
+        if args:
+            non_none = [a for a in args if a is not type(None)]
+            if len(non_none) == 1 and len(non_none) != len(args):
+                return non_none[0]
+        return annotation
+
+    option_hints = typing.get_type_hints(VolumeCreateOptions)
+    create_hints = typing.get_type_hints(_VolumeManager.create)
+
+    for field, annotation in option_hints.items():
+        assert field in create_hints, f"'{field}' is in VolumeCreateOptions but not a parameter of objects.create"
+        assert unwrap(annotation) == unwrap(create_hints[field]), (
+            f"type of '{field}' differs between VolumeCreateOptions and objects.create"
+        )
+
+    # The parameter is exposed as an explicit keyword-only argument, not swept into **kwargs.
+    params = inspect.signature(_VolumeManager.create).parameters
+    for field in option_hints:
+        assert params[field].kind == inspect.Parameter.KEYWORD_ONLY
+
+
 def test_volume_info(servicer, client):
     name = "super-important-data"
     vol = modal.Volume.from_name(name, create_if_missing=True)

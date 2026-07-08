@@ -71,7 +71,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
-from .types import FileEntry, FileEntryType as FileEntryType, VolumeInfo
+from .types import FileEntry, FileEntryType as FileEntryType, VolumeCreateOptions, VolumeInfo
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
@@ -120,6 +120,20 @@ def _validate_volume_version(
         )
 
 
+def _experimental_options_to_string_map(experimental_options: dict[str, Any]) -> dict[str, str]:
+    """Coerce experimental option values to strings for the proto's string map."""
+    return {str(key): str(value) for key, value in experimental_options.items()}
+
+
+def _volume_create_options_to_proto(create_options: "VolumeCreateOptions | None") -> api_pb2.VolumeCreateOptions:
+    """Build a VolumeCreateOptions proto message from the public TypedDict."""
+    if not create_options:
+        return api_pb2.VolumeCreateOptions()
+    return api_pb2.VolumeCreateOptions(
+        experimental_options=_experimental_options_to_string_map(create_options.get("experimental_options", {})),
+    )
+
+
 class _VolumeManager:
     """Namespace with methods for managing named Volume objects."""
 
@@ -131,6 +145,7 @@ class _VolumeManager:
         allow_existing: bool = False,
         environment_name: str | None = None,
         client: _Client | None = None,
+        experimental_options: dict[str, Any] | None = None,
     ) -> None:
         """Create a new named Volume in the workspace environment.
 
@@ -144,6 +159,7 @@ class _VolumeManager:
             allow_existing: If True, do nothing when a Volume with this name already exists.
             environment_name: Environment to create in; defaults to the active environment.
             client: Modal client to use; defaults to `Client.from_env()` when omitted.
+            experimental_options: Experimental options to create Volume with.
 
         Examples:
             ```python notest
@@ -181,6 +197,9 @@ class _VolumeManager:
             environment_name=_get_environment_name(environment_name),
             object_creation_type=object_creation_type,
             version=version,
+            create_options=_volume_create_options_to_proto(
+                VolumeCreateOptions(experimental_options=experimental_options or {})
+            ),
         )
         try:
             response = await client.stub.VolumeGetOrCreate(req)
@@ -545,6 +564,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: str | None = None,
         create_if_missing: bool = False,
         version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
+        create_options: "VolumeCreateOptions | None" = None,
         client: _Client | None = None,
     ) -> "_Volume":
         """Reference a Volume by name, optionally creating it on the server first.
@@ -556,6 +576,7 @@ class _Volume(_Object, type_prefix="vo"):
             environment_name: Environment to resolve the name in; defaults to the active environment.
             create_if_missing: If True, create the Volume when it does not already exist.
             version: Optional VolumeFS backend version; must match an existing Volume when set.
+            create_options: Applied when creating the Volume. If an existing Volume, validates options are consistent.
             client: Modal client to use for loading; defaults to `Client.from_env()` when omitted.
 
         Returns:
@@ -580,6 +601,7 @@ class _Volume(_Object, type_prefix="vo"):
                 environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 version=version,
+                create_options=_volume_create_options_to_proto(create_options),
             )
             response = await load_context.client.stub.VolumeGetOrCreate(req)
             if version is not None:
@@ -650,6 +672,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: _Client | None = None,
         environment_name: str | None = None,
         version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
+        create_options: "VolumeCreateOptions | None" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncGenerator["_Volume", None]:
         """Create an anonymous Volume that exists for the duration of the context manager.
@@ -658,6 +681,7 @@ class _Volume(_Object, type_prefix="vo"):
             client: Modal client to use; defaults to `Client.from_env()` when omitted.
             environment_name: Environment for the ephemeral Volume; defaults to the active environment.
             version: Optional VolumeFS backend version for the ephemeral Volume.
+            create_options: Options applied when creating the ephemeral Volume.
 
         Examples:
             ```python
@@ -678,6 +702,7 @@ class _Volume(_Object, type_prefix="vo"):
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
             environment_name=_get_environment_name(environment_name),
             version=version,
+            create_options=_volume_create_options_to_proto(create_options),
         )
         response = await client.stub.VolumeGetOrCreate(request)
         async with TaskContext() as tc:

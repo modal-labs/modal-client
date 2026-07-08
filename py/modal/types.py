@@ -5,7 +5,7 @@ import enum
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, TypedDict
 
 from modal_proto import api_pb2
 
@@ -88,6 +88,12 @@ class SecretInfo:
     name: str | None
     created_at: datetime
     created_by: str | None
+
+
+class VolumeCreateOptions(TypedDict, total=False):
+    """Options used when creating a Volume."""
+
+    experimental_options: dict[str, Any]
 
 
 @dataclass

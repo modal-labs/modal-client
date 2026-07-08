@@ -319,26 +319,49 @@ def _is_typeddict(obj) -> bool:
     )
 
 
-def _typeddict_str(name, obj) -> str:
-    """Generate documentation for a TypedDict class."""
+def _typeddict_attributes(name, obj, docstring: str) -> list[ParsedParam]:
+    """Build the attribute list for a TypedDict from its fields."""
     hints = typing.get_type_hints(obj)
+    if not hints:
+        return []
+
     optional_keys: frozenset[str] = getattr(obj, "__optional_keys__", frozenset())
+    field_annotations = get_dataclass_field_annotations(obj)
 
-    # Build the class declaration showing fields
-    lines = [f"class {name}(TypedDict):"]
+    # Synthesize an `__init__` signature so `Args:` entries can be matched to
+    # fields by name; descriptions are keyed by field name and applied below.
+    signature = f"def __init__(self, {', '.join(f'{field_name}: object' for field_name in hints)}):"
+    descriptions = {p.name: p.description for p in parse_docstring(name, signature, docstring).params}
+
+    attributes: list[ParsedParam] = []
     for field_name, field_type in hints.items():
-        type_str = inspect.formatannotation(field_type)
+        type_str = field_annotations.get(field_name) or inspect.formatannotation(field_type)
         if field_name in optional_keys:
-            lines.append(f"    {field_name}: NotRequired[{type_str}]")
-        else:
-            lines.append(f"    {field_name}: {type_str}")
+            type_str = f"NotRequired[{type_str}]"
+        attributes.append(ParsedParam(field_name, type_str, None, descriptions.get(field_name)))
+    return attributes
 
-    decl = "```python\n" + "\n".join(lines) + "\n```\n\n"
 
-    parts = [decl]
+def _typeddict_str(name, obj) -> str:
+    """Generate documentation for a TypedDict class.
+
+    Rendered like a dataclass (description + `**Attributes**`) so TypedDicts
+    match the surrounding data types instead of appearing as a raw code block.
+    """
     docstring = clean_docstring(obj.__doc__)
+
+    parts = ["\n"]
     if docstring:
-        parts.append(docstring + "\n")
+        parsed = parse_docstring(name, "", docstring)
+        class_doc_markdown = _markdown_body_from_parsed_doc(parsed)
+        if class_doc_markdown:
+            parts.append(class_doc_markdown + "\n")
+
+    attributes = _typeddict_attributes(name, obj, docstring)
+    if attributes:
+        parts.append("**Attributes**\n\n")
+        parts.append("\n".join(_parameter_tag(attr) for attr in attributes))
+        parts.append("\n\n")
 
     return "".join(parts)
 
