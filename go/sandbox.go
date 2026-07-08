@@ -1815,11 +1815,13 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 
 // SandboxExperimentalListParams are options for SandboxService.ExperimentalList.
 type SandboxExperimentalListParams struct {
-	AppID string // The App to list Sandboxes under.
+	AppID string            // The App to list Sandboxes under.
+	Tags  map[string]string // Only include Sandboxes that have all these tags.
 }
 
 // ExperimentalList lists the V2 Sandboxes in an App, i.e. Sandboxes created via
-// ExperimentalCreate. Filtering based on tags is not yet supported.
+// ExperimentalCreate. If Tags are specified, only Sandboxes that have all those
+// tags are returned.
 //
 // EXPERIMENTAL: the API is subject to change.
 func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error) {
@@ -1830,6 +1832,11 @@ func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *Sandb
 		return nil, InvalidError{Exception: "ExperimentalList requires an `AppID`:\n\n" +
 			"app, err := mc.Apps.FromName(ctx, \"my-app\", nil)\n" +
 			"sandboxes, err := mc.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{AppID: app.AppID})"}
+	}
+
+	tagsList := make([]*pb.SandboxTag, 0, len(params.Tags))
+	for k, v := range params.Tags {
+		tagsList = append(tagsList, pb.SandboxTag_builder{TagName: k, TagValue: v}.Build())
 	}
 
 	return func(yield func(*Sandbox, error) bool) {
@@ -1844,6 +1851,7 @@ func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *Sandb
 				AppId:           params.AppID,
 				BeforeTimestamp: before,
 				IncludeFinished: false,
+				Tags:            tagsList,
 			}.Build())
 			if err != nil {
 				yield(nil, err)

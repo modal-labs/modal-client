@@ -606,6 +606,22 @@ def test_sandbox_experimental_list_app(client, servicer):
         assert not list(Sandbox._experimental_list(app_id=app.app_id, client=client))
 
 
+def test_sandbox_experimental_list_tags(client, servicer):
+    app = App()
+    with app.run(client=client):
+        sb = Sandbox._experimental_create("bash", "-c", "sleep 10000", app=app)
+        # TODO: set these via the public Sandbox.set_tags() API for V2 sandboxes (#47879)
+        # instead of using the test servicer's internal state.
+        servicer.sandbox_tags[sb.object_id] = {"env": "prod", "team": "infra"}
+
+        def experimental_list(tags):
+            return [s.object_id for s in Sandbox._experimental_list(app_id=app.app_id, tags=tags, client=client)]
+
+        assert experimental_list({"env": "prod"}) == [sb.object_id]
+        assert experimental_list({"env": "prod", "team": "infra"}) == [sb.object_id]
+        assert experimental_list({"env": "staging"}) == []
+
+
 def test_sandbox_create_with_tags(app, client, servicer):
     tags = {"env": "prod", "team": "core"}
     with servicer.intercept() as ctx:

@@ -952,8 +952,8 @@ export class SandboxService {
    * This lists V2 Sandboxes, i.e. Sandboxes created via
    * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
    * Such Sandboxes are not returned by
-   * {@link SandboxService#list client.sandboxes.list()}. Filtering based on tags
-   * is not yet supported.
+   * {@link SandboxService#list client.sandboxes.list()}. If tags are specified,
+   * only Sandboxes that have at least those tags are returned.
    *
    * Yields {@link Sandbox} objects that are currently running in the App.
    *
@@ -970,6 +970,13 @@ export class SandboxService {
       );
     }
 
+    const tagsList = params.tags
+      ? Object.entries(params.tags).map(([tagName, tagValue]) => ({
+          tagName,
+          tagValue,
+        }))
+      : [];
+
     let beforeTimestamp: number | undefined = undefined;
     while (true) {
       // Fetches a batch of Sandboxes. SandboxListV2 authenticates via the
@@ -979,6 +986,7 @@ export class SandboxService {
         appId: params.appId,
         beforeTimestamp,
         includeFinished: false,
+        tags: tagsList,
       });
       if (!resp.sandboxes || resp.sandboxes.length === 0) {
         return;
@@ -1008,6 +1016,8 @@ export type SandboxListParams = {
 export type SandboxExperimentalListParams = {
   /** The App to list Sandboxes under. */
   appId: string;
+  /** Only return Sandboxes that include all specified tags. */
+  tags?: Record<string, string>;
 };
 
 /** Optional parameters for {@link SandboxService#fromName client.sandboxes.fromName()}. */

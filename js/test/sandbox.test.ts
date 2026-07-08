@@ -1381,6 +1381,28 @@ test("ExperimentalList requires an appId", async () => {
   );
 });
 
+test("ExperimentalList forwards tag filters", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxListV2", (req: any) => {
+    expect(req.tags).toEqual([
+      { tagName: "env", tagValue: "prod" },
+      { tagName: "team", tagValue: "infra" },
+    ]);
+    return { sandboxes: [] };
+  });
+
+  const ids: string[] = [];
+  for await (const sb of mc.sandboxes.experimentalList({
+    appId: "ap-1234",
+    tags: { env: "prod", team: "infra" },
+  })) {
+    ids.push(sb.sandboxId);
+  }
+  expect(ids).toEqual([]);
+  mock.assertExhausted();
+});
+
 test("ExperimentalFromName routes to V2 RPCs", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 

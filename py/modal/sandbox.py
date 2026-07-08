@@ -2318,15 +2318,15 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def _experimental_list(
-        *, app_id: str | None = None, client: _Client | None = None
+        *, app_id: str | None = None, tags: dict[str, str] | None = None, client: _Client | None = None
     ) -> AsyncGenerator["_Sandbox", None]:
         """List v2 Sandboxes in an App.
 
         This function lists v2 sandboxes, ie sandboxes created via modal.Sandbox._experimental_create.
-        Filtering based on tags is not yet supported.
 
         Args:
             app_id: The App to list Sandboxes under.
+            tags: If set, only sandboxes containing at least these tags are returned.
             client: Optional client to use for the session.
 
         Yields:
@@ -2343,12 +2343,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         if client is None:
             client = await _Client.from_env()
 
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()] if tags else []
+
         assert client._auth_token_manager
         while True:
             req = api_pb2.SandboxListRequest(
                 app_id=app_id,
                 before_timestamp=before_timestamp,
                 include_finished=False,
+                tags=tags_list,
             )
 
             # Fetches a batch of sandboxes. SandboxListV2 authenticates via the

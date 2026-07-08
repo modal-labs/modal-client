@@ -1064,3 +1064,43 @@ func TestSandboxCreateRequestProto_WithTags(t *testing.T) {
 	}
 	g.Expect(got).To(gomega.Equal(map[string]string{"env": "prod", "team": "infra"}))
 }
+
+type mockSandboxListClient struct {
+	pb.ModalClientClient
+	gotReq *pb.SandboxListRequest
+}
+
+func (m *mockSandboxListClient) SandboxListV2(
+	_ context.Context,
+	req *pb.SandboxListRequest,
+	_ ...grpc.CallOption,
+) (*pb.SandboxListResponse, error) {
+	m.gotReq = req
+	// Empty response ends the pagination loop after one call.
+	return pb.SandboxListResponse_builder{}.Build(), nil
+}
+
+func TestExperimentalListForwardsTags(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := &mockSandboxListClient{}
+	svc := &sandboxServiceImpl{client: &Client{cpClient: &clientWithConn{ModalClientClient: mock}}}
+
+	seq, err := svc.ExperimentalList(ctx, &SandboxExperimentalListParams{
+		AppID: "ap-1234",
+		Tags:  map[string]string{"env": "prod"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	for _, iterErr := range seq {
+		g.Expect(iterErr).ShouldNot(gomega.HaveOccurred())
+	}
+
+	g.Expect(mock.gotReq).ShouldNot(gomega.BeNil())
+	g.Expect(mock.gotReq.GetAppId()).To(gomega.Equal("ap-1234"))
+	tags := mock.gotReq.GetTags()
+	g.Expect(tags).To(gomega.HaveLen(1))
+	g.Expect(tags[0].GetTagName()).To(gomega.Equal("env"))
+	g.Expect(tags[0].GetTagValue()).To(gomega.Equal("prod"))
+}
