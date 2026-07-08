@@ -4,8 +4,9 @@ import {
   mergeEnvIntoSecrets,
   splitEnvDictAndResolvableSecrets,
   hydrateSecrets,
-  secretFromOptions,
+  secretEnvDictHydrator,
   Secret,
+  SecretFromObjectHydrator,
 } from "../src/secret";
 import {
   createMockModalClients,
@@ -114,7 +115,10 @@ test("SecretFromObjectInvalidKey", async () => {
 
   // Valid keys (letters, numbers, underscores, not starting with a number).
   const secret = await tc.secrets.fromObject({ VALID_KEY_1: "value", _x: "y" });
-  expect(secret._envDict).toEqual({ VALID_KEY_1: "value", _x: "y" });
+  expect(secretEnvDictHydrator(secret)?.envDict).toEqual({
+    VALID_KEY_1: "value",
+    _x: "y",
+  });
 });
 
 test("SecretFromObject is lazy and makes no control-plane call", async () => {
@@ -124,7 +128,7 @@ test("SecretFromObject is lazy and makes no control-plane call", async () => {
   // call, otherwise the mock would throw on an unexpected RPC.
   const secret = await mc.secrets.fromObject({ key: "value" });
   expect(secret.secretId).toBe("");
-  expect(secret._envDict).toEqual({ key: "value" });
+  expect(secretEnvDictHydrator(secret)?.envDict).toEqual({ key: "value" });
 
   mock.assertExhausted();
 });
@@ -139,7 +143,7 @@ test("mergeEnvIntoSecrets merges env with existing secrets", async () => {
   expect(result[0]).toBe(existingSecret);
   // The appended env Secret is lazy: no secretId until hydrated.
   expect(result[1].secretId).toBe("");
-  expect(result[1]._envDict).toEqual({ B: "2", C: "3" });
+  expect(secretEnvDictHydrator(result[1])?.envDict).toEqual({ B: "2", C: "3" });
 });
 
 test("mergeEnvIntoSecrets with only env parameter", async () => {
@@ -149,7 +153,7 @@ test("mergeEnvIntoSecrets with only env parameter", async () => {
 
   expect(result).toHaveLength(1);
   expect(result[0].secretId).toBe("");
-  expect(result[0]._envDict).toEqual({ B: "2", C: "3" });
+  expect(secretEnvDictHydrator(result[0])?.envDict).toEqual({ B: "2", C: "3" });
 });
 
 test("mergeEnvIntoSecrets with empty env object returns existing secrets", async () => {
@@ -190,8 +194,16 @@ test("mergeEnvIntoSecrets with no env and no secrets returns empty array", async
 });
 
 test("splitEnvDictAndResolvableSecrets partitions local and resolvable secrets", () => {
-  const local1 = secretFromOptions({ A: "1", B: "2" });
-  const local2 = secretFromOptions({ B: "override", C: "3" });
+  const local1 = new Secret(
+    "",
+    undefined,
+    new SecretFromObjectHydrator({ A: "1", B: "2" }),
+  );
+  const local2 = new Secret(
+    "",
+    undefined,
+    new SecretFromObjectHydrator({ B: "override", C: "3" }),
+  );
   const named = new Secret("st-named");
 
   // Local Secrets are merged in list order (so local2's B wins); the named

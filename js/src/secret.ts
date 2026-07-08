@@ -118,7 +118,11 @@ export class SecretService {
     // Copy the entries so later mutations of the caller's object don't leak in.
     const envDict = { ...entries };
     const environment = this.#client.environmentName(params?.environment);
-    return secretFromOptions(envDict, environment);
+    return new Secret(
+      "",
+      undefined,
+      new SecretFromObjectHydrator(envDict, environment),
+    );
   }
 
   /**
@@ -153,17 +157,68 @@ export class SecretService {
   }
 }
 
+/**
+ * Resolves a lazy {@link Secret} to a server-side secretId. Each construction
+ * path (fromName, fromObject, ...) supplies its own implementation carrying
+ * whatever inputs that path needs.
+ *
+ * @internal
+ * @hidden
+ */
+export interface SecretHydrator {
+  hydrate(client: ModalClient): Promise<string>;
+}
+
+/**
+ * Creates an ephemeral server-side Secret from a locally provided env map. Used
+ * by Secrets created via {@link SecretService#fromObject}.
+ *
+ * @internal
+ * @hidden
+ */
+export class SecretFromObjectHydrator implements SecretHydrator {
+  readonly envDict: Record<string, string>;
+  readonly #environment?: string;
+
+  constructor(envDict: Record<string, string>, environment?: string) {
+    this.envDict = envDict;
+    this.#environment = environment;
+  }
+
+  async hydrate(client: ModalClient): Promise<string> {
+    try {
+      const resp = await client.cpClient.secretGetOrCreate({
+        objectCreationType: ObjectCreationType.OBJECT_CREATION_TYPE_EPHEMERAL,
+        envDict: this.envDict,
+        environmentName: this.#environment,
+      });
+      client.logger.debug(
+        "Created ephemeral Secret",
+        "secret_id",
+        resp.secretId,
+      );
+      return resp.secretId;
+    } catch (err) {
+      if (
+        err instanceof ClientError &&
+        (err.code === Status.INVALID_ARGUMENT ||
+          err.code === Status.FAILED_PRECONDITION)
+      )
+        throw new InvalidError(err.details);
+      throw err;
+    }
+  }
+}
+
 /** Secrets provide a dictionary of environment variables for {@link Image}s. */
 export class Secret {
   #secretId: string;
   readonly name?: string;
 
-  // Environment variables for a Secret created locally via fromObject. Such
-  // Secrets are lazy: no secretId is allocated until they are hydrated. When
-  // used with Sandbox.exec or experimentalCreate the env dict is passed directly
-  // to the worker, avoiding a SecretGetOrCreate round-trip.
-  readonly #envDict?: Record<string, string>;
-  readonly #environment?: string;
+  // Resolves secretId lazily the first time it is needed. Undefined for Secrets
+  // constructed already-hydrated (e.g. from fromName), and not consulted again
+  // once secretId is set.
+  readonly #hydrator?: SecretHydrator;
 
   // Caches the single in-flight (or successfully completed) hydration so the
   // ephemeral Secret is created at most once, even if multiple callers hydrate
@@ -172,18 +227,10 @@ export class Secret {
   #hydratePromise?: Promise<void>;
 
   /** @ignore */
-  constructor(
-    secretId: string,
-    name?: string,
-    options?: {
-      envDict?: Record<string, string>;
-      environment?: string;
-    },
-  ) {
+  constructor(secretId: string, name?: string, hydrator?: SecretHydrator) {
     this.#secretId = secretId;
     this.name = name;
-    this.#envDict = options?.envDict;
-    this.#environment = options?.environment;
+    this.#hydrator = hydrator;
   }
 
   /** The ID of the server-side Secret, or an empty string if not yet hydrated. */
@@ -192,14 +239,14 @@ export class Secret {
   }
 
   /**
-   * The environment variables backing a lazy fromObject Secret, or `undefined`
-   * for Secrets that already reference a server-side Secret (e.g. from fromName).
+   * The hydrator resolving a lazy Secret to a secretId, or `undefined` for
+   * Secrets that already reference a server-side Secret (e.g. from fromName).
    *
    * @internal
    * @hidden
    */
-  get _envDict(): Record<string, string> | undefined {
-    return this.#envDict;
+  get _hydrator(): SecretHydrator | undefined {
+    return this.#hydrator;
   }
 
   /**
@@ -211,7 +258,7 @@ export class Secret {
    * @hidden
    */
   async _hydrate(client: ModalClient): Promise<void> {
-    if (this.#secretId !== "" || this.#envDict === undefined) {
+    if (this.#secretId !== "" || this.#hydrator === undefined) {
       return;
     }
     if (this.#hydratePromise === undefined) {
@@ -231,42 +278,24 @@ export class Secret {
   }
 
   async #doHydrate(client: ModalClient): Promise<void> {
-    try {
-      const resp = await client.cpClient.secretGetOrCreate({
-        objectCreationType: ObjectCreationType.OBJECT_CREATION_TYPE_EPHEMERAL,
-        envDict: this.#envDict,
-        environmentName: this.#environment,
-      });
-      client.logger.debug(
-        "Created ephemeral Secret",
-        "secret_id",
-        resp.secretId,
-      );
-      this.#secretId = resp.secretId;
-    } catch (err) {
-      if (
-        err instanceof ClientError &&
-        (err.code === Status.INVALID_ARGUMENT ||
-          err.code === Status.FAILED_PRECONDITION)
-      )
-        throw new InvalidError(err.details);
-      throw err;
-    }
+    // #hydrator is guaranteed defined by the guard in _hydrate.
+    this.#secretId = await this.#hydrator!.hydrate(client);
   }
 }
 
 /**
- * Construct a lazy Secret backed by an env dict, without contacting the
- * control plane.
+ * Reports whether `secret` is a non-null env-dict Secret and, if so, returns
+ * its hydrator. This is the worker fast path: such Secrets can be passed to the
+ * worker as environment variables without a SecretGetOrCreate round-trip.
  *
  * @internal
  * @hidden
  */
-export function secretFromOptions(
-  envDict: Record<string, string>,
-  environment?: string,
-): Secret {
-  return new Secret("", undefined, { envDict, environment });
+export function secretEnvDictHydrator(
+  secret: Secret,
+): SecretFromObjectHydrator | undefined {
+  const hydrator = secret?._hydrator;
+  return hydrator instanceof SecretFromObjectHydrator ? hydrator : undefined;
 }
 
 /**
@@ -350,8 +379,9 @@ export function splitEnvDictAndResolvableSecrets(
   const envDict: Record<string, string> = {};
   const resolvable: Secret[] = [];
   for (const secret of secrets) {
-    if (secret != null && secret._envDict !== undefined) {
-      Object.assign(envDict, secret._envDict);
+    const hydrator = secret != null ? secretEnvDictHydrator(secret) : undefined;
+    if (hydrator !== undefined) {
+      Object.assign(envDict, hydrator.envDict);
     } else {
       resolvable.push(secret);
     }
