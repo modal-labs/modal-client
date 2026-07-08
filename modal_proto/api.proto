@@ -1967,6 +1967,7 @@ message FunctionCallFromIdRequest {
 message FunctionCallFromIdResponse {
   string function_call_id = 1;
   int32 num_inputs = 2;
+  FunctionCallHandleMetadata metadata = 3;
 }
 
 message FunctionCallGetDataRequest {
@@ -1976,6 +1977,11 @@ message FunctionCallGetDataRequest {
   }
   uint64 last_index = 2;
   reserved 4; // use_gapless_read
+}
+
+message FunctionCallHandleMetadata {
+  string app_id = 1;
+  string function_id = 2;
 }
 
 message FunctionCallInfo {
@@ -2259,6 +2265,7 @@ message FunctionHandleMetadata {
   repeated string _experimental_flash_urls = 49; // (Optional) urls for flash services
   repeated DataFormat supported_input_formats = 50;
   repeated DataFormat supported_output_formats = 51;
+  string app_id = 52;
 }
 
 message FunctionInput {
