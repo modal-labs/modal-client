@@ -128,9 +128,10 @@ type SandboxFilesystemRemoveParams struct {
 type SandboxFilesystemWatchParams struct {
 	Filter    []FileWatchEventType
 	Recursive bool
-	// Timeout is the maximum duration to watch. Zero means watch indefinitely.
-	// Durations are rounded-down to the nearest whole number of seconds.
-	Timeout time.Duration
+	// Timeout is the maximum duration to watch. A nil Timeout watches
+	// indefinitely, while a zero Timeout returns immediately without waiting for
+	// events. Durations are rounded-down to the nearest whole number of seconds.
+	Timeout *time.Duration
 }
 
 // SandboxFilesystemCopyFromLocalParams holds optional parameters for [SandboxFilesystem.CopyFromLocal].
@@ -540,8 +541,10 @@ func (fsys *SandboxFilesystem) Stat(ctx context.Context, remotePath string, para
 // Set params.Filter to restrict which event types are emitted. A nil filter
 // permits all types; an empty slice suppresses all events.
 //
-// Timeout is in seconds. Zero means watch indefinitely. When the timeout
-// elapses, the iterator stops without returning an error.
+// A nil params.Timeout watches indefinitely, while a zero params.Timeout
+// returns immediately without waiting for events. Otherwise the duration is
+// rounded down to whole seconds, and when it elapses the iterator stops
+// without returning an error.
 //
 // Pass nil params for defaults (no filter, non-recursive, no timeout).
 //
@@ -561,7 +564,7 @@ func (fsys *SandboxFilesystem) Watch(
 	}
 
 	var timeoutSecs *int
-	if params.Timeout > 0 {
+	if params.Timeout != nil {
 		s := int(params.Timeout.Seconds())
 		timeoutSecs = &s
 	}

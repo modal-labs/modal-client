@@ -103,7 +103,13 @@ export {
   type SecretFromObjectParams,
   type SecretDeleteParams,
 } from "./secret";
-export { SandboxFilesystem, type FileInfo, type FileType } from "./sandbox_fs";
+export {
+  SandboxFilesystem,
+  type FileInfo,
+  type FileType,
+  type FileWatchEvent,
+  type FileWatchEventType,
+} from "./sandbox_fs";
 export {
   Volume,
   VolumeService,

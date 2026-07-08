@@ -165,7 +165,8 @@ func main() {
 		}
 	}()
 
-	seq, err := fs.Watch(ctx, watchDir, &modal.SandboxFilesystemWatchParams{Timeout: 3 * time.Second})
+	watchTimeout := 3 * time.Second
+	seq, err := fs.Watch(ctx, watchDir, &modal.SandboxFilesystemWatchParams{Timeout: &watchTimeout})
 	if err != nil {
 		log.Fatalf("Watch: %v", err)
 	}

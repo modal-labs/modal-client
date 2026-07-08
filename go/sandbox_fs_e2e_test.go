@@ -218,9 +218,13 @@ func watchWithSandboxTrigger(
 	params *SandboxFilesystemWatchParams,
 ) ([]FileWatchEvent, error) {
 	if params == nil {
-		params = &SandboxFilesystemWatchParams{Timeout: 2 * time.Second}
+		params = &SandboxFilesystemWatchParams{Timeout: durationPtr(2 * time.Second)}
 	}
-	triggerSecs := int(params.Timeout.Seconds()) + 2
+	watchSecs := 0
+	if params.Timeout != nil {
+		watchSecs = int(params.Timeout.Seconds())
+	}
+	triggerSecs := watchSecs + 2
 	bgShell := `end=$(($(date +%s)+` + strconv.Itoa(triggerSecs) + `)); ` +
 		`while [ "$(date +%s)" -lt "$end" ]; do ` + triggerShellCmd + `; sleep 0.1; done`
 	bg, err := sb.Exec(ctx, []string{"sh", "-c", bgShell}, nil)
@@ -1127,7 +1131,7 @@ func TestSandboxFsE2eWatchEmitsCreateEvent(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-create",
 		"touch /tmp/e2e-watch-create/f$RANDOM.txt",
-		&SandboxFilesystemWatchParams{Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeCreate)).To(gomega.BeTrue())
 }
@@ -1141,7 +1145,7 @@ func TestSandboxFsE2eWatchEmitsModifyEvent(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-modify",
 		"date > /tmp/e2e-watch-modify/existing.txt",
-		&SandboxFilesystemWatchParams{Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
 }
@@ -1154,7 +1158,7 @@ func TestSandboxFsE2eWatchEmitsRemoveEvent(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-remove",
 		"f=/tmp/e2e-watch-remove/tmp-$RANDOM.txt; touch $f; sleep 0.05; rm -f $f",
-		&SandboxFilesystemWatchParams{Timeout: 3 * time.Second})
+		&SandboxFilesystemWatchParams{Timeout: durationPtr(3 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeRemove)).To(gomega.BeTrue())
 }
@@ -1167,7 +1171,7 @@ func TestSandboxFsE2eWatchRecursiveObservesSubdirectory(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-recursive",
 		"touch /tmp/e2e-watch-recursive/nested/deep-$RANDOM.txt",
-		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	var hasSubdir bool
 	for _, e := range events {
@@ -1188,7 +1192,7 @@ func TestSandboxFsE2eWatchNonRecursiveIgnoresSubdirectory(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-nonrecursive",
 		"touch /tmp/e2e-watch-nonrecursive/nested/deep-$RANDOM.txt",
-		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(events).To(gomega.BeEmpty())
 }
@@ -1201,7 +1205,7 @@ func TestSandboxFsE2eWatchFilterDropsUnmatchedEvents(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-filter",
 		"touch /tmp/e2e-watch-filter/f$RANDOM.txt",
-		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{FileWatchEventTypeRemove}, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{FileWatchEventTypeRemove}, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(events).To(gomega.BeEmpty())
 }
@@ -1213,10 +1217,10 @@ func TestSandboxFsE2eWatchReturnsImmediatelyOnZeroTimeout(t *testing.T) {
 	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-zero-timeout")).To(gomega.Succeed())
 
 	start := time.Now()
-	// 999ms rounds down to timeout_secs=0 on the wire, causing the binary to exit immediately.
+	// A zero Timeout sends timeout_secs=0 on the wire, causing the binary to exit immediately.
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-zero-timeout",
 		"touch /tmp/e2e-watch-zero-timeout/f$RANDOM.txt",
-		&SandboxFilesystemWatchParams{Timeout: 999 * time.Millisecond})
+		&SandboxFilesystemWatchParams{Timeout: durationPtr(0)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(events).To(gomega.BeEmpty())
 	g.Expect(time.Since(start)).To(gomega.BeNumerically("<", 5*time.Second))
@@ -1230,7 +1234,7 @@ func TestSandboxFsE2eWatchEmitsEventWhenPathIsAFile(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-file.txt",
 		"echo x > /tmp/e2e-watch-file.txt",
-		&SandboxFilesystemWatchParams{Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
 }
@@ -1243,7 +1247,7 @@ func TestSandboxFsE2eWatchEmptyFilterYieldsNoEventsNonRecursive(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-empty-filter-nr",
 		"touch /tmp/e2e-watch-empty-filter-nr/f$RANDOM.txt",
-		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{}, Recursive: false, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{}, Recursive: false, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(events).To(gomega.BeEmpty())
 }
@@ -1256,7 +1260,7 @@ func TestSandboxFsE2eWatchEmptyFilterYieldsNoEventsRecursive(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-empty-filter-r",
 		"touch /tmp/e2e-watch-empty-filter-r/f$RANDOM.txt",
-		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{}, Recursive: true, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{}, Recursive: true, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(events).To(gomega.BeEmpty())
 }
@@ -1272,7 +1276,7 @@ func TestSandboxFsE2eWatchBreakReturnsQuickly(t *testing.T) {
 
 	start := time.Now()
 	seq, err := sb.Filesystem.Watch(ctx, "/tmp/e2e-watch-break",
-		&SandboxFilesystemWatchParams{Timeout: 60 * time.Second})
+		&SandboxFilesystemWatchParams{Timeout: durationPtr(60 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	for range seq {
 		break
@@ -1292,7 +1296,7 @@ func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveIntoWatchedDirNonRecursive(
 
 	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
 		`r=$RANDOM; touch `+outsideDir+`/f-$r.txt && mv `+outsideDir+`/f-$r.txt `+watchDir+`/f-$r.txt`,
-		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
 }
@@ -1308,7 +1312,7 @@ func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveIntoWatchedDirRecursive(t *
 
 	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
 		`r=$RANDOM; touch `+outsideDir+`/f-$r.txt && mv `+outsideDir+`/f-$r.txt `+watchDir+`/f-$r.txt`,
-		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
 }
@@ -1324,7 +1328,7 @@ func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveOutOfWatchedDirNonRecursive
 
 	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
 		`r=$RANDOM; touch `+watchDir+`/f-$r.txt && mv `+watchDir+`/f-$r.txt `+outsideDir+`/f-$r.txt`,
-		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
 }
@@ -1340,7 +1344,7 @@ func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveOutOfWatchedDirRecursive(t 
 
 	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
 		`r=$RANDOM; touch `+watchDir+`/f-$r.txt && mv `+watchDir+`/f-$r.txt `+outsideDir+`/f-$r.txt`,
-		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
 }
@@ -1355,7 +1359,7 @@ func TestSandboxFsE2eWatchEmitsRenameEventAsModifyNonRecursive(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
 		`if [ -f `+watchDir+`/before.txt ]; then mv `+watchDir+`/before.txt `+watchDir+`/after.txt; else mv `+watchDir+`/after.txt `+watchDir+`/before.txt; fi`,
-		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	// Renames arrive as Modify events. A complete rename yields a single
@@ -1381,7 +1385,7 @@ func TestSandboxFsE2eWatchEmitsRenameEventAsModifyRecursive(t *testing.T) {
 
 	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
 		`if [ -f `+watchDir+`/before.txt ]; then mv `+watchDir+`/before.txt `+watchDir+`/after.txt; else mv `+watchDir+`/after.txt `+watchDir+`/before.txt; fi`,
-		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: durationPtr(2 * time.Second)})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	var allPaths []string

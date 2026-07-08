@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { onTestFinished } from "vitest";
 
 import type { Sandbox } from "../src/sandbox";
+import type { FileWatchEvent, FileWatchEventType } from "../src/sandbox_fs";
 
 export async function writeRemoteFile(
   sb: Sandbox,
@@ -116,4 +117,37 @@ export async function statRemoteFile(
     mtime: parseFloat(mtime),
     mode: parseInt(rawMode, 16),
   };
+}
+
+/**
+ * Start a background exec loop in the sandbox (`triggerShellCmd` runs every
+ * ~100 ms for `triggerSecs` seconds), run the watch for `opts.timeoutMs`
+ * milliseconds, then return all collected events.
+ */
+export async function watchWithSandboxTrigger(
+  sb: Sandbox,
+  path: string,
+  triggerShellCmd: string,
+  opts: {
+    timeoutMs?: number;
+    filter?: FileWatchEventType[];
+    recursive?: boolean;
+  } = {},
+): Promise<FileWatchEvent[]> {
+  const { timeoutMs = 2000 } = opts;
+  const triggerSecs = Math.ceil(timeoutMs / 1000) + 2;
+  const bg = await sb.exec([
+    "sh",
+    "-c",
+    `end=$(($(date +%s)+${triggerSecs})); while [ "$(date +%s)" -lt "$end" ]; do ${triggerShellCmd}; sleep 0.1; done`,
+  ]);
+  const events: FileWatchEvent[] = [];
+  try {
+    for await (const event of sb.filesystem.watch(path, opts)) {
+      events.push(event);
+    }
+  } finally {
+    await bg.wait();
+  }
+  return events;
 }

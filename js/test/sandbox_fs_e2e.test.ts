@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 import { expect, onTestFinished, test } from "vitest";
 
+import type { FileWatchEvent } from "../src/sandbox_fs";
 import type { Sandbox } from "../src/sandbox";
 import {
   SandboxFilesystemDirectoryNotEmptyError,
@@ -27,6 +28,7 @@ import {
   statRemoteFile,
   symlinkRemote,
   tmpPath,
+  watchWithSandboxTrigger,
   writeRemoteFile,
 } from "../test-support/sandbox-exec-helpers";
 import { tc } from "../test-support/test-client";
@@ -900,6 +902,239 @@ test("SandboxFsE2eStatErrorsWhenAncestorIsAFile", async () => {
     sb.filesystem.stat("/tmp/e2e-stat-blocker/child"),
   ).rejects.toThrow(SandboxFilesystemNotADirectoryError);
 });
+
+// ---------------------------------------------------------------------------
+// watch
+// ---------------------------------------------------------------------------
+
+test("SandboxFsE2eWatchErrorsWhenPathDoesNotExist", async () => {
+  const sb = await newTestSandbox();
+  const watch = sb.filesystem.watch("/tmp/e2e-watch-missing");
+  const iter = watch[Symbol.asyncIterator]();
+  await expect(iter.next()).rejects.toThrow(SandboxFilesystemNotFoundError);
+});
+
+test("SandboxFsE2eWatchEmitsCreateEvent", async () => {
+  const sb = await newTestSandbox();
+  const dir = "/tmp/e2e-watch-create";
+  await mkdirRemote(sb, dir);
+  const events = await watchWithSandboxTrigger(
+    sb,
+    dir,
+    `touch ${dir}/f$RANDOM.txt`,
+    { timeoutMs: 2000 },
+  );
+  expect(events.some((e) => e.eventType === "Create")).toBe(true);
+}, 15_000);
+
+test("SandboxFsE2eWatchEmitsModifyEvent", async () => {
+  const sb = await newTestSandbox();
+  const dir = "/tmp/e2e-watch-modify";
+  await mkdirRemote(sb, dir);
+  await writeRemoteFile(
+    sb,
+    `${dir}/existing.txt`,
+    new TextEncoder().encode("v0"),
+  );
+  const events = await watchWithSandboxTrigger(
+    sb,
+    dir,
+    `date > ${dir}/existing.txt`,
+    { timeoutMs: 2000 },
+  );
+  expect(events.some((e) => e.eventType === "Modify")).toBe(true);
+}, 15_000);
+
+test("SandboxFsE2eWatchEmitsRemoveEvent", async () => {
+  const sb = await newTestSandbox();
+  const dir = "/tmp/e2e-watch-remove";
+  await mkdirRemote(sb, dir);
+  const events = await watchWithSandboxTrigger(
+    sb,
+    dir,
+    `f=${dir}/tmp-$RANDOM.txt; touch $f; sleep 0.05; rm -f $f`,
+    { timeoutMs: 3000 },
+  );
+  expect(events.some((e) => e.eventType === "Remove")).toBe(true);
+}, 20_000);
+
+test("SandboxFsE2eWatchRecursiveObservesSubdirectory", async () => {
+  const sb = await newTestSandbox();
+  const dir = "/tmp/e2e-watch-recursive";
+  const sub = `${dir}/nested`;
+  await mkdirRemote(sb, sub);
+  const events = await watchWithSandboxTrigger(
+    sb,
+    dir,
+    `touch ${sub}/deep-$RANDOM.txt`,
+    { timeoutMs: 2000, recursive: true },
+  );
+  expect(events.some((e) => e.paths.some((p) => p.startsWith(sub)))).toBe(true);
+}, 15_000);
+
+test("SandboxFsE2eWatchNonRecursiveIgnoresSubdirectory", async () => {
+  const sb = await newTestSandbox();
+  const dir = "/tmp/e2e-watch-nonrecursive";
+  const sub = `${dir}/nested`;
+  await mkdirRemote(sb, sub);
+  // Touch a file in the subdirectory (must be ignored) and a sentinel directly
+  // in `dir` (must be observed). Seeing the sentinel proves the watch was live,
+  // so a leaked subdirectory event would have arrived too.
+  const events = await watchWithSandboxTrigger(
+    sb,
+    dir,
+    `touch ${sub}/deep-$RANDOM.txt; touch ${dir}/sentinel-$RANDOM.txt`,
+    { timeoutMs: 2000, recursive: false },
+  );
+  // Positive control: the watch was actually running.
+  expect(events.length).toBeGreaterThan(0);
+  // The actual assertion: nothing from inside the subdirectory.
+  expect(
+    events.every((e) => e.paths.every((p) => !p.startsWith(`${sub}/`))),
+  ).toBe(true);
+}, 15_000);
+
+test("SandboxFsE2eWatchFilterDropsUnmatchedEvents", async () => {
+  const sb = await newTestSandbox();
+  const dir = "/tmp/e2e-watch-filter";
+  await mkdirRemote(sb, dir);
+  const events = await watchWithSandboxTrigger(
+    sb,
+    dir,
+    `touch ${dir}/f$RANDOM.txt`,
+    { timeoutMs: 2000, filter: ["Remove"] },
+  );
+  expect(events).toEqual([]);
+}, 15_000);
+
+test("SandboxFsE2eWatchReturnsImmediatelyOnZeroTimeout", async () => {
+  const sb = await newTestSandbox();
+  const watchDir = "/tmp/e2e-watch-zero-timeout";
+  await mkdirRemote(sb, watchDir);
+  const start = Date.now();
+  const events: FileWatchEvent[] = [];
+  for await (const event of sb.filesystem.watch(watchDir, { timeoutMs: 0 })) {
+    events.push(event);
+  }
+  expect(events).toEqual([]);
+  expect(Date.now() - start).toBeLessThan(5000);
+});
+
+test("SandboxFsE2eWatchEmitsEventWhenPathIsAFile", async () => {
+  const sb = await newTestSandbox();
+  const target = "/tmp/e2e-watch-file.txt";
+  await writeRemoteFile(sb, target, new TextEncoder().encode("initial"));
+  const events = await watchWithSandboxTrigger(
+    sb,
+    target,
+    `echo x > ${target}`,
+    { timeoutMs: 2000 },
+  );
+  expect(events.some((e) => e.eventType === "Modify")).toBe(true);
+}, 15_000);
+
+test.each([false, true])(
+  "SandboxFsE2eWatchEmptyFilterYieldsNoEvents recursive=%s",
+  async (recursive) => {
+    const sb = await newTestSandbox();
+    const dir = `/tmp/e2e-watch-empty-filter-${recursive ? "r" : "nr"}`;
+    await mkdirRemote(sb, dir);
+    const events = await watchWithSandboxTrigger(
+      sb,
+      dir,
+      `touch ${dir}/f$RANDOM.txt`,
+      { filter: [], recursive, timeoutMs: 2000 },
+    );
+    expect(events).toEqual([]);
+  },
+  15_000,
+);
+
+test("SandboxFsE2eWatchBreakReturnsQuickly", async () => {
+  const sb = await newTestSandbox();
+  const watchDir = "/tmp/e2e-watch-break";
+  await mkdirRemote(sb, watchDir);
+  // Trigger repeatedly so an event is guaranteed even if the watch registers
+  // after the first one. A single-shot trigger can be missed, leaving the
+  // iterator blocked until the 60s timeout and tripping the test timeout.
+  const bg = await sb.exec([
+    "sh",
+    "-c",
+    `end=$(($(date +%s)+6)); while [ "$(date +%s)" -lt "$end" ]; do touch ${watchDir}/trigger-$RANDOM.txt; sleep 0.1; done`,
+  ]);
+  const start = Date.now();
+  for await (const _ of sb.filesystem.watch(watchDir, { timeoutMs: 60_000 })) {
+    break;
+  }
+  const elapsed = Date.now() - start;
+  await bg.wait();
+  expect(elapsed).toBeLessThan(5000);
+}, 15_000);
+
+// Renames within the watched scope arrive as Modify events with two paths.
+test.each([false, true])(
+  "SandboxFsE2eWatchEmitsModifyEventForRename recursive=%s",
+  async (recursive) => {
+    const sb = await newTestSandbox();
+    const dir = `/tmp/e2e-watch-rename-${recursive ? "r" : "nr"}`;
+    const before = `${dir}/before.txt`;
+    const after = `${dir}/after.txt`;
+    await mkdirRemote(sb, dir);
+    await writeRemoteFile(sb, before, new TextEncoder().encode("content"));
+    const events = await watchWithSandboxTrigger(
+      sb,
+      dir,
+      `if [ -f ${before} ]; then mv ${before} ${after}; else mv ${after} ${before}; fi`,
+      { timeoutMs: 2000, recursive },
+    );
+    const modifyEvents = events.filter((e) => e.eventType === "Modify");
+    expect(modifyEvents.length).toBeGreaterThan(0);
+    const allPaths = modifyEvents.flatMap((e) => e.paths);
+    expect(allPaths.some((p) => p.includes("before"))).toBe(true);
+    expect(allPaths.some((p) => p.includes("after"))).toBe(true);
+  },
+  15_000,
+);
+
+// mv across directories is a rename syscall, so it surfaces as Modify (not Create).
+test.each([false, true])(
+  "SandboxFsE2eWatchEmitsModifyEventForFileMoveIntoWatchedDir recursive=%s",
+  async (recursive) => {
+    const sb = await newTestSandbox();
+    const watched = `/tmp/e2e-watch-mv-in-${recursive ? "r" : "nr"}`;
+    const outside = `/tmp/e2e-watch-mv-in-out-${recursive ? "r" : "nr"}`;
+    await mkdirRemote(sb, watched);
+    await mkdirRemote(sb, outside);
+    const events = await watchWithSandboxTrigger(
+      sb,
+      watched,
+      `n=$RANDOM; touch ${outside}/f-$n.txt && mv ${outside}/f-$n.txt ${watched}/f-$n.txt`,
+      { timeoutMs: 2000, recursive },
+    );
+    expect(events.some((e) => e.eventType === "Modify")).toBe(true);
+  },
+  15_000,
+);
+
+// mv across directories is a rename syscall, so it surfaces as Modify (not Remove).
+test.each([false, true])(
+  "SandboxFsE2eWatchEmitsModifyEventForFileMoveOutOfWatchedDir recursive=%s",
+  async (recursive) => {
+    const sb = await newTestSandbox();
+    const watched = `/tmp/e2e-watch-mv-out-${recursive ? "r" : "nr"}`;
+    const outside = `/tmp/e2e-watch-mv-out-out-${recursive ? "r" : "nr"}`;
+    await mkdirRemote(sb, watched);
+    await mkdirRemote(sb, outside);
+    const events = await watchWithSandboxTrigger(
+      sb,
+      watched,
+      `n=$RANDOM; touch ${watched}/f-$n.txt && mv ${watched}/f-$n.txt ${outside}/f-$n.txt`,
+      { timeoutMs: 2000, recursive },
+    );
+    expect(events.some((e) => e.eventType === "Modify")).toBe(true);
+  },
+  15_000,
+);
 
 // ---------------------------------------------------------------------------
 // write_bytes

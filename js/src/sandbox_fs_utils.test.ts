@@ -6,6 +6,7 @@ import {
   makeListFilesCommand,
   makeReadFileCommand,
   makeStatCommand,
+  makeWatchCommand,
   makeWriteFileCommand,
   translateExecErrors,
   translateExecUnexpectedError,
@@ -138,6 +139,63 @@ test("makeStatCommand handles paths with special characters", () => {
 test("makeReadFileCommand produces correct JSON", () => {
   expect(JSON.parse(makeReadFileCommand("/tmp/file.txt"))).toEqual({
     ReadFile: { path: "/tmp/file.txt" },
+  });
+});
+
+test("makeWatchCommand produces correct JSON", () => {
+  expect(
+    JSON.parse(
+      makeWatchCommand("/tmp/dir", {
+        recursive: false,
+        filter: null,
+        timeoutMs: null,
+      }),
+    ),
+  ).toEqual({
+    Watch: {
+      path: "/tmp/dir",
+      recursive: false,
+      filter: null,
+      timeout_secs: null,
+    },
+  });
+});
+
+test("makeWatchCommand serializes filter and converts timeoutMs to seconds", () => {
+  expect(
+    JSON.parse(
+      makeWatchCommand("/tmp/dir", {
+        recursive: true,
+        filter: ["Create", "Remove"],
+        timeoutMs: 30_000,
+      }),
+    ),
+  ).toEqual({
+    Watch: {
+      path: "/tmp/dir",
+      recursive: true,
+      filter: ["Create", "Remove"],
+      timeout_secs: 30,
+    },
+  });
+});
+
+test("makeWatchCommand truncates sub-second timeoutMs", () => {
+  expect(
+    JSON.parse(
+      makeWatchCommand("/tmp/dir", {
+        recursive: false,
+        filter: null,
+        timeoutMs: 1900,
+      }),
+    ),
+  ).toEqual({
+    Watch: {
+      path: "/tmp/dir",
+      recursive: false,
+      filter: null,
+      timeout_secs: 1,
+    },
   });
 });
 

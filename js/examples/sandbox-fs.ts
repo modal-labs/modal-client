@@ -87,6 +87,24 @@ try {
   await fs.remove("/tmp/hello.bin");
   await fs.remove("/tmp/mydir", { recursive: true });
   console.log("remove: cleaned up");
+
+  // ── watch ────────────────────────────────────────────────────────────────
+
+  const watchDir = "/tmp/watch-demo";
+  await fs.makeDirectory(watchDir);
+
+  const bgExec = await sb.exec([
+    "sh",
+    "-c",
+    "sleep 0.5; for i in 1 2 3 4 5; do touch /tmp/watch-demo/file$i.txt; sleep 0.2; done",
+  ]);
+
+  console.log("watch events (3 s):");
+  for await (const event of fs.watch(watchDir, { timeoutMs: 3000 })) {
+    console.log(`  ${event.eventType}  ${event.paths.join(", ")}`);
+  }
+
+  await bgExec.wait();
 } catch (error) {
   console.error("Filesystem operation failed:", error);
 } finally {

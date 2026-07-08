@@ -14,16 +14,19 @@ import {
   makeReadFileCommand,
   makeRemoveCommand,
   makeStatCommand,
+  makeWatchCommand,
   makeWriteFileCommand,
   raiseListFilesError,
   raiseMakeDirectoryError,
   raiseReadFileError,
   raiseRemoveError,
   raiseStatError,
+  raiseWatchError,
   raiseWriteFileError,
   translateExecErrors,
   validateAbsoluteRemotePath,
 } from "./sandbox_fs_utils";
+import { checkForRenamedParams } from "./validation";
 
 /** Type of a filesystem entry. */
 export type FileType = "file" | "directory" | "symlink";
@@ -69,6 +72,74 @@ function parseFileEntry(raw: RawFileEntry): FileInfo {
     modifiedTime: raw.modified_time,
     symlinkTarget: raw.symlink_target ?? null,
   };
+}
+
+/** Type of a filesystem watch event. */
+export type FileWatchEventType =
+  | "Access"
+  | "Create"
+  | "Modify"
+  | "Remove"
+  | "Unknown";
+
+/** A filesystem change event.
+ *
+ * `paths` contains the absolute path(s) affected by the event. For most event
+ * types it holds a single entry. Rename operations are reported as `Modify`
+ * events: when both the source and destination fall within the watched scope,
+ * `paths` holds `[source, destination]`; when only one side of the rename is
+ * visible, `paths` holds that single path.
+ */
+export interface FileWatchEvent {
+  readonly eventType: FileWatchEventType;
+  readonly paths: string[];
+}
+
+const RUST_RENAME_VARIANTS = ["Rename", "RenameFrom", "RenameTo"] as const;
+
+/** Event type strings recognized after collapsing the Rust rename variants. */
+const VALID_EVENT_TYPES = new Set<string>([
+  "Access",
+  "Create",
+  "Modify",
+  "Remove",
+  "Unknown",
+]);
+
+/**
+ * @internal
+ * @hidden
+ */
+export function expandWatchFilter(filter: FileWatchEventType[]): string[] {
+  const result: string[] = [];
+  for (const eventType of filter) {
+    result.push(eventType);
+    if (eventType === "Modify") {
+      result.push(...RUST_RENAME_VARIANTS);
+    }
+  }
+  return result;
+}
+
+/**
+ * Yield complete lines from a stream of string or byte chunks.
+ */
+async function* readLines(
+  stream: AsyncIterable<string | Uint8Array>,
+): AsyncGenerator<string, void, void> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for await (const chunk of stream) {
+    buffer +=
+      typeof chunk === "string"
+        ? chunk
+        : decoder.decode(chunk, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) yield line;
+  }
+  const tail = decoder.decode(undefined, { stream: false });
+  if (buffer + tail) yield buffer + tail;
 }
 
 // 4 MiB chunks due to Node.js's http2 10 MB maxSessionMemory.
@@ -393,6 +464,115 @@ export class SandboxFilesystem {
     });
 
     return parseFileEntry(JSON.parse(stdout) as RawFileEntry);
+  }
+
+  /**
+   * Watch a path in the Sandbox for filesystem changes.
+   *
+   * `remotePath` must be an absolute path in the Sandbox. If it points to a
+   * file, events for that file are reported. If it points to a directory,
+   * events for entries directly inside it are reported. Set `recursive: true`
+   * to also receive events for all nested subdirectories. If `remotePath` is
+   * a symlink, it is followed and events reference paths under the resolved
+   * target.
+   *
+   * Yields {@link FileWatchEvent} objects as changes occur, until either the
+   * timeout elapses, the iterator is closed, or the Sandbox is terminated.
+   *
+   * Optionally restrict the kinds of events emitted to those included in
+   * `filter`. An undefined `filter` permits all types; passing an empty array
+   * suppresses all events.
+   *
+   * `timeoutMs` is truncated to whole seconds. Omit it to watch indefinitely.
+   * When the timeout elapses, the iterator stops without raising an exception.
+   *
+   * @throws {SandboxFilesystemNotFoundError} `remotePath` does not exist.
+   * @throws {SandboxFilesystemPermissionError} watch access is denied.
+   * @throws {InvalidError} the filesystem does not support watching.
+   * @throws {SandboxFilesystemError} the command fails for any other reason.
+   */
+  async *watch(
+    remotePath: string,
+    params: {
+      filter?: FileWatchEventType[];
+      recursive?: boolean;
+      timeoutMs?: number;
+    } = {},
+  ): AsyncIterable<FileWatchEvent> {
+    validateAbsoluteRemotePath(remotePath, "watch");
+    checkForRenamedParams(params, { timeout: "timeoutMs" });
+    const { filter, recursive = false, timeoutMs } = params;
+
+    const process = await translateExecErrors("watch", remotePath, () =>
+      this.exec(
+        [
+          SANDBOX_FS_TOOLS_PATH,
+          makeWatchCommand(remotePath, {
+            recursive,
+            filter: filter !== undefined ? expandWatchFilter(filter) : null,
+            timeoutMs: timeoutMs ?? null,
+          }),
+        ],
+        { mode: "text" },
+      ),
+    );
+
+    // Distinguishes the stream ending on its own (timeout elapsed, Sandbox
+    // terminated, or the command failed at startup) from the consumer stopping
+    // early via `break`/`return`. We only surface a non-zero exit as an error
+    // in the former case; an early stop must not throw over the consumer.
+    let streamEnded = false;
+    try {
+      for await (const line of readLines(process.stdout)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        let data: { event_type?: string; paths?: string[] };
+        try {
+          data = JSON.parse(trimmed) as {
+            event_type?: string;
+            paths?: string[];
+          };
+        } catch {
+          continue;
+        }
+        const paths = data.paths ?? [];
+        if (paths.length === 0) continue;
+        let rawType = data.event_type;
+        if (typeof rawType !== "string") continue;
+        if ((RUST_RENAME_VARIANTS as readonly string[]).includes(rawType)) {
+          rawType = "Modify";
+        }
+        // Drop events with an unrecognized type rather than surfacing them.
+        if (!VALID_EVENT_TYPES.has(rawType)) continue;
+        yield { eventType: rawType as FileWatchEventType, paths };
+      }
+      streamEnded = true;
+    } catch (err) {
+      // A failure while consuming the stream (e.g. the Sandbox is terminated
+      // mid-watch) surfaces as a raw transport error. Route it through the same
+      // translation the other filesystem methods apply so callers get a
+      // consistent, friendly error rather than a gRPC-level exception.
+      await translateExecErrors("watch", remotePath, () => {
+        throw err;
+      });
+      throw err; // Unreachable: translateExecErrors always rethrows.
+    } finally {
+      // Close stdin so the fs-tools process detects EOF and exits promptly.
+      await process.closeStdin().catch(() => {});
+      if (streamEnded) {
+        await translateExecErrors("watch", remotePath, async () => {
+          const returnCode = await process.wait();
+          if (returnCode !== 0) {
+            const stderr = await process.stderr.readBytes();
+            raiseWatchError(returnCode, stderr, remotePath);
+          }
+        });
+      } else {
+        // Consumer stopped early; reap the process without surfacing its exit
+        // status (e.g. a signal-kill) as an error over their `break`.
+        await process.wait().catch(() => {});
+      }
+    }
   }
 
   /**

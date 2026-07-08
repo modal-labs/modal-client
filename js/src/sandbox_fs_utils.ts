@@ -281,6 +281,59 @@ export function makeStatCommand(remotePath: string): string {
   return JSON.stringify({ Stat: { path: remotePath } });
 }
 
+export function raiseWatchError(
+  returnCode: number,
+  stderr: string | Uint8Array,
+  remotePath: string,
+): never {
+  const payload = tryParseErrorPayload(stderr);
+  if (payload) {
+    logger.debug(
+      `sandbox-fs-tools watch error: path=${remotePath}, ` +
+        `error_kind=${payload.error_kind}, message=${payload.message}, detail=${payload.detail}`,
+    );
+    if (payload.error_kind === "NotFound")
+      throw new SandboxFilesystemNotFoundError(
+        `${payload.message}: ${remotePath}`,
+      );
+    if (payload.error_kind === "PermissionDenied")
+      throw new SandboxFilesystemPermissionError(
+        `${payload.message}: ${remotePath}`,
+      );
+    if (payload.error_kind === "NotSupported")
+      throw new InvalidError(
+        `${payload.message}: ${remotePath} - this operation is not supported for CloudBucketMounts`,
+      );
+    throw new SandboxFilesystemError(payload.message);
+  }
+  const text = stderrToText(stderr);
+  if (text) logger.debug(`Unstructured modal-sandbox-fs-tools stderr: ${text}`);
+  throw new SandboxFilesystemError(
+    `Operation on '${remotePath}' failed with exit code ${returnCode}`,
+  );
+}
+
+export function makeWatchCommand(
+  remotePath: string,
+  opts: {
+    recursive: boolean;
+    filter: string[] | null;
+    timeoutMs: number | null;
+  },
+): string {
+  return JSON.stringify({
+    Watch: {
+      path: remotePath,
+      recursive: opts.recursive,
+      filter: opts.filter,
+      // The fs-tools wire protocol takes whole seconds; convert from the SDK's
+      // millisecond convention, truncating any sub-second remainder.
+      timeout_secs:
+        opts.timeoutMs !== null ? Math.trunc(opts.timeoutMs / 1000) : null,
+    },
+  });
+}
+
 export function raiseWriteFileError(
   returnCode: number,
   stderr: string | Uint8Array,
