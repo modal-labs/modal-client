@@ -117,10 +117,12 @@ async def curl(curl_args: tuple[str, ...]):
     All arguments are passed directly to `curl`, which must be installed locally.
 
     Examples:
-        ```bash
-        modal curl https://user--my-app.us-west.modal.direct
-        modal curl -X GET https://user--my-app.us-west.modal.direct
-        ```
+
+    ```bash
+    modal curl https://user--my-app.us-west.modal.direct
+    modal curl -X GET https://user--my-app.us-west.modal.direct
+    ```
+
     """
     url = find_url(curl_args)
     if url is None:
