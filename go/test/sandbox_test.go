@@ -1363,6 +1363,37 @@ func TestSandboxFromIDRoutesV2(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestSandboxExperimentalFromNameRoutesV2(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+	sandboxID := validV2SandboxID
+
+	grpcmock.HandleUnary(mock, "SandboxGetFromNameV2",
+		func(req *pb.SandboxGetFromNameRequest) (*pb.SandboxGetFromNameResponse, error) {
+			g.Expect(req.GetSandboxName()).To(gomega.Equal("my-sandbox"))
+			g.Expect(req.GetAppName()).To(gomega.Equal("libmodal-test"))
+			return pb.SandboxGetFromNameResponse_builder{SandboxId: sandboxID}.Build(), nil
+		})
+	// A subsequent lifecycle call routes through the V2 RPC, confirming the
+	// returned Sandbox is marked V2.
+	grpcmock.HandleUnary(mock, "SandboxTerminateV2",
+		func(req *pb.SandboxTerminateRequest) (*pb.SandboxTerminateResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			return pb.SandboxTerminateResponse_builder{}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.ExperimentalFromName(ctx, "libmodal-test", "my-sandbox", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(sb.SandboxID).To(gomega.Equal(sandboxID))
+
+	_, err = sb.Terminate(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestSandboxFromIDRejectsInvalidID(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

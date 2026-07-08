@@ -861,9 +861,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         (e.g. `region="us-east-1"`).
 
         V2 sandboxes created with this method are not currently returned by
-        `Sandbox.list()` and cannot be looked up with `Sandbox.from_name()`.
-        Store `sandbox.object_id` if you need to retrieve the sandbox later, and
-        use `Sandbox.from_id(sandbox.object_id)` to reattach.
+        `Sandbox.list()`. A named sandbox can be looked up with
+        `Sandbox._experimental_from_name(app_name, name)`; otherwise store
+        `sandbox.object_id` and use `Sandbox.from_id(sandbox.object_id)` to
+        reattach.
         """
         from .app import _App
 
@@ -1185,6 +1186,44 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
         resp = await client.stub.SandboxGetFromName(req)
         return _Sandbox._new_hydrated(resp.sandbox_id, client, None)
+
+    @staticmethod
+    async def _experimental_from_name(
+        app_name: str,
+        name: str,
+        *,
+        environment_name: str | None = None,
+        client: _Client | None = None,
+    ) -> "_Sandbox":
+        """Get a running V2 Sandbox by name from a deployed App.
+
+        This looks up V2 sandboxes, ie sandboxes created via `modal.Sandbox._experimental_create`.
+
+        Args:
+            app_name: Name of the deployed app to look up the sandbox under.
+            name: Sandbox name to resolve.
+            environment_name: Optional environment name for the lookup; defaults to the configured environment.
+            client: Modal client to use for the RPC; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            A `Sandbox` handle for the running sandbox.
+
+        Raises:
+            NotFoundError: If no running sandbox exists with the given name.
+        """
+        if client is None:
+            client = await _Client.from_env()
+        env_name = _get_environment_name(environment_name)
+
+        req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
+        assert client._auth_token_manager
+        auth_token = await client._auth_token_manager.get_token()
+        resp = await client.stub.SandboxGetFromNameV2(req, metadata=[("x-modal-auth-token", auth_token)])
+
+        obj = _Sandbox._new_hydrated(resp.sandbox_id, client, None)
+        obj._is_v2 = True
+        obj._hydrate_metadata_v2()
+        return obj
 
     @staticmethod
     async def from_id(sandbox_id: str, client: _Client | None = None) -> "_Sandbox":

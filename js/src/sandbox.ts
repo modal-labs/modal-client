@@ -749,11 +749,11 @@ export class SandboxService {
    * supported.
    *
    * V2 sandboxes created with this method are not currently returned by
-   * {@link SandboxService#list client.sandboxes.list()} and cannot be looked up
-   * with {@link SandboxService#fromName client.sandboxes.fromName()}. Store
-   * {@link Sandbox#sandboxId sandbox.sandboxId} if you need to retrieve the
-   * sandbox later, and use {@link SandboxService#fromId client.sandboxes.fromId()}
-   * to reattach.
+   * {@link SandboxService#list client.sandboxes.list()}. A named Sandbox can be
+   * looked up with
+   * {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()};
+   * otherwise store {@link Sandbox#sandboxId sandbox.sandboxId} and use
+   * {@link SandboxService#fromId client.sandboxes.fromId()} to reattach.
    */
   async experimentalCreate(
     app: App,
@@ -856,6 +856,43 @@ export class SandboxService {
         environmentName: this.#client.environmentName(params?.environment),
       });
       return new Sandbox(this.#client, resp.sandboxId);
+    } catch (err) {
+      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+        throw new NotFoundError(
+          `Sandbox with name '${name}' not found in App '${appName}'`,
+        );
+      throw err;
+    }
+  }
+
+  /**
+   * Get a running V2 {@link Sandbox} by name from a deployed {@link App}.
+   *
+   * This looks up V2 Sandboxes, i.e. Sandboxes created via
+   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   *
+   * @param appName - Name of the deployed App
+   * @param name - Name of the Sandbox
+   * @param params - Optional parameters for getting the Sandbox
+   * @returns Promise that resolves to a Sandbox
+   */
+  async experimentalFromName(
+    appName: string,
+    name: string,
+    params?: SandboxExperimentalFromNameParams,
+  ): Promise<Sandbox> {
+    try {
+      // SandboxGetFromNameV2 only returns V2 Sandboxes and authenticates via
+      // the auth-token metadata (attached automatically by the client), like
+      // the other V2 Sandbox RPCs.
+      const resp = await this.#client.cpClient.sandboxGetFromNameV2({
+        sandboxName: name,
+        appName,
+        environmentName: this.#client.environmentName(params?.environment),
+      });
+      return new Sandbox(this.#client, resp.sandboxId, { isV2: true });
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(
@@ -975,6 +1012,11 @@ export type SandboxExperimentalListParams = {
 
 /** Optional parameters for {@link SandboxService#fromName client.sandboxes.fromName()}. */
 export type SandboxFromNameParams = {
+  environment?: string;
+};
+
+/** Optional parameters for {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()}. */
+export type SandboxExperimentalFromNameParams = {
   environment?: string;
 };
 

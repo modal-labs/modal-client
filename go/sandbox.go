@@ -26,6 +26,7 @@ type SandboxService interface {
 	ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error)
 	FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error)
 	FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error)
+	ExperimentalFromName(ctx context.Context, appName, name string, params *SandboxExperimentalFromNameParams) (*Sandbox, error)
 	List(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error)
 	ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error)
 }
@@ -566,9 +567,9 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 // Features like tags, memory snapshots, GPUs, and custom domains are not
 // supported.
 //
-// V2 sandboxes created with this method are not currently returned by List and
-// cannot be looked up with FromName. Store Sandbox.SandboxID if you need to
-// retrieve the sandbox later, and use FromID to reattach.
+// V2 sandboxes created with this method are not currently returned by List. A
+// named Sandbox can be looked up with ExperimentalFromName; otherwise store
+// Sandbox.SandboxID and use FromID to reattach.
 func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
 	if params == nil {
 		params = &SandboxCreateParams{}
@@ -897,12 +898,41 @@ func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string,
 	}.Build())
 	if err != nil {
 		if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
-			return nil, NotFoundError{Exception: fmt.Sprintf("Sandbox with name '%s' not found in pp '%s'", name, appName)}
+			return nil, NotFoundError{Exception: fmt.Sprintf("Sandbox with name '%s' not found in App '%s'", name, appName)}
 		}
 		return nil, err
 	}
 
 	return newSandbox(s.client, resp.GetSandboxId()), nil
+}
+
+// SandboxExperimentalFromNameParams are options for SandboxService.ExperimentalFromName.
+type SandboxExperimentalFromNameParams struct {
+	Environment string
+}
+
+// ExperimentalFromName gets a running V2 Sandbox by name from a deployed App,
+// i.e. a Sandbox created via ExperimentalCreate.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (s *sandboxServiceImpl) ExperimentalFromName(ctx context.Context, appName, name string, params *SandboxExperimentalFromNameParams) (*Sandbox, error) {
+	if params == nil {
+		params = &SandboxExperimentalFromNameParams{}
+	}
+
+	resp, err := s.client.cpClient.SandboxGetFromNameV2(ctx, pb.SandboxGetFromNameRequest_builder{
+		SandboxName:     name,
+		AppName:         appName,
+		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
+	}.Build())
+	if err != nil {
+		if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
+			return nil, NotFoundError{Exception: fmt.Sprintf("Sandbox with name '%s' not found in App '%s'", name, appName)}
+		}
+		return nil, err
+	}
+
+	return newSandboxV2(s.client, resp.GetSandboxId(), ""), nil
 }
 
 // SandboxExecParams defines options for executing commands in a Sandbox.

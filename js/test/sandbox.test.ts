@@ -1381,6 +1381,33 @@ test("ExperimentalList requires an appId", async () => {
   );
 });
 
+test("ExperimentalFromName routes to V2 RPCs", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetFromNameV2", (req: any) => {
+    expect(req.sandboxName).toBe("my-sandbox");
+    expect(req.appName).toBe("libmodal-test");
+    return { sandboxId: V2_SANDBOX_ID };
+  });
+  // A subsequent lifecycle call routes through the V2 RPC, confirming the
+  // returned Sandbox is marked V2.
+  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.experimentalFromName(
+    "libmodal-test",
+    "my-sandbox",
+  );
+  expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+  expect(() => sb.stdin).toThrow("not supported for V2 sandboxes");
+
+  await sb.terminate();
+
+  mock.assertExhausted();
+});
+
 test("V2 Sandbox rejects V1-only runtime methods", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {

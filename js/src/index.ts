@@ -82,6 +82,7 @@ export type {
   Tunnel,
   SandboxListParams,
   SandboxExperimentalListParams,
+  SandboxExperimentalFromNameParams,
   SandboxCreateParams,
   SandboxUpdateNetworkPolicyParams,
 } from "./sandbox";
