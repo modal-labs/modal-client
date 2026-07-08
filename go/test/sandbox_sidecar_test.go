@@ -157,6 +157,27 @@ func TestSidecarCreateImageMustBeBuilt(t *testing.T) {
 	g.Expect(errors.As(err, &invalid)).Should(gomega.BeTrue())
 }
 
+func TestSidecarCreateRejectsInvalidEnvVarName(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	sb := createSandbox(ctx, g, tc)
+	defer terminateSandbox(g, sb)
+
+	image := buildAlpineImage(t, g, tc)
+
+	_, err := sb.ExperimentalSidecars.Create(ctx, "worker", image, &modal.SidecarCreateParams{
+		Command: []string{"sleep", "100"},
+		Env:     map[string]string{"1INVALID": "value"},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	var invalid modal.InvalidError
+	g.Expect(errors.As(err, &invalid)).Should(gomega.BeTrue(), "expected InvalidError, got %T: %v", err, err)
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("is invalid for environment variables")))
+}
+
 func TestSidecarCreateForwardsSecretsAndEnv(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

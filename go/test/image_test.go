@@ -479,6 +479,163 @@ func TestDockerfileCommandsFromBuiltRegistryImageDropsRegistryConfig(t *testing.
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestImageFromRegistryHydratesLazyRegistrySecret(t *testing.T) {
+	// Pin the image builder version to the 2024.10 release so the build resolves it
+	// locally instead of calling EnvironmentGetOrCreate (not mocked here).
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
+
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	// A registry-auth Secret created via FromMap is lazy, so it must be hydrated
+	// when the Image is built (not when the Image is constructed).
+	grpcmock.HandleUnary(mock, "SecretGetOrCreate",
+		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
+			g.Expect(req.GetObjectCreationType()).To(gomega.Equal(pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL))
+			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"REGISTRY_PASSWORD": "shh"}))
+			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-registry"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			image := req.GetImage()
+			g.Expect(image.HasImageRegistryConfig()).To(gomega.BeTrue())
+			g.Expect(image.GetImageRegistryConfig().GetRegistryAuthType()).To(gomega.Equal(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_STATIC_CREDS))
+			g.Expect(image.GetImageRegistryConfig().GetSecretId()).To(gomega.Equal("st-registry"))
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-private",
+				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	registrySecret, err := mock.Secrets.FromMap(ctx, map[string]string{"REGISTRY_PASSWORD": "shh"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(registrySecret.SecretID).To(gomega.BeEmpty())
+
+	image, err := mock.Images.FromRegistry(
+		"private.example.com/app:latest",
+		&modal.ImageFromRegistryParams{Secret: registrySecret},
+	).Build(ctx, &modal.App{AppID: "ap-test"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(image.ImageID).To(gomega.Equal("im-private"))
+
+	// The lazy registry Secret was hydrated in place during Build.
+	g.Expect(registrySecret.SecretID).To(gomega.Equal("st-registry"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestImageRegistryAuthTypes(t *testing.T) {
+	cases := []struct {
+		name     string
+		build    func(c *modal.Client, secret *modal.Secret) *modal.Image
+		authType pb.RegistryAuthType
+	}{
+		{
+			name: "AwsEcr",
+			build: func(c *modal.Client, secret *modal.Secret) *modal.Image {
+				return c.Images.FromAwsEcr("123.dkr.ecr.us-east-1.amazonaws.com/repo:tag", secret, nil)
+			},
+			authType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_AWS,
+		},
+		{
+			name: "GcpArtifactRegistry",
+			build: func(c *modal.Client, secret *modal.Secret) *modal.Image {
+				return c.Images.FromGcpArtifactRegistry("us-east1-docker.pkg.dev/p/r/img", secret, nil)
+			},
+			authType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_GCP,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			// Pin the image builder version to the 2024.10 release so the build resolves it
+			// locally instead of calling EnvironmentGetOrCreate (not mocked here).
+			t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
+
+			g := gomega.NewWithT(t)
+			ctx := t.Context()
+			mock := newGRPCMockClient(t)
+
+			grpcmock.HandleUnary(mock, "ImageGetOrCreate",
+				func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+					cfg := req.GetImage().GetImageRegistryConfig()
+					g.Expect(req.GetImage().HasImageRegistryConfig()).To(gomega.BeTrue())
+					g.Expect(cfg.GetRegistryAuthType()).To(gomega.Equal(tt.authType))
+					g.Expect(cfg.GetSecretId()).To(gomega.Equal("st-creds"))
+					return pb.ImageGetOrCreateResponse_builder{
+						ImageId: "im-built",
+						Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+					}.Build(), nil
+				},
+			)
+
+			secret := &modal.Secret{SecretID: "st-creds"}
+			image, err := tt.build(mock.Client, secret).Build(ctx, &modal.App{AppID: "ap-test"}, nil)
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			g.Expect(image.ImageID).To(gomega.Equal("im-built"))
+
+			g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+		})
+	}
+}
+
+func TestImageBuildHydratesLayerSecret(t *testing.T) {
+	// Pin the image builder version to the 2024.10 release so the build resolves it
+	// locally instead of calling EnvironmentGetOrCreate (not mocked here).
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
+
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	// A lazy (FromMap) Secret attached to a Dockerfile layer must be hydrated at
+	// Build time so its SecretID can be sent in the ImageGetOrCreate request.
+	grpcmock.HandleUnary(mock, "SecretGetOrCreate",
+		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
+			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"TOKEN": "abc"}))
+			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-layer"}.Build(), nil
+		},
+	)
+	// Layer 0: the FROM alpine base layer, no secrets.
+	grpcmock.HandleUnary(mock, "ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			g.Expect(req.GetImage().GetDockerfileCommands()).To(gomega.Equal([]string{"FROM alpine:3.21"}))
+			g.Expect(req.GetImage().GetSecretIds()).To(gomega.BeEmpty())
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-base",
+				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+	// Layer 1: the RUN layer that carries the hydrated layer Secret.
+	grpcmock.HandleUnary(mock, "ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			g.Expect(req.GetImage().GetSecretIds()).To(gomega.ContainElement("st-layer"))
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-layer",
+				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	secret, err := mock.Secrets.FromMap(ctx, map[string]string{"TOKEN": "abc"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	image, err := mock.Images.FromRegistry("alpine:3.21", nil).
+		DockerfileCommands([]string{"RUN echo hi"}, &modal.ImageDockerfileCommandsParams{Secrets: []*modal.Secret{secret}}).
+		Build(ctx, &modal.App{AppID: "ap-test"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(image.ImageID).To(gomega.Equal("im-layer"))
+
+	// The lazy layer Secret was hydrated in place.
+	g.Expect(secret.SecretID).To(gomega.Equal("st-layer"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestDockerfileCommandsChaining(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

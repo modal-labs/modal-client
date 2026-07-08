@@ -1844,3 +1844,109 @@ func TestContainerProcessReadStdoutAfterSandboxDetach(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("ClientClosedError: Unable to perform operation on a detached sandbox"))
 }
+
+func TestSandboxCreateWithEnv(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Env:     map[string]string{"FOO": "bar"},
+		Command: []string{"printenv", "FOO"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb)
+
+	output, err := io.ReadAll(sb.Stdout)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(string(output)).To(gomega.Equal("bar\n"))
+}
+
+func TestSandboxCreateHydratesEnv(t *testing.T) {
+	// Unset MODAL_IMAGE_BUILDER_VERSION so the build resolves it via EnvironmentGetOrCreate.
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+	registerSandboxCreateDeps(mock)
+
+	grpcmock.HandleUnary(mock, "SecretGetOrCreate",
+		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
+			// V1 has no env field, so the Env param is folded into an ephemeral Secret.
+			g.Expect(req.GetObjectCreationType()).To(gomega.Equal(pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL))
+			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
+			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-env"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "SandboxCreate",
+		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
+			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.ContainElement("st-env"))
+			return pb.SandboxCreateResponse_builder{SandboxId: validV1SandboxID}.Build(), nil
+		},
+	)
+
+	app, err := mock.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+
+	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Env: map[string]string{"FOO": "bar"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(sb.SandboxID).To(gomega.Equal(validV1SandboxID))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxCreateHydratesCloudBucketMountSecret(t *testing.T) {
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+	registerSandboxCreateDeps(mock)
+
+	grpcmock.HandleUnary(mock, "SecretGetOrCreate",
+		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
+			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"AWS_SECRET_ACCESS_KEY": "shh"}))
+			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-bucket"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "SandboxCreate",
+		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
+			mounts := req.GetDefinition().GetCloudBucketMounts()
+			g.Expect(mounts).To(gomega.HaveLen(1))
+			g.Expect(mounts[0].GetCredentialsSecretId()).To(gomega.Equal("st-bucket"))
+			return pb.SandboxCreateResponse_builder{SandboxId: validV1SandboxID}.Build(), nil
+		},
+	)
+
+	app, err := mock.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+
+	// A lazy (FromMap) Secret used as cloud bucket credentials must be hydrated.
+	bucketSecret, err := mock.Secrets.FromMap(ctx, map[string]string{"AWS_SECRET_ACCESS_KEY": "shh"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	mount, err := mock.CloudBucketMounts.New("my-bucket", &modal.CloudBucketMountParams{Secret: bucketSecret})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		CloudBucketMounts: map[string]*modal.CloudBucketMount{"/mnt/bucket": mount},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(sb.SandboxID).To(gomega.Equal(validV1SandboxID))
+
+	// The mount's lazy Secret was hydrated in place.
+	g.Expect(bucketSecret.SecretID).To(gomega.Equal("st-bucket"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}

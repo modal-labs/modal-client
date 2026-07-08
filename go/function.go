@@ -568,6 +568,12 @@ func bindParameters(
 		return nil, err
 	}
 
+	// FunctionOptions only carries secret IDs, so any locally-created Secrets
+	// (and env vars) must be hydrated into server-side Secrets first.
+	if err := hydrateSecrets(ctx, client, mergedSecrets); err != nil {
+		return nil, err
+	}
+
 	mergedOptions := mergeFunctionOptions(options, &functionOptions{
 		secrets: &mergedSecrets,
 		env:     nil, // nil'ing env just to clarify it's not needed anymore

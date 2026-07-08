@@ -499,9 +499,17 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 		return nil, err
 	}
 
+	// V2 sandboxes support ephemeral env vars natively, so env vars are passed
+	// directly rather than via a server-side Secret.
+	var ephemeralSecrets *pb.StringMap
+	if len(params.Env) > 0 {
+		ephemeralSecrets = pb.StringMap_builder{Contents: params.Env}.Build()
+	}
+
 	return pb.SandboxCreateV2Request_builder{
-		AppId:      req.GetAppId(),
-		Definition: req.GetDefinition(),
+		AppId:            req.GetAppId(),
+		Definition:       req.GetDefinition(),
+		EphemeralSecrets: ephemeralSecrets,
 	}.Build(), nil
 }
 
@@ -518,6 +526,12 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 
 	mergedSecrets, err := mergeEnvIntoSecrets(ctx, s.client, &params.Env, &params.Secrets)
 	if err != nil {
+		return nil, err
+	}
+
+	// The SandboxCreate request only carries secret IDs, so any locally-created
+	// Secrets (and env vars) must be hydrated into server-side Secrets first.
+	if err := hydrateSandboxSecrets(ctx, s.client, mergedSecrets, params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 
@@ -565,14 +579,26 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 		return nil, err
 	}
 
-	mergedSecrets, err := mergeEnvIntoSecrets(ctx, s.client, &params.Env, &params.Secrets)
-	if err != nil {
+	// V2 supports ephemeral env vars natively (passed via ephemeral_secrets in
+	// the request), so unlike Create we don't fold env vars into a server-side
+	// Secret. Locally-created Secrets (FromMap) and params.Env are sent directly
+	// as ephemeral env vars, avoiding a SecretGetOrCreate round-trip; params.Env
+	// takes precedence on key collisions. Only the remaining resolvable Secrets
+	// (e.g. from FromName) need hydrating to secret IDs.
+	envDict, resolvableSecrets := splitEnvDictAndResolvableSecrets(params.Secrets)
+	for k, v := range params.Env {
+		if err := validateEnvVarName(k); err != nil {
+			return nil, err
+		}
+		envDict[k] = v
+	}
+	if err := hydrateSandboxSecrets(ctx, s.client, resolvableSecrets, params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 
 	mergedParams := *params
-	mergedParams.Secrets = mergedSecrets
-	mergedParams.Env = nil // nil'ing Env just to clarify it's not needed anymore
+	mergedParams.Secrets = resolvableSecrets
+	mergedParams.Env = envDict
 
 	req, err := buildSandboxCreateV2RequestProto(app.AppID, image.ImageID, mergedParams)
 	if err != nil {
@@ -931,11 +957,29 @@ func validateWorkdir(workdir string) error {
 	return nil
 }
 
+// hydrateSandboxSecrets hydrates the given Secrets together with the credential
+// Secrets of any cloud bucket mounts, so all their SecretIDs are available
+// before building the SandboxCreate request. It gathers them into a fresh slice
+// to avoid appending onto the caller's secrets slice.
+func hydrateSandboxSecrets(ctx context.Context, client *Client, secrets []*Secret, mounts map[string]*CloudBucketMount) error {
+	toHydrate := make([]*Secret, 0, len(secrets)+len(mounts))
+	toHydrate = append(toHydrate, secrets...)
+	for _, mount := range mounts {
+		if mount != nil && mount.Secret != nil {
+			toHydrate = append(toHydrate, mount.Secret)
+		}
+	}
+	return hydrateSecrets(ctx, client, toHydrate)
+}
+
 func collectSecretIDs(secrets []*Secret) ([]string, error) {
 	secretIds := make([]string, 0, len(secrets))
 	for i, secret := range secrets {
 		if secret == nil {
 			return nil, InvalidError{Exception: fmt.Sprintf("secret at index %d must not be nil", i)}
+		}
+		if secret.SecretID == "" {
+			return nil, InvalidError{Exception: fmt.Sprintf("secret at index %d has not been hydrated", i)}
 		}
 		secretIds = append(secretIds, secret.SecretID)
 	}
@@ -1032,13 +1076,31 @@ func (sb *Sandbox) execInternal(ctx context.Context, command []string, params *S
 		return nil, err
 	}
 
+	// Locally-created Secrets (FromMap) are passed directly to the worker as
+	// environment variables, so only the remaining Secrets need hydrating. This
+	// avoids a SecretGetOrCreate round-trip for env-dict Secrets.
+	envDict, resolvableSecrets := splitEnvDictAndResolvableSecrets(params.Secrets)
+	for k, v := range params.Env {
+		if err := validateEnvVarName(k); err != nil {
+			return nil, err
+		}
+		envDict[k] = v
+	}
+	if err := hydrateSecrets(ctx, sb.client, resolvableSecrets); err != nil {
+		return nil, err
+	}
+
+	execParams := *params
+	execParams.Env = envDict
+	execParams.Secrets = resolvableSecrets
+
 	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	execID := uuid.New().String()
-	req, err := buildTaskExecStartRequestProto(taskID, execID, command, *params, containerID)
+	req, err := buildTaskExecStartRequestProto(taskID, execID, command, execParams, containerID)
 	if err != nil {
 		return nil, err
 	}

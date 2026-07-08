@@ -104,7 +104,11 @@ type layer struct {
 type Image struct {
 	ImageID string
 
-	imageRegistryConfig *pb.ImageRegistryConfig
+	// buildRegistryConfig, when non-nil, hydrates the registry-auth Secret (if
+	// any) and returns the ImageRegistryConfig for the base build layer. It runs
+	// at Build time rather than when the Image is constructed, since the Secret
+	// may be lazy (created via FromMap). nil when not pulling from a private registry.
+	buildRegistryConfig func(ctx context.Context, client *Client) (*pb.ImageRegistryConfig, error)
 	tag                 string
 	// baseImageID is the image ID of the parent image layer to use as FROM base.
 	baseImageID string
@@ -140,35 +144,44 @@ type ImagePublishParams struct {
 	Environment string
 }
 
+// registryConfigBuilder returns a closure that hydrates the registry-auth Secret
+// (if any) and builds the ImageRegistryConfig. It runs at Build time so that lazy
+// Secrets (created via FromMap) are resolved against the build's client.
+func registryConfigBuilder(authType pb.RegistryAuthType, secret *Secret) func(ctx context.Context, client *Client) (*pb.ImageRegistryConfig, error) {
+	return func(ctx context.Context, client *Client) (*pb.ImageRegistryConfig, error) {
+		secretID := ""
+		if secret != nil {
+			if err := hydrateSecrets(ctx, client, []*Secret{secret}); err != nil {
+				return nil, err
+			}
+			secretID = secret.SecretID
+		}
+		return pb.ImageRegistryConfig_builder{
+			RegistryAuthType: authType,
+			SecretId:         secretID,
+		}.Build(), nil
+	}
+}
+
 // FromRegistry builds a Modal Image from a public or private image registry without any changes.
 func (s *imageServiceImpl) FromRegistry(tag string, params *ImageFromRegistryParams) *Image {
-	var imageRegistryConfig *pb.ImageRegistryConfig
+	image := &Image{
+		ImageID: "",
+		tag:     tag,
+		layers:  []layer{{}},
+		client:  s.client,
+	}
 	if params != nil && params.Secret != nil {
-		imageRegistryConfig = pb.ImageRegistryConfig_builder{
-			RegistryAuthType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_STATIC_CREDS,
-			SecretId:         params.Secret.SecretID,
-		}.Build()
+		image.buildRegistryConfig = registryConfigBuilder(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_STATIC_CREDS, params.Secret)
 	}
-
-	return &Image{
-		ImageID:             "",
-		imageRegistryConfig: imageRegistryConfig,
-		tag:                 tag,
-		layers:              []layer{{}},
-		client:              s.client,
-	}
+	return image
 }
 
 // FromAwsEcr creates an Image from an AWS ECR tag
 func (s *imageServiceImpl) FromAwsEcr(tag string, secret *Secret, params *ImageFromAwsEcrParams) *Image {
-	imageRegistryConfig := pb.ImageRegistryConfig_builder{
-		RegistryAuthType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_AWS,
-		SecretId:         secret.SecretID,
-	}.Build()
-
 	return &Image{
 		ImageID:             "",
-		imageRegistryConfig: imageRegistryConfig,
+		buildRegistryConfig: registryConfigBuilder(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_AWS, secret),
 		tag:                 tag,
 		layers:              []layer{{}},
 		client:              s.client,
@@ -177,13 +190,9 @@ func (s *imageServiceImpl) FromAwsEcr(tag string, secret *Secret, params *ImageF
 
 // FromGcpArtifactRegistry creates an Image from a GCP Artifact Registry tag.
 func (s *imageServiceImpl) FromGcpArtifactRegistry(tag string, secret *Secret, params *ImageFromGcpArtifactRegistryParams) *Image {
-	imageRegistryConfig := pb.ImageRegistryConfig_builder{
-		RegistryAuthType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_GCP,
-		SecretId:         secret.SecretID,
-	}.Build()
 	return &Image{
 		ImageID:             "",
-		imageRegistryConfig: imageRegistryConfig,
+		buildRegistryConfig: registryConfigBuilder(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_GCP, secret),
 		tag:                 tag,
 		layers:              []layer{{}},
 		client:              s.client,
@@ -284,7 +293,7 @@ func (image *Image) DockerfileCommands(commands []string, params *ImageDockerfil
 		ImageID:             "",
 		tag:                 image.tag,
 		baseImageID:         baseImageID,
-		imageRegistryConfig: image.imageRegistryConfig,
+		buildRegistryConfig: image.buildRegistryConfig,
 		layers:              newLayers,
 		client:              image.client,
 	}
@@ -371,6 +380,10 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 			return nil, err
 		}
 
+		if err := hydrateSecrets(ctx, image.client, mergedSecrets); err != nil {
+			return nil, err
+		}
+
 		var secretIds []string
 		for _, secret := range mergedSecrets {
 			secretIds = append(secretIds, secret.SecretID)
@@ -406,8 +419,11 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 		}
 
 		var imageRegistryConfig *pb.ImageRegistryConfig
-		if i == 0 && currentImageID == "" {
-			imageRegistryConfig = image.imageRegistryConfig
+		if i == 0 && currentImageID == "" && image.buildRegistryConfig != nil {
+			imageRegistryConfig, err = image.buildRegistryConfig(ctx, image.client)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		resp, err := image.client.cpClient.ImageGetOrCreate(

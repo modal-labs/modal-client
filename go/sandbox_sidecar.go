@@ -97,7 +97,20 @@ func (s *sandboxSidecarServiceImpl) Create(ctx context.Context, name string, ima
 		return nil, err
 	}
 
-	secretIds, err := collectSecretIDs(params.Secrets)
+	// Locally-created Secrets (FromMap) are passed directly to the worker as
+	// environment variables, so only the remaining Secrets need hydrating. This
+	// avoids a SecretGetOrCreate round-trip for env-dict Secrets.
+	envDict, resolvableSecrets := splitEnvDictAndResolvableSecrets(params.Secrets)
+	for k, v := range params.Env {
+		if err := validateEnvVarName(k); err != nil {
+			return nil, err
+		}
+		envDict[k] = v
+	}
+	if err := hydrateSecrets(ctx, s.sandbox.client, resolvableSecrets); err != nil {
+		return nil, err
+	}
+	secretIds, err := collectSecretIDs(resolvableSecrets)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +125,7 @@ func (s *sandboxSidecarServiceImpl) Create(ctx context.Context, name string, ima
 		ContainerName: name,
 		ImageId:       image.ImageID,
 		Args:          params.Command,
-		Env:           params.Env,
+		Env:           envDict,
 		Workdir:       params.Workdir,
 		SecretIds:     secretIds,
 	}.Build()
