@@ -269,15 +269,23 @@ async def _exec_impl(
     pty: bool | None = None,
     container_id: str = "",
     command: tuple[str, ...] = (),
+    object_id_for_v2: str | None = None,
 ):
-    """Execute a command in a container (implementation)."""
+    """Execute a command in a container (implementation).
+
+    For tasks belonging to V2 sandboxes, `object_id_for_v2` must be set to the
+    sandbox ID.
+    """
 
     if pty is None:
         pty = is_tty()
 
     client = await _Client.from_env()
 
-    command_router_client = await TaskCommandRouterClient.init(client, container_id)
+    if object_id_for_v2 is not None:
+        command_router_client = await TaskCommandRouterClient.init_v2(client, object_id_for_v2, container_id)
+    else:
+        command_router_client = await TaskCommandRouterClient.init(client, container_id)
 
     process_id = str(uuid.uuid4())
 

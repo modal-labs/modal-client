@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import click
+from grpclib import GRPCError, Status
 
 from modal.cli.shell import _parse_experimental_options, _parse_sandbox_container_ref, _passed_forbidden_args, shell
 
@@ -80,6 +81,86 @@ def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_s
 
     if expected_exit_code != 0:
         assert re.search("Windows", str(res.exception)), "exception message does not match expected string"
+
+
+_V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC"
+_V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+
+
+@skip_windows("modal shell is not supported on Windows.")
+@pytest.mark.parametrize(
+    ["sandbox_id", "access_rpc", "unused_access_rpc"],
+    [
+        (_V1_SANDBOX_ID, "TaskGetCommandRouterAccess", "SandboxGetCommandRouterAccess"),
+        (_V2_SANDBOX_ID, "SandboxGetCommandRouterAccess", "TaskGetCommandRouterAccess"),
+    ],
+)
+def test_shell_into_sandbox_execs_in_main_container(
+    servicer, set_env_client, mock_shell_pty, sandbox_id, access_rpc, unused_access_rpc
+):
+    fake_stdin, captured_out = mock_shell_pty
+    fake_stdin.clear()
+    fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
+    shell_prompt = servicer.shell_prompt
+
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            run_cli_command(["shell", sandbox_id])
+
+    assert len(ctx.get_requests(access_rpc)) == 1
+    assert ctx.get_requests(unused_access_rpc) == []
+
+    (exec_req,) = tcr_ctx.get_requests("TaskExecStart")
+    assert list(exec_req.command_args) == ["/bin/bash"]
+    assert exec_req.pty_info.enabled
+
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_into_finished_v2_sandbox_shows_reason(servicer, set_env_client):
+    """When command router access is denied because the sandbox finished, the
+    CLI error must carry the server's reason instead of a generic 'not found'."""
+
+    async def _fail_access(servicer_self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.FAILED_PRECONDITION, "task has already finished")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetCommandRouterAccess", _fail_access)
+        run_cli_command(
+            ["shell", "--no-pty", _V2_SANDBOX_ID],
+            expected_exit_code=1,
+            expected_stderr="task has already finished",
+        )
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_into_v2_sandbox_no_pty(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            run_cli_command(["shell", "--no-pty", "--cmd", "echo hi", _V2_SANDBOX_ID])
+
+    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
+    assert access_req.sandbox_id == _V2_SANDBOX_ID
+
+    (exec_req,) = tcr_ctx.get_requests("TaskExecStart")
+    assert list(exec_req.command_args) == ["echo", "hi"]
+    assert not exec_req.HasField("pty_info")
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_into_task_ref_no_pty(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            run_cli_command(["shell", "--no-pty", "--cmd", "echo hi", "ta-abc123"])
+
+    assert len(ctx.get_requests("TaskGetCommandRouterAccess")) == 1
+    assert ctx.get_requests("SandboxGetCommandRouterAccess") == []
+
+    (exec_req,) = tcr_ctx.get_requests("TaskExecStart")
+    assert exec_req.task_id == "ta-abc123"
+    assert list(exec_req.command_args) == ["echo", "hi"]
 
 
 @skip_windows("modal shell is not supported on Windows.")

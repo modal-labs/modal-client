@@ -2840,11 +2840,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
-        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-modalcontainerexec"))
 
     async def SandboxGetTaskIdV2(self, stream):
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
-        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-modalcontainerexec"))
 
     async def SandboxStdinWrite(self, stream):
         _request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
@@ -4261,7 +4261,7 @@ def mock_shell_pty(servicer, monkeypatch):
     servicer.shell_prompt = shell_prompt
     servicer.task_command_router.shell_prompt = shell_prompt
 
-    def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
+    def mock_get_pty_info(shell: bool, no_terminate_on_idle_stdin: bool = False) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
             enabled=True,
@@ -4271,6 +4271,7 @@ def mock_shell_pty(servicer, monkeypatch):
             env_colorterm=os.environ.get("COLORTERM"),
             env_term_program=os.environ.get("TERM_PROGRAM"),
             pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL,
+            no_terminate_on_idle_stdin=no_terminate_on_idle_stdin,
         )
 
     captured_out = []
