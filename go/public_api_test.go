@@ -129,7 +129,7 @@ var excludedTypes = map[string]string{
 	"FileInfo":                        "data type, no public methods",
 	"FileWatchEventType":              "string enum, no public methods",
 	"FileWatchEvent":                  "data type, no public methods",
-	"VolumeMountOptions":              "configuration value type",
+	"VolumeMountOptionsParams":        "configuration value type",
 }
 
 // isParamsType reports whether t is a pointer to a struct whose name ends with "Params".

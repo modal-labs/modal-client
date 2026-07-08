@@ -13,7 +13,7 @@ func TestVolumeWithMountOptionsSubPath(t *testing.T) {
 	volume := &Volume{VolumeID: "vo-test"}
 
 	models := "/models"
-	subPathVolume := volume.WithMountOptions(&VolumeMountOptions{SubPath: &models})
+	subPathVolume := volume.WithMountOptions(&VolumeMountOptionsParams{SubPath: &models})
 
 	proto := volumeToMountProto("/mnt", subPathVolume)
 	g.Expect(proto.GetSubPath()).To(gomega.Equal("/models"))
@@ -33,25 +33,25 @@ func TestVolumeMountOptionsStacking(t *testing.T) {
 	otherPath := "/other"
 	rootPath := "/"
 
-	configured := volume.WithMountOptions(&VolumeMountOptions{
+	configured := volume.WithMountOptions(&VolumeMountOptionsParams{
 		ReadOnly: &trueVal,
 		SubPath:  &nestedPath,
 	})
 
 	// Setting only SubPath preserves ReadOnly from the previous call.
-	withNewSubPath := configured.WithMountOptions(&VolumeMountOptions{SubPath: &otherPath})
+	withNewSubPath := configured.WithMountOptions(&VolumeMountOptionsParams{SubPath: &otherPath})
 	proto := volumeToMountProto("/mnt", withNewSubPath)
 	g.Expect(proto.GetReadOnly()).To(gomega.BeTrue())
 	g.Expect(proto.GetSubPath()).To(gomega.Equal("/other"))
 
 	// Setting only ReadOnly preserves SubPath from the previous call.
-	withReadOnlyDisabled := configured.WithMountOptions(&VolumeMountOptions{ReadOnly: &falseVal})
+	withReadOnlyDisabled := configured.WithMountOptions(&VolumeMountOptionsParams{ReadOnly: &falseVal})
 	proto = volumeToMountProto("/mnt", withReadOnlyDisabled)
 	g.Expect(proto.GetReadOnly()).To(gomega.BeFalse())
 	g.Expect(proto.GetSubPath()).To(gomega.Equal("/nested"))
 
 	// SubPath "/" is normalized to "" (mount the whole volume).
-	withClearedSubPath := configured.WithMountOptions(&VolumeMountOptions{SubPath: &rootPath})
+	withClearedSubPath := configured.WithMountOptions(&VolumeMountOptionsParams{SubPath: &rootPath})
 	proto = volumeToMountProto("/mnt", withClearedSubPath)
 	g.Expect(proto.GetReadOnly()).To(gomega.BeTrue())
 	g.Expect(proto.GetSubPath()).To(gomega.Equal(""))

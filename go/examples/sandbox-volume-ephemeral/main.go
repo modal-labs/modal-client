@@ -59,7 +59,7 @@ func main() {
 	readerSandbox, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"cat", "/mnt/volume/message.txt"},
 		Volumes: map[string]*modal.Volume{
-			"/mnt/volume": volume.WithMountOptions(&modal.VolumeMountOptions{ReadOnly: &readOnly}),
+			"/mnt/volume": volume.WithMountOptions(&modal.VolumeMountOptionsParams{ReadOnly: &readOnly}),
 		},
 	})
 	if err != nil {

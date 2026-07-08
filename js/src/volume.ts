@@ -163,7 +163,7 @@ export class Volume {
    * Configure options used when mounting this Volume. Fields left undefined preserve their value
    * from any previous withMountOptions call on the same Volume (stacking).
    */
-  withMountOptions(params: VolumeMountOptions = {}): Volume {
+  withMountOptions(params: VolumeMountOptionsParams = {}): Volume {
     let subPath = this._mountOptions.subPath;
     if (params.subPath !== undefined) {
       subPath = params.subPath === "/" ? undefined : params.subPath;
@@ -210,7 +210,7 @@ export function volumeToMountProto(
 }
 
 /** Options for mounting a {@link Volume}. */
-export type VolumeMountOptions = {
+export type VolumeMountOptionsParams = {
   readOnly?: boolean;
   subPath?: string;
 };

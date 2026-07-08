@@ -62,7 +62,7 @@ func main() {
 	subPath := "/data"
 	readerSandbox, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Volumes: map[string]*modal.Volume{
-			"/mnt/volume": volume.WithMountOptions(&modal.VolumeMountOptions{
+			"/mnt/volume": volume.WithMountOptions(&modal.VolumeMountOptionsParams{
 				ReadOnly: &readOnly,
 				SubPath:  &subPath,
 			}),

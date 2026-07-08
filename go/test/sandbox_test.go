@@ -260,7 +260,7 @@ func TestSandboxWithReadOnlyVolume(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	trueVal := true
-	readOnlyVolume := volume.WithMountOptions(&modal.VolumeMountOptions{ReadOnly: &trueVal})
+	readOnlyVolume := volume.WithMountOptions(&modal.VolumeMountOptionsParams{ReadOnly: &trueVal})
 
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"sh", "-c", "echo 'test' > /mnt/test/test.txt"},
@@ -298,7 +298,7 @@ func TestSandboxWithSubPathVolume(t *testing.T) {
 	defer volume.CloseEphemeral()
 
 	subPath := "/scoped"
-	subPathVolume := volume.WithMountOptions(&modal.VolumeMountOptions{SubPath: &subPath})
+	subPathVolume := volume.WithMountOptions(&modal.VolumeMountOptionsParams{SubPath: &subPath})
 
 	// Write a marker file into the sub-path-mounted volume.
 	writer, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{

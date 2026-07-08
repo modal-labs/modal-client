@@ -33,9 +33,9 @@ type resolvedVolumeMountOptions struct {
 	subPath  string
 }
 
-// VolumeMountOptions are options for mounting a Volume. Fields are pointers so unset values
+// VolumeMountOptionsParams are options for mounting a Volume. Fields are pointers so unset values
 // preserve the corresponding option from a previous WithMountOptions call (stacking).
-type VolumeMountOptions struct {
+type VolumeMountOptionsParams struct {
 	ReadOnly *bool
 	SubPath  *string
 }
@@ -92,7 +92,7 @@ func (s *volumeServiceImpl) FromName(ctx context.Context, name string, params *V
 
 // WithMountOptions configures how a Volume is mounted. Fields left as nil on options preserve
 // the corresponding value from any previous WithMountOptions call on the same Volume (stacking).
-func (v *Volume) WithMountOptions(options *VolumeMountOptions) *Volume {
+func (v *Volume) WithMountOptions(options *VolumeMountOptionsParams) *Volume {
 	merged := v.mountOptions
 	if options != nil {
 		if options.ReadOnly != nil {
