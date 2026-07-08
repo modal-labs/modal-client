@@ -180,7 +180,9 @@ const (
 	ModalClient_SandboxSnapshotWait_FullMethodName              = "/modal.client.ModalClient/SandboxSnapshotWait"
 	ModalClient_SandboxStdinWrite_FullMethodName                = "/modal.client.ModalClient/SandboxStdinWrite"
 	ModalClient_SandboxTagsGet_FullMethodName                   = "/modal.client.ModalClient/SandboxTagsGet"
+	ModalClient_SandboxTagsGetV2_FullMethodName                 = "/modal.client.ModalClient/SandboxTagsGetV2"
 	ModalClient_SandboxTagsSet_FullMethodName                   = "/modal.client.ModalClient/SandboxTagsSet"
+	ModalClient_SandboxTagsSetV2_FullMethodName                 = "/modal.client.ModalClient/SandboxTagsSetV2"
 	ModalClient_SandboxTerminate_FullMethodName                 = "/modal.client.ModalClient/SandboxTerminate"
 	ModalClient_SandboxTerminateV2_FullMethodName               = "/modal.client.ModalClient/SandboxTerminateV2"
 	ModalClient_SandboxWait_FullMethodName                      = "/modal.client.ModalClient/SandboxWait"
@@ -432,7 +434,9 @@ type ModalClientClient interface {
 	SandboxSnapshotWait(ctx context.Context, in *SandboxSnapshotWaitRequest, opts ...grpc.CallOption) (*SandboxSnapshotWaitResponse, error)
 	SandboxStdinWrite(ctx context.Context, in *SandboxStdinWriteRequest, opts ...grpc.CallOption) (*SandboxStdinWriteResponse, error)
 	SandboxTagsGet(ctx context.Context, in *SandboxTagsGetRequest, opts ...grpc.CallOption) (*SandboxTagsGetResponse, error)
+	SandboxTagsGetV2(ctx context.Context, in *SandboxTagsGetRequest, opts ...grpc.CallOption) (*SandboxTagsGetResponse, error)
 	SandboxTagsSet(ctx context.Context, in *SandboxTagsSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SandboxTagsSetV2(ctx context.Context, in *SandboxTagsSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SandboxTerminate(ctx context.Context, in *SandboxTerminateRequest, opts ...grpc.CallOption) (*SandboxTerminateResponse, error)
 	SandboxTerminateV2(ctx context.Context, in *SandboxTerminateRequest, opts ...grpc.CallOption) (*SandboxTerminateResponse, error)
 	SandboxWait(ctx context.Context, in *SandboxWaitRequest, opts ...grpc.CallOption) (*SandboxWaitResponse, error)
@@ -2188,10 +2192,30 @@ func (c *modalClientClient) SandboxTagsGet(ctx context.Context, in *SandboxTagsG
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxTagsGetV2(ctx context.Context, in *SandboxTagsGetRequest, opts ...grpc.CallOption) (*SandboxTagsGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxTagsGetResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxTagsGetV2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxTagsSet(ctx context.Context, in *SandboxTagsSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ModalClient_SandboxTagsSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SandboxTagsSetV2(ctx context.Context, in *SandboxTagsSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxTagsSetV2_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3050,7 +3074,9 @@ type ModalClientServer interface {
 	SandboxSnapshotWait(context.Context, *SandboxSnapshotWaitRequest) (*SandboxSnapshotWaitResponse, error)
 	SandboxStdinWrite(context.Context, *SandboxStdinWriteRequest) (*SandboxStdinWriteResponse, error)
 	SandboxTagsGet(context.Context, *SandboxTagsGetRequest) (*SandboxTagsGetResponse, error)
+	SandboxTagsGetV2(context.Context, *SandboxTagsGetRequest) (*SandboxTagsGetResponse, error)
 	SandboxTagsSet(context.Context, *SandboxTagsSetRequest) (*emptypb.Empty, error)
+	SandboxTagsSetV2(context.Context, *SandboxTagsSetRequest) (*emptypb.Empty, error)
 	SandboxTerminate(context.Context, *SandboxTerminateRequest) (*SandboxTerminateResponse, error)
 	SandboxTerminateV2(context.Context, *SandboxTerminateRequest) (*SandboxTerminateResponse, error)
 	SandboxWait(context.Context, *SandboxWaitRequest) (*SandboxWaitResponse, error)
@@ -3614,8 +3640,14 @@ func (UnimplementedModalClientServer) SandboxStdinWrite(context.Context, *Sandbo
 func (UnimplementedModalClientServer) SandboxTagsGet(context.Context, *SandboxTagsGetRequest) (*SandboxTagsGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxTagsGet not implemented")
 }
+func (UnimplementedModalClientServer) SandboxTagsGetV2(context.Context, *SandboxTagsGetRequest) (*SandboxTagsGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxTagsGetV2 not implemented")
+}
 func (UnimplementedModalClientServer) SandboxTagsSet(context.Context, *SandboxTagsSetRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxTagsSet not implemented")
+}
+func (UnimplementedModalClientServer) SandboxTagsSetV2(context.Context, *SandboxTagsSetRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxTagsSetV2 not implemented")
 }
 func (UnimplementedModalClientServer) SandboxTerminate(context.Context, *SandboxTerminateRequest) (*SandboxTerminateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxTerminate not implemented")
@@ -6651,6 +6683,24 @@ func _ModalClient_SandboxTagsGet_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxTagsGetV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxTagsGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxTagsGetV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxTagsGetV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxTagsGetV2(ctx, req.(*SandboxTagsGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxTagsSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxTagsSetRequest)
 	if err := dec(in); err != nil {
@@ -6665,6 +6715,24 @@ func _ModalClient_SandboxTagsSet_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).SandboxTagsSet(ctx, req.(*SandboxTagsSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SandboxTagsSetV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxTagsSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxTagsSetV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxTagsSetV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxTagsSetV2(ctx, req.(*SandboxTagsSetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8391,8 +8459,16 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_SandboxTagsGet_Handler,
 		},
 		{
+			MethodName: "SandboxTagsGetV2",
+			Handler:    _ModalClient_SandboxTagsGetV2_Handler,
+		},
+		{
 			MethodName: "SandboxTagsSet",
 			Handler:    _ModalClient_SandboxTagsSet_Handler,
+		},
+		{
+			MethodName: "SandboxTagsSetV2",
+			Handler:    _ModalClient_SandboxTagsSetV2_Handler,
 		},
 		{
 			MethodName: "SandboxTerminate",
