@@ -4049,6 +4049,10 @@ message VolumeCopyFilesRequest {
   bool recursive = 4;
 }
 
+message VolumeCreateOptions {
+  map<string, string> experimental_options = 1;
+}
+
 message VolumeDeleteRequest {
   string volume_id = 1;
   string environment_name = 2 [deprecated=true];
@@ -4101,6 +4105,7 @@ message VolumeGetOrCreateRequest {
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
   VolumeFsVersion version = 6;
+  optional VolumeCreateOptions create_options = 7;
 }
 
 message VolumeGetOrCreateResponse {
