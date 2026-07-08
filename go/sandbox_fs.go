@@ -1,12 +1,18 @@
 package modal
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"iter"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"time"
 )
 
 const sandboxFsToolsPath = "/__modal/.bin/modal-sandbox-fs-tools"
@@ -51,6 +57,44 @@ type FileInfo struct {
 	SymlinkTarget *string  `json:"symlink_target"`
 }
 
+// FileWatchEventType is the category of a filesystem change event.
+type FileWatchEventType string
+
+const (
+	FileWatchEventTypeAccess  FileWatchEventType = "Access"
+	FileWatchEventTypeCreate  FileWatchEventType = "Create"
+	FileWatchEventTypeModify  FileWatchEventType = "Modify"
+	FileWatchEventTypeRemove  FileWatchEventType = "Remove"
+	FileWatchEventTypeUnknown FileWatchEventType = "Unknown"
+)
+
+// FileWatchEvent is a single filesystem change reported by Watch.
+//
+// Paths contains the absolute path(s) affected by the event. For most event
+// types it holds a single entry. Rename operations are reported as Modify
+// events: when both the source and destination fall within the watched,
+// scope, Paths holds [source, destination]; when only one side of the rename
+// is visible, Paths holds that single path.
+type FileWatchEvent struct {
+	EventType FileWatchEventType
+	Paths     []string
+}
+
+// Rust rename variants that all collapse to FileWatchEventTypeModify.
+var rustRenameVariants = []string{"Rename", "RenameFrom", "RenameTo"}
+
+// Expand a user-facing filter to the string to modal-sandbox-fs-tools event type strings.
+func expandWatchFilter(filter []FileWatchEventType) []string {
+	result := make([]string, 0, len(filter)+len(rustRenameVariants))
+	for _, t := range filter {
+		result = append(result, string(t))
+		if t == FileWatchEventTypeModify {
+			result = append(result, rustRenameVariants...)
+		}
+	}
+	return result
+}
+
 // This is the narrow exec interface SandboxFilesystem needs, satisfied by
 // *Sandbox and *SidecarContainer in production via an unexported adapter
 // method, or by panicSandbox in unit tests. The method is unexported so that
@@ -78,6 +122,15 @@ type SandboxFilesystemRemoveParams struct {
 	// Recurisve controls whether contens of a removed directory are recursively removed.
 	// Defaults to false when nil.
 	Recursive bool
+}
+
+// SandboxFilesystemWatchParams holds optional parameters for [SandboxFilesystem.Watch].
+type SandboxFilesystemWatchParams struct {
+	Filter    []FileWatchEventType
+	Recursive bool
+	// Timeout is the maximum duration to watch. Zero means watch indefinitely.
+	// Durations are rounded-down to the nearest whole number of seconds.
+	Timeout time.Duration
 }
 
 // SandboxFilesystemCopyFromLocalParams holds optional parameters for [SandboxFilesystem.CopyFromLocal].
@@ -467,6 +520,130 @@ func (fsys *SandboxFilesystem) Stat(ctx context.Context, remotePath string, para
 		return nil, err
 	}
 	return &entry, nil
+}
+
+// Watch a path in the Sandbox for filesystem changes.
+//
+// remotePath must be an absolute path in the Sandbox. If it points to a
+// file, events for that file are reported. If it points to a directory,
+// events for entries directly inside it are reported. Set params.Recursive
+// to also receive events for all nested subdirectories. If remotePath is a
+// symlink, it is followed and events reference paths under the resolved
+// target.
+//
+// The returned [iter.Seq2] yields [FileWatchEvent] values as changes occur,
+// until the timeout elapses, the caller breaks from the range loop, ctx is
+// cancelled, or the Sandbox is terminated. The remote watch process is not
+// started until iteration begins, so a sequence that is never ranged over
+// launches nothing.
+//
+// Set params.Filter to restrict which event types are emitted. A nil filter
+// permits all types; an empty slice suppresses all events.
+//
+// Timeout is in seconds. Zero means watch indefinitely. When the timeout
+// elapses, the iterator stops without returning an error.
+//
+// Pass nil params for defaults (no filter, non-recursive, no timeout).
+//
+// Returns [SandboxFilesystemNotFoundError] if remotePath does not exist,
+// [SandboxFilesystemPermissionError] if watch access is denied, or
+// [InvalidError] if the filesystem does not support watching.
+func (fsys *SandboxFilesystem) Watch(
+	ctx context.Context,
+	remotePath string,
+	params *SandboxFilesystemWatchParams,
+) (iter.Seq2[FileWatchEvent, error], error) {
+	if err := validateAbsoluteRemotePath(remotePath, "Watch"); err != nil {
+		return nil, err
+	}
+	if params == nil {
+		params = &SandboxFilesystemWatchParams{}
+	}
+
+	var timeoutSecs *int
+	if params.Timeout > 0 {
+		s := int(params.Timeout.Seconds())
+		timeoutSecs = &s
+	}
+
+	var filterStrings []string
+	if params.Filter != nil {
+		filterStrings = expandWatchFilter(params.Filter)
+	}
+
+	// The remote watch process is launched inside the iterator, when iteration
+	// begins, so its lifetime and timeout clock are bounded by consumption of
+	// the returned sequence. A sequence that is never ranged over starts no
+	// remote process.
+	return func(yield func(FileWatchEvent, error) bool) {
+		cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeWatchCommand(remotePath, params.Recursive, filterStrings, timeoutSecs)}, nil)
+		if err != nil {
+			yield(FileWatchEvent{}, translateExecError(ctx, fsys.logger, "Watch", remotePath, err))
+			return
+		}
+
+		closeStdout := func() {
+			if err := cp.Stdout.Close(); err != nil {
+				fsys.logger.DebugContext(ctx, "Watch: close stdout", "error", err)
+			}
+		}
+		// A cancelled ctx closes stdout, which unblocks the scanner below.
+		defer context.AfterFunc(ctx, closeStdout)()
+		defer closeStdout()
+
+		// waitProcess closes stdin and waits for sandbox-fs-tools to
+		// terminate.
+		waitProcess := func() (int, error) {
+			_ = cp.Stdin.Close()
+			return cp.Wait(ctx, nil)
+		}
+
+		scanner := bufio.NewScanner(cp.Stdout)
+		for scanner.Scan() {
+			line := bytes.TrimSpace(scanner.Bytes())
+			if len(line) == 0 {
+				continue
+			}
+			var raw struct {
+				EventType string   `json:"event_type"`
+				Paths     []string `json:"paths"`
+			}
+			if err := json.Unmarshal(line, &raw); err != nil {
+				if !yield(FileWatchEvent{}, fmt.Errorf("parsing watch event: %w", err)) {
+					_, _ = waitProcess()
+					return
+				}
+				continue
+			}
+			if len(raw.Paths) == 0 {
+				continue
+			}
+			rawType := raw.EventType
+			if slices.Contains(rustRenameVariants, rawType) {
+				rawType = "Modify"
+			}
+			if !yield(FileWatchEvent{EventType: FileWatchEventType(rawType), Paths: raw.Paths}, nil) {
+				_, _ = waitProcess()
+				return
+			}
+		}
+		returnCode, waitErr := waitProcess()
+		if err := scanner.Err(); err != nil {
+			yield(FileWatchEvent{}, fmt.Errorf("reading watch events: %w", err))
+			return
+		}
+		if waitErr != nil {
+			yield(FileWatchEvent{}, translateExecError(ctx, fsys.logger, "Watch", remotePath, waitErr))
+			return
+		}
+		if returnCode != 0 {
+			stderr, err := io.ReadAll(cp.Stderr)
+			if err != nil {
+				fsys.logger.DebugContext(ctx, "Watch: read stderr", "error", err)
+			}
+			yield(FileWatchEvent{}, raiseWatchError(ctx, fsys.logger, returnCode, stderr, remotePath))
+		}
+	}, nil
 }
 
 func (fsys *SandboxFilesystem) writeFile(ctx context.Context, operation string, data []byte, remotePath string, _ *SandboxFilesystemWriteParams) error {

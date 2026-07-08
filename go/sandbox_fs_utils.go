@@ -249,6 +249,44 @@ func makeStatCommand(remotePath string) string {
 	return string(b)
 }
 
+func raiseWatchError(ctx context.Context, log *slog.Logger, returnCode int, stderr []byte, remotePath string) error {
+	if p := tryParseErrorPayload(stderr); p != nil {
+		log.DebugContext(ctx, "sandbox-fs-tools watch error",
+			"path", remotePath,
+			"error_kind", p.ErrorKind,
+			"message", p.Message,
+			"detail", p.Detail,
+		)
+		switch p.ErrorKind {
+		case "NotFound":
+			return SandboxFilesystemNotFoundError{Exception: p.Message + ": " + remotePath}
+		case "PermissionDenied":
+			return SandboxFilesystemPermissionError{Exception: p.Message + ": " + remotePath}
+		case "NotSupported":
+			return InvalidError{Exception: p.Message + ": " + remotePath + " - this operation is not supported for CloudBucketMounts"}
+		default:
+			return SandboxFilesystemError{Exception: p.Message}
+		}
+	}
+	if text := strings.TrimSpace(string(stderr)); text != "" {
+		log.DebugContext(ctx, "Unstructured modal-sandbox-fs-tools stderr", "stderr", text)
+	}
+	return SandboxFilesystemError{Exception: fmt.Sprintf("Operation on '%s' failed with exit code %d", remotePath, returnCode)}
+}
+
+func makeWatchCommand(remotePath string, recursive bool, filter []string, timeoutSecs *int) string {
+	var filterVal any
+	if filter != nil {
+		filterVal = filter
+	}
+	var timeoutVal any
+	if timeoutSecs != nil {
+		timeoutVal = *timeoutSecs
+	}
+	b, _ := json.Marshal(map[string]any{"Watch": map[string]any{"path": remotePath, "recursive": recursive, "filter": filterVal, "timeout_secs": timeoutVal}})
+	return string(b)
+}
+
 func raiseWriteFileError(ctx context.Context, log *slog.Logger, returnCode int, stderr []byte, remotePath string) error {
 	if p := tryParseErrorPayload(stderr); p != nil {
 		log.DebugContext(ctx, "sandbox-fs-tools write error",

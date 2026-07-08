@@ -7,6 +7,7 @@
 //   - Create directories and list their contents
 //   - Upload and download files between local disk and the Sandbox
 //   - Delete files and directories
+//   - Watch for filesystem changes
 package main
 
 import (
@@ -15,6 +16,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	modal "github.com/modal-labs/modal-client/go"
 )
@@ -142,4 +144,36 @@ func main() {
 		log.Fatalf("Remove recursive: %v", err)
 	}
 	fmt.Println("Remove: cleaned up")
+
+	// –– watch –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+	watchDir := "/tmp/watch-demo"
+	if err := fs.MakeDirectory(ctx, watchDir, nil); err != nil {
+		log.Fatalf("MakeDirectory: %v", err)
+	}
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		bgCmd := fmt.Sprintf("for i in 1 2 3 4 5; do touch %s/file$i.txt; sleep 0.2; done", watchDir)
+		cp, err := sb.Exec(ctx, []string{"sh", "-c", bgCmd}, nil)
+		if err != nil {
+			log.Printf("background exec: %v", err)
+			return
+		}
+		if _, err := cp.Wait(ctx, nil); err != nil {
+			log.Printf("background wait: %v", err)
+		}
+	}()
+
+	seq, err := fs.Watch(ctx, watchDir, &modal.SandboxFilesystemWatchParams{Timeout: 3 * time.Second})
+	if err != nil {
+		log.Fatalf("Watch: %v", err)
+	}
+	fmt.Println("Watch events (3 s):")
+	for event, err := range seq {
+		if err != nil {
+			log.Fatalf("Watch error: %v", err)
+		}
+		fmt.Printf("  %s  %v\n", event.EventType, event.Paths)
+	}
 }

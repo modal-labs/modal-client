@@ -127,6 +127,8 @@ var excludedTypes = map[string]string{
 	"Allowlist":                       "configuration value type, no public methods",
 	"FileType":                        "string enum, no public methods",
 	"FileInfo":                        "data type, no public methods",
+	"FileWatchEventType":              "string enum, no public methods",
+	"FileWatchEvent":                  "data type, no public methods",
 	"VolumeMountOptions":              "configuration value type",
 }
 

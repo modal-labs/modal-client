@@ -229,6 +229,50 @@ func TestMakeRemoveCommandProducesCorrectJSON(t *testing.T) {
 	}))
 }
 
+func TestMakeWatchCommandProducesCorrectJSON(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var got map[string]any
+	g.Expect(json.Unmarshal([]byte(makeWatchCommand("/tmp/dir", false, nil, nil)), &got)).To(gomega.Succeed())
+
+	g.Expect(got).To(gomega.Equal(map[string]any{
+		"Watch": map[string]any{
+			"path":         "/tmp/dir",
+			"recursive":    false,
+			"filter":       nil,
+			"timeout_secs": nil,
+		},
+	}))
+}
+
+func TestMakeWatchCommandWithEmptyFilterProducesEmptyArray(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var got map[string]any
+	g.Expect(json.Unmarshal([]byte(makeWatchCommand("/tmp/dir", false, []string{}, nil)), &got)).To(gomega.Succeed())
+
+	inner := got["Watch"].(map[string]any)
+	g.Expect(inner["filter"]).To(gomega.Equal([]any{}))
+}
+
+func TestMakeWatchCommandSerializesFilterAndTimeout(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	secs := 30
+
+	var got map[string]any
+	g.Expect(json.Unmarshal([]byte(makeWatchCommand("/tmp/dir", true, []string{"Create", "Remove"}, &secs)), &got)).To(gomega.Succeed())
+
+	inner := got["Watch"].(map[string]any)
+	g.Expect(inner["path"]).To(gomega.Equal("/tmp/dir"))
+	g.Expect(inner["recursive"]).To(gomega.BeTrue())
+	g.Expect(inner["timeout_secs"]).To(gomega.BeNumerically("==", 30))
+	filter := inner["filter"].([]any)
+	g.Expect(filter).To(gomega.ConsistOf("Create", "Remove"))
+}
+
 // ---------------------------------------------------------------------------
 // translateExecError
 // ---------------------------------------------------------------------------
@@ -316,4 +360,30 @@ func TestTranslateExecErrorReturnsUnexpectedErrorForGenericError(t *testing.T) {
 
 	g.Expect(err).To(gomega.BeAssignableToTypeOf(SandboxFilesystemError{}))
 	g.Expect(err.Error()).To(gomega.ContainSubstring("unexpected error"))
+}
+
+// ---------------------------------------------------------------------------
+// expandWatchFilter
+// ---------------------------------------------------------------------------
+
+func TestExpandWatchFilterExpandsModifyToIncludeRenameVariants(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	result := expandWatchFilter([]FileWatchEventType{FileWatchEventTypeModify})
+	g.Expect(result).To(gomega.ConsistOf("Modify", "Rename", "RenameFrom", "RenameTo"))
+}
+
+func TestExpandWatchFilterDoesNotExpandNonModifyTypes(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	result := expandWatchFilter([]FileWatchEventType{FileWatchEventTypeCreate, FileWatchEventTypeRemove})
+	g.Expect(result).To(gomega.ConsistOf("Create", "Remove"))
+}
+
+func TestExpandWatchFilterPreservesOrderAndExpandsModifyInPlace(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	result := expandWatchFilter([]FileWatchEventType{FileWatchEventTypeCreate, FileWatchEventTypeModify})
+	g.Expect(result).To(gomega.ContainElements("Create", "Modify", "Rename", "RenameFrom", "RenameTo"))
+	g.Expect(result[0]).To(gomega.Equal("Create"))
 }

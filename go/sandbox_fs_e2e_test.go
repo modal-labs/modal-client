@@ -201,6 +201,52 @@ func randomBytes(size int, seed uint32) []byte {
 	return buf
 }
 
+func e2eHasEventType(events []FileWatchEvent, t FileWatchEventType) bool {
+	for _, e := range events {
+		if e.EventType == t {
+			return true
+		}
+	}
+	return false
+}
+
+func watchWithSandboxTrigger(
+	ctx context.Context,
+	sb *Sandbox,
+	path string,
+	triggerShellCmd string,
+	params *SandboxFilesystemWatchParams,
+) ([]FileWatchEvent, error) {
+	if params == nil {
+		params = &SandboxFilesystemWatchParams{Timeout: 2 * time.Second}
+	}
+	triggerSecs := int(params.Timeout.Seconds()) + 2
+	bgShell := `end=$(($(date +%s)+` + strconv.Itoa(triggerSecs) + `)); ` +
+		`while [ "$(date +%s)" -lt "$end" ]; do ` + triggerShellCmd + `; sleep 0.1; done`
+	bg, err := sb.Exec(ctx, []string{"sh", "-c", bgShell}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("watchWithSandboxTrigger bg exec: %w", err)
+	}
+
+	seq, err := sb.Filesystem.Watch(ctx, path, params)
+	if err != nil {
+		_, _ = bg.Wait(ctx, nil)
+		return nil, err
+	}
+
+	var events []FileWatchEvent
+	var watchErr error
+	for event, werr := range seq {
+		if werr != nil {
+			watchErr = werr
+			break
+		}
+		events = append(events, event)
+	}
+	_, _ = bg.Wait(ctx, nil)
+	return events, watchErr
+}
+
 // ---------------------------------------------------------------------------
 // round-trips
 // ---------------------------------------------------------------------------
@@ -1054,4 +1100,297 @@ func TestSandboxFsE2eStatErrorsWhenAncestorIsAFile(t *testing.T) {
 
 	_, err := sb.Filesystem.Stat(ctx, "/tmp/e2e-stat-blocker/child", nil)
 	g.Expect(err).To(gomega.BeAssignableToTypeOf(SandboxFilesystemNotADirectoryError{}))
+}
+
+// ---------------------------------------------------------------------------
+// watch
+// ---------------------------------------------------------------------------
+
+func TestSandboxFsE2eWatchErrorsWhenPathDoesNotExist(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	seq, err := sb.Filesystem.Watch(ctx, "/tmp/e2e-watch-missing", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	var watchErr error
+	for _, werr := range seq {
+		watchErr = werr
+	}
+	g.Expect(watchErr).To(gomega.BeAssignableToTypeOf(SandboxFilesystemNotFoundError{}))
+}
+
+func TestSandboxFsE2eWatchEmitsCreateEvent(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-create")).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-create",
+		"touch /tmp/e2e-watch-create/f$RANDOM.txt",
+		&SandboxFilesystemWatchParams{Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeCreate)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchEmitsModifyEvent(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-modify")).To(gomega.Succeed())
+	g.Expect(writeRemoteFile(ctx, sb, "/tmp/e2e-watch-modify/existing.txt", []byte("v0"))).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-modify",
+		"date > /tmp/e2e-watch-modify/existing.txt",
+		&SandboxFilesystemWatchParams{Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchEmitsRemoveEvent(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-remove")).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-remove",
+		"f=/tmp/e2e-watch-remove/tmp-$RANDOM.txt; touch $f; sleep 0.05; rm -f $f",
+		&SandboxFilesystemWatchParams{Timeout: 3 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeRemove)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchRecursiveObservesSubdirectory(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-recursive/nested")).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-recursive",
+		"touch /tmp/e2e-watch-recursive/nested/deep-$RANDOM.txt",
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	var hasSubdir bool
+	for _, e := range events {
+		for _, p := range e.Paths {
+			if strings.HasPrefix(p, "/tmp/e2e-watch-recursive/nested") {
+				hasSubdir = true
+			}
+		}
+	}
+	g.Expect(hasSubdir).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchNonRecursiveIgnoresSubdirectory(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-nonrecursive/nested")).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-nonrecursive",
+		"touch /tmp/e2e-watch-nonrecursive/nested/deep-$RANDOM.txt",
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(events).To(gomega.BeEmpty())
+}
+
+func TestSandboxFsE2eWatchFilterDropsUnmatchedEvents(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-filter")).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-filter",
+		"touch /tmp/e2e-watch-filter/f$RANDOM.txt",
+		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{FileWatchEventTypeRemove}, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(events).To(gomega.BeEmpty())
+}
+
+func TestSandboxFsE2eWatchReturnsImmediatelyOnZeroTimeout(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-zero-timeout")).To(gomega.Succeed())
+
+	start := time.Now()
+	// 999ms rounds down to timeout_secs=0 on the wire, causing the binary to exit immediately.
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-zero-timeout",
+		"touch /tmp/e2e-watch-zero-timeout/f$RANDOM.txt",
+		&SandboxFilesystemWatchParams{Timeout: 999 * time.Millisecond})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(events).To(gomega.BeEmpty())
+	g.Expect(time.Since(start)).To(gomega.BeNumerically("<", 5*time.Second))
+}
+
+func TestSandboxFsE2eWatchEmitsEventWhenPathIsAFile(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(writeRemoteFile(ctx, sb, "/tmp/e2e-watch-file.txt", []byte("initial"))).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-file.txt",
+		"echo x > /tmp/e2e-watch-file.txt",
+		&SandboxFilesystemWatchParams{Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchEmptyFilterYieldsNoEventsNonRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-empty-filter-nr")).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-empty-filter-nr",
+		"touch /tmp/e2e-watch-empty-filter-nr/f$RANDOM.txt",
+		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{}, Recursive: false, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(events).To(gomega.BeEmpty())
+}
+
+func TestSandboxFsE2eWatchEmptyFilterYieldsNoEventsRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-empty-filter-r")).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, "/tmp/e2e-watch-empty-filter-r",
+		"touch /tmp/e2e-watch-empty-filter-r/f$RANDOM.txt",
+		&SandboxFilesystemWatchParams{Filter: []FileWatchEventType{}, Recursive: true, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(events).To(gomega.BeEmpty())
+}
+
+func TestSandboxFsE2eWatchBreakReturnsQuickly(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	g.Expect(mkdirRemote(ctx, sb, "/tmp/e2e-watch-break")).To(gomega.Succeed())
+
+	bg, err := sb.Exec(ctx, []string{"sh", "-c", "sleep 0.2; touch /tmp/e2e-watch-break/trigger.txt"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	start := time.Now()
+	seq, err := sb.Filesystem.Watch(ctx, "/tmp/e2e-watch-break",
+		&SandboxFilesystemWatchParams{Timeout: 60 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	for range seq {
+		break
+	}
+	g.Expect(time.Since(start)).To(gomega.BeNumerically("<", 5*time.Second))
+	_, _ = bg.Wait(ctx, nil)
+}
+
+func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveIntoWatchedDirNonRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	watchDir := "/tmp/e2e-watch-move-in-nr"
+	outsideDir := "/tmp/e2e-watch-move-in-nr-outside"
+	g.Expect(mkdirRemote(ctx, sb, watchDir)).To(gomega.Succeed())
+	g.Expect(mkdirRemote(ctx, sb, outsideDir)).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
+		`r=$RANDOM; touch `+outsideDir+`/f-$r.txt && mv `+outsideDir+`/f-$r.txt `+watchDir+`/f-$r.txt`,
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveIntoWatchedDirRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	watchDir := "/tmp/e2e-watch-move-in-r"
+	outsideDir := "/tmp/e2e-watch-move-in-r-outside"
+	g.Expect(mkdirRemote(ctx, sb, watchDir)).To(gomega.Succeed())
+	g.Expect(mkdirRemote(ctx, sb, outsideDir)).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
+		`r=$RANDOM; touch `+outsideDir+`/f-$r.txt && mv `+outsideDir+`/f-$r.txt `+watchDir+`/f-$r.txt`,
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveOutOfWatchedDirNonRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	watchDir := "/tmp/e2e-watch-move-out-nr"
+	outsideDir := "/tmp/e2e-watch-move-out-nr-outside"
+	g.Expect(mkdirRemote(ctx, sb, watchDir)).To(gomega.Succeed())
+	g.Expect(mkdirRemote(ctx, sb, outsideDir)).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
+		`r=$RANDOM; touch `+watchDir+`/f-$r.txt && mv `+watchDir+`/f-$r.txt `+outsideDir+`/f-$r.txt`,
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchEmitsModifyEventForFileMoveOutOfWatchedDirRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	watchDir := "/tmp/e2e-watch-move-out-r"
+	outsideDir := "/tmp/e2e-watch-move-out-r-outside"
+	g.Expect(mkdirRemote(ctx, sb, watchDir)).To(gomega.Succeed())
+	g.Expect(mkdirRemote(ctx, sb, outsideDir)).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
+		`r=$RANDOM; touch `+watchDir+`/f-$r.txt && mv `+watchDir+`/f-$r.txt `+outsideDir+`/f-$r.txt`,
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(e2eHasEventType(events, FileWatchEventTypeModify)).To(gomega.BeTrue())
+}
+
+func TestSandboxFsE2eWatchEmitsRenameEventAsModifyNonRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	watchDir := "/tmp/e2e-watch-rename-nr"
+	g.Expect(mkdirRemote(ctx, sb, watchDir)).To(gomega.Succeed())
+	g.Expect(execRc(ctx, sb, []string{"touch", watchDir + "/before.txt"})).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
+		`if [ -f `+watchDir+`/before.txt ]; then mv `+watchDir+`/before.txt `+watchDir+`/after.txt; else mv `+watchDir+`/after.txt `+watchDir+`/before.txt; fi`,
+		&SandboxFilesystemWatchParams{Recursive: false, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	// Renames arrive as Modify events. A complete rename yields a single
+	// Modify event with two paths; partial renames yield one path each.
+	var allPaths []string
+	for _, e := range events {
+		if e.EventType == FileWatchEventTypeModify {
+			allPaths = append(allPaths, e.Paths...)
+		}
+	}
+	g.Expect(allPaths).NotTo(gomega.BeEmpty())
+	g.Expect(allPaths).To(gomega.ContainElement(gomega.ContainSubstring("before")))
+	g.Expect(allPaths).To(gomega.ContainElement(gomega.ContainSubstring("after")))
+}
+
+func TestSandboxFsE2eWatchEmitsRenameEventAsModifyRecursive(t *testing.T) {
+	sb := newTestSandbox(t)
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+	watchDir := "/tmp/e2e-watch-rename-r"
+	g.Expect(mkdirRemote(ctx, sb, watchDir)).To(gomega.Succeed())
+	g.Expect(execRc(ctx, sb, []string{"touch", watchDir + "/before.txt"})).To(gomega.Succeed())
+
+	events, err := watchWithSandboxTrigger(ctx, sb, watchDir,
+		`if [ -f `+watchDir+`/before.txt ]; then mv `+watchDir+`/before.txt `+watchDir+`/after.txt; else mv `+watchDir+`/after.txt `+watchDir+`/before.txt; fi`,
+		&SandboxFilesystemWatchParams{Recursive: true, Timeout: 2 * time.Second})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	var allPaths []string
+	for _, e := range events {
+		if e.EventType == FileWatchEventTypeModify {
+			allPaths = append(allPaths, e.Paths...)
+		}
+	}
+	g.Expect(allPaths).NotTo(gomega.BeEmpty())
+	g.Expect(allPaths).To(gomega.ContainElement(gomega.ContainSubstring("before")))
+	g.Expect(allPaths).To(gomega.ContainElement(gomega.ContainSubstring("after")))
 }

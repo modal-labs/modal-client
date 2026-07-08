@@ -79,6 +79,13 @@ func TestSandboxFsStatErrorsOnRelativeRemotePath(t *testing.T) {
 	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
 }
 
+func TestSandboxFsWatchErrorsOnRelativeRemotePath(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	_, err := newValidationFilesystem().Watch(context.Background(), "relative/path", nil)
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+}
+
 func TestSandboxFsWriteBytesErrorsOnRelativeRemotePath(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

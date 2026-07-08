@@ -76,7 +76,7 @@ We also provide a number of examples:
 - [Execute Sandbox commands](./examples/sandbox-exec/main.go)
 - [Running a coding agent in a Sandbox](./examples/sandbox-agent/main.go)
 - [Check the status and exit code of a Sandbox](./examples/sandbox-poll/main.go)
-- [Access Sandbox filesystem](./examples/sandbox-filesystem/main.go)
+- [Access Sandbox filesystem](./examples/sandbox-fs/main.go)
 - [Expose ports on a Sandbox using Tunnels](./examples/sandbox-tunnels/main.go)
 - [Create connect tokens for a Sandbox](./examples/sandbox-connect-token/main.go)
 - [Include Secrets in Sandbox](./examples/sandbox-secrets/main.go)
