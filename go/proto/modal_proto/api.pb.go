@@ -838,6 +838,7 @@ const (
 	EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED EnvironmentRole = 0
 	EnvironmentRole_ENVIRONMENT_ROLE_VIEWER      EnvironmentRole = 1
 	EnvironmentRole_ENVIRONMENT_ROLE_CONTRIBUTOR EnvironmentRole = 2
+	EnvironmentRole_ENVIRONMENT_ROLE_NO_ACCESS   EnvironmentRole = 3
 )
 
 // Enum value maps for EnvironmentRole.
@@ -846,11 +847,13 @@ var (
 		0: "ENVIRONMENT_ROLE_UNSPECIFIED",
 		1: "ENVIRONMENT_ROLE_VIEWER",
 		2: "ENVIRONMENT_ROLE_CONTRIBUTOR",
+		3: "ENVIRONMENT_ROLE_NO_ACCESS",
 	}
 	EnvironmentRole_value = map[string]int32{
 		"ENVIRONMENT_ROLE_UNSPECIFIED": 0,
 		"ENVIRONMENT_ROLE_VIEWER":      1,
 		"ENVIRONMENT_ROLE_CONTRIBUTOR": 2,
+		"ENVIRONMENT_ROLE_NO_ACCESS":   3,
 	}
 )
 
@@ -63842,11 +63845,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12EndpointStopSource\x12$\n" +
 	" ENDPOINT_STOP_SOURCE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18ENDPOINT_STOP_SOURCE_CLI\x10\x01\x12\x1c\n" +
-	"\x18ENDPOINT_STOP_SOURCE_WEB\x10\x02*r\n" +
+	"\x18ENDPOINT_STOP_SOURCE_WEB\x10\x02*\x92\x01\n" +
 	"\x0fEnvironmentRole\x12 \n" +
 	"\x1cENVIRONMENT_ROLE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17ENVIRONMENT_ROLE_VIEWER\x10\x01\x12 \n" +
-	"\x1cENVIRONMENT_ROLE_CONTRIBUTOR\x10\x02*P\n" +
+	"\x1cENVIRONMENT_ROLE_CONTRIBUTOR\x10\x02\x12\x1e\n" +
+	"\x1aENVIRONMENT_ROLE_NO_ACCESS\x10\x03*P\n" +
 	"\x0fEnvironmentType\x12 \n" +
 	"\x1cENVIRONMENT_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17ENVIRONMENT_TYPE_PUBLIC\x10\x01*\x92\x01\n" +

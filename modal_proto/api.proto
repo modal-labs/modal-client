@@ -161,6 +161,7 @@ enum EnvironmentRole {
   ENVIRONMENT_ROLE_UNSPECIFIED = 0;
   ENVIRONMENT_ROLE_VIEWER = 1;
   ENVIRONMENT_ROLE_CONTRIBUTOR = 2;
+  ENVIRONMENT_ROLE_NO_ACCESS = 3;
 }
 
 // Creation-time environment classification. Captures whether an environment
