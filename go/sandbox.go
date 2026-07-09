@@ -485,9 +485,6 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 }
 
 func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreateParams) (*pb.SandboxCreateV2Request, error) {
-	if len(params.Tags) > 0 {
-		return nil, fmt.Errorf("tags are not supported by ExperimentalCreate")
-	}
 	if params.GPU != "" {
 		return nil, fmt.Errorf("GPUs are not supported by ExperimentalCreate")
 	}
@@ -511,6 +508,7 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 		AppId:            req.GetAppId(),
 		Definition:       req.GetDefinition(),
 		EphemeralSecrets: ephemeralSecrets,
+		Tags:             req.GetTags(),
 	}.Build(), nil
 }
 
@@ -564,7 +562,7 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 // mounts (with static credentials via Secret or OidcAuthRoleArn), OIDC identity
 // tokens, proxies, and filesystem snapshots.
 //
-// Features like tags, memory snapshots, GPUs, and custom domains are not
+// Features like memory snapshots, GPUs, and custom domains are not
 // supported.
 //
 // V2 sandboxes created with this method are not currently returned by List. A

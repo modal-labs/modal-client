@@ -643,9 +643,6 @@ export async function buildSandboxCreateV2RequestProto(
   imageId: string,
   params: SandboxCreateParams = {},
 ): Promise<SandboxCreateV2Request> {
-  if (params.tags && Object.keys(params.tags).length > 0) {
-    throw new Error("tags are not supported by experimentalCreate");
-  }
   if (params.gpu) {
     throw new Error("GPUs are not supported by experimentalCreate");
   }
@@ -666,6 +663,7 @@ export async function buildSandboxCreateV2RequestProto(
     appId: req.appId,
     definition: req.definition,
     ephemeralSecrets,
+    tags: req.tags,
   });
 }
 
@@ -745,7 +743,7 @@ export class SandboxService {
    * mounts (with static credentials via {@link Secret} or `oidcAuthRoleArn`),
    * OIDC identity tokens, {@link Proxy proxies}, and filesystem snapshots.
    *
-   * Features like tags, memory snapshots, GPUs, and custom domains are not
+   * Features like memory snapshots, GPUs, and custom domains are not
    * supported.
    *
    * V2 sandboxes created with this method are not currently returned by

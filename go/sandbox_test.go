@@ -46,6 +46,22 @@ func TestSandboxCreateV2RequestProto(t *testing.T) {
 	g.Expect(req.GetDefinition().GetTimeoutSecs()).To(gomega.Equal(uint32(600)))
 }
 
+func TestSandboxCreateV2RequestProto_WithTags(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
+		Tags: map[string]string{"env": "prod", "team": "infra"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	got := map[string]string{}
+	for _, tag := range req.GetTags() {
+		got[tag.GetTagName()] = tag.GetTagValue()
+	}
+	g.Expect(got).To(gomega.Equal(map[string]string{"env": "prod", "team": "infra"}))
+}
+
 func TestSandboxCreateV2RequestProto_WithProxy(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -65,11 +81,6 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 		params  SandboxCreateParams
 		wantErr string
 	}{
-		{
-			name:    "tags",
-			params:  SandboxCreateParams{Tags: map[string]string{"key": "value"}},
-			wantErr: "tags are not supported",
-		},
 		{
 			name:    "gpu",
 			params:  SandboxCreateParams{GPU: "A10G"},

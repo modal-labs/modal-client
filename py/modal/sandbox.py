@@ -816,6 +816,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         *args: str,
         app: "modal.app._App | None" = None,
         name: str | None = None,
+        tags: dict[str, str] | None = None,
         image: _Image | None = None,
         env: dict[str, str | None] | None = None,
         secrets: Collection[_Secret] | None = None,
@@ -851,7 +852,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         `secret=...` or `oidc_auth_role_arn`), OIDC identity tokens, proxies, and
         filesystem snapshots.
 
-        Features like tags, memory snapshots, network file systems, GPUs, and custom
+        Features like memory snapshots, network file systems, GPUs, and custom
         domains are not supported.
 
         Set `i6pn=True` to enable private IPv6 networking so sandboxes in the same
@@ -993,10 +994,12 @@ class _Sandbox(_Object, type_prefix="sb"):
                 ),
             )
 
+            tag_protos = [api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()] if tags else []
             create_req = api_pb2.SandboxCreateV2Request(
                 app_id=load_context.app_id,
                 definition=definition,
                 ephemeral_secrets=api_pb2.StringMap(contents=env_dict) if env_dict else None,
+                tags=tag_protos,
             )
             assert load_context.client._auth_token_manager
             auth_token = await load_context.client._auth_token_manager.get_token()

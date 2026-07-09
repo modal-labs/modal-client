@@ -1204,6 +1204,18 @@ test("buildSandboxCreateV2RequestProto supports a proxy", async () => {
   expect(req.definition?.proxyId).toBe("pr-123");
 });
 
+test("buildSandboxCreateV2RequestProto supports tags", async () => {
+  const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+    tags: { env: "prod", team: "infra" },
+  });
+
+  const got: Record<string, string> = {};
+  for (const tag of req.tags) {
+    got[tag.tagName] = tag.tagValue;
+  }
+  expect(got).toEqual({ env: "prod", team: "infra" });
+});
+
 test("buildSandboxCreateV2RequestProto supports experimental options", async () => {
   const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
     experimentalOptions: { enable_docker: true },
@@ -1223,7 +1235,6 @@ test("buildSandboxCreateV2RequestProto rejects non-boolean experimental options"
 });
 
 test.each([
-  ["tags", { tags: { key: "value" } }, "tags are not supported"],
   ["gpu", { gpu: "A10G" }, "GPUs are not supported"],
   [
     "custom domain",

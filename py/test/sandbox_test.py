@@ -1201,6 +1201,21 @@ def test_experimental_sandbox_create_proxy(app, servicer):
         assert req.definition.proxy_id == "pr-123"
 
 
+def test_experimental_sandbox_create_with_tags(app, servicer):
+    tags = {"env": "prod", "team": "infra"}
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, tags=tags)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert {tag.tag_name: tag.tag_value for tag in req.tags} == tags
+
+
+def test_experimental_sandbox_create_no_tags_by_default(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert list(req.tags) == []
+
+
 def test_experimental_sandbox_create_no_proxy_by_default(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app)
