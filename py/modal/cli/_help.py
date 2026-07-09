@@ -70,7 +70,13 @@ def _option_label(param: click.Parameter, ctx: click.Context) -> Text:
             text.append(opt, style=_OPTION_FLAG_STYLE)
     if not getattr(param, "is_flag", False) and not getattr(param, "count", False):
         text.append(" ")
-        text.append(param.make_metavar(ctx), style=_OPTION_METAVAR_STYLE)
+        if "ctx" in inspect.signature(click.Parameter.make_metavar).parameters:
+            # click >= 8.2.0
+            metavar = param.make_metavar(ctx)
+        else:
+            # backwards compatibility
+            metavar = param.make_metavar()  # type: ignore[call-arg]
+        text.append(metavar, style=_OPTION_METAVAR_STYLE)
     return text
 
 
