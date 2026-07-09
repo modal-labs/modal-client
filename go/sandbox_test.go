@@ -195,14 +195,6 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	_, err := sb.CreateConnectToken(ctx, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-
-	err = sb.SetTags(ctx, map[string]string{}, nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-
-	_, err = sb.GetTags(ctx, nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 }
 
 func TestSandboxV2FilesystemSupported(t *testing.T) {

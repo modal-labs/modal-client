@@ -1722,12 +1722,16 @@ func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string, params *
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
-	if err := sb.ensureV1("SetTags"); err != nil {
-		return err
-	}
 	tagsList := make([]*pb.SandboxTag, 0, len(tags))
 	for k, v := range tags {
 		tagsList = append(tagsList, pb.SandboxTag_builder{TagName: k, TagValue: v}.Build())
+	}
+	if sb.isV2 {
+		_, err := sb.client.cpClient.SandboxTagsSetV2(ctx, pb.SandboxTagsSetRequest_builder{
+			SandboxId: sb.SandboxID,
+			Tags:      tagsList,
+		}.Build())
+		return err
 	}
 	_, err := sb.client.cpClient.SandboxTagsSet(ctx, pb.SandboxTagsSetRequest_builder{
 		EnvironmentName: sb.client.profile.Environment,
@@ -1742,12 +1746,14 @@ func (sb *Sandbox) GetTags(ctx context.Context, params *SandboxGetTagsParams) (m
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-	if err := sb.ensureV1("GetTags"); err != nil {
-		return nil, err
+	req := pb.SandboxTagsGetRequest_builder{SandboxId: sb.SandboxID}.Build()
+	var resp *pb.SandboxTagsGetResponse
+	var err error
+	if sb.isV2 {
+		resp, err = sb.client.cpClient.SandboxTagsGetV2(ctx, req)
+	} else {
+		resp, err = sb.client.cpClient.SandboxTagsGet(ctx, req)
 	}
-	resp, err := sb.client.cpClient.SandboxTagsGet(ctx, pb.SandboxTagsGetRequest_builder{
-		SandboxId: sb.SandboxID,
-	}.Build())
 	if err != nil {
 		if status, ok := status.FromError(err); ok && status.Code() == codes.InvalidArgument {
 			return nil, InvalidError{Exception: status.Message()}

@@ -2803,6 +2803,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_tags[request.sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
         await stream.send_message(Empty())
 
+    async def SandboxTagsGetV2(self, stream):
+        request: api_pb2.SandboxTagsGetRequest = await stream.recv_message()
+        tags = self.sandbox_tags.get(request.sandbox_id, {})
+        await stream.send_message(
+            api_pb2.SandboxTagsGetResponse(tags=[api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()])
+        )
+
+    async def SandboxTagsSetV2(self, stream):
+        request: api_pb2.SandboxTagsSetRequest = await stream.recv_message()
+        self.sandbox_tags[request.sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
+        await stream.send_message(Empty())
+
     async def SandboxTerminate(self, stream):
         self._sandbox_terminated = True
         await stream.send_message(api_pb2.SandboxTerminateResponse())

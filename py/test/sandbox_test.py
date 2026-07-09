@@ -610,9 +610,7 @@ def test_sandbox_experimental_list_tags(client, servicer):
     app = App()
     with app.run(client=client):
         sb = Sandbox._experimental_create("bash", "-c", "sleep 10000", app=app)
-        # TODO: set these via the public Sandbox.set_tags() API for V2 sandboxes (#47879)
-        # instead of using the test servicer's internal state.
-        servicer.sandbox_tags[sb.object_id] = {"env": "prod", "team": "infra"}
+        sb.set_tags({"env": "prod", "team": "infra"})
 
         def experimental_list(tags):
             return [s.object_id for s in Sandbox._experimental_list(app_id=app.app_id, tags=tags, client=client)]
@@ -632,6 +630,24 @@ def test_sandbox_create_with_tags(app, client, servicer):
 
     assert sb.get_tags() == tags
     sb.terminate()
+
+
+def test_experimental_sandbox_get_set_tags(client, servicer):
+    app = App()
+    with app.run(client=client):
+        sb = Sandbox._experimental_create("bash", "-c", "sleep 10000", app=app)
+        assert sb.get_tags() == {}
+
+        sb.set_tags({"env": "prod", "team": "infra"})
+        assert sb.get_tags() == {"env": "prod", "team": "infra"}
+
+        # Setting tags replaces the whole set: "team" is dropped.
+        sb.set_tags({"env": "staging"})
+        assert sb.get_tags() == {"env": "staging"}
+
+        # An empty dict clears all tags.
+        sb.set_tags({})
+        assert sb.get_tags() == {}
 
 
 def test_sandbox_network_access(app, servicer):

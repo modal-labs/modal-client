@@ -1441,9 +1441,31 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
   expect(() => sb.stdin).toThrow(expectedError);
   expect(() => sb.stdout).toThrow(expectedError);
   expect(() => sb.stderr).toThrow(expectedError);
-  await expect(sb.setTags({})).rejects.toThrow(expectedError);
-  await expect(sb.getTags()).rejects.toThrow(expectedError);
   await expect(sb.createConnectToken()).rejects.toThrow(expectedError);
+});
+
+test("V2 Sandbox setTags/getTags route to V2 RPCs", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+
+  let setReq: any;
+  mock.handleUnary("/SandboxTagsSetV2", (req: any) => {
+    setReq = req;
+    return {};
+  });
+  mock.handleUnary("/SandboxTagsGetV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    return { tags: [{ tagName: "env", tagValue: "prod" }] };
+  });
+
+  await sb.setTags({ env: "prod" });
+  expect(setReq.sandboxId).toBe(V2_SANDBOX_ID);
+  expect(setReq.tags).toEqual([{ tagName: "env", tagValue: "prod" }]);
+  expect(await sb.getTags()).toEqual({ env: "prod" });
+  mock.assertExhausted();
 });
 
 test("V2 Sandbox supports filesystem", () => {

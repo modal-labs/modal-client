@@ -1267,22 +1267,27 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns:
             Tags as a map from tag name to tag value.
         """
-        self._ensure_v1("get_tags")
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
-        resp = await self._client.stub.SandboxTagsGet(req)
+        stub = self._client.stub
+        if self._is_v2:
+            assert self._client._auth_token_manager
+            auth_token = await self._client._auth_token_manager.get_token()
+            resp = await stub.SandboxTagsGetV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        else:
+            resp = await stub.SandboxTagsGet(req)
 
         return {tag.tag_name: tag.tag_value for tag in resp.tags}
 
     async def set_tags(self, tags: dict[str, str], *, client: _Client | None = None) -> None:
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`.
 
+        Setting tags replaces the Sandbox's entire tag set; passing an empty dict clears all tags.
+
         Args:
             tags: Tag names and values to set on this sandbox.
             client: Deprecated. Prefer setting the client when creating or re-attaching to the sandbox.
 
         """
-        self._ensure_v1("set_tags")
-        environment_name = _get_environment_name()
         if client is not None:
             deprecation_warning(
                 (2025, 9, 18),
@@ -1291,13 +1296,19 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
         tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
-
-        req = api_pb2.SandboxTagsSetRequest(
-            environment_name=environment_name,
-            sandbox_id=self.object_id,
-            tags=tags_list,
-        )
-        await self._client.stub.SandboxTagsSet(req)
+        stub = self._client.stub
+        if self._is_v2:
+            assert self._client._auth_token_manager
+            auth_token = await self._client._auth_token_manager.get_token()
+            req = api_pb2.SandboxTagsSetRequest(sandbox_id=self.object_id, tags=tags_list)
+            await stub.SandboxTagsSetV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        else:
+            req = api_pb2.SandboxTagsSetRequest(
+                environment_name=_get_environment_name(),
+                sandbox_id=self.object_id,
+                tags=tags_list,
+            )
+            await stub.SandboxTagsSet(req)
 
     async def _experimental_set_outbound_network_policy(
         self,

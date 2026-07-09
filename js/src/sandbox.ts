@@ -1481,20 +1481,30 @@ export class Sandbox {
     return this.#sidecars;
   }
 
-  /** Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in {@link SandboxService#list client.sandboxes.list}. */
+  /**
+   * Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in {@link SandboxService#list client.sandboxes.list}.
+   *
+   * Setting tags replaces the Sandbox's entire tag set; passing an empty object clears all tags.
+   */
   async setTags(tags: Record<string, string>): Promise<void> {
     this.#ensureAttached();
-    this.#ensureV1("setTags");
     const tagsList = Object.entries(tags).map(([tagName, tagValue]) => ({
       tagName,
       tagValue,
     }));
     try {
-      await this.#client.cpClient.sandboxTagsSet({
-        environmentName: this.#client.environmentName(),
-        sandboxId: this.sandboxId,
-        tags: tagsList,
-      });
+      if (this.#isV2) {
+        await this.#client.cpClient.sandboxTagsSetV2({
+          sandboxId: this.sandboxId,
+          tags: tagsList,
+        });
+      } else {
+        await this.#client.cpClient.sandboxTagsSet({
+          environmentName: this.#client.environmentName(),
+          sandboxId: this.sandboxId,
+          tags: tagsList,
+        });
+      }
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT) {
         throw new InvalidError(err.details || err.message);
@@ -1506,12 +1516,17 @@ export class Sandbox {
   /** Get tags (key-value pairs) currently attached to this Sandbox from the server. */
   async getTags(): Promise<Record<string, string>> {
     this.#ensureAttached();
-    this.#ensureV1("getTags");
     let resp: SandboxTagsGetResponse;
     try {
-      resp = await this.#client.cpClient.sandboxTagsGet({
-        sandboxId: this.sandboxId,
-      });
+      if (this.#isV2) {
+        resp = await this.#client.cpClient.sandboxTagsGetV2({
+          sandboxId: this.sandboxId,
+        });
+      } else {
+        resp = await this.#client.cpClient.sandboxTagsGet({
+          sandboxId: this.sandboxId,
+        });
+      }
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT) {
         throw new InvalidError(err.details || err.message);
