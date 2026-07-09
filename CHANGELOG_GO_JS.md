@@ -4,14 +4,17 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
+No unreleased changes.
+
+## js/v0.9.0, go/v0.9.0
+
 - (Go, JS) `Functions.FromName` / `Cls.FromName` (Go) and `client.functions.fromName` / `client.cls.fromName` (JS) now accept an optional `Version` (Go) / `version` (JS) parameter to look up a version-pinned Function or Cls.
-- (Go, JS) `Sandbox.ReloadVolumes` (Go) / `Sandbox.reloadVolumes` (JS) now blocks until the Volumes have been reloaded, bounded by a new timeout (55 seconds by default) that is configurable via `SandboxReloadVolumesParams.Timeout` (Go) / `SandboxReloadVolumesParams.timeoutMs` (JS). If the reload does not complete within that window, a `TimeoutError` is raised.
-- (Go, JS) Added `Sandbox.Filesystem.Watch` (Go) / `Sandbox.filesystem.watch` (JS) to watch a path in the Sandbox for filesystem changes. It yields `FileWatchEvent` objects and supports `Recursive` / `recursive`, an event-type `Filter` / `filter`, and a `Timeout` / `timeoutMs` bound.
 - (Go, JS) `Secrets.FromMap` (Go) / `client.secrets.fromObject` (JS) is now lazy, so the returned `Secret` has an empty `SecretID` (Go) / `secretId` (JS) until it is first used. Latency for `Sandbox.ExperimentalCreate` / `Sandbox.experimentalCreate` and `Sandbox.Exec` / `Sandbox.exec` is improved by sending the secrets directly to the Sandbox and avoiding the secret creation limits.
-- **Breaking:** (Go) Changed `OutboundCIDRAllowlist` and `OutboundDomainAllowlist` in `SandboxCreateParams` from `[]string` to `*Allowlist`. A non-nil `*Allowlist` enables allowlist mode (even with empty `Entries`, which blocks all traffic of that type); `nil` means open access. Migrate `OutboundCIDRAllowlist: []string{"10.0.0.0/8"}` to `OutboundCIDRAllowlist: &Allowlist{Entries: []string{"10.0.0.0/8"}}`.
 - (Go, JS) `Function.WithOptions` / `Cls.WithOptions` (Go) and `Function_.withOptions` / `Cls.withOptions` (JS) now accept a `RoutingRegion` / `routingRegion` option to override the region the Function's or Cls's inputs and outputs are routed through.
-- (Go) Added `Sandbox.Filesystem.Watch` to watch a path in the Sandbox for filesystem changes.
-- **Breaking:** (Go, JS) Renamed the `VolumeMountOptions` type to `VolumeMountOptionsParams`. Update `WithMountOptions(&VolumeMountOptions{...})` / `withMountOptions` type annotations accordingly.
+- (Go, JS) Added `Sandbox.Filesystem.Watch` (Go) / `Sandbox.filesystem.watch` (JS) to watch a path in the Sandbox for filesystem changes. It yields `FileWatchEvent` objects and supports `Recursive` / `recursive`, an event-type `Filter` / `filter`, and a `Timeout` / `timeoutMs` bound.
+- **Breaking:** (Go, JS) `Sandbox.ReloadVolumes` (Go) / `Sandbox.reloadVolumes` (JS) now blocks until the Volumes have been reloaded, bounded by a new timeout (55 seconds by default) that is configurable via `SandboxReloadVolumesParams.Timeout` (Go) / `SandboxReloadVolumesParams.timeoutMs` (JS). If the reload does not complete within that window, a `TimeoutError` is raised.
+- **Breaking:** (Go, JS) Renamed the `VolumeMountOptions` type to `VolumeMountOptionsParams`. In Go, update `WithMountOptions(&VolumeMountOptions{...})` / `withMountOptions` type annotations accordingly.
+- **Breaking:** (Go) Changed `OutboundCIDRAllowlist` and `OutboundDomainAllowlist` in `SandboxCreateParams` from `[]string` to `*Allowlist`. A non-nil `*Allowlist` enables allowlist mode (even with empty `Entries`, which blocks all traffic of that type); `nil` means open access. Migrate `OutboundCIDRAllowlist: []string{"10.0.0.0/8"}` to `OutboundCIDRAllowlist: &Allowlist{Entries: []string{"10.0.0.0/8"}}`.
 
 ## js/v0.8.2, go/v0.8.2
 
