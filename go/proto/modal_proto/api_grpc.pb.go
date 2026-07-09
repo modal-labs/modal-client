@@ -87,6 +87,7 @@ const (
 	ModalClient_EndpointGetLifecycle_FullMethodName             = "/modal.client.ModalClient/EndpointGetLifecycle"
 	ModalClient_EndpointList_FullMethodName                     = "/modal.client.ModalClient/EndpointList"
 	ModalClient_EndpointStop_FullMethodName                     = "/modal.client.ModalClient/EndpointStop"
+	ModalClient_EnvironmentBillingSummary_FullMethodName        = "/modal.client.ModalClient/EnvironmentBillingSummary"
 	ModalClient_EnvironmentCreate_FullMethodName                = "/modal.client.ModalClient/EnvironmentCreate"
 	ModalClient_EnvironmentDelete_FullMethodName                = "/modal.client.ModalClient/EnvironmentDelete"
 	ModalClient_EnvironmentGetBudget_FullMethodName             = "/modal.client.ModalClient/EnvironmentGetBudget"
@@ -240,6 +241,7 @@ const (
 	ModalClient_WebhookTokenList_FullMethodName                 = "/modal.client.ModalClient/WebhookTokenList"
 	ModalClient_WebhookTokenListForEnvironment_FullMethodName   = "/modal.client.ModalClient/WebhookTokenListForEnvironment"
 	ModalClient_WorkspaceBillingReport_FullMethodName           = "/modal.client.ModalClient/WorkspaceBillingReport"
+	ModalClient_WorkspaceBillingSummary_FullMethodName          = "/modal.client.ModalClient/WorkspaceBillingSummary"
 	ModalClient_WorkspaceDashboardUrlGet_FullMethodName         = "/modal.client.ModalClient/WorkspaceDashboardUrlGet"
 	ModalClient_WorkspaceMembersList_FullMethodName             = "/modal.client.ModalClient/WorkspaceMembersList"
 	ModalClient_WorkspaceNameLookup_FullMethodName              = "/modal.client.ModalClient/WorkspaceNameLookup"
@@ -332,6 +334,7 @@ type ModalClientClient interface {
 	EndpointList(ctx context.Context, in *EndpointListRequest, opts ...grpc.CallOption) (*EndpointListResponse, error)
 	EndpointStop(ctx context.Context, in *EndpointStopRequest, opts ...grpc.CallOption) (*EndpointStopResponse, error)
 	// Environments
+	EnvironmentBillingSummary(ctx context.Context, in *EnvironmentBillingSummaryRequest, opts ...grpc.CallOption) (*EnvironmentBillingSummaryResponse, error)
 	EnvironmentCreate(ctx context.Context, in *EnvironmentCreateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentDelete(ctx context.Context, in *EnvironmentDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentGetBudget(ctx context.Context, in *EnvironmentGetBudgetRequest, opts ...grpc.CallOption) (*EnvironmentGetBudgetResponse, error)
@@ -504,6 +507,7 @@ type ModalClientClient interface {
 	WebhookTokenListForEnvironment(ctx context.Context, in *WebhookTokenListForEnvironmentRequest, opts ...grpc.CallOption) (*WebhookTokenListResponse, error)
 	// Workspaces
 	WorkspaceBillingReport(ctx context.Context, in *WorkspaceBillingReportRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceBillingReportItem], error)
+	WorkspaceBillingSummary(ctx context.Context, in *WorkspaceBillingSummaryRequest, opts ...grpc.CallOption) (*WorkspaceBillingSummaryResponse, error)
 	WorkspaceDashboardUrlGet(ctx context.Context, in *WorkspaceDashboardUrlRequest, opts ...grpc.CallOption) (*WorkspaceDashboardUrlResponse, error)
 	WorkspaceMembersList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceMembersListResponse, error)
 	WorkspaceNameLookup(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceNameLookupResponse, error)
@@ -1220,6 +1224,16 @@ func (c *modalClientClient) EndpointStop(ctx context.Context, in *EndpointStopRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EndpointStopResponse)
 	err := c.cc.Invoke(ctx, ModalClient_EndpointStop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) EnvironmentBillingSummary(ctx context.Context, in *EnvironmentBillingSummaryRequest, opts ...grpc.CallOption) (*EnvironmentBillingSummaryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnvironmentBillingSummaryResponse)
+	err := c.cc.Invoke(ctx, ModalClient_EnvironmentBillingSummary_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2828,6 +2842,16 @@ func (c *modalClientClient) WorkspaceBillingReport(ctx context.Context, in *Work
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModalClient_WorkspaceBillingReportClient = grpc.ServerStreamingClient[WorkspaceBillingReportItem]
 
+func (c *modalClientClient) WorkspaceBillingSummary(ctx context.Context, in *WorkspaceBillingSummaryRequest, opts ...grpc.CallOption) (*WorkspaceBillingSummaryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceBillingSummaryResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WorkspaceBillingSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) WorkspaceDashboardUrlGet(ctx context.Context, in *WorkspaceDashboardUrlRequest, opts ...grpc.CallOption) (*WorkspaceDashboardUrlResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WorkspaceDashboardUrlResponse)
@@ -2972,6 +2996,7 @@ type ModalClientServer interface {
 	EndpointList(context.Context, *EndpointListRequest) (*EndpointListResponse, error)
 	EndpointStop(context.Context, *EndpointStopRequest) (*EndpointStopResponse, error)
 	// Environments
+	EnvironmentBillingSummary(context.Context, *EnvironmentBillingSummaryRequest) (*EnvironmentBillingSummaryResponse, error)
 	EnvironmentCreate(context.Context, *EnvironmentCreateRequest) (*emptypb.Empty, error)
 	EnvironmentDelete(context.Context, *EnvironmentDeleteRequest) (*emptypb.Empty, error)
 	EnvironmentGetBudget(context.Context, *EnvironmentGetBudgetRequest) (*EnvironmentGetBudgetResponse, error)
@@ -3144,6 +3169,7 @@ type ModalClientServer interface {
 	WebhookTokenListForEnvironment(context.Context, *WebhookTokenListForEnvironmentRequest) (*WebhookTokenListResponse, error)
 	// Workspaces
 	WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error
+	WorkspaceBillingSummary(context.Context, *WorkspaceBillingSummaryRequest) (*WorkspaceBillingSummaryResponse, error)
 	WorkspaceDashboardUrlGet(context.Context, *WorkspaceDashboardUrlRequest) (*WorkspaceDashboardUrlResponse, error)
 	WorkspaceMembersList(context.Context, *emptypb.Empty) (*WorkspaceMembersListResponse, error)
 	WorkspaceNameLookup(context.Context, *emptypb.Empty) (*WorkspaceNameLookupResponse, error)
@@ -3360,6 +3386,9 @@ func (UnimplementedModalClientServer) EndpointList(context.Context, *EndpointLis
 }
 func (UnimplementedModalClientServer) EndpointStop(context.Context, *EndpointStopRequest) (*EndpointStopResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EndpointStop not implemented")
+}
+func (UnimplementedModalClientServer) EnvironmentBillingSummary(context.Context, *EnvironmentBillingSummaryRequest) (*EnvironmentBillingSummaryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnvironmentBillingSummary not implemented")
 }
 func (UnimplementedModalClientServer) EnvironmentCreate(context.Context, *EnvironmentCreateRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentCreate not implemented")
@@ -3819,6 +3848,9 @@ func (UnimplementedModalClientServer) WebhookTokenListForEnvironment(context.Con
 }
 func (UnimplementedModalClientServer) WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error {
 	return status.Error(codes.Unimplemented, "method WorkspaceBillingReport not implemented")
+}
+func (UnimplementedModalClientServer) WorkspaceBillingSummary(context.Context, *WorkspaceBillingSummaryRequest) (*WorkspaceBillingSummaryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WorkspaceBillingSummary not implemented")
 }
 func (UnimplementedModalClientServer) WorkspaceDashboardUrlGet(context.Context, *WorkspaceDashboardUrlRequest) (*WorkspaceDashboardUrlResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method WorkspaceDashboardUrlGet not implemented")
@@ -5033,6 +5065,24 @@ func _ModalClient_EndpointStop_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).EndpointStop(ctx, req.(*EndpointStopRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_EnvironmentBillingSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnvironmentBillingSummaryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).EnvironmentBillingSummary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_EnvironmentBillingSummary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).EnvironmentBillingSummary(ctx, req.(*EnvironmentBillingSummaryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7735,6 +7785,24 @@ func _ModalClient_WorkspaceBillingReport_Handler(srv interface{}, stream grpc.Se
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModalClient_WorkspaceBillingReportServer = grpc.ServerStreamingServer[WorkspaceBillingReportItem]
 
+func _ModalClient_WorkspaceBillingSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkspaceBillingSummaryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WorkspaceBillingSummary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WorkspaceBillingSummary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WorkspaceBillingSummary(ctx, req.(*WorkspaceBillingSummaryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_WorkspaceDashboardUrlGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(WorkspaceDashboardUrlRequest)
 	if err := dec(in); err != nil {
@@ -8101,6 +8169,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EndpointStop",
 			Handler:    _ModalClient_EndpointStop_Handler,
+		},
+		{
+			MethodName: "EnvironmentBillingSummary",
+			Handler:    _ModalClient_EnvironmentBillingSummary_Handler,
 		},
 		{
 			MethodName: "EnvironmentCreate",
@@ -8681,6 +8753,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WebhookTokenListForEnvironment",
 			Handler:    _ModalClient_WebhookTokenListForEnvironment_Handler,
+		},
+		{
+			MethodName: "WorkspaceBillingSummary",
+			Handler:    _ModalClient_WorkspaceBillingSummary_Handler,
 		},
 		{
 			MethodName: "WorkspaceDashboardUrlGet",

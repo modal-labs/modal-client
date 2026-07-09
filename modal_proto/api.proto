@@ -1560,6 +1560,24 @@ message EndpointStopRequest {
 
 message EndpointStopResponse {}
 
+message EnvironmentBillingSummaryRequest {
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+  string environment_id = 3;
+}
+
+message EnvironmentBillingSummaryResponse {
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+
+  // not showing credits, reservations, etc as those are applied
+  // at the workspace level
+  string metered_cost = 3;
+
+  // keyed by deployed, ephemeral, volume, notebook
+  map<string, string> metered_cost_breakdown = 4;
+}
+
 message EnvironmentCreateRequest {
   string name = 1;
   bool is_managed = 2;
@@ -4356,6 +4374,26 @@ message WorkspaceBillingReportRequest {
   repeated string app_ids = 6;
 }
 
+message WorkspaceBillingSummaryRequest {
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+}
+
+message WorkspaceBillingSummaryResponse {
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+
+  string metered_cost = 3;
+  string plan_cost = 4;
+  string credits_applied = 5;
+  string reservations_discount = 6;
+  string volumes_discount = 7;
+  string billed_cost = 8;
+
+  // keyed by deployed, ephemeral, volume, notebook
+  map<string, string> metered_cost_breakdown = 9;
+}
+
 message WorkspaceDashboardUrlRequest {
   string environment_name = 1;
 }
@@ -4499,6 +4537,7 @@ service ModalClient {
   rpc EndpointStop(EndpointStopRequest) returns (EndpointStopResponse);
 
   // Environments
+  rpc EnvironmentBillingSummary(EnvironmentBillingSummaryRequest) returns (EnvironmentBillingSummaryResponse);
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
   rpc EnvironmentGetBudget(EnvironmentGetBudgetRequest) returns (EnvironmentGetBudgetResponse);
@@ -4690,6 +4729,7 @@ service ModalClient {
 
   // Workspaces
   rpc WorkspaceBillingReport(WorkspaceBillingReportRequest) returns (stream WorkspaceBillingReportItem);
+  rpc WorkspaceBillingSummary(WorkspaceBillingSummaryRequest) returns (WorkspaceBillingSummaryResponse);
   rpc WorkspaceDashboardUrlGet(WorkspaceDashboardUrlRequest) returns (WorkspaceDashboardUrlResponse);
   rpc WorkspaceMembersList(google.protobuf.Empty) returns (WorkspaceMembersListResponse);
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
