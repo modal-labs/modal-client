@@ -497,16 +497,7 @@ class TaskCommandRouterClient:
             TimeoutError: If the sandbox does not become ready within `timeout`.
         """
         request = sr_pb2.SandboxWaitUntilReadyTcrRequest(task_id=task_id, timeout=timeout)
-        with grpc_error_converter():
-            try:
-                return await asyncio.wait_for(
-                    call_with_retries_on_transient_errors(
-                        lambda: self._call_with_auth_retry(self._stub.SandboxWaitUntilReady, request, timeout=timeout),
-                    ),
-                    timeout=timeout,
-                )
-            except asyncio.TimeoutError:
-                raise ModalTimeoutError("Timeout expired")
+        return await self._unary_call_with_deadline(self._stub.SandboxWaitUntilReady, request, timeout=timeout)
 
     async def exec_poll(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecPollResponse:
         """Poll for the exit status of an exec'd command, properly retrying on transient errors.
@@ -816,21 +807,14 @@ class TaskCommandRouterClient:
                 window, the call is cancelled and a `modal.exception.TimeoutError` is raised.
         """
         request = sr_pb2.TaskReloadVolumesRequest(task_id=task_id)
-        with grpc_error_converter():
-            try:
-                return await asyncio.wait_for(
-                    call_with_retries_on_transient_errors(
-                        lambda: self._call_with_auth_retry(self._stub.TaskReloadVolumes, request, timeout=timeout),
-                    ),
-                    timeout=timeout,
-                )
-            except asyncio.TimeoutError:
-                raise ModalTimeoutError("Timeout expired")
+        return await self._unary_call_with_deadline(self._stub.TaskReloadVolumes, request, timeout=timeout)
 
-    async def _snapshot_with_deadline(self, rpc, request, *, timeout: float, **kwargs):
-        # helper method for snapshot_directory and snapshot_filesystem to handle grpc
-        # deadlines in a consistent way, converting any error to TimeoutError after passing
-        # the total deadline budget
+    async def _unary_call_with_deadline(self, rpc, request, *, timeout: float, **kwargs):
+        """Call a unary RPC with transient-error retries bounded by a total deadline.
+
+        Raises `modal.exception.TimeoutError` once the deadline has elapsed, or when
+        the server responds with `DEADLINE_EXCEEDED`.
+        """
         timeout_deadline = time.monotonic() + timeout
 
         def call():
@@ -848,17 +832,21 @@ class TaskCommandRouterClient:
                     exclude_status_codes=[Status.DEADLINE_EXCEEDED, Status.CANCELLED],
                     timeout_deadline=timeout_deadline,
                 )
-        except Exception:
-            if time.monotonic() >= timeout_deadline:
+        except Exception as exc:
+            if time.monotonic() >= timeout_deadline or getattr(exc, "_grpc_status", None) == Status.DEADLINE_EXCEEDED:
                 raise ModalTimeoutError("Timeout expired")
             raise
 
     async def snapshot_directory(
         self, request: sr_pb2.TaskSnapshotDirectoryRequest, *, timeout: float, **kwargs
     ) -> sr_pb2.TaskSnapshotDirectoryResponse:
-        return await self._snapshot_with_deadline(self._stub.TaskSnapshotDirectory, request, timeout=timeout, **kwargs)
+        return await self._unary_call_with_deadline(
+            self._stub.TaskSnapshotDirectory, request, timeout=timeout, **kwargs
+        )
 
     async def snapshot_filesystem(
         self, request: sr_pb2.TaskSnapshotFilesystemRequest, *, timeout: float, **kwargs
     ) -> sr_pb2.TaskSnapshotFilesystemResponse:
-        return await self._snapshot_with_deadline(self._stub.TaskSnapshotFilesystem, request, timeout=timeout, **kwargs)
+        return await self._unary_call_with_deadline(
+            self._stub.TaskSnapshotFilesystem, request, timeout=timeout, **kwargs
+        )
