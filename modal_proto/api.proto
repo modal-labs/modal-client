@@ -1998,6 +1998,16 @@ message FunctionCallGetDataRequest {
   reserved 4; // use_gapless_read
 }
 
+message FunctionCallGetInfoRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+}
+
+message FunctionCallGetInfoResponse {
+  FunctionCallInfo info = 1;
+}
+
+
 message FunctionCallHandleMetadata {
   string app_id = 1;
   string function_id = 2;
@@ -4563,6 +4573,7 @@ service ModalClient {
   rpc FunctionCallFromId(FunctionCallFromIdRequest) returns (FunctionCallFromIdResponse);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
+  rpc FunctionCallGetInfo(FunctionCallGetInfoRequest) returns (FunctionCallGetInfoResponse);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);

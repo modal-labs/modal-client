@@ -108,6 +108,7 @@ const (
 	ModalClient_FunctionCallFromId_FullMethodName               = "/modal.client.ModalClient/FunctionCallFromId"
 	ModalClient_FunctionCallGetDataIn_FullMethodName            = "/modal.client.ModalClient/FunctionCallGetDataIn"
 	ModalClient_FunctionCallGetDataOut_FullMethodName           = "/modal.client.ModalClient/FunctionCallGetDataOut"
+	ModalClient_FunctionCallGetInfo_FullMethodName              = "/modal.client.ModalClient/FunctionCallGetInfo"
 	ModalClient_FunctionCallList_FullMethodName                 = "/modal.client.ModalClient/FunctionCallList"
 	ModalClient_FunctionCallPutDataOut_FullMethodName           = "/modal.client.ModalClient/FunctionCallPutDataOut"
 	ModalClient_FunctionCreate_FullMethodName                   = "/modal.client.ModalClient/FunctionCreate"
@@ -357,6 +358,7 @@ type ModalClientClient interface {
 	FunctionCallFromId(ctx context.Context, in *FunctionCallFromIdRequest, opts ...grpc.CallOption) (*FunctionCallFromIdResponse, error)
 	FunctionCallGetDataIn(ctx context.Context, in *FunctionCallGetDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataChunk], error)
 	FunctionCallGetDataOut(ctx context.Context, in *FunctionCallGetDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataChunk], error)
+	FunctionCallGetInfo(ctx context.Context, in *FunctionCallGetInfoRequest, opts ...grpc.CallOption) (*FunctionCallGetInfoResponse, error)
 	FunctionCallList(ctx context.Context, in *FunctionCallListRequest, opts ...grpc.CallOption) (*FunctionCallListResponse, error)
 	FunctionCallPutDataOut(ctx context.Context, in *FunctionCallPutDataRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	FunctionCreate(ctx context.Context, in *FunctionCreateRequest, opts ...grpc.CallOption) (*FunctionCreateResponse, error)
@@ -1457,6 +1459,16 @@ func (c *modalClientClient) FunctionCallGetDataOut(ctx context.Context, in *Func
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModalClient_FunctionCallGetDataOutClient = grpc.ServerStreamingClient[DataChunk]
+
+func (c *modalClientClient) FunctionCallGetInfo(ctx context.Context, in *FunctionCallGetInfoRequest, opts ...grpc.CallOption) (*FunctionCallGetInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FunctionCallGetInfoResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionCallGetInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *modalClientClient) FunctionCallList(ctx context.Context, in *FunctionCallListRequest, opts ...grpc.CallOption) (*FunctionCallListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -3019,6 +3031,7 @@ type ModalClientServer interface {
 	FunctionCallFromId(context.Context, *FunctionCallFromIdRequest) (*FunctionCallFromIdResponse, error)
 	FunctionCallGetDataIn(*FunctionCallGetDataRequest, grpc.ServerStreamingServer[DataChunk]) error
 	FunctionCallGetDataOut(*FunctionCallGetDataRequest, grpc.ServerStreamingServer[DataChunk]) error
+	FunctionCallGetInfo(context.Context, *FunctionCallGetInfoRequest) (*FunctionCallGetInfoResponse, error)
 	FunctionCallList(context.Context, *FunctionCallListRequest) (*FunctionCallListResponse, error)
 	FunctionCallPutDataOut(context.Context, *FunctionCallPutDataRequest) (*emptypb.Empty, error)
 	FunctionCreate(context.Context, *FunctionCreateRequest) (*FunctionCreateResponse, error)
@@ -3449,6 +3462,9 @@ func (UnimplementedModalClientServer) FunctionCallGetDataIn(*FunctionCallGetData
 }
 func (UnimplementedModalClientServer) FunctionCallGetDataOut(*FunctionCallGetDataRequest, grpc.ServerStreamingServer[DataChunk]) error {
 	return status.Error(codes.Unimplemented, "method FunctionCallGetDataOut not implemented")
+}
+func (UnimplementedModalClientServer) FunctionCallGetInfo(context.Context, *FunctionCallGetInfoRequest) (*FunctionCallGetInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionCallGetInfo not implemented")
 }
 func (UnimplementedModalClientServer) FunctionCallList(context.Context, *FunctionCallListRequest) (*FunctionCallListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionCallList not implemented")
@@ -5432,6 +5448,24 @@ func _ModalClient_FunctionCallGetDataOut_Handler(srv interface{}, stream grpc.Se
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModalClient_FunctionCallGetDataOutServer = grpc.ServerStreamingServer[DataChunk]
+
+func _ModalClient_FunctionCallGetInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FunctionCallGetInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionCallGetInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionCallGetInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionCallGetInfo(ctx, req.(*FunctionCallGetInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _ModalClient_FunctionCallList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FunctionCallListRequest)
@@ -8245,6 +8279,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FunctionCallFromId",
 			Handler:    _ModalClient_FunctionCallFromId_Handler,
+		},
+		{
+			MethodName: "FunctionCallGetInfo",
+			Handler:    _ModalClient_FunctionCallGetInfo_Handler,
 		},
 		{
 			MethodName: "FunctionCallList",
