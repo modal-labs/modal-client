@@ -242,21 +242,21 @@ async def environment_billing(
 
     Examples:
 
-        ```bash
-        modal environment billing report --start 2025-12-01 --end 2026-01-01
+    ```bash
+    modal environment billing report --start 2025-12-01 --end 2026-01-01
 
-        modal environment billing report --for "last month" --tag-names team,project
+    modal environment billing report --for "last month" --tag-names team,project
 
-        modal environment billing report test_env --for today --resolution h
+    modal environment billing report test_env --for today --resolution h
 
-        modal environment billing report test_env --for "this month" --show-resources
+    modal environment billing report test_env --for "this month" --show-resources
 
-        modal environment billing report prod_env --for yesterday -r h --tz local
+    modal environment billing report prod_env --for yesterday -r h --tz local
 
-        modal environment billing report main_env --for "last month" --csv > report.csv
+    modal environment billing report main_env --for "last month" --csv > report.csv
 
-        modal environment billing report main_env --start 2025-12-01 --json > report.json
-        ```
+    modal environment billing report main_env --start 2025-12-01 --json > report.json
+    ```
 
     """
     if json and csv:

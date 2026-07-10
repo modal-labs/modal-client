@@ -4,6 +4,18 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.5.2 (2026-07-10)
+
+- We've added new interfaces for programmatic management of workspace settings:
+  - Use the [`modal.Workspace.settings.list()`](/docs/sdk/py/latest/modal.Workspace#settingslist) method or [`modal workspace settings list`](/docs/cli/latest/workspace#modal-workspace-settings-list) CLI to see current workspace-level settings.
+  - Use the [`modal.Workspace.settings.set()`](/docs/sdk/py/latest/modal.Workspace#settingsset) method or [`modal workspace settings set`](/docs/cli/latest/workspace#modal-workspace-settings-set) CLI to configure new values.
+- We've added a [`modal.types`](/docs/sdk/py/latest/modal.types) module for exposing dataclasses returned from public methods as public API. The types in this module are not typically constructed by user code, but it may be useful to reference them for, e.g., adding type annotations to code that wraps the relevant Modal API.
+- The [`modal.Function.with_options()`](/docs/sdk/py/latest/modal.Function#with_options) method now accepts a `routing_region` argument to dynamically configure [regional routing](/docs/guide/region-selection#regional-routing) at the time of invocation.
+- The [`modal container stop`](/docs/cli/latest/container#modal-container-stop) CLI now accepts a `--graceful` flag. With it, the container stops fetching new inputs but finishes the inputs it is currently running before exiting, instead of having them cancelled and rescheduled. Graceful stops are only supported for containers running a Modal Function or Modal Server.
+- The [`modal container logs`](/docs/cli/latest/container#modal-container-logs) CLI now includes logs from the startup phase of the container.
+- The [`modal.Workspace.members.list()`](/docs/sdk/py/latest/modal.Workspace#memberslist) method now uses `"member"` instead of `"user"` for the lowest-privilege Workspace role, matching the UI and documentation.
+- The [`modal.Sandbox.reload_volumes()`](/docs/sdk/py/latest/modal.Sandbox#reload_volumes) method now blocks until the Volumes have been reloaded, bounded by a new `timeout` argument (55 seconds by default). If the reload does not complete within `timeout`, [`modal.exception.TimeoutError`](/docs/sdk/py/latest/modal.exception#modalexceptiontimeouterror) is raised.
+
 ### 1.5.1 (2026-06-23)
 
 This release includes several major new features, including the debut of a new serverless compute primitive for low-latency HTTP applications ([`@app.server()`](/docs/sdk/py/latest/modal.App#server)) and a new CLI for deploying production-ready LLM inference endpoints with minimal configuration ([`modal endpoint`](/docs/cli/latest/endpoint)).
