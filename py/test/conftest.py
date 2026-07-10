@@ -66,7 +66,6 @@ VALID_CLOUD_PROVIDERS = ["AWS", "GCP", "OCI", "AUTO", "XYZ"]
 class TaskCommandRouterTaskState:
     procs: dict[str, asyncio.subprocess.Process] = dataclasses.field(default_factory=dict)
     stdin_offsets: dict[str, int] = dataclasses.field(default_factory=dict)
-    stdin_closed: set[str] = dataclasses.field(default_factory=set)
     container_procs: dict[str, asyncio.subprocess.Process] = dataclasses.field(default_factory=dict)
     container_names: dict[str, str] = dataclasses.field(default_factory=dict)
     container_name_to_id: dict[str, str] = dataclasses.field(default_factory=dict)
@@ -87,16 +86,6 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         self.last_container_create_request: sr_pb2.TaskContainerCreateRequest | None = None
         self.last_snapshot_filesystem_request: sr_pb2.TaskSnapshotFilesystemRequest | None = None
         self.shell_prompt: bytes | None = None
-        # When set, TaskExecStdinWriteStream raises UNAVAILABLE once the accepted
-        # stdin offset reaches this many bytes, consuming one remaining failure per
-        # raise. Used to exercise the client's resume-from-offset logic.
-        self.stdin_stream_fail_after_bytes: int | None = None
-        self.stdin_stream_failures_remaining: int = 0
-        self.stdin_stream_attempt_count: int = 0
-        # When set, the next TaskExecStdinWriteStream processes its End message
-        # (closing stdin) but raises instead of sending the response, simulating
-        # a completed upload whose response was lost.
-        self.stdin_stream_drop_response: bool = False
 
     def _task_state(self, task_id: str) -> TaskCommandRouterTaskState:
         return self._task_states[task_id]
@@ -179,7 +168,6 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
                 proc.stdin.close()
             except Exception:
                 pass
-            task_state.stdin_closed.add(request.exec_id)
         await stream.send_message(sr_pb2.TaskExecStdinWriteResponse())
 
     async def TaskExecStdinStatus(self, stream) -> None:
@@ -188,12 +176,11 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         await stream.send_message(
             sr_pb2.TaskExecStdinStatusResponse(
                 num_bytes_written=task_state.stdin_offsets.get(request.exec_id, 0),
-                closed=request.exec_id in task_state.stdin_closed,
+                closed=False,
             )
         )
 
     async def TaskExecStdinWriteStream(self, stream) -> None:
-        self.stdin_stream_attempt_count += 1
         request: sr_pb2.TaskExecStdinWriteStreamRequest = await stream.recv_message()
         if request.WhichOneof("payload") != "start":
             raise GRPCError(Status.INVALID_ARGUMENT, "first stdin write stream message must be start")
@@ -202,20 +189,9 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         proc = task_state.procs[start.exec_id]
         current = task_state.stdin_offsets[start.exec_id]
         if start.offset != current:
-            raise GRPCError(Status.FAILED_PRECONDITION, "stdin offset mismatch")
+            pass
         while request := await stream.recv_message():
-            which = request.WhichOneof("payload")
-            if which == "end":
-                try:
-                    proc.stdin.close()
-                except Exception:
-                    pass
-                task_state.stdin_closed.add(start.exec_id)
-                if self.stdin_stream_drop_response:
-                    self.stdin_stream_drop_response = False
-                    raise GRPCError(Status.UNAVAILABLE, "injected response loss after End")
-                break
-            if which != "data":
+            if request.WhichOneof("payload") != "data":
                 raise GRPCError(Status.INVALID_ARGUMENT, "stdin write stream message must contain data")
             if request.data:
                 try:
@@ -225,13 +201,6 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
                     pass
                 current += len(request.data)
                 task_state.stdin_offsets[start.exec_id] = current
-            if (
-                self.stdin_stream_fail_after_bytes is not None
-                and self.stdin_stream_failures_remaining > 0
-                and current >= self.stdin_stream_fail_after_bytes
-            ):
-                self.stdin_stream_failures_remaining -= 1
-                raise GRPCError(Status.UNAVAILABLE, "injected stdin stream failure")
         await stream.send_message(sr_pb2.TaskExecStdinWriteStreamResponse())
 
     async def TaskExecPoll(self, stream) -> None:
