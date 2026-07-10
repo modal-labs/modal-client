@@ -3389,6 +3389,7 @@ message SandboxCreateRequest {
 
 message SandboxCreateResponse {
   string sandbox_id = 1;
+  SandboxHandleMetadata metadata = 2;
 }
 
 message SandboxCreateV2Request {
@@ -3402,6 +3403,7 @@ message SandboxCreateV2Response {
   string sandbox_id = 1;
   repeated TunnelData tunnels = 2;
   string task_id = 3;
+  SandboxHandleMetadata metadata = 4;
 }
 
 // Used by the sandbox controller to get command router access for V2 sandboxes.
@@ -3430,6 +3432,7 @@ message SandboxGetFromNameRequest {
 
 message SandboxGetFromNameResponse {
   string sandbox_id = 1;
+  SandboxHandleMetadata metadata = 2;
 }
 
 message SandboxGetLogsRequest {
@@ -3473,6 +3476,7 @@ message SandboxGetTunnelsResponse {
 
 message SandboxHandleMetadata {
   GenericResult result = 1;
+  string app_id = 2;
 }
 
 message SandboxInfo {
@@ -3619,6 +3623,7 @@ message SandboxWaitRequest {
 
 message SandboxWaitResponse {
   GenericResult result = 1;
+  SandboxHandleMetadata metadata = 2;
 }
 
 message SandboxWaitUntilReadyRequest {

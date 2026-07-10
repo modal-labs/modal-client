@@ -1134,7 +1134,10 @@ test("testSandboxExperimentalDockerMock", async () => {
     expect(req.definition?.experimentalOptionsV2).toMatchObject({
       enable_docker: "true",
     });
-    return { sandboxId: "sb-1234" };
+    return {
+      sandboxId: "sb-1234",
+      metadata: { result: undefined, appId: "app-123" },
+    };
   });
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
@@ -1304,7 +1307,12 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   });
   mock.handleUnary("/SandboxCreateV2", (req: any): SandboxCreateV2Response => {
     expect(req.appId).toBe("ap-1234");
-    return { sandboxId: V2_SANDBOX_ID, taskId: "ta-v2-123", tunnels: [] };
+    return {
+      sandboxId: V2_SANDBOX_ID,
+      taskId: "ta-v2-123",
+      tunnels: [],
+      metadata: { result: undefined, appId: "ap-1234" },
+    };
   });
   mock.handleUnary("/SandboxWaitV2", (req: any) => {
     expect(req.sandboxId).toBe(V2_SANDBOX_ID);
