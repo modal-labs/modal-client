@@ -1634,6 +1634,28 @@ message EnvironmentGetOrCreateResponse {
   EnvironmentMetadata metadata = 2;
 }
 
+message EnvironmentGetRolesRequest {
+  string environment_id = 1;
+}
+
+message EnvironmentGetRolesResponse {
+  message Principal {
+    string user_id = 1;
+    string service_user_id = 2;
+    string email = 3;
+    string avatar_url = 4;
+    string user_name = 5;
+    string service_user_name = 6;
+    EnvironmentRole role = 7;
+    string role_str = 8;  // String representation for the CLI
+    repeated EnvironmentRole choosable_roles = 9;
+  }
+
+  string name = 1;
+  double created_at = 2;
+  repeated Principal principal_roles = 3;
+}
+
 message EnvironmentListItem {
   string name = 1;
   string webhook_suffix = 2;
@@ -4554,6 +4576,7 @@ service ModalClient {
   rpc EnvironmentGetBudget(EnvironmentGetBudgetRequest) returns (EnvironmentGetBudgetResponse);
   rpc EnvironmentGetManaged(EnvironmentGetManagedRequest) returns (EnvironmentGetManagedResponse);
   rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
+  rpc EnvironmentGetRoles(EnvironmentGetRolesRequest) returns (EnvironmentGetRolesResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentRoleSet(EnvironmentRoleSetRequest) returns (google.protobuf.Empty);
   rpc EnvironmentSetBudget(EnvironmentSetBudgetRequest) returns (google.protobuf.Empty);

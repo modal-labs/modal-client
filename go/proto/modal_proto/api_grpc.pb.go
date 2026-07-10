@@ -93,6 +93,7 @@ const (
 	ModalClient_EnvironmentGetBudget_FullMethodName             = "/modal.client.ModalClient/EnvironmentGetBudget"
 	ModalClient_EnvironmentGetManaged_FullMethodName            = "/modal.client.ModalClient/EnvironmentGetManaged"
 	ModalClient_EnvironmentGetOrCreate_FullMethodName           = "/modal.client.ModalClient/EnvironmentGetOrCreate"
+	ModalClient_EnvironmentGetRoles_FullMethodName              = "/modal.client.ModalClient/EnvironmentGetRoles"
 	ModalClient_EnvironmentList_FullMethodName                  = "/modal.client.ModalClient/EnvironmentList"
 	ModalClient_EnvironmentRoleSet_FullMethodName               = "/modal.client.ModalClient/EnvironmentRoleSet"
 	ModalClient_EnvironmentSetBudget_FullMethodName             = "/modal.client.ModalClient/EnvironmentSetBudget"
@@ -341,6 +342,7 @@ type ModalClientClient interface {
 	EnvironmentGetBudget(ctx context.Context, in *EnvironmentGetBudgetRequest, opts ...grpc.CallOption) (*EnvironmentGetBudgetResponse, error)
 	EnvironmentGetManaged(ctx context.Context, in *EnvironmentGetManagedRequest, opts ...grpc.CallOption) (*EnvironmentGetManagedResponse, error)
 	EnvironmentGetOrCreate(ctx context.Context, in *EnvironmentGetOrCreateRequest, opts ...grpc.CallOption) (*EnvironmentGetOrCreateResponse, error)
+	EnvironmentGetRoles(ctx context.Context, in *EnvironmentGetRolesRequest, opts ...grpc.CallOption) (*EnvironmentGetRolesResponse, error)
 	EnvironmentList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EnvironmentListResponse, error)
 	EnvironmentRoleSet(ctx context.Context, in *EnvironmentRoleSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentSetBudget(ctx context.Context, in *EnvironmentSetBudgetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1286,6 +1288,16 @@ func (c *modalClientClient) EnvironmentGetOrCreate(ctx context.Context, in *Envi
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EnvironmentGetOrCreateResponse)
 	err := c.cc.Invoke(ctx, ModalClient_EnvironmentGetOrCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) EnvironmentGetRoles(ctx context.Context, in *EnvironmentGetRolesRequest, opts ...grpc.CallOption) (*EnvironmentGetRolesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnvironmentGetRolesResponse)
+	err := c.cc.Invoke(ctx, ModalClient_EnvironmentGetRoles_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3014,6 +3026,7 @@ type ModalClientServer interface {
 	EnvironmentGetBudget(context.Context, *EnvironmentGetBudgetRequest) (*EnvironmentGetBudgetResponse, error)
 	EnvironmentGetManaged(context.Context, *EnvironmentGetManagedRequest) (*EnvironmentGetManagedResponse, error)
 	EnvironmentGetOrCreate(context.Context, *EnvironmentGetOrCreateRequest) (*EnvironmentGetOrCreateResponse, error)
+	EnvironmentGetRoles(context.Context, *EnvironmentGetRolesRequest) (*EnvironmentGetRolesResponse, error)
 	EnvironmentList(context.Context, *emptypb.Empty) (*EnvironmentListResponse, error)
 	EnvironmentRoleSet(context.Context, *EnvironmentRoleSetRequest) (*emptypb.Empty, error)
 	EnvironmentSetBudget(context.Context, *EnvironmentSetBudgetRequest) (*emptypb.Empty, error)
@@ -3417,6 +3430,9 @@ func (UnimplementedModalClientServer) EnvironmentGetManaged(context.Context, *En
 }
 func (UnimplementedModalClientServer) EnvironmentGetOrCreate(context.Context, *EnvironmentGetOrCreateRequest) (*EnvironmentGetOrCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentGetOrCreate not implemented")
+}
+func (UnimplementedModalClientServer) EnvironmentGetRoles(context.Context, *EnvironmentGetRolesRequest) (*EnvironmentGetRolesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnvironmentGetRoles not implemented")
 }
 func (UnimplementedModalClientServer) EnvironmentList(context.Context, *emptypb.Empty) (*EnvironmentListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentList not implemented")
@@ -5189,6 +5205,24 @@ func _ModalClient_EnvironmentGetOrCreate_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).EnvironmentGetOrCreate(ctx, req.(*EnvironmentGetOrCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_EnvironmentGetRoles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnvironmentGetRolesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).EnvironmentGetRoles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_EnvironmentGetRoles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).EnvironmentGetRoles(ctx, req.(*EnvironmentGetRolesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8227,6 +8261,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EnvironmentGetOrCreate",
 			Handler:    _ModalClient_EnvironmentGetOrCreate_Handler,
+		},
+		{
+			MethodName: "EnvironmentGetRoles",
+			Handler:    _ModalClient_EnvironmentGetRoles_Handler,
 		},
 		{
 			MethodName: "EnvironmentList",
