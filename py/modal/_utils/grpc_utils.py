@@ -164,6 +164,9 @@ RETRYABLE_GRPC_STATUS_CODES = [
 ]
 SERVER_RETRY_WARNING_TIME_INTERVAL = 30.0
 DEFAULT_MAX_RETRIES = 3
+GRPC_KEEPALIVE_TIME_SECS = 30.0
+GRPC_KEEPALIVE_TIMEOUT_SECS = 10.0
+GRPC_WINDOW_SIZE = 64 * 1024 * 1024  # 64 MiB
 
 
 @dataclass
@@ -251,6 +254,21 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
 custom_detail_codec = CustomProtoStatusDetailsCodec()
 
 
+def create_channel_config() -> grpclib.config.Configuration:
+    """Shared grpclib channel settings for Modal client connections.
+
+    HTTP/2 keepalive probes keep idle transports warm through stateful
+    middleboxes and surface dead connections before retries reuse them.
+    """
+    return grpclib.config.Configuration(
+        _keepalive_time=GRPC_KEEPALIVE_TIME_SECS,
+        _keepalive_timeout=GRPC_KEEPALIVE_TIMEOUT_SECS,
+        _keepalive_permit_without_calls=True,
+        http2_connection_window_size=GRPC_WINDOW_SIZE,
+        http2_stream_window_size=GRPC_WINDOW_SIZE,
+    )
+
+
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
@@ -262,10 +280,7 @@ def create_channel(
     o = urllib.parse.urlparse(server_url)
 
     channel: grpclib.client.Channel
-    config = grpclib.config.Configuration(
-        http2_connection_window_size=64 * 1024 * 1024,  # 64 MiB
-        http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
-    )
+    config = create_channel_config()
 
     if o.scheme == "unix":
         channel = grpclib.client.Channel(path=o.path, config=config, status_details_codec=custom_detail_codec)

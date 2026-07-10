@@ -14,6 +14,7 @@ from modal._utils.grpc_utils import (
     ModalChannel,
     Retry,
     create_channel,
+    create_channel_config,
     create_channel_with_fallbacks,
     get_server_retry_policy,
 )
@@ -294,6 +295,16 @@ async def test_flash_container_register_deregister(servicer, client):
 )
 def test_get_server_retry_policy(exception, expected_instruction):
     assert get_server_retry_policy(exception) == expected_instruction
+
+
+def test_channel_config():
+    config = create_channel_config()
+
+    assert config._keepalive_time == 30.0
+    assert config._keepalive_timeout == 10.0
+    assert config._keepalive_permit_without_calls is True
+    assert config.http2_connection_window_size == 64 * 1024 * 1024
+    assert config.http2_stream_window_size == 64 * 1024 * 1024
 
 
 @synchronize_api

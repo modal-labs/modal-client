@@ -14,7 +14,6 @@ from contextlib import suppress
 from typing import BinaryIO, TypeVar
 
 import grpclib.client
-import grpclib.config
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
@@ -24,7 +23,7 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .._grpc_client import grpc_error_converter
-from .._utils.grpc_utils import ModalChannel
+from .._utils.grpc_utils import ModalChannel, create_channel_config
 from .async_utils import aclosing, retry
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
@@ -234,10 +233,7 @@ class TaskCommandRouterClient:
             host,
             port,
             ssl=ssl_context,
-            config=grpclib.config.Configuration(
-                http2_connection_window_size=64 * 1024 * 1024,  # 64 MiB
-                http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
-            ),
+            config=create_channel_config(),
             closed_error_message="Unable to perform operation on a detached sandbox",
         )
 
