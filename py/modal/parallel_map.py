@@ -654,16 +654,14 @@ async def _map_invocation_inputplane(
     stale_retry_duplicates = 0
     already_complete_duplicates = 0
     retried_outputs = 0
-    input_queue_size = 0
     last_entry_id = ""
 
     # The input-plane server returns this after the first request.
     map_token = None
     map_token_received = asyncio.Event()
 
-    # Single priority queue that holds *both* fresh inputs (timestamp == now)
-    # and future retries (timestamp > now).
-    queue: TimestampPriorityQueue[api_pb2.MapStartOrContinueItem] = TimestampPriorityQueue()
+    input_queue: asyncio.Queue[api_pb2.MapStartOrContinueItem | None] = asyncio.Queue()
+    retry_queue: TimestampPriorityQueue[api_pb2.MapStartOrContinueItem] = TimestampPriorityQueue()
 
     # Maximum number of inputs that may be in-flight (the server sends this in
     # the first response – fall back to the default if we never receive it for
@@ -682,7 +680,7 @@ async def _map_invocation_inputplane(
     map_items_manager = _MapItemsManager(
         retry_policy=retry_policy,
         function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
-        retry_queue=queue,
+        retry_queue=retry_queue,
         sync_client_retries_enabled=True,
         max_inputs_outstanding=MAX_INPUTS_OUTSTANDING_DEFAULT,
         is_input_plane_instance=True,
@@ -729,61 +727,67 @@ async def _map_invocation_inputplane(
             async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for q_item in streamer:
-                await queue.put(time.time(), q_item)
+                await input_queue.put(q_item)
 
         # All inputs have been read.
+        await input_queue.put(None)
         update_counters(set_have_all_inputs=True)
         yield
 
-    async def pump_inputs():
+    async def send_map_start_or_continue(request_items: list[api_pb2.MapStartOrContinueItem]):
         nonlocal map_token, max_inputs_outstanding
-        async for batch in queue_batch_iterator(queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
-            # Convert the queued items into the proto format expected by the RPC.
-            request_items: list[api_pb2.MapStartOrContinueItem] = [
-                api_pb2.MapStartOrContinueItem(input=qi.input, attempt_token=qi.attempt_token) for qi in batch
-            ]
+        request = api_pb2.MapStartOrContinueRequest(
+            function_id=function.object_id,
+            map_token=map_token or "",
+            parent_input_id=current_input_id() or "",
+            items=request_items,
+        )
 
+        metadata = await client.get_input_plane_metadata(function._input_plane_region)
+
+        response: api_pb2.MapStartOrContinueResponse = await input_plane_stub.MapStartOrContinue(
+            request,
+            retry=Retry(
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
+                max_retries=None,
+            ),
+            metadata=metadata,
+        )
+
+        # match response items to the corresponding request item index
+        response_items_idx_tuple = [
+            (request_items[idx].input.idx, attempt_token) for idx, attempt_token in enumerate(response.attempt_tokens)
+        ]
+
+        map_items_manager.handle_put_continue_response(response_items_idx_tuple)
+
+        # Set the function call id and actual retry policy with the data from the first response.
+        if map_token is None:
+            map_token = response.map_token
+            map_token_received.set()
+            max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
+            map_items_manager.set_retry_policy(response.retry_policy)
+            # Update the retry policy for the first batch of inputs.
+            # Subsequent batches will have the correct user-specified retry policy
+            # set by the updated _MapItemsManager.
+            map_items_manager.update_items_retry_policy(response.retry_policy)
+
+    async def pump_inputs():
+        async for batch in queue_batch_iterator(input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+            request_items: list[api_pb2.MapStartOrContinueItem] = list(batch)
             await map_items_manager.add_items_inputplane(request_items)
+            await send_map_start_or_continue(request_items)
+        yield
 
-            # Build request
-            request = api_pb2.MapStartOrContinueRequest(
-                function_id=function.object_id,
-                map_token=map_token,
-                parent_input_id=current_input_id() or "",
-                items=request_items,
-            )
-
-            metadata = await client.get_input_plane_metadata(function._input_plane_region)
-
-            response: api_pb2.MapStartOrContinueResponse = await input_plane_stub.MapStartOrContinue(
-                request,
-                retry=Retry(
-                    additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                    max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
-                    max_retries=None,
-                ),
-                metadata=metadata,
-            )
-
-            # match response items to the corresponding request item index
-            response_items_idx_tuple = [
-                (request_items[idx].input.idx, attempt_token)
-                for idx, attempt_token in enumerate(response.attempt_tokens)
-            ]
-
-            map_items_manager.handle_put_continue_response(response_items_idx_tuple)
-
-            # Set the function call id and actual retry policy with the data from the first response.
-            # This conditional is skipped for subsequent iterations of this for-loop.
-            if map_token is None:
-                map_token = response.map_token
-                map_token_received.set()
-                max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
-                map_items_manager.set_retry_policy(response.retry_policy)
-                # Update the retry policy for the first batch of inputs.
-                # Subsequent batches will have the correct user-specified retry policy
-                # set by the updated _MapItemsManager.
-                map_items_manager.update_items_retry_policy(response.retry_policy)
+    async def retry_inputs():
+        while True:
+            retry_item = await retry_queue.get()
+            if retry_item is None:
+                break
+            request_items = [retry_item]
+            await map_items_manager.add_items_inputplane(request_items)
+            await send_map_start_or_continue(request_items)
         yield
 
     async def check_lost_inputs():
@@ -897,8 +901,8 @@ async def _map_invocation_inputplane(
                 async for item in stream:
                     yield item
         finally:
-            await queue.close()
-            pass
+            await input_queue.put(None)
+            await retry_queue.close()
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
@@ -945,7 +949,8 @@ async def _map_invocation_inputplane(
                 f"no_context_duplicates={no_context_duplicates} stale_retry_duplicates={stale_retry_duplicates} "
                 f"already_complete_duplicates={already_complete_duplicates} retried_outputs={retried_outputs} "
                 f"map_token={map_token} max_inputs_outstanding={max_inputs_outstanding} "
-                f"map_items_manager_size={len(map_items_manager)} input_queue_size={input_queue_size}"
+                f"map_items_manager_size={len(map_items_manager)} input_queue_size={input_queue.qsize()} "
+                f"retry_queue_size={retry_queue.qsize()}"
             )
 
         while True:
@@ -960,7 +965,7 @@ async def _map_invocation_inputplane(
     log_task = asyncio.create_task(log_debug_stats())
 
     async with aclosing(
-        async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), check_lost_inputs())
+        async_merge(drain_input_generator(), pump_inputs(), retry_inputs(), poll_outputs(), check_lost_inputs())
     ) as merged:
         async for maybe_output in merged:
             if maybe_output is not None:  # ignore None sentinels
