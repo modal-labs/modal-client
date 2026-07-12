@@ -920,6 +920,7 @@ class _App:
                 i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
                 cluster_size = f.params.cluster_size  # Experimental: Clustered functions
                 rdma = f.params.rdma
+                fabric_size = f.params.fabric_size
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -974,6 +975,7 @@ class _App:
 
                 cluster_size = None  # Experimental: Clustered functions
                 rdma = None
+                fabric_size = None
                 i6pn_enabled = i6pn
 
             if is_generator is None:
@@ -1016,6 +1018,7 @@ class _App:
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
+                fabric_size=fabric_size,  # Experimental: Clustered functions
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 restrict_output=_experimental_restrict_output,
@@ -1151,16 +1154,19 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_cls.params.cluster_size
                     rdma = wrapped_cls.params.rdma
+                    fabric_size = wrapped_cls.params.fabric_size
 
                 else:
                     cluster_size = None
                     rdma = None
+                    fabric_size = None
             else:
                 user_cls = wrapped_cls
                 max_concurrent_inputs = None
                 target_concurrent_inputs = None
                 cluster_size = None
                 rdma = None
+                fabric_size = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -1246,6 +1252,7 @@ class _App:
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
                 rdma=rdma,
+                fabric_size=fabric_size,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 restrict_output=_experimental_restrict_output,
@@ -1403,6 +1410,7 @@ class _App:
             # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
             cluster_size = None
             rdma = None
+            fabric_size = None
             user_cls = wrapped_user_cls
 
             if isinstance(wrapped_user_cls, _PartialFunction):
@@ -1410,6 +1418,7 @@ class _App:
                 if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_user_cls.params.cluster_size
                     rdma = wrapped_user_cls.params.rdma
+                    fabric_size = wrapped_user_cls.params.fabric_size
 
             local_state = self._local_state
 
@@ -1449,6 +1458,7 @@ class _App:
                 i6pn_enabled=i6pn or (cluster_size is not None),
                 cluster_size=cluster_size,
                 rdma=rdma,
+                fabric_size=fabric_size,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 restrict_output=False,

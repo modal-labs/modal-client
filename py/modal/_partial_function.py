@@ -74,6 +74,7 @@ class _PartialFunctionParams:
     target_concurrent_inputs: int | None = None
     build_timeout: int | None = None
     rdma: bool | None = None
+    fabric_size: int | None = None
     http_config: api_pb2.HTTPConfig | None = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
@@ -777,7 +778,7 @@ def _concurrent(
 
 # NOTE: clustered is currently exposed through modal.experimental, not the top-level namespace
 def _clustered(
-    size: int, broadcast: bool = True, rdma: bool = False
+    size: int, broadcast: bool = True, rdma: bool = False, fabric_size: int | None = None
 ) -> Callable[
     [Callable[P, ReturnType] | _PartialFunction[P, ReturnType, ReturnType]],
     _PartialFunction[P, ReturnType, ReturnType],
@@ -791,6 +792,11 @@ def _clustered(
         If True, inputs will be sent simultaneously to each container. Otherwise,
         inputs will be sent only to the rank-0 container, which is responsible for
         delegating to the workers.
+    fabric_size: int | None = None
+        Experimental: constrains placement across GPU-memory fabrics. The cluster
+        is placed in co-fabric blocks of `fabric_size` containers, so every block
+        of `fabric_size` consecutive ranks shares a fabric (the scale-up domain)
+        and communicates over cross-node NVLink. Must evenly divide `size`.
     """
 
     assert broadcast, "broadcast=False has not been implemented yet!"
@@ -798,8 +804,14 @@ def _clustered(
     if size <= 0:
         raise ValueError("cluster size must be greater than 0")
 
+    if fabric_size is not None:
+        if not isinstance(fabric_size, int) or fabric_size <= 0:
+            raise ValueError("fabric_size must be a positive integer")
+        if size % fabric_size != 0:
+            raise ValueError(f"fabric_size must evenly divide the cluster size ({size} % {fabric_size} != 0)")
+
     flags = _PartialFunctionFlags.CLUSTERED
-    params = _PartialFunctionParams(cluster_size=size, rdma=rdma)
+    params = _PartialFunctionParams(cluster_size=size, rdma=rdma, fabric_size=fabric_size)
 
     def wrapper(
         obj: _PartialFunction[P, ReturnType, ReturnType] | Callable[P, ReturnType],

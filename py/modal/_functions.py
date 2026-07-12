@@ -671,6 +671,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Experimental: Clustered functions
         cluster_size: int | None = None,
         rdma: bool | None = None,
+        fabric_size: int | None = None,
         single_use_containers: bool = False,
         ephemeral_disk: int | None = None,
         include_source: bool = True,
@@ -1009,6 +1010,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     mount_client_dependencies=mount_client_dependencies,
                     # ---
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
+                    _experimental_fabric_size=fabric_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
                     # --- These are deprecated in favor of autoscaler_settings
                     warm_pool_size=min_containers or 0,
@@ -1051,6 +1053,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         method_definitions_set=function_definition.method_definitions_set,
                         experimental_options=experimental_options or {},
                         _experimental_group_size=function_definition._experimental_group_size,
+                        _experimental_fabric_size=function_definition._experimental_fabric_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
                         snapshot_debug=function_definition.snapshot_debug,
