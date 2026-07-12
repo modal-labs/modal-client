@@ -22381,6 +22381,7 @@ type Function struct {
 	xxx_hidden_XExperimentalTaskTemplatesEnabled    bool                         `protobuf:"varint,65,opt,name=_experimental_task_templates_enabled,json=ExperimentalTaskTemplatesEnabled,proto3"`
 	xxx_hidden_XExperimentalTaskTemplates           *[]*TaskTemplate             `protobuf:"bytes,66,rep,name=_experimental_task_templates,json=ExperimentalTaskTemplates,proto3"`
 	xxx_hidden_XExperimentalGroupSize               uint32                       `protobuf:"varint,67,opt,name=_experimental_group_size,json=ExperimentalGroupSize,proto3"`
+	xxx_hidden_XExperimentalFabricSize              uint32                       `protobuf:"varint,94,opt,name=_experimental_fabric_size,json=ExperimentalFabricSize,proto3"`
 	xxx_hidden_Untrusted                            bool                         `protobuf:"varint,68,opt,name=untrusted,proto3"`
 	xxx_hidden_XExperimentalBufferContainers        uint32                       `protobuf:"varint,69,opt,name=_experimental_buffer_containers,json=ExperimentalBufferContainers,proto3"`
 	xxx_hidden_XExperimentalProxyIp                 *string                      `protobuf:"bytes,70,opt,name=_experimental_proxy_ip,json=ExperimentalProxyIp,proto3,oneof"`
@@ -22835,6 +22836,13 @@ func (x *Function) GetXExperimentalGroupSize() uint32 {
 	return 0
 }
 
+func (x *Function) GetXExperimentalFabricSize() uint32 {
+	if x != nil {
+		return x.xxx_hidden_XExperimentalFabricSize
+	}
+	return 0
+}
+
 func (x *Function) GetUntrusted() bool {
 	if x != nil {
 		return x.xxx_hidden_Untrusted
@@ -23074,7 +23082,7 @@ func (x *Function) SetSharedVolumeMounts(v []*SharedVolumeMount) {
 
 func (x *Function) SetProxyId(v string) {
 	x.xxx_hidden_ProxyId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 80)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 81)
 }
 
 func (x *Function) SetRetryPolicy(v *FunctionRetryPolicy) {
@@ -23106,7 +23114,7 @@ func (x *Function) SetTaskIdleTimeoutSecs(v uint32) {
 
 func (x *Function) SetCloudProvider(v CloudProvider) {
 	x.xxx_hidden_CloudProvider = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 80)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 81)
 }
 
 func (x *Function) SetWarmPoolSize(v uint32) {
@@ -23245,6 +23253,10 @@ func (x *Function) SetXExperimentalGroupSize(v uint32) {
 	x.xxx_hidden_XExperimentalGroupSize = v
 }
 
+func (x *Function) SetXExperimentalFabricSize(v uint32) {
+	x.xxx_hidden_XExperimentalFabricSize = v
+}
+
 func (x *Function) SetUntrusted(v bool) {
 	x.xxx_hidden_Untrusted = v
 }
@@ -23256,7 +23268,7 @@ func (x *Function) SetXExperimentalBufferContainers(v uint32) {
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *Function) SetXExperimentalProxyIp(v string) {
 	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 56, 80)
+	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 57, 81)
 }
 
 func (x *Function) SetRuntimePerfRecord(v bool) {
@@ -23433,7 +23445,7 @@ func (x *Function) HasXExperimentalProxyIp() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[1]), 56)
+	return protoimpl.X.Present(&(x.XXX_presence[1]), 57)
 }
 
 func (x *Function) HasSchedule() bool {
@@ -23512,7 +23524,7 @@ func (x *Function) ClearClassParameterInfo() {
 
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *Function) ClearXExperimentalProxyIp() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[1]), 56)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[1]), 57)
 	x.xxx_hidden_XExperimentalProxyIp = nil
 }
 
@@ -23596,6 +23608,9 @@ type Function_builder struct {
 	// When the function is a "grouped" one, this records the # of tasks we want
 	// to schedule in tandem.
 	XExperimentalGroupSize uint32
+	// When set on a "grouped" function, constrains placement across GPU-memory
+	// fabrics: the cluster is placed in co-fabric blocks of this size.
+	XExperimentalFabricSize uint32
 	// If set, the function will be run in an untrusted environment.
 	Untrusted                     bool
 	XExperimentalBufferContainers uint32
@@ -23654,7 +23669,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_SharedVolumeMounts = &b.SharedVolumeMounts
 	if b.ProxyId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 80)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 81)
 		x.xxx_hidden_ProxyId = b.ProxyId
 	}
 	x.xxx_hidden_RetryPolicy = b.RetryPolicy
@@ -23664,7 +23679,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_ClassSerialized = b.ClassSerialized
 	x.xxx_hidden_TaskIdleTimeoutSecs = b.TaskIdleTimeoutSecs
 	if b.CloudProvider != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 80)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 81)
 		x.xxx_hidden_CloudProvider = *b.CloudProvider
 	}
 	x.xxx_hidden_WarmPoolSize = b.WarmPoolSize
@@ -23701,10 +23716,11 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_XExperimentalTaskTemplatesEnabled = b.XExperimentalTaskTemplatesEnabled
 	x.xxx_hidden_XExperimentalTaskTemplates = &b.XExperimentalTaskTemplates
 	x.xxx_hidden_XExperimentalGroupSize = b.XExperimentalGroupSize
+	x.xxx_hidden_XExperimentalFabricSize = b.XExperimentalFabricSize
 	x.xxx_hidden_Untrusted = b.Untrusted
 	x.xxx_hidden_XExperimentalBufferContainers = b.XExperimentalBufferContainers
 	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 56, 80)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 57, 81)
 		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
 	}
 	x.xxx_hidden_RuntimePerfRecord = b.RuntimePerfRecord
@@ -25688,6 +25704,7 @@ type FunctionData struct {
 	xxx_hidden_ConcurrencyLimit               uint32                          `protobuf:"varint,5,opt,name=concurrency_limit,json=concurrencyLimit,proto3"`
 	xxx_hidden_TaskIdleTimeoutSecs            uint32                          `protobuf:"varint,6,opt,name=task_idle_timeout_secs,json=taskIdleTimeoutSecs,proto3"`
 	xxx_hidden_XExperimentalGroupSize         uint32                          `protobuf:"varint,19,opt,name=_experimental_group_size,json=ExperimentalGroupSize,proto3"`
+	xxx_hidden_XExperimentalFabricSize        uint32                          `protobuf:"varint,43,opt,name=_experimental_fabric_size,json=ExperimentalFabricSize,proto3"`
 	xxx_hidden_XExperimentalBufferContainers  uint32                          `protobuf:"varint,22,opt,name=_experimental_buffer_containers,json=ExperimentalBufferContainers,proto3"`
 	xxx_hidden_XExperimentalCustomScaling     bool                            `protobuf:"varint,23,opt,name=_experimental_custom_scaling,json=ExperimentalCustomScaling,proto3"`
 	xxx_hidden_XExperimentalEnableGpuSnapshot bool                            `protobuf:"varint,30,opt,name=_experimental_enable_gpu_snapshot,json=ExperimentalEnableGpuSnapshot,proto3"`
@@ -25798,6 +25815,13 @@ func (x *FunctionData) GetTaskIdleTimeoutSecs() uint32 {
 func (x *FunctionData) GetXExperimentalGroupSize() uint32 {
 	if x != nil {
 		return x.xxx_hidden_XExperimentalGroupSize
+	}
+	return 0
+}
+
+func (x *FunctionData) GetXExperimentalFabricSize() uint32 {
+	if x != nil {
+		return x.xxx_hidden_XExperimentalFabricSize
 	}
 	return 0
 }
@@ -26076,6 +26100,10 @@ func (x *FunctionData) SetXExperimentalGroupSize(v uint32) {
 	x.xxx_hidden_XExperimentalGroupSize = v
 }
 
+func (x *FunctionData) SetXExperimentalFabricSize(v uint32) {
+	x.xxx_hidden_XExperimentalFabricSize = v
+}
+
 func (x *FunctionData) SetXExperimentalBufferContainers(v uint32) {
 	x.xxx_hidden_XExperimentalBufferContainers = v
 }
@@ -26115,7 +26143,7 @@ func (x *FunctionData) SetCustomDomainInfo(v []*CustomDomainInfo) {
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *FunctionData) SetXExperimentalProxyIp(v string) {
 	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 16, 41)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 42)
 }
 
 func (x *FunctionData) SetMethodDefinitions(v map[string]*MethodDefinition) {
@@ -26233,7 +26261,7 @@ func (x *FunctionData) HasXExperimentalProxyIp() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 16)
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 17)
 }
 
 func (x *FunctionData) HasClassParameterInfo() bool {
@@ -26281,7 +26309,7 @@ func (x *FunctionData) ClearWebhookConfig() {
 
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *FunctionData) ClearXExperimentalProxyIp() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 16)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 17)
 	x.xxx_hidden_XExperimentalProxyIp = nil
 }
 
@@ -26318,6 +26346,7 @@ type FunctionData_builder struct {
 	// When the function is a "grouped" one, this records the # of tasks we want
 	// to schedule in tandem.
 	XExperimentalGroupSize         uint32
+	XExperimentalFabricSize        uint32
 	XExperimentalBufferContainers  uint32
 	XExperimentalCustomScaling     bool
 	XExperimentalEnableGpuSnapshot bool
@@ -26372,6 +26401,7 @@ func (b0 FunctionData_builder) Build() *FunctionData {
 	x.xxx_hidden_ConcurrencyLimit = b.ConcurrencyLimit
 	x.xxx_hidden_TaskIdleTimeoutSecs = b.TaskIdleTimeoutSecs
 	x.xxx_hidden_XExperimentalGroupSize = b.XExperimentalGroupSize
+	x.xxx_hidden_XExperimentalFabricSize = b.XExperimentalFabricSize
 	x.xxx_hidden_XExperimentalBufferContainers = b.XExperimentalBufferContainers
 	x.xxx_hidden_XExperimentalCustomScaling = b.XExperimentalCustomScaling
 	x.xxx_hidden_XExperimentalEnableGpuSnapshot = b.XExperimentalEnableGpuSnapshot
@@ -26382,7 +26412,7 @@ func (b0 FunctionData_builder) Build() *FunctionData {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_CustomDomainInfo = &b.CustomDomainInfo
 	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 16, 41)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 42)
 		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
 	}
 	x.xxx_hidden_MethodDefinitions = b.MethodDefinitions
@@ -62428,7 +62458,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12!\n" +
 	"\ftarget_slots\x18\x02 \x01(\rR\vtargetSlots\"$\n" +
-	"\"FlashSetTargetSlotsMetricsResponse\"\x8d&\n" +
+	"\"FlashSetTargetSlotsMetricsResponse\"\xc8&\n" +
 	"\bFunction\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -62491,7 +62521,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x18target_concurrent_inputs\x18@ \x01(\rR\x16targetConcurrentInputs\x12N\n" +
 	"$_experimental_task_templates_enabled\x18A \x01(\bR ExperimentalTaskTemplatesEnabled\x12[\n" +
 	"\x1c_experimental_task_templates\x18B \x03(\v2\x1a.modal.client.TaskTemplateR\x19ExperimentalTaskTemplates\x127\n" +
-	"\x18_experimental_group_size\x18C \x01(\rR\x15ExperimentalGroupSize\x12\x1c\n" +
+	"\x18_experimental_group_size\x18C \x01(\rR\x15ExperimentalGroupSize\x129\n" +
+	"\x19_experimental_fabric_size\x18^ \x01(\rR\x16ExperimentalFabricSize\x12\x1c\n" +
 	"\tuntrusted\x18D \x01(\bR\tuntrusted\x12E\n" +
 	"\x1f_experimental_buffer_containers\x18E \x01(\rR\x1cExperimentalBufferContainers\x12<\n" +
 	"\x16_experimental_proxy_ip\x18F \x01(\tB\x02\x18\x01H\x03R\x13ExperimentalProxyIp\x88\x01\x01\x12.\n" +
@@ -62629,7 +62660,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x14__deprecated_web_url\x18\x02 \x01(\tB\x02\x18\x01R\x10DeprecatedWebUrl\x122\n" +
 	"\bfunction\x18\x04 \x01(\v2\x16.modal.client.FunctionR\bfunction\x12M\n" +
 	"\x0fhandle_metadata\x18\x05 \x01(\v2$.modal.client.FunctionHandleMetadataR\x0ehandleMetadata\x12>\n" +
-	"\x0fserver_warnings\x18\x06 \x03(\v2\x15.modal.client.WarningR\x0eserverWarnings\"\xaf\x14\n" +
+	"\x0fserver_warnings\x18\x06 \x03(\v2\x15.modal.client.WarningR\x0eserverWarnings\"\xea\x14\n" +
 	"\fFunctionData\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -62638,7 +62669,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0ewarm_pool_size\x18\x04 \x01(\rR\fwarmPoolSize\x12+\n" +
 	"\x11concurrency_limit\x18\x05 \x01(\rR\x10concurrencyLimit\x123\n" +
 	"\x16task_idle_timeout_secs\x18\x06 \x01(\rR\x13taskIdleTimeoutSecs\x127\n" +
-	"\x18_experimental_group_size\x18\x13 \x01(\rR\x15ExperimentalGroupSize\x12E\n" +
+	"\x18_experimental_group_size\x18\x13 \x01(\rR\x15ExperimentalGroupSize\x129\n" +
+	"\x19_experimental_fabric_size\x18+ \x01(\rR\x16ExperimentalFabricSize\x12E\n" +
 	"\x1f_experimental_buffer_containers\x18\x16 \x01(\rR\x1cExperimentalBufferContainers\x12?\n" +
 	"\x1c_experimental_custom_scaling\x18\x17 \x01(\bR\x19ExperimentalCustomScaling\x12H\n" +
 	"!_experimental_enable_gpu_snapshot\x18\x1e \x01(\bR\x1dExperimentalEnableGpuSnapshot\x12\x1b\n" +

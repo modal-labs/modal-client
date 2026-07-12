@@ -1912,6 +1912,10 @@ message Function {
   // to schedule in tandem.
   uint32 _experimental_group_size = 67;
 
+  // When set on a "grouped" function, constrains placement across GPU-memory
+  // fabrics: the cluster is placed in co-fabric blocks of this size.
+  uint32 _experimental_fabric_size = 94;
+
   // If set, the function will be run in an untrusted environment.
   bool untrusted = 68;
 
@@ -2112,6 +2116,7 @@ message FunctionData {
   // When the function is a "grouped" one, this records the # of tasks we want
   // to schedule in tandem.
   uint32 _experimental_group_size = 19;
+  uint32 _experimental_fabric_size = 43;
   uint32 _experimental_buffer_containers = 22;
   bool _experimental_custom_scaling = 23;
   bool _experimental_enable_gpu_snapshot = 30;
