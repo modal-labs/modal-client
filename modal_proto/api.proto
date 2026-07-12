@@ -151,6 +151,12 @@ enum EndpointProvisioningStatus {
   ENDPOINT_PROVISIONING_STATUS_CANCELLED = 6;
 }
 
+enum EndpointServingMode {
+  ENDPOINT_SERVING_MODE_UNSPECIFIED = 0;
+  ENDPOINT_SERVING_MODE_DEDICATED = 1;
+  ENDPOINT_SERVING_MODE_SHARED = 2;
+}
+
 enum EndpointStopSource {
   ENDPOINT_STOP_SOURCE_UNSPECIFIED = 0;
   ENDPOINT_STOP_SOURCE_CLI = 1;
@@ -1464,6 +1470,7 @@ message EndpointCreateRequest {
   repeated EndpointInputModality input_modalities = 7;
   string environment_name = 8;
   bool unauthenticated = 9;
+  EndpointServingMode serving_mode = 10;
 }
 
 message EndpointCreateResponse {
