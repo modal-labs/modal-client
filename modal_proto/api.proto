@@ -1532,6 +1532,7 @@ message EndpointListItem {
   string created_by_avatar_url = 9;
   EndpointProvisioningStatus provisioning_status = 10;
   string status = 11;
+  EndpointServingMode serving_mode = 12;
 }
 
 message EndpointListRequest {
