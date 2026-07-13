@@ -349,7 +349,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         gpu: str | None = None,
         cloud: str | None = None,
         region: str | Sequence[str] | None = None,
-        cpu: float | None = None,
+        cpu: float | tuple[float, float] | None = None,
         memory: int | tuple[int, int] | None = None,
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
@@ -823,8 +823,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: int = 300,
         idle_timeout: int | None = None,
         workdir: str | None = None,
-        cpu: float | None = None,
-        memory: int | None = None,
+        cpu: float | tuple[float, float] | None = None,
+        memory: int | tuple[int, int] | None = None,
         cloud: str | None = None,
         region: str | Sequence[str] | None = None,
         block_network: bool = False,
@@ -851,6 +851,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         (i6pn), volumes, cloud bucket mounts (with static credentials via
         `secret=...` or `oidc_auth_role_arn`), OIDC identity tokens, proxies, and
         filesystem snapshots.
+
+        `cpu` and `memory` accept either a scalar request or a `(request, limit)`
+        tuple that additionally sets a hard limit (fractional CPU cores; memory
+        in MiB), matching `Sandbox.create()`.
 
         Features like memory snapshots, network file systems, GPUs, and custom
         domains are not supported.

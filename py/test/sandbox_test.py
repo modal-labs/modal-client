@@ -1154,6 +1154,17 @@ def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
         assert req.definition.resources.milli_cpu == 2000
 
 
+def test_experimental_sandbox_create_cpu_and_memory_limits(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, cpu=(0.5, 2), memory=(1024, 2048))
+        req = ctx.pop_request("SandboxCreateV2")
+
+        assert req.definition.resources.milli_cpu == 500
+        assert req.definition.resources.milli_cpu_max == 2000
+        assert req.definition.resources.memory_mb == 1024
+        assert req.definition.resources.memory_mb_max == 2048
+
+
 def test_experimental_sandbox_create_experimental_options(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, experimental_options={"enable_docker": True})
