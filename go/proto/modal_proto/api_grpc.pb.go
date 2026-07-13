@@ -175,6 +175,7 @@ const (
 	ModalClient_SandboxList_FullMethodName                      = "/modal.client.ModalClient/SandboxList"
 	ModalClient_SandboxListV2_FullMethodName                    = "/modal.client.ModalClient/SandboxListV2"
 	ModalClient_SandboxRestore_FullMethodName                   = "/modal.client.ModalClient/SandboxRestore"
+	ModalClient_SandboxSetName_FullMethodName                   = "/modal.client.ModalClient/SandboxSetName"
 	ModalClient_SandboxSnapshot_FullMethodName                  = "/modal.client.ModalClient/SandboxSnapshot"
 	ModalClient_SandboxSnapshotFs_FullMethodName                = "/modal.client.ModalClient/SandboxSnapshotFs"
 	ModalClient_SandboxSnapshotFsAsync_FullMethodName           = "/modal.client.ModalClient/SandboxSnapshotFsAsync"
@@ -433,6 +434,7 @@ type ModalClientClient interface {
 	SandboxList(ctx context.Context, in *SandboxListRequest, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	SandboxListV2(ctx context.Context, in *SandboxListRequest, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	SandboxRestore(ctx context.Context, in *SandboxRestoreRequest, opts ...grpc.CallOption) (*SandboxRestoreResponse, error)
+	SandboxSetName(ctx context.Context, in *SandboxSetNameRequest, opts ...grpc.CallOption) (*SandboxSetNameResponse, error)
 	SandboxSnapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error)
 	SandboxSnapshotFs(ctx context.Context, in *SandboxSnapshotFsRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsResponse, error)
 	SandboxSnapshotFsAsync(ctx context.Context, in *SandboxSnapshotFsAsyncRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsAsyncResponse, error)
@@ -2150,6 +2152,16 @@ func (c *modalClientClient) SandboxRestore(ctx context.Context, in *SandboxResto
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxSetName(ctx context.Context, in *SandboxSetNameRequest, opts ...grpc.CallOption) (*SandboxSetNameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxSetNameResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxSetName_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxSnapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxSnapshotResponse)
@@ -3117,6 +3129,7 @@ type ModalClientServer interface {
 	SandboxList(context.Context, *SandboxListRequest) (*SandboxListResponse, error)
 	SandboxListV2(context.Context, *SandboxListRequest) (*SandboxListResponse, error)
 	SandboxRestore(context.Context, *SandboxRestoreRequest) (*SandboxRestoreResponse, error)
+	SandboxSetName(context.Context, *SandboxSetNameRequest) (*SandboxSetNameResponse, error)
 	SandboxSnapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error)
 	SandboxSnapshotFs(context.Context, *SandboxSnapshotFsRequest) (*SandboxSnapshotFsResponse, error)
 	SandboxSnapshotFsAsync(context.Context, *SandboxSnapshotFsAsyncRequest) (*SandboxSnapshotFsAsyncResponse, error)
@@ -3676,6 +3689,9 @@ func (UnimplementedModalClientServer) SandboxListV2(context.Context, *SandboxLis
 }
 func (UnimplementedModalClientServer) SandboxRestore(context.Context, *SandboxRestoreRequest) (*SandboxRestoreResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxRestore not implemented")
+}
+func (UnimplementedModalClientServer) SandboxSetName(context.Context, *SandboxSetNameRequest) (*SandboxSetNameResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxSetName not implemented")
 }
 func (UnimplementedModalClientServer) SandboxSnapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxSnapshot not implemented")
@@ -6657,6 +6673,24 @@ func _ModalClient_SandboxRestore_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxSetName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxSetNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxSetName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxSetName_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxSetName(ctx, req.(*SandboxSetNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxSnapshotRequest)
 	if err := dec(in); err != nil {
@@ -8573,6 +8607,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SandboxRestore",
 			Handler:    _ModalClient_SandboxRestore_Handler,
+		},
+		{
+			MethodName: "SandboxSetName",
+			Handler:    _ModalClient_SandboxSetName_Handler,
 		},
 		{
 			MethodName: "SandboxSnapshot",
