@@ -656,6 +656,17 @@ def test_server_from_name_object_id_matches_created(client, servicer):
     assert my_server.object_id == created_object_id
 
 
+def test_server_from_name_hydrates_service_function_app_id(client, servicer):
+    server_app.deploy(client=client)
+
+    my_server = Server.from_name("server-test-app", "BasicServer", client=client)
+    my_server.hydrate(client=client)
+
+    service_function = my_server._get_service_function()
+    service_function_impl = synchronizer._translate_in(service_function)
+    assert service_function_impl._app_id == servicer.function_id_to_app_id[service_function.object_id]  # type: ignore[attr-defined]
+
+
 def test_server_from_name_failed_lookup_error(client, servicer):
     """Test that Server.from_name() raises NotFoundError with helpful message."""
     with pytest.raises(NotFoundError, match="Lookup failed.*MyServer.*my-nonexistent-app"):

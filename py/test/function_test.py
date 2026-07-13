@@ -18,7 +18,7 @@ import modal.experimental
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._partial_function import MAX_MAX_BATCH_SIZE
-from modal._utils.async_utils import synchronize_api
+from modal._utils.async_utils import synchronize_api, synchronizer
 from modal._vendor import cloudpickle
 from modal.client import Client
 from modal.exception import (
@@ -795,6 +795,46 @@ def test_function_spawn(client, servicer):
         assert "fc-2" in servicer.cancelled_calls
 
         assert function_call.object_id not in servicer.cleared_function_calls
+
+
+def test_function_hydrates_app_id(client, servicer):
+    app = App(include_source=False)
+
+    @app.function(name="f", serialized=True)
+    def f():
+        pass
+
+    running_app = deploy_app(app, "function-app-id-test", client=client)
+
+    remote_f = Function.from_name("function-app-id-test", "f", client=client)
+    remote_f.hydrate()
+
+    assert synchronizer._translate_in(remote_f)._app_id == running_app.app_id  # type: ignore[attr-defined]
+
+
+def test_function_call_hydrates_app_id_and_function_id(client, servicer):
+    app = App(include_source=False)
+
+    @app.function(serialized=True)
+    def f():
+        pass
+
+    with app.run(client=client):
+        function_id = f.object_id
+        app_id = servicer.function_id_to_app_id[function_id]
+        function_call = f.spawn()
+        function_call_id = function_call.object_id
+
+    function_call_impl = synchronizer._translate_in(function_call)
+    assert function_call_impl._app_id == app_id
+    assert function_call_impl._function_id == function_id
+
+    hydrated_function_call = FunctionCall.from_id(function_call_id, client=client)
+    assert hydrated_function_call.num_inputs() == 1
+
+    hydrated_function_call_impl = synchronizer._translate_in(hydrated_function_call)
+    assert hydrated_function_call_impl._app_id == app_id
+    assert hydrated_function_call_impl._function_id == function_id
 
 
 @pytest.mark.asyncio

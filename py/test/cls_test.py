@@ -590,6 +590,27 @@ def test_from_name_lazy_method_hydration(client, servicer):
         obj.non_exist.remote("hello")
 
 
+def test_from_name_method_inherits_app_id_from_service_function(client, servicer, monkeypatch):
+    running_app = deploy_app(app, "my-cls-app", client=client)
+    original_get_function_metadata = servicer.get_function_metadata
+
+    def get_function_metadata_without_method_app_id(function_id: str) -> api_pb2.FunctionHandleMetadata:
+        metadata = original_get_function_metadata(function_id)
+        for method_metadata in metadata.method_handle_metadata.values():
+            method_metadata.app_id = ""
+        return metadata
+
+    monkeypatch.setattr(servicer, "get_function_metadata", get_function_metadata_without_method_app_id)
+
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    obj = cls("foo", 234)
+
+    method_function = obj.bar
+    method_function.hydrate()
+
+    assert synchronizer._translate_in(method_function)._app_id == running_app.app_id  # type: ignore[attr-defined]
+
+
 def test_lookup_lazy_remote(client):
     # See #972 (PR) and #985 (revert PR): adding unit test to catch regression
     deploy_app(app, "my-cls-app", client=client)

@@ -627,6 +627,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _metadata: api_pb2.FunctionHandleMetadata | None = None
     _options: _FunctionOptions
     _base_function: "_Function | None" = None
+    _app_id: str | None = None
 
     @staticmethod
     def from_local(
@@ -1403,6 +1404,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             metadata.max_object_size_bytes if metadata.HasField("max_object_size_bytes") else MAX_OBJECT_SIZE_BYTES
         )
         self._experimental_flash_urls = metadata._experimental_flash_urls
+        self._app_id = metadata.app_id or None
 
         # Invalidate the Function variant cache when we load new metadata, since the base Function handle
         # is now in sync with the server but any previously-cached variants may be stale.
@@ -1412,6 +1414,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Overridden concrete implementation of base class method
         assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
         return api_pb2.FunctionHandleMetadata(
+            app_id=self._app_id or "",
             function_name=self._function_name,
             function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
@@ -1673,6 +1676,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, None)
         fc._num_inputs = num_inputs  # set the cached value of num_inputs
+        fc._app_id = self._app_id
+        fc._function_id = self.object_id
         return fc
 
     async def _call_function(self, args, kwargs) -> ReturnType:
@@ -1884,6 +1889,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             invocation.function_call_id, invocation.client, None
         )
         fc._is_generator = self._is_generator if self._is_generator else False
+        fc._app_id = self._app_id
+        fc._function_id = self.object_id
         return fc
 
     @synchronizer.no_input_translation
@@ -1920,6 +1927,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
             invocation.function_call_id, invocation.client, None
         )
+        fc._app_id = self._app_id
+        fc._function_id = self.object_id
         return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
@@ -1979,9 +1988,17 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
     _is_generator: bool = False
     _num_inputs: int | None = None
+    _app_id: str | None = None
+    _function_id: str | None = None
 
     def _invocation(self):
         return _Invocation(self.client.stub, self.object_id, self.client)
+
+    async def _hydrate_from_id_metadata(self) -> None:
+        """Hydrate metadata only when needed for FunctionCall fields."""
+        request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
+        resp = await self.client.stub.FunctionCallFromId(request)
+        self._hydrate_metadata(resp)
 
     @live_method
     async def num_inputs(self) -> int:
@@ -1991,9 +2008,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             How many inputs this function call includes (e.g. `1` for `.spawn()`, more for `.spawn_map()`).
         """
         if self._num_inputs is None:
-            request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
-            resp = await self.client.stub.FunctionCallFromId(request)
-            self._num_inputs = resp.num_inputs  # cached
+            await self._hydrate_from_id_metadata()
+        assert self._num_inputs is not None
         return self._num_inputs
 
     @live_method
@@ -2134,6 +2150,13 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=_client)
         )
         return typing.cast("modal.functions.FunctionCall[Any]", synchronizer._translate_out(impl_instance))
+
+    def _hydrate_metadata(self, metadata: Message | None):
+        # Overridden concrete implementation of base class method
+        if isinstance(metadata, api_pb2.FunctionCallFromIdResponse):
+            self._num_inputs = metadata.num_inputs
+            self._app_id = metadata.metadata.app_id or None
+            self._function_id = metadata.metadata.function_id or None
 
     @staticmethod
     async def gather(*function_calls: "_FunctionCall[T]") -> typing.Sequence[T]:
