@@ -1657,6 +1657,7 @@ message EnvironmentGetRolesResponse {
     EnvironmentRole role = 7;
     string role_str = 8;  // String representation for the CLI
     repeated EnvironmentRole choosable_roles = 9;
+    MemberRole member_role = 10;
   }
 
   string name = 1;
