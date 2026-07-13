@@ -3411,6 +3411,7 @@ message SandboxCreateV2Request {
   Sandbox definition = 2;
   StringMap ephemeral_secrets = 3;
   repeated SandboxTag tags = 4;
+  map<string, StringMap> cloud_bucket_mount_credentials = 5;
 }
 
 message SandboxCreateV2Response {
