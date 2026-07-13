@@ -106,7 +106,8 @@ from modal_proto import api_pb2
 from ._utils.logger import configure_logger
 from .exception import InvalidError, NotFoundError
 
-DEFAULT_SERVER_URL = "https://api.modal.com"  # TODO(erikbern): add modal2.com
+# By default, try api.modal.com and fail over to api.modal2.com
+DEFAULT_SERVER_URL = "https://api.modal.com,https://api.modal2.com"
 
 
 # Locate config file and read it

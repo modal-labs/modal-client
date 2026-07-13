@@ -325,7 +325,7 @@ def create_channel(
 async def create_channel_with_fallbacks(
     server_url: str,
     metadata: dict[str, str] = {},
-    stagger_delay: float = 1.0,
+    stagger_delay: float = 3.0,
 ) -> grpclib.client.Channel:
     """Create a connected channel, supporting comma-separated fallback URLs.
 
