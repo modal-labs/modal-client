@@ -420,12 +420,31 @@ async def test_create_channel_with_fallbacks_falls_back(servicer, monkeypatch):
 async def test_create_channel_with_fallbacks_fast_failover(servicer, monkeypatch):
     # A failing primary should fall over immediately, without waiting out the full stagger delay.
     monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
+
+    # Make the primary's connect fail instantly and deterministically. Relying on a real
+    # connection-refused (a closed port) or DNS failure (a bogus hostname) makes the timing
+    # OS/resolver/load-dependent, which is what made this test flaky. The fallback keeps its real
+    # channel, so the race still exercises a genuine successful connection.
+    primary_url = "https://primary.invalid"
+    real_create_channel = modal._utils.grpc_utils.create_channel
+
+    def fake_create_channel(url, *args, **kwargs):
+        channel = real_create_channel(url, *args, **kwargs)
+        if url == primary_url:
+
+            async def fail_connect():
+                raise OSError("connection refused")
+
+            monkeypatch.setattr(channel, "__connect__", fail_connect)
+        return channel
+
+    monkeypatch.setattr(modal._utils.grpc_utils, "create_channel", fake_create_channel)
+
     t0 = time.monotonic()
-    channel = await create_channel_with_fallbacks(f"https://xyz.invalid,{servicer.client_addr}", stagger_delay=1.0)
+    channel = await create_channel_with_fallbacks(f"{primary_url},{servicer.client_addr}", stagger_delay=1.0)
     elapsed = time.monotonic() - t0
     try:
         assert channel is not None
-        # If the fallback had waited for the stagger, this would take ~1s.
         assert elapsed < 0.5
     finally:
         channel.close()
