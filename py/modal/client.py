@@ -6,7 +6,7 @@ import sys
 import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, Collection, Mapping
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Coroutine, TypeVar
 
 import grpclib.client
 from google.protobuf import empty_pb2
@@ -41,7 +41,7 @@ def _get_metadata(client_type: int, credentials: tuple[str, str] | None, version
     # sys.version_info is structured unlike sys.version or platform.python_version()
     python_version = "%d.%d.%d" % (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
 
-    metadata = {
+    metadata: dict[str, str] = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
         "x-modal-python-version": python_version,
@@ -58,9 +58,15 @@ def _get_metadata(client_type: int, credentials: tuple[str, str] | None, version
         )
     if agent_env := _agent_environment():
         metadata["x-modal-agent-harness"] = urllib.parse.quote(agent_env)
+
+    override_headers = config.get("override_headers")
+    if override_headers:
+        metadata.update(override_headers)
+
     return metadata
 
 
+T = TypeVar("T")
 ReturnType = TypeVar("ReturnType")
 _Value = str | bytes
 _MetadataLike = Mapping[str, _Value] | Collection[tuple[str, _Value]]
@@ -308,7 +314,7 @@ class _Client:
             ("x-modal-auth-token", token),
         ]
 
-    async def _call_safely(self, coro, readable_method: str):
+    async def _call_safely(self, coro: Coroutine[Any, Any, T], readable_method: str) -> T:
         """Runs coroutine wrapped in a task that's part of the client's task context
 
         * Raises ClientClosed in case the client is closed while the coroutine is executed
@@ -364,11 +370,11 @@ class _Client:
     async def _call_unary(
         self,
         grpclib_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
-        request: Any,
+        request: RequestType,
         *,
         timeout: float | None = None,
         metadata: _MetadataLike | None = None,
-    ) -> Any:
+    ) -> ResponseType:
         coro = grpclib_method(request, timeout=timeout, metadata=metadata)
         return await self._call_safely(coro, grpclib_method.name)
 
@@ -376,10 +382,10 @@ class _Client:
     async def _call_stream(
         self,
         grpclib_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
-        request: Any,
+        request: RequestType,
         *,
         metadata: _MetadataLike | None,
-    ) -> AsyncGenerator[Any, None]:
+    ) -> AsyncGenerator[ResponseType, None]:
         stream_context = grpclib_method.open(metadata=metadata)
         stream = await self._call_safely(stream_context.__aenter__(), f"{grpclib_method.name}.open")
         try:

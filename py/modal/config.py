@@ -264,6 +264,33 @@ def _enforce_suffix_rules(x: str) -> str:
     return x
 
 
+def _transform_headers(s: str) -> dict[str, str]:
+    error_msg = (
+        "Must be a comma-separated list of `<header>:<value>` pairs (whitespace is ignored). "
+        "<header> and <value> must contain at least one non-whitespace character, and may "
+        "not contain commas."
+    )
+
+    if s == "":
+        return {}
+
+    pairs = s.split(",")
+
+    headers: dict[str, str] = {}
+    for pair in pairs:
+        res = pair.split(":", maxsplit=1)
+        if len(res) != 2:
+            raise ValueError(error_msg)
+
+        header, value = res[0].strip(), res[1].strip()
+        if len(header) == 0 or len(value) == 0:
+            raise ValueError(error_msg)
+
+        headers[header] = value
+
+    return headers
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -306,6 +333,7 @@ _SETTINGS = {
     "max_throttle_wait": _Setting(None, transform=lambda x: int(x) if x else None),
     "async_warnings": _Setting(True, transform=_to_boolean),  # Activate synchronicity usage warnings
     "disable_api_proxy": _Setting(False, transform=_to_boolean),
+    "override_headers": _Setting(None, transform=_transform_headers),
 }
 
 

@@ -10,7 +10,7 @@ import toml
 
 import modal
 from modal._utils.async_utils import synchronize_api
-from modal.config import Config, _lookup_workspace, config
+from modal.config import Config, _lookup_workspace, _transform_headers, config
 from modal.exception import InvalidError
 
 
@@ -201,3 +201,24 @@ def test_max_throttle_wait(modal_config, wait, expected):
     with modal_config(modal_toml):
         result = Config().get("max_throttle_wait")
         assert result == expected
+
+
+@pytest.mark.parametrize(
+    "input, output, failure_message",
+    [
+        ("", {}, None),
+        ("header: value", {"header": "value"}, None),
+        ("header:value,header2: value2", {"header": "value", "header2": "value2"}, None),
+        ("url-header:https://example.com", {"url-header": "https://example.com"}, None),
+        ("too-many-commas:hello,there", None, "Must be a comma-separated list"),
+        ("empty:", None, "must contain at least one non-whitespace character"),
+        (":", None, "must contain at least one non-whitespace character"),
+    ],
+)
+def test_extra_headers_parsing(input, output, failure_message):
+    if output is not None:
+        assert _transform_headers(input) == output
+
+    elif failure_message is not None:
+        with pytest.raises(ValueError, match=failure_message):
+            _transform_headers(input)
