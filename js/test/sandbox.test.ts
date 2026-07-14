@@ -27,7 +27,13 @@ import {
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
 import { TaskSetNetworkAccessRequest } from "../proto/modal_proto/task_command_router";
-import { TimeoutError } from "modal";
+import {
+  AlreadyExistsError,
+  ConflictError,
+  InvalidError,
+  TimeoutError,
+} from "modal";
+import { ClientError, Status } from "nice-grpc";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -1448,6 +1454,75 @@ test("ExperimentalFromName routes to V2 RPCs", async () => {
 
   mock.assertExhausted();
 });
+
+test("experimentalSetName routes to V2 RPC", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+
+  mock.handleUnary("/SandboxSetName", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    expect(req.name).toBe("my-sandbox");
+    return {};
+  });
+
+  await sb.experimentalSetName("my-sandbox");
+
+  mock.assertExhausted();
+});
+
+test("experimentalSetName rejects V1 sandboxes", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V1_SANDBOX_ID, {});
+
+  await expect(sb.experimentalSetName("my-sandbox")).rejects.toThrow(
+    "only supported for V2 sandboxes",
+  );
+});
+
+test("experimentalSetName rejects invalid names", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+
+  // Validation happens client-side, so no RPC is sent (no handler registered).
+  await expect(sb.experimentalSetName("bad name")).rejects.toThrow(
+    "Invalid Sandbox name",
+  );
+});
+
+test.each([
+  [Status.ALREADY_EXISTS, AlreadyExistsError],
+  [Status.INVALID_ARGUMENT, InvalidError],
+  [Status.FAILED_PRECONDITION, ConflictError],
+])(
+  "experimentalSetName maps gRPC status %s to a typed error",
+  async (status, errorClass) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+      isV2: true,
+      taskId: "ta-v2-123",
+    });
+
+    mock.handleUnary("/SandboxSetName", () => {
+      throw new ClientError(
+        "/modal.client.ModalClient/SandboxSetName",
+        status,
+        "server rejected the name",
+      );
+    });
+
+    await expect(sb.experimentalSetName("my-sandbox")).rejects.toBeInstanceOf(
+      errorClass,
+    );
+
+    mock.assertExhausted();
+  },
+);
 
 test("V2 Sandbox rejects V1-only runtime methods", async () => {
   const { mockClient: mc } = createMockModalClients();

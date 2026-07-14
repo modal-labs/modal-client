@@ -843,6 +843,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_result: api_pb2.GenericResult | None = None
         self._sandbox_terminated = False
         self.sandbox_tags: dict[str, dict[str, str]] = {}
+        self.sandbox_names: dict[str, str] = {}
 
         self.shell_prompt = None
         self.container_exec: asyncio.subprocess.Process = None
@@ -2813,6 +2814,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SandboxTagsSetRequest = await stream.recv_message()
         self.sandbox_tags[request.sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
         await stream.send_message(Empty())
+
+    async def SandboxSetName(self, stream):
+        request: api_pb2.SandboxSetNameRequest = await stream.recv_message()
+        if not request.name:
+            raise GRPCError(Status.INVALID_ARGUMENT, "name is required")
+        if request.sandbox_id in self.sandbox_names:
+            raise GRPCError(Status.FAILED_PRECONDITION, f"sandbox {request.sandbox_id} already has a name")
+        for holder_id, held_name in self.sandbox_names.items():
+            if held_name == request.name and holder_id != request.sandbox_id:
+                raise GRPCError(Status.ALREADY_EXISTS, f"sandbox name {request.name!r} is already in use")
+        self.sandbox_names[request.sandbox_id] = request.name
+        await stream.send_message(api_pb2.SandboxSetNameResponse())
+
+    async def SandboxGetFromNameV2(self, stream):
+        request: api_pb2.SandboxGetFromNameRequest = await stream.recv_message()
+        for sandbox_id, name in self.sandbox_names.items():
+            if name == request.sandbox_name:
+                await stream.send_message(api_pb2.SandboxGetFromNameResponse(sandbox_id=sandbox_id))
+                return
+        raise GRPCError(Status.NOT_FOUND, f"sandbox with name {request.sandbox_name!r} not found")
 
     async def SandboxTerminate(self, stream):
         self._sandbox_terminated = True

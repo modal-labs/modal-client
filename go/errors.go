@@ -56,6 +56,16 @@ func (e AlreadyExistsError) Error() string {
 	return "AlreadyExistsError: " + e.Exception
 }
 
+// ConflictError is returned when the current state of a resource conflicts
+// with the requested operation.
+type ConflictError struct {
+	Exception string
+}
+
+func (e ConflictError) Error() string {
+	return "ConflictError: " + e.Exception
+}
+
 // InvalidError represents an invalid request or operation.
 type InvalidError struct {
 	Exception string

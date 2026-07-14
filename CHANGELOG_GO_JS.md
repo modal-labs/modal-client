@@ -4,7 +4,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-No unreleased changes.
+- (Go, JS) Added a `ConflictError` error type, returned when the current state of a resource conflicts with the requested operation.
 
 ## js/v0.9.0, go/v0.9.0
 

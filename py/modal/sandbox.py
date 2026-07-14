@@ -1321,6 +1321,31 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
             await stub.SandboxTagsSet(req)
 
+    async def _experimental_set_name(self, name: str) -> None:
+        """Assign a name to a running V2 Sandbox that was created without one.
+
+        This is only supported for V2 sandboxes, ie sandboxes created via
+        `modal.Sandbox._experimental_create`. A name may only be set once and
+        only on a Sandbox that has never had one; afterwards the Sandbox can
+        be looked up with `Sandbox._experimental_from_name(app_name, name)`.
+
+        Args:
+            name: Name to assign to the Sandbox. Must be unique within the App.
+
+        Raises:
+            AlreadyExistsError: If another running Sandbox in the App already holds the name.
+            ConflictError: If the Sandbox already has a name or is no longer running.
+        """
+        self._ensure_attached()
+        if not self._is_v2:
+            raise InvalidError("Sandbox._experimental_set_name() is only supported for V2 sandboxes")
+        check_object_name(name, "Sandbox")
+
+        req = api_pb2.SandboxSetNameRequest(sandbox_id=self.object_id, name=name)
+        assert self._client._auth_token_manager
+        auth_token = await self._client._auth_token_manager.get_token()
+        await self._client.stub.SandboxSetName(req, metadata=[("x-modal-auth-token", auth_token)])
+
     async def _experimental_set_outbound_network_policy(
         self,
         *,

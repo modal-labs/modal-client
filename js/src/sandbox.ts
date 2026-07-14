@@ -52,6 +52,7 @@ import {
   validateEnvVarKeys,
 } from "./secret";
 import {
+  ConflictError,
   InvalidError,
   NotFoundError,
   SandboxTimeoutError,
@@ -59,6 +60,7 @@ import {
   ClientClosedError,
 } from "./errors";
 import { Image } from "./image";
+import { checkObjectName } from "./name_utils";
 import { volumeToMountProto, type Volume } from "./volume";
 import type { Proxy } from "./proxy";
 import type { CloudBucketMount } from "./cloud_bucket_mount";
@@ -1538,6 +1540,47 @@ export class Sandbox {
     return tags;
   }
 
+  /**
+   * Assign a name to a running V2 {@link Sandbox} that was created without one.
+   *
+   * This is only supported for V2 Sandboxes, i.e. Sandboxes created via
+   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
+   * A name may only be set once, and only on a Sandbox that has never had one;
+   * afterwards the Sandbox can be looked up with
+   * {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()}.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   *
+   * @param name - Name to assign to the Sandbox. Must be unique within the App.
+   * @throws {AlreadyExistsError} If another running Sandbox in the App already holds the name.
+   * @throws {InvalidError} If the server rejects the name as invalid.
+   * @throws {ConflictError} If the Sandbox already has a name or is no longer running.
+   */
+  async experimentalSetName(name: string): Promise<void> {
+    this.#ensureAttached();
+    this.#ensureV2("experimentalSetName");
+    checkObjectName(name, "Sandbox");
+    try {
+      await this.#client.cpClient.sandboxSetName({
+        sandboxId: this.sandboxId,
+        name,
+      });
+    } catch (err) {
+      if (err instanceof ClientError) {
+        const message = err.details || err.message;
+        switch (err.code) {
+          case Status.ALREADY_EXISTS:
+            throw new AlreadyExistsError(message);
+          case Status.INVALID_ARGUMENT:
+            throw new InvalidError(message);
+          case Status.FAILED_PRECONDITION:
+            throw new ConflictError(message);
+        }
+      }
+      throw err;
+    }
+  }
+
   async exec(
     command: string[],
     params?: SandboxExecParams & { mode?: "text" },
@@ -1632,6 +1675,14 @@ export class Sandbox {
     if (this.#isV2) {
       throw new InvalidError(
         `Sandbox.${methodName} is not supported for V2 sandboxes`,
+      );
+    }
+  }
+
+  #ensureV2(methodName: string): void {
+    if (!this.#isV2) {
+      throw new InvalidError(
+        `Sandbox.${methodName} is only supported for V2 sandboxes`,
       );
     }
   }

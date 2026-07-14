@@ -14,6 +14,7 @@ export {
   RemoteError,
   InternalFailure,
   NotFoundError,
+  ConflictError,
   InvalidError,
   AlreadyExistsError,
   QueueEmptyError,

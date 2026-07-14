@@ -21,7 +21,7 @@ from modal import (
     Secret,
     Volume,
 )
-from modal.exception import ConflictError, DeprecationError, InvalidError, TimeoutError
+from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
 from modal.sandbox import SandboxVersion, SidecarContainer, _get_sandbox_version
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
@@ -266,6 +266,58 @@ def test_sandbox_from_id_rejects_invalid_id(client, servicer):
 
     assert ctx.get_requests("SandboxWait") == []
     assert ctx.get_requests("SandboxWaitV2") == []
+
+
+# Two distinct valid V2 (ULID) Sandbox IDs, used to exercise name reservations
+# across separate sandboxes.
+_V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+_V2_SANDBOX_ID_2 = "sb-01ARZ3NDEKTSV4RRFFQ69G5FBV"
+
+
+def test_experimental_set_name_rejects_v1(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="only supported for V2 sandboxes"):
+            sb._experimental_set_name("my-sandbox")
+
+    assert ctx.get_requests("SandboxSetName") == []
+
+
+def test_experimental_set_name_rejects_invalid_name(app, servicer):
+    sb = Sandbox._experimental_create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="Invalid Sandbox name"):
+            sb._experimental_set_name("bad name")
+
+    # Validation happens client-side, so no RPC should be sent.
+    assert ctx.get_requests("SandboxSetName") == []
+
+
+def test_experimental_set_name_twice_conflicts(client, servicer):
+    sb = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
+    sb._experimental_set_name("first")
+
+    with pytest.raises(ConflictError, match="already has a name"):
+        sb._experimental_set_name("second")
+
+
+def test_experimental_set_name_duplicate_conflicts(client, servicer):
+    first = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
+    first._experimental_set_name("shared")
+
+    second = Sandbox.from_id(_V2_SANDBOX_ID_2, client=client)
+    with pytest.raises(AlreadyExistsError, match="already in use"):
+        second._experimental_set_name("shared")
+
+
+def test_experimental_set_name_then_from_name_roundtrip(client, servicer):
+    sb = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
+    sb._experimental_set_name("round-trip")
+
+    resolved = Sandbox._experimental_from_name("my-app", "round-trip", client=client)
+    assert resolved.object_id == sb.object_id
 
 
 def test_sandbox_terminate(app, servicer):
@@ -1727,6 +1779,7 @@ detach_error_funcs = {
     "_experimental_set_outbound_network_policy": lambda sb: sb._experimental_set_outbound_network_policy(
         outbound_domain_allowlist=[], outbound_cidr_allowlist=[]
     ),
+    "_experimental_set_name": lambda sb: sb._experimental_set_name("my-name"),
     "snapshot_filesystem": lambda sb: sb.snapshot_filesystem(),
     "snapshot_directory": lambda sb: sb.snapshot_directory("/tmp"),
     "tunnels": lambda sb: sb.tunnels(),

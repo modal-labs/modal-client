@@ -10,6 +10,8 @@ import (
 
 	modal "github.com/modal-labs/modal-client/go"
 	"github.com/modal-labs/modal-client/go/internal/grpcmock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
@@ -1391,6 +1393,100 @@ func TestSandboxExperimentalFromNameRoutesV2(t *testing.T) {
 	_, err = sb.Terminate(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxExperimentalSetName(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+	sandboxID := validV2SandboxID
+
+	grpcmock.HandleUnary(mock, "SandboxSetName",
+		func(req *pb.SandboxSetNameRequest) (*pb.SandboxSetNameResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			g.Expect(req.GetName()).To(gomega.Equal("my-sandbox"))
+			return pb.SandboxSetNameResponse_builder{}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.FromID(ctx, sandboxID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	err = sb.ExperimentalSetName(ctx, "my-sandbox", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxExperimentalSetNameMapsGRPCErrors(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		code     codes.Code
+		expected error
+	}{
+		{"AlreadyExists", codes.AlreadyExists, modal.AlreadyExistsError{}},
+		{"InvalidArgument", codes.InvalidArgument, modal.InvalidError{}},
+		{"FailedPrecondition", codes.FailedPrecondition, modal.ConflictError{}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			ctx := t.Context()
+			mock := newGRPCMockClient(t)
+
+			grpcmock.HandleUnary(mock, "SandboxSetName",
+				func(req *pb.SandboxSetNameRequest) (*pb.SandboxSetNameResponse, error) {
+					return nil, status.Errorf(tc.code, "server rejected the name")
+				})
+
+			sb, err := mock.Sandboxes.FromID(ctx, validV2SandboxID, nil)
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+			err = sb.ExperimentalSetName(ctx, "my-sandbox", nil)
+			g.Expect(err).To(gomega.BeAssignableToTypeOf(tc.expected))
+			g.Expect(err.Error()).To(gomega.ContainSubstring("server rejected the name"))
+
+			g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+		})
+	}
+}
+
+func TestSandboxExperimentalSetNameRejectsV1(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	err = sb.ExperimentalSetName(ctx, "my-sandbox", nil)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("only supported for V2 sandboxes"))
+
+	// No RPC should be sent when the version guard rejects the call.
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxExperimentalSetNameRejectsInvalidName(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	sb, err := mock.Sandboxes.FromID(ctx, validV2SandboxID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	err = sb.ExperimentalSetName(ctx, "bad name", nil)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Invalid Sandbox name"))
+
+	// Validation happens client-side, so no RPC should be sent.
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 

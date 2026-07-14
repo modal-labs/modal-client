@@ -46,6 +46,14 @@ export class AlreadyExistsError extends Error {
   }
 }
 
+/** The current state of a resource conflicts with the requested operation. */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConflictError";
+  }
+}
+
 /** A request or other operation was invalid. */
 export class InvalidError extends Error {
   constructor(message: string) {

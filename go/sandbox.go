@@ -872,6 +872,9 @@ type SandboxPollParams struct{}
 // SandboxSetTagsParams are options for Sandbox.SetTags.
 type SandboxSetTagsParams struct{}
 
+// SandboxExperimentalSetNameParams are options for Sandbox.ExperimentalSetName.
+type SandboxExperimentalSetNameParams struct{}
+
 // SandboxGetTagsParams are options for Sandbox.GetTags.
 type SandboxGetTagsParams struct{}
 
@@ -1271,6 +1274,13 @@ func (sb *Sandbox) ensureAttached() error {
 func (sb *Sandbox) ensureV1(methodName string) error {
 	if sb.isV2 {
 		return InvalidError{Exception: fmt.Sprintf("Sandbox.%s is not supported for V2 sandboxes", methodName)}
+	}
+	return nil
+}
+
+func (sb *Sandbox) ensureV2(methodName string) error {
+	if !sb.isV2 {
+		return InvalidError{Exception: fmt.Sprintf("Sandbox.%s is only supported for V2 sandboxes", methodName)}
 	}
 	return nil
 }
@@ -1735,6 +1745,43 @@ func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string, params *
 		Tags:            tagsList,
 	}.Build())
 	return err
+}
+
+// ExperimentalSetName assigns a name to a running V2 Sandbox that was created
+// without one, i.e. a Sandbox created via ExperimentalCreate. A name may only be
+// set once, and only on a Sandbox that has never had one; afterwards the Sandbox
+// can be looked up with ExperimentalFromName. Names must be unique within an App.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (sb *Sandbox) ExperimentalSetName(ctx context.Context, name string, params *SandboxExperimentalSetNameParams) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if err := sb.ensureV2("ExperimentalSetName"); err != nil {
+		return err
+	}
+	if err := checkObjectName(name, "Sandbox"); err != nil {
+		return err
+	}
+
+	_, err := sb.client.cpClient.SandboxSetName(ctx, pb.SandboxSetNameRequest_builder{
+		SandboxId: sb.SandboxID,
+		Name:      name,
+	}.Build())
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.AlreadyExists:
+				return AlreadyExistsError{Exception: st.Message()}
+			case codes.InvalidArgument:
+				return InvalidError{Exception: st.Message()}
+			case codes.FailedPrecondition:
+				return ConflictError{Exception: st.Message()}
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 // GetTags fetches any tags (key-value pairs) currently attached to this Sandbox from the server.
