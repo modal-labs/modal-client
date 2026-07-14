@@ -842,6 +842,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         experimental_options: dict[str, Any] | None = None,
         include_oidc_identity_token: bool = False,
         verbose: bool = False,
+        custom_domain: str | None = None,
         client: _Client | None = None,
     ) -> "_Sandbox":
         """Create a sandbox using the V2 backend.
@@ -849,15 +850,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         Supported features include exec, encrypted tunnels, wait/poll/terminate,
         CPU and memory configuration, region placement, private IPv6 networking
         (i6pn), volumes, cloud bucket mounts (with static credentials via
-        `secret=...` or `oidc_auth_role_arn`), OIDC identity tokens, proxies, and
-        filesystem snapshots.
+        `secret=...` or `oidc_auth_role_arn`), OIDC identity tokens, proxies,
+        filesystem snapshots, and custom domains (`custom_domain=...` allows
+        connections to the sandbox via a subdomain of that parent domain rather
+        than a default Modal domain; requires prior setup by Modal).
 
         `cpu` and `memory` accept either a scalar request or a `(request, limit)`
         tuple that additionally sets a hard limit (fractional CPU cores; memory
         in MiB), matching `Sandbox.create()`.
 
-        Features like memory snapshots, network file systems, GPUs, and custom
-        domains are not supported.
+        Features like memory snapshots, network file systems, and GPUs are not
+        supported.
 
         Set `i6pn=True` to enable private IPv6 networking so sandboxes in the same
         workspace can address each other directly at their `i6pn.modal.local`
@@ -996,6 +999,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 experimental_options_v2=(
                     {k: str(v) for k, v in experimental_options.items()} if experimental_options else None
                 ),
+                custom_domain=custom_domain,
             )
 
             tag_protos = [api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()] if tags else []

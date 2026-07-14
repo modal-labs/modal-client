@@ -646,9 +646,6 @@ export async function buildSandboxCreateV2RequestProto(
   if (params.gpu) {
     throw new Error("GPUs are not supported by experimentalCreate");
   }
-  if (params.customDomain) {
-    throw new Error("custom domains are not supported by experimentalCreate");
-  }
 
   const req = await buildSandboxCreateRequestProto(appId, imageId, params);
 
@@ -741,10 +738,12 @@ export class SandboxService {
    * Supported features include exec, encrypted tunnels, wait/poll/terminate,
    * CPU and memory configuration, region placement, volumes, cloud bucket
    * mounts (with static credentials via {@link Secret} or `oidcAuthRoleArn`),
-   * OIDC identity tokens, {@link Proxy proxies}, and filesystem snapshots.
+   * OIDC identity tokens, {@link Proxy proxies}, filesystem snapshots, and
+   * custom domains (`customDomain` allows connections to the Sandbox via a
+   * subdomain of that parent domain rather than a default Modal domain;
+   * requires prior setup by Modal).
    *
-   * Features like memory snapshots, GPUs, and custom domains are not
-   * supported.
+   * Features like memory snapshots and GPUs are not supported.
    *
    * V2 sandboxes created with this method are not currently returned by
    * {@link SandboxService#list client.sandboxes.list()}. A named Sandbox can be

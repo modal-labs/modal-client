@@ -488,9 +488,6 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 	if params.GPU != "" {
 		return nil, fmt.Errorf("GPUs are not supported by ExperimentalCreate")
 	}
-	if params.CustomDomain != "" {
-		return nil, fmt.Errorf("custom domains are not supported by ExperimentalCreate")
-	}
 
 	req, err := buildSandboxCreateRequestProto(appID, imageID, params)
 	if err != nil {
@@ -560,10 +557,11 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 // Supported features include exec, encrypted tunnels, wait/poll/terminate,
 // CPU and memory configuration, region placement, volumes, cloud bucket
 // mounts (with static credentials via Secret or OidcAuthRoleArn), OIDC identity
-// tokens, proxies, and filesystem snapshots.
+// tokens, proxies, filesystem snapshots, and custom domains (CustomDomain
+// allows connections to the Sandbox via a subdomain of that parent domain
+// rather than a default Modal domain; requires prior setup by Modal).
 //
-// Features like memory snapshots, GPUs, and custom domains are not
-// supported.
+// Features like memory snapshots and GPUs are not supported.
 //
 // V2 sandboxes created with this method are not currently returned by List. A
 // named Sandbox can be looked up with ExperimentalFromName; otherwise store

@@ -86,11 +86,6 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			params:  SandboxCreateParams{GPU: "A10G"},
 			wantErr: "GPUs are not supported",
 		},
-		{
-			name:    "custom domain",
-			params:  SandboxCreateParams{CustomDomain: "example.com"},
-			wantErr: "custom domains are not supported",
-		},
 	}
 
 	for _, tt := range tests {
@@ -103,6 +98,17 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			g.Expect(err.Error()).To(gomega.ContainSubstring(tt.wantErr))
 		})
 	}
+}
+
+func TestSandboxCreateV2RequestProto_CustomDomain(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
+		CustomDomain: "sandboxes.example.com",
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetCustomDomain()).To(gomega.Equal("sandboxes.example.com"))
 }
 
 func TestSandboxCreateV2RequestProto_VolumesAndCloudBucketMounts(t *testing.T) {

@@ -1237,14 +1237,7 @@ test("buildSandboxCreateV2RequestProto rejects non-boolean experimental options"
   ).rejects.toThrow("must be a boolean");
 });
 
-test.each([
-  ["gpu", { gpu: "A10G" }, "GPUs are not supported"],
-  [
-    "custom domain",
-    { customDomain: "example.com" },
-    "custom domains are not supported",
-  ],
-])(
+test.each([["gpu", { gpu: "A10G" }, "GPUs are not supported"]])(
   "buildSandboxCreateV2RequestProto rejects unsupported option %s",
   async (_name, params, expectedError) => {
     await expect(
@@ -1252,6 +1245,13 @@ test.each([
     ).rejects.toThrow(expectedError);
   },
 );
+
+test("buildSandboxCreateV2RequestProto supports custom domains", async () => {
+  const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+    customDomain: "sandboxes.example.com",
+  });
+  expect(req.definition?.customDomain).toBe("sandboxes.example.com");
+});
 
 test("buildSandboxCreateV2RequestProto supports volumes and cloud bucket mounts", async () => {
   const cbm = tc.cloudBucketMounts.create("my-bucket");

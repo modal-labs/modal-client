@@ -1165,6 +1165,14 @@ def test_experimental_sandbox_create_cpu_and_memory_limits(app, servicer):
         assert req.definition.resources.memory_mb_max == 2048
 
 
+def test_experimental_sandbox_create_custom_domain(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, custom_domain="sandboxes.example.com")
+        req = ctx.pop_request("SandboxCreateV2")
+
+        assert req.definition.custom_domain == "sandboxes.example.com"
+
+
 def test_experimental_sandbox_create_experimental_options(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, experimental_options={"enable_docker": True})
