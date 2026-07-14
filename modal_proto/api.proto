@@ -1571,8 +1571,8 @@ message EndpointStopRequest {
 message EndpointStopResponse {}
 
 message EnvironmentBillingSummaryRequest {
+  // all query intervals are implicitly one month long (to line up with billing cycles)
   google.protobuf.Timestamp start_timestamp = 1;
-  google.protobuf.Timestamp end_timestamp = 2;
   string environment_id = 3;
 }
 
@@ -4438,8 +4438,8 @@ message WorkspaceBillingReportRequest {
 }
 
 message WorkspaceBillingSummaryRequest {
+  // all query intervals are implicitly one month long (to line up with billing cycles)
   google.protobuf.Timestamp start_timestamp = 1;
-  google.protobuf.Timestamp end_timestamp = 2;
 }
 
 message WorkspaceBillingSummaryResponse {
