@@ -3513,6 +3513,7 @@ message SandboxInfo {
   optional double ready_at = 13;
   optional Probe readiness_probe = 14;
   repeated TunnelData tunnels = 15;
+  SandboxHandleMetadata metadata = 16;
 }
 
 
