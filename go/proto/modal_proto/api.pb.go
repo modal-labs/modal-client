@@ -21042,6 +21042,7 @@ type EnvironmentRoleSetRequest struct {
 	xxx_hidden_UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3"`
 	xxx_hidden_ServiceUserId string                 `protobuf:"bytes,3,opt,name=service_user_id,json=serviceUserId,proto3"`
 	xxx_hidden_Role          EnvironmentRole        `protobuf:"varint,4,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
+	xxx_hidden_RoleStr       string                 `protobuf:"bytes,5,opt,name=role_str,json=roleStr,proto3"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -21099,6 +21100,13 @@ func (x *EnvironmentRoleSetRequest) GetRole() EnvironmentRole {
 	return EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED
 }
 
+func (x *EnvironmentRoleSetRequest) GetRoleStr() string {
+	if x != nil {
+		return x.xxx_hidden_RoleStr
+	}
+	return ""
+}
+
 func (x *EnvironmentRoleSetRequest) SetEnvironmentId(v string) {
 	x.xxx_hidden_EnvironmentId = v
 }
@@ -21115,6 +21123,10 @@ func (x *EnvironmentRoleSetRequest) SetRole(v EnvironmentRole) {
 	x.xxx_hidden_Role = v
 }
 
+func (x *EnvironmentRoleSetRequest) SetRoleStr(v string) {
+	x.xxx_hidden_RoleStr = v
+}
+
 type EnvironmentRoleSetRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -21122,6 +21134,7 @@ type EnvironmentRoleSetRequest_builder struct {
 	UserId        string
 	ServiceUserId string
 	Role          EnvironmentRole
+	RoleStr       string
 }
 
 func (b0 EnvironmentRoleSetRequest_builder) Build() *EnvironmentRoleSetRequest {
@@ -21132,6 +21145,7 @@ func (b0 EnvironmentRoleSetRequest_builder) Build() *EnvironmentRoleSetRequest {
 	x.xxx_hidden_UserId = b.UserId
 	x.xxx_hidden_ServiceUserId = b.ServiceUserId
 	x.xxx_hidden_Role = b.Role
+	x.xxx_hidden_RoleStr = b.RoleStr
 	return m0
 }
 
@@ -62569,12 +62583,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13EnvironmentMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\bsettings\x18\x02 \x01(\v2!.modal.client.EnvironmentSettingsR\bsettings\x12H\n" +
-	"\x10environment_type\x18\x03 \x01(\x0e2\x1d.modal.client.EnvironmentTypeR\x0fenvironmentType\"\xb6\x01\n" +
+	"\x10environment_type\x18\x03 \x01(\x0e2\x1d.modal.client.EnvironmentTypeR\x0fenvironmentType\"\xd1\x01\n" +
 	"\x19EnvironmentRoleSetRequest\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12&\n" +
 	"\x0fservice_user_id\x18\x03 \x01(\tR\rserviceUserId\x121\n" +
-	"\x04role\x18\x04 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\"\xb7\x01\n" +
+	"\x04role\x18\x04 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\x12\x19\n" +
+	"\brole_str\x18\x05 \x01(\tR\aroleStr\"\xb7\x01\n" +
 	"\x1bEnvironmentSetBudgetRequest\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x125\n" +
 	"\x14cycle_budget_dollars\x18\x02 \x01(\x01H\x00R\x12cycleBudgetDollars\x88\x01\x01\x12!\n" +

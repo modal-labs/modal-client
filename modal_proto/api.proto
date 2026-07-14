@@ -1699,6 +1699,7 @@ message EnvironmentRoleSetRequest {
   string user_id = 2;
   string service_user_id = 3;
   EnvironmentRole role = 4;
+  string role_str = 5;  // String representation from the CLI; parsed when role is unspecified
 }
 
 message EnvironmentSetBudgetRequest {
