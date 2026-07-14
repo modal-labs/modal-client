@@ -85,6 +85,7 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         self.last_exec_start_request: sr_pb2.TaskExecStartRequest | None = None
         self.last_container_create_request: sr_pb2.TaskContainerCreateRequest | None = None
         self.last_snapshot_filesystem_request: sr_pb2.TaskSnapshotFilesystemRequest | None = None
+        self.last_snapshot_memory_request: sr_pb2.TaskSnapshotMemoryRequest | None = None
         self.shell_prompt: bytes | None = None
 
     def _task_state(self, task_id: str) -> TaskCommandRouterTaskState:
@@ -259,6 +260,14 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
             self._snapshot_filesystem_requests = []
         self._snapshot_filesystem_requests.append(request)
         await stream.send_message(sr_pb2.TaskSnapshotFilesystemResponse(image_id="im-snapshot-fs-123"))
+
+    async def TaskSnapshotMemory(self, stream) -> None:
+        request: sr_pb2.TaskSnapshotMemoryRequest = await stream.recv_message()
+        self.last_snapshot_memory_request = request
+        if not hasattr(self, "_snapshot_memory_requests"):
+            self._snapshot_memory_requests = []
+        self._snapshot_memory_requests.append(request)
+        await stream.send_message(sr_pb2.TaskSnapshotMemoryResponse(snapshot_id="sn-snapshot-mem-123"))
 
     def _container_result(
         self, task_state: TaskCommandRouterTaskState, container_id: str

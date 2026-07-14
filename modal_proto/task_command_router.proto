@@ -348,6 +348,15 @@ message TaskSnapshotFilesystemResponse {
   string image_id = 1;
 }
 
+message TaskSnapshotMemoryRequest {
+  string task_id = 1;
+  string idempotency_key = 2;
+}
+
+message TaskSnapshotMemoryResponse {
+  string snapshot_id = 1;
+}
+
 message TaskUnmountDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
@@ -395,6 +404,11 @@ service TaskCommandRouter {
   rpc TaskSnapshotDirectory(TaskSnapshotDirectoryRequest) returns (TaskSnapshotDirectoryResponse);
   // Snapshot the full task filesystem into a new image.
   rpc TaskSnapshotFilesystem(TaskSnapshotFilesystemRequest) returns (TaskSnapshotFilesystemResponse);
+  // Take a memory snapshot of the task's sandbox container. Idempotency is
+  // keyed on the request idempotency_key: concurrent and repeated calls with
+  // the same key share one snapshot attempt. A successful snapshot currently
+  // terminates the container.
+  rpc TaskSnapshotMemory(TaskSnapshotMemoryRequest) returns (TaskSnapshotMemoryResponse);
   // Unmount an image previously mounted at a directory in the container.
   rpc TaskUnmountDirectory(TaskUnmountDirectoryRequest) returns (google.protobuf.Empty);
 }

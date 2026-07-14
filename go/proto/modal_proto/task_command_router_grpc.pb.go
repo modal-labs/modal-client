@@ -40,6 +40,7 @@ const (
 	TaskCommandRouter_TaskSetNetworkAccess_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskSetNetworkAccess"
 	TaskCommandRouter_TaskSnapshotDirectory_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotDirectory"
 	TaskCommandRouter_TaskSnapshotFilesystem_FullMethodName   = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotFilesystem"
+	TaskCommandRouter_TaskSnapshotMemory_FullMethodName       = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotMemory"
 	TaskCommandRouter_TaskUnmountDirectory_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskUnmountDirectory"
 )
 
@@ -88,6 +89,11 @@ type TaskCommandRouterClient interface {
 	TaskSnapshotDirectory(ctx context.Context, in *TaskSnapshotDirectoryRequest, opts ...grpc.CallOption) (*TaskSnapshotDirectoryResponse, error)
 	// Snapshot the full task filesystem into a new image.
 	TaskSnapshotFilesystem(ctx context.Context, in *TaskSnapshotFilesystemRequest, opts ...grpc.CallOption) (*TaskSnapshotFilesystemResponse, error)
+	// Take a memory snapshot of the task's sandbox container. Idempotency is
+	// keyed on the request idempotency_key: concurrent and repeated calls with
+	// the same key share one snapshot attempt. A successful snapshot currently
+	// terminates the container.
+	TaskSnapshotMemory(ctx context.Context, in *TaskSnapshotMemoryRequest, opts ...grpc.CallOption) (*TaskSnapshotMemoryResponse, error)
 	// Unmount an image previously mounted at a directory in the container.
 	TaskUnmountDirectory(ctx context.Context, in *TaskUnmountDirectoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
@@ -321,6 +327,16 @@ func (c *taskCommandRouterClient) TaskSnapshotFilesystem(ctx context.Context, in
 	return out, nil
 }
 
+func (c *taskCommandRouterClient) TaskSnapshotMemory(ctx context.Context, in *TaskSnapshotMemoryRequest, opts ...grpc.CallOption) (*TaskSnapshotMemoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskSnapshotMemoryResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskSnapshotMemory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *taskCommandRouterClient) TaskUnmountDirectory(ctx context.Context, in *TaskUnmountDirectoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -376,6 +392,11 @@ type TaskCommandRouterServer interface {
 	TaskSnapshotDirectory(context.Context, *TaskSnapshotDirectoryRequest) (*TaskSnapshotDirectoryResponse, error)
 	// Snapshot the full task filesystem into a new image.
 	TaskSnapshotFilesystem(context.Context, *TaskSnapshotFilesystemRequest) (*TaskSnapshotFilesystemResponse, error)
+	// Take a memory snapshot of the task's sandbox container. Idempotency is
+	// keyed on the request idempotency_key: concurrent and repeated calls with
+	// the same key share one snapshot attempt. A successful snapshot currently
+	// terminates the container.
+	TaskSnapshotMemory(context.Context, *TaskSnapshotMemoryRequest) (*TaskSnapshotMemoryResponse, error)
 	// Unmount an image previously mounted at a directory in the container.
 	TaskUnmountDirectory(context.Context, *TaskUnmountDirectoryRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedTaskCommandRouterServer()
@@ -447,6 +468,9 @@ func (UnimplementedTaskCommandRouterServer) TaskSnapshotDirectory(context.Contex
 }
 func (UnimplementedTaskCommandRouterServer) TaskSnapshotFilesystem(context.Context, *TaskSnapshotFilesystemRequest) (*TaskSnapshotFilesystemResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskSnapshotFilesystem not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskSnapshotMemory(context.Context, *TaskSnapshotMemoryRequest) (*TaskSnapshotMemoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskSnapshotMemory not implemented")
 }
 func (UnimplementedTaskCommandRouterServer) TaskUnmountDirectory(context.Context, *TaskUnmountDirectoryRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskUnmountDirectory not implemented")
@@ -807,6 +831,24 @@ func _TaskCommandRouter_TaskSnapshotFilesystem_Handler(srv interface{}, ctx cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TaskCommandRouter_TaskSnapshotMemory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskSnapshotMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskSnapshotMemory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskSnapshotMemory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskSnapshotMemory(ctx, req.(*TaskSnapshotMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _TaskCommandRouter_TaskUnmountDirectory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TaskUnmountDirectoryRequest)
 	if err := dec(in); err != nil {
@@ -899,6 +941,10 @@ var TaskCommandRouter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TaskSnapshotFilesystem",
 			Handler:    _TaskCommandRouter_TaskSnapshotFilesystem_Handler,
+		},
+		{
+			MethodName: "TaskSnapshotMemory",
+			Handler:    _TaskCommandRouter_TaskSnapshotMemory_Handler,
 		},
 		{
 			MethodName: "TaskUnmountDirectory",
