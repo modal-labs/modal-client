@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
 import inspect
-import math
 import sys
 import time
 import traceback
@@ -47,8 +46,6 @@ if TYPE_CHECKING:
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
 MAX_OUTPUT_BATCH_SIZE: int = 49
-
-RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
 
 class Sentinel:
@@ -474,8 +471,6 @@ class _ContainerIOManager:
     _task_lifecycle_manager: _TaskLifecycleManager
     input_plane_server_url: str | None
 
-    calls_completed: int
-    total_user_time: float
     current_input_id: str | None
     current_inputs: dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: float | None
@@ -510,8 +505,6 @@ class _ContainerIOManager:
 
         self.input_plane_server_url = container_args.input_plane_server_url
 
-        self.calls_completed = 0
-        self.total_user_time = 0.0
         self.current_input_id = None
         self.current_inputs = {}
         self.current_input_started_at = None
@@ -791,18 +784,6 @@ class _ContainerIOManager:
         """Put a value onto a queue, using the synchronicity event loop."""
         await queue.put(value)
 
-    def get_average_call_time(self) -> float:
-        if self.calls_completed == 0:
-            return 0
-
-        return self.total_user_time / self.calls_completed
-
-    def get_max_inputs_to_fetch(self):
-        if self.calls_completed == 0:
-            return 1
-
-        return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
-
     @synchronizer.no_io_translation
     async def _generate_inputs(
         self,
@@ -814,8 +795,6 @@ class _ContainerIOManager:
         while self._fetching_inputs:
             await self._input_slots.acquire()
 
-            request.average_call_time = self.get_average_call_time()
-            request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self.get_input_concurrency()
             request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_wait_ms
 
@@ -888,7 +867,7 @@ class _ContainerIOManager:
             # collect all active input slots, meaning all inputs have wrapped up.
             await self._input_slots.close()
 
-    async def _send_outputs(self, started_at: float, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
+    async def _send_outputs(self, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
         """Send pre-built output items with retry and chunking."""
         # There are multiple outputs for a single IOContext in the case of @modal.batched.
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
@@ -902,7 +881,7 @@ class _ContainerIOManager:
                 ),
             )
         input_ids = [output.input_id for output in outputs]
-        self.exit_context(started_at, input_ids)
+        self.exit_context(input_ids)
 
     @asynccontextmanager
     async def handle_input_exception(
@@ -922,7 +901,7 @@ class _ContainerIOManager:
             raise
         except (InputCancellation, asyncio.CancelledError):
             outputs = await io_context.output_items_cancellation(started_at)
-            await self._send_outputs(started_at, outputs)
+            await self._send_outputs(outputs)
             logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
@@ -933,12 +912,9 @@ class _ContainerIOManager:
             # print exception so it's logged
             print_exception(*sys.exc_info())
             outputs = await io_context.output_items_exception(started_at, self.task_id, exc)
-            await self._send_outputs(started_at, outputs)
+            await self._send_outputs(outputs)
 
-    def exit_context(self, started_at, input_ids: list[str]):
-        self.total_user_time += time.time() - started_at
-        self.calls_completed += 1
-
+    def exit_context(self, input_ids: list[str]):
         for input_id in input_ids:
             self.current_inputs.pop(input_id)
 
@@ -954,7 +930,7 @@ class _ContainerIOManager:
     ) -> None:
         # The standard output encoding+sending method for successful function outputs
         outputs = await io_context.output_items(started_at, output_data)
-        await self._send_outputs(started_at, outputs)
+        await self._send_outputs(outputs)
 
     @asynccontextmanager
     async def snapshot_context_manager(self) -> AsyncGenerator[None, None]:

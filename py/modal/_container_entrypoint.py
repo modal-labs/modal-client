@@ -145,7 +145,7 @@ def call_function(
                             item_count += 1
 
                 await container_io_manager._send_outputs.aio(
-                    started_at, io_context.output_items_generator_done(started_at, item_count)
+                    io_context.output_items_generator_done(started_at, item_count)
                 )
             else:
                 value = await io_context.call_function_async()
@@ -182,9 +182,7 @@ def call_function(
                         container_io_manager._queue_put(generator_queue, value)
                         item_count += 1
 
-                container_io_manager._send_outputs(
-                    started_at, io_context.output_items_generator_done(started_at, item_count)
-                )
+                container_io_manager._send_outputs(io_context.output_items_generator_done(started_at, item_count))
             else:
                 values = io_context.call_function_sync()
                 container_io_manager.push_outputs(io_context, started_at, values)
