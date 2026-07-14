@@ -7446,6 +7446,7 @@ type AttemptStartRequest struct {
 	xxx_hidden_FunctionId    string                 `protobuf:"bytes,1,opt,name=function_id,json=functionId,proto3"`
 	xxx_hidden_ParentInputId string                 `protobuf:"bytes,2,opt,name=parent_input_id,json=parentInputId,proto3"`
 	xxx_hidden_Input         *FunctionPutInputsItem `protobuf:"bytes,3,opt,name=input,proto3"`
+	xxx_hidden_Proxied       bool                   `protobuf:"varint,4,opt,name=proxied,proto3"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -7496,6 +7497,13 @@ func (x *AttemptStartRequest) GetInput() *FunctionPutInputsItem {
 	return nil
 }
 
+func (x *AttemptStartRequest) GetProxied() bool {
+	if x != nil {
+		return x.xxx_hidden_Proxied
+	}
+	return false
+}
+
 func (x *AttemptStartRequest) SetFunctionId(v string) {
 	x.xxx_hidden_FunctionId = v
 }
@@ -7506,6 +7514,10 @@ func (x *AttemptStartRequest) SetParentInputId(v string) {
 
 func (x *AttemptStartRequest) SetInput(v *FunctionPutInputsItem) {
 	x.xxx_hidden_Input = v
+}
+
+func (x *AttemptStartRequest) SetProxied(v bool) {
+	x.xxx_hidden_Proxied = v
 }
 
 func (x *AttemptStartRequest) HasInput() bool {
@@ -7525,6 +7537,7 @@ type AttemptStartRequest_builder struct {
 	FunctionId    string
 	ParentInputId string
 	Input         *FunctionPutInputsItem
+	Proxied       bool
 }
 
 func (b0 AttemptStartRequest_builder) Build() *AttemptStartRequest {
@@ -7534,6 +7547,7 @@ func (b0 AttemptStartRequest_builder) Build() *AttemptStartRequest {
 	x.xxx_hidden_FunctionId = b.FunctionId
 	x.xxx_hidden_ParentInputId = b.ParentInputId
 	x.xxx_hidden_Input = b.Input
+	x.xxx_hidden_Proxied = b.Proxied
 	return m0
 }
 
@@ -35130,6 +35144,7 @@ type MapStartOrContinueRequest struct {
 	xxx_hidden_ParentInputId string                               `protobuf:"bytes,2,opt,name=parent_input_id,json=parentInputId,proto3"`
 	xxx_hidden_CallInfo      isMapStartOrContinueRequest_CallInfo `protobuf_oneof:"call_info"`
 	xxx_hidden_Items         *[]*MapStartOrContinueItem           `protobuf:"bytes,4,rep,name=items,proto3"`
+	xxx_hidden_Proxied       bool                                 `protobuf:"varint,6,opt,name=proxied,proto3"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -35200,6 +35215,13 @@ func (x *MapStartOrContinueRequest) GetItems() []*MapStartOrContinueItem {
 	return nil
 }
 
+func (x *MapStartOrContinueRequest) GetProxied() bool {
+	if x != nil {
+		return x.xxx_hidden_Proxied
+	}
+	return false
+}
+
 func (x *MapStartOrContinueRequest) SetFunctionId(v string) {
 	x.xxx_hidden_FunctionId = v
 }
@@ -35218,6 +35240,10 @@ func (x *MapStartOrContinueRequest) SetMapToken(v string) {
 
 func (x *MapStartOrContinueRequest) SetItems(v []*MapStartOrContinueItem) {
 	x.xxx_hidden_Items = &v
+}
+
+func (x *MapStartOrContinueRequest) SetProxied(v bool) {
+	x.xxx_hidden_Proxied = v
 }
 
 func (x *MapStartOrContinueRequest) HasCallInfo() bool {
@@ -35288,7 +35314,8 @@ type MapStartOrContinueRequest_builder struct {
 	FunctionCallId *string
 	MapToken       *string
 	// -- end of xxx_hidden_CallInfo
-	Items []*MapStartOrContinueItem
+	Items   []*MapStartOrContinueItem
+	Proxied bool
 }
 
 func (b0 MapStartOrContinueRequest_builder) Build() *MapStartOrContinueRequest {
@@ -35304,6 +35331,7 @@ func (b0 MapStartOrContinueRequest_builder) Build() *MapStartOrContinueRequest {
 		x.xxx_hidden_CallInfo = &mapStartOrContinueRequest_MapToken{*b.MapToken}
 	}
 	x.xxx_hidden_Items = &b.Items
+	x.xxx_hidden_Proxied = b.Proxied
 	return m0
 }
 
@@ -61856,12 +61884,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05input\x18\x03 \x01(\v2#.modal.client.FunctionPutInputsItemR\x05input\x12#\n" +
 	"\rattempt_token\x18\x04 \x01(\tR\fattemptToken\";\n" +
 	"\x14AttemptRetryResponse\x12#\n" +
-	"\rattempt_token\x18\x01 \x01(\tR\fattemptToken\"\x99\x01\n" +
+	"\rattempt_token\x18\x01 \x01(\tR\fattemptToken\"\xb3\x01\n" +
 	"\x13AttemptStartRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12&\n" +
 	"\x0fparent_input_id\x18\x02 \x01(\tR\rparentInputId\x129\n" +
-	"\x05input\x18\x03 \x01(\v2#.modal.client.FunctionPutInputsItemR\x05input\"\x81\x01\n" +
+	"\x05input\x18\x03 \x01(\v2#.modal.client.FunctionPutInputsItemR\x05input\x12\x18\n" +
+	"\aproxied\x18\x04 \x01(\bR\aproxied\"\x81\x01\n" +
 	"\x14AttemptStartResponse\x12#\n" +
 	"\rattempt_token\x18\x01 \x01(\tR\fattemptToken\x12D\n" +
 	"\fretry_policy\x18\x02 \x01(\v2!.modal.client.FunctionRetryPolicyR\vretryPolicy\"\x15\n" +
@@ -63388,14 +63417,15 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x16MapStartOrContinueItem\x129\n" +
 	"\x05input\x18\x01 \x01(\v2#.modal.client.FunctionPutInputsItemR\x05input\x12(\n" +
 	"\rattempt_token\x18\x02 \x01(\tH\x00R\fattemptToken\x88\x01\x01B\x10\n" +
-	"\x0e_attempt_token\"\xf8\x01\n" +
+	"\x0e_attempt_token\"\x92\x02\n" +
 	"\x19MapStartOrContinueRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12&\n" +
 	"\x0fparent_input_id\x18\x02 \x01(\tR\rparentInputId\x12*\n" +
 	"\x10function_call_id\x18\x03 \x01(\tH\x00R\x0efunctionCallId\x12\x1d\n" +
 	"\tmap_token\x18\x05 \x01(\tH\x00R\bmapToken\x12:\n" +
-	"\x05items\x18\x04 \x03(\v2$.modal.client.MapStartOrContinueItemR\x05itemsB\v\n" +
+	"\x05items\x18\x04 \x03(\v2$.modal.client.MapStartOrContinueItemR\x05items\x12\x18\n" +
+	"\aproxied\x18\x06 \x01(\bR\aproxiedB\v\n" +
 	"\tcall_info\"\xa7\x02\n" +
 	"\x1aMapStartOrContinueResponse\x12\x1b\n" +
 	"\tmap_token\x18\x06 \x01(\tR\bmapToken\x12\x1f\n" +
