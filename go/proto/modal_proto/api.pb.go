@@ -32576,8 +32576,10 @@ func (x *ImageGetByTagRequest) SetEnvironmentName(v string) {
 type ImageGetByTagRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Full "name:tag" string. Must be non-empty.
-	Tag             string
+	// Named image reference: "[[workspace/]environment/]name[:tag]".
+	// The tag suffix defaults to "latest" when omitted.
+	Tag string
+	// Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
 	EnvironmentName string
 }
 
@@ -33760,8 +33762,10 @@ type ImagePublishRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	ImageId string
-	// Full "name:tag" string. Must be non-empty.
-	Tag             string
+	// Named image reference: "[[workspace/]environment/]name[:tag]".
+	// The tag suffix defaults to "latest" when omitted.
+	Tag string
+	// Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
 	EnvironmentName string
 	// Explicit opt-in required when publishing to a public environment.
 	AllowPublic bool
@@ -34101,8 +34105,10 @@ func (x *ImageTagRevisionsRequest) SetPageToken(v string) {
 type ImageTagRevisionsRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Full "name:tag" string. Must be non-empty.
-	Tag             string
+	// Named image reference: "[[workspace/]environment/]name[:tag]".
+	// The tag suffix defaults to "latest" when omitted.
+	Tag string
+	// Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
 	EnvironmentName string
 	// Defaults to 100. Values above 100 are rejected by the server.
 	MaxObjects uint32
