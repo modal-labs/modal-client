@@ -73,6 +73,45 @@ func TestSandboxCreateV2RequestProto_WithProxy(t *testing.T) {
 	g.Expect(req.GetDefinition().GetProxyId()).To(gomega.Equal("pr-123"))
 }
 
+func TestSandboxExperimentalOptionsAcceptsStringValues(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		ExperimentalOptions: map[string]any{"proxy_traffic_via_sidecar": "mitm"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetExperimentalOptionsV2()).To(gomega.Equal(
+		map[string]string{"proxy_traffic_via_sidecar": "mitm"},
+	))
+}
+
+func TestSandboxExperimentalOptionsAcceptsBoolValues(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		ExperimentalOptions: map[string]any{"enable_docker": true},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetExperimentalOptionsV2()).To(gomega.Equal(
+		map[string]string{"enable_docker": "true"},
+	))
+}
+
+func TestSandboxExperimentalOptionsAcceptsMixedStringAndBoolValues(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		ExperimentalOptions: map[string]any{"enable_docker": true, "proxy_traffic_via_sidecar": "mitm"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetExperimentalOptionsV2()).To(gomega.Equal(
+		map[string]string{"enable_docker": "true", "proxy_traffic_via_sidecar": "mitm"},
+	))
+}
+
 func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 	t.Parallel()
 

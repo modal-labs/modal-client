@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -432,15 +433,18 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	}
 
 	// The public interface uses map[string]any so that we can add support for any experimental
-	// option type in the future. Currently, the proto only supports map[string]bool so we validate
-	// the input here.
-	protoExperimentalOptions := map[string]bool{}
+	// option type in the future. The experimental_options_v2 proto map accepts arbitrary strings,
+	// but for now we deliberately restrict values to booleans and strings.
+	protoExperimentalOptions := map[string]string{}
 	for name, value := range params.ExperimentalOptions {
-		boolValue, ok := value.(bool)
-		if !ok {
-			return nil, fmt.Errorf("experimental option '%s' must be a bool, got %T", name, value)
+		switch v := value.(type) {
+		case bool:
+			protoExperimentalOptions[name] = strconv.FormatBool(v)
+		case string:
+			protoExperimentalOptions[name] = v
+		default:
+			return nil, fmt.Errorf("experimental option '%s' must be a bool or string, got %T", name, value)
 		}
-		protoExperimentalOptions[name] = boolValue
 	}
 
 	readinessProbe, err := params.ReadinessProbe.toProto()
@@ -475,7 +479,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			ProxyId:                  proxyID,
 			ReadinessProbe:           readinessProbe,
 			Name:                     &params.Name,
-			ExperimentalOptions:      protoExperimentalOptions,
+			ExperimentalOptionsV2:    protoExperimentalOptions,
 			CustomDomain:             params.CustomDomain,
 			IncludeOidcIdentityToken: params.IncludeOidcIdentityToken,
 			InboundCidrAllowlist:     params.InboundCIDRAllowlist,

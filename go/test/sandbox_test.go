@@ -1178,10 +1178,10 @@ func TestSandboxExperimentalDockerNotBool(t *testing.T) {
 
 	image := tc.Images.FromRegistry("alpine:3.21", nil)
 
-	options := map[string]any{"enable_docker": "not-a-bool"}
+	options := map[string]any{"enable_docker": 42}
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{ExperimentalOptions: options})
 	g.Expect(err).Should(gomega.HaveOccurred())
-	g.Expect(err.Error()).Should(gomega.ContainSubstring("must be a bool"))
+	g.Expect(err.Error()).Should(gomega.ContainSubstring("must be a bool or string"))
 }
 
 func TestSandboxExperimentalDockerMock(t *testing.T) {
@@ -1190,13 +1190,13 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	options := map[string]any{"enable_docker": true}
-	expectedOptoins := map[string]bool{"enable_docker": true}
+	expectedOptions := map[string]string{"enable_docker": "true"}
 	mock := newGRPCMockClient(t)
 
 	grpcmock.HandleUnary(
 		mock, "SandboxCreate",
 		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
-			g.Expect(req.GetDefinition().GetExperimentalOptions()).Should(gomega.Equal(expectedOptoins)) //nolint:staticcheck // testing deprecated field
+			g.Expect(req.GetDefinition().GetExperimentalOptionsV2()).Should(gomega.Equal(expectedOptions))
 			return pb.SandboxCreateResponse_builder{
 				SandboxId: validV1SandboxID,
 			}.Build(), nil

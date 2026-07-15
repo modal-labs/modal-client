@@ -1118,9 +1118,9 @@ test("testSandboxExperimentalDockerNotBool", async () => {
 
   await expect(
     tc.sandboxes.create(app, image, {
-      experimentalOptions: { enable_docker: "not-a-bool" },
+      experimentalOptions: { enable_docker: 42 },
     }),
-  ).rejects.toThrow("must be a bool");
+  ).rejects.toThrow("must be a boolean or string");
 });
 
 test("testSandboxExperimentalDockerMock", async () => {
@@ -1193,6 +1193,40 @@ test("testSandboxExperimentalDockerMock", async () => {
   mock.assertExhausted();
 });
 
+test("testSandboxExperimentalOptionsAcceptsStringValues", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    experimentalOptions: { proxy_traffic_via_sidecar: "mitm" },
+  });
+
+  expect(req.definition?.experimentalOptionsV2).toEqual({
+    proxy_traffic_via_sidecar: "mitm",
+  });
+});
+
+test("testSandboxExperimentalOptionsAcceptsBoolValues", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    experimentalOptions: { enable_docker: true },
+  });
+
+  expect(req.definition?.experimentalOptionsV2).toEqual({
+    enable_docker: "true",
+  });
+});
+
+test("testSandboxExperimentalOptionsAcceptsMixedStringAndBoolValues", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    experimentalOptions: {
+      enable_docker: true,
+      proxy_traffic_via_sidecar: "mitm",
+    },
+  });
+
+  expect(req.definition?.experimentalOptionsV2).toEqual({
+    enable_docker: "true",
+    proxy_traffic_via_sidecar: "mitm",
+  });
+});
+
 test("buildSandboxCreateV2RequestProto", async () => {
   const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
     command: ["sleep", "60"],
@@ -1238,9 +1272,9 @@ test("buildSandboxCreateV2RequestProto supports experimental options", async () 
 test("buildSandboxCreateV2RequestProto rejects non-boolean experimental options", async () => {
   await expect(
     buildSandboxCreateV2RequestProto("app-123", "img-456", {
-      experimentalOptions: { enable_docker: "not-a-bool" as any },
+      experimentalOptions: { enable_docker: 42 as any },
     }),
-  ).rejects.toThrow("must be a boolean");
+  ).rejects.toThrow("must be a boolean or string");
 });
 
 test.each([["gpu", { gpu: "A10G" }, "GPUs are not supported"]])(
