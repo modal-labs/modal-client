@@ -27267,8 +27267,6 @@ func (b0 FunctionGetInputsItem_builder) Build() *FunctionGetInputsItem {
 type FunctionGetInputsRequest struct {
 	state                       protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_FunctionId       string                 `protobuf:"bytes,1,opt,name=function_id,json=functionId,proto3"`
-	xxx_hidden_MaxValues        int32                  `protobuf:"varint,3,opt,name=max_values,json=maxValues,proto3"`
-	xxx_hidden_AverageCallTime  float32                `protobuf:"fixed32,5,opt,name=average_call_time,json=averageCallTime,proto3"`
 	xxx_hidden_InputConcurrency int32                  `protobuf:"varint,6,opt,name=input_concurrency,json=inputConcurrency,proto3"`
 	xxx_hidden_BatchMaxSize     uint32                 `protobuf:"varint,11,opt,name=batch_max_size,json=batchMaxSize,proto3"`
 	xxx_hidden_BatchLingerMs    uint64                 `protobuf:"varint,12,opt,name=batch_linger_ms,json=batchLingerMs,proto3"`
@@ -27308,20 +27306,6 @@ func (x *FunctionGetInputsRequest) GetFunctionId() string {
 	return ""
 }
 
-func (x *FunctionGetInputsRequest) GetMaxValues() int32 {
-	if x != nil {
-		return x.xxx_hidden_MaxValues
-	}
-	return 0
-}
-
-func (x *FunctionGetInputsRequest) GetAverageCallTime() float32 {
-	if x != nil {
-		return x.xxx_hidden_AverageCallTime
-	}
-	return 0
-}
-
 func (x *FunctionGetInputsRequest) GetInputConcurrency() int32 {
 	if x != nil {
 		return x.xxx_hidden_InputConcurrency
@@ -27347,14 +27331,6 @@ func (x *FunctionGetInputsRequest) SetFunctionId(v string) {
 	x.xxx_hidden_FunctionId = v
 }
 
-func (x *FunctionGetInputsRequest) SetMaxValues(v int32) {
-	x.xxx_hidden_MaxValues = v
-}
-
-func (x *FunctionGetInputsRequest) SetAverageCallTime(v float32) {
-	x.xxx_hidden_AverageCallTime = v
-}
-
 func (x *FunctionGetInputsRequest) SetInputConcurrency(v int32) {
 	x.xxx_hidden_InputConcurrency = v
 }
@@ -27371,8 +27347,6 @@ type FunctionGetInputsRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	FunctionId       string
-	MaxValues        int32
-	AverageCallTime  float32
 	InputConcurrency int32
 	BatchMaxSize     uint32
 	BatchLingerMs    uint64
@@ -27383,8 +27357,6 @@ func (b0 FunctionGetInputsRequest_builder) Build() *FunctionGetInputsRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_FunctionId = b.FunctionId
-	x.xxx_hidden_MaxValues = b.MaxValues
-	x.xxx_hidden_AverageCallTime = b.AverageCallTime
 	x.xxx_hidden_InputConcurrency = b.InputConcurrency
 	x.xxx_hidden_BatchMaxSize = b.BatchMaxSize
 	x.xxx_hidden_BatchLingerMs = b.BatchLingerMs
@@ -63155,16 +63127,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\rattempt_token\x18\t \x01(\tR\fattemptToken\x12(\n" +
 	"\x10from_input_plane\x18\n" +
 	" \x01(\bR\x0efromInputPlaneB\x13\n" +
-	"\x11_function_map_idxJ\x04\b\x04\x10\x05\"\x8d\x02\n" +
+	"\x11_function_map_idxJ\x04\b\x04\x10\x05\"\xce\x01\n" +
 	"\x18FunctionGetInputsRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
-	"functionId\x12\x1d\n" +
-	"\n" +
-	"max_values\x18\x03 \x01(\x05R\tmaxValues\x12*\n" +
-	"\x11average_call_time\x18\x05 \x01(\x02R\x0faverageCallTime\x12+\n" +
+	"functionId\x12+\n" +
 	"\x11input_concurrency\x18\x06 \x01(\x05R\x10inputConcurrency\x12$\n" +
 	"\x0ebatch_max_size\x18\v \x01(\rR\fbatchMaxSize\x12&\n" +
-	"\x0fbatch_linger_ms\x18\f \x01(\x04R\rbatchLingerMsJ\x04\b\t\x10\n" +
+	"\x0fbatch_linger_ms\x18\f \x01(\x04R\rbatchLingerMsJ\x04\b\x03\x10\x04J\x04\b\x05\x10\x06J\x04\b\t\x10\n" +
 	"J\x04\b\n" +
 	"\x10\v\"\x93\x01\n" +
 	"\x19FunctionGetInputsResponse\x12;\n" +
