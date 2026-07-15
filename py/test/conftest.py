@@ -1877,14 +1877,52 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def EnvironmentGetRoles(self, stream):
+        request: api_pb2.EnvironmentGetRolesRequest = await stream.recv_message()
+        env_id = request.environment_id
+        members = self.environment_members.get(env_id, {})
+        Principal = api_pb2.EnvironmentGetRolesResponse.Principal
+
+        def role_str(role):
+            return {
+                api_pb2.ENVIRONMENT_ROLE_NO_ACCESS: "no-access",
+                api_pb2.ENVIRONMENT_ROLE_VIEWER: "viewer",
+                api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR: "contributor",
+            }.get(role, "unspecified")
+
+        default_role = (
+            api_pb2.ENVIRONMENT_ROLE_VIEWER
+            if self.environment_managed.get(env_id)
+            else api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR
+        )
+        principal_roles = []
+        for user_id, user_name in self.workspace_users.items():
+            role = members.get(user_id, default_role)
+            principal_roles.append(Principal(user_id=user_id, user_name=user_name, role=role, role_str=role_str(role)))
+        for sv_id, sv_name in self.workspace_service_users.items():
+            role = members.get(sv_id, default_role)
+            principal_roles.append(
+                Principal(service_user_id=sv_id, service_user_name=sv_name, role=role, role_str=role_str(role))
+            )
+        await stream.send_message(api_pb2.EnvironmentGetRolesResponse(name="", principal_roles=principal_roles))
+
     async def EnvironmentRoleSet(self, stream):
         request: api_pb2.EnvironmentRoleSetRequest = await stream.recv_message()
         members = self.environment_members.setdefault(request.environment_id, {})
         principal_id = request.user_id or request.service_user_id
-        if request.role == api_pb2.ENVIRONMENT_ROLE_UNSPECIFIED:
+        role = request.role
+        if request.role_str:
+            role = {
+                "no-access": api_pb2.ENVIRONMENT_ROLE_NO_ACCESS,
+                "viewer": api_pb2.ENVIRONMENT_ROLE_VIEWER,
+                "contributor": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
+            }.get(request.role_str)
+            if role is None:
+                raise GRPCError(Status.INVALID_ARGUMENT, f"Unknown role: {request.role_str!r}")
+        if role == api_pb2.ENVIRONMENT_ROLE_UNSPECIFIED:
             members.pop(principal_id, None)
         else:
-            members[principal_id] = request.role
+            members[principal_id] = role
         await stream.send_message(Empty())
 
     async def EnvironmentUpdate(self, stream):

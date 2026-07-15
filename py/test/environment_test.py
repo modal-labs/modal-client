@@ -4,7 +4,6 @@ import pytest
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-from modal._environments import _role_from_proto, _role_to_proto
 from modal.environments import Environment
 from modal.exception import InvalidError, WorkspaceManagementError
 from modal_proto import api_pb2
@@ -100,25 +99,6 @@ def test_environment_invalid_name(servicer, client, name):
         Environment.from_name(name).hydrate(client)
 
 
-def test_environment_role_proto_round_trip():
-    for role in ("viewer", "contributor"):
-        assert _role_from_proto(_role_to_proto(role)) == role
-
-    assert _role_to_proto("viewer") == api_pb2.ENVIRONMENT_ROLE_VIEWER
-    assert _role_to_proto("contributor") == api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR
-    assert _role_from_proto(api_pb2.ENVIRONMENT_ROLE_VIEWER) == "viewer"
-    assert _role_from_proto(api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR) == "contributor"
-
-    with pytest.raises(ValueError, match="Unknown environment role"):
-        _role_from_proto(api_pb2.ENVIRONMENT_ROLE_UNSPECIFIED)
-
-    with pytest.raises(ValueError, match="Unknown environment role"):
-        _role_from_proto(999)
-
-    with pytest.raises(InvalidError, match="Invalid Environment role"):
-        _role_to_proto("admin")
-
-
 def test_environment_objects_create(servicer, client):
     Environment.objects.create("new-env", client=client)
     assert "new-env" in servicer.environments
@@ -146,7 +126,11 @@ def test_environment_objects_delete(servicer, client):
 def test_environment_get_members(servicer, client):
     env = Environment.from_name("main", client=client)
     env.hydrate()
-    assert env.members.list() == {"users": {}, "service_users": {}}
+
+    assert env.members.list() == {
+        "users": {"alice": "contributor", "bob": "contributor", "carol": "contributor"},
+        "service_users": {"alice-bot": "contributor", "ops-bot": "contributor"},
+    }
 
     servicer.environment_members[env.object_id] = {
         "us-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
@@ -154,8 +138,8 @@ def test_environment_get_members(servicer, client):
         "sv-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
     }
     assert env.members.list() == {
-        "users": {"alice": "contributor", "bob": "viewer"},
-        "service_users": {"alice-bot": "contributor"},
+        "users": {"alice": "contributor", "bob": "viewer", "carol": "contributor"},
+        "service_users": {"alice-bot": "contributor", "ops-bot": "contributor"},
     }
 
 
@@ -262,15 +246,24 @@ def test_environment_remove_members_user_and_service_user_with_same_name(service
     assert servicer.environment_members[env.object_id] == {}
 
 
-def test_environment_remove_members_not_a_member(servicer, client):
+def test_environment_remove_members_unknown_principal(client):
+    env = Environment.from_name("main", client=client)
+
+    with pytest.raises(InvalidError, match="User 'eve' not found in workspace"):
+        env.members.remove(users=["eve"])
+
+    with pytest.raises(InvalidError, match="Service user 'unknown-bot' not found in workspace"):
+        env.members.remove(service_users=["unknown-bot"])
+
+
+def test_environment_remove_members_without_role_is_noop(servicer, client):
     env = Environment.from_name("main", client=client)
     env.hydrate()
     servicer.environment_members[env.object_id] = {
         "us-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
     }
 
-    with pytest.raises(InvalidError, match="User 'bob' is not a member"):
-        env.members.remove(users=["bob"])
-
-    with pytest.raises(InvalidError, match="Service user 'alice-bot' is not a member"):
-        env.members.remove(service_users=["alice-bot"])
+    env.members.remove(users=["bob"], service_users=["alice-bot"])
+    assert servicer.environment_members[env.object_id] == {
+        "us-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
+    }

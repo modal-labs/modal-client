@@ -103,26 +103,6 @@ class _EnvironmentManager:
         await client.stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
 
 
-def _role_to_proto(role: str) -> "api_pb2.EnvironmentRole.ValueType":
-    match role:
-        case "viewer":
-            return api_pb2.ENVIRONMENT_ROLE_VIEWER
-        case "contributor":
-            return api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR
-        case _:
-            raise InvalidError(f"Invalid Environment role: {role!r} (expected 'viewer' or 'contributor')")
-
-
-def _role_from_proto(proto_value: int) -> str:
-    match proto_value:
-        case api_pb2.ENVIRONMENT_ROLE_VIEWER:
-            return "viewer"
-        case api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR:
-            return "contributor"
-        case _:
-            raise ValueError(f"Unknown environment role: {proto_value}")
-
-
 class _EnvironmentMembersManager:
     """mdmd:namespace
     Namespace with methods for managing the membership of a restricted Environment.
@@ -135,31 +115,30 @@ class _EnvironmentMembersManager:
         self._environment = environment
 
     async def list(self) -> dict[Literal["users", "service_users"], dict[str, str]]:
-        """Return the members of a restricted Environment with their roles.
+        """Enumerate the environment roles for each user and service user in the workspace.
 
         **Examples:**
 
         ```python notest
-        members = modal.Environment.from_name("my-restricted-env").members.list()
+        members = modal.Environment.from_name("my-env").members.list()
         print(members)
         # {
-        #     "users": {"alice": "contributor", "bob": "viewer"},
-        #     "service_users": {"alice-bot": "contributor"},
+        #     "users": {"alice": "contributor", "bob": "viewer", "carol": "contributor"},
+        #     "service_users": {"alice-bot": "contributor", "ops-bot": "viewer", "ci-bot": "no-access"},
         # }
         ```
         """
         await self._environment.hydrate()
-        req = api_pb2.EnvironmentGetManagedRequest(environment_id=self._environment.object_id)
-        resp = await self._environment.client.stub.EnvironmentGetManaged(req)
+        req = api_pb2.EnvironmentGetRolesRequest(environment_id=self._environment.object_id)
+        resp = await self._environment.client.stub.EnvironmentGetRoles(req)
 
         users: dict[str, str] = {}
         service_users: dict[str, str] = {}
         for principal in resp.principal_roles:
-            role = _role_from_proto(principal.role)
             if principal.user_id:
-                users[principal.user_name] = role
+                users[principal.user_name] = principal.role_str
             elif principal.service_user_id:
-                service_users[principal.service_user_name] = role
+                service_users[principal.service_user_name] = principal.role_str
 
         return {"users": users, "service_users": service_users}
 
@@ -188,13 +167,13 @@ class _EnvironmentMembersManager:
         users = users or {}
         service_users = service_users or {}
 
-        req = api_pb2.EnvironmentGetManagedRequest(environment_id=self._environment.object_id)
-        resp = await self._environment.client.stub.EnvironmentGetManaged(req)
+        req = api_pb2.EnvironmentGetRolesRequest(environment_id=self._environment.object_id)
+        resp = await self._environment.client.stub.EnvironmentGetRoles(req)
 
-        # Both current members and additional eligible workspace principals can be assigned a role
+        # EnvironmentGetRoles returns every workspace principal
         user_name_to_id: dict[str, str] = {}
         service_user_name_to_id: dict[str, str] = {}
-        for principal in [*resp.principal_roles, *resp.additional_roles]:
+        for principal in resp.principal_roles:
             if principal.user_id:
                 user_name_to_id[principal.user_name] = principal.user_id
             elif principal.service_user_id:
@@ -207,7 +186,7 @@ class _EnvironmentMembersManager:
             requests[f"User {name!r}"] = api_pb2.EnvironmentRoleSetRequest(
                 environment_id=self._environment.object_id,
                 user_id=user_name_to_id[name],
-                role=_role_to_proto(role),
+                role_str=role,
             )
         for name, role in service_users.items():
             if name not in service_user_name_to_id:
@@ -215,7 +194,7 @@ class _EnvironmentMembersManager:
             requests[f"Service user {name!r}"] = api_pb2.EnvironmentRoleSetRequest(
                 environment_id=self._environment.object_id,
                 service_user_id=service_user_name_to_id[name],
-                role=_role_to_proto(role),
+                role_str=role,
             )
 
         await self._dispatch_role_updates(requests)
@@ -242,8 +221,8 @@ class _EnvironmentMembersManager:
         users = users or []
         service_users = service_users or []
 
-        req = api_pb2.EnvironmentGetManagedRequest(environment_id=self._environment.object_id)
-        resp = await self._environment.client.stub.EnvironmentGetManaged(req)
+        req = api_pb2.EnvironmentGetRolesRequest(environment_id=self._environment.object_id)
+        resp = await self._environment.client.stub.EnvironmentGetRoles(req)
 
         user_name_to_id: dict[str, str] = {}
         service_user_name_to_id: dict[str, str] = {}
@@ -256,7 +235,7 @@ class _EnvironmentMembersManager:
         requests: dict[str, api_pb2.EnvironmentRoleSetRequest] = {}
         for name in users:
             if name not in user_name_to_id:
-                raise InvalidError(f"User {name!r} is not a member of this Environment")
+                raise InvalidError(f"User {name!r} not found in workspace")
             requests[f"User {name!r}"] = api_pb2.EnvironmentRoleSetRequest(
                 environment_id=self._environment.object_id,
                 user_id=user_name_to_id[name],
@@ -264,7 +243,7 @@ class _EnvironmentMembersManager:
             )
         for name in service_users:
             if name not in service_user_name_to_id:
-                raise InvalidError(f"Service user {name!r} is not a member of this Environment")
+                raise InvalidError(f"Service user {name!r} not found in workspace")
             requests[f"Service user {name!r}"] = api_pb2.EnvironmentRoleSetRequest(
                 environment_id=self._environment.object_id,
                 service_user_id=service_user_name_to_id[name],
