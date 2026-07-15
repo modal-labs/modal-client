@@ -1404,6 +1404,149 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   mock.assertExhausted();
 });
 
+test("ExperimentalCreate caches encrypted-only tunnels from the create response", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
+    return { appId: "ap-1234" };
+  });
+  mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+  mock.handleUnary("/SandboxCreateV2", (req: any): SandboxCreateV2Response => {
+    expect(req.definition?.openPorts?.ports).toHaveLength(1);
+    return {
+      sandboxId: V2_SANDBOX_ID,
+      taskId: "ta-v2-123",
+      tunnels: [
+        { host: "sb-v2-123-8080.modal.host", port: 443, containerPort: 8080 },
+      ],
+      metadata: { result: undefined, appId: "ap-1234" },
+    } as any;
+  });
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    return {
+      environmentId: "en-main-123",
+      metadata: {
+        name: "main",
+        settings: {
+          imageBuilderVersion: "2025.06",
+          webhookSuffix: "modal.run",
+        },
+      },
+    };
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = mc.images.fromRegistry("alpine:3.21");
+
+  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+    encryptedPorts: [8080],
+  });
+
+  const tunnels = await sb.tunnels();
+  expect(Object.keys(tunnels)).toHaveLength(1);
+  expect(tunnels[8080].host).toBe("sb-v2-123-8080.modal.host");
+  expect(tunnels[8080].port).toBe(443);
+
+  mock.assertExhausted();
+});
+
+test("ExperimentalCreate fetches unencrypted tunnels missing from the create response", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
+    return { appId: "ap-1234" };
+  });
+  mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+  mock.handleUnary("/SandboxCreateV2", (req: any): SandboxCreateV2Response => {
+    expect(req.definition?.openPorts?.ports).toHaveLength(2);
+    return {
+      sandboxId: V2_SANDBOX_ID,
+      taskId: "ta-v2-123",
+      tunnels: [
+        { host: "sb-v2-123-8080.modal.host", port: 443, containerPort: 8080 },
+      ],
+      metadata: { result: undefined, appId: "ap-1234" },
+    } as any;
+  });
+  mock.handleUnary("/SandboxGetTunnelsV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    return {
+      tunnels: [
+        { host: "sb-v2-123-8080.modal.host", port: 443, containerPort: 8080 },
+        {
+          host: "r1.modal.host",
+          port: 443,
+          unencryptedHost: "r1.modal.host",
+          unencryptedPort: 39000,
+          containerPort: 9000,
+        },
+      ],
+    };
+  });
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    return {
+      environmentId: "en-main-123",
+      metadata: {
+        name: "main",
+        settings: {
+          imageBuilderVersion: "2025.06",
+          webhookSuffix: "modal.run",
+        },
+      },
+    };
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = mc.images.fromRegistry("alpine:3.21");
+
+  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+    encryptedPorts: [8080],
+    unencryptedPorts: [9000],
+  });
+
+  // Unencrypted tunnels are missing from the create response. tunnels()
+  // fetches all of them.
+  const tunnels = await sb.tunnels();
+  expect(Object.keys(tunnels)).toHaveLength(2);
+  expect(tunnels[8080].host).toBe("sb-v2-123-8080.modal.host");
+  expect(tunnels[9000].unencryptedHost).toBe("r1.modal.host");
+  expect(tunnels[9000].unencryptedPort).toBe(39000);
+
+  mock.assertExhausted();
+});
+
 test("ExperimentalList yields V2 Sandboxes and paginates", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 

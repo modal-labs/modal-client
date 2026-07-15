@@ -806,15 +806,20 @@ export class SandboxService {
       createResp.sandboxId,
     );
 
-    const tunnels =
-      createResp.tunnels.length > 0
-        ? Object.fromEntries(
-            createResp.tunnels.map((t) => [
-              t.containerPort,
-              new Tunnel(t.host, t.port, t.unencryptedHost, t.unencryptedPort),
-            ]),
-          )
-        : undefined;
+    // Unencrypted tunnel endpoints are not known at create time. Only cache a
+    // complete set so tunnels() fetches the rest otherwise.
+    const createRespHasAllTunnels =
+      createResp.tunnels.length > 0 &&
+      createResp.tunnels.length ===
+        (createReq.definition?.openPorts?.ports.length ?? 0);
+    const tunnels = createRespHasAllTunnels
+      ? Object.fromEntries(
+          createResp.tunnels.map((t) => [
+            t.containerPort,
+            new Tunnel(t.host, t.port, t.unencryptedHost, t.unencryptedPort),
+          ]),
+        )
+      : undefined;
 
     return new Sandbox(this.#client, createResp.sandboxId, {
       isV2: true,
