@@ -3548,6 +3548,20 @@ message SandboxRestoreResponse {
   string sandbox_id = 1;
 }
 
+message SandboxRestoreV2Request {
+  string snapshot_id = 1;
+  string sandbox_name_override = 2;
+  SandboxRestoreRequest.SandboxNameOverrideType sandbox_name_override_type = 3;
+  string worker_id = 4; // For internal debugging use only.
+}
+
+message SandboxRestoreV2Response {
+  string sandbox_id = 1;
+  repeated TunnelData tunnels = 2;
+  string task_id = 3;
+  SandboxHandleMetadata metadata = 4;
+}
+
 message SandboxSetNameRequest {
   string sandbox_id = 1;
   string name = 2;
@@ -4707,6 +4721,7 @@ service ModalClient {
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxListV2(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
+  rpc SandboxRestoreV2(SandboxRestoreV2Request) returns (SandboxRestoreV2Response);
   rpc SandboxSetName(SandboxSetNameRequest) returns (SandboxSetNameResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
