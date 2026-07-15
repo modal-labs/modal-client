@@ -2761,7 +2761,41 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
 
-        await stream.send_message(api_pb2.SandboxCreateV2Response(sandbox_id="sb-v2-123", task_id="ta-v2-123"))
+        # Only encrypted tunnels are known at create time. Unencrypted
+        # tunnels are relay-assigned after the container starts.
+        tunnels = [
+            api_pb2.TunnelData(host=f"sb-v2-123-{spec.port}.modal.host", port=443, container_port=spec.port)
+            for spec in request.definition.open_ports.ports
+            if not spec.unencrypted
+        ]
+        await stream.send_message(
+            api_pb2.SandboxCreateV2Response(sandbox_id="sb-v2-123", task_id="ta-v2-123", tunnels=tunnels)
+        )
+
+    async def SandboxGetTunnelsV2(self, stream):
+        await stream.recv_message()
+        tunnels = []
+        for spec in self.sandbox_defs[-1].open_ports.ports:
+            if spec.unencrypted:
+                tunnels.append(
+                    api_pb2.TunnelData(
+                        host="r1.modal.host",
+                        port=443,
+                        unencrypted_host="r1.modal.host",
+                        unencrypted_port=30000 + spec.port,
+                        container_port=spec.port,
+                    )
+                )
+            else:
+                tunnels.append(
+                    api_pb2.TunnelData(host=f"sb-v2-123-{spec.port}.modal.host", port=443, container_port=spec.port)
+                )
+        await stream.send_message(
+            api_pb2.SandboxGetTunnelsResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                tunnels=tunnels,
+            )
+        )
 
     async def SandboxCreateConnectToken(self, stream):
         request: api_pb2.SandboxCreateConnectTokenRequest = await stream.recv_message()

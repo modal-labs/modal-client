@@ -1021,10 +1021,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._is_v2 = True
             self._task_id = create_resp.task_id
             self._hydrate_metadata_v2()
-            self._tunnels = {
-                t.container_port: Tunnel(t.host, t.port, t.unencrypted_host, t.unencrypted_port)
-                for t in create_resp.tunnels
-            }
+            # Unencrypted tunnel endpoints are not known at create time. Only
+            # cache a complete set so tunnels() fetches the rest otherwise.
+            create_resp_has_all_tunnels = len(create_resp.tunnels) == len(open_ports)
+            if create_resp_has_all_tunnels:
+                self._tunnels = {
+                    t.container_port: Tunnel(t.host, t.port, t.unencrypted_host, t.unencrypted_port)
+                    for t in create_resp.tunnels
+                }
 
             if logger.isEnabledFor(logging.DEBUG):
                 total_elapsed = time.monotonic() - load_start

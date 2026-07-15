@@ -1225,6 +1225,29 @@ def test_experimental_sandbox_create_custom_domain(app, servicer):
         assert req.definition.custom_domain == "sandboxes.example.com"
 
 
+def test_experimental_sandbox_tunnels_encrypted_only_cached_from_create(app, servicer):
+    with servicer.intercept() as ctx:
+        sb = Sandbox._experimental_create("echo", "hi", app=app, encrypted_ports=[8080])
+        tunnels = sb.tunnels()
+
+        assert len(ctx.get_requests("SandboxGetTunnelsV2")) == 0
+        assert tunnels[8080].host == "sb-v2-123-8080.modal.host"
+        assert tunnels[8080].port == 443
+
+
+def test_experimental_sandbox_tunnels_fetches_unencrypted(app, servicer):
+    with servicer.intercept() as ctx:
+        sb = Sandbox._experimental_create("echo", "hi", app=app, encrypted_ports=[8080], unencrypted_ports=[9000])
+        tunnels = sb.tunnels()
+
+        # Unencrypted tunnels are missing from the create response. tunnels() fetches all of them.
+        assert len(ctx.get_requests("SandboxGetTunnelsV2")) == 1
+        assert len(tunnels) == 2
+        assert tunnels[8080].host == "sb-v2-123-8080.modal.host"
+        assert tunnels[9000].unencrypted_host == "r1.modal.host"
+        assert tunnels[9000].unencrypted_port == 39000
+
+
 def test_experimental_sandbox_create_experimental_options(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, experimental_options={"enable_docker": True})
