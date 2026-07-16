@@ -4,7 +4,7 @@ import pytest
 import random
 import typing
 
-from modal import Queue
+from modal import Queue, Sandbox
 from modal._serialization import (
     apply_defaults,
     deserialize,
@@ -18,9 +18,17 @@ from modal._serialization import (
     validate_parameter_values,
 )
 from modal._type_manager import parameter_serde_registry
+from modal._utils.async_utils import synchronize_api, synchronizer
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
+
+
+async def _deserialize_on_synchronizer(data, client):
+    return deserialize(data, client)
+
+
+deserialize_on_synchronizer = synchronize_api(_deserialize_on_synchronizer)
 
 
 @pytest.mark.asyncio
@@ -39,6 +47,31 @@ async def test_roundtrip(servicer, client):
         q_roundtrip = deserialize(data, client)
         assert isinstance(q_roundtrip, Queue)
         assert q.object_id == q_roundtrip.object_id
+
+
+@pytest.mark.parametrize(
+    ("sandbox_id", "is_v2"),
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", False),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", True),
+    ],
+    ids=["v1", "v2"],
+)
+def test_sandbox_roundtrip_preserves_metadata(servicer, client, sandbox_id, is_v2):
+    servicer.sandbox_app_id = "ap-serialized-sandbox"
+    sandbox = Sandbox.from_id(sandbox_id, client=client)
+
+    data = serialize(sandbox)
+    sandbox_roundtrip = deserialize_on_synchronizer(data, client)
+
+    assert isinstance(sandbox_roundtrip, Sandbox)
+    assert sandbox_roundtrip.object_id == sandbox.object_id
+
+    sandbox_impl = synchronizer._translate_in(sandbox)
+    sandbox_roundtrip_impl = synchronizer._translate_in(sandbox_roundtrip)
+    assert sandbox_roundtrip_impl._app_id == sandbox_impl._app_id == servicer.sandbox_app_id
+    assert sandbox_roundtrip_impl._result == sandbox_impl._result == servicer.sandbox_result
+    assert sandbox_roundtrip_impl._is_v2 is sandbox_impl._is_v2 is is_v2
 
 
 @pytest.mark.asyncio

@@ -21,6 +21,7 @@ from modal import (
     Secret,
     Volume,
 )
+from modal._utils.async_utils import synchronizer
 from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
 from modal.sandbox import SandboxVersion, SidecarContainer, _get_sandbox_version
 from modal.stream_type import StreamType
@@ -183,6 +184,32 @@ def test_sandbox_secret(app, servicer, tmpdir):
     assert len(servicer.sandbox_defs[0].secret_ids) == 1
 
 
+@pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
+def test_sandbox_create_hydrates_app_id(app, sandbox_version):
+    if sandbox_version == SandboxVersion.V1:
+        sb = Sandbox.create("echo", "hello", app=app)
+    else:
+        sb = Sandbox._experimental_create("echo", "hello", app=app)
+
+    assert synchronizer._translate_in(sb)._app_id == app.app_id
+
+
+@pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
+def test_sandbox_initialize_from_other_preserves_app_id_and_version(app, sandbox_version):
+    if sandbox_version == SandboxVersion.V1:
+        source = Sandbox.create("echo", "hello", app=app)
+    else:
+        source = Sandbox._experimental_create("echo", "hello", app=app)
+
+    source_impl = synchronizer._translate_in(source)
+    target_impl = type(source_impl).__new__(type(source_impl))  # type: ignore
+    target_impl._init("Sandbox initialized from another Sandbox")
+    target_impl._initialize_from_other(source_impl)
+
+    assert target_impl._app_id == source_impl._app_id == app.app_id
+    assert target_impl._is_v2 is source_impl._is_v2 is (sandbox_version == SandboxVersion.V2)
+
+
 def test_sandbox_nfs(client, app, servicer, tmpdir):
     with NetworkFileSystem.ephemeral(client=client) as nfs:
         with pytest.raises(InvalidError):
@@ -231,11 +258,13 @@ def test_get_sandbox_version_rejects_invalid_id(sandbox_id):
 
 def test_sandbox_from_id_routes_v1(client, servicer):
     sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
+    servicer.sandbox_app_id = "ap-from-id-v1"
 
     with servicer.intercept() as ctx:
         sb = Sandbox.from_id(sandbox_id, client=client)
 
     assert sb.returncode == 0
+    assert synchronizer._translate_in(sb)._app_id == "ap-from-id-v1"
     (wait_req,) = ctx.get_requests("SandboxWait")
     assert wait_req.sandbox_id == sandbox_id
     assert ctx.get_requests("SandboxWaitV2") == []
@@ -243,12 +272,14 @@ def test_sandbox_from_id_routes_v1(client, servicer):
 
 def test_sandbox_from_id_routes_v2(client, servicer):
     sandbox_id = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    servicer.sandbox_app_id = "ap-from-id-v2"
 
     with servicer.intercept() as ctx:
         sb = Sandbox.from_id(sandbox_id, client=client)
         exit_code = sb.terminate(wait=True)
 
     assert exit_code == 137
+    assert synchronizer._translate_in(sb)._app_id == "ap-from-id-v2"
     assert ctx.get_requests("SandboxWait") == []
 
     wait_reqs = ctx.get_requests("SandboxWaitV2")
@@ -257,6 +288,28 @@ def test_sandbox_from_id_routes_v2(client, servicer):
 
     (terminate_req,) = ctx.get_requests("SandboxTerminateV2")
     assert terminate_req.sandbox_id == sandbox_id
+
+
+@pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
+def test_sandbox_from_name_hydrates_app_id(app, client, servicer, sandbox_version):
+    servicer.sandbox_app_id = "ap-from-name"
+
+    with servicer.intercept() as ctx:
+        if sandbox_version == SandboxVersion.V1:
+            sb = Sandbox.from_name("my-app", "my-sandbox", client=client)
+            method_name = "SandboxGetFromName"
+            app_id = "ap-from-name"
+        else:
+            sb = Sandbox._experimental_create("bash", "-c", "sleep 100", app=app, name="my-sandbox")
+            sb._experimental_set_name("my-sandbox")
+            sb = Sandbox._experimental_from_name("my-app", "my-sandbox", client=client)
+            method_name = "SandboxGetFromNameV2"
+            app_id = app.app_id
+
+    assert synchronizer._translate_in(sb)._app_id == app_id
+    (request,) = ctx.get_requests(method_name)
+    assert request.app_name == "my-app"
+    assert request.sandbox_name == "my-sandbox"
 
 
 def test_sandbox_from_id_rejects_invalid_id(client, servicer):
@@ -616,7 +669,8 @@ def test_sandbox_list_app(client, servicer):
     with app.run(client=client):
         # Create sandbox
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
-        assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
+        (listed_sandbox,) = list(Sandbox.list(app_id=app.app_id, client=client))
+        assert synchronizer._translate_in(listed_sandbox)._app_id == app.app_id
         sb.terminate()
         sb.wait(raise_on_termination=False)
         assert not list(Sandbox.list(app_id=app.app_id, client=client))
@@ -652,7 +706,8 @@ def test_sandbox_experimental_list_app(client, servicer):
 
     with app.run(client=client):
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
-        assert len(list(Sandbox._experimental_list(app_id=app.app_id, client=client))) == 1
+        (listed_sandbox,) = list(Sandbox._experimental_list(app_id=app.app_id, client=client))
+        assert synchronizer._translate_in(listed_sandbox)._app_id == app.app_id
         sb.terminate()
         sb.wait(raise_on_termination=False)
         assert not list(Sandbox._experimental_list(app_id=app.app_id, client=client))
@@ -1117,6 +1172,7 @@ def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
                 sandboxes=[
                     api_pb2.SandboxInfo(
                         id="sb-123",
+                        metadata=api_pb2.SandboxHandleMetadata(app_id="ap-list-running"),
                         task_info=api_pb2.TaskInfo(
                             result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED)
                         ),
@@ -1129,6 +1185,7 @@ def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
         )  # list will loop for older sandboxes until no more arrive
         (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode is None
+    assert synchronizer._translate_in(list_result)._app_id == "ap-list-running"
 
 
 def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
@@ -1140,6 +1197,7 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
                 sandboxes=[
                     api_pb2.SandboxInfo(
                         id="sb-123",
+                        metadata=api_pb2.SandboxHandleMetadata(app_id="ap-list-stopped"),
                         task_info=api_pb2.TaskInfo(
                             result=api_pb2.GenericResult(
                                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, exitcode=0
@@ -1154,6 +1212,7 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
         )  # list will loop for older sandboxes until no more arrive
         (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode == 0
+    assert synchronizer._translate_in(list_result)._app_id == "ap-list-stopped"
 
 
 @pytest.mark.parametrize("read_only", [True, False])
@@ -2146,7 +2205,12 @@ def test_sandbox_create_reuses_hydrated_image(app, servicer):
     async def sandbox_create_no_subprocess(servicer_self, stream):
         request = await stream.recv_message()
         servicer_self.sandbox_defs.append(request.definition)
-        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
+        await stream.send_message(
+            api_pb2.SandboxCreateResponse(
+                sandbox_id="sb-123",
+                metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
+            )
+        )
 
     image = Image.debian_slim()
 

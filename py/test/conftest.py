@@ -505,7 +505,12 @@ def sandbox_subprocess_intercept(servicer):
         servicer_self._sandbox_terminated = False
         servicer_self.sandbox_app_id = request.app_id
         servicer_self.sandbox_defs.append(request.definition)
-        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id=sandbox_id))
+        await stream.send_message(
+            api_pb2.SandboxCreateResponse(
+                sandbox_id=sandbox_id,
+                metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
+            )
+        )
 
     async def _SandboxGetLogs(servicer_self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
@@ -532,14 +537,21 @@ def sandbox_subprocess_intercept(servicer):
         if proc is None:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
             servicer_self.sandbox_result = result
-            await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+            await stream.send_message(
+                api_pb2.SandboxWaitResponse(
+                    result=result,
+                    metadata=api_pb2.SandboxHandleMetadata(result=result, app_id=servicer_self.sandbox_app_id),
+                )
+            )
             return
         try:
             await asyncio.wait_for(proc.wait(), request.timeout)
         except asyncio.TimeoutError:
             pass
         if proc.returncode is None:
-            await stream.send_message(api_pb2.SandboxWaitResponse())
+            await stream.send_message(
+                api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id=servicer_self.sandbox_app_id))
+            )
             return
         elif proc.returncode != 0:
             result = api_pb2.GenericResult(
@@ -548,7 +560,12 @@ def sandbox_subprocess_intercept(servicer):
         else:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         servicer_self.sandbox_result = result
-        await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(
+                result=result,
+                metadata=api_pb2.SandboxHandleMetadata(result=result, app_id=servicer_self.sandbox_app_id),
+            )
+        )
 
     async def _SandboxTerminate(servicer_self, stream):
         servicer_self._sandbox_terminated = True
@@ -1091,7 +1108,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             res = api_pb2.Object(mount_handle_metadata=mount_handle_metadata)
 
         elif object_id.startswith("sb-"):
-            sandbox_handle_metadata = api_pb2.SandboxHandleMetadata(result=self.sandbox_result)
+            sandbox_handle_metadata = api_pb2.SandboxHandleMetadata(
+                result=self.sandbox_result,
+                app_id=self.sandbox_app_id,
+            )
             res = api_pb2.Object(sandbox_handle_metadata=sandbox_handle_metadata)
 
         elif object_id.startswith("vo-"):
@@ -2785,7 +2805,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
         self.sandbox_tags["sb-123"] = {tag.tag_name: tag.tag_value for tag in request.tags}
-        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
+        await stream.send_message(
+            api_pb2.SandboxCreateResponse(
+                sandbox_id="sb-123",
+                metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
+            )
+        )
 
     async def SandboxCreateV2(self, stream):
         request: api_pb2.SandboxCreateV2Request = await stream.recv_message()
@@ -2799,8 +2824,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             for spec in request.definition.open_ports.ports
             if not spec.unencrypted
         ]
+
         await stream.send_message(
-            api_pb2.SandboxCreateV2Response(sandbox_id="sb-v2-123", task_id="ta-v2-123", tunnels=tunnels)
+            api_pb2.SandboxCreateV2Response(
+                sandbox_id="sb-v2-123",
+                task_id="ta-v2-123",
+                tunnels=tunnels,
+                metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
+            )
         )
 
     async def SandboxGetTunnelsV2(self, stream):
@@ -2828,6 +2859,28 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def SandboxGetFromName(self, stream):
+        _request: api_pb2.SandboxGetFromNameRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxGetFromNameResponse(
+                sandbox_id="sb-123",
+                metadata=api_pb2.SandboxHandleMetadata(app_id=self.sandbox_app_id),
+            )
+        )
+
+    async def SandboxGetFromNameV2(self, stream):
+        request: api_pb2.SandboxGetFromNameRequest = await stream.recv_message()
+        for sandbox_id, name in self.sandbox_names.items():
+            if name == request.sandbox_name:
+                await stream.send_message(
+                    api_pb2.SandboxGetFromNameResponse(
+                        sandbox_id=sandbox_id,
+                        metadata=api_pb2.SandboxHandleMetadata(app_id=self.sandbox_app_id),
+                    )
+                )
+                return
+        raise GRPCError(Status.NOT_FOUND, f"sandbox with name {request.sandbox_name!r} not found")
+
     async def SandboxCreateConnectToken(self, stream):
         request: api_pb2.SandboxCreateConnectTokenRequest = await stream.recv_message()
         port = request.port if request.HasField("port") else 8080
@@ -2849,7 +2902,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         self.sandbox_result = result
-        await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(
+                result=result,
+                metadata=api_pb2.SandboxHandleMetadata(result=result, app_id=self.sandbox_app_id),
+            )
+        )
 
     async def SandboxWaitV2(self, stream):
         _request: api_pb2.SandboxWaitRequest = await stream.recv_message()
@@ -2858,7 +2916,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         self.sandbox_result = result
-        await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(
+                result=result,
+                metadata=api_pb2.SandboxHandleMetadata(result=result, app_id=self.sandbox_app_id),
+            )
+        )
 
     async def SandboxList(self, stream):
         request: api_pb2.SandboxListRequest = await stream.recv_message()
@@ -2871,7 +2934,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             return
 
         sandboxes = [
-            api_pb2.SandboxInfo(id=sandbox_id, created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result))
+            api_pb2.SandboxInfo(
+                id=sandbox_id,
+                created_at=1,
+                task_info=api_pb2.TaskInfo(result=self.sandbox_result),
+                metadata=api_pb2.SandboxHandleMetadata(result=self.sandbox_result, app_id=self.sandbox_app_id),
+            )
             for sandbox_id, tags in self.sandbox_tags.items()
             if all(tags.get(tag.tag_name) == tag.tag_value for tag in request.tags)
         ]
@@ -2888,7 +2956,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             return
 
         sandboxes = [
-            api_pb2.SandboxInfo(id=sandbox_id, created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result))
+            api_pb2.SandboxInfo(
+                id=sandbox_id,
+                created_at=1,
+                task_info=api_pb2.TaskInfo(result=self.sandbox_result),
+                metadata=api_pb2.SandboxHandleMetadata(result=self.sandbox_result, app_id=self.sandbox_app_id),
+            )
             for sandbox_id, tags in self.sandbox_tags.items()
             if all(tags.get(tag.tag_name) == tag.tag_value for tag in request.tags)
         ]
@@ -2929,14 +3002,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 raise GRPCError(Status.ALREADY_EXISTS, f"sandbox name {request.name!r} is already in use")
         self.sandbox_names[request.sandbox_id] = request.name
         await stream.send_message(api_pb2.SandboxSetNameResponse())
-
-    async def SandboxGetFromNameV2(self, stream):
-        request: api_pb2.SandboxGetFromNameRequest = await stream.recv_message()
-        for sandbox_id, name in self.sandbox_names.items():
-            if name == request.sandbox_name:
-                await stream.send_message(api_pb2.SandboxGetFromNameResponse(sandbox_id=sandbox_id))
-                return
-        raise GRPCError(Status.NOT_FOUND, f"sandbox with name {request.sandbox_name!r} not found")
 
     async def SandboxTerminate(self, stream):
         self._sandbox_terminated = True

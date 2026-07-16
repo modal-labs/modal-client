@@ -332,6 +332,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _attached: bool
     _filesystem: _SandboxFilesystem | None
     _is_v2: bool = False
+    _app_id: str | None
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -500,7 +501,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             create_resp = await load_context.client.stub.SandboxCreate(create_req)
             rpc_elapsed = time.monotonic() - rpc_start
             sandbox_id = create_resp.sandbox_id
-            self._hydrate(sandbox_id, load_context.client, None)
+            self._hydrate(sandbox_id, load_context.client, create_resp.metadata)
 
             if logger.isEnabledFor(logging.DEBUG):
                 total_elapsed = time.monotonic() - load_start
@@ -1017,7 +1018,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
             rpc_elapsed = time.monotonic() - rpc_start
             sandbox_id = create_resp.sandbox_id
-            self._hydrate(sandbox_id, load_context.client, None)
+            self._hydrate(sandbox_id, load_context.client, create_resp.metadata)
             self._is_v2 = True
             self._task_id = create_resp.task_id
             self._hydrate_metadata_v2()
@@ -1070,7 +1071,22 @@ class _Sandbox(_Object, type_prefix="sb"):
             await resolver.load(obj, load_context)
         return obj
 
-    def _hydrate_metadata(self, handle_metadata: Message | None):
+    def _get_metadata(self) -> api_pb2.SandboxHandleMetadata:
+        metadata = api_pb2.SandboxHandleMetadata(app_id=self._app_id or "")
+        if hasattr(self, "_result") and self._result is not None:
+            metadata.result.CopyFrom(self._result)
+        return metadata
+
+    def _hydrate_metadata(self, handle_metadata: Message | None) -> None:
+        self._app_id = None
+        self._result = None
+        if handle_metadata is not None:
+            assert isinstance(handle_metadata, api_pb2.SandboxHandleMetadata), (
+                f"{type(handle_metadata)} is not SandboxHandleMetadata"
+            )
+            self._app_id = handle_metadata.app_id
+            if handle_metadata.HasField("result"):
+                self._result = handle_metadata.result
         self._stdout = StreamReader(
             _StreamReaderThroughServerParams(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
@@ -1088,13 +1104,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             by_line=True,
         )
         self._stdin = StreamWriter(_StreamWriterThroughServerParams(object_id=self.object_id, client=self._client))
-        self._result = None
         self._task_id = None
         self._tunnels = None
         self._enable_snapshot = False
         self._command_router_client = None
         self._filesystem = None
-        self._is_v2 = False
+        self._is_v2 = _is_v2_sandbox_id(self.object_id)
+        if self._is_v2:
+            self._hydrate_metadata_v2()
 
     def _hydrate_metadata_v2(self) -> None:
         """Wire up V2 stdio readers that read directly from the worker. Cheap
@@ -1133,11 +1150,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         super()._initialize_from_other(other)
         self._attached = other._attached
         self._is_v2 = other._is_v2
+        self._app_id = other._app_id
 
     def _initialize_from_empty(self):
         super()._initialize_from_empty()
         self._attached = True
         self._is_v2 = False
+        self._app_id = None
 
     async def detach(self):
         """Disconnects your client from the sandbox and cleans up resources assoicated with the connection.
@@ -1200,7 +1219,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
         resp = await client.stub.SandboxGetFromName(req)
-        return _Sandbox._new_hydrated(resp.sandbox_id, client, None)
+        return _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
 
     @staticmethod
     async def _experimental_from_name(
@@ -1235,7 +1254,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         auth_token = await client._auth_token_manager.get_token()
         resp = await client.stub.SandboxGetFromNameV2(req, metadata=[("x-modal-auth-token", auth_token)])
 
-        obj = _Sandbox._new_hydrated(resp.sandbox_id, client, None)
+        obj = _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
         obj._is_v2 = True
         obj._hydrate_metadata_v2()
         return obj
@@ -1266,7 +1285,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         else:
             resp = await client.stub.SandboxWait(req)
 
-        obj = _Sandbox._new_hydrated(sandbox_id, client, None)
+        obj = _Sandbox._new_hydrated(sandbox_id, client, resp.metadata)
         obj._is_v2 = is_v2
         if is_v2:
             obj._hydrate_metadata_v2()
@@ -2360,7 +2379,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             for sandbox_info in resp.sandboxes:
                 sandbox_info: api_pb2.SandboxInfo
-                obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
+                obj = _Sandbox._new_hydrated(sandbox_info.id, client, sandbox_info.metadata)
                 obj._result = sandbox_info.task_info.result  # TODO: send SandboxInfo as metadata to _new_hydrated?
                 yield obj
 
@@ -2415,7 +2434,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             for sandbox_info in resp.sandboxes:
                 sandbox_info: api_pb2.SandboxInfo
-                obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
+                obj = _Sandbox._new_hydrated(sandbox_info.id, client, sandbox_info.metadata)
                 # SandboxListV2 only returns V2 sandboxes; mark them as such so
                 # operations like wait/terminate/exec use the V2 RPCs and stdio.
                 obj._is_v2 = True
