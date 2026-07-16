@@ -615,8 +615,13 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 	}
 
 	sb := newSandboxV2(s.client, createResp.GetSandboxId(), createResp.GetTaskId())
-	if len(createResp.GetTunnels()) > 0 {
-		sb.tunnels = make(map[int]*Tunnel, len(createResp.GetTunnels()))
+	// Unencrypted tunnel endpoints are not known at create time. Only cache a
+	// complete set so Tunnels() fetches the rest otherwise.
+	numTunnels := len(createResp.GetTunnels())
+	createRespHasAllTunnels := numTunnels > 0 &&
+		numTunnels == len(req.GetDefinition().GetOpenPorts().GetPorts())
+	if createRespHasAllTunnels {
+		sb.tunnels = make(map[int]*Tunnel, numTunnels)
 		for _, t := range createResp.GetTunnels() {
 			sb.tunnels[int(t.GetContainerPort())] = &Tunnel{
 				Host:            t.GetHost(),

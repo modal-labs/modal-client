@@ -1250,6 +1250,183 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestExperimentalCreateCachesEncryptedOnlyTunnels(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock, "AppGetOrCreate",
+		func(req *pb.AppGetOrCreateRequest) (*pb.AppGetOrCreateResponse, error) {
+			return pb.AppGetOrCreateResponse_builder{AppId: "ap-1234"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(
+		mock, "ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-123",
+				Result: pb.GenericResult_builder{
+					Status: pb.GenericResult_GENERIC_STATUS_SUCCESS,
+				}.Build(),
+			}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(
+		mock, "EnvironmentGetOrCreate",
+		func(req *pb.EnvironmentGetOrCreateRequest) (*pb.EnvironmentGetOrCreateResponse, error) {
+			return pb.EnvironmentGetOrCreateResponse_builder{
+				EnvironmentId: "en-test",
+				Metadata: pb.EnvironmentMetadata_builder{
+					Name: "test",
+					Settings: pb.EnvironmentSettings_builder{
+						ImageBuilderVersion: "2025.06",
+					}.Build(),
+				}.Build(),
+			}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(
+		mock, "SandboxCreateV2",
+		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
+			g.Expect(req.GetDefinition().GetOpenPorts().GetPorts()).To(gomega.HaveLen(1))
+			return pb.SandboxCreateV2Response_builder{
+				SandboxId: validV2SandboxID,
+				TaskId:    "ta-v2-123",
+				Tunnels: []*pb.TunnelData{
+					pb.TunnelData_builder{
+						Host:          "sb-v2-123-8080.modal.host",
+						Port:          443,
+						ContainerPort: 8080,
+					}.Build(),
+				},
+			}.Build(), nil
+		},
+	)
+
+	ctx := t.Context()
+	app, err := mock.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+		EncryptedPorts: []int{8080},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	tunnels, err := sb.Tunnels(ctx, 5*time.Second, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(tunnels).To(gomega.HaveLen(1))
+	g.Expect(tunnels[8080].Host).To(gomega.Equal("sb-v2-123-8080.modal.host"))
+	g.Expect(tunnels[8080].Port).To(gomega.Equal(443))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestExperimentalCreateFetchesUnencryptedTunnels(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock, "AppGetOrCreate",
+		func(req *pb.AppGetOrCreateRequest) (*pb.AppGetOrCreateResponse, error) {
+			return pb.AppGetOrCreateResponse_builder{AppId: "ap-1234"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(
+		mock, "ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-123",
+				Result: pb.GenericResult_builder{
+					Status: pb.GenericResult_GENERIC_STATUS_SUCCESS,
+				}.Build(),
+			}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(
+		mock, "EnvironmentGetOrCreate",
+		func(req *pb.EnvironmentGetOrCreateRequest) (*pb.EnvironmentGetOrCreateResponse, error) {
+			return pb.EnvironmentGetOrCreateResponse_builder{
+				EnvironmentId: "en-test",
+				Metadata: pb.EnvironmentMetadata_builder{
+					Name: "test",
+					Settings: pb.EnvironmentSettings_builder{
+						ImageBuilderVersion: "2025.06",
+					}.Build(),
+				}.Build(),
+			}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(
+		mock, "SandboxCreateV2",
+		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
+			g.Expect(req.GetDefinition().GetOpenPorts().GetPorts()).To(gomega.HaveLen(2))
+			return pb.SandboxCreateV2Response_builder{
+				SandboxId: validV2SandboxID,
+				TaskId:    "ta-v2-123",
+				Tunnels: []*pb.TunnelData{
+					pb.TunnelData_builder{
+						Host:          "sb-v2-123-8080.modal.host",
+						Port:          443,
+						ContainerPort: 8080,
+					}.Build(),
+				},
+			}.Build(), nil
+		},
+	)
+	unencryptedHost := "r1.modal.host"
+	unencryptedPort := uint32(39000)
+	grpcmock.HandleUnary(
+		mock, "SandboxGetTunnelsV2",
+		func(req *pb.SandboxGetTunnelsRequest) (*pb.SandboxGetTunnelsResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(validV2SandboxID))
+			return pb.SandboxGetTunnelsResponse_builder{
+				Result: pb.GenericResult_builder{
+					Status: pb.GenericResult_GENERIC_STATUS_SUCCESS,
+				}.Build(),
+				Tunnels: []*pb.TunnelData{
+					pb.TunnelData_builder{
+						Host:          "sb-v2-123-8080.modal.host",
+						Port:          443,
+						ContainerPort: 8080,
+					}.Build(),
+					pb.TunnelData_builder{
+						Host:            unencryptedHost,
+						Port:            443,
+						UnencryptedHost: &unencryptedHost,
+						UnencryptedPort: &unencryptedPort,
+						ContainerPort:   9000,
+					}.Build(),
+				},
+			}.Build(), nil
+		},
+	)
+
+	ctx := t.Context()
+	app, err := mock.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+		EncryptedPorts:   []int{8080},
+		UnencryptedPorts: []int{9000},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	// Unencrypted tunnels are missing from the create response. Tunnels()
+	// fetches all of them.
+	tunnels, err := sb.Tunnels(ctx, 5*time.Second, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(tunnels).To(gomega.HaveLen(2))
+	g.Expect(tunnels[8080].Host).To(gomega.Equal("sb-v2-123-8080.modal.host"))
+	g.Expect(tunnels[9000].UnencryptedHost).To(gomega.Equal("r1.modal.host"))
+	g.Expect(tunnels[9000].UnencryptedPort).To(gomega.Equal(39000))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestSandboxGetTaskIdPolling(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
