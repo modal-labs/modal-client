@@ -2073,11 +2073,13 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
     @live_method
     async def get_call_graph(self) -> list[InputInfo]:
-        """Returns a structure representing the call graph from a given root
-        call ID, along with the status of execution for each node.
+        """Fetch information about the graph of Inputs this FunctionCall is part of.
 
-        See [`modal.call_graph`](https://modal.com/docs/sdk/py/latest/modal.call_graph) reference page
-        for documentation on the structure of the returned `InputInfo` items.
+        Note: the call graph data is not populated in real-time, and its capture is best-effort.
+        We do not recommend relying on this method for critical use cases.
+
+        See the [`modal.types`](/docs/sdk/py/latest/modal.types) reference for information
+        on the return values.
 
         Returns:
             A list of `InputInfo` nodes describing the call graph.
@@ -2088,19 +2090,13 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return _reconstruct_call_graph(response)
 
     @live_method
-    async def cancel(
-        self,
-        # if true, containers running the inputs are forcibly terminated
-        terminate_containers: bool = False,
-    ):
-        """Cancels the function call, which will stop its execution and mark its inputs as
-        [`TERMINATED`](https://modal.com/docs/sdk/py/latest/modal.call_graph#modalcall_graphinputstatus).
-
-        If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
-        causing any non-cancelled inputs on those containers to be rescheduled in new containers.
+    async def cancel(self, terminate_containers: bool = False):
+        """Cancel the FunctionCall and terminate its inputs without retrying.
 
         Args:
-            terminate_containers: If True, forcibly terminate workers running cancelled inputs.
+            terminate_containers: If True, terminate the containers running the cancelled
+                inputs. Any other inputs running concurrently on those containers will be
+                rescheduled.
         """
         request = api_pb2.FunctionCallCancelRequest(
             function_call_id=self.object_id, terminate_containers=terminate_containers

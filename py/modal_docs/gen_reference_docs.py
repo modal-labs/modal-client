@@ -254,7 +254,6 @@ def run(output_dir: str | None = None):
     # Standalone module reference pages, sorted into the sidebar with top-level `modal.X` entries.
     module_docs = [
         ("modal.billing", "modal.billing"),
-        ("modal.call_graph", "modal.call_graph"),
         ("modal.config", "modal.config"),
         ("modal.container_process", "modal.container_process"),
         ("modal.exception", "modal.exception"),
