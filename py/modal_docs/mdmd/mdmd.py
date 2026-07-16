@@ -109,14 +109,15 @@ def parse_docstring(name: str, signature: str, docstring: str) -> ParsedDoc:
         return "\n".join(normalized_lines).strip()
 
     args_section, args_range = extract_section(["Args:"])
-    returns_section, returns_range = extract_section(["Returns:", "Yields:"])
+    returns_section, returns_range = extract_section(["Returns:"])
+    yields_section, yields_range = extract_section(["Yields:"])
     raises_section, raises_range = extract_section(["Raises:"])
     examples_section, examples_range = extract_section(["Examples:", "Example:"])
     see_also_section, see_also_range = extract_section(["See Also:", "See also:"])
 
     section_ranges = [
         section_range
-        for section_range in [args_range, returns_range, raises_range, examples_range, see_also_range]
+        for section_range in [args_range, returns_range, yields_range, raises_range, examples_range, see_also_range]
         if section_range
     ]
 
@@ -240,6 +241,7 @@ def parse_docstring(name: str, signature: str, docstring: str) -> ParsedDoc:
         description=description,
         params=params,
         returns=section_body_without_header(returns_section),
+        yields=section_body_without_header(yields_section),
         raises=parse_raises(raises_section),
         examples=section_body_without_header(examples_section),
         see_also=section_body_without_header(see_also_section),
@@ -264,6 +266,11 @@ def _markdown_body_from_parsed_doc(parsed: ParsedDoc) -> str:
         output.append("**Parameters**\n")
         for param in parsed.params:
             output.append(_parameter_tag(param))
+        output.append("")
+
+    if parsed.yields:
+        output.append("**Yields**\n")
+        output.append(parsed.yields)
         output.append("")
 
     if parsed.returns:

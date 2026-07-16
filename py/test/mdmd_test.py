@@ -583,8 +583,13 @@ def test_parse_docstring_yields_section():
         bytes: Next chunk from the stream.
     """
     parsed = mdmd.parse_docstring("stream", "def stream():", docstring)
-    assert parsed.returns and not parsed.returns.startswith("Yields:")
-    assert parsed.returns == "bytes: Next chunk from the stream."
+    assert parsed.returns is None
+    assert parsed.yields and not parsed.yields.startswith("Yields:")
+    assert parsed.yields == "bytes: Next chunk from the stream."
+
+    rendered = mdmd._markdown_body_from_parsed_doc(parsed)
+    assert "**Yields**" in rendered
+    assert "**Returns**" not in rendered
 
 
 def test_parse_docstring_see_also_section():

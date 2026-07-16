@@ -29,6 +29,7 @@ class ParsedDoc:
     description: Optional[str]
     params: list[ParsedParam]
     returns: Optional[str]
+    yields: Optional[str]
     raises: list[ParsedRaise]
     examples: Optional[str]
     see_also: Optional[str]
