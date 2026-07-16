@@ -61,7 +61,7 @@ type Client struct {
 	logger                       *slog.Logger
 	cpClient                     *clientWithConn            // control plane client
 	ipClients                    map[string]*clientWithConn // input plane clients
-	authTokenManager             *AuthTokenManager
+	authTokenManager             *authTokenManager
 	additionalUnaryInterceptors  []grpc.UnaryClientInterceptor
 	additionalStreamInterceptors []grpc.StreamClientInterceptor
 	mu                           sync.RWMutex
@@ -169,7 +169,7 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 		c.cpClient = &clientWithConn{ModalClientClient: client, conn: conn}
 	}
 
-	c.authTokenManager = NewAuthTokenManager(c.cpClient, c.logger)
+	c.authTokenManager = newAuthTokenManager(c.cpClient, c.logger)
 	c.environmentManager = newEnvironmentManager(c.cpClient, c.logger)
 
 	logger.DebugContext(ctx, "Modal client initialized successfully")

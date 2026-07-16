@@ -21,29 +21,29 @@ const (
 	DefaultExpiryOffset = 20 * 60
 )
 
-type TokenAndExpiry struct {
+type tokenAndExpiry struct {
 	token  string
 	expiry int64
 }
 
-// AuthTokenManager manages authentication tokens, refreshing them lazily
+// authTokenManager manages authentication tokens, refreshing them lazily
 // when GetToken is called. Tokens are refreshed when expired or within
 // RefreshWindow seconds of expiry.
-type AuthTokenManager struct {
+type authTokenManager struct {
 	client pb.ModalClientClient
 	logger *slog.Logger
 
-	tokenAndExpiry atomic.Pointer[TokenAndExpiry]
+	tokenAndExpiry atomic.Pointer[tokenAndExpiry]
 	refreshMu      sync.Mutex
 }
 
-func NewAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *AuthTokenManager {
-	manager := &AuthTokenManager{
+func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *authTokenManager {
+	manager := &authTokenManager{
 		client: client,
 		logger: logger,
 	}
 
-	manager.tokenAndExpiry.Store(&TokenAndExpiry{
+	manager.tokenAndExpiry.Store(&tokenAndExpiry{
 		token:  "",
 		expiry: 0,
 	})
@@ -60,7 +60,7 @@ func NewAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *Auth
 //     new token via a double-check.
 //  3. Valid but within RefreshWindow of expiry: one goroutine refreshes
 //     (blocking only itself); concurrent callers get the old, still-valid token.
-func (m *AuthTokenManager) GetToken(ctx context.Context) (string, error) {
+func (m *authTokenManager) GetToken(ctx context.Context) (string, error) {
 	data := m.tokenAndExpiry.Load()
 
 	if data.token == "" || isExpired(*data) {
@@ -82,7 +82,7 @@ func (m *AuthTokenManager) GetToken(ctx context.Context) (string, error) {
 
 // lockedRefreshToken blocks until the mutex is acquired, then refreshes if still needed.
 // Returns the current valid token.
-func (m *AuthTokenManager) lockedRefreshToken(ctx context.Context) (string, error) {
+func (m *authTokenManager) lockedRefreshToken(ctx context.Context) (string, error) {
 	m.refreshMu.Lock()
 	defer m.refreshMu.Unlock()
 
@@ -94,7 +94,7 @@ func (m *AuthTokenManager) lockedRefreshToken(ctx context.Context) (string, erro
 }
 
 // FetchToken fetches a new token using AuthTokenGet() and stores it.
-func (m *AuthTokenManager) FetchToken(ctx context.Context) (string, error) {
+func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 	resp, err := m.client.AuthTokenGet(ctx, &pb.AuthTokenGetRequest{})
 	if err != nil {
 		return "", fmt.Errorf("AuthTokenGet: %w", err)
@@ -114,7 +114,7 @@ func (m *AuthTokenManager) FetchToken(ctx context.Context) (string, error) {
 		expiry = time.Now().Unix() + DefaultExpiryOffset
 	}
 
-	m.tokenAndExpiry.Store(&TokenAndExpiry{
+	m.tokenAndExpiry.Store(&tokenAndExpiry{
 		token:  token,
 		expiry: expiry,
 	})
@@ -128,7 +128,7 @@ func (m *AuthTokenManager) FetchToken(ctx context.Context) (string, error) {
 }
 
 // Extracts the exp claim from a JWT token.
-func (m *AuthTokenManager) decodeJWT(token string) int64 {
+func (m *authTokenManager) decodeJWT(token string) int64 {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return 0
@@ -157,26 +157,26 @@ func (m *AuthTokenManager) decodeJWT(token string) int64 {
 }
 
 // GetCurrentToken returns the current cached token.
-func (m *AuthTokenManager) GetCurrentToken() string {
+func (m *authTokenManager) GetCurrentToken() string {
 	return m.tokenAndExpiry.Load().token
 }
 
 // IsExpired checks if the current token is expired.
-func (m *AuthTokenManager) IsExpired() bool {
+func (m *authTokenManager) IsExpired() bool {
 	return isExpired(*m.tokenAndExpiry.Load())
 }
 
-func isExpired(data TokenAndExpiry) bool {
+func isExpired(data tokenAndExpiry) bool {
 	return time.Now().Unix() >= data.expiry
 }
 
-func needsRefresh(data TokenAndExpiry) bool {
+func needsRefresh(data tokenAndExpiry) bool {
 	return time.Now().Unix() >= data.expiry-RefreshWindow
 }
 
 // SetToken sets the token and expiry (for testing).
-func (m *AuthTokenManager) SetToken(token string, expiry int64) {
-	m.tokenAndExpiry.Store(&TokenAndExpiry{
+func (m *authTokenManager) SetToken(token string, expiry int64) {
+	m.tokenAndExpiry.Store(&tokenAndExpiry{
 		token:  token,
 		expiry: expiry,
 	})

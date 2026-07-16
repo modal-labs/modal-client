@@ -721,7 +721,7 @@ func defaultSandboxPTYInfo() *pb.PTYInfo {
 func newSandbox(client *Client, sandboxID string) *Sandbox {
 	sb := &Sandbox{SandboxID: sandboxID, client: client}
 	sb.Filesystem = &SandboxFilesystem{sandbox: sb, logger: client.logger}
-	sb.ExperimentalSidecars = &sandboxSidecarServiceImpl{sandbox: sb}
+	sb.ExperimentalSidecars = &sidecarServiceImpl{sandbox: sb}
 	sb.attached.Store(true)
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
 	sb.Stdout = &lazyStreamReader{
@@ -962,8 +962,8 @@ type SandboxExecParams struct {
 	PTY bool
 }
 
-// ValidateExecArgs checks if command arguments exceed ARG_MAX.
-func ValidateExecArgs(args []string) error {
+// validateExecArgs checks if command arguments exceed ARG_MAX.
+func validateExecArgs(args []string) error {
 	// The maximum number of bytes that can be passed to an exec on Linux.
 	// Though this is technically a 'server side' limit, it is unlikely to change.
 	// getconf ARG_MAX will show this value on a host.
@@ -1110,7 +1110,7 @@ func (sb *Sandbox) execInternal(ctx context.Context, command []string, params *S
 		params = &SandboxExecParams{}
 	}
 
-	if err := ValidateExecArgs(command); err != nil {
+	if err := validateExecArgs(command); err != nil {
 		return nil, err
 	}
 

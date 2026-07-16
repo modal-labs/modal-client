@@ -648,7 +648,7 @@ func TestTaskExecStartRequestProto_InvalidTimeoutNotWholeSeconds(t *testing.T) {
 func TestValidateExecArgsWithArgsWithinLimit(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	err := ValidateExecArgs([]string{"echo", "hello"})
+	err := validateExecArgs([]string{"echo", "hello"})
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 }
 
@@ -657,7 +657,7 @@ func TestValidateExecArgsWithArgsExceedingArgMax(t *testing.T) {
 
 	largeArg := bytes.Repeat([]byte{'a'}, 1<<16+1)
 
-	err := ValidateExecArgs([]string{string(largeArg)})
+	err := validateExecArgs([]string{string(largeArg)})
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("Total length of CMD arguments must be less than"))
 }

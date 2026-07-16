@@ -111,7 +111,6 @@ var typeRegistry = []typeEntry{
 // do not need to appear here.
 var excludedTypes = map[string]string{
 	"App":                             "data type, no public methods",
-	"AuthTokenManager":                "internal token management, not SDK API surface",
 	"Client":                          "main client; Close and Version are intentionally parameter-free",
 	"CloudBucketMount":                "data type, no public methods",
 	"FunctionStats":                   "data type",
@@ -122,7 +121,6 @@ var excludedTypes = map[string]string{
 	"SandboxCreateConnectCredentials": "data type",
 	"Secret":                          "data type, no public methods",
 	"StdioBehavior":                   "string enum type",
-	"TokenAndExpiry":                  "internal data type",
 	"InternalFailure":                 "error type (name does not end in Error)",
 	"Allowlist":                       "configuration value type, no public methods",
 	"FileType":                        "string enum, no public methods",

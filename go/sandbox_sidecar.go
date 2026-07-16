@@ -31,7 +31,7 @@ type SidecarService interface {
 	List(ctx context.Context, params *SidecarListParams) ([]*SidecarContainer, error)
 }
 
-type sandboxSidecarServiceImpl struct{ sandbox *Sandbox }
+type sidecarServiceImpl struct{ sandbox *Sandbox }
 
 // SidecarCreateParams holds options for creating a sidecar container.
 type SidecarCreateParams struct {
@@ -80,7 +80,7 @@ func validateSidecarName(name string) error {
 	return nil
 }
 
-func (s *sandboxSidecarServiceImpl) Create(ctx context.Context, name string, image *Image, params *SidecarCreateParams) (*SidecarContainer, error) {
+func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Image, params *SidecarCreateParams) (*SidecarContainer, error) {
 	if err := validateSidecarName(name); err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func (s *sandboxSidecarServiceImpl) Create(ctx context.Context, name string, ima
 	if err := validateWorkdir(params.Workdir); err != nil {
 		return nil, err
 	}
-	if err := ValidateExecArgs(params.Command); err != nil {
+	if err := validateExecArgs(params.Command); err != nil {
 		return nil, err
 	}
 
@@ -154,7 +154,7 @@ func (s *sandboxSidecarServiceImpl) Create(ctx context.Context, name string, ima
 	return newSidecarContainer(s.sandbox, resp.GetContainerId(), containerName, nil), nil
 }
 
-func (s *sandboxSidecarServiceImpl) Get(ctx context.Context, name string, params *SidecarGetParams) (*SidecarContainer, error) {
+func (s *sidecarServiceImpl) Get(ctx context.Context, name string, params *SidecarGetParams) (*SidecarContainer, error) {
 	if err := validateSidecarName(name); err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (s *sandboxSidecarServiceImpl) Get(ctx context.Context, name string, params
 	return sidecarContainerFromProto(s.sandbox, container), nil
 }
 
-func (s *sandboxSidecarServiceImpl) List(ctx context.Context, params *SidecarListParams) ([]*SidecarContainer, error) {
+func (s *sidecarServiceImpl) List(ctx context.Context, params *SidecarListParams) ([]*SidecarContainer, error) {
 	if params == nil {
 		params = &SidecarListParams{}
 	}
