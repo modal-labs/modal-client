@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import platform
-from typing import Generic, TypeVar
+from typing import BinaryIO, Generic, TypeVar
 
 from modal_proto import api_pb2
 
@@ -116,6 +116,18 @@ class _ContainerProcess(Generic[T]):
                 "To poll for the status of a running process, use poll() instead."
             )
         return self._returncode
+
+    async def _stdin_write_stream(self, source: BinaryIO) -> int:
+        """mdmd:hidden
+        Stream `source` into the process's stdin and close it (EOF) on success.
+
+        Returns the total bytes streamed.
+        """
+        return await self._command_router_client.exec_stdin_write_stream(
+            task_id=self._task_id,
+            exec_id=self._process_id,
+            source=source,
+        )
 
     async def poll(self) -> int | None:
         """Check if the container process has finished running.

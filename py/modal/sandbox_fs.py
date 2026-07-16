@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2026
 import asyncio
+import io
 import json
 import os
 import random
@@ -7,7 +8,7 @@ import string
 import time
 import weakref
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Optional, Union, cast
+from typing import TYPE_CHECKING, AsyncIterator, BinaryIO, Optional, Union, cast
 
 if TYPE_CHECKING:
     import modal.sandbox
@@ -33,7 +34,6 @@ from ._utils.sandbox_fs_utils import (
     validate_absolute_remote_path,
 )
 from .exception import ConflictError
-from .io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE
 from .types import FileInfo, FileType, FileWatchEvent, FileWatchEventType
 
 _SANDBOX_FS_TOOLS_PATH = "/__modal/.bin/modal-sandbox-fs-tools"
@@ -111,69 +111,8 @@ class _SandboxFilesystem:
         validate_absolute_remote_path(remote_path, "copy_from_local")
 
         t0 = time.monotonic()
-        total_bytes = 0
         with open(local_path, "rb") as file_obj:
-            with translate_exec_errors("copy_from_local", remote_path):
-                process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
-                try:
-                    while True:
-                        logger.debug(
-                            f"sandbox copy_from_local('{local_path}', '{remote_path}'): reading "
-                            f"{TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE} bytes from {local_path} at offset {total_bytes}"
-                        )
-                        # TODO(saltzm): If this fails, the ContainerProcess will remain alive indefinitely since
-                        # stdin will remain open. Unfortunately we can't just call write_eof either, since that
-                        # would lead to a partially written file being persisted. We should catch exceptions
-                        # from this and kill the ContainerProcess when we have a way to do this.
-                        chunk = file_obj.read(TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE)
-                        if not chunk:
-                            logger.debug(
-                                f"sandbox copy_from_local('{local_path}', '{remote_path}'): read no data from "
-                                f"{local_path}, finished reading file"
-                            )
-                            break
-                        total_bytes += len(chunk)
-                        logger.debug(
-                            f"sandbox copy_from_local('{local_path}', '{remote_path}'): writing {len(chunk)} bytes "
-                            f"from {local_path} to remote {remote_path}"
-                        )
-                        process.stdin.write(chunk)
-                        await process.stdin.drain()
-                        logger.debug(
-                            f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished writing "
-                            f"{len(chunk)} bytes from {local_path} to remote {remote_path}"
-                        )
-                    logger.debug(
-                        f"sandbox copy_from_local('{local_path}', '{remote_path}'): writing eof to remote {remote_path}"
-                    )
-                    process.stdin.write_eof()
-                    await process.stdin.drain()
-                    logger.debug(
-                        f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished writing eof to remote "
-                        f"{remote_path}"
-                    )
-                # When the FS tools binary exits early on an error, the worker
-                # reports the dropped stdin write as ConflictError.
-                except ConflictError:
-                    pass
-
-                async def read_stderr():
-                    stderr = await process.stderr.read()
-                    logger.debug(f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished reading stderr")
-                    return stderr
-
-                async def wait_for_process_completion():
-                    returncode = await process.wait()
-                    logger.debug(
-                        f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished waiting for process "
-                        "completion"
-                    )
-                    return returncode
-
-                stderr, returncode = await asyncio.gather(read_stderr(), wait_for_process_completion())
-
-            if returncode != 0:
-                raise_write_file_error(returncode, stderr, remote_path)
+            total_bytes = await self._exec_fs_tool_write(file_obj, remote_path, "copy_from_local")
 
         dur_s = max(time.monotonic() - t0, 0.001)
         _log_throughput(f"copy_from_local('{local_path}', '{remote_path}')", total_bytes, dur_s)
@@ -638,22 +577,7 @@ class _SandboxFilesystem:
             raise TypeError("data must be bytes-like")
 
         t0 = time.monotonic()
-        with translate_exec_errors("write_bytes", remote_path):
-            process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
-            try:
-                for offset in range(0, max(len(data), 1), TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE):
-                    process.stdin.write(data[offset : offset + TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE])
-                    await process.stdin.drain()
-                process.stdin.write_eof()
-                await process.stdin.drain()
-            # When the FS tools binary exits early on an error, the worker
-            # reports the dropped stdin write as ConflictError.
-            except ConflictError:
-                pass
-            stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
-
-        if returncode != 0:
-            raise_write_file_error(returncode, stderr, remote_path)
+        await self._exec_fs_tool_write(io.BytesIO(data), remote_path, "write_bytes")
 
         dur_s = max(time.monotonic() - t0, 0.001)
         _log_throughput(f"write_bytes {remote_path}", len(data), dur_s)
@@ -685,6 +609,34 @@ class _SandboxFilesystem:
         if not isinstance(data, str):
             raise TypeError("data must be str")
         await self.write_bytes(data.encode("utf-8"), remote_path)
+
+    async def _exec_fs_tool_write(self, source: BinaryIO, remote_path: str, op_name: str) -> int:
+        """Exec the FS-tools write command and stream `source` into its stdin.
+
+        Returns the number of bytes streamed.
+        """
+        with translate_exec_errors(op_name, remote_path):
+            process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
+            # TODO(saltzm): If streaming fails after resume attempts are exhausted, the
+            # ContainerProcess will remain alive indefinitely since stdin will remain open.
+            # We should catch exceptions from this and kill the ContainerProcess when we
+            # have a way to do this.
+            try:
+                total_bytes = await process._stdin_write_stream(source)
+            # When the FS tools binary exits early on an error, the worker
+            # reports the dropped stdin write as ConflictError.
+            except ConflictError:
+                # ConflictError can come from a failure in fs-tools or server-side.
+                # - if server-side, the process won't exit, so the gather below would hang forever -> raise
+                # - else if fs-tools, process will be closed, use raise_write_file_error below
+                if await process.poll() is None:
+                    raise
+                total_bytes = source.tell()
+            stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
+
+        if returncode != 0:
+            raise_write_file_error(returncode, stderr, remote_path)
+        return total_bytes
 
 
 SandboxFilesystem = synchronize_api(_SandboxFilesystem)

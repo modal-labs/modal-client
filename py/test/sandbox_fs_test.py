@@ -8,8 +8,10 @@ from typing import Callable, Optional
 from unittest import mock
 
 from modal import App, Sandbox
+from modal._utils.task_command_router_client import STREAMING_STDIN_CHUNK_SIZE
 from modal.exception import (
     InvalidError,
+    NotFoundError,
     SandboxFilesystemDirectoryNotEmptyError,
     SandboxFilesystemFileTooLargeError,
     SandboxFilesystemIsADirectoryError,
@@ -641,6 +643,70 @@ def test_sandbox_fs_copy_from_local_errors_when_parent_is_a_file(servicer, clien
 
     with pytest.raises(SandboxFilesystemNotADirectoryError):
         sandbox.filesystem.copy_from_local(src, remote_path)
+
+
+@skip_non_subprocess
+def test_sandbox_fs_copy_from_local_resumes_after_transient_stream_failure(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
+):
+    payload = random.Random(31).randbytes(2 * STREAMING_STDIN_CHUNK_SIZE + 12345)
+    src = tmp_path / "source.bin"
+    src.write_bytes(payload)
+    remote_path = str(tmp_path / "copied.bin")
+
+    # Fail the stream once, mid-upload. The client should query the accepted
+    # offset, seek the source, and resume from there.
+    tcr = servicer.task_command_router
+    tcr.stdin_stream_fail_after_bytes = STREAMING_STDIN_CHUNK_SIZE
+    tcr.stdin_stream_failures_remaining = 1
+
+    sandbox.filesystem.copy_from_local(src, remote_path)
+
+    # The initial attempt failed once, then a single resume completed the upload.
+    assert tcr.stdin_stream_attempt_count == 2
+    assert (tmp_path / "copied.bin").read_bytes() == payload
+
+
+@skip_non_subprocess
+def test_sandbox_fs_copy_from_local_raises_after_exhausting_resume_attempts(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
+):
+    # Each failed attempt commits one chunk before failing, so the payload must
+    # be large enough that the upload cannot complete within the attempt budget.
+    payload = random.Random(32).randbytes(12 * STREAMING_STDIN_CHUNK_SIZE)
+    src = tmp_path / "source.bin"
+    src.write_bytes(payload)
+    remote_path = str(tmp_path / "copied.bin")
+
+    tcr = servicer.task_command_router
+    tcr.stdin_stream_fail_after_bytes = 1
+    tcr.stdin_stream_failures_remaining = 100
+
+    with pytest.raises(NotFoundError, match="unavailable"):
+        sandbox.filesystem.copy_from_local(src, remote_path)
+
+    # The initial attempt plus 9 resumes, each failing.
+    assert tcr.stdin_stream_attempt_count == 10
+
+
+@skip_non_subprocess
+def test_sandbox_fs_copy_from_local_succeeds_when_response_lost_after_upload(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
+):
+    payload = random.Random(33).randbytes(STREAMING_STDIN_CHUNK_SIZE + 12345)
+    src = tmp_path / "source.bin"
+    src.write_bytes(payload)
+    remote_path = str(tmp_path / "copied.bin")
+
+    # The server accepts every byte and the End message (closing stdin), but the
+    # response is lost. The client should detect the completed upload from the
+    # stdin status instead of reporting failure.
+    servicer.task_command_router.stdin_stream_drop_response = True
+
+    sandbox.filesystem.copy_from_local(src, remote_path)
+
+    assert not servicer.task_command_router.stdin_stream_drop_response, "failure was never injected"
+    assert (tmp_path / "copied.bin").read_bytes() == payload
 
 
 # ---------------------------------------------------------------------------

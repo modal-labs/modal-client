@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2025
 import asyncio
 import base64
+import io
 import json
 import socket
 import ssl
@@ -8,16 +9,16 @@ import time
 import typing
 import urllib.parse
 import weakref
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, AsyncIterable, Callable
 from contextlib import suppress
-from typing import TypeVar
+from typing import BinaryIO, TypeVar
 
 import grpclib.client
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
 from modal.config import logger
-from modal.exception import ExecTimeoutError, TimeoutError as ModalTimeoutError
+from modal.exception import AuthError, ExecTimeoutError, InternalError, ServiceError, TimeoutError as ModalTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
@@ -25,6 +26,17 @@ from .._grpc_client import grpc_error_converter
 from .._utils.grpc_utils import ModalChannel, create_channel_config
 from .async_utils import aclosing, retry
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+
+STREAMING_STDIN_CHUNK_SIZE = 256 * 1024
+
+_STREAMING_STDIN_RESUMABLE_EXCEPTIONS = (
+    AuthError,
+    InternalError,
+    ServiceError,
+    StreamTerminatedError,
+    OSError,
+    asyncio.TimeoutError,
+)
 
 
 @retry(n_attempts=34, base_delay=1, max_delay=10, attempt_timeout=10, total_timeout=310)
@@ -466,6 +478,118 @@ class TaskCommandRouterClient:
         with grpc_error_converter():
             return await call_with_retries_on_transient_errors(
                 lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
+            )
+
+    async def exec_stdin_write_stream(
+        self,
+        task_id: str,
+        exec_id: str,
+        source: BinaryIO,
+        chunk_size: int = STREAMING_STDIN_CHUNK_SIZE,
+        max_resume_attempts: int = 9,
+    ) -> int:
+        """Stream `source` into the exec's stdin, with bounded resume on transient failures.
+
+        Streams the full contents of `source` in one client-streaming RPC and
+        closes stdin (EOF) on success. On a resumable error, queries
+        `exec_stdin_status` for the server's canonical offset, seeks `source`
+        to that point, and reopens the stream.
+
+        Args:
+            task_id: The task ID of the task running the exec'd command.
+            exec_id: The execution ID of the command to write to.
+            source: A seekable byte source (file, BytesIO, etc.).
+            chunk_size: Bytes per outbound message.
+            max_resume_attempts: Upper bound on resume retries before giving up.
+
+        Returns:
+            The total number of bytes streamed into the exec's stdin.
+        """
+        offset = 0
+        attempt = 0
+        while True:
+
+            async def _chunks():
+                while True:
+                    chunk = source.read(chunk_size)
+                    if not chunk:
+                        return
+                    yield chunk
+
+            try:
+                source.seek(offset)
+                await self._exec_stdin_write_stream(task_id, exec_id, offset, _chunks())
+                return source.tell()
+            except (*_STREAMING_STDIN_RESUMABLE_EXCEPTIONS, AttributeError) as e:
+                # StreamTerminatedError surfaces as AttributeError in grpclib<=0.4.7;
+                # see call_with_retries_on_transient_errors.
+                if isinstance(e, AttributeError) and "_write_appdata" not in str(e):
+                    raise
+                attempt += 1
+                if attempt > max_resume_attempts:
+                    raise
+                status = await self.exec_stdin_status(task_id=task_id, exec_id=exec_id)
+                if status.closed:
+                    pos = source.tell()
+                    if status.num_bytes_written == pos and source.seek(0, io.SEEK_END) == pos:
+                        logger.debug(f"exec_stdin_write_stream completed but response was lost: {e}")
+                        return pos
+                    raise
+                offset = status.num_bytes_written
+                logger.debug(f"exec_stdin_write_stream resuming from offset {offset} after error: {e}")
+
+    async def _exec_stdin_write_stream(
+        self,
+        task_id: str,
+        exec_id: str,
+        start_offset: int,
+        chunks: AsyncIterable[bytes],
+    ) -> sr_pb2.TaskExecStdinWriteStreamResponse | None:
+        """Single client-streaming attempt: Start, Data chunks, then End (EOF).
+
+        Does not retry; `exec_stdin_write_stream` owns resume.
+        """
+        with grpc_error_converter():
+            stream = self._stub.TaskExecStdinWriteStream.open(metadata=self._get_metadata())
+            async with stream as s:
+                start = sr_pb2.TaskExecStdinWriteStreamRequest(
+                    start=sr_pb2.TaskExecStdinWriteStreamStart(
+                        task_id=task_id,
+                        exec_id=exec_id,
+                        offset=start_offset,
+                    ),
+                )
+                await s.send_message(start)
+                async for data in chunks:
+                    if not data:
+                        continue
+                    await s.send_message(sr_pb2.TaskExecStdinWriteStreamRequest(data=data))
+                # The server closes stdin only on this explicit End message. A
+                # stream that breaks before it leaves stdin open for resume.
+                await s.send_message(
+                    sr_pb2.TaskExecStdinWriteStreamRequest(end=sr_pb2.TaskExecStdinWriteStreamEnd()),
+                    end=True,
+                )
+                return await s.recv_message()
+
+    async def exec_stdin_status(self, task_id: str, exec_id: str) -> sr_pb2.TaskExecStdinStatusResponse:
+        """Read the current stdin write status for an exec'd command, to support retries from the right offset.
+
+        Used by streaming clients to find the resume offset after a stream
+        failure. Evicts any in-flight stdin stream for the exec, so it is not
+        safe to call for read-only observability.
+
+        Args:
+            task_id: The task ID of the task running the exec'd command.
+            exec_id: The execution ID of the command to query.
+        Raises:
+            Other errors: If retries are exhausted on transient errors or if there's an error
+              from the RPC itself.
+        """
+        request = sr_pb2.TaskExecStdinStatusRequest(task_id=task_id, exec_id=exec_id)
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskExecStdinStatus, request)
             )
 
     async def sandbox_stdin_write_v2(
