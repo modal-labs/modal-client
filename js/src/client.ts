@@ -65,7 +65,7 @@ export type ModalGrpcClient = Client<
  *
  * ModalClient provides access to all Modal services through service properties.
  * Create a client instance and use its service properties to manage {@link App}s,
- * {@link Function_ Function}s, * {@link Sandbox}es, and other Modal resources.
+ * {@link Function_ Function}s, {@link Sandbox}es, and other Modal resources.
  *
  * @example
  * ```typescript

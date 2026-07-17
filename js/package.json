@@ -26,8 +26,6 @@
   "scripts": {
     "build": "tsup",
     "check": "tsc",
-    "docs": "typedoc src/index.ts --treatWarningsAsErrors",
-    "docs:serve": "npm run docs && http-server ./docs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint",
@@ -53,14 +51,12 @@
     "eslint-plugin-import-x": "^4.16.1",
     "globals": "^16.2.0",
     "grpc-tools": "^1.13.0",
-    "http-server": "^14.1.1",
     "jsonwebtoken": "^9.0.2",
     "p-queue": "^8.1.0",
     "prettier": "^3.5.3",
     "ts-proto": "^2.7.0",
     "tsup": "^8.4.0",
     "tsx": "^4.20.5",
-    "typedoc": "^0.28.5",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.33.1",
     "vitest": "^3.1.2"

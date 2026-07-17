@@ -4,6 +4,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
+- (JS) Reference documentation now lives on [modal.com/docs](https://modal.com/docs/sdk/js), replacing the TypeDoc site previously published to GitHub Pages.
 - (Go, JS) Experimental options for Sandboxes (`ExperimentalOptions` in `SandboxCreateParams` in Go, `experimentalOptions` in `Sandbox.create` in JS) now accept string values in addition to booleans.
 - (Go, JS) Added a `ConflictError` error type, returned when the current state of a resource conflicts with the requested operation.
 - **Breaking:** (Go) Unexported `AuthTokenManager`, `NewAuthTokenManager`, `TokenAndExpiry`, and `ValidateExecArgs` which were not meant to be part of the public API.

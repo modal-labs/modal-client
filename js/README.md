@@ -1,6 +1,6 @@
 # Modal JavaScript SDK
 
-[![JS Reference Documentation](https://img.shields.io/badge/docs-reference-blue)](https://modal-labs.github.io/libmodal/)
+[![JS Reference Documentation](https://img.shields.io/badge/docs-reference-blue)](https://modal.com/docs/sdk/js)
 [![npm Version](https://img.shields.io/npm/v/modal.svg)](https://www.npmjs.org/package/modal)
 [![npm Downloads](https://img.shields.io/npm/dm/modal.svg)](https://www.npmjs.com/package/modal)
 
@@ -35,7 +35,7 @@ load the package with either `import` or `require()` in any project.
 See the main [Modal documentation](https://modal.com/docs) and
 [user guides](https://modal.com/docs/guide) for high-level overviews. For
 details, see the
-[API reference documentation for for JS](https://modal-labs.github.io/libmodal/).
+[API reference documentation for JS](https://modal.com/docs/sdk/js).
 
 We also provide a number of examples:
 
