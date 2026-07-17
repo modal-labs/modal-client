@@ -690,7 +690,12 @@ async def _deploy_app(
 
 
 async def _interactive_shell(
-    _app: "modal.app._App", cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
+    _app: "modal.app._App",
+    cmds: list[str],
+    environment_name: str = "",
+    pty: bool = True,
+    v2: bool = False,
+    **kwargs: Any,
 ) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
@@ -732,13 +737,25 @@ async def _interactive_shell(
 
         # Temporarily enable output to show image build logs during sandbox creation
         output_mgr.set_quiet_mode(False)
-        sandbox = await _Sandbox._create(
-            "sleep",
-            "100000",
-            app=_app,
-            secrets=secrets,
-            **kwargs,
-        )
+        if v2:
+            for option in ("gpu", "mounts", "network_file_systems"):
+                if kwargs.pop(option, None):
+                    raise InvalidError(f"`{option}` is not supported for V2 sandboxes")
+            sandbox = await _Sandbox._experimental_create(
+                "sleep",
+                "100000",
+                app=_app,
+                secrets=secrets,
+                **kwargs,
+            )
+        else:
+            sandbox = await _Sandbox._create(
+                "sleep",
+                "100000",
+                app=_app,
+                secrets=secrets,
+                **kwargs,
+            )
 
         # Re-enable quiet mode before starting the interactive session
         output_mgr.set_quiet_mode(True)
@@ -757,7 +774,12 @@ async def _interactive_shell(
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)
-            resp = await sandbox._client.stub.SandboxWait(req)
+            if v2:
+                assert sandbox._client._auth_token_manager
+                auth_token = await sandbox._client._auth_token_manager.get_token()
+                resp = await sandbox._client.stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            else:
+                resp = await sandbox._client.stub.SandboxWait(req)
             if resp.result.exception:
                 raise RemoteError(resp.result.exception)
             else:
