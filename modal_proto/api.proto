@@ -4469,14 +4469,12 @@ message WorkspaceBillingSummaryResponse {
   google.protobuf.Timestamp end_timestamp = 2;
 
   string metered_cost = 3;
-  string plan_cost = 4;
-  string credits_applied = 5;
-  string reservations_discount = 6;
-  string volumes_discount = 7;
-  string billed_cost = 8;
+  string billed_cost = 4;
 
-  // keyed by deployed, ephemeral, volume, notebook
-  map<string, string> metered_cost_breakdown = 9;
+  // keyed by deployed, ephemeral, volume, notebook, tokens
+  map<string, string> metered_cost_breakdown = 5;
+  // keyed by plan, credits, reservations, storage
+  map<string, string> adjustments = 6;
 }
 
 message WorkspaceDashboardUrlRequest {
