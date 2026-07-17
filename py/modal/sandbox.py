@@ -2155,11 +2155,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @property
     def filesystem(self) -> _SandboxFilesystem:
-        """Namespace for filesystem APIs.
-
-        Returns:
-            A `SandboxFilesystem` helper bound to this sandbox.
-        """
+        """Namespace for Sandbox filesystem APIs."""
         self._ensure_attached()
         if self._filesystem is None:
             self._filesystem = _SandboxFilesystem(self)
@@ -2550,7 +2546,7 @@ class _SidecarContainer:
 
     @property
     def filesystem(self) -> _SandboxFilesystem:
-        """Namespace for filesystem APIs."""
+        """Namespace for Sandbox filesystem APIs."""
         if self._filesystem is None:
             self._filesystem = _SandboxFilesystem(self)
         return self._filesystem

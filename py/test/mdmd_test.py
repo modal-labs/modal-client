@@ -383,7 +383,7 @@ def test_property_namespace_decl_override():
 
     class _FilesystemNamespace:
         """mdmd:namespace
-        Namespace docs"""
+        Class docs should not be rendered."""
 
         def read(self, path: str) -> bytes:
             """Read a file."""
@@ -393,16 +393,19 @@ def test_property_namespace_decl_override():
     class _Resource:
         @property
         def filesystem(self) -> _FilesystemNamespace:
+            """Property namespace docs."""
             return _FilesystemNamespace()
 
     Resource = s.create_blocking(_Resource, "Resource")
 
+    assert Resource.filesystem.__doc__ == "Property namespace docs."
     result = mdmd.class_str("Resource", Resource)
     assert "## filesystem" in result
     assert "filesystem: FilesystemNamespace" in result
     assert "class filesystem" not in result
     assert "### filesystem.read" in result
-    assert "Namespace docs" in result
+    assert "Property namespace docs" in result
+    assert "Class docs should not be rendered" not in result
 
 
 def test_get_decorators():

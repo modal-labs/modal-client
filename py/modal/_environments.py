@@ -104,11 +104,7 @@ class _EnvironmentManager:
 
 
 class _EnvironmentMembersManager:
-    """mdmd:namespace
-    Namespace with methods for managing the membership of a restricted Environment.
-
-    See https://modal.com/docs/guide/rbac for more information on restricted Environments.
-    """
+    """mdmd:namespace"""
 
     def __init__(self, environment: "_Environment"):
         """mdmd:hidden"""
@@ -288,6 +284,10 @@ class _Environment(_Object, type_prefix="en"):
 
     @property
     def members(self) -> "_EnvironmentMembersManager":
+        """Namespace with methods for managing the membership of a restricted Environment.
+
+        See https://modal.com/docs/guide/rbac for more information on restricted Environments.
+        """
         return _EnvironmentMembersManager(self)
 
     # TODO(michael) Keeping this private for now until we decide what else should be in it
@@ -372,13 +372,12 @@ class _Environment(_Object, type_prefix="en"):
 
     @property
     def billing(self) -> "_EnvironmentBillingManager":
+        """Namespace for Environment billing APIs."""
         return _EnvironmentBillingManager(self)
 
 
 class _EnvironmentBillingManager:
-    """mdmd:namespace
-    Namespace for Environment billing APIs
-    """
+    """mdmd:namespace"""
 
     def __init__(self, environment: _Environment):
         """mdmd:ignore"""

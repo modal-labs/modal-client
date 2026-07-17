@@ -35,9 +35,7 @@ def _member_role_from_proto(proto_value: int) -> str:
 
 
 class _WorkspaceMembersManager:
-    """mdmd:namespace
-    Namespace with methods for managing the membership of a Workspace.
-    """
+    """mdmd:namespace"""
 
     def __init__(self, workspace: "_Workspace"):
         """mdmd:hidden"""
@@ -81,6 +79,7 @@ class _Workspace(_Object, type_prefix="ac"):
 
     @property
     def members(self) -> "_WorkspaceMembersManager":
+        """Namespace with methods for managing the membership of a Workspace."""
         return _WorkspaceMembersManager(self)
 
     @staticmethod
@@ -110,23 +109,25 @@ class _Workspace(_Object, type_prefix="ac"):
 
     @property
     def billing(self) -> "_WorkspaceBillingManager":
+        """Namespace for Workspace billing APIs."""
         return _WorkspaceBillingManager(self)
 
     @property
     def proxy_tokens(self) -> "_WorkspaceProxyTokenManager":
+        """Namespace with methods for managing the proxy tokens in a Workspace.
+
+        See [the guide](https://modal.com/docs/guide/webhook-proxy-auth) for more information on proxy tokens.
+        """
         return _WorkspaceProxyTokenManager(self)
 
     @property
     def settings(self) -> "_WorkspaceSettingsManager":
+        """Namespace for Workspace settings APIs."""
         return _WorkspaceSettingsManager(self)
 
 
 class _WorkspaceProxyTokenManager:
-    """mdmd:namespace
-    Namespace with methods for managing the proxy tokens in a Workspace.
-
-    See [the guide](https://modal.com/docs/guide/webhook-proxy-auth) for more information on proxy tokens.
-    """
+    """mdmd:namespace"""
 
     def __init__(self, workspace: "_Workspace"):
         """mdmd:hidden"""
@@ -245,9 +246,7 @@ class _WorkspaceProxyTokenManager:
 
 
 class _WorkspaceBillingManager:
-    """mdmd:namespace
-    Namespace for Workspace billing APIs.
-    """
+    """mdmd:namespace"""
 
     def __init__(self, workspace: _Workspace):
         """mdmd:hidden"""
@@ -321,9 +320,7 @@ class _WorkspaceBillingManager:
 
 
 class _WorkspaceSettingsManager:
-    """mdmd:namespace
-    Namespace for Workspace settings APIs.
-    """
+    """mdmd:namespace"""
 
     @classmethod
     def valid_settings(cls):

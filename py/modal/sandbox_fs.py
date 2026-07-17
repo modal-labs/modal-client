@@ -66,8 +66,7 @@ def _expand_watch_filter(filter: list[FileWatchEventType]) -> list[str]:
 
 
 class _SandboxFilesystem:
-    """mdmd:namespace
-    Namespace for Sandbox filesystem APIs."""
+    """mdmd:namespace"""
 
     _container: Union["modal.sandbox._Sandbox", "modal.sandbox._SidecarContainer"]
 
