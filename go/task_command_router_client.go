@@ -58,6 +58,15 @@ var commandRouterRetryableCodes = map[codes.Code]struct{}{
 	codes.Unknown:          {},
 }
 
+// streamingStdinChunkSize is the number of bytes per outbound stdin stream
+// message. It bounds the per-failure resend cost while amortizing per-chunk
+// overhead.
+const streamingStdinChunkSize = 256 * 1024
+
+// streamingStdinMaxResumeAttempts caps resume retries for ExecStdinWriteStream:
+// 10 total attempts, matching the unary path's retry budget.
+const streamingStdinMaxResumeAttempts = 9
+
 // parseJwtExpiration extracts the expiration time from a JWT token.
 // Returns (nil, nil) if the token has no exp claim.
 // Returns an error if the token is malformed.
@@ -572,6 +581,169 @@ func (c *taskCommandRouterClient) ExecStdinWrite(ctx context.Context, taskID, ex
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinWriteResponse, error) {
 		return c.stub.TaskExecStdinWrite(authCtx, request)
 	})
+	return err
+}
+
+// ExecStdinStatus returns the current stdin write status for an exec'd
+// command, to support resuming a stdin stream from the right offset.
+//
+// Evicts any in-flight stdin stream for the exec.
+func (c *taskCommandRouterClient) ExecStdinStatus(ctx context.Context, taskID, execID string) (*pb.TaskExecStdinStatusResponse, error) {
+	request := pb.TaskExecStdinStatusRequest_builder{
+		TaskId: taskID,
+		ExecId: execID,
+	}.Build()
+
+	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinStatusResponse, error) {
+		return c.stub.TaskExecStdinStatus(authCtx, request)
+	})
+}
+
+// isStreamingStdinResumableCode reports whether a stdin stream attempt that
+// failed with the given status code can be resumed. Adds Unauthenticated
+// to the normal retryable codes, which is handled by refreshing the JWT
+// between attempts rather than retrying in-stream.
+func isStreamingStdinResumableCode(code codes.Code) bool {
+	if code == codes.Unauthenticated {
+		return true
+	}
+	_, ok := commandRouterRetryableCodes[code]
+	return ok
+}
+
+// ExecStdinWriteStream streams source into the exec's stdin, with bounded
+// resume on transient failures.
+//
+// On a resumable error, it queries ExecStdinStatus for
+// the server's offset, seeks source to that point, and reopens the
+// stream.
+// Returns the total number of bytes streamed.
+func (c *taskCommandRouterClient) ExecStdinWriteStream(ctx context.Context, taskID, execID string, source io.ReadSeeker) (int64, error) {
+	var offset uint64
+	attempt := 0
+	for {
+		if _, err := source.Seek(int64(offset), io.SeekStart); err != nil {
+			return 0, err
+		}
+		attemptErr := c.execStdinWriteStreamAttempt(ctx, taskID, execID, offset, source)
+		if attemptErr == nil {
+			return source.Seek(0, io.SeekCurrent)
+		}
+
+		st, ok := status.FromError(attemptErr)
+		if !ok {
+			// Non-status errors (e.g. local source read failures) are not resumable.
+			return 0, attemptErr
+		}
+		if c.closed.Load() && st.Code() == codes.Canceled {
+			return 0, ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
+		}
+		if !isStreamingStdinResumableCode(st.Code()) {
+			return 0, attemptErr
+		}
+		attempt++
+		if attempt > streamingStdinMaxResumeAttempts {
+			return 0, attemptErr
+		}
+		// There is no in-stream auth retry: refresh the JWT here so the next
+		// resume attempt opens its stream with a fresh token.
+		if st.Code() == codes.Unauthenticated {
+			if refreshErr := c.refreshJwt(ctx); refreshErr != nil {
+				return 0, refreshErr
+			}
+		}
+		statusResp, statusErr := c.ExecStdinStatus(ctx, taskID, execID)
+		if statusErr != nil {
+			return 0, statusErr
+		}
+		if statusResp.GetClosed() {
+			// If the server's byte count matches everything we streamed and the source is
+			// exhausted, the upload completed and only the response was lost.
+			currentPos, err := source.Seek(0, io.SeekCurrent)
+			if err != nil {
+				return 0, err
+			}
+			if statusResp.GetNumBytesWritten() == uint64(currentPos) {
+				endPos, seekErr := source.Seek(0, io.SeekEnd)
+				if seekErr != nil {
+					return 0, seekErr
+				}
+				if endPos == currentPos {
+					c.logger.DebugContext(ctx, "ExecStdinWriteStream completed but response was lost", "exec_id", execID, "error", attemptErr)
+					return currentPos, nil
+				}
+			}
+			return 0, attemptErr
+		}
+		offset = statusResp.GetNumBytesWritten()
+		c.logger.DebugContext(ctx, "ExecStdinWriteStream resuming", "exec_id", execID, "offset", offset, "error", attemptErr)
+	}
+}
+
+// execStdinWriteStreamAttempt performs a single client-streaming attempt:
+// Start, Data chunks, then End (EOF). It does not retry; ExecStdinWriteStream
+// owns resume.
+func (c *taskCommandRouterClient) execStdinWriteStreamAttempt(ctx context.Context, taskID, execID string, offset uint64, source io.Reader) error {
+	// Cancel the stream when bailing out before CloseAndRecv completes so an
+	// abandoned attempt doesn't leak. A canceled stream ends without End,
+	// which leaves stdin open server-side for resume.
+	attemptCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	stream, err := c.stub.TaskExecStdinWriteStream(c.authContext(attemptCtx))
+	if err != nil {
+		return err
+	}
+
+	// When Send fails because the stream was aborted remotely, it returns
+	// io.EOF and the actual result must be retrieved from CloseAndRecv. A nil
+	// CloseAndRecv error means the server completed the RPC successfully, so
+	// the attempt succeeded even though the final sends were not consumed.
+	sendErrStatus := func(sendErr error) error {
+		if errors.Is(sendErr, io.EOF) {
+			_, recvErr := stream.CloseAndRecv()
+			return recvErr
+		}
+		return sendErr
+	}
+
+	start := pb.TaskExecStdinWriteStreamRequest_builder{
+		Start: pb.TaskExecStdinWriteStreamStart_builder{
+			TaskId: taskID,
+			ExecId: execID,
+			Offset: offset,
+		}.Build(),
+	}.Build()
+	if err := stream.Send(start); err != nil {
+		return sendErrStatus(err)
+	}
+
+	buf := make([]byte, streamingStdinChunkSize)
+	for {
+		n, readErr := source.Read(buf)
+		if n > 0 {
+			msg := pb.TaskExecStdinWriteStreamRequest_builder{Data: buf[:n]}.Build()
+			if err := stream.Send(msg); err != nil {
+				return sendErrStatus(err)
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+
+	// The server closes the exec's stdin only on this explicit End message.
+	// A stream that breaks before it leaves stdin open for resume.
+	end := pb.TaskExecStdinWriteStreamRequest_builder{
+		End: &pb.TaskExecStdinWriteStreamEnd{},
+	}.Build()
+	if err := stream.Send(end); err != nil {
+		return sendErrStatus(err)
+	}
+	_, err = stream.CloseAndRecv()
 	return err
 }
 

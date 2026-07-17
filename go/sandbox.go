@@ -2004,6 +2004,11 @@ func newContainerProcess(commandRouterClient *taskCommandRouterClient, logger *s
 	return cp
 }
 
+// stdinWriteStream streams source into the process's stdin.
+func (cp *ContainerProcess) stdinWriteStream(ctx context.Context, source io.ReadSeeker) (int64, error) {
+	return cp.commandRouterClient.ExecStdinWriteStream(ctx, cp.taskID, cp.execID, source)
+}
+
 // Wait blocks until the container process exits and returns its exit code.
 func (cp *ContainerProcess) Wait(ctx context.Context, params *ContainerProcessWaitParams) (int, error) {
 	resp, err := cp.commandRouterClient.ExecWait(ctx, cp.taskID, cp.execID, cp.deadline)

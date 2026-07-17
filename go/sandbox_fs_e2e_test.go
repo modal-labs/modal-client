@@ -331,7 +331,7 @@ func TestSandboxFsE2eCopyFromLocalHandlesLargeFile(t *testing.T) {
 	g := gomega.NewWithT(t)
 	ctx := context.Background()
 	dir := t.TempDir()
-	payload := randomBytes(taskCommandRouterMaxBufferSize+1024, 70)
+	payload := randomBytes(4*streamingStdinChunkSize+1024, 70)
 	g.Expect(os.WriteFile(filepath.Join(dir, "large.bin"), payload, 0o644)).To(gomega.Succeed())
 
 	g.Expect(sb.Filesystem.CopyFromLocal(ctx, filepath.Join(dir, "large.bin"), "/tmp/e2e-cfl-large.bin", nil)).To(gomega.Succeed())

@@ -32,7 +32,24 @@ func (wt *writeErrTracker) Write(p []byte) (int, error) {
 	return n, err
 }
 
-const taskCommandRouterMaxBufferSize = 16 * 1024 * 1024
+// readErrTracker wraps an io.ReadSeeker and records the most recent non-EOF
+// read error, so callers can distinguish local read errors from stream errors.
+type readErrTracker struct {
+	rs      io.ReadSeeker
+	readErr error
+}
+
+func (rt *readErrTracker) Read(p []byte) (int, error) {
+	n, err := rt.rs.Read(p)
+	if err != nil && err != io.EOF {
+		rt.readErr = err
+	}
+	return n, err
+}
+
+func (rt *readErrTracker) Seek(offset int64, whence int) (int64, error) {
+	return rt.rs.Seek(offset, whence)
+}
 
 // FileType represents the type of a filesystem entry.
 type FileType string
@@ -186,37 +203,15 @@ func (fsys *SandboxFilesystem) CopyFromLocal(ctx context.Context, localPath, rem
 		return translateExecError(ctx, fsys.logger, "CopyFromLocal", remotePath, err)
 	}
 
-	earlyExit := false
-	buf := make([]byte, taskCommandRouterMaxBufferSize)
-	for {
-		n, readErr := f.Read(buf)
-		if n > 0 {
-			if _, werr := cp.Stdin.Write(buf[:n]); werr != nil {
-				if isBinaryExitedEarly(werr) {
-					earlyExit = true
-					break
-				}
-				return translateExecError(ctx, fsys.logger, "CopyFromLocal", remotePath, werr)
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			// Cancel the exec rather than closing stdin cleanly. A clean close
-			// sends EOF, which the remote process interprets as "write complete"
-			// and would create an empty (or partial) file despite the local error.
+	src := &readErrTracker{rs: f}
+	if _, werr := cp.stdinWriteStream(execCtx, src); werr != nil && !isBinaryExitedEarly(werr) {
+		if src.readErr != nil {
+			// Local read error: cancel the exec rather than closing stdin
+			// cleanly, which would send EOF and write the file on the sandbox.
 			cancelExec()
-			return readErr
+			return src.readErr
 		}
-	}
-
-	if cerr := cp.Stdin.Close(); cerr != nil {
-		if earlyExit {
-			fsys.logger.DebugContext(ctx, "CopyFromLocal: close stdin", "error", cerr)
-		} else if !isBinaryExitedEarly(cerr) {
-			return cerr
-		}
+		return translateExecError(ctx, fsys.logger, "CopyFromLocal", remotePath, werr)
 	}
 
 	defer func() {
@@ -655,25 +650,9 @@ func (fsys *SandboxFilesystem) writeFile(ctx context.Context, operation string, 
 		return translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}
 
-	earlyExit := false
-	// max(len(data), 1) ensures the loop runs at least once when data is empty,
-	// which is required to create an empty file via a single stdin write.
-	for offset := 0; offset < max(len(data), 1); offset += taskCommandRouterMaxBufferSize {
-		chunk := data[offset:min(offset+taskCommandRouterMaxBufferSize, len(data))]
-		if _, werr := cp.Stdin.Write(chunk); werr != nil {
-			if isBinaryExitedEarly(werr) {
-				earlyExit = true
-				break
-			}
-			return translateExecError(ctx, fsys.logger, operation, remotePath, werr)
-		}
-	}
-	if cerr := cp.Stdin.Close(); cerr != nil {
-		if earlyExit {
-			fsys.logger.DebugContext(ctx, operation+": close stdin", "error", cerr)
-		} else if !isBinaryExitedEarly(cerr) {
-			return cerr
-		}
+	// Note empty data still creates an empty file.
+	if _, werr := cp.stdinWriteStream(ctx, bytes.NewReader(data)); werr != nil && !isBinaryExitedEarly(werr) {
+		return translateExecError(ctx, fsys.logger, operation, remotePath, werr)
 	}
 
 	defer func() {

@@ -1,10 +1,15 @@
 package modal
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
+	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,6 +18,7 @@ import (
 	"github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
@@ -429,4 +435,357 @@ func TestSandboxWaitUntilReadyReturnsTimeoutErrorOnDeadline(t *testing.T) {
 	var timeoutErr TimeoutError
 	g.Expect(errors.As(err, &timeoutErr)).To(gomega.BeTrue(),
 		"expected TimeoutError, got %T: %v", err, err)
+}
+
+// fakeStdinRouterServer is a minimal in-process TaskCommandRouter
+// implementation covering just the streaming-stdin RPCs, with configurable
+// fault injection to exercise the resume logic in ExecStdinWriteStream.
+type fakeStdinRouterServer struct {
+	pb.UnimplementedTaskCommandRouterServer
+
+	mu           sync.Mutex
+	received     []byte
+	closed       bool
+	streamStarts int
+	statusCalls  int
+
+	// failuresRemaining injects a stream abort on a Data message while > 0.
+	failuresRemaining int
+	// failAfterBytes only injects a failure once total received bytes
+	// (including the triggering chunk) reach this threshold.
+	failAfterBytes int
+	// recordBytesOnFailure controls whether the triggering chunk is recorded
+	// before the injected failure, i.e. whether the failed attempt made progress.
+	recordBytesOnFailure bool
+	// failCode is the injected status code; defaults to Unavailable.
+	failCode codes.Code
+	// failOnEnd closes stdin on End but aborts the stream instead of sending
+	// the response, simulating a lost response after a completed upload.
+	failOnEnd bool
+	// succeedEarlyAfterBytes, when > 0, completes the RPC successfully once
+	// total received bytes reach the threshold, without waiting for End. The
+	// client's in-flight Send then observes io.EOF for a successful RPC.
+	succeedEarlyAfterBytes int
+}
+
+func (s *fakeStdinRouterServer) injectedCode() codes.Code {
+	if s.failCode == codes.OK {
+		return codes.Unavailable
+	}
+	return s.failCode
+}
+
+func (s *fakeStdinRouterServer) TaskExecStdinWriteStream(
+	stream grpc.ClientStreamingServer[pb.TaskExecStdinWriteStreamRequest, pb.TaskExecStdinWriteStreamResponse],
+) error {
+	s.mu.Lock()
+	s.streamStarts++
+	s.mu.Unlock()
+
+	first, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	start := first.GetStart()
+	if start == nil {
+		return status.Error(codes.InvalidArgument, "first message must be start")
+	}
+	s.mu.Lock()
+	if start.GetOffset() > uint64(len(s.received)) {
+		s.mu.Unlock()
+		return status.Error(codes.InvalidArgument, "offset beyond received bytes")
+	}
+	s.received = s.received[:start.GetOffset()]
+	s.mu.Unlock()
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			// The client went away without an explicit End: leave stdin open.
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch msg.WhichPayload() {
+		case pb.TaskExecStdinWriteStreamRequest_Data_case:
+			s.mu.Lock()
+			inject := s.failuresRemaining > 0 && len(s.received)+len(msg.GetData()) >= s.failAfterBytes
+			if inject {
+				s.failuresRemaining--
+			}
+			if !inject || s.recordBytesOnFailure {
+				s.received = append(s.received, msg.GetData()...)
+			}
+			code := s.injectedCode()
+			succeedEarly := s.succeedEarlyAfterBytes > 0 && len(s.received) >= s.succeedEarlyAfterBytes
+			if succeedEarly {
+				s.closed = true
+			}
+			s.mu.Unlock()
+			if inject {
+				return status.Error(code, "injected stream failure")
+			}
+			if succeedEarly {
+				return stream.SendAndClose(&pb.TaskExecStdinWriteStreamResponse{})
+			}
+		case pb.TaskExecStdinWriteStreamRequest_End_case:
+			s.mu.Lock()
+			s.closed = true
+			failOnEnd := s.failOnEnd
+			s.mu.Unlock()
+			if failOnEnd {
+				return status.Error(codes.Unavailable, "injected failure after End")
+			}
+			return stream.SendAndClose(&pb.TaskExecStdinWriteStreamResponse{})
+		default:
+			return status.Error(codes.InvalidArgument, "unexpected payload")
+		}
+	}
+}
+
+func (s *fakeStdinRouterServer) TaskExecStdinStatus(
+	ctx context.Context,
+	req *pb.TaskExecStdinStatusRequest,
+) (*pb.TaskExecStdinStatusResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statusCalls++
+	return pb.TaskExecStdinStatusResponse_builder{
+		NumBytesWritten: uint64(len(s.received)),
+		Closed:          s.closed,
+	}.Build(), nil
+}
+
+func (s *fakeStdinRouterServer) snapshot() (received []byte, closed bool, streamStarts, statusCalls int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.received...), s.closed, s.streamStarts, s.statusCalls
+}
+
+// newStreamingStdinTestClient serves fake over an in-process gRPC server and
+// returns a taskCommandRouterClient connected to it.
+func newStreamingStdinTestClient(t *testing.T, fake *fakeStdinRouterServer) *taskCommandRouterClient {
+	t.Helper()
+	g := gomega.NewWithT(t)
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterTaskCommandRouterServer(grpcServer, fake)
+	go func() {
+		_ = grpcServer.Serve(lis)
+	}()
+	t.Cleanup(grpcServer.Stop)
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(func() { _ = conn.Close() })
+
+	client := &taskCommandRouterClient{
+		stub:   pb.NewTaskCommandRouterClient(conn),
+		conn:   conn,
+		logger: slog.New(slog.DiscardHandler),
+	}
+	jwt := mockJWT(time.Now().Unix() + 3600)
+	client.jwt.Store(&jwt)
+	return client
+}
+
+// deterministicBytes returns size bytes with a pattern that catches
+// chunk-boundary mistakes (unlike a constant fill).
+func deterministicBytes(size int) []byte {
+	data := make([]byte, size)
+	for i := range data {
+		data[i] = byte(i*31 + i/streamingStdinChunkSize)
+	}
+	return data
+}
+
+func TestExecStdinWriteStreamHappyPathMultiChunk(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdinRouterServer{}
+	client := newStreamingStdinTestClient(t, fake)
+
+	// Two full chunks plus a partial third.
+	payload := deterministicBytes(2*streamingStdinChunkSize + 100)
+	n, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", bytes.NewReader(payload))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(n).To(gomega.Equal(int64(len(payload))))
+
+	received, closed, streamStarts, statusCalls := fake.snapshot()
+	g.Expect(received).To(gomega.Equal(payload))
+	g.Expect(closed).To(gomega.BeTrue())
+	g.Expect(streamStarts).To(gomega.Equal(1))
+	g.Expect(statusCalls).To(gomega.Equal(0))
+}
+
+func TestExecStdinWriteStreamSucceedsWhenServerCompletesEarly(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// A server that completes the RPC before consuming the whole stream makes
+	// the client's in-flight Send return io.EOF; the successful CloseAndRecv
+	// must be treated as success rather than surfacing io.EOF as an error.
+	fake := &fakeStdinRouterServer{succeedEarlyAfterBytes: streamingStdinChunkSize}
+	client := newStreamingStdinTestClient(t, fake)
+
+	payload := deterministicBytes(16 * streamingStdinChunkSize)
+	_, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", bytes.NewReader(payload))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	_, _, streamStarts, statusCalls := fake.snapshot()
+	g.Expect(streamStarts).To(gomega.Equal(1))
+	g.Expect(statusCalls).To(gomega.Equal(0))
+}
+
+func TestExecStdinWriteStreamEmptySourceClosesStdin(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdinRouterServer{}
+	client := newStreamingStdinTestClient(t, fake)
+
+	n, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", bytes.NewReader(nil))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(n).To(gomega.Equal(int64(0)))
+
+	received, closed, _, _ := fake.snapshot()
+	g.Expect(received).To(gomega.BeEmpty())
+	g.Expect(closed).To(gomega.BeTrue())
+}
+
+func TestExecStdinWriteStreamResumesFromReportedOffset(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdinRouterServer{
+		failuresRemaining:    1,
+		failAfterBytes:       streamingStdinChunkSize + 1,
+		recordBytesOnFailure: true,
+	}
+	client := newStreamingStdinTestClient(t, fake)
+
+	payload := deterministicBytes(3*streamingStdinChunkSize + 100)
+	n, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", bytes.NewReader(payload))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(n).To(gomega.Equal(int64(len(payload))))
+
+	received, closed, streamStarts, statusCalls := fake.snapshot()
+	g.Expect(received).To(gomega.Equal(payload))
+	g.Expect(closed).To(gomega.BeTrue())
+	g.Expect(streamStarts).To(gomega.Equal(2))
+	g.Expect(statusCalls).To(gomega.Equal(1))
+}
+
+func TestExecStdinWriteStreamExhaustsResumeAttempts(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// Every attempt fails on its first Data chunk without making progress.
+	fake := &fakeStdinRouterServer{
+		failuresRemaining:    1000,
+		recordBytesOnFailure: false,
+	}
+	client := newStreamingStdinTestClient(t, fake)
+
+	_, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", bytes.NewReader(deterministicBytes(100)))
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.Unavailable))
+
+	_, closed, streamStarts, statusCalls := fake.snapshot()
+	g.Expect(closed).To(gomega.BeFalse())
+	// 10 total attempts (initial plus 9 resumes), matching the unary retry budget.
+	g.Expect(streamStarts).To(gomega.Equal(10))
+	g.Expect(statusCalls).To(gomega.Equal(9))
+}
+
+func TestExecStdinWriteStreamRecoversWhenResponseLostAfterEnd(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdinRouterServer{failOnEnd: true}
+	client := newStreamingStdinTestClient(t, fake)
+
+	payload := deterministicBytes(streamingStdinChunkSize + 100)
+	n, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", bytes.NewReader(payload))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(n).To(gomega.Equal(int64(len(payload))))
+
+	received, closed, streamStarts, statusCalls := fake.snapshot()
+	g.Expect(received).To(gomega.Equal(payload))
+	g.Expect(closed).To(gomega.BeTrue())
+	g.Expect(streamStarts).To(gomega.Equal(1))
+	g.Expect(statusCalls).To(gomega.Equal(1))
+}
+
+func TestExecStdinWriteStreamDoesNotResumeOnFailedPrecondition(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdinRouterServer{
+		failuresRemaining: 1,
+		failCode:          codes.FailedPrecondition,
+	}
+	client := newStreamingStdinTestClient(t, fake)
+
+	_, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", bytes.NewReader(deterministicBytes(100)))
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.FailedPrecondition))
+
+	_, _, streamStarts, statusCalls := fake.snapshot()
+	g.Expect(streamStarts).To(gomega.Equal(1))
+	g.Expect(statusCalls).To(gomega.Equal(0))
+}
+
+// failingReadSeeker fails reads after a prefix, simulating a local source error.
+type failingReadSeeker struct {
+	*bytes.Reader
+	failAt int64
+	err    error
+}
+
+func (f *failingReadSeeker) Read(p []byte) (int, error) {
+	pos, seekErr := f.Seek(0, io.SeekCurrent)
+	if seekErr != nil {
+		return 0, seekErr
+	}
+	if pos >= f.failAt {
+		return 0, f.err
+	}
+	if remaining := f.failAt - pos; int64(len(p)) > remaining {
+		p = p[:remaining]
+	}
+	return f.Reader.Read(p)
+}
+
+func TestExecStdinWriteStreamLocalReadErrorIsNotResumed(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdinRouterServer{}
+	client := newStreamingStdinTestClient(t, fake)
+
+	readErr := errors.New("local disk exploded")
+	source := &failingReadSeeker{
+		Reader: bytes.NewReader(deterministicBytes(2 * streamingStdinChunkSize)),
+		failAt: 10,
+		err:    readErr,
+	}
+	_, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", source)
+	g.Expect(err).To(gomega.MatchError(readErr))
+
+	// The server handler finishes asynchronously after the client abandons the
+	// stream, so poll for the stream to have been observed.
+	g.Eventually(func() int {
+		_, _, streamStarts, _ := fake.snapshot()
+		return streamStarts
+	}).Should(gomega.Equal(1))
+	_, closed, _, statusCalls := fake.snapshot()
+	// The failed attempt must not send End: stdin stays open server-side.
+	g.Expect(closed).To(gomega.BeFalse())
+	g.Expect(statusCalls).To(gomega.Equal(0))
 }
