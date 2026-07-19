@@ -1914,9 +1914,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             **kwargs: Keyword arguments forwarded to the remote function.
 
         Returns:
-            A [`modal.FunctionCall`](https://modal.com/docs/sdk/py/latest/modal.FunctionCall) object
+            A [`modal.FunctionCall`](https://modal.com/docs/sdk/py/latest/FunctionCall) object
             that can later be polled or waited for using
-            [`.get(timeout=...)`](https://modal.com/docs/sdk/py/latest/modal.FunctionCall#get).
+            [`.get(timeout=...)`](https://modal.com/docs/sdk/py/latest/FunctionCall#get).
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
@@ -2078,7 +2078,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         Note: the call graph data is not populated in real-time, and its capture is best-effort.
         We do not recommend relying on this method for critical use cases.
 
-        See the [`modal.types`](/docs/sdk/py/latest/modal.types) reference for information
+        See the [`modal.types`](/docs/sdk/py/latest/types) reference for information
         on the return values.
 
         Returns:

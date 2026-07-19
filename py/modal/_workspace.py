@@ -283,7 +283,7 @@ class _WorkspaceBillingManager:
             - [`modal billing report`](https://modal.com/docs/cli/latest/billing#modal-billing-report):
               A workspace report CLI that has convenience features around relative time range queries
               and JSON/CSV output.
-            - [`Environment.billing.report()`](https://modal.com/docs/sdk/py/latest/modal.Environment#billingreport):
+            - [`Environment.billing.report()`](https://modal.com/docs/sdk/py/latest/Environment#billingreport):
               An analogous report API that is scoped to a specific Environment.
 
         """

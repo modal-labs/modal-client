@@ -229,7 +229,7 @@ async def environment_billing(
     or by requesting a date range using `--for` (e.g., `--for today`, `--for 'last month'`).
 
     This command provides a CLI frontend for the
-    [`Environment.billing.report`](https://modal.com/docs/sdk/py/latest/modal.Environment#billingreport)
+    [`Environment.billing.report`](https://modal.com/docs/sdk/py/latest/Environment#billingreport)
     API.
 
     Note that, as with the API, the start date is inclusive and the end date is exclusive.

@@ -1418,7 +1418,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 the image indefinitely.
 
         Returns:
-            An [`Image`](https://modal.com/docs/sdk/py/latest/modal.Image) object which can be used to spawn a new
+            An [`Image`](https://modal.com/docs/sdk/py/latest/Image) object which can be used to spawn a new
             Sandbox with the same filesystem.
         """
         if os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1" and not self._is_v2:
@@ -1901,7 +1901,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ):
         """Execute a command in the Sandbox and return a ContainerProcess handle.
 
-        See the [`ContainerProcess`](https://modal.com/docs/sdk/py/latest/modal.container_process#modalcontainer_processcontainerprocess)
+        See the [`ContainerProcess`](https://modal.com/docs/sdk/py/latest/container_process#containerprocess)
         docs for more information.
 
         Args:
@@ -2190,7 +2190,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         **Deprecated (2026-03-09):** Use the `Sandbox.filesystem` APIs instead for improved reliability.
 
-        See the [`FileIO`](https://modal.com/docs/sdk/py/latest/modal.file_io#modalfile_iofileio)
+        See the [`FileIO`](https://modal.com/docs/sdk/py/latest/file_io#fileio)
         docs for more information.
 
         Args:
@@ -2294,7 +2294,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdout(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](https://modal.com/docs/sdk/py/latest/modal.io_streams#modalio_streamsstreamreader)
+        [`StreamReader`](https://modal.com/docs/sdk/py/latest/io_streams#streamreader)
         for the sandbox's stdout stream.
 
         Returns:
@@ -2306,7 +2306,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stderr(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](https://modal.com/docs/sdk/py/latest/modal.io_streams#modalio_streamsstreamreader)
+        [`StreamReader`](https://modal.com/docs/sdk/py/latest/io_streams#streamreader)
         for the Sandbox's stderr stream.
 
         Returns:
@@ -2318,7 +2318,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdin(self) -> _StreamWriter:
         """
-        [`StreamWriter`](https://modal.com/docs/sdk/py/latest/modal.io_streams#modalio_streamsstreamwriter)
+        [`StreamWriter`](https://modal.com/docs/sdk/py/latest/io_streams#streamwriter)
         for the Sandbox's stdin stream.
 
         Returns:

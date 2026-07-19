@@ -49,7 +49,7 @@ class _Server:
     See the [guide](https://modal.com/docs/guide/servers) for more information.
 
     Generally, you will not construct a Server directly.
-    Instead, use the [`@app.server()`](https://modal.com/docs/sdk/py/latest/modal.App#server) decorator.
+    Instead, use the [`@app.server()`](https://modal.com/docs/sdk/py/latest/App#server) decorator.
 
     ```python notest
     @app.server(port=8080, routing_region="us-east")
