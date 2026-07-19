@@ -10,6 +10,7 @@ import typing
 from collections.abc import Callable
 from enum import Enum, EnumMeta
 from types import ModuleType
+from typing import TypeVar
 
 import synchronicity.synchronizer
 
@@ -22,6 +23,40 @@ from .signatures import (
 from .types import ParsedDoc, ParsedParam, ParsedRaise
 
 logger = logging.getLogger(__name__)
+
+
+def default_filter(module, item_name):
+    """Include non-private objects defined in the module itself or its private counterpart."""
+    item = getattr(module, item_name)
+    if object_is_private(item_name, item) or inspect.ismodule(item):
+        return False
+    if isinstance(item, TypeVar):
+        return False
+    member_module = getattr(item, "__module__", type(item).__module__)
+    if member_module == module.__name__:
+        return True
+    if module_reexports_all(module) and item_name in getattr(module, "__all__", ()):
+        return True
+    # Also allow items from the corresponding private module (e.g., modal._foo for modal.foo)
+    parts = module.__name__.rsplit(".", 1)
+    if len(parts) == 2:
+        private_module = f"{parts[0]}._{parts[1]}"
+    else:
+        private_module = f"_{parts[0]}"
+    return member_module == private_module
+
+
+def package_filter(module_prefix: str):
+    """Include non-private objects defined in any module with the prefix `module_prefix`"""
+
+    def return_filter(module, item_name):
+        item = getattr(module, item_name)
+        if object_is_private(item_name, item) or inspect.ismodule(item):
+            return False
+        member_module = getattr(item, "__module__", type(item).__module__)
+        return member_module.startswith(module_prefix)
+
+    return return_filter
 
 
 def _escape_svelte_html_attr(value: str) -> str:
@@ -567,7 +602,12 @@ class {name}{bases_str}
     return "".join(parts)
 
 
-def module_str(header, module, title_level="#", filter_items: Callable[[ModuleType, str], bool] = None):
+def module_str(
+    header,
+    module,
+    title_level="#",
+    filter_items: Callable[[ModuleType, str], bool] = default_filter,
+):
     header = [f"{title_level} {header}\n\n"]
     docstring = clean_docstring(module.__doc__)
     if docstring:
@@ -586,20 +626,20 @@ def module_str(header, module, title_level="#", filter_items: Callable[[ModuleTy
             raise
         if inspect.isclass(item):
             classdoc = class_str(name, item, title_level=member_title_level)
-            object_docs.append(f"{member_title_level} {qual_name}\n\n")
+            object_docs.append(f"{member_title_level} {name}\n\n")
             object_docs.append(classdoc)
         elif callable(item):
             funcdoc = function_str(name, item)
-            object_docs.append(f"{member_title_level} {qual_name}\n\n")
+            object_docs.append(f"{member_title_level} {name}\n\n")
             object_docs.append(funcdoc)
         else:
             item_doc = getattr(module, f"__doc__{name}", None)
             if item_doc:
                 # variable documentation
-                object_docs.append(f"{member_title_level} {qual_name}\n\n")
+                object_docs.append(f"{member_title_level} {name}\n\n")
                 object_docs.append(item_doc)
             else:
-                logger.warning(f"[mdmd] Not sure how to document {name} ({item.__class__.__name__})")
+                logger.warning(f"[mdmd] Not sure how to document {qual_name}")
 
     if object_docs:
         return "".join(header + object_docs)
@@ -630,44 +670,8 @@ def module_reexports_all(module: ModuleType) -> bool:
     return any("mdmd:exported" in line for line in docstring.split("\n"))
 
 
-def default_filter(module, item_name):
-    """Include non-private objects defined in the module itself or its private counterpart."""
-    item = getattr(module, item_name)
-    if object_is_private(item_name, item) or inspect.ismodule(item):
-        return False
-    member_module = getattr(item, "__module__", type(item).__module__)
-    if member_module == module.__name__:
-        return True
-    if module_reexports_all(module) and item_name in getattr(module, "__all__", ()):
-        return True
-    # Also allow items from the corresponding private module (e.g., modal._foo for modal.foo)
-    parts = module.__name__.rsplit(".", 1)
-    if len(parts) == 2:
-        private_module = f"{parts[0]}._{parts[1]}"
-    else:
-        private_module = f"_{parts[0]}"
-    return member_module == private_module
-
-
-def package_filter(module_prefix: str):
-    """Include non-private objects defined in any module with the prefix `module_prefix`"""
-
-    def return_filter(module, item_name):
-        item = getattr(module, item_name)
-        if object_is_private(item_name, item) or inspect.ismodule(item):
-            return False
-        member_module = getattr(item, "__module__", type(item).__module__)
-        return member_module.startswith(module_prefix)
-
-    return return_filter
-
-
-def module_items(module, filter_items: Callable[[ModuleType, str], bool] = None):
+def module_items(module, filter_items: Callable[[ModuleType, str], bool]):
     """Returns filtered members of module"""
-    if filter_items is None:
-        # default filter is to only include classes and functions declared (or whose type is declared) in the file
-        filter_items = default_filter
-
     for member_name, member in inspect.getmembers(module):
         # only modal items
         if not filter_items(module, member_name):

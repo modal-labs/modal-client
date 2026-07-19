@@ -2,7 +2,7 @@
 
 This module does cool stuff
 
-## foo.Foo
+## Foo
 
 
 ```python
@@ -18,7 +18,7 @@ A class that foos
 bar(self)
 ```
 
-## foo.funky
+## funky
 
 ```python
 funky()

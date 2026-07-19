@@ -132,6 +132,7 @@ modal = [
     "*.pyi",
 ]
 modal_proto = ["*.proto", "py.typed", "*.pyi"]
+modal_docs = ["reference_intro.md"]
 
 [tool.setuptools.dynamic]
 version = { attr = "modal_version.__version__" }

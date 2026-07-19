@@ -1290,7 +1290,7 @@ def test_skills_install_downloads_docs(tmp_path, monkeypatch):
                     "\n"
                     "## API Reference\n"
                     "\n"
-                    "- [`App`](https://modal.com/docs/sdk/py/latest/modal.App.md): The main unit of deployment\n"
+                    "- [`App`](https://modal.com/docs/sdk/py/latest/App.md): The main unit of deployment\n"
                 ),
                 "https://modal.com/docs/examples/hello_world.md": "# Hello world\n",
                 "https://modal.com/docs/guide/images.md": "# Images\n",
@@ -1335,8 +1335,8 @@ def test_skills_install_downloads_docs(tmp_path, monkeypatch):
 
     # The API reference is generated locally by introspecting the installed client; the
     # API Reference section of llms.txt is not mirrored into an index.
-    app_doc = (docs_dir / "api" / "modal.App.md").read_text()
-    assert app_doc.startswith("# modal.App")
+    app_doc = (docs_dir / "api" / "App.md").read_text()
+    assert app_doc.startswith("# App")
     assert "<script>" not in app_doc  # mdsvex website boilerplate stripped
     assert not (docs_dir / "api" / "sidebar.json").exists()
     assert not (docs_dir / "api" / "index.md").exists()
