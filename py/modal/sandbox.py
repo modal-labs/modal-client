@@ -845,6 +845,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         verbose: bool = False,
         custom_domain: str | None = None,
         client: _Client | None = None,
+        _experimental_enable_snapshot: bool = False,
     ) -> "_Sandbox":
         """Create a sandbox using the V2 backend.
 
@@ -860,8 +861,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         tuple that additionally sets a hard limit (fractional CPU cores; memory
         in MiB), matching `Sandbox.create()`.
 
-        Features like memory snapshots, network file systems, and GPUs are not
-        supported.
+        Pass `_experimental_enable_snapshot=True` to create a sandbox that can be
+        snapshotted with `._experimental_snapshot()`. Features like network
+        file systems and GPUs are not supported.
 
         Set `i6pn=True` to enable private IPv6 networking so sandboxes in the same
         workspace can address each other directly at their `i6pn.modal.local`
@@ -1006,6 +1008,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     {k: str(v) for k, v in experimental_options.items()} if experimental_options else None
                 ),
                 custom_domain=custom_domain,
+                enable_snapshot=_experimental_enable_snapshot,
             )
 
             tag_protos = [api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()] if tags else []
@@ -2085,19 +2088,27 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
-        self._ensure_v1("_experimental_snapshot")
-        await self._get_task_id()
-        snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
-        snap_resp = await self._client.stub.SandboxSnapshot(snap_req)
+        if self._is_v2:
+            task_id = await self._get_task_id()
+            command_router_client = await self._get_command_router_client(task_id)
+            snap_v2_resp = await command_router_client.snapshot_memory(
+                sr_pb2.TaskSnapshotMemoryRequest(task_id=task_id, idempotency_key=str(uuid.uuid4())),
+                timeout=55.0,
+            )
+            snapshot_id = snap_v2_resp.snapshot_id
+        else:
+            await self._get_task_id()
+            snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
+            snap_resp = await self._client.stub.SandboxSnapshot(snap_req)
 
-        snapshot_id = snap_resp.snapshot_id
+            snapshot_id = snap_resp.snapshot_id
 
-        # wait for the snapshot to succeed. this is implemented as a second idempotent rpc
-        # because the snapshot itself may take a while to complete.
-        wait_req = api_pb2.SandboxSnapshotWaitRequest(snapshot_id=snapshot_id, timeout=55.0)
-        wait_resp = await self._client.stub.SandboxSnapshotWait(wait_req)
-        if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-            raise ExecutionError(wait_resp.result.exception)
+            # wait for the snapshot to succeed. this is implemented as a second idempotent rpc
+            # because the snapshot itself may take a while to complete.
+            wait_req = api_pb2.SandboxSnapshotWaitRequest(snapshot_id=snapshot_id, timeout=55.0)
+            wait_resp = await self._client.stub.SandboxSnapshotWait(wait_req)
+            if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                raise ExecutionError(wait_resp.result.exception)
 
         async def _load(
             self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
@@ -2108,7 +2119,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         rep = "SandboxSnapshot()"
         # TODO: use ._new_hydrated instead
         obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
-        obj._hydrate(snapshot_id, self._client, None)
+        metadata = api_pb2.SandboxSnapshotHandleMetadata(is_v2=self._is_v2)
+        obj._hydrate(snapshot_id, self._client, metadata)
 
         return obj
 
@@ -2119,27 +2131,41 @@ class _Sandbox(_Object, type_prefix="sb"):
         *,
         name: str | None = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
+        """Restore a Sandbox from a memory snapshot.
+
+        The restore targets the same backend the snapshot was taken from. A V1
+        snapshot restores as a V1 sandbox, a V2 snapshot as a V2 sandbox.
+        """
         client = client or await _Client.from_env()
+
+        if snapshot._is_v2 is None:
+            await snapshot.hydrate(client=client)
+        use_v2 = bool(snapshot._is_v2)
 
         if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
             check_object_name(name, "Sandbox")
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
-            restore_req = api_pb2.SandboxRestoreRequest(
-                snapshot_id=snapshot.object_id,
-                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED,
-            )
+            override_type = api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED
+            name_override = None
         elif name is None:
-            restore_req = api_pb2.SandboxRestoreRequest(
-                snapshot_id=snapshot.object_id,
-                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_NONE,
-            )
+            override_type = api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_NONE
+            name_override = None
         else:
-            restore_req = api_pb2.SandboxRestoreRequest(
-                snapshot_id=snapshot.object_id,
-                sandbox_name_override=name,
-                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
+            override_type = api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING
+            name_override = name
+
+        if use_v2:
+            return await _Sandbox._experimental_from_snapshot_v2(
+                snapshot, client, override_type=override_type, name_override=name_override
             )
+
+        restore_req = api_pb2.SandboxRestoreRequest(
+            snapshot_id=snapshot.object_id,
+            sandbox_name_override_type=override_type,
+        )
+        if name_override is not None:
+            restore_req.sandbox_name_override = name_override
         # Pin the restored Sandbox to a specific worker when MODAL_WORKER_ID is
         # set.
         if worker_id := config.get("worker_id"):
@@ -2157,6 +2183,33 @@ class _Sandbox(_Object, type_prefix="sb"):
             api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
         ]:
             raise ExecutionError(resp.task_result.exception)
+        return sandbox
+
+    @staticmethod
+    async def _experimental_from_snapshot_v2(
+        snapshot: _SandboxSnapshot,
+        client: _Client,
+        *,
+        override_type: "api_pb2.SandboxRestoreRequest.SandboxNameOverrideType.ValueType",
+        name_override: str | None,
+    ) -> "_Sandbox":
+        restore_req = api_pb2.SandboxRestoreV2Request(
+            snapshot_id=snapshot.object_id,
+            sandbox_name_override_type=override_type,
+        )
+        if name_override is not None:
+            restore_req.sandbox_name_override = name_override
+        if worker_id := config.get("worker_id"):
+            restore_req.worker_id = worker_id
+
+        assert client._auth_token_manager
+        auth_token = await client._auth_token_manager.get_token()
+        restore_resp: api_pb2.SandboxRestoreV2Response = await client.stub.SandboxRestoreV2(
+            restore_req, metadata=[("x-modal-auth-token", auth_token)]
+        )
+
+        sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
+        sandbox._task_id = restore_resp.task_id
         return sandbox
 
     @property

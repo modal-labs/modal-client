@@ -3607,6 +3607,11 @@ message SandboxSnapshotGetRequest {
 
 message SandboxSnapshotGetResponse {
   string snapshot_id = 1;
+  SandboxSnapshotHandleMetadata handle_metadata = 2;
+}
+
+message SandboxSnapshotHandleMetadata {
+  bool is_v2 = 1;
 }
 
 message SandboxSnapshotRequest {

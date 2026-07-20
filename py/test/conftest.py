@@ -298,7 +298,7 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         if not hasattr(self, "_snapshot_memory_requests"):
             self._snapshot_memory_requests = []
         self._snapshot_memory_requests.append(request)
-        await stream.send_message(sr_pb2.TaskSnapshotMemoryResponse(snapshot_id="sn-snapshot-mem-123"))
+        await stream.send_message(sr_pb2.TaskSnapshotMemoryResponse(snapshot_id="sn-01BX5ZZKBKACTAV9WEVGEMMVRY"))
 
     def _container_result(
         self, task_state: TaskCommandRouterTaskState, container_id: str
@@ -888,6 +888,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox_app_id = None
+        self.sandbox_restore_v2_requests = []
         self.sandbox_result: api_pb2.GenericResult | None = None
         self._sandbox_terminated = False
         self.sandbox_tags: dict[str, dict[str, str]] = {}
@@ -3033,8 +3034,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def SandboxRestore(self, stream):
-        _request: api_pb2.SandboxRestoreRequest = await stream.recv_message()
+        request: api_pb2.SandboxRestoreRequest = await stream.recv_message()
+        if request.snapshot_id == "sn-01BX5ZZKBKACTAV9WEVGEMMVRY":
+            raise GRPCError(
+                Status.FAILED_PRECONDITION,
+                "This snapshot was created from a V2 sandbox and cannot be restored with SandboxRestore",
+            )
         await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-nGEijt9WbBMlGrsPH9FOaC"))
+
+    async def SandboxRestoreV2(self, stream):
+        request: api_pb2.SandboxRestoreV2Request = await stream.recv_message()
+        self.sandbox_restore_v2_requests.append(request)
+        await stream.send_message(
+            api_pb2.SandboxRestoreV2Response(
+                sandbox_id="sb-01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                task_id="ta-restored-v2-123",
+                tunnels=[api_pb2.TunnelData(host="sb-restored-8080.modal.host", port=443, container_port=8080)],
+            )
+        )
 
     async def TaskGetCommandRouterAccess(self, stream):
         _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()

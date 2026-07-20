@@ -974,3 +974,8 @@ class TaskCommandRouterClient:
         return await self._unary_call_with_deadline(
             self._stub.TaskSnapshotFilesystem, request, timeout=timeout, **kwargs
         )
+
+    async def snapshot_memory(
+        self, request: sr_pb2.TaskSnapshotMemoryRequest, *, timeout: float, **kwargs
+    ) -> sr_pb2.TaskSnapshotMemoryResponse:
+        return await self._unary_call_with_deadline(self._stub.TaskSnapshotMemory, request, timeout=timeout, **kwargs)

@@ -1024,6 +1024,79 @@ def test_sandbox_snapshot(app, client, servicer):
     sb.terminate()
 
 
+def test_sandbox_snapshot_v2(app, servicer):
+    """V2 sandboxes take memory snapshots through the task command router."""
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        snapshot = sb._experimental_snapshot()
+
+    assert snapshot.object_id == "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
+    (req,) = tcr_ctx.get_requests("TaskSnapshotMemory")
+    assert req.task_id == "ta-v2-123"
+    # Validate that the client generates a fresh UUID idempotency key.
+    uuid.UUID(req.idempotency_key)
+
+    sb.terminate()
+
+
+def test_sandbox_from_snapshot_v2(app, client, servicer):
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app, encrypted_ports=[8080])
+    snapshot = sb._experimental_snapshot()
+    assert snapshot.object_id == "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
+
+    with servicer.intercept() as ctx:
+        restored = Sandbox._experimental_from_snapshot(snapshot, client=client)
+
+    assert ctx.get_requests("SandboxRestore") == []
+    (v2_req,) = ctx.get_requests("SandboxRestoreV2")
+    assert v2_req.snapshot_id == "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
+    assert v2_req.sandbox_name_override_type == api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED
+
+    assert restored.object_id == "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    (wait_req,) = ctx.get_requests("SandboxWaitV2")
+    assert wait_req.sandbox_id == "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+
+    with servicer.intercept() as ctx:
+        tunnels = restored.tunnels()
+    assert 8080 in tunnels
+    assert len(ctx.get_requests("SandboxGetTunnelsV2")) == 1
+
+
+def test_sandbox_from_snapshot_v2_auto_detects_version(app, client, servicer):
+    """A snapshot taken from a V2 sandbox remembers its version and restores as V2 without a flag."""
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    snapshot = sb._experimental_snapshot()
+
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_from_snapshot(snapshot, client=client)
+
+    # The remembered version routes to V2 without a SandboxSnapshotGet round-trip.
+    assert ctx.get_requests("SandboxRestore") == []
+    assert ctx.get_requests("SandboxSnapshotGet") == []
+    (v2_req,) = ctx.get_requests("SandboxRestoreV2")
+    assert v2_req.snapshot_id == "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
+
+
+def test_sandbox_from_snapshot_v2_auto_detects_from_id(app, client, servicer):
+    """A snapshot loaded via from_id learns its version by hydrating, then restores as V2."""
+    snapshot = SandboxSnapshot.from_id("sn-01BX5ZZKBKACTAV9WEVGEMMVRY", client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxSnapshotGet",
+            api_pb2.SandboxSnapshotGetResponse(
+                snapshot_id="sn-01BX5ZZKBKACTAV9WEVGEMMVRY",
+                handle_metadata=api_pb2.SandboxSnapshotHandleMetadata(is_v2=True),
+            ),
+        )
+        Sandbox._experimental_from_snapshot(snapshot, client=client)
+
+    assert ctx.get_requests("SandboxRestore") == []
+    assert len(ctx.get_requests("SandboxSnapshotGet")) == 1
+    (v2_req,) = ctx.get_requests("SandboxRestoreV2")
+    assert v2_req.snapshot_id == "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
+
+
 def test_sandbox_snapshot_fs(app, servicer):
     sb = Sandbox.create(app=app)
     with servicer.task_command_router.intercept() as tcr_ctx:

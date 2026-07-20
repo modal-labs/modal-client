@@ -2,6 +2,7 @@
 from typing import cast
 
 import typing_extensions
+from google.protobuf.message import Message
 
 import modal.client
 from modal_proto import api_pb2
@@ -21,6 +22,21 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
     `._experimental_snapshot()` on a Sandbox instance. This includes both the filesystem and memory state of
     the original Sandbox at the time the snapshot was taken.
     """
+
+    _metadata: "api_pb2.SandboxSnapshotHandleMetadata | None" = None
+
+    def _hydrate_metadata(self, metadata: Message | None):
+        if metadata:
+            assert isinstance(metadata, api_pb2.SandboxSnapshotHandleMetadata)
+            self._metadata = metadata
+
+    def _get_metadata(self) -> "api_pb2.SandboxSnapshotHandleMetadata | None":
+        return self._metadata
+
+    @property
+    def _is_v2(self) -> bool | None:
+        """Whether the snapshot came from a V2 sandbox."""
+        return self._metadata.is_v2 if self._metadata is not None else None
 
     @deprecate_aio_usage((2025, 12, 5), "SandboxSnapshot.from_id")
     @classmethod
@@ -45,7 +61,7 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
             resp: api_pb2.SandboxSnapshotGetResponse = await load_context.client.stub.SandboxSnapshotGet(
                 api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id)
             )
-            self._hydrate(resp.snapshot_id, load_context.client, None)
+            self._hydrate(resp.snapshot_id, load_context.client, resp.handle_metadata)
 
         rep = "SandboxSnapshot()"
         obj = _SandboxSnapshot._from_loader(
