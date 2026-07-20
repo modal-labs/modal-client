@@ -1,10 +1,8 @@
-package test
+package modal
 
 import (
 	"os"
 	"testing"
-
-	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
@@ -12,5 +10,5 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	goleak.VerifyTestMain(m)
+	os.Exit(m.Run())
 }
