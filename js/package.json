@@ -30,8 +30,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint",
     "prepare": "scripts/gen-proto.sh",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "MODAL_ENVIRONMENT=libmodal vitest run",
+    "test:watch": "MODAL_ENVIRONMENT=libmodal vitest",
     "version": "npm run check",
     "prepublishOnly": "npm run build"
   },
