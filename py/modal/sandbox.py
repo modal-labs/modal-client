@@ -472,7 +472,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems),
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
-                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
+                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts)[0],
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
                 scheduler_placement=scheduler_placement,
@@ -961,8 +961,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             for _, vol in validated_volumes:
                 dep_tasks.append(resolver.load(vol, load_context))
             for _, cloud_bucket_mount in cloud_bucket_mounts:
-                if cloud_bucket_mount.secret:
-                    dep_tasks.append(resolver.load(cloud_bucket_mount.secret, load_context))
+                if secret := cloud_bucket_mount.secret:
+                    if not secret._is_ephemeral:
+                        dep_tasks.append(resolver.load(cloud_bucket_mount.secret, load_context))
             if proxy:
                 dep_tasks.append(resolver.load(proxy, load_context))
             dep_timings = await _gather_load_with_timings(dep_tasks) if dep_tasks else []
@@ -970,6 +971,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             validate_volumes_by_object_id(validated_volumes)
 
             volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
+
+            cloud_bucket_mount_protos, cloud_bucket_credientials = cloud_bucket_mounts_to_proto(
+                cloud_bucket_mounts, split_ephemeral_credentials=True
+            )
 
             definition = api_pb2.Sandbox(
                 entrypoint_args=args,
@@ -995,7 +1000,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 inbound_cidr_allowlist=list(inbound_cidr_allowlist) if inbound_cidr_allowlist is not None else [],
                 i6pn_enabled=i6pn,
                 volume_mounts=volume_mounts,
-                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
+                cloud_bucket_mounts=cloud_bucket_mount_protos,
                 readiness_probe=(readiness_probe._to_proto() if readiness_probe else None),
                 experimental_options_v2=(
                     {k: str(v) for k, v in experimental_options.items()} if experimental_options else None
@@ -1009,6 +1014,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 definition=definition,
                 ephemeral_secrets=api_pb2.StringMap(contents=env_dict) if env_dict else None,
                 tags=tag_protos,
+                cloud_bucket_mount_credentials=cloud_bucket_credientials,
             )
             assert load_context.client._auth_token_manager
             auth_token = await load_context.client._auth_token_manager.get_token()

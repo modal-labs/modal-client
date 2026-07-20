@@ -1000,7 +1000,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     untrusted=restrict_modal_access,
                     single_use_containers=single_use_containers,
                     max_inputs=int(single_use_containers),  # TODO(michael) remove after worker rollover
-                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
+                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts)[0],
                     scheduler_placement=scheduler_placement,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),

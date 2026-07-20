@@ -1347,6 +1347,99 @@ def test_experimental_sandbox_create_cloud_bucket_mount(app, servicer):
         assert req.definition.cloud_bucket_mounts[0].bucket_type == api_pb2.CloudBucketMount.BucketType.S3
 
 
+def test_experimental_sandbox_create_cloud_bucket_mount_no_credentials(app, servicer):
+    cbm = modal.CloudBucketMount(bucket_name="my-bucket")
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        req = ctx.pop_request("SandboxCreateV2")
+        assert dict(req.cloud_bucket_mount_credentials) == {}
+        assert req.definition.cloud_bucket_mounts[0].credentials_secret_id == ""
+
+
+def test_experimental_sandbox_create_cloud_bucket_mount_credentials(app, servicer):
+    secret = modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "abc", "AWS_SECRET_ACCESS_KEY": "xyz"})
+    cbm = modal.CloudBucketMount(bucket_name="my-bucket", secret=secret)
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        req = ctx.pop_request("SandboxCreateV2")
+
+    # Credentials are passed out-of-band, keyed by mount path, not via a secret id.
+    assert len(req.definition.cloud_bucket_mounts) == 1
+    mount = req.definition.cloud_bucket_mounts[0]
+    assert mount.credentials_secret_id == ""
+
+    assert len(req.cloud_bucket_mount_credentials) == 1
+    assert dict(req.cloud_bucket_mount_credentials["/mnt"].contents) == {
+        "AWS_ACCESS_KEY_ID": "abc",
+        "AWS_SECRET_ACCESS_KEY": "xyz",
+    }
+
+
+def test_experimental_sandbox_create_cloud_bucket_mount_credentials_multiple(app, servicer):
+    cbm1 = modal.CloudBucketMount(
+        bucket_name="bucket-1",
+        secret=modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "one"}),
+    )
+    cbm2 = modal.CloudBucketMount(bucket_name="bucket-2")
+    cbm3 = modal.CloudBucketMount(
+        bucket_name="bucket-3",
+        secret=modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "three"}),
+    )
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt1": cbm1, "/mnt2": cbm2, "/mnt3": cbm3})
+        req = ctx.pop_request("SandboxCreateV2")
+
+    # Out-of-band credentials are keyed by mount path.
+    creds = req.cloud_bucket_mount_credentials
+    assert dict(creds["/mnt1"].contents) == {"AWS_ACCESS_KEY_ID": "one"}
+    assert "/mnt2" not in creds
+    assert dict(creds["/mnt3"].contents) == {"AWS_ACCESS_KEY_ID": "three"}
+
+    assert len(creds) == 2
+
+
+def test_experimental_sandbox_create_cloud_bucket_mount_credentials_from_name(app, servicer, client):
+    Secret.objects.create("my-bucket-creds", {"AWS_ACCESS_KEY_ID": "abc"}, client=client)
+    cbm = modal.CloudBucketMount(bucket_name="my-bucket", secret=modal.Secret.from_name("my-bucket-creds"))
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        req = ctx.pop_request("SandboxCreateV2")
+
+    # `Secret.from_name` credentials are resolved server-side and referenced by id, rather than
+    # being inlined out-of-band into `cloud_bucket_mount_credentials`.
+    assert len(req.definition.cloud_bucket_mounts) == 1
+    assert req.definition.cloud_bucket_mounts[0].credentials_secret_id != ""
+    assert dict(req.cloud_bucket_mount_credentials) == {}
+
+
+def test_experimental_sandbox_create_cloud_bucket_mount_credentials_from_dict_and_from_name(app, servicer, client):
+    Secret.objects.create("my-bucket-creds", {"AWS_ACCESS_KEY_ID": "named"}, client=client)
+    cbm_dict = modal.CloudBucketMount(
+        bucket_name="bucket-dict",
+        secret=modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "inline"}),
+    )
+    cbm_name = modal.CloudBucketMount(
+        bucket_name="bucket-name",
+        secret=modal.Secret.from_name("my-bucket-creds"),
+    )
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt-dict": cbm_dict, "/mnt-name": cbm_name})
+        req = ctx.pop_request("SandboxCreateV2")
+
+    mounts = {m.mount_path: m for m in req.definition.cloud_bucket_mounts}
+    assert len(mounts) == 2
+
+    # `from_dict` credentials are inlined out-of-band, keyed by mount path, with no secret id.
+    assert mounts["/mnt-dict"].credentials_secret_id == ""
+    assert dict(req.cloud_bucket_mount_credentials["/mnt-dict"].contents) == {"AWS_ACCESS_KEY_ID": "inline"}
+
+    # `from_name` credentials are resolved server-side and referenced by id.
+    assert mounts["/mnt-name"].credentials_secret_id != ""
+    assert "/mnt-name" not in req.cloud_bucket_mount_credentials
+
+    assert len(req.cloud_bucket_mount_credentials) == 1
+
+
 def test_experimental_sandbox_create_proxy(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, proxy=Proxy.from_name("my-proxy"))

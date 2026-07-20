@@ -121,11 +121,14 @@ class _CloudBucketMount:
     force_path_style: bool = False
 
 
-def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
+def cloud_bucket_mounts_to_proto(
+    mounts: Sequence[tuple[str, _CloudBucketMount]], split_ephemeral_credentials: bool = False
+) -> tuple[list[api_pb2.CloudBucketMount], dict[str, api_pb2.StringMap]]:
     """mdmd:hidden
     Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server.
     """
     cloud_bucket_mounts: list[api_pb2.CloudBucketMount] = []
+    cloud_bucket_credentials: dict[str, api_pb2.StringMap] = {}
 
     for path, mount in mounts:
         # crude mapping from mount arguments to type.
@@ -153,11 +156,20 @@ def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]
         else:
             key_prefix = mount.key_prefix
 
+        credentials_secret_id = ""
+        if secret := mount.secret:
+            if split_ephemeral_credentials and secret._load_env_dict:
+                env_dict = secret._load_env_dict()
+                credientials = api_pb2.StringMap(contents=env_dict)
+                cloud_bucket_credentials[path] = credientials
+            else:
+                credentials_secret_id = secret.object_id
+
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
             bucket_endpoint_url=mount.bucket_endpoint_url,
             mount_path=path,
-            credentials_secret_id=mount.secret.object_id if mount.secret else "",
+            credentials_secret_id=credentials_secret_id,
             read_only=mount.read_only,
             bucket_type=bucket_type,
             requester_pays=mount.requester_pays,
@@ -167,7 +179,7 @@ def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 
-    return cloud_bucket_mounts
+    return cloud_bucket_mounts, cloud_bucket_credentials
 
 
 CloudBucketMount = synchronize_api(_CloudBucketMount)

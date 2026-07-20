@@ -263,6 +263,15 @@ class _Secret(_Object, type_prefix="st"):
         assert self._metadata
         return self._metadata
 
+    @property
+    def _is_ephemeral(self) -> bool:
+        """Whether this Secret is backed by a locally-resolvable env dict rather than a named deployment.
+
+        True for Secrets created via `from_dict`, `from_dotenv`, or `from_local_environ`, whose contents
+        can be resolved locally and inlined; False for `from_name` references that must be resolved server-side.
+        """
+        return self._load_env_dict is not None
+
     @staticmethod
     def from_dict(
         env_dict: dict[str, str | None] = {},
