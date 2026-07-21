@@ -1,12 +1,17 @@
 import { randomBytes } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, rename, rm, unlink } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, open, rename, rm, unlink } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { Writable } from "node:stream";
 import { dirname } from "node:path";
 
 import { ClientError, Status } from "nice-grpc";
 
 import type { ContainerProcess, SandboxExecParams } from "./sandbox";
+import {
+  STREAMING_STDIN_CHUNK_SIZE,
+  type StdinSource,
+} from "./task_command_router_client";
 import {
   SANDBOX_FS_TOOLS_PATH,
   makeListFilesCommand,
@@ -142,8 +147,29 @@ async function* readLines(
   if (buffer + tail) yield buffer + tail;
 }
 
-// 4 MiB chunks due to Node.js's http2 10 MB maxSessionMemory.
-const WRITE_CHUNK_SIZE = 4 * 1024 * 1024;
+/** In-memory byte source supporting resume from an arbitrary offset. */
+function bytesSource(bytes: Uint8Array): StdinSource {
+  return {
+    async *readFrom(offset: number) {
+      yield bytes.subarray(offset);
+    },
+  };
+}
+
+/** Local file byte source supporting resume from an arbitrary offset. */
+function fileHandleSource(handle: FileHandle): StdinSource {
+  return {
+    readFrom(offset: number): AsyncIterable<Uint8Array> {
+      // autoClose: false so a failed attempt's stream does not close the
+      // handle out from under a resume attempt.
+      return handle.createReadStream({
+        start: offset,
+        autoClose: false,
+        highWaterMark: STREAMING_STDIN_CHUNK_SIZE,
+      });
+    },
+  };
+}
 
 /** Normalize the user-facing data union to a Uint8Array view. */
 function toUint8Array(data: Uint8Array | ArrayBuffer | Buffer): Uint8Array {
@@ -180,42 +206,18 @@ export class SandboxFilesystem {
   async copyFromLocal(localPath: string, remotePath: string): Promise<void> {
     validateAbsoluteRemotePath(remotePath, "copyFromLocal");
 
-    await translateExecErrors("copyFromLocal", remotePath, async () => {
-      const process = await this.exec(
-        [SANDBOX_FS_TOOLS_PATH, makeWriteFileCommand(remotePath)],
-        { mode: "binary" },
+    // Open eagerly so local errors like ENOENT surface directly rather than
+    // mid-stream.
+    const handle = await open(localPath, "r");
+    try {
+      await this.#execFsToolWrite(
+        fileHandleSource(handle),
+        remotePath,
+        "copyFromLocal",
       );
-
-      const writer = process.stdin.getWriter();
-      try {
-        const fileStream = createReadStream(localPath);
-        for await (const chunk of fileStream) {
-          await writer.write(chunk as Buffer);
-        }
-        await writer.close();
-      } catch (err) {
-        if (
-          err instanceof ClientError &&
-          (err.code === Status.FAILED_PRECONDITION ||
-            err.code === Status.ABORTED)
-        ) {
-          await process.closeStdin();
-        } else {
-          // Abort rather than close so the remote process sees an error, not EOF.
-          // Closing with EOF would cause it to finalize the file with partial content.
-          await writer.abort(err).catch(() => {});
-          throw err;
-        }
-      } finally {
-        writer.releaseLock();
-      }
-
-      const returnCode = await process.wait();
-      if (returnCode !== 0) {
-        const stderr = await process.stderr.readBytes();
-        raiseWriteFileError(returnCode, stderr, remotePath);
-      }
-    });
+    } finally {
+      await handle.close();
+    }
   }
 
   /**
@@ -595,35 +597,49 @@ export class SandboxFilesystem {
     validateAbsoluteRemotePath(remotePath, "writeBytes");
     const bytes = toUint8Array(data);
 
-    await translateExecErrors("writeBytes", remotePath, async () => {
+    await this.#execFsToolWrite(bytesSource(bytes), remotePath, "writeBytes");
+  }
+
+  /**
+   * Exec the FS-tools write command and stream `source` into its stdin.
+   *
+   * A local read error aborts the stream without sending EOF, so the remote
+   * side never finalizes a partial file.
+   */
+  async #execFsToolWrite(
+    source: StdinSource,
+    remotePath: string,
+    opName: string,
+  ): Promise<void> {
+    await translateExecErrors(opName, remotePath, async () => {
       const process = await this.exec(
         [SANDBOX_FS_TOOLS_PATH, makeWriteFileCommand(remotePath)],
         { mode: "binary" },
       );
 
-      const writer = process.stdin.getWriter();
+      // TODO(saltzm): If streaming fails after resume attempts are exhausted,
+      // the exec'd process remains alive indefinitely since stdin stays open.
+      // We should kill the process in that case when we have a way to do so.
       try {
-        // At least one write so empty data still creates the file.
-        const end = Math.max(bytes.length, 1);
-        for (let offset = 0; offset < end; offset += WRITE_CHUNK_SIZE) {
-          await writer.write(bytes.subarray(offset, offset + WRITE_CHUNK_SIZE));
-        }
-        await writer.close();
+        await process._stdinWriteStream(source);
       } catch (err) {
+        // When the FS tools binary exits early on an error, the worker
+        // reports the dropped stdin write as FAILED_PRECONDITION or ABORTED.
         if (
           err instanceof ClientError &&
           (err.code === Status.FAILED_PRECONDITION ||
             err.code === Status.ABORTED)
         ) {
-          await process.closeStdin();
+          // The error can come from a failure in fs-tools or server.
+          // If server, the process won't exit, so the wait below would
+          // hang forever — rethrow. Otherwise fall through and let
+          // raiseWriteFileError below surface the real filesystem error.
+          if ((await process._poll()) === null) {
+            throw err;
+          }
         } else {
-          // Abort rather than close so the remote process sees an error, not EOF.
-          // Closing with EOF would cause it to finalize the file with partial content.
-          await writer.abort(err).catch(() => {});
           throw err;
         }
-      } finally {
-        writer.releaseLock();
       }
 
       const returnCode = await process.wait();

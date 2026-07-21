@@ -32,7 +32,10 @@ import {
   TaskUnmountDirectoryRequest,
   TaskSetNetworkAccessRequest,
 } from "../proto/modal_proto/task_command_router";
-import { TaskCommandRouterClientImpl } from "./task_command_router_client";
+import {
+  TaskCommandRouterClientImpl,
+  type StdinSource,
+} from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
 import { type ModalClient, isRetryableGrpc, ModalGrpcClient } from "./client";
 import { SandboxFilesystem } from "./sandbox_fs";
@@ -2205,6 +2208,43 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
     await this.#commandRouterClient
       .execStdinWrite(this.#taskId, this.#execId, 0, new Uint8Array(0), true)
       .catch(() => {});
+  }
+
+  /**
+   * @internal
+   * @hidden
+   * Stream `source` into the process's stdin and close it (EOF) on success.
+   *
+   * Returns the total bytes streamed.
+   */
+  async _stdinWriteStream(source: StdinSource): Promise<number> {
+    return await this.#commandRouterClient.execStdinWriteStream(
+      this.#taskId,
+      this.#execId,
+      source,
+    );
+  }
+
+  /**
+   * @internal
+   * @hidden
+   * Check if the container process has finished running.
+   *
+   * Returns `null` if the process is still running, else returns the exit
+   * code.
+   */
+  async _poll(): Promise<number | null> {
+    const resp = await this.#commandRouterClient.execPoll(
+      this.#taskId,
+      this.#execId,
+      this.#deadline,
+    );
+    if (resp.code !== undefined) {
+      return resp.code;
+    } else if (resp.signal !== undefined) {
+      return 128 + resp.signal;
+    }
+    return null;
   }
 
   /** Wait for process completion and return the exit code. */

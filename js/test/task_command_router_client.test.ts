@@ -3,9 +3,14 @@ import {
   parseJwtExpiration,
   callWithRetriesOnTransientErrors,
   TaskCommandRouterClientImpl,
+  type StdinSource,
 } from "../src/task_command_router_client";
 import { ClientError, Status } from "nice-grpc";
-import { TaskSnapshotFilesystemRequest } from "../proto/modal_proto/task_command_router";
+import {
+  TaskExecStdinStatusResponse,
+  TaskExecStdinWriteStreamRequest,
+  TaskSnapshotFilesystemRequest,
+} from "../proto/modal_proto/task_command_router";
 import { TimeoutError } from "../src/errors";
 
 const mockLogger = {
@@ -173,6 +178,257 @@ test("snapshotFilesystem preemptive deadline returns TimeoutError", async () => 
       { timeoutMs: 100 },
     ),
   ).rejects.toBeInstanceOf(TimeoutError);
+});
+
+// ---------------------------------------------------------------------------
+// execStdinWriteStream
+// ---------------------------------------------------------------------------
+
+/** One scripted failure for a single TaskExecStdinWriteStream call. */
+interface ScriptedFailure {
+  /**
+   * Payload bytes to accept before throwing `error`. Use `Infinity` with
+   * `afterEnd` to consume the whole stream (including End) and then fail,
+   * simulating a lost response.
+   */
+  acceptBytes: number;
+  error: Error;
+  afterEnd?: boolean;
+}
+
+/**
+ * In-memory fake of the server side of TaskExecStdinWriteStream and
+ * TaskExecStdinStatus, with scripted per-call failures.
+ */
+class FakeStdinStreamServer {
+  buffer: number[] = [];
+  closed = false;
+  writeStreamCalls = 0;
+  statusCalls = 0;
+  /** Start offset observed on each TaskExecStdinWriteStream call. */
+  startOffsets: number[] = [];
+  /** Data message sizes observed on each TaskExecStdinWriteStream call. */
+  dataSizes: number[][] = [];
+  /** Failures applied to successive calls, in order. */
+  failures: ScriptedFailure[];
+
+  constructor(failures: ScriptedFailure[] = []) {
+    this.failures = failures;
+  }
+
+  stub() {
+    return {
+      taskExecStdinWriteStream: async (
+        requests: AsyncIterable<TaskExecStdinWriteStreamRequest>,
+      ) => {
+        this.writeStreamCalls++;
+        const failure = this.failures.shift();
+        let accepted = 0;
+        const sizes: number[] = [];
+        this.dataSizes.push(sizes);
+        for await (const req of requests) {
+          if (req.start !== undefined) {
+            this.startOffsets.push(req.start.offset);
+            this.buffer = this.buffer.slice(0, req.start.offset);
+          } else if (req.data !== undefined) {
+            if (
+              failure !== undefined &&
+              !failure.afterEnd &&
+              accepted >= failure.acceptBytes
+            ) {
+              throw failure.error;
+            }
+            sizes.push(req.data.length);
+            this.buffer.push(...req.data);
+            accepted += req.data.length;
+          } else if (req.end !== undefined) {
+            this.closed = true;
+          }
+        }
+        if (failure !== undefined) {
+          throw failure.error;
+        }
+        return {};
+      },
+      taskExecStdinStatus: async () => {
+        this.statusCalls++;
+        return TaskExecStdinStatusResponse.create({
+          numBytesWritten: this.buffer.length,
+          closed: this.closed,
+        });
+      },
+    };
+  }
+}
+
+function makeStdinStreamClient(server: FakeStdinStreamServer): any {
+  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
+  client.stub = server.stub();
+  client.logger = mockLogger;
+  client.closed = false;
+  return client;
+}
+
+function bytesSource(bytes: Uint8Array): StdinSource {
+  return {
+    readFrom(offset: number): AsyncIterable<Uint8Array> {
+      return (async function* () {
+        yield bytes.subarray(offset);
+      })();
+    },
+  };
+}
+
+const unavailable = () =>
+  new ClientError("/test", Status.UNAVAILABLE, "unavailable");
+
+test("execStdinWriteStream streams start, data chunks, and end", async () => {
+  const server = new FakeStdinStreamServer();
+  const client = makeStdinStreamClient(server);
+  const data = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+  const total = await client.execStdinWriteStream(
+    "ta-1",
+    "ex-1",
+    bytesSource(data),
+    4, // chunkSize
+  );
+
+  expect(total).toBe(10);
+  expect(server.startOffsets).toEqual([0]);
+  expect(server.dataSizes).toEqual([[4, 4, 2]]);
+  expect(new Uint8Array(server.buffer)).toEqual(data);
+  expect(server.closed).toBe(true);
+  expect(server.statusCalls).toBe(0);
+});
+
+test("execStdinWriteStream empty source sends start and end only", async () => {
+  const server = new FakeStdinStreamServer();
+  const client = makeStdinStreamClient(server);
+
+  const total = await client.execStdinWriteStream(
+    "ta-1",
+    "ex-1",
+    bytesSource(new Uint8Array(0)),
+    4,
+  );
+
+  expect(total).toBe(0);
+  expect(server.startOffsets).toEqual([0]);
+  expect(server.dataSizes).toEqual([[]]);
+  expect(server.buffer).toEqual([]);
+  expect(server.closed).toBe(true);
+});
+
+test("execStdinWriteStream resumes from reported offset after midstream failure", async () => {
+  const server = new FakeStdinStreamServer([
+    { acceptBytes: 8, error: unavailable() },
+  ]);
+  const client = makeStdinStreamClient(server);
+  const data = new Uint8Array(12).map((_, i) => i);
+
+  const total = await client.execStdinWriteStream(
+    "ta-1",
+    "ex-1",
+    bytesSource(data),
+    4,
+  );
+
+  expect(total).toBe(12);
+  expect(server.writeStreamCalls).toBe(2);
+  expect(server.statusCalls).toBe(1);
+  // The second attempt resumed from the server's canonical offset.
+  expect(server.startOffsets).toEqual([0, 8]);
+  expect(new Uint8Array(server.buffer)).toEqual(data);
+  expect(server.closed).toBe(true);
+});
+
+test("execStdinWriteStream throws after exhausting resume attempts", async () => {
+  // 10 total attempts: the initial one plus 9 resumes.
+  const failures = Array.from({ length: 10 }, () => ({
+    acceptBytes: 0,
+    error: unavailable(),
+  }));
+  const server = new FakeStdinStreamServer(failures);
+  const client = makeStdinStreamClient(server);
+
+  await expect(
+    client.execStdinWriteStream(
+      "ta-1",
+      "ex-1",
+      bytesSource(new Uint8Array([1, 2, 3])),
+      4,
+    ),
+  ).rejects.toThrow("unavailable");
+
+  expect(server.writeStreamCalls).toBe(10);
+  expect(server.statusCalls).toBe(9);
+  expect(server.closed).toBe(false);
+});
+
+test("execStdinWriteStream treats closed stream with all bytes written as success", async () => {
+  // The server consumes the whole stream (including End) but the response is
+  // lost to a transient error.
+  const server = new FakeStdinStreamServer([
+    { acceptBytes: Infinity, error: unavailable(), afterEnd: true },
+  ]);
+  const client = makeStdinStreamClient(server);
+  const data = new Uint8Array([9, 8, 7, 6, 5]);
+
+  const total = await client.execStdinWriteStream(
+    "ta-1",
+    "ex-1",
+    bytesSource(data),
+    4,
+  );
+
+  expect(total).toBe(5);
+  expect(server.writeStreamCalls).toBe(1);
+  expect(server.statusCalls).toBe(1);
+  expect(new Uint8Array(server.buffer)).toEqual(data);
+  expect(server.closed).toBe(true);
+});
+
+test("execStdinWriteStream does not resume on a local source error", async () => {
+  const server = new FakeStdinStreamServer();
+  const client = makeStdinStreamClient(server);
+  // ENOENT-style Node system errors carry a string `code`, which must not be
+  // mistaken for a resumable connection error.
+  const sourceError = Object.assign(new Error("boom"), { code: "ENOENT" });
+  const failingSource = {
+    // eslint-disable-next-line require-yield
+    async *readFrom(): AsyncIterable<Uint8Array> {
+      throw sourceError;
+    },
+  };
+
+  await expect(
+    client.execStdinWriteStream("ta-1", "ex-1", failingSource, 4),
+  ).rejects.toThrow("boom");
+
+  expect(server.statusCalls).toBe(0);
+});
+
+test("execStdinWriteStream does not resume on FAILED_PRECONDITION", async () => {
+  const server = new FakeStdinStreamServer([
+    {
+      acceptBytes: 0,
+      error: new ClientError("/test", Status.FAILED_PRECONDITION, "dropped"),
+    },
+  ]);
+  const client = makeStdinStreamClient(server);
+
+  await expect(
+    client.execStdinWriteStream(
+      "ta-1",
+      "ex-1",
+      bytesSource(new Uint8Array([1, 2, 3])),
+      4,
+    ),
+  ).rejects.toThrow("dropped");
+
+  expect(server.writeStreamCalls).toBe(1);
+  expect(server.statusCalls).toBe(0);
 });
 
 test("refreshJwt recovers after transient failure", async () => {

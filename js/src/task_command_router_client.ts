@@ -24,8 +24,11 @@ import {
   TaskExecPollResponse,
   TaskExecStartRequest,
   TaskExecStartResponse,
+  TaskExecStdinStatusRequest,
+  TaskExecStdinStatusResponse,
   TaskExecStdinWriteRequest,
   TaskExecStdinWriteResponse,
+  TaskExecStdinWriteStreamRequest,
   TaskExecStdioFileDescriptor,
   TaskExecStdioReadRequest,
   TaskExecStdioReadResponse,
@@ -93,6 +96,52 @@ class RetryDeadlineExceededError extends Error {
   }
 }
 
+/**
+ * Bytes per outbound message on a streaming stdin upload.
+ *
+ * @internal
+ * @hidden
+ */
+export const STREAMING_STDIN_CHUNK_SIZE = 256 * 1024;
+
+/**
+ * Seekable byte source for streaming stdin uploads.
+ *
+ * @internal
+ * @hidden
+ */
+export interface StdinSource {
+  /**
+   * Return a fresh iterable over the source's bytes starting at `offset`,
+   * so an upload can resume mid-stream after a transient failure.
+   */
+  readFrom(offset: number): AsyncIterable<Uint8Array>;
+}
+
+/** gRPC status codes eligible for transient-error retries. */
+const RETRYABLE_GRPC_STATUS_CODES = new Set([
+  Status.DEADLINE_EXCEEDED,
+  Status.UNAVAILABLE,
+  Status.CANCELLED,
+  Status.INTERNAL,
+  Status.UNKNOWN,
+]);
+
+/**
+ * Whether an error from a streaming stdin upload attempt is resumable via
+ * `execStdinStatus` + a new attempt. Mirrors the transient-retry set used for
+ * unary calls, plus UNAUTHENTICATED (handled with a JWT refresh before the
+ * next attempt). Connection-level failures are covered by the status check:
+ * grpc-js surfaces them as UNAVAILABLE/INTERNAL/CANCELLED.
+ */
+function isResumableStreamingStdinError(err: unknown): boolean {
+  return (
+    err instanceof ClientError &&
+    (RETRYABLE_GRPC_STATUS_CODES.has(err.code) ||
+      err.code === Status.UNAUTHENTICATED)
+  );
+}
+
 export async function callWithRetriesOnTransientErrors<T>(
   func: () => Promise<T>,
   baseDelayMs: number = 10,
@@ -110,13 +159,6 @@ export async function callWithRetriesOnTransientErrors<T>(
   let delayMs = baseDelayMs;
   let numRetries = 0;
 
-  const retryableStatusCodes = new Set([
-    Status.DEADLINE_EXCEEDED,
-    Status.UNAVAILABLE,
-    Status.CANCELLED,
-    Status.INTERNAL,
-    Status.UNKNOWN,
-  ]);
   const excluded = new Set(excludeStatusCodes);
 
   while (true) {
@@ -136,7 +178,7 @@ export async function callWithRetriesOnTransientErrors<T>(
       }
       if (
         err instanceof ClientError &&
-        retryableStatusCodes.has(err.code) &&
+        RETRYABLE_GRPC_STATUS_CODES.has(err.code) &&
         !excluded.has(err.code) &&
         (maxRetries === null || numRetries < maxRetries)
       ) {
@@ -400,6 +442,124 @@ export class TaskCommandRouterClientImpl {
       eof,
     });
     return await this.callUnary(() => this.stub.taskExecStdinWrite(request));
+  }
+
+  /**
+   * Read the current stdin write status for an exec'd command.
+   *
+   * Used by streaming clients to find the resume offset after a stream
+   * failure. Evicts any in-flight stdin stream for the exec.
+   */
+  async execStdinStatus(
+    taskId: string,
+    execId: string,
+  ): Promise<TaskExecStdinStatusResponse> {
+    const request = TaskExecStdinStatusRequest.create({ taskId, execId });
+    return await this.callUnary(() => this.stub.taskExecStdinStatus(request));
+  }
+
+  /**
+   * Stream `source` into the exec's stdin, with bounded resume on transient
+   * failures.
+   *
+   * Streams the full contents of `source` in one client-streaming RPC and
+   * closes stdin (EOF) on success. On a resumable error, queries
+   * `execStdinStatus` for the server's offset and reopens the
+   * stream from that point. Returns the total bytes streamed.
+   */
+  async execStdinWriteStream(
+    taskId: string,
+    execId: string,
+    source: StdinSource,
+    chunkSize: number = STREAMING_STDIN_CHUNK_SIZE,
+    maxResumeAttempts: number = 9,
+  ): Promise<number> {
+    let offset = 0;
+    let attempt = 0;
+    while (true) {
+      let bytesRead = offset;
+      let sourceExhausted = false;
+      // A local source error must fail the upload immediately.
+      let sourceError: unknown;
+
+      const requests =
+        async function* (): AsyncIterable<TaskExecStdinWriteStreamRequest> {
+          yield TaskExecStdinWriteStreamRequest.create({
+            start: { taskId, execId, offset },
+          });
+          const chunks = (async function* () {
+            try {
+              yield* source.readFrom(offset);
+            } catch (err) {
+              sourceError = err;
+              throw err;
+            }
+          })();
+          for await (const chunk of chunks) {
+            for (let i = 0; i < chunk.length; i += chunkSize) {
+              const data = chunk.subarray(i, i + chunkSize);
+              if (data.length === 0) continue;
+              bytesRead += data.length;
+              yield TaskExecStdinWriteStreamRequest.create({ data });
+            }
+          }
+          sourceExhausted = true;
+          // The server closes stdin only on this explicit End message. A
+          // stream that breaks before it leaves stdin open for resume.
+          yield TaskExecStdinWriteStreamRequest.create({ end: {} });
+        };
+
+      try {
+        await this.stub.taskExecStdinWriteStream(requests());
+        return bytesRead;
+      } catch (err) {
+        if (sourceError !== undefined) {
+          throw sourceError;
+        }
+        if (
+          err instanceof ClientError &&
+          err.code === Status.CANCELLED &&
+          this.closed
+        ) {
+          throw new ClientClosedError();
+        }
+        if (!isResumableStreamingStdinError(err)) {
+          throw err;
+        }
+        attempt++;
+        if (attempt > maxResumeAttempts) {
+          throw err;
+        }
+        if (err instanceof ClientError && err.code === Status.UNAUTHENTICATED) {
+          // One refresh per attempt; the attempt counter above bounds the
+          // total number of refreshes.
+          await this.refreshJwt();
+        }
+        const status = await this.execStdinStatus(taskId, execId);
+        if (status.closed) {
+          // stdin only closes on our explicit End message; if the server
+          // accepted everything we read and the source is exhausted, the
+          // upload completed but the response was lost.
+          if (sourceExhausted && status.numBytesWritten === bytesRead) {
+            this.logger.debug(
+              "execStdinWriteStream completed but response was lost",
+              "error",
+              err,
+            );
+            return bytesRead;
+          }
+          throw err;
+        }
+        offset = status.numBytesWritten;
+        this.logger.debug(
+          "execStdinWriteStream resuming after error",
+          "offset",
+          offset,
+          "error",
+          err,
+        );
+      }
+    }
   }
 
   async execPoll(
@@ -715,14 +875,6 @@ export class TaskCommandRouterClientImpl {
     // refresh yields an invalid JWT somehow or that the JWT is otherwise invalid.
     let didAuthRetry = false;
 
-    const retryableStatusCodes = new Set([
-      Status.DEADLINE_EXCEEDED,
-      Status.UNAVAILABLE,
-      Status.CANCELLED,
-      Status.INTERNAL,
-      Status.UNKNOWN,
-    ]);
-
     while (true) {
       try {
         const timeoutMs =
@@ -774,7 +926,7 @@ export class TaskCommandRouterClientImpl {
         }
         if (
           err instanceof ClientError &&
-          retryableStatusCodes.has(err.code) &&
+          RETRYABLE_GRPC_STATUS_CODES.has(err.code) &&
           numRetriesRemaining > 0
         ) {
           if (deadline && deadline - Date.now() <= delayMs) {
