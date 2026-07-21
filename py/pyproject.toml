@@ -191,7 +191,6 @@ ignore = [
     'UP037', # Remove quotes from type annotation
     'UP036', # Version block is outdated for minimum Python version
     'UP038', # Will be removed in ruff in the future
-    'UP027', # Will be removed in ruff in the future
 ]
 select = [
     'E',

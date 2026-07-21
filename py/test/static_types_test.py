@@ -3,37 +3,56 @@ import os
 import pytest
 import subprocess
 import sys
+from contextlib import contextmanager
+from pathlib import Path
 
+import modal
 from test.supports.skip import skip_windows
+
+project_root = Path(modal.__file__).parent.parent
+
+
+@contextmanager
+def chdir(target_path):
+    # This can be replaced with contextlib.chdir on Python 3.11+
+    original_cwd = os.getcwd()
+    os.chdir(target_path)
+    try:
+        yield
+    finally:
+        os.chdir(original_cwd)
 
 
 @pytest.fixture(scope="module")
 def generate_type_stubs():
     if os.environ.get("TEST_SRCDIR"):
         pytest.skip("type-stubs generation requires 'inv' tool, not available in Bazel sandbox")
-    subprocess.check_call(["inv", "type-stubs"])
+    with chdir(project_root):
+        subprocess.check_call(["inv", "type-stubs"])
 
 
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_remote_call_keeps_original_return_value():
-    subprocess.check_call(["mypy", "test/supports/type_assertions.py"])
+    with chdir(project_root):
+        subprocess.check_call(["mypy", "test/supports/type_assertions.py"])
 
 
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_negative_assertions():
-    p = subprocess.Popen(
-        ["mypy", "test/supports/type_assertions_negative.py"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding="utf8",
-    )
-    stdout, _ = p.communicate()
-    assert p.returncode == 1
-    print(stdout)
+    with chdir(project_root):
+        p = subprocess.Popen(
+            ["mypy", "test/supports/type_assertions_negative.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf8",
+        )
+        stdout, _ = p.communicate()
+        print(stdout)
+        assert p.returncode == 1
     assert "Found 6 errors in 1 file" in stdout
     assert 'Unexpected keyword argument "b" for "__call__"' in stdout
     assert 'Argument "a" to "__call__" of "__remote_spec" has incompatible type "int"' in stdout
