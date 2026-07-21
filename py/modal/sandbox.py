@@ -52,10 +52,13 @@ from .exception import (
     ClientClosed,
     ConflictError,
     ExecutionError,
+    InternalError,
     InvalidError,
     NotFoundError,
     SandboxTerminatedError,
     SandboxTimeoutError,
+    SnapshotCreationError,
+    TimeoutError,
 )
 from .file_io import _FileIO, ls, mkdir, rm, watch
 from .io_streams import (
@@ -77,6 +80,8 @@ from .stream_type import StreamType
 from .types import FileWatchEvent, FileWatchEventType, SandboxConnectCredentials
 
 _default_image: _Image = _Image.debian_slim()
+_EXIT_SNAPSHOT_POLL_INTERVAL_SECONDS = 1.0
+_EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset((api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,))
 
 
 async def _gather_load_with_timings(
@@ -1409,6 +1414,68 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
         req = sr_pb2.TaskSetNetworkAccessRequest(task_id=task_id, network_access=network_access)
         await command_router_client.set_network_access(req)
+
+    async def _experimental_get_exit_snapshot(self, timeout: float | None = 60) -> _Image:
+        """Get the exit filesystem snapshot image.
+
+        Args:
+            timeout: Client-side deadline in seconds (default 60). Use `None` to
+                poll until the snapshot reaches a terminal state. Use `0` to
+                perform an immediate check.
+
+        Returns:
+            The exit snapshot Image.
+
+        Raises:
+            InvalidError: If `timeout` is negative, or if exit snapshot is not
+                enabled for the sandbox.
+            TimeoutError: If `timeout` elapses before the snapshot reaches a
+                terminal state. This includes `timeout=0` when the snapshot is
+                still pending.
+            SnapshotCreationError: If no exit snapshot image will be produced.
+            NotFoundError: If the sandbox does not exist.
+            PermissionDeniedError: If the caller cannot access the sandbox.
+            InternalError: If persisted snapshot state is malformed.
+            ServiceError: If a transient client/server communication failure occurs.
+        """
+        if timeout is not None and timeout < 0:
+            raise InvalidError("timeout must be non-negative or None")
+
+        deadline = None if timeout is None else time.monotonic() + timeout
+        timeout_message = f"timed out waiting for exit snapshot for Sandbox {self.object_id}"
+
+        while True:
+            resp: api_pb2.SandboxGetExitSnapshotResponse = await self._client.stub.SandboxGetExitSnapshot(
+                api_pb2.SandboxGetExitSnapshotRequest(sandbox_id=self.object_id)
+            )
+            outcome = resp.WhichOneof("outcome")
+
+            if outcome == "success":
+                if not resp.success.image_id:
+                    raise InternalError("Exit snapshot result is missing image ID")
+                return _Image._new_hydrated(resp.success.image_id, self._client, None)
+
+            if outcome == "error":
+                if resp.error.error_code in _EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES:
+                    message = resp.error.message or "No exit snapshot image will be produced"
+                    raise SnapshotCreationError(message)
+                message = resp.error.message or "Exit snapshot state is malformed"
+                raise InternalError(message)
+
+            if outcome != "pending":
+                raise InternalError("Exit snapshot response is missing an outcome")
+
+            sleep_for = _EXIT_SNAPSHOT_POLL_INTERVAL_SECONDS
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(timeout_message)
+                sleep_for = min(sleep_for, remaining)
+
+            await asyncio.sleep(sleep_for)
+
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(timeout_message)
 
     async def snapshot_filesystem(
         self,
