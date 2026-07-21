@@ -1,25 +1,20 @@
 # Modal SDKs
+[![License](https://img.shields.io/badge/license-apache_2.0-darkviolet.svg)](https://github.com/modal-labs/modal-client/blob/master/LICENSE)
+[![Slack](https://img.shields.io/badge/slack-join-blue.svg?logo=slack)](https://modal.com/slack)
 
-## Documentation
+This repository contains the source code for [Modal's](https://modal.com) official SDKs.
 
-See the [online documentation](https://modal.com/docs/guide) for many
-[example applications](https://modal.com/docs/examples),
-a [user guide](https://modal.com/docs/guide), and the detailed
-[API reference](https://modal.com/docs/sdk/py/latest).
+See the [online documentation](https://modal.com/docs) for a detailed [user guide](https://modal.com/docs/guide) and many [example applications](https://modal.com/docs/examples).
+
+For usage questions or other support, please reach out on the [Modal Slack](https://modal.com/slack).
 
 ## Python SDK
 
 [![PyPI Version](https://img.shields.io/pypi/v/modal.svg)](https://pypi.org/project/modal/)
-[![License](https://img.shields.io/badge/license-apache_2.0-darkviolet.svg)](https://github.com/modal-labs/modal-client/blob/master/LICENSE)
-[![Tests](https://github.com/modal-labs/modal-client/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/modal-labs/modal-client/actions/workflows/ci-cd.yml)
-[![Slack](https://img.shields.io/badge/slack-join-blue.svg?logo=slack)](https://modal.com/slack)
 
-The [Modal](https://modal.com/) Python SDK provides convenient, on-demand
-access to serverless cloud compute from Python scripts on your local computer.
+The [Modal](https://modal.com/) Python SDK allows you to deploy high-performance serverless applications and programmatically interact with the Modal platform.
 
-**This library requires Python 3.10 – 3.14.**
-
-### Installation
+See the [Python reference](https://modal.com/docs/sdk/py) for details on usage.
 
 Install the package with `uv` or `pip`:
 
@@ -27,35 +22,38 @@ Install the package with `uv` or `pip`:
 uv pip install modal
 ```
 
-You can create a Modal account (or link your existing one) directly on the
-command line:
+The Python package includes the `modal` CLI. The CLI can also be installed as a standalone tool via [uvx.sh](https://uvx.sh):
 
 ```bash
-python3 -m modal setup
+curl -LsSf uvx.sh/modal/install.sh | sh
 ```
 
 ## JavaScript/TypeScript and Go SDKs
 
-[![JS Reference Documentation](https://img.shields.io/static/v1?message=reference&logo=javascript&labelColor=5c5c5c&color=1182c3&logoColor=white&label=%20)](https://modal-labs.github.io/libmodal/)
 [![JS npm Version](https://img.shields.io/npm/v/modal.svg)](https://www.npmjs.org/package/modal)
-[![JS npm Downloads](https://img.shields.io/npm/dm/modal.svg)](https://www.npmjs.com/package/modal)
 [![Go Reference Documentation](https://pkg.go.dev/badge/github.com/modal-labs/modal-client/go)](https://pkg.go.dev/github.com/modal-labs/modal-client/go)
 
-This repo hosts the [Modal](https://modal.com) SDKs for JavaScript/TypeScript and Go. They provide convenient, on-demand access to serverless cloud compute on Modal from JS/TS and golang projects. Use it to safely run arbitrary code in Modal Sandboxes, call Modal Functions, and interact with Modal resources.
+The JS and Go SDKs allow you to use Modal Sandboxes, invoke deployed Modal Functions, and interact with some Modal platform resources.
 
-For more details, documentation and installation instructions, see the README for each SDK:
-- **[JavaScript / TypeScript](./js/README.md)**
-- **[Go](./go/README.md)**
+For more details, see the reference documentation:
 
+- [JavaScript / TypeScript](https://modal.com/docs/sdk/js)
+- [Go](https://modal.com/docs/sdk/go)
 
-## Community SDKs
+## Skills
 
-There are also open-source Modal libraries built and maintained by our community. These projects are not officially supported by Modal and we thus can't vouch for them, but feel free to explore and contribute.
+Modal distributes an [official skill](./py/modal/skills/modal/SKILL.md) to help coding agents use its latest features. The skill can be installed and maintained via the `modal` CLI:
 
-- Ruby: [anthonycorletti/modal-rb](https://github.com/anthonycorletti/modal-rb)
+```bash
+modal skills install
+```
 
+When the skill is installed via the `modal` CLI, the skill references will be populated with version-aligned documentation.
 
-## Support
+The skill can also be managed via `npx skills`:
 
-For usage questions and other support, please reach out on the
-[Modal Slack](https://modal.com/slack).
+```bash
+npx skills add modal-labs/modal-client
+```
+
+Note that installation via `npx skills` will not include versioning or reference documentation.
