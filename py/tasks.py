@@ -346,7 +346,7 @@ def publish_base_mounts(ctx, no_confirm: bool = False):
     """Publish the client mount and other mounts."""
     _check_prod(no_confirm)
     for mount in ["modal_client_package", "python_standalone", "modal_client_dependencies"]:
-        ctx.run(f"{sys.executable} modal_global_objects/mounts/{mount}.py", pty=True)
+        ctx.run(f"{sys.executable} {project_root}/modal_global_objects/mounts/{mount}.py", pty=True)
 
 
 @task(
