@@ -783,6 +783,8 @@ func (f *Function) Spawn(ctx context.Context, args []any, kwargs map[string]any)
 	}
 	functionCall := FunctionCall{
 		FunctionCallID: invocation.FunctionCallID,
+		functionID:     f.FunctionID,
+		appID:          f.handleMetadata.GetAppId(),
 		client:         f.client,
 	}
 	f.client.logger.DebugContext(ctx, "Function call spawned",

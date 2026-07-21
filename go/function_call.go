@@ -23,14 +23,26 @@ type functionCallServiceImpl struct{ client *Client }
 // asynchronously (see Get()) or cancelled (see Cancel()).
 type FunctionCall struct {
 	FunctionCallID string
-
-	client *Client
+	functionID     string
+	appID          string
+	client         *Client
 }
 
 // FromID looks up a FunctionCall by ID.
 func (s *functionCallServiceImpl) FromID(ctx context.Context, functionCallID string, params *FunctionCallFromIDParams) (*FunctionCall, error) {
+
+	response, err := s.client.cpClient.FunctionCallFromId(ctx, pb.FunctionCallFromIdRequest_builder{FunctionCallId: functionCallID}.Build())
+
+	if err != nil {
+		return nil, fmt.Errorf("FunctionCallFromId failed: %w", err)
+	}
+
+	meta := response.GetMetadata()
+
 	functionCall := FunctionCall{
 		FunctionCallID: functionCallID,
+		functionID:     meta.GetFunctionId(),
+		appID:          meta.GetAppId(),
 		client:         s.client,
 	}
 	return &functionCall, nil
