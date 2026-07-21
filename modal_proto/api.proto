@@ -3999,7 +3999,7 @@ message TaskLogs {
   TaskProgress task_progress = 9;
   string function_call_id = 10;
   string input_id = 11;
-  uint64 timestamp_ns = 12;
+  uint64 timestamp_ns = 12 [jstype = JS_STRING];
   string container_id = 13;
   string container_name = 14;
 }

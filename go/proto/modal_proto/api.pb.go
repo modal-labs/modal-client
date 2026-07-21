@@ -64973,7 +64973,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10environment_name\x18\x01 \x01(\tR\x0fenvironmentName\x12\x15\n" +
 	"\x06app_id\x18\x02 \x01(\tR\x05appId\"A\n" +
 	"\x10TaskListResponse\x12-\n" +
-	"\x05tasks\x18\x01 \x03(\v2\x17.modal.client.TaskStatsR\x05tasks\"\xae\x03\n" +
+	"\x05tasks\x18\x01 \x03(\v2\x17.modal.client.TaskStatsR\x05tasks\"\xb2\x03\n" +
 	"\bTaskLogs\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\tR\x04data\x126\n" +
 	"\n" +
@@ -64983,8 +64983,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\rtask_progress\x18\t \x01(\v2\x1a.modal.client.TaskProgressR\ftaskProgress\x12(\n" +
 	"\x10function_call_id\x18\n" +
 	" \x01(\tR\x0efunctionCallId\x12\x19\n" +
-	"\binput_id\x18\v \x01(\tR\ainputId\x12!\n" +
-	"\ftimestamp_ns\x18\f \x01(\x04R\vtimestampNs\x12!\n" +
+	"\binput_id\x18\v \x01(\tR\ainputId\x12%\n" +
+	"\ftimestamp_ns\x18\f \x01(\x04B\x020\x01R\vtimestampNs\x12!\n" +
 	"\fcontainer_id\x18\r \x01(\tR\vcontainerId\x12%\n" +
 	"\x0econtainer_name\x18\x0e \x01(\tR\rcontainerName\"\xda\x02\n" +
 	"\rTaskLogsBatch\x12\x17\n" +
