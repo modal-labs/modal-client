@@ -3449,6 +3449,36 @@ message SandboxGetCommandRouterAccessResponse {
   string worker_ipv4_address = 3;
 }
 
+message SandboxGetExitSnapshotRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetExitSnapshotResponse {
+  message Success {
+    string image_id = 1;
+  }
+
+  message Pending {
+  }
+
+  enum ErrorCode {
+    ERROR_CODE_UNSPECIFIED = 0;
+    ERROR_CODE_TIMEOUT = 1;
+    ERROR_CODE_INTERNAL = 2;
+  }
+
+  message Error {
+    ErrorCode error_code = 1;
+    string message = 2;
+  }
+
+  oneof outcome {
+    Success success = 1;
+    Pending pending = 2;
+    Error error = 3;
+  }
+}
+
 message SandboxGetFromNameRequest {
   string sandbox_name = 1;
   string environment_name = 2;
@@ -4720,6 +4750,7 @@ service ModalClient {
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
   rpc SandboxCreateV2(SandboxCreateV2Request) returns (SandboxCreateV2Response);
   rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
+  rpc SandboxGetExitSnapshot(SandboxGetExitSnapshotRequest) returns (SandboxGetExitSnapshotResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetFromNameV2(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
