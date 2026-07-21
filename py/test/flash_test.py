@@ -238,6 +238,7 @@ class TestFlashManagerStopping:
         flash_manager.tunnel = MagicMock()
         flash_manager.client.stub.FlashContainerRegister = AsyncMock()
         flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, Exception("unhealthy")))
         heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
         drain_task = asyncio.create_task(flash_manager._drain_container())
 
