@@ -1,5 +1,6 @@
 // Manage existing Function Calls (look-ups, polling for output, cancellation).
 
+import { FunctionCallFromIdRequest } from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
 import { ControlPlaneInvocation } from "./invocation";
 import { checkForRenamedParams } from "./validation";
@@ -24,7 +25,15 @@ export class FunctionCallService {
    * Create a new {@link FunctionCall} from ID.
    */
   async fromId(functionCallId: string): Promise<FunctionCall> {
-    return new FunctionCall(this.#client, functionCallId);
+    const resp = await this.#client.cpClient.functionCallFromId(
+      FunctionCallFromIdRequest.create({ functionCallId }),
+    );
+    return new FunctionCall(
+      this.#client,
+      functionCallId,
+      resp.metadata?.appId ?? "",
+      resp.metadata?.functionId ?? "",
+    );
   }
 }
 
@@ -46,9 +55,20 @@ export type FunctionCallCancelParams = {
 export class FunctionCall {
   readonly functionCallId: string;
   #client: ModalClient;
+  // eslint-disable-next-line
+  #appId: string;
+  // eslint-disable-next-line
+  #functionId: string;
 
   /** @ignore */
-  constructor(client: ModalClient, functionCallId: string) {
+  constructor(
+    client: ModalClient,
+    functionCallId: string,
+    appId: string,
+    functionId: string,
+  ) {
+    this.#appId = appId;
+    this.#functionId = functionId;
     this.#client = client;
     this.functionCallId = functionCallId;
   }

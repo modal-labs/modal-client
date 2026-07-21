@@ -591,7 +591,12 @@ export class Function_ {
       "function_call_id",
       invocation.functionCallId,
     );
-    return new FunctionCall(this.#client, invocation.functionCallId);
+    return new FunctionCall(
+      this.#client,
+      invocation.functionCallId,
+      this.#handleMetadata?.appId ?? "",
+      this.functionId,
+    );
   }
 
   // Returns statistics about the Function.
