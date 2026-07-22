@@ -656,17 +656,35 @@ def test_endpoint_create_colocates_compute(servicer, set_env_client):
     assert request.compute_region.WhichOneof("placement") == "colocated"
 
 
-def test_endpoint_create_has_no_compute_region_option(servicer, set_env_client):
+def test_endpoint_create_uses_explicit_compute_regions(servicer, set_env_client):
     run_cli_command(
         [
             "endpoint",
             "create",
             "--name=qwen-chat",
             "--model=Qwen/Qwen3.6-27B-FP8",
+            "--compute-region=ca",
             "--compute-region=us-east",
+        ]
+    )
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.compute_region.WhichOneof("placement") == "explicit"
+    assert list(request.compute_region.explicit.regions) == ["ca", "us-east"]
+
+
+def test_endpoint_create_rejects_explicit_and_colocated_compute(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--compute-region=ca",
+            "--colocate-compute",
         ],
         expected_exit_code=2,
-        expected_stderr="No such option",
+        expected_stderr="--compute-region and --colocate-compute are mutually exclusive",
     )
     assert servicer.endpoint_create_requests == []
 

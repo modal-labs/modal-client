@@ -122,6 +122,15 @@ def _endpoint_already_stopped_message(
     help=f"Region to route inference requests through. Defaults to {_DEFAULT_ROUTING_REGION}.",
 )
 @click.option(
+    "--compute-region",
+    "compute_regions",
+    multiple=True,
+    help=(
+        "Region to run Endpoint containers in. May be specified multiple times. "
+        "This incurs a region selection price multiplier."
+    ),
+)
+@click.option(
     "--colocate-compute",
     is_flag=True,
     default=False,
@@ -143,6 +152,7 @@ async def create(
     name: Optional[str],
     model: Optional[str] = None,
     routing_region: str = _DEFAULT_ROUTING_REGION,
+    compute_regions: tuple[str, ...] = (),
     colocate_compute: bool = False,
     unauthenticated: bool = False,
     custom_hf_repo: Optional[str] = None,
@@ -166,6 +176,12 @@ async def create(
     modal endpoint create --name qwen-chat --model Qwen/Qwen3.6-27B-FP8
     ```
 
+    Create an Endpoint with explicit routing and compute regions:
+    ```bash
+    modal endpoint create --model Qwen/Qwen3.6-27B-FP8 \\
+      --routing-region us-east --compute-region us-west
+    ```
+
     Create an Endpoint from a private Hugging Face model:
     ```bash
     modal endpoint create --name my-ft --model Qwen/Qwen3.6-27B-FP8 \\
@@ -179,6 +195,8 @@ async def create(
     ```
 
     """
+    if compute_regions and colocate_compute:
+        raise click.UsageError("--compute-region and --colocate-compute are mutually exclusive.")
     if custom_hf_repo and custom_volume_name:
         raise click.UsageError("--custom-hf-repo and --custom-volume-name are mutually exclusive.")
     if custom_volume_name and not custom_volume_path:
@@ -193,7 +211,9 @@ async def create(
     client = await _Client.from_env()
 
     compute_region_spec = api_pb2.EndpointComputeRegionSpec()
-    if colocate_compute:
+    if compute_regions:
+        compute_region_spec.explicit.regions.extend(compute_regions)
+    elif colocate_compute:
         compute_region_spec.colocated.SetInParent()
     else:
         compute_region_spec.auto.SetInParent()
