@@ -23,10 +23,16 @@ import {
   AppGetOrCreateResponse,
   SandboxCreateResponse,
   SandboxCreateV2Response,
+  SandboxRestoreV2Response,
+  SandboxSnapshotGetResponse,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
-import { TaskSetNetworkAccessRequest } from "../proto/modal_proto/task_command_router";
+import { SandboxSnapshot } from "../src/sandbox_snapshot";
+import {
+  TaskSetNetworkAccessRequest,
+  TaskSnapshotMemoryRequest,
+} from "../proto/modal_proto/task_command_router";
 import {
   AlreadyExistsError,
   ConflictError,
@@ -2333,4 +2339,83 @@ test("updateNetworkPolicy rejects when a dimension is missing", async () => {
   await expect(sb.updateNetworkPolicy({})).rejects.toThrow(
     "both outboundCidrAllowlist and outboundDomainAllowlist",
   );
+});
+
+test("experimentalSnapshot takes a memory snapshot via the command router for V2 sandboxes", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+
+  const snapshotMemory = vi
+    .fn()
+    .mockResolvedValue({ snapshotId: "sn-01BX5ZZKBKACTAV9WEVGEMMVRY" });
+  const tryInit = vi
+    .spyOn(TaskCommandRouterClientImpl, "tryInit")
+    .mockResolvedValue({
+      snapshotMemory,
+      close: vi.fn(),
+    } as unknown as TaskCommandRouterClientImpl);
+  onTestFinished(() => tryInit.mockRestore());
+
+  const snapshot = await sb.experimentalSnapshot();
+
+  expect(snapshot.snapshotId).toBe("sn-01BX5ZZKBKACTAV9WEVGEMMVRY");
+  expect(snapshotMemory).toHaveBeenCalledTimes(1);
+  const request = snapshotMemory.mock.calls[0][0] as TaskSnapshotMemoryRequest;
+  expect(request.taskId).toBe("ta-v2-123");
+  expect(request.idempotencyKey).toBeTruthy();
+});
+
+test("experimentalFromSnapshot restores a V2 snapshot via SandboxRestoreV2", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary(
+    "/SandboxRestoreV2",
+    (req: any): SandboxRestoreV2Response => {
+      expect(req.snapshotId).toBe("sn-01BX5ZZKBKACTAV9WEVGEMMVRY");
+      return {
+        sandboxId: V2_SANDBOX_ID,
+        taskId: "ta-restored-v2-123",
+        tunnels: [],
+        metadata: undefined,
+      };
+    },
+  );
+
+  const snapshot = new SandboxSnapshot(mc, "sn-01BX5ZZKBKACTAV9WEVGEMMVRY", {
+    isV2: true,
+  });
+  const sb = await mc.sandboxes.experimentalFromSnapshot(snapshot);
+  expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+});
+
+test("experimentalFromSnapshot fetches the snapshot version when unknown", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary(
+    "/SandboxSnapshotGet",
+    (req: any): SandboxSnapshotGetResponse => {
+      expect(req.snapshotId).toBe("sn-01BX5ZZKBKACTAV9WEVGEMMVRY");
+      return {
+        snapshotId: "sn-01BX5ZZKBKACTAV9WEVGEMMVRY",
+        handleMetadata: { isV2: true },
+      };
+    },
+  );
+  mock.handleUnary("/SandboxRestoreV2", (): SandboxRestoreV2Response => {
+    return {
+      sandboxId: V2_SANDBOX_ID,
+      taskId: "ta-restored-v2-123",
+      tunnels: [],
+      metadata: undefined,
+    };
+  });
+
+  const snapshot = await mc.sandboxSnapshots.fromId(
+    "sn-01BX5ZZKBKACTAV9WEVGEMMVRY",
+  );
+  const sb = await mc.sandboxes.experimentalFromSnapshot(snapshot);
+  expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
 });

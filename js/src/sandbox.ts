@@ -20,6 +20,7 @@ import {
   PortSpecs,
   Probe as ProbeProto,
   StringMap,
+  SandboxRestoreRequest_SandboxNameOverrideType,
 } from "../proto/modal_proto/api";
 import {
   TaskExecStartRequest,
@@ -29,6 +30,7 @@ import {
   TaskReloadVolumesRequest,
   TaskSnapshotDirectoryRequest,
   TaskSnapshotFilesystemRequest,
+  TaskSnapshotMemoryRequest,
   TaskUnmountDirectoryRequest,
   TaskSetNetworkAccessRequest,
 } from "../proto/modal_proto/task_command_router";
@@ -56,6 +58,7 @@ import {
 } from "./secret";
 import {
   ConflictError,
+  ExecutionError,
   InvalidError,
   NotFoundError,
   SandboxTimeoutError,
@@ -63,6 +66,7 @@ import {
   ClientClosedError,
 } from "./errors";
 import { Image } from "./image";
+import { SandboxSnapshot } from "./sandbox_snapshot";
 import { checkObjectName } from "./name_utils";
 import { volumeToMountProto, type Volume } from "./volume";
 import type { Proxy } from "./proxy";
@@ -390,6 +394,9 @@ export type SandboxCreateParams = {
 
   /** If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP). */
   includeOidcIdentityToken?: boolean;
+
+  /** Enable memory snapshots. */
+  experimentalEnableSnapshot?: boolean;
 };
 
 export async function buildSandboxCreateRequestProto(
@@ -639,6 +646,7 @@ export async function buildSandboxCreateRequestProto(
       includeOidcIdentityToken: params.includeOidcIdentityToken ?? false,
       inboundCidrAllowlist: params.inboundCidrAllowlist ?? [],
       i6pnEnabled: params.i6pn ?? false,
+      enableSnapshot: params.experimentalEnableSnapshot ?? false,
     },
   });
 }
@@ -748,7 +756,9 @@ export class SandboxService {
    * subdomain of that parent domain rather than a default Modal domain;
    * requires prior setup by Modal).
    *
-   * Features like memory snapshots and GPUs are not supported.
+   * Pass `experimentalEnableSnapshot: true` to create a sandbox that can be
+   * snapshotted with {@link Sandbox#experimentalSnapshot}. Features like network
+   * file systems and GPUs are not supported.
    *
    * V2 sandboxes created with this method are not currently returned by
    * {@link SandboxService#list client.sandboxes.list()}. A named Sandbox can be
@@ -910,6 +920,73 @@ export class SandboxService {
   }
 
   /**
+   * Restore a {@link Sandbox} from a memory snapshot.
+   *
+   * The restore targets the same backend the snapshot was taken from. A V1
+   * snapshot restores as a V1 sandbox, a V2 snapshot as a V2 sandbox.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   */
+  async experimentalFromSnapshot(
+    snapshot: SandboxSnapshot,
+    params?: SandboxExperimentalFromSnapshotParams,
+  ): Promise<Sandbox> {
+    await snapshot._hydrate();
+    const useV2 = snapshot._isV2 ?? false;
+
+    let overrideType: SandboxRestoreRequest_SandboxNameOverrideType;
+    let nameOverride: string | undefined;
+    if (params?.name === undefined) {
+      overrideType =
+        SandboxRestoreRequest_SandboxNameOverrideType.SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED;
+    } else if (params.name === null) {
+      overrideType =
+        SandboxRestoreRequest_SandboxNameOverrideType.SANDBOX_NAME_OVERRIDE_TYPE_NONE;
+    } else {
+      checkObjectName(params.name, "Sandbox");
+      overrideType =
+        SandboxRestoreRequest_SandboxNameOverrideType.SANDBOX_NAME_OVERRIDE_TYPE_STRING;
+      nameOverride = params.name;
+    }
+
+    if (useV2) {
+      const restoreResp = await this.#client.cpClient.sandboxRestoreV2({
+        snapshotId: snapshot.snapshotId,
+        sandboxNameOverrideType: overrideType,
+        sandboxNameOverride: nameOverride ?? "",
+      });
+      return new Sandbox(this.#client, restoreResp.sandboxId, {
+        isV2: true,
+        taskId: restoreResp.taskId,
+      });
+    }
+
+    const restoreResp = await this.#client.cpClient.sandboxRestore({
+      snapshotId: snapshot.snapshotId,
+      sandboxNameOverrideType: overrideType,
+      sandboxNameOverride: nameOverride ?? "",
+    });
+
+    const sandbox = await this.fromId(restoreResp.sandboxId);
+
+    const resp = await this.#client.cpClient.sandboxGetTaskId({
+      sandboxId: restoreResp.sandboxId,
+      waitUntilReady: true,
+      timeout: 55,
+    });
+    if (
+      resp.taskResult &&
+      resp.taskResult.status !==
+        GenericResult_GenericStatus.GENERIC_STATUS_UNSPECIFIED &&
+      resp.taskResult.status !==
+        GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
+    ) {
+      throw new ExecutionError(resp.taskResult.exception);
+    }
+    return sandbox;
+  }
+
+  /**
    * List all {@link Sandbox}es for the current Environment or App ID (if specified).
    * If tags are specified, only Sandboxes that have at least those tags are returned.
    */
@@ -1035,6 +1112,15 @@ export type SandboxFromNameParams = {
 /** Optional parameters for {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()}. */
 export type SandboxExperimentalFromNameParams = {
   environment?: string;
+};
+
+/** Optional parameters for {@link SandboxService#experimentalFromSnapshot client.sandboxes.experimentalFromSnapshot()}. */
+export type SandboxExperimentalFromSnapshotParams = {
+  /**
+   * Name for the restored Sandbox. Omit to reuse the original Sandbox's name,
+   * pass `null` to leave it unnamed, or pass a string to override it.
+   */
+  name?: string | null;
 };
 
 /** Optional parameters for {@link Sandbox#exec Sandbox.exec()}. */
@@ -1963,6 +2049,50 @@ export class Sandbox {
     }
 
     return new Image(this.#client, response.imageId, "");
+  }
+
+  /**
+   * Snapshot the filesystem and memory of the Sandbox.
+   *
+   * Returns a {@link SandboxSnapshot} which can be restored into a new Sandbox
+   * with {@link SandboxService#experimentalFromSnapshot client.sandboxes.experimentalFromSnapshot()}.
+   *
+   * The Sandbox must have been created with `experimentalEnableSnapshot: true`.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   */
+  async experimentalSnapshot(): Promise<SandboxSnapshot> {
+    this.#ensureAttached();
+    let snapshotId: string;
+    if (this.#isV2) {
+      const [taskId, commandRouterClient] = await this.#getCommandRouter();
+      const resp = await commandRouterClient.snapshotMemory(
+        TaskSnapshotMemoryRequest.create({ taskId, idempotencyKey: uuidv4() }),
+        { timeoutMs: 55000 },
+      );
+      snapshotId = resp.snapshotId;
+    } else {
+      await this.#getTaskId();
+      const snapResp = await this.#client.cpClient.sandboxSnapshot({
+        sandboxId: this.sandboxId,
+      });
+      snapshotId = snapResp.snapshotId;
+
+      // wait for the snapshot to succeed. this is implemented as a second idempotent rpc
+      // because the snapshot itself may take a while to complete.
+      const waitResp = await this.#client.cpClient.sandboxSnapshotWait({
+        snapshotId,
+        timeout: 55,
+      });
+      if (
+        waitResp.result?.status !==
+        GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
+      ) {
+        throw new ExecutionError(waitResp.result?.exception ?? "");
+      }
+    }
+
+    return new SandboxSnapshot(this.#client, snapshotId, { isV2: this.#isV2 });
   }
 
   /**

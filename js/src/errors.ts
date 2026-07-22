@@ -22,6 +22,14 @@ export class RemoteError extends Error {
   }
 }
 
+/** Something unexpected happened during runtime. */
+export class ExecutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExecutionError";
+  }
+}
+
 /** A retryable internal error from Modal. */
 export class InternalFailure extends Error {
   constructor(message: string) {

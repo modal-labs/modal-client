@@ -40,6 +40,8 @@ import {
   TaskSnapshotDirectoryResponse,
   TaskSnapshotFilesystemRequest,
   TaskSnapshotFilesystemResponse,
+  TaskSnapshotMemoryRequest,
+  TaskSnapshotMemoryResponse,
   TaskUnmountDirectoryRequest,
   TaskSetNetworkAccessRequest,
   SandboxWaitUntilReadyTcrRequest,
@@ -701,6 +703,41 @@ export class TaskCommandRouterClientImpl {
                 ? Math.max(1, overallDeadlineMs - Date.now())
                 : options?.timeoutMs;
             return this.stub.taskSnapshotFilesystem(request, {
+              ...options,
+              timeoutMs: remainingMs,
+            } as CallOptions & TimeoutOptions);
+          }),
+        10,
+        2,
+        10,
+        overallDeadlineMs,
+        () => this.closed,
+        [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
+      );
+    } catch (err) {
+      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+        throw new TimeoutError("Timeout expired");
+      }
+      throw err;
+    }
+  }
+
+  async snapshotMemory(
+    request: TaskSnapshotMemoryRequest,
+    options?: TimeoutOptions,
+  ): Promise<TaskSnapshotMemoryResponse> {
+    // Mirrors snapshotFilesystem's deadline handling.
+    const overallDeadlineMs =
+      options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
+    try {
+      return await callWithRetriesOnTransientErrors(
+        () =>
+          this.callWithAuthRetry(() => {
+            const remainingMs =
+              overallDeadlineMs !== null
+                ? Math.max(1, overallDeadlineMs - Date.now())
+                : options?.timeoutMs;
+            return this.stub.taskSnapshotMemory(request, {
               ...options,
               timeoutMs: remainingMs,
             } as CallOptions & TimeoutOptions);

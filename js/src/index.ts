@@ -12,6 +12,7 @@ export {
   TimeoutError,
   FunctionTimeoutError,
   RemoteError,
+  ExecutionError,
   InternalFailure,
   NotFoundError,
   ConflictError,
@@ -84,10 +85,12 @@ export type {
   SandboxListParams,
   SandboxExperimentalListParams,
   SandboxExperimentalFromNameParams,
+  SandboxExperimentalFromSnapshotParams,
   SandboxCreateParams,
   SandboxUpdateNetworkPolicyParams,
 } from "./sandbox";
 export { ContainerProcess, Probe, Sandbox, SandboxService } from "./sandbox";
+export { SandboxSnapshot, SandboxSnapshotService } from "./sandbox_snapshot";
 export { SidecarService, SidecarContainer } from "./sandbox_sidecar";
 export type {
   SidecarCreateParams,
