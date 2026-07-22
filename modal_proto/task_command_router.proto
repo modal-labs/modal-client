@@ -77,6 +77,10 @@ message TaskContainerCreateRequest {
   repeated string secret_ids = 8;
   // Volumes to mount into the container.
   repeated modal.client.VolumeMount volume_mounts = 9;
+  // Outbound network policy for the sidecar, independent of the main
+  // container. When unset, defaults to open network access. BLOCKED is not
+  // accepted: a blocked sidecar has no IP and cannot reach the main container.
+  optional modal.client.NetworkAccess network_access = 10;
 }
 
 message TaskContainerCreateResponse {
