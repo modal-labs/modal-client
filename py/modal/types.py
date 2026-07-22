@@ -308,3 +308,62 @@ class BillingReportItem:
             cost_by_resource={k: Decimal(v) for k, v in pb_item.cost_by_resource.items()},
             tags=dict(pb_item.tags),
         )
+
+
+@dataclass(slots=True, frozen=True)
+class WorkspaceBillingSummary:
+    start: datetime
+    end: datetime
+    metered_cost: Decimal
+    metered_cost_breakdown: dict[str, Decimal]
+    adjustments: dict[str, Decimal]
+    billed_cost: Decimal
+
+    @classmethod
+    def _from_proto(cls, pb_item: api_pb2.WorkspaceBillingSummaryResponse) -> "WorkspaceBillingSummary":
+        metered_cost_breakdown = {}
+        for key, value in pb_item.metered_cost_breakdown.items():
+            if value == "":
+                value = "0"
+
+            metered_cost_breakdown[key] = Decimal(value)
+
+        adjustments = {}
+        for key, value in pb_item.adjustments.items():
+            if value == "":
+                value = "0"
+
+            adjustments[key] = Decimal(value)
+
+        return cls(
+            start=pb_item.start_timestamp.ToDatetime(timezone.utc),
+            end=pb_item.end_timestamp.ToDatetime(timezone.utc),
+            metered_cost=Decimal(pb_item.metered_cost),
+            billed_cost=Decimal(pb_item.billed_cost),
+            metered_cost_breakdown=metered_cost_breakdown,
+            adjustments=adjustments,
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class EnvironmentBillingSummary:
+    start: datetime
+    end: datetime
+    metered_cost: Decimal
+    metered_cost_breakdown: dict[str, Decimal]
+
+    @classmethod
+    def _from_proto(cls, pb_item: api_pb2.EnvironmentBillingSummaryResponse) -> "EnvironmentBillingSummary":
+        metered_cost_breakdown = {}
+        for key, value in pb_item.metered_cost_breakdown.items():
+            if value == "":
+                value = "0"
+
+            metered_cost_breakdown[key] = Decimal(value)
+
+        return cls(
+            start=pb_item.start_timestamp.ToDatetime(timezone.utc),
+            end=pb_item.end_timestamp.ToDatetime(timezone.utc),
+            metered_cost=Decimal(pb_item.metered_cost),
+            metered_cost_breakdown=metered_cost_breakdown,
+        )

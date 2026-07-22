@@ -11,12 +11,13 @@ from modal_proto import api_pb2
 from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
-from ._utils.time_utils import timestamp_to_localized_dt
+from ._utils.time_utils import is_utc_month_aligned, parse_billing_cycle, timestamp_to_localized_dt
 from .client import _Client
 from .types import (
     BillingReportItem,
     ProxyTokenInfo,
     TokenData,
+    WorkspaceBillingSummary,
     WorkspaceMemberInfo,
     WorkspaceSettings,
 )
@@ -317,6 +318,70 @@ class _WorkspaceBillingManager:
             BillingReportItem._from_proto(pb_item)
             async for pb_item in self._workspace.client.stub.WorkspaceBillingReport.unary_stream(request)
         ]
+
+    async def summary(
+        self,
+        cycle: str | datetime | None = None,  # Start of the summary, inclusive
+    ) -> WorkspaceBillingSummary:
+        """Return a summary of workspace cost over a single billing cycle determined by `cycle`
+
+        Args:
+            cycle: Start of the summary, inclusive. Must be the first of a month, and must be in UTC
+                or timezone-naive (interpreted as UTC). If provided as a string, it must either be
+                formatted as an ISO 8601 month (YYYY-MM), or must be one of the convenience spellings
+                "this month" or "last month". If not provided, `cycle` defaults to the first of the
+                current month (in which case a summary is generated for the current billing cycle).
+
+        Returns:
+            A single `WorkspaceBillingSummary` dataclass containing the following fields:
+            - `metered_cost` representing cost before any adjustments,
+            - `billed_cost` representing the cost actually invoiced, including all adjustments,
+            - `adjustments` containing a breakdown of the adjustments that make up the difference
+              between `metered_cost` and `billed_cost`. This can include discounts for free volume
+              storage, adjustments due to plan credits, etc. The exact keys of this are subject to
+              change as Modal's billing model evolves.
+            - `metered_cost_breakdown` containing a breakdown of that cost by the Modal resources
+              that generated it. The exact keys of this are subject to change as Modal's billing
+              model evolves.
+
+            All values are reported as `decimal.Decimal`s.
+
+        See also:
+            - [`modal billing summary`](https://modal.com/docs/cli/latest/billing#modal-billing-summary):
+              A workspace summary CLI that has convenience features around relative time range queries.
+            - [`Environment.billing.summary()`](https://modal.com/docs/sdk/py/latest/Environment#billingsummary):
+              An analogous summary API that is scoped to a specific Environment.
+        """
+
+        if cycle is None:
+            cycle = datetime.now(timezone.utc).replace(
+                day=1,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+        elif isinstance(cycle, str):
+            cycle = parse_billing_cycle(cycle)
+
+        if cycle.tzinfo is None:
+            cycle = cycle.replace(tzinfo=timezone.utc)
+        elif cycle.tzinfo != timezone.utc:
+            raise InvalidError("Timezone-aware 'cycle' parameter must be in UTC.")
+
+        if not is_utc_month_aligned(cycle):
+            raise InvalidError("Provided 'cycle' parameter must be the first of a month.")
+
+        if cycle > datetime.now(timezone.utc):
+            raise InvalidError("Provided 'cycle' parameter cannot be in the future.")
+
+        if not self._workspace.is_hydrated:
+            await self._workspace.hydrate()
+
+        request = api_pb2.WorkspaceBillingSummaryRequest()
+        request.start_timestamp.FromDatetime(cycle)
+
+        return WorkspaceBillingSummary._from_proto(await self._workspace.client.stub.WorkspaceBillingSummary(request))
 
 
 class _WorkspaceSettingsManager:

@@ -17,10 +17,11 @@ from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.name_utils import check_environment_name
+from ._utils.time_utils import is_utc_month_aligned, parse_billing_cycle
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, WorkspaceManagementError
-from .types import BillingReportItem
+from .types import BillingReportItem, EnvironmentBillingSummary
 
 
 @dataclass(frozen=True)
@@ -449,6 +450,71 @@ class _EnvironmentBillingManager:
             BillingReportItem._from_proto(pb_item)
             async for pb_item in self._environment.client.stub.WorkspaceBillingReport.unary_stream(request)
         ]
+
+    async def summary(
+        self,
+        cycle: str | datetime | None = None,  # Start of the summary, inclusive
+    ) -> EnvironmentBillingSummary:
+        """Return a summary of environment cost over a single billing cycle determined by `cycle`.
+
+        Unlike the analogous `Workspace.billing.summary()`, this API only emits metered cost
+        information. This is because billing adjustments due to credits, free storage, etc. are
+        applied at the Workspace level, and thus cannot be attributed to individual Environments.
+
+        Args:
+            cycle: Start of the summary, inclusive. Must be the first of a month, and must be in UTC
+                or timezone-naive (interpreted as UTC). If provided as a string, it must either be
+                formatted as an ISO 8601 month (YYYY-MM), or must be one of the convenience spellings
+                "this month" or "last month". If not provided, `cycle` defaults to the first of the
+                current month (in which case a summary is generated for the current billing cycle).
+
+        Returns:
+            A single `EnvironmentBillingSummary` dataclass containing the following fields:
+            - `metered_cost` representing cost before any adjustments, and
+            - `metered_cost_breakdown` containing a breakdown of that cost by the Modal resources
+              that generated it. The exact keys of this are subject to change as Modal's billing
+              model evolves.
+
+            All values are reported as `decimal.Decimal`s.
+
+        See also:
+            - [`modal environment billing summary`](https://modal.com/docs/cli/latest/billing#modal-environment-billing-summary):
+              An environment summary CLI that has convenience features around relative time range queries.
+            - [`Environment.billing.report()`](https://modal.com/docs/sdk/py/latest/Environment#billingreport):
+              An analogous report API that is scoped to a specific Environment.
+        """
+
+        if cycle is None:
+            cycle = datetime.now(timezone.utc).replace(
+                day=1,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+        elif isinstance(cycle, str):
+            cycle = parse_billing_cycle(cycle)
+
+        if cycle.tzinfo is None:
+            cycle = cycle.replace(tzinfo=timezone.utc)
+        elif cycle.tzinfo != timezone.utc:
+            raise InvalidError("Timezone-aware 'cycle' parameter must be in UTC.")
+
+        if not is_utc_month_aligned(cycle):
+            raise InvalidError("Provided 'cycle' parameter must be the first of a month.")
+
+        if cycle > datetime.now(timezone.utc):
+            raise InvalidError("Provided 'cycle' parameter cannot be in the future.")
+
+        if not self._environment.is_hydrated:
+            await self._environment.hydrate()
+
+        request = api_pb2.EnvironmentBillingSummaryRequest(environment_id=self._environment.object_id)
+        request.start_timestamp.FromDatetime(cycle)
+
+        return EnvironmentBillingSummary._from_proto(
+            await self._environment.client.stub.EnvironmentBillingSummary(request)
+        )
 
 
 ENVIRONMENT_CACHE: dict[str, _Environment] = {}

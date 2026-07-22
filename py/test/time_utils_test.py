@@ -4,9 +4,19 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from modal._utils.time_utils import parse_date, parse_date_range, relative_timestamp, resolve_timezone
+from modal._utils.time_utils import (
+    add_months,
+    is_leap,
+    month_length,
+    parse_billing_cycle,
+    parse_date,
+    parse_date_range,
+    relative_timestamp,
+    resolve_timezone,
+)
 
 FIXED_NOW = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+END_OF_MONTH = datetime(2025, 1, 31, 12, 0, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -15,6 +25,70 @@ def mock_now():
         mock_datetime.now.return_value = FIXED_NOW
         mock_datetime.fromisoformat = datetime.fromisoformat
         yield
+
+
+@pytest.fixture
+def mock_end_of_month():
+    with patch("modal._utils.time_utils.datetime") as mock_datetime:
+        mock_datetime.now.return_value = END_OF_MONTH
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        yield
+
+
+@pytest.mark.parametrize(
+    "input,expected",
+    [
+        (1900, False),
+        (1950, False),
+        (2000, True),
+        (2024, True),
+    ],
+)
+def test_is_leap(input, expected):
+    assert is_leap(input) == expected
+
+
+@pytest.mark.parametrize(
+    "month,year,expected",
+    [
+        (1, 2026, 31),
+        (2, 2026, 28),
+        (2, 2024, 29),
+        (3, 2026, 31),
+        (4, 2026, 30),
+        (5, 2026, 31),
+        (6, 2026, 30),
+        (7, 2026, 31),
+        (8, 2026, 31),
+        (9, 2026, 30),
+        (10, 2026, 31),
+        (11, 2026, 30),
+        (12, 2026, 31),
+    ],
+)
+def test_month_length(month, year, expected):
+    assert month_length(month, year) == expected
+
+
+@pytest.mark.parametrize(
+    "input,expected",
+    [
+        (-28, END_OF_MONTH.replace(year=2022, month=9, day=30)),
+        (-13, END_OF_MONTH.replace(year=2023, month=12)),
+        (-12, END_OF_MONTH.replace(year=2024)),
+        (-11, END_OF_MONTH.replace(year=2024, month=2, day=29)),
+        (-2, END_OF_MONTH.replace(year=2024, month=11, day=30)),
+        (-1, END_OF_MONTH.replace(year=2024, month=12)),
+        (0, END_OF_MONTH),
+        (1, END_OF_MONTH.replace(month=2, day=28)),
+        (12, END_OF_MONTH.replace(year=2026)),
+        (13, END_OF_MONTH.replace(year=2026, month=2, day=28)),
+        (28, END_OF_MONTH.replace(year=2027, month=5)),
+        (37, END_OF_MONTH.replace(year=2028, month=2, day=29)),
+    ],
+)
+def test_add_months(mock_now, input, expected):
+    assert add_months(END_OF_MONTH, input) == expected
 
 
 @pytest.mark.parametrize(
@@ -26,7 +100,8 @@ def mock_now():
         ("1 day ago", FIXED_NOW - timedelta(days=1)),
         ("2 weeks ago", FIXED_NOW - timedelta(weeks=2)),
         ("3 hours ago", FIXED_NOW - timedelta(hours=3)),
-        ("1 month ago", FIXED_NOW - timedelta(days=30)),
+        ("1 month ago", add_months(FIXED_NOW, -1)),
+        ("3 months ago", add_months(FIXED_NOW, -3)),
         ("  TODAY  ", FIXED_NOW.replace(hour=0, minute=0, second=0, microsecond=0)),  # whitespace + case
     ],
 )
@@ -79,6 +154,29 @@ def test_parse_date_range(mock_now, input, expected_start, expected_end):
     start, end = parse_date_range(input)
     assert start == expected_start
     assert end == expected_end
+
+
+@pytest.mark.parametrize(
+    "input,expected_start",
+    [
+        ("this month", _utc(2025, 1, 1)),
+        ("last month", _utc(2024, 12, 1)),
+    ],
+)
+def test_parse_billing_cycle_relative(mock_now, input, expected_start):
+    start = parse_billing_cycle(input)
+    assert start == expected_start
+
+
+@pytest.mark.parametrize(
+    "input,expected_start",
+    [
+        ("2025-01", _utc(2025, 1, 1)),
+    ],
+)
+def test_parse_billing_cycle(input, expected_start):
+    start = parse_billing_cycle(input)
+    assert start == expected_start
 
 
 def test_parse_date_range_invalid(mock_now):

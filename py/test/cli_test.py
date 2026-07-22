@@ -2941,6 +2941,98 @@ def test_billing_report(servicer, set_env_client):
     )
 
 
+def test_billing_summary(servicer, set_env_client):
+    _ = run_cli_command(
+        ["billing", "summary", "--for", "2025-01-01"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    _ = run_cli_command(
+        ["billing", "summary", "--for", "2025-01-02"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    _ = run_cli_command(
+        ["billing", "summary", "--for", "1 month ago"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    _ = run_cli_command(
+        ["billing", "summary", "--for", "last week"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    res = run_cli_command(["billing", "summary"])
+    assert "Metered Cost" in res.stdout
+    assert "Free Volume Storage Discount" in res.stdout
+    assert "Reservation Adjustment" in res.stdout
+    assert "Billed Cost" in res.stdout
+    assert "Deployed Apps" in res.stdout
+    assert "Ephemeral Apps" in res.stdout
+    assert "Notebooks" in res.stdout
+    assert "Volumes" in res.stdout
+
+    res = run_cli_command(["billing", "summary", "--for", "2025-01"])
+    assert "Metered Cost" in res.stdout
+    assert "Free Volume Storage Discount" in res.stdout
+    assert "Reservation Adjustment" in res.stdout
+    assert "Billed Cost" in res.stdout
+    assert "Deployed Apps" in res.stdout
+    assert "Ephemeral Apps" in res.stdout
+    assert "Notebooks" in res.stdout
+    assert "Volumes" in res.stdout
+
+
+def test_environment_billing_summary(servicer, set_env_client):
+    _ = run_cli_command(
+        ["environment", "billing", "summary", "--for", "2025-01-01"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    _ = run_cli_command(
+        ["environment", "billing", "summary", "--for", "2025-01-02"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    _ = run_cli_command(
+        ["environment", "billing", "summary", "--for", "1 month ago"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    _ = run_cli_command(
+        ["environment", "billing", "summary", "--for", "last week"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range:",
+    )
+
+    _ = run_cli_command(
+        ["environment", "billing", "summary", "does-not-exist"],
+        expected_exit_code=2,
+        expected_stderr="not found",
+    )
+
+    res = run_cli_command(["environment", "billing", "summary"])
+    assert "Metered Cost" in res.stdout
+    assert "Deployed Apps" in res.stdout
+    assert "Ephemeral Apps" in res.stdout
+    assert "Notebooks" in res.stdout
+    assert "Volumes" in res.stdout
+
+    res = run_cli_command(["environment", "billing", "summary", "--for", "2025-01"])
+    assert "Metered Cost" in res.stdout
+    assert "Deployed Apps" in res.stdout
+    assert "Ephemeral Apps" in res.stdout
+    assert "Notebooks" in res.stdout
+    assert "Volumes" in res.stdout
+
+
 def test_environment_billing_report(servicer, set_env_client):
     # Test default table output with daily resolution
     res = run_cli_command(["environment", "billing", "report", "--start", "2025-01-01"])

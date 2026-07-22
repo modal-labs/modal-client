@@ -4,18 +4,30 @@ from datetime import datetime, tzinfo
 from json import dumps
 
 import click
+from rich.box import SIMPLE_HEAD
+from rich.table import Table
+from rich.text import Text
 
 from modal._utils.async_utils import synchronizer
-from modal._utils.time_utils import format_interval, parse_date, parse_date_range, resolve_timezone
+from modal._utils.display_utils import pretty_decimal
+from modal._utils.time_utils import (
+    format_interval,
+    parse_date,
+    parse_date_range,
+    resolve_timezone,
+)
 from modal._workspace import _Workspace
+from modal.exception import InvalidError
+from modal.output import OutputManager
 
 from ._help import ModalGroup
-from .utils import display_table
+from .utils import _col_name_to_json_key, display_table
 
 billing_cli = ModalGroup(name="billing", help="View workspace billing information.")
 
 
 DATE_HELP = "Date (in UTC by default): ISO format (2025-01-01) or relative (yesterday, 3 days ago, etc.)."
+ISO_DATE_HELP = "Date (in UTC by default) in ISO format (2025-01-01)."
 
 
 @dataclass(slots=True)
@@ -26,11 +38,12 @@ class _ParsedInterval:
 
 
 def _validate_and_parse_interval(
-    start: str | None,
-    end: str | None,
-    for_: str | None,
-    tz: str | None,
-    resolution: str | None,
+    *,
+    start: str | None = None,
+    end: str | None = None,
+    for_: str | None = None,
+    tz: str | None = None,
+    resolution: str | None = None,
 ) -> _ParsedInterval:
     # Resolve timezone if provided
     resolved_tz = None
@@ -45,7 +58,10 @@ def _validate_and_parse_interval(
         if start is not None or end is not None:
             raise click.UsageError("--for is mutually exclusive with --start and --end")
         try:
-            start_dt, end_dt = parse_date_range(for_, tz=resolved_tz)
+            start_dt, end_dt = parse_date_range(
+                for_,
+                tz=resolved_tz,
+            )
         except ValueError as exc:
             raise click.UsageError(str(exc))
     elif start is not None:
@@ -54,18 +70,21 @@ def _validate_and_parse_interval(
             end_dt = parse_date(end, tz=resolved_tz) if end else None
         except (ValueError, OverflowError) as exc:
             raise click.UsageError(str(exc))
+    elif end is not None:
+        raise click.UsageError("Must provide --start if providing --end")
     else:
         raise click.UsageError("Either --for or --start is required")
 
     # Validate resolution
-    if resolution not in ("d", "h"):
-        raise click.UsageError("Resolution must be 'd' (daily) or 'h' (hourly)")
+    if resolution is not None:
+        if resolution not in ("d", "h"):
+            raise click.UsageError("Resolution must be 'd' (daily) or 'h' (hourly)")
 
-    if resolved_tz is not None and resolution != "h":
-        raise click.UsageError(
-            "--tz requires hourly resolution (--resolution h / -r h). "
-            "Daily intervals are UTC-aligned and cannot be shifted to a custom timezone."
-        )
+        if resolved_tz is not None and resolution != "h":
+            raise click.UsageError(
+                "--tz requires hourly resolution (--resolution h / -r h). "
+                "Daily intervals are UTC-aligned and cannot be shifted to a custom timezone."
+            )
 
     return _ParsedInterval(start_dt, end_dt, resolved_tz)
 
@@ -143,7 +162,7 @@ async def report(
     # Parse tag names
     tags = [t.strip() for t in tag_names.split(",")] if tag_names else None
 
-    interval = _validate_and_parse_interval(start, end, for_, tz, resolution)
+    interval = _validate_and_parse_interval(start=start, end=end, for_=for_, tz=tz, resolution=resolution)
 
     # Fetch data
     rows_data = await _Workspace.from_context().billing.report(
@@ -192,3 +211,88 @@ async def report(
         rows.extend(row_set)
 
     display_table(columns, rows, json=json, csv=csv)
+
+
+# todo(ayush): mirror this in `modal workspace` and then deprecate this one
+@billing_cli.command("summary")
+@click.option(
+    "--for",
+    "for_",
+    default=None,
+    type=str,
+    help=('What cycle to show a summary for. Accepts: "this month", "last month", and ISO 8601 months ("YYYY-MM").'),
+)
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@synchronizer.create_blocking
+async def summary(for_: str | None, json: bool):
+    """Generate a billing summary for the workspace.
+
+    The summary range can be provided by setting `--for` (e.g `--for 'last month'`). If not
+    provided, `--for` defaults to "this month".
+
+    Summaries are provided for single month intervals (aligned to the month boundary) only. To see
+    summaries for longer intervals, call `summary` for each month in the interval.
+
+    This command provides a CLI frontend for the
+    [`Workspace.billing.summary`](https://modal.com/docs/sdk/py/latest/Workspace#billingsummary) API.
+
+    Examples:
+
+    ```bash
+    modal billing summary # defaults to --for "this month"
+
+    modal billing summary --for "last month"
+
+    modal billing summary --for 2026-01
+    ```
+
+    """
+    # If called with no arguments, we default to the current billing cycle
+    if for_ is None:
+        for_ = "this month"
+
+    try:
+        summary = await _Workspace.from_context().billing.summary(cycle=for_)
+    except (ValueError, InvalidError) as exc:
+        raise click.UsageError(str(exc))
+
+    output = OutputManager.get()
+    if json:
+        output.print_json(
+            dumps(
+                {
+                    "metered_cost": str(summary.metered_cost),
+                    "billed_cost": str(summary.billed_cost),
+                    "adjustments": {_col_name_to_json_key(k): str(v) for k, v in summary.adjustments.items()},
+                    "metered_cost_breakdown": {
+                        _col_name_to_json_key(k): str(v) for k, v in summary.metered_cost_breakdown.items()
+                    },
+                }
+            )
+        )
+
+        return
+
+    t = Table(show_header=False, box=SIMPLE_HEAD)
+
+    t.add_row(Text("Metered Cost:"), Text(pretty_decimal(summary.metered_cost), justify="right"))
+    for k, v in sorted(summary.metered_cost_breakdown.items(), key=lambda pair: -pair[1]):
+        if v == 0:
+            continue
+
+        t.add_row(Text(f"  {k}:", style="dim"), Text(pretty_decimal(v), style="dim", justify="right"))
+
+    for k, v in summary.adjustments.items():
+        if v == 0:
+            continue
+
+        # note: discounts are sent by the server as negative values, additional costs are sent as
+        # positive values
+        t.add_row(Text(f"{k}:"), Text(pretty_decimal(v), justify="right"))
+
+    t.add_row(
+        Text("Billed Cost:", style="bold"),
+        Text(f"${pretty_decimal(summary.billed_cost)}", justify="right", style="bold"),
+    )
+
+    output.print(t)

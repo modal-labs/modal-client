@@ -4,17 +4,21 @@ import json as json_mod
 import click
 import rich
 from click import UsageError
+from rich.box import SIMPLE_HEAD
+from rich.table import Table
 from rich.text import Text
 
 from modal import environments
 from modal._environments import _Environment
 from modal._utils.async_utils import synchronizer
+from modal._utils.display_utils import pretty_decimal
 from modal._utils.name_utils import check_environment_name
 from modal._utils.time_utils import format_interval
 from modal.cli.billing import DATE_HELP, _validate_and_parse_interval
-from modal.cli.utils import confirm_or_suggest_yes, display_table, yes_option
+from modal.cli.utils import _col_name_to_json_key, confirm_or_suggest_yes, display_table, yes_option
 from modal.config import config
 from modal.environments import Environment
+from modal.exception import InvalidError
 from modal.output import OutputManager
 
 from ._help import ModalGroup
@@ -211,7 +215,7 @@ environment_cli.add_command(billing_cli)
 @click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
 @click.option("--csv", "csv", is_flag=True, default=False, help="Output as CSV.")
 @synchronizer.create_blocking
-async def environment_billing(
+async def environment_billing_report(
     environment_name: str | None,
     start: str | None,
     end: str | None,
@@ -262,7 +266,7 @@ async def environment_billing(
     if json and csv:
         raise click.UsageError("--json and --csv are mutually exclusive")
 
-    interval = _validate_and_parse_interval(start, end, for_, tz, resolution)
+    interval = _validate_and_parse_interval(start=start, end=end, for_=for_, tz=tz, resolution=resolution)
 
     tags = [t.strip() for t in tag_names.split(",")] if tag_names else None
 
@@ -316,3 +320,98 @@ async def environment_billing(
         rows.extend(row_set)
 
     display_table(columns, rows, json=json, csv=csv)
+
+
+@billing_cli.command("summary")
+@click.argument(
+    "environment_name",
+    required=False,
+    default=None,
+)
+@click.option(
+    "--for",
+    "for_",
+    default=None,
+    type=str,
+    help=('What cycle to show a summary for. Accepts: "this month", "last month", and ISO 8601 months ("YYYY-MM").'),
+)
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@synchronizer.create_blocking
+async def environment_billing_summary(
+    environment_name: str | None,
+    for_: str | None,
+    json: bool,
+):
+    """Generate a billing summary for the specified Environment.
+
+    If no argument for `environment_name` is passed, the method returns a summary for the default
+    environment.
+
+    The summary range can be provided by setting `--for` (e.g `--for 'last month'`). If not
+    provided, `--for` defaults to "this month".
+
+    Summaries are provided for single month intervals (aligned to the month boundary) only. To see
+    summaries for longer intervals, call `summary` for each month in the interval.
+
+    This command provides a CLI frontend for the
+    [`Environment.billing.summary`](https://modal.com/docs/sdk/py/latest/Environment#billingsummary)
+    API.
+
+    Examples:
+
+    ```bash
+    modal environment billing summary # defaults to --for "this month"
+
+    modal environment billing summary --for "last month" test_env
+
+    modal environment billing summary --for 2026-01
+    ```
+
+    """
+
+    # If called with no arguments, we default to the current billing cycle
+    if for_ is None:
+        for_ = "this month"
+
+    if environment_name is None:
+        env = _Environment.from_context()
+    else:
+        env = _Environment.from_name(environment_name)
+
+    try:
+        summary = await env.billing.summary(cycle=for_)
+    except (ValueError, InvalidError) as exc:
+        raise click.UsageError(str(exc))
+
+    output = OutputManager.get()
+
+    if json:
+        output.print_json(
+            json_mod.dumps(
+                {
+                    "metered_cost": str(summary.metered_cost),
+                    "metered_cost_breakdown": {
+                        _col_name_to_json_key(k): str(v) for k, v in summary.metered_cost_breakdown.items()
+                    },
+                }
+            )
+        )
+
+        return
+
+    # Calling .summary hydrates `env` so this is safe
+    output.print(
+        Text("Displaying billing summary for environment: ", style="dim italic")
+        + Text(str(env.name), style="dim italic green"),
+    )
+
+    t = Table(show_header=False, box=SIMPLE_HEAD)
+
+    t.add_row(Text("Metered Cost:"), Text(pretty_decimal(summary.metered_cost), justify="right"))
+    for k, v in sorted(summary.metered_cost_breakdown.items(), key=lambda pair: -pair[1]):
+        if v == 0:
+            continue
+
+        t.add_row(Text(f"  {k}:", style="dim"), Text(pretty_decimal(v), style="dim", justify="right"))
+
+    output.print(t)

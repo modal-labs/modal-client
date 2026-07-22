@@ -50,6 +50,7 @@ from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import custom_detail_codec
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
+from modal._utils.time_utils import add_months
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.cli.entry_point import entrypoint_cli
@@ -1863,6 +1864,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Environment
 
+    async def EnvironmentBillingSummary(self, stream):
+        request = await stream.recv_message()
+        assert isinstance(request, api_pb2.EnvironmentBillingSummaryRequest)
+
+        resp = api_pb2.EnvironmentBillingSummaryResponse(
+            start_timestamp=request.start_timestamp,
+            metered_cost="5.0",
+            metered_cost_breakdown={
+                "Deployed Apps": "1.0",
+                "Ephemeral Apps": "1.0",
+                "Notebooks": "1.0",
+                "Volumes": "1.0",
+                "LLM Tokens": "1.0",
+            },
+        )
+
+        resp.end_timestamp.FromDatetime(add_months(request.start_timestamp.ToDatetime(), 1))
+
+        await stream.send_message(resp)
+
     async def EnvironmentCreate(self, stream):
         request: api_pb2.EnvironmentCreateRequest = await stream.recv_message()
         name = request.name
@@ -3333,6 +3354,33 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for i, item in enumerate(messages):
             item.interval.FromDatetime(datetime.datetime(2025, 1, 1, i, 0, 0))
             await stream.send_message(item)
+
+    async def WorkspaceBillingSummary(self, stream):
+        request = await stream.recv_message()
+        assert isinstance(request, api_pb2.WorkspaceBillingSummaryRequest)
+
+        msg = api_pb2.WorkspaceBillingSummaryResponse(
+            start_timestamp=request.start_timestamp,
+            metered_cost="5.0",
+            adjustments={
+                "Plan Cost": "1.0",
+                "Credits Applied": "-1.0",
+                "Reservation Adjustment": "-1.0",
+                "Free Volume Storage Discount": "-1.0",
+            },
+            billed_cost="3.0",
+            metered_cost_breakdown={
+                "Deployed Apps": "1.0",
+                "Ephemeral Apps": "1.0",
+                "Notebooks": "1.0",
+                "Volumes": "1.0",
+                "LLM Tokens": "1.0",
+            },
+        )
+
+        msg.end_timestamp.FromDatetime(add_months(request.start_timestamp.ToDatetime(), 1))
+
+        await stream.send_message(msg)
 
     async def WorkspaceDashboardUrlGet(self, stream):
         request = await stream.recv_message()

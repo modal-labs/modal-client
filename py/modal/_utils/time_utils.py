@@ -4,6 +4,46 @@ from datetime import datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo
 
 
+def is_leap(year: int):
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+def month_length(month: int, year: int):
+    match month:
+        # January, March, May, July, August, October, December
+        case 1 | 3 | 5 | 7 | 8 | 10 | 12:
+            return 31
+
+        # April, June, September, November
+        case 4 | 6 | 9 | 11:
+            return 30
+
+        # February (28 days in a common year and 29 days in leap years)
+        case 2:
+            return 29 if is_leap(year) else 28
+
+
+# also accepts negative inputs for n_months
+def add_months(s: datetime, n_months: int):
+    # -1 is to make this 0-indexed
+    new_months = s.month + n_months - 1
+
+    n_years = new_months // 12
+    residue = new_months - 12 * n_years
+
+    # -12 < residue < 12 by construction, and this forces 0 <= residue < 12
+    if residue < 0:
+        residue += 12
+        n_years -= 1
+
+    # +1 to return to 1-indexed at the end
+    return s.replace(
+        year=s.year + n_years,
+        month=residue + 1,
+        day=min(s.day, month_length(residue + 1, s.year + n_years)),
+    )
+
+
 def resolve_timezone(s: str) -> tzinfo:
     """Resolve a timezone string to a tzinfo object.
 
@@ -40,7 +80,10 @@ def resolve_timezone(s: str) -> tzinfo:
         )
 
 
-def parse_date(s: str, tz: tzinfo | None = None) -> datetime:
+def parse_date(
+    s: str,
+    tz: tzinfo | None = None,
+) -> datetime:
     """Parse a date string, supporting both ISO format and relative dates.
 
     Supported formats:
@@ -85,8 +128,7 @@ def parse_date(s: str, tz: tzinfo | None = None) -> datetime:
         elif unit == "hour":
             return now - timedelta(hours=n)
         elif unit == "month":
-            # Approximate months as 30 days
-            return now - timedelta(days=n * 30)
+            return add_months(now, -n)
 
     # Fall back to ISO parsing
     try:
@@ -105,7 +147,13 @@ def parse_date(s: str, tz: tzinfo | None = None) -> datetime:
     return dt.replace(tzinfo=timezone.utc)
 
 
-def parse_date_range(s: str, tz: tzinfo | None = None) -> tuple[datetime, datetime]:
+_iso_month_expr = re.compile(r"^(?P<year>\d\d\d\d)-(?P<month>\d\d)$")
+
+
+def parse_date_range(
+    s: str,
+    tz: tzinfo | None = None,
+) -> tuple[datetime, datetime]:
     """Parse a convenience range string into a (start, end) pair of UTC datetimes.
 
     Accepted values:
@@ -145,22 +193,49 @@ def parse_date_range(s: str, tz: tzinfo | None = None) -> tuple[datetime, dateti
 
     if s == "this month":
         first = today.replace(day=1)
-        if today.month == 12:
-            next_first = today.replace(year=today.year + 1, month=1, day=1)
-        else:
-            next_first = today.replace(month=today.month + 1, day=1)
+        next_first = add_months(first, 1)
         return _to_utc(first), _to_utc(next_first)
 
     if s == "last month":
         this_first = today.replace(day=1)
-        if today.month == 1:
-            last_first = today.replace(year=today.year - 1, month=12, day=1)
-        else:
-            last_first = today.replace(month=today.month - 1, day=1)
+        last_first = add_months(this_first, -1)
         return _to_utc(last_first), _to_utc(this_first)
 
-    accepted = "today, yesterday, this week, last week, this month, last month"
+    accepted = '"today", "yesterday", "this week", "last week", "this month", and "last month"'
     raise ValueError(f"Unrecognized range: '{s}'. Accepted values: {accepted}")
+
+
+def parse_billing_cycle(s: str) -> datetime:
+    s = s.strip().lower()
+
+    this_month_start = datetime.now(timezone.utc).replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    if s == "this month":
+        return this_month_start
+
+    if s == "last month":
+        return add_months(this_month_start, -1)
+
+    match = _iso_month_expr.match(s)
+    if not match:
+        raise ValueError(
+            f'Unrecognized range: \'{s}\'. Accepted values: "this month", "last month", and ISO months (YYYY-MM)'
+        )
+
+    start = datetime(
+        year=int(match["year"]),
+        month=int(match["month"]),
+        day=1,
+        tzinfo=timezone.utc,
+    )
+
+    return start
 
 
 def relative_timestamp(dt: datetime) -> str:
@@ -279,3 +354,18 @@ def format_interval(
     else:
         # Date and time without seconds for hourly resolution
         return dt.strftime("%Y-%m-%dT%H:%M")
+
+
+def is_utc_month_aligned(dt: datetime) -> bool:
+    if dt.tzinfo is None:
+        utc = dt.replace(tzinfo=timezone.utc)
+    else:
+        utc = dt.astimezone(timezone.utc)
+
+    return utc == utc.replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
