@@ -22,6 +22,8 @@ from modal_proto.modal_api_grpc import ModalClientModal
 from ._function_variants import _FunctionOptions, _make_function_variant
 from ._image import _Image
 from ._load_context import LoadContext
+from ._logs import LogsFilters
+from ._logs_manager import _FunctionCallLogsManager, _FunctionLogsManager
 from ._object import _Object, live_method, live_method_gen
 from ._output.pty import get_pty_info
 from ._output.status import FunctionCreationStatus
@@ -32,6 +34,7 @@ from ._serialization import (
     get_callable_schema,
     serialize,
 )
+from ._supports_logs import _LogQueryData
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
@@ -628,6 +631,27 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _options: _FunctionOptions
     _base_function: "_Function | None" = None
     _app_id: str | None = None
+
+    async def _get_log_query_data(self) -> _LogQueryData:
+        await self.hydrate()
+        if not self._app_id:
+            raise ExecutionError("app_id should have been set during function hydration")
+        return _LogQueryData(self.client, self._app_id, LogsFilters(function_id=self.object_id))
+
+    @property
+    def logs(self) -> _FunctionLogsManager:
+        """Access logs for a `Function`.
+
+        Use [`fetch()`](#logsfetch)
+        to read logs from a UTC time range, [`tail()`](#logstail)
+        to read the most recent logs, and [`stream()`](#logsstream)
+        to follow new logs as they arrive.
+
+        See also:
+            - [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs):
+              CLI access to logs for an App.
+        """
+        return _FunctionLogsManager(self)
 
     @staticmethod
     def from_local(
@@ -1999,6 +2023,29 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
         resp = await self.client.stub.FunctionCallFromId(request)
         self._hydrate_metadata(resp)
+
+    async def _get_log_query_data(self) -> _LogQueryData:
+        await self.hydrate()
+        if not self._app_id:
+            await self._hydrate_from_id_metadata()
+        if not self._app_id:
+            raise ExecutionError("app_id should have been set during function call hydration")
+        return _LogQueryData(self.client, self._app_id, LogsFilters(function_call_id=self.object_id))
+
+    @property
+    def logs(self) -> _FunctionCallLogsManager:
+        """Access logs for a single `FunctionCall`.
+
+        Use [`fetch()`](#logsfetch)
+        to read logs from a UTC time range, [`tail()`](#logstail)
+        to read the most recent logs, and [`stream()`](#logsstream)
+        to follow new logs as they arrive.
+
+        See also:
+            - [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs):
+            CLI access to logs for an App.
+        """
+        return _FunctionCallLogsManager(self)
 
     @live_method
     async def num_inputs(self) -> int:

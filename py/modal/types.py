@@ -5,7 +5,7 @@ import enum
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Iterable, Optional, TypedDict
+from typing import Any, Iterable, Literal, Optional, TypedDict
 
 from modal_proto import api_pb2
 
@@ -52,6 +52,27 @@ class FileWatchEventType(enum.Enum):
     Create = "Create"
     Modify = "Modify"
     Remove = "Remove"
+
+
+LogSource = Literal["stdout", "stderr", "system"]
+
+
+@dataclass(frozen=True, slots=True)
+class LogEntry:
+    """A log entry emitted by a Modal object.
+
+    The context_ids field contains a list of IDs corresponding to the context in which the log entry was emitted.
+    For example, for a function log entry, this will contain the function call ID, the input ID, and the container ID.
+    """
+
+    message: str
+    timestamp: datetime
+    source: LogSource
+    object_id: str
+    context_ids: list[str]
+
+    def __str__(self) -> str:
+        return self.message
 
 
 @dataclass

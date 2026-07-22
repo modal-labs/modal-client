@@ -1,8 +1,11 @@
 # Copyright Modal Labs 2026
+import asyncio
 import pytest
+import socket
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 
+import modal
 from modal._logs import (
     _FETCH_LIMIT,
     _MAX_FETCHES,
@@ -791,8 +794,8 @@ _now = datetime.now(timezone.utc)
 _TEST_TIMESTAMP = (_now - timedelta(hours=1)).timestamp()
 _BUCKET_START = _TEST_TIMESTAMP - 60  # Bucket starts 60s before the log
 # CLI args that bracket the test data
-_SINCE_ARG = (_now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S")
-_UNTIL_ARG = _now.strftime("%Y-%m-%dT%H:%M:%S")
+_SINCE_ARG = (_now - timedelta(hours=2)).isoformat()
+_UNTIL_ARG = _now.isoformat()
 
 
 def _make_count_response():
@@ -849,6 +852,508 @@ def _setup_fetch_responders(ctx, count_resp=None, fetch_resp=None):
 def _deploy_app(mock_dir):
     with mock_dir({"myapp.py": dummy_app_file}):
         run_cli_command(["deploy", "myapp.py", "--name", "my-app"])
+
+
+def test_function_logs_tail(client, servicer):
+    app = modal.App()
+
+    @app.function(serialized=True)
+    def f():
+        pass
+
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id=f.object_id))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        with app.run(client=client):
+            function_id = f.object_id
+            app_id = servicer.function_id_to_app_id[function_id]
+            logs = list(f.logs.tail(1))
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].message == "hello\n"
+    assert logs[0].timestamp == datetime.fromtimestamp(_TEST_TIMESTAMP, timezone.utc)
+    assert logs[0].source == "stdout"
+    assert logs[0].object_id == function_id
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].function_id == function_id
+    assert fetch_requests[0].function_call_id == ""
+    assert fetch_requests[0].limit == 1
+
+
+def test_function_call_spawn_logs_tail(client, servicer):
+    app = modal.App()
+
+    @app.function(serialized=True)
+    def f():
+        pass
+
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id="", function_call_id=req.function_call_id))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        with app.run(client=client):
+            function_id = f.object_id
+            app_id = servicer.function_id_to_app_id[function_id]
+            fc = f.spawn()
+            function_call_id = fc.object_id
+            ctx.calls.clear()
+
+            logs = list(fc.logs.tail(1))
+
+        function_call_from_id_requests = ctx.get_requests("FunctionCallFromId")
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].object_id == function_call_id
+    assert function_call_from_id_requests == []
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].function_id == ""
+    assert fetch_requests[0].function_call_id == function_call_id
+    assert fetch_requests[0].limit == 1
+
+
+def test_function_call_from_id_logs_tail(client, servicer):
+    app = modal.App()
+
+    @app.function(serialized=True)
+    def f():
+        pass
+
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id="", function_call_id=req.function_call_id))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        with app.run(client=client):
+            function_id = f.object_id
+            app_id = servicer.function_id_to_app_id[function_id]
+            fc = f.spawn()
+            function_call_id = fc.object_id
+            ctx.calls.clear()
+
+            hydrated_fc = modal.FunctionCall.from_id(function_call_id, client=client)
+            logs = list(hydrated_fc.logs.tail(1))
+
+        function_call_from_id_requests = ctx.get_requests("FunctionCallFromId")
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].object_id == function_call_id
+    assert len(function_call_from_id_requests) == 1
+    assert function_call_from_id_requests[0].function_call_id == function_call_id
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].function_id == ""
+    assert fetch_requests[0].function_call_id == function_call_id
+    assert fetch_requests[0].limit == 1
+
+
+def test_server_logs_tail(client, servicer):
+    app = modal.App("server-logs-test", include_source=False)
+
+    @app.server(port=8000, routing_region="us-east", serialized=True)
+    class LogServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    server = cast(Any, LogServer)
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id=server.object_id))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        with app.run(client=client):
+            server_id = server.object_id
+            app_id = servicer.function_id_to_app_id[server_id]
+            logs = list(server.logs.tail(1))
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].object_id == server_id
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].function_id == server_id
+    assert fetch_requests[0].function_call_id == ""
+    assert fetch_requests[0].limit == 1
+
+
+class _StaticLogSource:
+    def __init__(self, object_id: str):
+        self.object_id = object_id
+
+    async def _get_log_query_data(self):
+        raise NotImplementedError
+
+
+def test_log_entry_context_ids_for_function_query():
+    from modal._logs_manager import _LogsManager
+
+    source = _StaticLogSource("fu-parent")
+    manager = _LogsManager(source)
+    item = api_pb2.TaskLogs(
+        data="hello\n",
+        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        function_call_id="fc-child",
+        input_id="in-item:entry",
+        container_id="ta-item",
+    )
+    batch = api_pb2.TaskLogsBatch(
+        input_id="in-batch",
+        task_id="ta-batch",
+    )
+
+    entry = manager._entry_from_item(item, batch)
+
+    assert entry.object_id == "fu-parent"
+    assert entry.context_ids == ["fc-child", "in-item:entry", "ta-item"]
+
+
+def test_log_entry_context_ids_fall_back_to_batch_fields():
+    from modal._logs_manager import _LogsManager
+
+    source = _StaticLogSource("fu-parent")
+    manager = _LogsManager(source)
+    item = api_pb2.TaskLogs(
+        data="hello\n",
+        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        function_call_id="fc-child",
+    )
+    batch = api_pb2.TaskLogsBatch(
+        input_id="in-batch",
+        task_id="ta-batch",
+    )
+
+    entry = manager._entry_from_item(item, batch)
+
+    assert entry.context_ids == ["fc-child", "in-batch", "ta-batch"]
+
+
+def test_log_entry_context_ids_for_function_call_query():
+    from modal._logs_manager import _LogsManager
+
+    source = _StaticLogSource("fc-parent")
+    manager = _LogsManager(source)
+    item = api_pb2.TaskLogs(
+        data="hello\n",
+        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        function_call_id="fc-parent",
+    )
+    batch = api_pb2.TaskLogsBatch(
+        input_id="in-child",
+        task_id="ta-child",
+    )
+
+    entry = manager._entry_from_item(item, batch)
+
+    assert entry.object_id == "fc-parent"
+    assert entry.context_ids == ["in-child", "ta-child"]
+
+
+def test_log_entry_context_ids_for_unsupported_query_object():
+    from modal._logs_manager import _LogsManager
+
+    source = _StaticLogSource("ap-parent")
+    manager = _LogsManager(source)
+    item = api_pb2.TaskLogs(
+        data="hello\n",
+        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        function_call_id="fc-child",
+        input_id="in-child",
+        container_id="ta-child",
+    )
+    batch = api_pb2.TaskLogsBatch(
+        input_id="in-batch",
+        task_id="ta-batch",
+    )
+
+    entry = manager._entry_from_item(item, batch)
+
+    assert entry.object_id == "ap-parent"
+    assert entry.context_ids == []
+
+
+class _FakeLogSource:
+    def __init__(self):
+        self.object_id = "fu-test"
+        self.count_requests = []
+
+    async def _get_log_query_data(self):
+        from modal._logs import LogsFilters
+        from modal._supports_logs import _LogQueryData
+
+        log_source = self
+
+        class _FakeAppGetLogs:
+            def __init__(self):
+                self.requests = []
+
+            def unary_stream(self, request):
+                self.requests.append(request)
+
+                async def _never_yield():
+                    await asyncio.sleep(request.timeout)
+                    if False:
+                        yield api_pb2.TaskLogsBatch()
+
+                return _never_yield()
+
+        class _FakeStub:
+            def __init__(self):
+                self.AppGetLogs = _FakeAppGetLogs()
+
+            async def AppCountLogs(self, request):
+                log_source.count_requests.append(request)
+                return api_pb2.AppCountLogsResponse()
+
+        class _FakeClient:
+            def __init__(self):
+                self.stub = _FakeStub()
+
+        return _LogQueryData(cast(Any, _FakeClient()), "ap-test", LogsFilters(function_id="fu-test"))
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_fetch_interprets_naive_datetime_as_local_time(monkeypatch):
+    import modal._logs_manager
+    from modal._logs_manager import _LogsManager
+
+    monkeypatch.setattr(modal._logs_manager, "locale_tz", lambda: timezone(timedelta(hours=-4)))
+
+    log_source = _FakeLogSource()
+    manager = _LogsManager(log_source)
+
+    with pytest.raises(TypeError):
+        [_ async for _ in manager.fetch(since="1h")]  # type: ignore[arg-type]
+
+    logs = [_ async for _ in manager.fetch(since=datetime(2026, 7, 16, 12, 13), until=datetime(2026, 7, 16, 12, 20))]
+    assert logs == []
+    assert len(log_source.count_requests) == 1
+    assert log_source.count_requests[0].since.ToDatetime(tzinfo=timezone.utc) == datetime(
+        2026, 7, 16, 16, 13, tzinfo=timezone.utc
+    )
+    assert log_source.count_requests[0].until.ToDatetime(tzinfo=timezone.utc) == datetime(
+        2026, 7, 16, 16, 20, tzinfo=timezone.utc
+    )
+
+    logs = [
+        _
+        async for _ in manager.fetch(
+            since=datetime(2026, 1, 1, 0, 0, tzinfo=timezone(timedelta(hours=-5))),
+            until=datetime(2026, 1, 1, 1, 0, tzinfo=timezone(timedelta(hours=-5))),
+        )
+    ]
+    assert logs == []
+    assert log_source.count_requests[-1].since.ToDatetime(tzinfo=timezone.utc) == datetime(
+        2026, 1, 1, 5, 0, tzinfo=timezone.utc
+    )
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_stream_stop_does_not_wait_for_log(monkeypatch):
+    from modal import _logs_manager
+
+    monkeypatch.setattr(_logs_manager, "_STREAM_POLL_INTERVAL_SECONDS", 0.01)
+
+    stop_calls = 0
+
+    async def stop_stream():
+        nonlocal stop_calls
+        stop_calls += 1
+        return stop_calls >= 2
+
+    started_at = asyncio.get_running_loop().time()
+    logs = [_ async for _ in _logs_manager._LogsManager(_FakeLogSource(), stop_stream=stop_stream).stream(timeout=60)]
+
+    assert logs == []
+    assert stop_calls == 2
+    assert asyncio.get_running_loop().time() - started_at < 1.0
+
+
+class _ScriptedLogSource:
+    def __init__(self, responses):
+        self.object_id = "fu-test"
+        self.requests = []
+        self.responses = list(responses)
+
+    async def _get_log_query_data(self):
+        from modal._supports_logs import _LogQueryData
+
+        log_source = self
+
+        class _FakeAppGetLogs:
+            def unary_stream(self, request):
+                log_source.requests.append(request)
+                response = log_source.responses.pop(0) if log_source.responses else []
+
+                async def _stream():
+                    if response is None:
+                        await asyncio.sleep(request.timeout)
+                        return
+                    for batch in response:
+                        if isinstance(batch, tuple):
+                            delay, batch = batch
+                            await asyncio.sleep(delay)
+                        if isinstance(batch, Exception):
+                            raise batch
+                        yield batch
+
+                return _stream()
+
+        class _FakeStub:
+            def __init__(self):
+                self.AppGetLogs = _FakeAppGetLogs()
+
+        class _FakeClient:
+            def __init__(self):
+                self.stub = _FakeStub()
+
+        return _LogQueryData(cast(Any, _FakeClient()), "ap-test", LogsFilters(function_id="fu-test"))
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_stream_yields_batch_when_stop_watcher_also_completes():
+    from modal import _logs_manager
+
+    first_batch = api_pb2.TaskLogsBatch(
+        entry_id="1-0",
+        items=[api_pb2.TaskLogs(data="ready\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+    )
+    log_source = _ScriptedLogSource([[first_batch], []])
+
+    async def stop_stream():
+        return True
+
+    logs = [_ async for _ in _logs_manager._LogsManager(log_source, stop_stream=stop_stream).stream(timeout=60)]
+
+    assert [str(log) for log in logs] == ["ready\n"]
+    assert len(log_source.requests) == 2
+    assert log_source.requests[1].last_entry_id == "1-0"
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_stream_drains_after_stop_watcher_wins():
+    from modal import _logs_manager
+
+    drain_batch = api_pb2.TaskLogsBatch(
+        entry_id="2-0",
+        items=[api_pb2.TaskLogs(data="trailing\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+    )
+    log_source = _ScriptedLogSource([None, [drain_batch]])
+
+    async def stop_stream():
+        return True
+
+    logs = [_ async for _ in _logs_manager._LogsManager(log_source, stop_stream=stop_stream).stream(timeout=60)]
+
+    assert [str(log) for log in logs] == ["trailing\n"]
+    assert len(log_source.requests) == 2
+    assert log_source.requests[1].timeout == 0.5
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_stream_timeout_resets_after_log_entry(monkeypatch):
+    from modal import _logs_manager
+
+    monkeypatch.setattr(_logs_manager, "_STREAM_POLL_INTERVAL_SECONDS", 0.005)
+
+    first_batch = api_pb2.TaskLogsBatch(
+        entry_id="1-0",
+        items=[api_pb2.TaskLogs(data="first\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+    )
+    second_batch = api_pb2.TaskLogsBatch(
+        entry_id="2-0",
+        items=[api_pb2.TaskLogs(data="second\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+    )
+    log_source = _ScriptedLogSource([[(0.05, first_batch), (0.05, second_batch)], None])
+
+    logs = [_ async for _ in _logs_manager._LogsManager(log_source).stream(timeout=0.08)]
+
+    assert [str(log) for log in logs] == ["first\n", "second\n"]
+    assert len(log_source.requests) == 2
+    assert log_source.requests[1].timeout == _logs_manager._STREAM_RPC_TIMEOUT_SECONDS  # type: ignore
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_stream_timeout_does_not_reset_after_empty_batch(monkeypatch):
+    from modal import _logs_manager
+
+    monkeypatch.setattr(_logs_manager, "_STREAM_POLL_INTERVAL_SECONDS", 0.005)
+
+    empty_batch = api_pb2.TaskLogsBatch(entry_id="1-0")
+    late_batch = api_pb2.TaskLogsBatch(
+        entry_id="2-0",
+        items=[api_pb2.TaskLogs(data="late\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+    )
+    log_source = _ScriptedLogSource([[(0.03, empty_batch), (0.08, late_batch)]])
+
+    logs = [_ async for _ in _logs_manager._LogsManager(log_source).stream(timeout=0.06)]
+
+    assert logs == []
+    assert len(log_source.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_stream_retries_transient_stream_error():
+    from modal import _logs_manager
+
+    first_batch = api_pb2.TaskLogsBatch(
+        entry_id="1-0",
+        items=[api_pb2.TaskLogs(data="before reconnect\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+    )
+    second_batch = api_pb2.TaskLogsBatch(
+        entry_id="2-0",
+        app_done=True,
+        items=[api_pb2.TaskLogs(data="after reconnect\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+    )
+    log_source = _ScriptedLogSource([[first_batch, socket.gaierror()], [second_batch]])
+
+    logs = [_ async for _ in _logs_manager._LogsManager(log_source).stream()]
+
+    assert [str(log) for log in logs] == ["before reconnect\n", "after reconnect\n"]
+    assert len(log_source.requests) == 2
+    assert log_source.requests[1].last_entry_id == "1-0"
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_stream_backs_off_and_raises_after_persistent_transient_errors(monkeypatch):
+    from modal import _logs_manager
+
+    sleeps = []
+
+    async def fake_sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    log_source = _ScriptedLogSource([[socket.gaierror()] for _ in range(11)])
+
+    with pytest.raises(socket.gaierror):
+        [_ async for _ in _logs_manager._LogsManager(log_source).stream()]
+
+    assert sleeps == [0.001, 0.01, 0.1, 1, 1, 1, 1, 1, 1, 1]
+    assert len(log_source.requests) == 11
 
 
 def test_logs_fetch(servicer, server_url_env, set_env_client, mock_dir):

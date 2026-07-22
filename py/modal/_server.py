@@ -4,12 +4,14 @@ import typing
 
 from ._functions import _Function
 from ._load_context import LoadContext
+from ._logs_manager import _ServerLogsManager
 from ._object import live_method
 from ._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
+from ._supports_logs import _LogQueryData
 from .client import _Client
 from .cls import is_parameter
 from .exception import InvalidError
@@ -79,6 +81,24 @@ class _Server:
     def object_id(self) -> str:
         """Modal's internal ID for this Server instance."""
         return self._service_function.object_id
+
+    async def _get_log_query_data(self) -> _LogQueryData:
+        return await self._get_service_function()._get_log_query_data()
+
+    @property
+    def logs(self) -> _ServerLogsManager:
+        """Access logs for a `Server`.
+
+        Use [`fetch()`](#logsfetch)
+        to read logs from a UTC time range, [`tail()`](#logstail)
+        to read the most recent logs, and [`stream()`](#logsstream)
+        to follow new logs as they arrive.
+
+        See also:
+            - [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs):
+            CLI access to logs for an App.
+        """
+        return _ServerLogsManager(self)
 
     @staticmethod
     def _extract_user_cls(wrapped_user_cls: "type | _PartialFunction") -> type:
