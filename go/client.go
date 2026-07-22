@@ -52,6 +52,7 @@ type Client struct {
 	Proxies           ProxyService
 	Queues            QueueService
 	Sandboxes         SandboxService
+	SandboxSnapshots  SandboxSnapshotService
 	Secrets           SecretService
 	Volumes           VolumeService
 
@@ -183,6 +184,7 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 	c.Proxies = &proxyServiceImpl{client: c}
 	c.Queues = &queueServiceImpl{client: c}
 	c.Sandboxes = &sandboxServiceImpl{client: c}
+	c.SandboxSnapshots = &sandboxSnapshotServiceImpl{client: c}
 	c.Secrets = &secretServiceImpl{client: c}
 	c.Volumes = &volumeServiceImpl{client: c}
 

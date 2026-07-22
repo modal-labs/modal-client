@@ -498,6 +498,26 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 	return resp, err
 }
 
+// SnapshotMemory snapshots the memory and filesystem of the container.
+func (c *taskCommandRouterClient) SnapshotMemory(ctx context.Context, request *pb.TaskSnapshotMemoryRequest, timeout time.Duration) (*pb.TaskSnapshotMemoryResponse, error) {
+	overallDeadline := time.Now().Add(timeout)
+	opts := defaultRetryOptions()
+	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
+	opts.Deadline = &overallDeadline
+	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotMemoryResponse, error) {
+		remaining := time.Until(overallDeadline)
+		callCtx, cancel := context.WithTimeout(ctx, remaining)
+		defer cancel()
+		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotMemoryResponse, error) {
+			return c.stub.TaskSnapshotMemory(authCtx, request)
+		})
+	}, opts, &c.closed)
+	if err != nil && time.Now().After(overallDeadline) {
+		return nil, TimeoutError{Exception: "Timeout expired"}
+	}
+	return resp, err
+}
+
 // SandboxWaitUntilReady waits until the Sandbox's readiness probe reports ready.
 func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, taskID string, timeout time.Duration) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
 	opts := defaultRetryOptions()

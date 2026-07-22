@@ -28,6 +28,7 @@ type SandboxService interface {
 	FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error)
 	FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error)
 	ExperimentalFromName(ctx context.Context, appName, name string, params *SandboxExperimentalFromNameParams) (*Sandbox, error)
+	ExperimentalFromSnapshot(ctx context.Context, snapshot *SandboxSnapshot, params *SandboxExperimentalFromSnapshotParams) (*Sandbox, error)
 	List(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error)
 	ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error)
 }
@@ -197,38 +198,39 @@ type Allowlist struct {
 
 // SandboxCreateParams are options for creating a Modal Sandbox.
 type SandboxCreateParams struct {
-	CPU                      float64                      // CPU request in fractional, physical cores.
-	CPULimit                 float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
-	MemoryMiB                int                          // Memory request in MiB.
-	MemoryLimitMiB           int                          // Hard memory limit in MiB. Zero means no limit.
-	GPU                      string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").
-	Timeout                  time.Duration                // Maximum lifetime of the Sandbox. Defaults to 5 minutes. If you pass zero you get the default 5 minutes.
-	IdleTimeout              time.Duration                // The amount of time that a Sandbox can be idle before being terminated.
-	Workdir                  string                       // Working directory of the Sandbox.
-	Command                  []string                     // Command to run in the Sandbox on startup.
-	Env                      map[string]string            // Environment variables to set in the Sandbox.
-	Secrets                  []*Secret                    // Secrets to inject into the Sandbox as environment variables.
-	Volumes                  map[string]*Volume           // Mount points for Volumes.
-	CloudBucketMounts        map[string]*CloudBucketMount // Mount points for cloud buckets.
-	PTY                      bool                         // Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the process) is multiplexed into stdout, and the stderr stream is effectively empty.
-	EncryptedPorts           []int                        // List of encrypted ports to tunnel into the Sandbox, with TLS encryption.
-	H2Ports                  []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
-	UnencryptedPorts         []int                        // List of ports to tunnel into the Sandbox without encryption.
-	BlockNetwork             bool                         // Whether to block all network access from the Sandbox.
-	OutboundCIDRAllowlist    *Allowlist                   // CIDRs the Sandbox is allowed to access. Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
-	OutboundDomainAllowlist  *Allowlist                   // Domain names the Sandbox is allowed to access (supports wildcard prefixes like *.example.com). Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
-	InboundCIDRAllowlist     []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
-	I6PN                     bool                         // Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can reach each other at their i6pn.modal.local address. Pin every Sandbox in the group to the same specific region. Cannot be used with BlockNetwork.
-	Cloud                    string                       // Cloud provider to run the Sandbox on.
-	Regions                  []string                     // Region(s) to run the Sandbox on.
-	Verbose                  bool                         // Enable verbose logging.
-	Proxy                    *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
-	ReadinessProbe           *Probe                       // Probe used to determine when the Sandbox is ready.
-	Name                     string                       // Optional name for the Sandbox. Unique within an App.
-	Tags                     map[string]string            // Tags to attach to the Sandbox. Filterable via SandboxList.
-	ExperimentalOptions      map[string]any               // Experimental options
-	CustomDomain             string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
-	IncludeOidcIdentityToken bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
+	CPU                        float64                      // CPU request in fractional, physical cores.
+	CPULimit                   float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
+	MemoryMiB                  int                          // Memory request in MiB.
+	MemoryLimitMiB             int                          // Hard memory limit in MiB. Zero means no limit.
+	GPU                        string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").
+	Timeout                    time.Duration                // Maximum lifetime of the Sandbox. Defaults to 5 minutes. If you pass zero you get the default 5 minutes.
+	IdleTimeout                time.Duration                // The amount of time that a Sandbox can be idle before being terminated.
+	Workdir                    string                       // Working directory of the Sandbox.
+	Command                    []string                     // Command to run in the Sandbox on startup.
+	Env                        map[string]string            // Environment variables to set in the Sandbox.
+	Secrets                    []*Secret                    // Secrets to inject into the Sandbox as environment variables.
+	Volumes                    map[string]*Volume           // Mount points for Volumes.
+	CloudBucketMounts          map[string]*CloudBucketMount // Mount points for cloud buckets.
+	PTY                        bool                         // Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the process) is multiplexed into stdout, and the stderr stream is effectively empty.
+	EncryptedPorts             []int                        // List of encrypted ports to tunnel into the Sandbox, with TLS encryption.
+	H2Ports                    []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
+	UnencryptedPorts           []int                        // List of ports to tunnel into the Sandbox without encryption.
+	BlockNetwork               bool                         // Whether to block all network access from the Sandbox.
+	OutboundCIDRAllowlist      *Allowlist                   // CIDRs the Sandbox is allowed to access. Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
+	OutboundDomainAllowlist    *Allowlist                   // Domain names the Sandbox is allowed to access (supports wildcard prefixes like *.example.com). Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
+	InboundCIDRAllowlist       []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
+	I6PN                       bool                         // Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can reach each other at their i6pn.modal.local address. Pin every Sandbox in the group to the same specific region. Cannot be used with BlockNetwork.
+	Cloud                      string                       // Cloud provider to run the Sandbox on.
+	Regions                    []string                     // Region(s) to run the Sandbox on.
+	Verbose                    bool                         // Enable verbose logging.
+	Proxy                      *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
+	ReadinessProbe             *Probe                       // Probe used to determine when the Sandbox is ready.
+	Name                       string                       // Optional name for the Sandbox. Unique within an App.
+	Tags                       map[string]string            // Tags to attach to the Sandbox. Filterable via SandboxList.
+	ExperimentalOptions        map[string]any               // Experimental options
+	CustomDomain               string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
+	IncludeOidcIdentityToken   bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
+	ExperimentalEnableSnapshot bool                         // Enable memory snapshots.
 }
 
 // buildSandboxCreateRequestProto builds a SandboxCreateRequest proto from options.
@@ -484,6 +486,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			IncludeOidcIdentityToken: params.IncludeOidcIdentityToken,
 			InboundCidrAllowlist:     params.InboundCIDRAllowlist,
 			I6PnEnabled:              params.I6PN,
+			EnableSnapshot:           params.ExperimentalEnableSnapshot,
 		}.Build(),
 	}.Build(), nil
 }
@@ -565,7 +568,9 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 // allows connections to the Sandbox via a subdomain of that parent domain
 // rather than a default Modal domain; requires prior setup by Modal).
 //
-// Features like memory snapshots and GPUs are not supported.
+// Set ExperimentalEnableSnapshot to create a Sandbox that can be snapshotted
+// with [Sandbox.ExperimentalSnapshot]. Features like network file systems and
+// GPUs are not supported.
 //
 // V2 sandboxes created with this method are not currently returned by List. A
 // named Sandbox can be looked up with ExperimentalFromName; otherwise store
@@ -941,6 +946,126 @@ func (s *sandboxServiceImpl) ExperimentalFromName(ctx context.Context, appName, 
 	}
 
 	return newSandboxV2(s.client, resp.GetSandboxId(), ""), nil
+}
+
+// SandboxSnapshot is a stored Sandbox memory snapshot created by calling
+// ExperimentalSnapshot on a Sandbox instance. This includes both the filesystem
+// and memory state of the original Sandbox at the time the snapshot was taken.
+type SandboxSnapshot struct {
+	SnapshotID string
+
+	isV2   *bool // whether the snapshot came from a V2 sandbox. nil until hydrated
+	client *Client
+}
+
+func (s *SandboxSnapshot) hydrate(ctx context.Context) error {
+	if s.isV2 != nil {
+		return nil
+	}
+	// hydration doesn't actually do much apart from validating the existance of the id
+	// which is implicitly done by trying to start a sandbox from the snapshot as well
+	resp, err := s.client.cpClient.SandboxSnapshotGet(ctx, pb.SandboxSnapshotGetRequest_builder{
+		SnapshotId: s.SnapshotID,
+	}.Build())
+	if err != nil {
+		return err
+	}
+	isV2 := resp.GetHandleMetadata().GetIsV2()
+	s.isV2 = &isV2
+	return nil
+}
+
+// SandboxSnapshotService provides operations for stored Sandbox memory snapshots.
+type SandboxSnapshotService interface {
+	FromID(ctx context.Context, snapshotID string, params *SandboxSnapshotFromIDParams) (*SandboxSnapshot, error)
+}
+
+type sandboxSnapshotServiceImpl struct{ client *Client }
+
+// SandboxSnapshotFromIDParams are options for SandboxSnapshotService.FromID.
+type SandboxSnapshotFromIDParams struct{}
+
+// FromID constructs a SandboxSnapshot for an existing snapshot ID.
+func (s *sandboxSnapshotServiceImpl) FromID(ctx context.Context, snapshotID string, params *SandboxSnapshotFromIDParams) (*SandboxSnapshot, error) {
+	return &SandboxSnapshot{SnapshotID: snapshotID, client: s.client}, nil
+}
+
+// SandboxExperimentalFromSnapshotParams are options for SandboxService.ExperimentalFromSnapshot.
+type SandboxExperimentalFromSnapshotParams struct {
+	// Name for the restored Sandbox. Nil reuses the original Sandbox's name, a
+	// pointer to an empty string leaves it unnamed, and a pointer to a non-empty
+	// string overrides it.
+	Name *string
+}
+
+// ExperimentalFromSnapshot restores a Sandbox from a memory snapshot.
+//
+// The restore targets the same backend the snapshot was taken from. A V1
+// snapshot restores as a V1 sandbox, a V2 snapshot as a V2 sandbox.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (s *sandboxServiceImpl) ExperimentalFromSnapshot(ctx context.Context, snapshot *SandboxSnapshot, params *SandboxExperimentalFromSnapshotParams) (*Sandbox, error) {
+	if params == nil {
+		params = &SandboxExperimentalFromSnapshotParams{}
+	}
+
+	if err := snapshot.hydrate(ctx); err != nil {
+		return nil, err
+	}
+	useV2 := snapshot.isV2 != nil && *snapshot.isV2
+
+	overrideType := pb.SandboxRestoreRequest_SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED
+	var nameOverride string
+	if params.Name != nil {
+		if *params.Name == "" {
+			overrideType = pb.SandboxRestoreRequest_SANDBOX_NAME_OVERRIDE_TYPE_NONE
+		} else {
+			if err := checkObjectName(*params.Name, "Sandbox"); err != nil {
+				return nil, err
+			}
+			overrideType = pb.SandboxRestoreRequest_SANDBOX_NAME_OVERRIDE_TYPE_STRING
+			nameOverride = *params.Name
+		}
+	}
+
+	if useV2 {
+		resp, err := s.client.cpClient.SandboxRestoreV2(ctx, pb.SandboxRestoreV2Request_builder{
+			SnapshotId:              snapshot.SnapshotID,
+			SandboxNameOverride:     nameOverride,
+			SandboxNameOverrideType: overrideType,
+		}.Build())
+		if err != nil {
+			return nil, err
+		}
+		return newSandboxV2(s.client, resp.GetSandboxId(), resp.GetTaskId()), nil
+	}
+
+	resp, err := s.client.cpClient.SandboxRestore(ctx, pb.SandboxRestoreRequest_builder{
+		SnapshotId:              snapshot.SnapshotID,
+		SandboxNameOverride:     nameOverride,
+		SandboxNameOverrideType: overrideType,
+	}.Build())
+	if err != nil {
+		return nil, err
+	}
+
+	sb := newSandbox(s.client, resp.GetSandboxId())
+
+	timeoutSecs := float32(55)
+	taskResp, err := s.client.cpClient.SandboxGetTaskId(ctx, pb.SandboxGetTaskIdRequest_builder{
+		SandboxId:      resp.GetSandboxId(),
+		WaitUntilReady: true,
+		Timeout:        &timeoutSecs,
+	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	if result := taskResp.GetTaskResult(); result != nil &&
+		result.GetStatus() != pb.GenericResult_GENERIC_STATUS_UNSPECIFIED &&
+		result.GetStatus() != pb.GenericResult_GENERIC_STATUS_SUCCESS {
+		return nil, ExecutionError{Exception: result.GetException()}
+	}
+	return sb, nil
 }
 
 // SandboxExecParams defines options for executing commands in a Sandbox.
@@ -1580,6 +1705,65 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 	}
 
 	return &Image{ImageID: response.GetImageId(), client: sb.client}, nil
+}
+
+// SandboxExperimentalSnapshotParams are options for Sandbox.ExperimentalSnapshot.
+type SandboxExperimentalSnapshotParams struct{}
+
+// ExperimentalSnapshot snapshots the filesystem and memory of the Sandbox.
+//
+// Returns a SandboxSnapshot which can be restored into a new Sandbox with
+// SandboxService.ExperimentalFromSnapshot. The Sandbox must have been created
+// with SandboxCreateParams.ExperimentalEnableSnapshot set.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (sb *Sandbox) ExperimentalSnapshot(ctx context.Context, params *SandboxExperimentalSnapshotParams) (*SandboxSnapshot, error) {
+	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
+
+	var snapshotID string
+	if sb.isV2 {
+		taskID, crClient, err := sb.getCommandRouter(ctx)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := crClient.SnapshotMemory(ctx, pb.TaskSnapshotMemoryRequest_builder{
+			TaskId:         taskID,
+			IdempotencyKey: uuid.NewString(),
+		}.Build(), 55*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		snapshotID = resp.GetSnapshotId()
+	} else {
+		if err := sb.ensureTaskID(ctx); err != nil {
+			return nil, err
+		}
+		snapResp, err := sb.client.cpClient.SandboxSnapshot(ctx, pb.SandboxSnapshotRequest_builder{
+			SandboxId: sb.SandboxID,
+		}.Build())
+		if err != nil {
+			return nil, err
+		}
+		snapshotID = snapResp.GetSnapshotId()
+
+		// wait for the snapshot to succeed. this is implemented as a second idempotent rpc
+		// because the snapshot itself may take a while to complete.
+		waitResp, err := sb.client.cpClient.SandboxSnapshotWait(ctx, pb.SandboxSnapshotWaitRequest_builder{
+			SnapshotId: snapshotID,
+			Timeout:    55,
+		}.Build())
+		if err != nil {
+			return nil, err
+		}
+		if waitResp.GetResult().GetStatus() != pb.GenericResult_GENERIC_STATUS_SUCCESS {
+			return nil, ExecutionError{Exception: waitResp.GetResult().GetException()}
+		}
+	}
+
+	isV2 := sb.isV2
+	return &SandboxSnapshot{SnapshotID: snapshotID, isV2: &isV2, client: sb.client}, nil
 }
 
 // MountImage mounts an Image at a path in the Sandbox filesystem.

@@ -1542,6 +1542,41 @@ func TestSandboxFromIDRoutesV2(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestSandboxExperimentalFromSnapshotRoutesV2(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+	snapshotID := "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
+	sandboxID := validV2SandboxID
+
+	grpcmock.HandleUnary(mock, "SandboxSnapshotGet",
+		func(req *pb.SandboxSnapshotGetRequest) (*pb.SandboxSnapshotGetResponse, error) {
+			g.Expect(req.GetSnapshotId()).To(gomega.Equal(snapshotID))
+			return pb.SandboxSnapshotGetResponse_builder{
+				SnapshotId:     snapshotID,
+				HandleMetadata: pb.SandboxSnapshotHandleMetadata_builder{IsV2: true}.Build(),
+			}.Build(), nil
+		})
+	grpcmock.HandleUnary(mock, "SandboxRestoreV2",
+		func(req *pb.SandboxRestoreV2Request) (*pb.SandboxRestoreV2Response, error) {
+			g.Expect(req.GetSnapshotId()).To(gomega.Equal(snapshotID))
+			return pb.SandboxRestoreV2Response_builder{
+				SandboxId: sandboxID,
+				TaskId:    "ta-restored-v2-123",
+			}.Build(), nil
+		})
+
+	snapshot, err := mock.SandboxSnapshots.FromID(ctx, snapshotID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	sb, err := mock.Sandboxes.ExperimentalFromSnapshot(ctx, snapshot, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(sb.SandboxID).To(gomega.Equal(sandboxID))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestSandboxExperimentalFromNameRoutesV2(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
