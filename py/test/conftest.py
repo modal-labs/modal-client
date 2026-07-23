@@ -1906,6 +1906,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 name=name,
                 environment_id=env_id,
                 webhook_suffix=f"{name}-suffix",
+                default=name == "main",
             )
             for name, env_id in self.environments.items()
         ]

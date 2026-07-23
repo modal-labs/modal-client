@@ -2555,6 +2555,19 @@ def test_update_environment_name_valid(servicer, set_env_client, name, set_name)
     )
 
 
+def test_environment_list(servicer, set_env_client):
+    run_cli_command(["environment", "create", "main"])
+    run_cli_command(["environment", "create", "dev"])
+    res = run_cli_command(["environment", "list", "--json"])
+    assert "main" in res.stdout
+    assert "dev" in res.stdout
+    json_data = json.loads(res.stdout)
+    assert json_data[0]["name"] == "main"
+    assert json_data[0]["active"] == "True"
+    assert json_data[1]["name"] == "dev"
+    assert json_data[1]["active"] == "False"
+
+
 def test_call_update_environment_suffix(servicer, set_env_client):
     run_cli_command(["environment", "update", "main", "--set-web-suffix", "_"])
 

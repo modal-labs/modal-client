@@ -55,7 +55,7 @@ def list_(json: bool = False):
     # over the server default
     active_env = config.get("environment") or ""
     for env in envs:
-        if env.default is True and active_env is None:
+        if env.default is True and not active_env:
             active_env = env.name
 
     table_data = []
