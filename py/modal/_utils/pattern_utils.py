@@ -143,12 +143,12 @@ class Pattern:
             else:
                 return False
         elif self.match_type == MatchType.REGEXP:
-            return self.regexp.match(path) is not None
+            return self.regexp is not None and self.regexp.match(path) is not None
         else:
             return False
 
 
-def read_ignorefile(reader: TextIO) -> list[str]:
+def read_ignorefile(reader: TextIO | None) -> list[str]:
     """Read an ignore file from a reader and return the list of file patterns to
     ignore, applying the following rules:
 

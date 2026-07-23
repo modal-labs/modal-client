@@ -294,7 +294,9 @@ def relative_timestamp(dt: datetime) -> str:
 
 
 def locale_tz() -> tzinfo:
-    return datetime.now().astimezone().tzinfo
+    tz = datetime.now().astimezone().tzinfo
+    assert tz is not None
+    return tz
 
 
 def as_timestamp(arg: datetime | str | None) -> float:

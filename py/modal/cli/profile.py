@@ -71,7 +71,7 @@ async def list_(json: bool | None = False):
             # Catch-all for other exceptions, like incorrect server url
             workspace = "Unknown (profile misconfigured)"
         else:
-            assert hasattr(resp, "username")
+            assert not isinstance(resp, BaseException)
             workspace = resp.username
         content = ["•" if active else "", profile, workspace]
         rows.append((active, content))
@@ -81,8 +81,8 @@ async def list_(json: bool | None = False):
         try:
             env_based_resp = await _lookup_workspace(
                 config.get("server_url", profile=_profile),
-                os.environ.get("MODAL_TOKEN_ID"),
-                os.environ.get("MODAL_TOKEN_SECRET"),
+                os.environ["MODAL_TOKEN_ID"],
+                os.environ.get("MODAL_TOKEN_SECRET", ""),
             )
             env_based_workspace = env_based_resp.username
         except AuthError:

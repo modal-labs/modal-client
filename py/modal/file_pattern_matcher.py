@@ -201,7 +201,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
             pattern_strings = Path(self._file_path).read_text("utf8").splitlines()
         else:
             # Use patterns provided in __init__
-            pattern_strings = list(self._pattern_strings)
+            pattern_strings = list(self._pattern_strings or [])
 
         return self._parse_patterns(pattern_strings)
 

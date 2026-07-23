@@ -207,7 +207,7 @@ async def create(
         raise click.UsageError("--custom-volume-path requires --custom-volume-name.")
 
     env_name = ensure_env(env)
-    environment_name = _get_environment_name(env_name) or ""
+    environment_name = _get_environment_name(env_name)
     client = await _Client.from_env()
 
     compute_region_spec = api_pb2.EndpointComputeRegionSpec()
@@ -271,7 +271,7 @@ async def create(
 async def list_(*, json: bool = False, env: Optional[str] = None):
     """List Endpoints that are provisioning or running in an environment."""
     env_name = ensure_env(env)
-    environment_name = _get_environment_name(env_name) or ""
+    environment_name = _get_environment_name(env_name)
     client = await _Client.from_env()
 
     items: list[api_pb2.EndpointListItem] = []

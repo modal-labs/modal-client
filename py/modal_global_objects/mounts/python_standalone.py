@@ -34,7 +34,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
     else:
         url = f"{root_url}/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-gnu-install_only.tar.gz"
 
-    profile_environment = config.get("environment")
+    profile_environment = config.get("environment") or ""
     mount_name = python_standalone_mount_name(f"{version}-{libc}")
     try:
         Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate(client)

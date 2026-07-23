@@ -21,7 +21,7 @@ async def dashboard(
     if object_id:
         url = f"https://modal.com/id/{object_id}"
     else:
-        env = config.get("environment")
+        env = config.get("environment") or ""
         request = api_pb2.WorkspaceDashboardUrlRequest(environment_name=env)
         client = await _Client.from_env()
         response = await client.stub.WorkspaceDashboardUrlGet(request)

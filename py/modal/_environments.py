@@ -591,4 +591,4 @@ def ensure_env(environment_name: str | None = None) -> str:
     if environment_name is not None:
         config.override_locally("environment", environment_name)
 
-    return config.get("environment")
+    return config.get("environment") or ""

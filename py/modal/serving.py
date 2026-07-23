@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 
 from synchronicity.async_wrap import asynccontextmanager
 
+from ._object import _get_environment_name
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api
 from ._utils.logger import logger
 from ._watcher import watch
 from .cli.import_refs import ImportRef, import_app_from_ref
 from .client import _Client
-from .config import config
 from .output import OutputManager, enable_output
 from .runner import _run_app, serve_update
 
@@ -109,8 +109,7 @@ async def _serve_app(
         _watcher: For tests only. Supplies a custom async generator of changed file paths instead of
             the default filesystem watcher.
     """
-    if environment_name is None:
-        environment_name = config.get("environment")
+    environment_name = _get_environment_name(environment_name)
 
     client = await _Client.from_env()
 
@@ -122,6 +121,7 @@ async def _serve_app(
         else:
             mounts_to_watch = app._get_watch_mounts()
             watcher = watch(mounts_to_watch)
+        assert app.app_id is not None
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(
                 _run_watch_loop(import_ref, app_id=app.app_id, watcher=watcher, environment_name=environment_name)

@@ -23,19 +23,20 @@ EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
 def _get_environment_name(
     environment_name: str | None = None,
-) -> str | None:
+) -> str:
     """Get environment name from various sources.
 
     Args:
-        environment_name: Explicitly provided environment name (highest priority)
+        environment_name: Explicitly provided environment name (highest priority).
 
     Returns:
-        Environment name from first available source, or config default
+        Environment name from as passed in, from config, or as a null string
+        (which implies workspace-level default).
     """
     if environment_name:
         return environment_name
     else:
-        return config.get("environment")
+        return config.get("environment") or ""
 
 
 def live_method(method):

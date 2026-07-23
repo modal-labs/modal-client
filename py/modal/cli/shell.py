@@ -48,7 +48,7 @@ def _passed_forbidden_args(
     passed_forbidden: list[str] = []
     for param in params:
         name = param.name
-        if name is None or allowed(name):
+        if not name or allowed(name):
             continue
         default = param.process_value(ctx, param.get_default(ctx))
         if passed_args.get(name) != default:
@@ -150,7 +150,7 @@ def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
 
     assert _is_valid_modal_id(ref, "ta-")
     try:
-        _exec_impl(container_id=ref, command=shlex.split(cmd), pty=pty, object_id_for_v2=object_id_for_v2)
+        _ = _exec_impl(container_id=ref, command=tuple(shlex.split(cmd)), pty=pty, object_id_for_v2=object_id_for_v2)
     except NotFoundError:
         raise ClickException(f"Container '{ref}' not found (is it still running?)")
     except Exception as e:

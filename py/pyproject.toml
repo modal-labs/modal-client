@@ -233,4 +233,51 @@ max-nested-blocks = 7
 
 [tool.pyright]
 reportUnnecessaryComparison = true
-venvPath = ".venv/"
+# mypy checks most of the codebase, but it skips the .py implementation of any
+# module that also ships a .pyi type stub, so pyright covers those
+# implementations. We type-check all of modal/ (new files are covered
+# automatically). test/cls_test.py is included because mypy limitations
+# (https://github.com/python/mypy/issues/16527) require pyright for cls-oriented checks
+include = [
+    "modal",
+    "test/cls_test.py",
+]
+# Many modal/ files are excluded from currently excluded from pyright because they were
+# written against mypy's looser standards. We aim to reduce this list over time.
+exclude = [
+    "modal/_vendor",
+    "modal/_clustered_functions.py",
+    "modal/_logs_manager.py",
+    "modal/_logs_manager.pyi",
+    "modal/_output/pty.py",
+    "modal/_partial_function.py",
+    "modal/_tunnel.py",
+    "modal/_utils/blob_utils.py",
+    "modal/_utils/function_utils.py",
+    "modal/_utils/grpc_utils.py",
+    "modal/_utils/task_command_router_client.py",
+    "modal/_utils/time_utils.py",
+    "modal/_watcher.py",
+    "modal/app.py",
+    "modal/cli/_download.py",
+    "modal/cli/app.py",
+    "modal/cli/container.py",
+    "modal/cli/run.py",
+    "modal/cli/volume.py",
+    "modal/client.py",
+    "modal/cls.py",
+    "modal/cls.pyi",
+    "modal/dict.py",
+    "modal/experimental/flash.py",
+    "modal/image.pyi",
+    "modal/mount.py",
+    "modal/mount.pyi",
+    "modal/network_file_system.py",
+    "modal/parallel_map.py",
+    "modal/queue.py",
+    "modal/runner.py",
+    "modal/sandbox.py",
+    "modal/sandbox.pyi",
+    "modal/token_flow.py",
+    "modal/volume.py",
+]

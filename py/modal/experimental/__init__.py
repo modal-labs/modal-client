@@ -141,6 +141,7 @@ async def stop_app(name: str, *, environment_name: str | None = None, client: _C
     """
     client_ = client or await _Client.from_env()
     app = await _App.lookup(name, environment_name=environment_name, client=client_)
+    assert app.app_id
     req = api_pb2.AppStopRequest(app_id=app.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
     await client_.stub.AppStop(req)
 
@@ -174,6 +175,7 @@ async def get_app_objects(
         client = await _Client.from_env()
 
     app = await _App.lookup(app_name, environment_name=environment_name, client=client)
+    assert app.app_id
     req = api_pb2.AppGetLayoutRequest(app_id=app.app_id)
     app_layout_resp = await client.stub.AppGetLayout(req)
 

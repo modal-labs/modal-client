@@ -51,7 +51,7 @@ async def list_(env: str | None = None, json: bool = False):
             [
                 c.cluster_id,
                 c.app_id,
-                timestamp_to_localized_str(c.started_at, json) if c.started_at else "Pending",
+                timestamp_to_localized_str(c.started_at, json) or "Pending",
                 str(len(c.task_ids)),
             ]
         )

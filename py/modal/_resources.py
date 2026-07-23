@@ -26,10 +26,10 @@ def convert_fn_config_to_resources_config(
             raise InvalidError(f"Cannot specify a CPU limit lower than request: {milli_cpu_max} < {milli_cpu}")
     elif cpu and isinstance(cpu, (float, int)):
         milli_cpu = int(1000 * cpu)
-        milli_cpu_max = None
+        milli_cpu_max = 0
     else:
-        milli_cpu = None
-        milli_cpu_max = None
+        milli_cpu = 0
+        milli_cpu_max = 0
 
     if memory and isinstance(memory, int):
         memory_mb = memory
@@ -47,6 +47,6 @@ def convert_fn_config_to_resources_config(
         gpu_config=parse_gpu_config(gpu),
         memory_mb=memory_mb,
         memory_mb_max=memory_mb_max,
-        ephemeral_disk_mb=ephemeral_disk,
+        ephemeral_disk_mb=ephemeral_disk or 0,
         rdma=rdma or False,
     )

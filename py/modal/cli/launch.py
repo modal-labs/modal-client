@@ -52,7 +52,7 @@ def _launch_program(
             else:
                 func()
         except Exception as exc:
-            raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+            raise _CliUserExecutionError(inspect.getsourcefile(func) or "<unknown>") from exc
 
 
 @launch_cli.command("jupyter", help="Start Jupyter Lab on Modal.")

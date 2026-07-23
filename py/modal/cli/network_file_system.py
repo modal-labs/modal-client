@@ -29,7 +29,7 @@ nfs_cli = ModalGroup(name="nfs", help="Read and edit `modal.NetworkFileSystem` f
 @env_option
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: str | None = None, json: bool | None = False):
+async def list_(env: str | None = None, json: bool = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()

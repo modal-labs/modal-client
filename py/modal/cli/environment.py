@@ -53,7 +53,7 @@ def list_(json: bool = False):
 
     # determine which environment is currently active, prioritizing the local default
     # over the server default
-    active_env = config.get("environment")
+    active_env = config.get("environment") or ""
     for env in envs:
         if env.default is True and active_env is None:
             active_env = env.name

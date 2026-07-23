@@ -134,9 +134,10 @@ def cloud_bucket_mounts_to_proto(
         # crude mapping from mount arguments to type.
         if mount.bucket_endpoint_url:
             parse_result = urlparse(mount.bucket_endpoint_url)
-            if parse_result.hostname.endswith("r2.cloudflarestorage.com"):
+            hostname = parse_result.hostname or ""
+            if hostname.endswith("r2.cloudflarestorage.com"):
                 bucket_type = api_pb2.CloudBucketMount.BucketType.R2
-            elif parse_result.hostname.endswith("storage.googleapis.com"):
+            elif hostname.endswith("storage.googleapis.com"):
                 bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
             else:
                 logger.info(

@@ -205,7 +205,7 @@ class _SecretManager:
                 raise
         else:
             req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
-            await obj._client.stub.SecretDelete(req)
+            await obj.client.stub.SecretDelete(req)
 
 
 SecretManager = synchronize_api(_SecretManager)
@@ -511,7 +511,7 @@ class _Secret(_Object, type_prefix="st"):
             raise InvalidError(err)
         updates = [api_pb2.SecretUpdateRequest.Update(key=k, value=v) for k, v in env_dict.items()]
         req = api_pb2.SecretUpdateRequest(secret_id=self.object_id, updates=updates)
-        await self._client.stub.SecretUpdate(req)
+        await self.client.stub.SecretUpdate(req)
 
 
 def _split_env_dict_and_resolvable_secrets(secrets: list[_Secret]) -> tuple[dict[str, str], list[_Secret]]:

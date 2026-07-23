@@ -155,7 +155,7 @@ def lint_changelog(ctx):
 
 
 @task
-def type_stubs(ctx):
+def type_stubs(ctx, verbose: bool = False):
     """Generate type stub files (.pyi) for synchronicity-wrapped Modal modules.
 
     We only generate type stubs for modules that contain synchronicity wrapped types.
@@ -169,7 +169,8 @@ def type_stubs(ctx):
                 stubs_to_remove.append(os.path.abspath(os.path.join(root, file)))
     for path in sorted(stubs_to_remove):
         os.remove(path)
-        print(f"Removed {path}")
+        if verbose:
+            print(f"Removed {path}")
 
     def find_modal_modules(root: str = "modal") -> list[str]:
         modules = []
@@ -195,7 +196,11 @@ def type_stubs(ctx):
         ]
 
     modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
-    subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
+    subprocess.check_call(
+        ["python", "-m", "synchronicity.type_stubs", *modules],
+        stdout=None if verbose else subprocess.DEVNULL,
+        stderr=None if verbose else subprocess.DEVNULL,
+    )
     ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
 
 
@@ -216,37 +221,8 @@ def type_check(ctx):
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
     ctx.run(f"mypy . {excludes}", pty=True)
 
-    pyright_allowlist = [
-        "modal/_functions.py",
-        "modal/_runtime/asgi.py",
-        "modal/_runtime/user_code_imports.py",
-        "modal/_server.py",
-        "modal/_utils/__init__.py",
-        "modal/_utils/async_utils.py",
-        "modal/_utils/grpc_testing.py",
-        "modal/_utils/hash_utils.py",
-        "modal/_utils/http_utils.py",
-        "modal/_utils/name_utils.py",
-        "modal/_utils/logger.py",
-        "modal/_utils/mount_utils.py",
-        "modal/_utils/package_utils.py",
-        "modal/_utils/rand_pb_testing.py",
-        "modal/_utils/shell_utils.py",
-        "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
-        "modal/_runtime/container_io_manager.py",
-        "modal/io_streams.py",
-        "modal/_image.py",
-        "modal/image.py",
-        "modal/file_io.py",
-        "modal/cli/import_refs.py",
-        "modal/snapshot.py",
-        "modal/config.py",
-        "modal/object.py",
-        "modal/_type_manager.py",
-        "modal/container_process.py",
-        "modal/sandbox_fs.py",
-    ]
-    ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
+    # Pyright checks are more limited; see pyproject.toml for configuration
+    ctx.run("pyright", pty=True)
 
 
 @task(

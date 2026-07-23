@@ -45,7 +45,8 @@ class BytesIOSegmentPayload(Payload):
         self.segment_length = segment_length
         # seek to start of file segment we are interested in, in order to make .size() evaluate correctly
         self._value.seek(self.initial_seek_pos + segment_start)
-        assert self.segment_length <= super().size
+        base_size = super().size
+        assert base_size is not None and self.segment_length <= base_size
         self.chunk_size = chunk_size
         self.progress_report_cb = progress_report_cb or (lambda *_, **__: None)
         self.reset_state()

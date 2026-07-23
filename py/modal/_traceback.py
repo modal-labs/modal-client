@@ -75,7 +75,7 @@ def append_modal_tb(exc: BaseException, tb_dict: TBDictType, line_cache: LineCac
     setattr(exc, "__line_cache__", line_cache)
 
 
-def reduce_traceback_to_user_code(tb: TracebackType | None, user_source: str) -> TracebackType:
+def reduce_traceback_to_user_code(tb: TracebackType | None, user_source: str) -> TracebackType | None:
     """Return a traceback that does not contain modal entrypoint or synchronicity frames."""
 
     # Step forward all the way through the traceback and drop any "Modal support" frames
