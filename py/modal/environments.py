@@ -6,12 +6,15 @@ from ._environments import (
     _EnvironmentBillingManager,
     _EnvironmentManager,
     _EnvironmentMembersManager,
+    _EnvironmentRolesManager,
     _list_environments,
     _update_environment,
 )
 from ._utils.async_utils import synchronize_api, synchronizer
 
 EnvironmentManager = synchronize_api(_EnvironmentManager, target_module=__name__)
+EnvironmentRolesManager = synchronize_api(_EnvironmentRolesManager, target_module=__name__)
+# Deprecated alias for `EnvironmentRolesManager`, retired with `Environment.members`.
 EnvironmentMembersManager = synchronize_api(_EnvironmentMembersManager, target_module=__name__)
 EnvironmentBillingManager = synchronize_api(_EnvironmentBillingManager, target_module=__name__)
 Environment = synchronize_api(_Environment, target_module=__name__)

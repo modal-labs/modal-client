@@ -5,7 +5,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal.environments import Environment
-from modal.exception import InvalidError, WorkspaceManagementError
+from modal.exception import DeprecationError, InvalidError, WorkspaceManagementError
 from modal_proto import api_pb2
 
 
@@ -123,11 +123,11 @@ def test_environment_objects_delete(servicer, client):
     assert "to-delete" not in servicer.environments
 
 
-def test_environment_get_members(servicer, client):
+def test_environment_get_roles(servicer, client):
     env = Environment.from_name("main", client=client)
     env.hydrate()
 
-    assert env.members.list() == {
+    assert env.roles.list() == {
         "users": {"alice": "contributor", "bob": "contributor", "carol": "contributor"},
         "service_users": {"alice-bot": "contributor", "ops-bot": "contributor"},
     }
@@ -137,23 +137,23 @@ def test_environment_get_members(servicer, client):
         "us-2": api_pb2.ENVIRONMENT_ROLE_VIEWER,
         "sv-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
     }
-    assert env.members.list() == {
+    assert env.roles.list() == {
         "users": {"alice": "contributor", "bob": "viewer", "carol": "contributor"},
         "service_users": {"alice-bot": "contributor", "ops-bot": "contributor"},
     }
 
 
-def test_environment_update_members(servicer, client):
+def test_environment_update_roles(servicer, client):
     env = Environment.from_name("main", client=client)
 
-    env.members.update(users={"alice": "contributor"}, service_users={"alice-bot": "viewer"})
+    env.roles.update(users={"alice": "contributor"}, service_users={"alice-bot": "viewer"})
     assert servicer.environment_members[env.object_id] == {
         "us-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
         "sv-1": api_pb2.ENVIRONMENT_ROLE_VIEWER,
     }
 
     # Updating one role does not remove unrelated members
-    env.members.update(users={"alice": "viewer", "bob": "contributor"})
+    env.roles.update(users={"alice": "viewer", "bob": "contributor"})
     assert servicer.environment_members[env.object_id] == {
         "us-1": api_pb2.ENVIRONMENT_ROLE_VIEWER,
         "us-2": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
@@ -161,17 +161,18 @@ def test_environment_update_members(servicer, client):
     }
 
 
-def test_environment_update_members_unknown_principal(client):
+def test_environment_update_roles_unknown_principal(client):
     env = Environment.from_name("main", client=client)
 
     with pytest.raises(InvalidError, match="User 'eve' not found in workspace"):
-        env.members.update(users={"eve": "viewer"})
+        env.roles.update(users={"eve": "viewer"})
 
     with pytest.raises(InvalidError, match="Service user 'unknown-bot' not found in workspace"):
-        env.members.update(service_users={"unknown-bot": "viewer"})
+        env.roles.update(service_users={"unknown-bot": "viewer"})
 
 
-def test_environment_remove_members(servicer, client):
+def test_environment_members_remove(servicer, client):
+    # `remove` lives only on the deprecated `members` manager, not on `roles`.
     env = Environment.from_name("main", client=client)
     env.hydrate()
     servicer.environment_members[env.object_id] = {
@@ -180,13 +181,15 @@ def test_environment_remove_members(servicer, client):
         "sv-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
     }
 
-    env.members.remove(users=["alice"], service_users=["alice-bot"])
+    assert not hasattr(env.roles, "remove")
+    with pytest.warns(DeprecationError, match="deprecated"):
+        env.members.remove(users=["alice"], service_users=["alice-bot"])
     assert servicer.environment_members[env.object_id] == {
         "us-2": api_pb2.ENVIRONMENT_ROLE_VIEWER,
     }
 
 
-def test_environment_update_members_aggregates_errors(servicer, client):
+def test_environment_update_roles_aggregates_errors(servicer, client):
     env = Environment.from_name("main", client=client)
     env.hydrate()
 
@@ -199,19 +202,19 @@ def test_environment_update_members_aggregates_errors(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("EnvironmentRoleSet", fail_for_alice_and_bot)
         with pytest.raises(WorkspaceManagementError) as excinfo:
-            env.members.update(
+            env.roles.update(
                 users={"alice": "viewer", "bob": "viewer"},
                 service_users={"alice-bot": "viewer"},
             )
 
     msg = str(excinfo.value)
-    assert "2 errors occurred while updating Environment members" in msg
+    assert "2 errors occurred while updating Environment roles" in msg
     assert "User 'alice': missing principal" in msg
     assert "Service user 'alice-bot': missing principal" in msg
     assert "bob" not in msg  # bob's RPC succeeded
 
 
-def test_environment_update_members_single_error_labeled(servicer, client):
+def test_environment_update_roles_single_error_labeled(servicer, client):
     env = Environment.from_name("main", client=client)
     env.hydrate()
 
@@ -224,14 +227,14 @@ def test_environment_update_members_single_error_labeled(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("EnvironmentRoleSet", fail_for_alice)
         with pytest.raises(WorkspaceManagementError) as excinfo:
-            env.members.update(users={"alice": "viewer", "bob": "viewer"})
+            env.roles.update(users={"alice": "viewer", "bob": "viewer"})
 
     msg = str(excinfo.value)
-    assert "1 error occurred while updating Environment members" in msg
+    assert "1 error occurred while updating Environment roles" in msg
     assert "User 'alice': boom" in msg
 
 
-def test_environment_remove_members_user_and_service_user_with_same_name(servicer, client):
+def test_environment_members_remove_user_and_service_user_with_same_name(servicer, client):
     """A user and a service user can share a name — both removals must be sent."""
     env = Environment.from_name("main", client=client)
     env.hydrate()
@@ -241,29 +244,46 @@ def test_environment_remove_members_user_and_service_user_with_same_name(service
         "sv-3": api_pb2.ENVIRONMENT_ROLE_VIEWER,  # service user "alice"
     }
 
-    env.members.remove(users=["alice"], service_users=["alice"])
+    with pytest.warns(DeprecationError, match="deprecated"):
+        env.members.remove(users=["alice"], service_users=["alice"])
 
     assert servicer.environment_members[env.object_id] == {}
 
 
-def test_environment_remove_members_unknown_principal(client):
+def test_environment_members_remove_unknown_principal(client):
     env = Environment.from_name("main", client=client)
 
-    with pytest.raises(InvalidError, match="User 'eve' not found in workspace"):
-        env.members.remove(users=["eve"])
+    with pytest.warns(DeprecationError, match="deprecated"):
+        with pytest.raises(InvalidError, match="User 'eve' not found in workspace"):
+            env.members.remove(users=["eve"])
 
-    with pytest.raises(InvalidError, match="Service user 'unknown-bot' not found in workspace"):
-        env.members.remove(service_users=["unknown-bot"])
+    with pytest.warns(DeprecationError, match="deprecated"):
+        with pytest.raises(InvalidError, match="Service user 'unknown-bot' not found in workspace"):
+            env.members.remove(service_users=["unknown-bot"])
 
 
-def test_environment_remove_members_without_role_is_noop(servicer, client):
+def test_environment_members_remove_without_role_is_noop(servicer, client):
     env = Environment.from_name("main", client=client)
     env.hydrate()
     servicer.environment_members[env.object_id] = {
         "us-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
     }
 
-    env.members.remove(users=["bob"], service_users=["alice-bot"])
+    with pytest.warns(DeprecationError, match="deprecated"):
+        env.members.remove(users=["bob"], service_users=["alice-bot"])
     assert servicer.environment_members[env.object_id] == {
         "us-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
+    }
+
+
+def test_environment_members_deprecated(servicer, client):
+    # `Environment.members` is a deprecated alias for `Environment.roles`; each method warns.
+    env = Environment.from_name("main", client=client)
+    env.hydrate()
+
+    with pytest.warns(DeprecationError, match="deprecated"):
+        result = env.members.list()
+    assert result == {
+        "users": {"alice": "contributor", "bob": "contributor", "carol": "contributor"},
+        "service_users": {"alice-bot": "contributor", "ops-bot": "contributor"},
     }

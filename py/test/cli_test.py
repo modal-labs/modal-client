@@ -22,7 +22,7 @@ import toml
 import modal
 from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 
 from . import helpers
@@ -2570,6 +2570,34 @@ def test_environment_list(servicer, set_env_client):
 
 def test_call_update_environment_suffix(servicer, set_env_client):
     run_cli_command(["environment", "update", "main", "--set-web-suffix", "_"])
+
+
+def test_environment_roles_list_cli(servicer, set_env_client):
+    roles = json.loads(run_cli_command(["environment", "roles", "list", "main", "--json"]).stdout)
+    assert roles["users"]["alice"] == "contributor"
+    assert roles["service_users"]["ops-bot"] == "contributor"
+    # Non-JSON output renders the roles in a table, tagging service users.
+    table = run_cli_command(["environment", "roles", "list", "main"]).stdout
+    assert "alice" in table
+    assert "ops-bot (service user)" in table
+
+
+def test_environment_roles_update_cli(servicer, set_env_client):
+    run_cli_command(["environment", "roles", "update", "main", "alice", "--role", "no-access"])
+    run_cli_command(["environment", "roles", "update", "main", "ops-bot", "--role", "viewer", "--service-user"])
+    roles = json.loads(run_cli_command(["environment", "roles", "list", "main", "--json"]).stdout)
+    assert roles["users"]["alice"] == "no-access"
+    assert roles["service_users"]["ops-bot"] == "viewer"
+
+
+def test_environment_members_cli_deprecated(servicer, set_env_client):
+    # `members` is a deprecated alias for `roles`: it warns but still behaves identically.
+    with pytest.warns(DeprecationError, match="deprecated"):
+        run_cli_command(["environment", "members", "update", "main", "bob", "--role", "viewer"])
+    with pytest.warns(DeprecationError, match="deprecated"):
+        res = run_cli_command(["environment", "members", "list", "main", "--json"])
+    roles = json.loads(res.stdout)
+    assert roles["users"]["bob"] == "viewer"
 
 
 def _run_subprocess(cli_cmd: list[str]) -> helpers.PopenWithCtrlC:

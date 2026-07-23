@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import json as json_mod
+import warnings
 
 import click
 import rich
@@ -11,6 +12,7 @@ from rich.text import Text
 from modal import environments
 from modal._environments import _Environment
 from modal._utils.async_utils import synchronizer
+from modal._utils.deprecation import deprecation_warning
 from modal._utils.display_utils import pretty_decimal
 from modal._utils.name_utils import check_environment_name
 from modal._utils.time_utils import format_interval
@@ -18,7 +20,7 @@ from modal.cli.billing import DATE_HELP, _validate_and_parse_interval
 from modal.cli.utils import _col_name_to_json_key, confirm_or_suggest_yes, display_table, yes_option
 from modal.config import config
 from modal.environments import Environment
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.output import OutputManager
 
 from ._help import ModalGroup
@@ -123,67 +125,127 @@ def update(
     rich.print("[green]✓[/green] Environment updated")
 
 
-MEMBERS_HELP_TEXT = """Manage members and their roles in a restricted Environment.
-
-Restricted Environments use RBAC to limit the actions that can be performed by
-users (and service users) based on roles: https://modal.com/docs/guide/rbac.
-"""
-
-members_cli = ModalGroup(name="members", help=MEMBERS_HELP_TEXT)
-environment_cli.add_command(members_cli)
-
 service_user_option = click.option(
-    "--service-user", is_flag=True, default=False, help="Treat MEMBER as the name of a service user"
+    "--service-user", is_flag=True, default=False, help="Treat PRINCIPAL as the name of a service user"
 )
 
 
-@members_cli.command("list", help="List the members of a restricted Environment", no_args_is_help=True)
-@click.argument("environment")
-@click.option("--json", is_flag=True, default=False)
-def members_list(environment: str, json: bool = False):
-    members = Environment.from_name(environment).members.list()
+def _render_roles_list(environment: str, json: bool) -> None:
+    roles = Environment.from_name(environment).roles.list()
     if json:
         # Mirror the API output shape: a nested dict keyed by users / service_users.
-        OutputManager.get().print_json(json_mod.dumps(members))
+        OutputManager.get().print_json(json_mod.dumps(roles))
         return
     rows = []
-    for name, role in members.get("users", {}).items():
+    for name, role in roles.get("users", {}).items():
         rows.append([name, role])
-    for name, role in members.get("service_users", {}).items():
+    for name, role in roles.get("service_users", {}).items():
         rows.append([f"{name} (service user)", role])
     rows = sorted(rows, key=lambda x: x[0])
     display_table(["name", "role"], rows)
 
 
-@members_cli.command("update", help="Add or update a member's role in a restricted Environment", no_args_is_help=True)
+def _apply_role_update(environment: str, principal: str, role: str, service_user: bool) -> None:
+    env = Environment.from_name(environment)
+    if service_user:
+        env.roles.update(service_users={principal: role})
+    else:
+        env.roles.update(users={principal: role})
+    kind = "service user" if service_user else "user"
+    rich.print(f"[green]✓[/green] Set {kind} {principal!r} to role {role!r} in environment {environment!r}")
+
+
+def _apply_role_remove(environment: str, principal: str, service_user: bool) -> None:
+    env = Environment.from_name(environment)
+    # `remove` only lives on the deprecated `members` manager, which warns. The caller (a
+    # deprecated `members` command) has already warned, so suppress the redundant SDK warning.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationError)
+        if service_user:
+            env.members.remove(service_users=[principal])
+        else:
+            env.members.remove(users=[principal])
+    kind = "service user" if service_user else "user"
+    rich.print(f"[green]✓[/green] Removed {kind} {principal!r} from environment {environment!r}")
+
+
+ROLES_HELP_TEXT = """Manage the Environment Roles of users and service users.
+
+An Environment Role is one of 'contributor' (read-write), 'viewer' (read-only), or
+'no-access', and dictates access to Environments. See
+https://modal.com/docs/guide/rbac for details on which principals can be assigned
+which roles.
+"""
+
+roles_cli = ModalGroup(name="roles", help=ROLES_HELP_TEXT)
+environment_cli.add_command(roles_cli)
+
+
+@roles_cli.command("list", help="List the roles of each user and service user in an Environment", no_args_is_help=True)
 @click.argument("environment")
-@click.argument("member")
+@click.option("--json", is_flag=True, default=False)
+def roles_list(environment: str, json: bool = False):
+    _render_roles_list(environment, json)
+
+
+@roles_cli.command("update", help="Update a user's or service user's role in an Environment", no_args_is_help=True)
+@click.argument("environment")
+@click.argument("principal")
+@click.option("--role", type=click.Choice(["contributor", "viewer", "no-access"]), required=True, help="Role to assign")
+@service_user_option
+def roles_update(environment: str, principal: str, role: str, service_user: bool = False):
+    _apply_role_update(environment, principal, role, service_user)
+
+
+# The deprecated `members` command group keeps working for existing automation, but is hidden
+# from `--help` so it is not discoverable. Each subcommand warns with its own guidance.
+members_cli = ModalGroup(name="members", help="[Deprecated] Use `modal environment roles`.", hidden=True)
+environment_cli.add_command(members_cli)
+
+
+@members_cli.command("list", help="[Deprecated] Use `modal environment roles list`", no_args_is_help=True)
+@click.argument("environment")
+@click.option("--json", is_flag=True, default=False)
+def members_list(environment: str, json: bool = False):
+    deprecation_warning(
+        (2026, 7, 23),
+        "`modal environment members list` is deprecated; use `modal environment roles list`.",
+        show_source=False,
+    )
+    _render_roles_list(environment, json)
+
+
+@members_cli.command("update", help="[Deprecated] Use `modal environment roles update`", no_args_is_help=True)
+@click.argument("environment")
+@click.argument("principal")
 @click.option(
-    "--role", type=click.Choice(["contributor", "viewer"]), required=True, help="Role to assign to the member"
+    "--role",
+    type=click.Choice(["contributor", "viewer", "no-access"]),
+    required=True,
+    help="Role to assign to the principal",
 )
 @service_user_option
-def members_update(environment: str, member: str, role: str, service_user: bool = False):
-    env = Environment.from_name(environment)
-    if service_user:
-        env.members.update(service_users={member: role})
-    else:
-        env.members.update(users={member: role})
-    kind = "service user" if service_user else "user"
-    rich.print(f"[green]✓[/green] Set {kind} {member!r} to role {role!r} in environment {environment!r}")
+def members_update(environment: str, principal: str, role: str, service_user: bool = False):
+    deprecation_warning(
+        (2026, 7, 23),
+        "`modal environment members update` is deprecated; use `modal environment roles update`.",
+        show_source=False,
+    )
+    _apply_role_update(environment, principal, role, service_user)
 
 
-@members_cli.command("remove", help="Remove a member from a restricted Environment", no_args_is_help=True)
+@members_cli.command("remove", help="[Deprecated] Use `modal environment roles update`", no_args_is_help=True)
 @click.argument("environment")
-@click.argument("member")
+@click.argument("principal")
 @service_user_option
-def members_remove(environment: str, member: str, service_user: bool = False):
-    env = Environment.from_name(environment)
-    if service_user:
-        env.members.remove(service_users=[member])
-    else:
-        env.members.remove(users=[member])
-    kind = "service user" if service_user else "user"
-    rich.print(f"[green]✓[/green] Removed {kind} {member!r} from environment {environment!r}")
+def members_remove(environment: str, principal: str, service_user: bool = False):
+    deprecation_warning(
+        (2026, 7, 23),
+        "`modal environment members remove` is deprecated; roles are now explicit — set a role "
+        "(e.g. `--role no-access`) with `modal environment roles update` instead.",
+        show_source=False,
+    )
+    _apply_role_remove(environment, principal, service_user)
 
 
 billing_cli = ModalGroup(name="billing", help="View billing and usage info for the given Environment.")

@@ -16,6 +16,7 @@ from modal_proto import api_pb2
 from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
+from ._utils.deprecation import deprecation_warning
 from ._utils.name_utils import check_environment_name
 from ._utils.time_utils import is_utc_month_aligned, parse_billing_cycle
 from .client import _Client
@@ -104,7 +105,7 @@ class _EnvironmentManager:
         await client.stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
 
 
-class _EnvironmentMembersManager:
+class _EnvironmentRolesManager:
     """mdmd:namespace"""
 
     def __init__(self, environment: "_Environment"):
@@ -112,13 +113,13 @@ class _EnvironmentMembersManager:
         self._environment = environment
 
     async def list(self) -> dict[Literal["users", "service_users"], dict[str, str]]:
-        """Enumerate the environment roles for each user and service user in the workspace.
+        """Enumerate the Environment Role for each user and service user in the workspace.
 
         **Examples:**
 
         ```python notest
-        members = modal.Environment.from_name("my-env").members.list()
-        print(members)
+        roles = modal.Environment.from_name("my-env").roles.list()
+        print(roles)
         # {
         #     "users": {"alice": "contributor", "bob": "viewer", "carol": "contributor"},
         #     "service_users": {"alice-bot": "contributor", "ops-bot": "viewer", "ci-bot": "no-access"},
@@ -145,16 +146,17 @@ class _EnvironmentMembersManager:
         users: Mapping[str, str] | None = None,
         service_users: Mapping[str, str] | None = None,
     ) -> None:
-        """Add or modify roles for members of a restricted Environment.
+        """Update the Environment Role of users and service users.
 
-        Each user or service user will be added to the Environment if not currently a member;
-        if already a member, the user or service user's role will be updated.
+        Each role is one of 'contributor', 'viewer', or 'no-access'. Service users can be
+        assigned a role on any Environment, while workspace members can only be assigned a
+        role on restricted Environments.
 
         **Examples:**
 
         ```python notest
         env = modal.Environment.from_name("my-restricted-env")
-        env.members.update(
+        env.roles.update(
             users={"alice": "contributor", "bob": "viewer"},
             service_users={"alice-bot": "contributor"},
         )
@@ -196,24 +198,59 @@ class _EnvironmentMembersManager:
 
         await self._dispatch_role_updates(requests)
 
+    async def _dispatch_role_updates(self, requests: dict[str, api_pb2.EnvironmentRoleSetRequest]) -> None:
+        """Send batched EnvironmentRoleSet RPCs and report all errors encountered."""
+        results = await asyncio.gather(
+            *(self._environment.client.stub.EnvironmentRoleSet(req) for req in requests.values()),
+            return_exceptions=True,
+        )
+        errors = [(label, result) for label, result in zip(requests.keys(), results) if isinstance(result, Exception)]
+        if errors:
+            n = len(errors)
+            header = f"{n} error{'s' if n != 1 else ''} occurred while updating Environment roles:"
+            details = "\n".join(f"  - {label}: {e}" for label, e in errors)
+            raise WorkspaceManagementError(f"{header}\n{details}")
+
+
+# Deprecated alias for `_EnvironmentRolesManager`; each method warns and delegates.
+class _EnvironmentMembersManager:
+    """mdmd:hidden"""
+
+    def __init__(self, environment: "_Environment"):
+        """mdmd:hidden"""
+        self._environment = environment
+
+    async def list(self) -> dict[Literal["users", "service_users"], dict[str, str]]:
+        deprecation_warning(
+            (2026, 7, 23),
+            "`Environment.members.list()` is deprecated; use `Environment.roles.list()` instead.",
+        )
+        return await _EnvironmentRolesManager(self._environment).list()
+
+    async def update(
+        self,
+        *,
+        users: Mapping[str, str] | None = None,
+        service_users: Mapping[str, str] | None = None,
+    ) -> None:
+        deprecation_warning(
+            (2026, 7, 23),
+            "`Environment.members.update()` is deprecated; use `Environment.roles.update()` instead.",
+        )
+        await _EnvironmentRolesManager(self._environment).update(users=users, service_users=service_users)
+
     async def remove(
         self,
         *,
         users: Iterable[str] | None = None,
         service_users: Iterable[str] | None = None,
     ) -> None:
-        """Remove members from a restricted Environment.
-
-        **Examples:**
-
-        ```python notest
-        env = modal.Environment.from_name("my-restricted-env")
-        env.members.remove(
-            users=["alice"],
-            service_users=["alice-bot"],
+        """Remove the Environment Role of users and service users, reverting them to the default."""
+        deprecation_warning(
+            (2026, 7, 23),
+            "`Environment.members.remove()` is deprecated. Environment Roles are now explicit; "
+            "set a role (e.g. 'no-access') with `Environment.roles.update()` instead.",
         )
-        ```
-        """
         await self._environment.hydrate()
         users = users or []
         service_users = service_users or []
@@ -247,20 +284,7 @@ class _EnvironmentMembersManager:
                 role=api_pb2.ENVIRONMENT_ROLE_UNSPECIFIED,
             )
 
-        await self._dispatch_role_updates(requests)
-
-    async def _dispatch_role_updates(self, requests: dict[str, api_pb2.EnvironmentRoleSetRequest]) -> None:
-        """Send batched EnvironmentRoleSet RPCs and report all errors encountered."""
-        results = await asyncio.gather(
-            *(self._environment.client.stub.EnvironmentRoleSet(req) for req in requests.values()),
-            return_exceptions=True,
-        )
-        errors = [(label, result) for label, result in zip(requests.keys(), results) if isinstance(result, Exception)]
-        if errors:
-            n = len(errors)
-            header = f"{n} error{'s' if n != 1 else ''} occurred while updating Environment members:"
-            details = "\n".join(f"  - {label}: {e}" for label, e in errors)
-            raise WorkspaceManagementError(f"{header}\n{details}")
+        await _EnvironmentRolesManager(self._environment)._dispatch_role_updates(requests)
 
 
 class _Environment(_Object, type_prefix="en"):
@@ -284,11 +308,17 @@ class _Environment(_Object, type_prefix="en"):
         return _EnvironmentManager()
 
     @property
-    def members(self) -> "_EnvironmentMembersManager":
-        """Namespace with methods for managing the membership of a restricted Environment.
+    def roles(self) -> "_EnvironmentRolesManager":
+        """Namespace with methods for managing the Environment Roles of users and service users.
 
-        See https://modal.com/docs/guide/rbac for more information on restricted Environments.
+        See https://modal.com/docs/guide/rbac for more information on Environment Roles.
         """
+        return _EnvironmentRolesManager(self)
+
+    @property
+    def members(self) -> "_EnvironmentMembersManager":
+        """mdmd:hidden"""
+        # Deprecated alias for `Environment.roles`.
         return _EnvironmentMembersManager(self)
 
     # TODO(michael) Keeping this private for now until we decide what else should be in it
