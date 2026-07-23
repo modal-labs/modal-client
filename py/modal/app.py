@@ -1295,6 +1295,7 @@ class _App:
         scaleup_window: int | None = None,  # Stabilization window (seconds) of sustained demand before scaling up
         scaledown_window: int | None = None,  # Max idle time before scaling down (seconds)
         startup_timeout: int = 30,  # Maximum container startup time in seconds
+        name: str | None = None,  # Name of the server
         port: int = 8000,  # Port the HTTP server listens on
         unauthenticated: bool = False,  # Whether the endpoint requires proxy authentication, required by default.
         h2_enabled: bool = False,  # Enable HTTP/2
@@ -1341,6 +1342,7 @@ class _App:
             scaleup_window: Seconds of sustained demand required before scaling up new containers.
             scaledown_window: Maximum duration (in seconds) idle containers wait before scaling down.
             startup_timeout: Maximum container startup time in seconds.
+            name: Sets the Modal name of the function within the app, defaults to class name.
             port: Port the HTTP server listens on.
             unauthenticated: Whether the endpoint requires proxy authentication; required by default.
             h2_enabled: Enable HTTP/2.
@@ -1423,7 +1425,7 @@ class _App:
             local_state = self._local_state
 
             # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=user_cls.__name__)
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=name or user_cls.__name__)
             # Create the service function
             service_function = _Function.from_local(
                 info,

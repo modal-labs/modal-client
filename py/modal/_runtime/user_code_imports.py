@@ -549,7 +549,8 @@ def _get_cls_or_user_cls(
     else:
         # Load the module dynamically for non-serialized class.
         module = importlib.import_module(function_def.module_name)
-        qual_name: str = function_def.function_name
+        # Always use implementation_name to find the class, default to function_name if implementation_name not set.
+        qual_name: str = function_def.implementation_name or function_def.function_name
 
         if not is_global_object(qual_name):
             raise LocalFunctionError("Attempted to load a class defined in a function scope")
