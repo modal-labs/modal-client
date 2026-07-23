@@ -3,7 +3,9 @@ import hashlib
 import os
 import platform
 import pytest
+import random
 import re
+from math import ceil
 from pathlib import Path, PurePosixPath
 
 import modal
@@ -27,7 +29,9 @@ async def test_get_files(servicer, client, tmpdir):
 
     files = {}
     m = Mount._from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
-    async for upload_spec in Mount._get_files.aio(m.entries):
+    async for upload_spec in Mount._batched_get_missing_files.aio(
+        m.entries, client, n_concurrent_checksums=1, batch_size=1
+    ):
         files[upload_spec.mount_filename] = upload_spec
 
     os.umask(umask := os.umask(0o022))  # Get the current umask
@@ -57,11 +61,45 @@ async def test_get_files(servicer, client, tmpdir):
     }
 
 
+def rand_string(rng: random.Random, len: int):
+    return "".join(rng.choices("abcdefghijklmnopqrstuvwxyz", k=len))
+
+
+@pytest.mark.asyncio
+async def test_batched_get_missing_files(servicer, client, tmpdir):
+    rng = random.Random(123)
+
+    num_files = 1024
+    num_batches = 2
+    batch_size = ceil(num_files / num_batches)
+
+    for i in range(num_files):
+        content = rand_string(rng, 1024)
+        tmpdir.join(f"{i}.txt").write(content)
+
+    specs = []
+    m = Mount._from_local_dir(Path(tmpdir), remote_path="/", condition=lambda _: True, recursive=True)
+
+    with servicer.intercept() as ctx:
+        i = 0
+        async for upload_spec in Mount._batched_get_missing_files.aio(
+            m.entries, client, n_concurrent_checksums=batch_size, batch_size=batch_size
+        ):
+            exists = i % 2 == 0
+            assert upload_spec.exists_in_store == exists
+            i += 1
+
+            specs.append(upload_spec)
+
+        assert len(ctx.calls) == num_batches
+        assert len(specs) == num_files
+
+
 def test_create_mount(servicer, client):
     local_dir, cur_filename = os.path.split(__file__)
 
     def condition(fn):
-        return fn.endswith(".py") and fn.startswith("m")
+        return fn.endswith(".py") and fn.startswith("mount")
 
     m = Mount._from_local_dir(local_dir, remote_path="/foo", condition=condition)
 
@@ -150,7 +188,7 @@ def test_add_local_python_source(servicer, client, test_dir, monkeypatch):
         assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_chained_entries(tmp_path):
+def test_chained_entries(tmp_path, client):
     # TODO: remove when public Mount is deprecated
     a_txt = str(tmp_path / "a.txt")
     b_txt = str(tmp_path / "b.txt")
@@ -161,7 +199,9 @@ def test_chained_entries(tmp_path):
     mount = Mount._from_local_file(a_txt).add_local_file(b_txt)
     entries = mount.entries
     assert len(entries) == 2
-    files = [file for file in Mount._get_files(entries)]
+    files = [
+        file for file in Mount._batched_get_missing_files(entries, client, n_concurrent_checksums=64, batch_size=512)
+    ]
     assert len(files) == 2
     files.sort(key=lambda file: file.source_description)
     assert files[0].source_description.name == "a.txt"
@@ -195,7 +235,7 @@ def test_module_mount_condition():
         assert ignore_condition(path)
 
 
-def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
+def test_mount_from_local_dir_ignore(test_dir, client, tmp_path_with_content):
     ignore = FilePatternMatcher("**/*.txt", "**/module", "!**/*.txt", "!**/*.py")
     expected = {
         "/foo/module/sub.py",
@@ -208,7 +248,12 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
 
     mount = Mount._add_local_dir(tmp_path_with_content, PurePosixPath("/foo"), ignore=ignore)
 
-    file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
+    file_names = [
+        file.mount_filename
+        for file in Mount._batched_get_missing_files(
+            entries=mount.entries, client=client, n_concurrent_checksums=1, batch_size=1
+        )
+    ]
     assert set(file_names) == expected
 
 

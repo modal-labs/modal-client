@@ -444,6 +444,7 @@ class FileUploadSpec:
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
     content: bytes | None = None  # Set for very small files to avoid double-read
+    exists_in_store: bool | None = None  # set after existence check
 
     def read_content(self) -> bytes:
         """Read content from source."""

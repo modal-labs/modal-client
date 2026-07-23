@@ -21,7 +21,7 @@ from modal_version import __version__
 from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
-from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
+from ._utils.async_utils import TaskContext, aclosing, async_generator_from_sync, async_map, synchronize_api
 from ._utils.blob_utils import (
     FileUploadSpec,
     blob_upload_file,
@@ -464,25 +464,65 @@ class _Mount(_Object, type_prefix="mo"):
         return ", ".join(local_contents)
 
     @staticmethod
-    async def _get_files(entries: list[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
+    async def _batched_get_missing_files(
+        entries: list[_MountEntry],
+        client: _Client,
+        *,
+        n_concurrent_checksums: int,
+        batch_size: int,
+    ) -> AsyncGenerator[FileUploadSpec, None]:
         loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as exe:
-            all_files = await loop.run_in_executor(exe, _select_files, entries)
-            logger.debug(f"Computing checksums for {len(all_files)} files using {exe._max_workers} worker threads")
+        with concurrent.futures.ThreadPoolExecutor() as e:
+            all_files = await loop.run_in_executor(e, _select_files, entries)
+            logger.debug(f"Computing checksums for {len(all_files)} files using default max workers")
 
-            # Yield FileUploadSpec objects lazily as they're consumed by async_map downstream.
-            # async_map's concurrency limit provides natural backpressure, so we don't need
-            # a separate semaphore here. This keeps memory bounded without creating all tasks upfront.
-            for local_filename, remote_filename in all_files:
+            async def get_spec(work: tuple[Path, PurePosixPath]) -> FileUploadSpec | None:
+                local, remote = work
+
                 try:
-                    logger.debug(f"Mounting {local_filename} as {remote_filename}")
-                    file_spec = await loop.run_in_executor(
-                        exe, get_file_upload_spec_from_path, local_filename, remote_filename
+                    return await loop.run_in_executor(
+                        e,
+                        get_file_upload_spec_from_path,
+                        local,
+                        remote,
                     )
-                    yield file_spec
                 except FileNotFoundError as exc:
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
+
+            async def check_existence(batch: list[FileUploadSpec]) -> AsyncGenerator[FileUploadSpec, None]:
+                request = api_pb2.MountBatchedCheckExistenceRequest(
+                    sha256_hex_hashes=[spec.sha256_hex for spec in batch]
+                )
+                response = await client.stub.MountBatchedCheckExistence(request, retry=Retry(base_delay=1))
+                missing_hashes = set(response.missing_sha256_hex_hashes)
+
+                for spec in batch:
+                    spec.exists_in_store = spec.sha256_hex not in missing_hashes
+                    yield spec
+
+            batch: list[FileUploadSpec] = []
+            async with aclosing(
+                async_map(
+                    async_generator_from_sync(all_files),
+                    get_spec,
+                    n_concurrent_checksums,
+                )
+            ) as stream:
+                async for spec in stream:
+                    if spec is None:
+                        continue
+
+                    batch.append(spec)
+                    if len(batch) == batch_size:
+                        async for checked_spec in check_existence(batch):
+                            yield checked_spec
+
+                        batch = []
+
+            if batch:
+                async for checked_spec in check_existence(batch):
+                    yield checked_spec
 
     async def _load_mount(
         self: "_Mount",
@@ -490,12 +530,13 @@ class _Mount(_Object, type_prefix="mo"):
         load_context: LoadContext,
         existing_object_id: str | None,
     ):
+        assert self._entries is not None
+
         t0 = time.monotonic()
 
         # Asynchronously list and checksum files with a thread pool, then upload them concurrently.
         n_seen, n_finished = 0, 0
         total_uploads, total_bytes = 0, 0
-        accounted_hashes: set[str] = set()
         from modal.output import OutputManager
 
         message_label = _Mount._description(self._entries)
@@ -503,10 +544,14 @@ class _Mount(_Object, type_prefix="mo"):
         output_mgr = OutputManager.get()
         status_row = output_mgr.add_status_row()
 
+        accounted_hashes = set()
+
+        # Assumption is that if a file_spec is provided to this function, we've checked that
+        # the file is not already present in blobnet upstream
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_seen, n_finished, total_uploads, total_bytes
             n_seen += 1
-            status_row.message(f"Creating mount {message_label}: Uploaded {n_finished}/{n_seen} files")
+            status_row.message(f"Creating mount {message_label}: Uploaded {n_finished}/{n_seen} missing files")
 
             remote_filename = file_spec.mount_filename
             mount_file = api_pb2.MountFile(
@@ -514,10 +559,6 @@ class _Mount(_Object, type_prefix="mo"):
                 sha256_hex=file_spec.sha256_hex,
                 mode=file_spec.mode,
             )
-
-            if file_spec.sha256_hex in accounted_hashes:
-                n_finished += 1
-                return mount_file
 
             # Try to catch cases where user modified their local files (e.g. changed git branches)
             # between triggering a build and Modal actually uploading the file
@@ -530,50 +571,67 @@ class _Mount(_Object, type_prefix="mo"):
                     elif config.get("build_validation") == "warn":
                         warnings.warn(msg)
 
-            request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
-            accounted_hashes.add(file_spec.sha256_hex)
-            response = await load_context.client.stub.MountPutFile(request, retry=Retry(base_delay=1))
-
-            if response.exists:
+            if file_spec.exists_in_store or file_spec.sha256_hex in accounted_hashes:
                 n_finished += 1
                 return mount_file
+
+            accounted_hashes.add(file_spec.sha256_hex)
 
             total_uploads += 1
             total_bytes += file_spec.size
 
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
+
                 async with blob_upload_concurrency:
                     with file_spec.source() as fp:
                         blob_id = await blob_upload_file(
                             fp, load_context.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
                         )
+
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+
+                request = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
+
                 if file_spec.content is None:
                     content = await asyncio.to_thread(file_spec.read_content)
                 else:
                     content = file_spec.content
-                request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
+
+                request = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
-                response = await load_context.client.stub.MountPutFile(request2, retry=Retry(base_delay=1))
+                response = await load_context.client.stub.MountPutFile(request, retry=Retry(base_delay=1))
+
                 if response.exists:
                     n_finished += 1
                     return mount_file
 
             raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.source_description} timed out")
 
-        # Upload files, or check if they already exist.
+        # todo(ayush): tune these
+        batch_size = 64
+        n_concurrent_checksums = 64
         n_concurrent_uploads = 64
+
+        # Upload files, or check if they already exist.
         files: list[api_pb2.MountFile] = []
         async with aclosing(
-            async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
+            async_map(
+                _Mount._batched_get_missing_files(
+                    self._entries,
+                    load_context.client,
+                    n_concurrent_checksums=n_concurrent_checksums,
+                    batch_size=batch_size,
+                ),
+                _put_file,
+                concurrency=n_concurrent_uploads,
+            )
         ) as stream:
             async for file in stream:
                 files.append(file)

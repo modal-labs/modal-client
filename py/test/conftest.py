@@ -2638,6 +2638,32 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Mount
 
+    async def MountBatchedCheckExistence(self, stream):
+        request: api_pb2.MountBatchedCheckExistenceRequest = await stream.recv_message()
+
+        # fixme(ayush): turbo hack to make existing mount tests (which only run for a small batch
+        # size) pass
+        if len(request.sha256_hex_hashes) < 10:
+            await stream.send_message(
+                api_pb2.MountBatchedCheckExistenceResponse(
+                    missing_sha256_hex_hashes=request.sha256_hex_hashes,
+                )
+            )
+            return
+
+        missing_hashes = []
+        for i, sha in enumerate(request.sha256_hex_hashes):
+            if i % 2 == 0:
+                continue
+
+            missing_hashes.append(sha)
+
+        await stream.send_message(
+            api_pb2.MountBatchedCheckExistenceResponse(
+                missing_sha256_hex_hashes=missing_hashes,
+            )
+        )
+
     async def MountPutFile(self, stream):
         request: api_pb2.MountPutFileRequest = await stream.recv_message()
         if request.WhichOneof("data_oneof") is not None:

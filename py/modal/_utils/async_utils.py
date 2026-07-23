@@ -1266,3 +1266,8 @@ def deprecate_aio_usage(deprecation_date: tuple[int, int, int], readable_sync_ca
         return MethodWithAio(sync_implementation, _async_proxy, synchronizer, is_classmethod=is_classmethod)
 
     return deco
+
+
+async def async_generator_from_sync(lst: Iterable[T]) -> AsyncGenerator[T, None]:
+    for item in lst:
+        yield item
