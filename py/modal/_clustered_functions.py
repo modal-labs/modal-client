@@ -15,6 +15,7 @@ class ClusterInfo:
     cluster_id: str
     container_ips: list[str]
     container_ipv4_ips: list[str]
+    fabric_ids: list[str]
 
 
 cluster_info: ClusterInfo | None = None
@@ -27,6 +28,14 @@ def get_cluster_info() -> ClusterInfo:
             "calling get_cluster_info() from a clustered function."
         )
     return cluster_info
+
+
+def get_fabric_peers() -> list[int]:
+    info = get_cluster_info()
+    if info.rank >= len(info.fabric_ids) or not info.fabric_ids[info.rank]:
+        return [info.rank]
+    own_fabric_id = info.fabric_ids[info.rank]
+    return [rank for rank, fabric_id in enumerate(info.fabric_ids) if fabric_id == own_fabric_id]
 
 
 async def _initialize_clustered_function(client: _Client, task_id: str, world_size: int):
@@ -70,6 +79,7 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
             cluster_id=resp.cluster_id,
             container_ips=resp.container_ips,
             container_ipv4_ips=resp.container_ipv4_ips,
+            fabric_ids=resp.fabric_ids,
         )
     else:
         cluster_info = ClusterInfo(
@@ -77,6 +87,7 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
             cluster_id="",  # No cluster ID for single-node  # TODO(irfansharif): Is this right?
             container_ips=[container_ip],
             container_ipv4_ips=[],  # No IPv4 IPs for single-node
+            fabric_ids=[],
         )
 
 

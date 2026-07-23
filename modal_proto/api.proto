@@ -3943,6 +3943,8 @@ message TaskClusterHelloResponse {
   // All nvidia-imex IPs in fabric, ordered by cluster rank,
   // and otherwise absent on non-NVL72 systems
   repeated string imex_peer_ips = 5;
+  // GPU-memory-fabric labels, ordered by cluster rank
+  repeated string fabric_ids = 6;
 }
 
 message TaskCurrentInputsResponse {

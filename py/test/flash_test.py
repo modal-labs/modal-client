@@ -656,6 +656,7 @@ class TestFlashClusteredEntry:
             cluster_id="cluster",
             container_ips=container_ips,
             container_ipv4_ips=container_ipv4_ips,
+            fabric_ids=[],
         )
         monkeypatch.setattr("modal._clustered_functions.cluster_info", cluster_zero)
 
@@ -678,6 +679,7 @@ class TestFlashClusteredEntry:
             cluster_id="cluster",
             container_ips=container_ips,
             container_ipv4_ips=container_ipv4_ips,
+            fabric_ids=[],
         )
         monkeypatch.setattr("modal._clustered_functions.cluster_info", cluster_non_zero)
 

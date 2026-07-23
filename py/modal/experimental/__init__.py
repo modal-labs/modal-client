@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 
 from modal_proto import api_pb2
 
-from .._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
+from .._clustered_functions import (
+    ClusterInfo,
+    get_cluster_info as _get_cluster_info,
+    get_fabric_peers as _get_fabric_peers,
+)
 from .._functions import _Function
 from .._image import (
     DockerfileSpec as DockerfileSpec,
@@ -51,6 +55,10 @@ def set_local_input_concurrency(concurrency: int):
 
 def get_cluster_info() -> ClusterInfo:
     return _get_cluster_info()
+
+
+def get_fabric_peers() -> list[int]:
+    return _get_fabric_peers()
 
 
 clustered = synchronize_api(_clustered, target_module=__name__)

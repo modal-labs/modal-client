@@ -50013,6 +50013,7 @@ type TaskClusterHelloResponse struct {
 	xxx_hidden_ContainerIps     []string               `protobuf:"bytes,3,rep,name=container_ips,json=containerIps,proto3"`
 	xxx_hidden_ContainerIpv4Ips []string               `protobuf:"bytes,4,rep,name=container_ipv4_ips,json=containerIpv4Ips,proto3"`
 	xxx_hidden_ImexPeerIps      []string               `protobuf:"bytes,5,rep,name=imex_peer_ips,json=imexPeerIps,proto3"`
+	xxx_hidden_FabricIds        []string               `protobuf:"bytes,6,rep,name=fabric_ids,json=fabricIds,proto3"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -50077,6 +50078,13 @@ func (x *TaskClusterHelloResponse) GetImexPeerIps() []string {
 	return nil
 }
 
+func (x *TaskClusterHelloResponse) GetFabricIds() []string {
+	if x != nil {
+		return x.xxx_hidden_FabricIds
+	}
+	return nil
+}
+
 func (x *TaskClusterHelloResponse) SetClusterId(v string) {
 	x.xxx_hidden_ClusterId = v
 }
@@ -50097,6 +50105,10 @@ func (x *TaskClusterHelloResponse) SetImexPeerIps(v []string) {
 	x.xxx_hidden_ImexPeerIps = v
 }
 
+func (x *TaskClusterHelloResponse) SetFabricIds(v []string) {
+	x.xxx_hidden_FabricIds = v
+}
+
 type TaskClusterHelloResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -50108,6 +50120,8 @@ type TaskClusterHelloResponse_builder struct {
 	// All nvidia-imex IPs in fabric, ordered by cluster rank,
 	// and otherwise absent on non-NVL72 systems
 	ImexPeerIps []string
+	// GPU-memory-fabric labels, ordered by cluster rank
+	FabricIds []string
 }
 
 func (b0 TaskClusterHelloResponse_builder) Build() *TaskClusterHelloResponse {
@@ -50119,6 +50133,7 @@ func (b0 TaskClusterHelloResponse_builder) Build() *TaskClusterHelloResponse {
 	x.xxx_hidden_ContainerIps = b.ContainerIps
 	x.xxx_hidden_ContainerIpv4Ips = b.ContainerIpv4Ips
 	x.xxx_hidden_ImexPeerIps = b.ImexPeerIps
+	x.xxx_hidden_FabricIds = b.FabricIds
 	return m0
 }
 
@@ -64934,14 +64949,16 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\fcontainer_ip\x18\x02 \x01(\tR\vcontainerIp\x12 \n" +
 	"\fimex_host_ip\x18\x03 \x01(\tR\n" +
 	"imexHostIp\x12$\n" +
-	"\x0eimex_fabric_id\x18\x04 \x01(\tR\fimexFabricId\"\xd3\x01\n" +
+	"\x0eimex_fabric_id\x18\x04 \x01(\tR\fimexFabricId\"\xf2\x01\n" +
 	"\x18TaskClusterHelloResponse\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12!\n" +
 	"\fcluster_rank\x18\x02 \x01(\rR\vclusterRank\x12#\n" +
 	"\rcontainer_ips\x18\x03 \x03(\tR\fcontainerIps\x12,\n" +
 	"\x12container_ipv4_ips\x18\x04 \x03(\tR\x10containerIpv4Ips\x12\"\n" +
-	"\rimex_peer_ips\x18\x05 \x03(\tR\vimexPeerIps\"8\n" +
+	"\rimex_peer_ips\x18\x05 \x03(\tR\vimexPeerIps\x12\x1d\n" +
+	"\n" +
+	"fabric_ids\x18\x06 \x03(\tR\tfabricIds\"8\n" +
 	"\x19TaskCurrentInputsResponse\x12\x1b\n" +
 	"\tinput_ids\x18\x01 \x03(\tR\binputIds\"<\n" +
 	"!TaskGetCommandRouterAccessRequest\x12\x17\n" +
