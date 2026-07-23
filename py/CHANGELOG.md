@@ -4,6 +4,18 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.5.3 (2026-07-23)
+
+- We've added new APIs for programmatically retrieving logs on several object types: [`Function`](/docs/sdk/py/latest/Function#logs), [`Server`](/docs/sdk/py/latest/Server#logs), and [`FunctionCall`](/docs/sdk/py/latest/FunctionCall#logs). Each object exposes three different methods, allowing you to `stream()` logs as they are generated, `fetch()` logs from a specific date/time range, or `tail()` the most recent logs.
+- It's now possible to retrieve a summary of billing information across billing cycles:
+  - Use the [`modal.Workspace.billing.summary()`](/docs/sdk/py/latest/Workspace#billingsummary) method or the [`modal billing summary`](/docs/cli/latest/billing#modal-billing-summary) CLI to see workspace-level spend (broken down by category), credit usage, and the impact of any compute reservations.
+  - Use the [`modal.Environment.billing.summary()`](/docs/sdk/py/latest/Environment#billingsummary) method or the [`modal environment billing summary`](/docs/cli/latest/environment#modal-environment-billing-summary) CLI to see environment-level spend.
+- We've made some changes to the interfaces for managing [RBAC](/docs/guide/rbac) permissions:
+  - We now explicitly represent all workspace member and service user roles in each Environment instead of having separate concepts for Environment membership and role.
+  - We've accordingly introduced a [`modal.Environment.roles`](/docs/sdk/py/latest/Environment#roles) interface (and [`modal environment roles`](/docs/cli/latest/environment#modal-environment-roles) CLI), replacing the `modal.Environment.members` interface and `modal environment members` CLI, which are now deprecated.
+- It's now possible to specify one or more `--compute-region` options in [`modal endpoint create`](/docs/cli/latest/endpoint#modal-endpoint-create) to configure the region where Endpoint containers run.
+- We've improved performance for large writes by ≈2.5x in several Sandbox filesystem methods ([`copy_from_local()`](/docs/sdk/py/latest/Sandbox#filesystemcopy_from_local), [`write_bytes()`](/docs/sdk/py/latest/Sandbox#filesystemwrite_bytes), and [`write_text()`](/docs/sdk/py/latest/Sandbox#filesystemwrite_text)).
+
 ### 1.5.2 (2026-07-10)
 
 - We've added new interfaces for programmatic management of workspace settings:
