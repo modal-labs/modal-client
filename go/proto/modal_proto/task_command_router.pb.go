@@ -3352,10 +3352,11 @@ func (b0 TaskMountDirectoryRequest_builder) Build() *TaskMountDirectoryRequest {
 }
 
 type TaskReloadVolumesRequest struct {
-	state             protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId      string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_ContainerId string                 `protobuf:"bytes,2,opt,name=container_id,json=containerId,proto3"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *TaskReloadVolumesRequest) Reset() {
@@ -3390,14 +3391,27 @@ func (x *TaskReloadVolumesRequest) GetTaskId() string {
 	return ""
 }
 
+func (x *TaskReloadVolumesRequest) GetContainerId() string {
+	if x != nil {
+		return x.xxx_hidden_ContainerId
+	}
+	return ""
+}
+
 func (x *TaskReloadVolumesRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
+}
+
+func (x *TaskReloadVolumesRequest) SetContainerId(v string) {
+	x.xxx_hidden_ContainerId = v
 }
 
 type TaskReloadVolumesRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	TaskId string
+	// Fully qualified target container ID. Empty targets the main container.
+	ContainerId string
 }
 
 func (b0 TaskReloadVolumesRequest_builder) Build() *TaskReloadVolumesRequest {
@@ -3405,6 +3419,7 @@ func (b0 TaskReloadVolumesRequest_builder) Build() *TaskReloadVolumesRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_TaskId = b.TaskId
+	x.xxx_hidden_ContainerId = b.ContainerId
 	return m0
 }
 
@@ -4350,9 +4365,10 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x19\n" +
 	"\bimage_id\x18\x03 \x01(\tR\aimageId\x12L\n" +
 	" customer_supplied_encryption_key\x18\x04 \x01(\fH\x00R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01B#\n" +
-	"!_customer_supplied_encryption_key\"3\n" +
+	"!_customer_supplied_encryption_key\"V\n" +
 	"\x18TaskReloadVolumesRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\x1b\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
+	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\"\x1b\n" +
 	"\x19TaskReloadVolumesResponse\"z\n" +
 	"\x1bTaskSetNetworkAccessRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12B\n" +

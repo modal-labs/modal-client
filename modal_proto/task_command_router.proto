@@ -292,6 +292,8 @@ message TaskMountDirectoryRequest {
 
 message TaskReloadVolumesRequest {
   string task_id = 1;
+  // Fully qualified target container ID. Empty targets the main container.
+  string container_id = 2;
 }
 
 message TaskReloadVolumesResponse {}
