@@ -787,6 +787,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.classes = []
         self.environments = {"main": "en-1"}
         self.environment_managed: dict[str, bool] = {}
+        self.environment_type: "dict[str, api_pb2.EnvironmentType.ValueType]" = {}
         # Workspace principals that can be assigned roles in restricted Environments
         self.workspace_users: dict[str, str] = {"us-1": "alice", "us-2": "bob", "us-3": "carol"}
         self.workspace_service_users: dict[str, str] = {"sv-1": "alice-bot", "sv-2": "ops-bot"}
@@ -1890,8 +1891,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if name not in self.environments:
             env_id = f"en-{len(self.environments) + 1}"
             self.environments[name] = env_id
+            self.environment_type[env_id] = request.environment_type
             if request.is_managed:
                 self.environment_managed[env_id] = True
+
         await stream.send_message(Empty())
 
     async def EnvironmentDelete(self, stream):
@@ -1907,6 +1910,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 environment_id=env_id,
                 webhook_suffix=f"{name}-suffix",
                 default=name == "main",
+                is_managed=self.environment_managed.get(env_id, False),
+                environment_type=self.environment_type.get(env_id, api_pb2.ENVIRONMENT_TYPE_UNSPECIFIED),
             )
             for name, env_id in self.environments.items()
         ]

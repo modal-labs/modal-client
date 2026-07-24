@@ -72,10 +72,11 @@ def list_(json: bool = False):
 @environment_cli.command("create", help="Create a new environment in the current workspace.", no_args_is_help=True)
 @click.argument("name")
 @click.option("--restricted", is_flag=True, default=False, help="Enable RBAC restrictions on the new environment")
-def create(name: str, restricted: bool = False):
+@click.option("--public", is_flag=True, default=False, hidden=True)
+def create(name: str, restricted: bool = False, public: bool = False):
     check_environment_name(name)
-    Environment.objects.create(name, restricted=restricted)
-    prefix = "Restricted " if restricted else ""
+    Environment.objects.create(name, restricted=restricted, experimental_options={"is_public": public})
+    prefix = "Public " if public else "Restricted " if restricted else ""
     rich.print(f"[green]✓[/green] {prefix}Environment created: {name}")
 
 

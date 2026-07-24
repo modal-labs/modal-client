@@ -117,34 +117,51 @@ def _validate_image_tag(tag: str) -> None:
     check_object_name(tag, "Image tag")
 
 
-def _parse_named_image_ref(name: str) -> tuple[str, str]:
-    """Parse an image reference, returning (namespace_prefix, name_tag).
-
-    If the name contains a '/', the part before the last '/' is extracted as
-    a namespace prefix (intended for environment/name or workspace/env/name
-    syntax). The actual image name (after the last '/') is validated as a
-    standard object name.
-
-    Returns a tuple of (prefix, "full_name:tag") where prefix is empty string
-    if no '/' is present.
-    """
-    image_name, sep, tag = name.partition(":")
+def _parse_image_name(partial_name: str) -> tuple[str | None, str]:
+    partial_name_no_env, sep, tag = partial_name.partition(":")
     if not sep:
         tag = "latest"
 
-    prefix = ""
-    if "/" in image_name:
-        prefix, image_name = image_name.rsplit("/", 1)
-        if not prefix:
-            raise InvalidError("Invalid Image name: '/' prefix must be non-empty.")
+    if "/" in partial_name_no_env:
+        environment, image_name = partial_name_no_env.rsplit("/", 1)
+        if not environment:
+            raise InvalidError("Invalid Image name: environment prefix before '/' must be non-empty.")
         if not image_name:
-            raise InvalidError("Invalid Image name: name after '/' must be non-empty.")
+            raise InvalidError("Invalid Image name: name after last '/' must be non-empty.")
+    else:
+        environment = None
+        image_name = partial_name_no_env
 
     _validate_image_name(image_name)
     _validate_image_tag(tag)
 
-    full_name = f"{prefix}/{image_name}" if prefix else image_name
-    return prefix, f"{full_name}:{tag}"
+    return environment, f"{image_name}:{tag}"
+
+
+def _upgrade_image_name(
+    partial_name: str,
+    *,
+    explicit_environment_name: str | None = None,
+    fallback_environment_name: str | None = None,
+) -> str:
+    """Ensures an Image name has a tag and an environment name when possible
+
+    * If no tag is present, add :latest
+    * If an explicit environment name is passed, add it as a prefix and error
+      if there is already a prefix
+    * If a fallback environment name is passed, add it only when there is no prefix
+
+    """
+    prefix_environment, name_tag = _parse_image_name(partial_name)
+    if prefix_environment:
+        if explicit_environment_name is not None:
+            raise InvalidError("environment_name cannot be used when an Image name includes an environment prefix.")
+        return f"{prefix_environment}/{name_tag}"
+
+    environment_name = explicit_environment_name if explicit_environment_name is not None else fallback_environment_name
+    if environment_name:
+        return f"{environment_name}/{name_tag}"
+    return name_tag  # no explicit environment - use just the unprefixed name:tag
 
 
 def _validate_python_version(
@@ -2932,8 +2949,8 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Reference a named Image that was previously published with `.publish()`.
 
-        Names can contain an optional `:tag` part - if no tag part is included `":latest"` is used,
-        matching Docker conventions.
+        Names can contain an optional `:tag` part. If no tag part is included, `":latest"` is used, matching
+        Docker conventions.
 
         ```python notest
         image = modal.Image.from_name("my-image")     # references my-image:latest
@@ -2944,20 +2961,16 @@ class _Image(_Object, type_prefix="im"):
             ...
         ```
         """
-        namespace_prefix, tag = _parse_named_image_ref(name)
-
-        if namespace_prefix and environment_name:
-            raise InvalidError("Cannot specify 'environment_name' when the image name contains a '/'.")
+        _upgrade_image_name(name, explicit_environment_name=environment_name)  # validate
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.ImageGetByTagRequest(
-                tag=tag,
-                environment_name="" if namespace_prefix else load_context.environment_name,
+                tag=_upgrade_image_name(name, fallback_environment_name=load_context.environment_name),
             )
             response = await load_context.client.stub.ImageGetByTag(req)
             self._hydrate(response.image_id, load_context.client, None)
 
-        rep = _Image._repr(tag, environment_name)
+        rep = _Image._repr(name, environment_name)
         return _Image._from_loader(
             _load,
             rep,
@@ -2971,13 +2984,14 @@ class _Image(_Object, type_prefix="im"):
         name: str,
         *,
         environment_name: str | None = None,
+        experimental_options: dict[str, Any] | None = None,
         client: _Client | None = None,
     ) -> None:
         """Publish this image under the given name
 
         The Image must already be created (typically by calling `image.build()` or `sandbox.snapshot_filesystem()`).
 
-        Image names can contain an explicit tag designation (using the `name:tag`). If no tag is included in the name,
+        Image names can contain an explicit tag designation using `name:tag`. If no tag is included in the name,
         `":latest"` is used, matching Docker conventions. To publish multiple tags, call `.publish()` once per tag.
 
         ```python notest
@@ -2987,25 +3001,20 @@ class _Image(_Object, type_prefix="im"):
         image.publish("my-image-with-numpy:v1")
         ```
         """
-        namespace_prefix, tag = _parse_named_image_ref(name)
-
-        if namespace_prefix:
-            if environment_name:
-                raise InvalidError("Cannot specify 'environment_name' when the image name contains a '/'.")
-            resolved_env = ""
-        else:
-            resolved_env = environment_name or config.get("environment") or ""
-
         if self._object_id is None:
             raise InvalidError("Cannot publish an image that has not been created yet. Call `.build()` first.")
 
         _client = client or await _Client.from_env()
+        tag = _upgrade_image_name(
+            name,
+            explicit_environment_name=environment_name,
+            fallback_environment_name=config.get("environment"),
+        )
 
         await _client.stub.ImagePublish(
             api_pb2.ImagePublishRequest(
                 image_id=self._object_id,
-                environment_name=resolved_env,
-                allow_public=False,
+                allow_public=bool((experimental_options or {}).get("is_public", False)),
                 tag=tag,
             )
         )

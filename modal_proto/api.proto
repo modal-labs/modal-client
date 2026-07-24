@@ -2610,7 +2610,8 @@ message ImageGetByTagRequest {
   // Named image reference: "[[workspace/]environment/]name[:tag]".
   // The tag suffix defaults to "latest" when omitted.
   string tag = 1;
-  // Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
+  // New clients should send environment name as a /-separated prefix of the `tag` field.
+  // environment_name only accepted when tag has no environment or workspace prefix.
   string environment_name = 2;
 }
 
@@ -2707,7 +2708,8 @@ message ImagePublishRequest {
   // Named image reference: "[[workspace/]environment/]name[:tag]".
   // The tag suffix defaults to "latest" when omitted.
   string tag = 2;
-  // Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
+  // New clients should send environment name as a /-separated prefix of the `tag` field.
+  // environment_name only accepted when tag has no environment or workspace prefix.
   string environment_name = 3;
   // Explicit opt-in required when publishing to a public environment.
   bool allow_public = 4;
@@ -2734,7 +2736,8 @@ message ImageTagRevisionsRequest {
   // Named image reference: "[[workspace/]environment/]name[:tag]".
   // The tag suffix defaults to "latest" when omitted.
   string tag = 1;
-  // Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
+  // New clients should send environment name as a /-separated prefix of the `tag` field.
+  // environment_name only accepted when tag has no environment or workspace prefix.
   string environment_name = 2;
   // Defaults to 100. Values above 100 are rejected by the server.
   uint32 max_objects = 3;

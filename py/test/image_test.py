@@ -2200,30 +2200,26 @@ def test_image_publish_requires_hydrated(client):
 
 @pytest.mark.parametrize("bad_name", ["name with spaces", "a" * 65, "ap-" + "a" * 22, ":latest"])
 def test_image_publish_rejects_invalid_names(client, servicer, bad_name):
-    image = Image.debian_slim()
-    build_image(image, client)
+    image = Image.from_id("im-123")
     with pytest.raises(InvalidError, match="Invalid Image name"):
         image.publish(bad_name, client=client)
 
 
 def test_image_publish_rejects_im_prefix(client, servicer):
-    image = Image.debian_slim()
-    build_image(image, client)
+    image = Image.from_id("im-123")
     with pytest.raises(InvalidError, match="cannot start with 'im-'"):
         image.publish("im-looks-like-an-id", client=client)
 
 
 @pytest.mark.parametrize("bad_tag", ["v1:beta", "with/slash", "tag with spaces", "a" * 65, "ap-" + "a" * 22])
 def test_image_publish_rejects_invalid_tag(client, servicer, bad_tag):
-    image = Image.debian_slim()
-    build_image(image, client)
+    image = Image.from_id("im-123")
     with pytest.raises(InvalidError, match="Invalid Image tag name"):
         image.publish(f"my-image:{bad_tag}", client=client)
 
 
 def test_image_publish_rejects_empty_tag(client, servicer):
-    image = Image.debian_slim()
-    build_image(image, client)
+    image = Image.from_id("im-123")
     with pytest.raises(InvalidError, match="Invalid Image tag name"):
         image.publish("my-image:", client=client)
 
@@ -2234,6 +2230,45 @@ def test_image_publish_tag_can_start_with_im_prefix(client, servicer):
     build_image(image, client)
     image.publish("my-image:im-build-1", client=client)
     assert servicer.image_tags["my-image:im-build-1"] == image.object_id
+
+
+def test_image_publish_environment_name_uses_environment_prefix(client, servicer):
+    image = Image.from_id("im-123")
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ImagePublish", api_pb2.ImagePublishResponse(image_id=image.object_id, revision_id="ir-123"))
+        image.publish("my-image", environment_name="legacy", client=client)
+
+    req = ctx.pop_request("ImagePublish")
+    assert req.tag == "legacy/my-image:latest"
+    assert req.environment_name == ""
+
+
+def test_image_publish_rejects_environment_name_with_environment_prefix(client):
+    image = Image.from_id("im-123")
+    with pytest.raises(InvalidError, match="environment_name cannot be used"):
+        image.publish("dev/my-image", environment_name="other-dev", client=client)
+
+
+def test_image_publish_experimental_public_option_sets_allow_public(client, servicer):
+    image = Image.from_id("im-123")
+    with servicer.intercept() as ctx:
+        ctx.add_response("ImagePublish", api_pb2.ImagePublishResponse(image_id=image.object_id, revision_id="ir-123"))
+        image.publish("public-env/my-image", experimental_options={"is_public": True}, client=client)
+
+    req = ctx.pop_request("ImagePublish")
+    assert req.tag == "public-env/my-image:latest"
+    assert req.allow_public is True
+
+
+def test_image_publish_does_not_validate_namespace_prefixes(client, servicer):
+    image = Image.from_id("im-123")
+    with servicer.intercept() as ctx:
+        ctx.add_response("ImagePublish", api_pb2.ImagePublishResponse(image_id=image.object_id, revision_id="ir-123"))
+        image.publish("bad workspace/bad env/my-image", client=client)
+
+    req = ctx.pop_request("ImagePublish")
+    assert req.tag == "bad workspace/bad env/my-image:latest"
 
 
 def test_image_from_name(client, servicer):
@@ -2266,6 +2301,50 @@ def test_image_from_name_with_tag(client, servicer):
         build_image(retrieved_missing, client)
 
 
+def test_image_from_name_with_namespace_ref(client, servicer):
+    servicer.image_tags["workspace/env/my-image:latest"] = "im-123"
+    retrieved = Image.from_name("workspace/env/my-image", client=client)
+    build_image(retrieved, client)
+    assert retrieved.object_id == "im-123"
+
+
+@pytest.mark.parametrize(
+    ("image_name", "expected_tag"),
+    [
+        ("my-image", "app-env/my-image:latest"),
+        ("image-env/my-image", "image-env/my-image:latest"),
+    ],
+)
+def test_function_with_image_from_name_uses_app_environment_as_default(client, servicer, image_name, expected_tag):
+    servicer.image_tags[expected_tag] = "im-123"
+
+    app = App(include_source=False)
+    app.function(image=Image.from_name(image_name))(run_f)
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client, environment_name="app-env"):
+            pass
+
+    image_lookup_req = ctx.pop_request("ImageGetByTag")
+    assert image_lookup_req.tag == expected_tag
+    assert image_lookup_req.environment_name == ""
+
+    function_create_req = ctx.pop_request("FunctionCreate")
+    assert function_create_req.function.image_id == "im-123"
+
+
+def test_image_from_name_environment_name_translated_to_prefix(client, servicer):
+    servicer.image_tags["some-env/my-image:latest"] = "im-123"
+    with servicer.intercept() as ctx:
+        retrieved = Image.from_name("my-image", environment_name="some-env", client=client)
+        build_image(retrieved, client)
+
+    req = ctx.pop_request("ImageGetByTag")
+    assert req.tag == "some-env/my-image:latest"
+    assert req.environment_name == ""
+    assert retrieved.object_id == "im-123"
+
+
 def test_image_from_name_not_found(client, servicer):
     retrieved = Image.from_name("nonexistent-image", client=client)
     with pytest.raises(Exception):
@@ -2294,6 +2373,11 @@ def test_image_from_name_rejects_empty_tag():
         Image.from_name("my-image:")
 
 
+def test_image_from_name_rejects_environment_name_with_slash_prefix():
+    with pytest.raises(InvalidError, match="environment_name cannot be used"):
+        Image.from_name("dev/my-image", environment_name="other-dev")
+
+
 def test_image_from_name_allows_slash_in_name():
     # Slash in name should be allowed (environment/name syntax)
     image = Image.from_name("my-env/my-image")
@@ -2308,11 +2392,6 @@ def test_image_from_name_allows_slash_in_name():
 
     image_multi_tag = Image.from_name("my-workspace/my-env/my-image:v2")
     assert image_multi_tag is not None
-
-
-def test_image_from_name_rejects_environment_with_slash():
-    with pytest.raises(InvalidError, match="Cannot specify 'environment_name'"):
-        Image.from_name("my-env/my-image", environment_name="other-env")
 
 
 @pytest.mark.parametrize("bad_name", ["/my-image", "my-env/", "/", "my-workspace/my-env/"])

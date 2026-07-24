@@ -32595,7 +32595,8 @@ type ImageGetByTagRequest_builder struct {
 	// Named image reference: "[[workspace/]environment/]name[:tag]".
 	// The tag suffix defaults to "latest" when omitted.
 	Tag string
-	// Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
+	// New clients should send environment name as a /-separated prefix of the `tag` field.
+	// environment_name only accepted when tag has no environment or workspace prefix.
 	EnvironmentName string
 }
 
@@ -33781,7 +33782,8 @@ type ImagePublishRequest_builder struct {
 	// Named image reference: "[[workspace/]environment/]name[:tag]".
 	// The tag suffix defaults to "latest" when omitted.
 	Tag string
-	// Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
+	// New clients should send environment name as a /-separated prefix of the `tag` field.
+	// environment_name only accepted when tag has no environment or workspace prefix.
 	EnvironmentName string
 	// Explicit opt-in required when publishing to a public environment.
 	AllowPublic bool
@@ -34124,7 +34126,8 @@ type ImageTagRevisionsRequest_builder struct {
 	// Named image reference: "[[workspace/]environment/]name[:tag]".
 	// The tag suffix defaults to "latest" when omitted.
 	Tag string
-	// Deprecated for new clients. Accepted only when tag has no environment or workspace prefix.
+	// New clients should send environment name as a /-separated prefix of the `tag` field.
+	// environment_name only accepted when tag has no environment or workspace prefix.
 	EnvironmentName string
 	// Defaults to 100. Values above 100 are rejected by the server.
 	MaxObjects uint32

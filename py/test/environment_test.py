@@ -108,6 +108,10 @@ def test_environment_objects_create(servicer, client):
     assert "restricted-env" in servicer.environments
     assert servicer.environment_managed[servicer.environments["restricted-env"]] is True
 
+    Environment.objects.create("public-env", experimental_options={"is_public": True}, client=client)
+    assert "public-env" in servicer.environments
+    assert servicer.environment_type[servicer.environments["public-env"]] == api_pb2.ENVIRONMENT_TYPE_PUBLIC
+
 
 def test_environment_objects_list(servicer, client):
     envs = Environment.objects.list(client=client)

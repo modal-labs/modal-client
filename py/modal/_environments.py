@@ -4,7 +4,7 @@ import builtins
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -39,6 +39,7 @@ class _EnvironmentManager:
         name: str,  # Name to use for the new Environment
         *,
         restricted: bool = False,  # If True, enable RBAC restrictions on the Environment
+        experimental_options: dict[str, Any] | None = None,  # Experimental options for Environment creation
         client: _Client | None = None,  # Optional client with Modal credentials
     ) -> None:
         """Create a new Environment.
@@ -51,7 +52,10 @@ class _EnvironmentManager:
         """
         check_environment_name(name)
         client = await _Client.from_env() if client is None else client
-        await client.stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name, is_managed=restricted))
+        request = api_pb2.EnvironmentCreateRequest(name=name, is_managed=restricted)
+        if (experimental_options or {}).get("is_public", False):
+            request.environment_type = api_pb2.ENVIRONMENT_TYPE_PUBLIC
+        await client.stub.EnvironmentCreate(request)
 
     async def list(
         self,

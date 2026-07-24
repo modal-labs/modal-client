@@ -367,6 +367,38 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
     assert sleep_calls == [1.0, 1.0]
 
 
+def test_image_cli_history_uses_implicit_environment_as_fallback(servicer, set_env_client, modal_config):
+    def history_response(tag: str) -> api_pb2.ImageTagRevisionsResponse:
+        return api_pb2.ImageTagRevisionsResponse(
+            items=[
+                api_pb2.ImageTagRevisionsItem(
+                    image_id="im-named-a",
+                    revision_id="ir-test-0000",
+                    created_at=time.time(),
+                )
+            ],
+            tag=tag,
+            environment_name="main",
+        )
+
+    config = """
+    [default]
+    environment = "profile-env"
+    """
+
+    with modal_config(config), servicer.intercept() as ctx:
+        ctx.add_response("ImageTagRevisions", history_response("profile-env/demo-image:latest"))
+        run_cli_command(["image", "names", "history", "demo-image"])
+        req = ctx.pop_request("ImageTagRevisions")
+    assert req.tag == "profile-env/demo-image:latest"
+
+    with modal_config(config), servicer.intercept() as ctx:
+        ctx.add_response("ImageTagRevisions", history_response("some-prefix/demo-image:latest"))
+        run_cli_command(["image", "names", "history", "some-prefix/demo-image"])
+        req = ctx.pop_request("ImageTagRevisions")
+    assert req.tag == "some-prefix/demo-image:latest"
+
+
 @pytest.mark.parametrize(
     ("command_args", "flash_endpoint_auth_token", "expected_cmd"),
     [
@@ -2531,6 +2563,20 @@ def test_create_environment_name_valid(servicer, set_env_client, name):
             0,
         ).stdout
     )
+
+
+def test_create_public_environment(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        assert (
+            "Public Environment created"
+            in run_cli_command(
+                ["environment", "create", "public-env", "--public"],
+                0,
+            ).stdout
+        )
+        (req,) = ctx.get_requests("EnvironmentCreate")
+        assert req.name == "public-env"
+        assert req.environment_type == api_pb2.ENVIRONMENT_TYPE_PUBLIC
 
 
 @pytest.mark.parametrize(("name", "set_name"), (("main", "main/main"), ("main", "'-main'")))
