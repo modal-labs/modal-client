@@ -65,7 +65,7 @@ test("CreateOneSandboxTerminateWaitWorks", async () => {
   expect(sb.sandboxId).toBeTruthy();
   await sb.terminate();
   expect(await sb.wait()).toBe(137);
-});
+}, 30000); // fixme(ayush): this probably shouldn't take > 20s
 
 test("PassCatToStdin", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
