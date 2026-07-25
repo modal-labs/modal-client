@@ -15,6 +15,7 @@ from ._supports_logs import _LogQueryData
 from .client import _Client
 from .cls import is_parameter
 from .exception import InvalidError
+from .types import ServerAutoscalerSettings
 
 if typing.TYPE_CHECKING:
     import modal.app
@@ -129,7 +130,7 @@ class _Server:
         buffer_containers: int | None = None,
         scaleup_window: int | None = None,
         scaledown_window: int | None = None,
-    ) -> None:
+    ) -> ServerAutoscalerSettings:
         """Override the current autoscaler behavior for this Server.
 
         Unspecified parameters will retain their current value, i.e. either the static value
@@ -145,6 +146,10 @@ class _Server:
             buffer_containers: Extra containers to scale up beyond current demand.
             scaleup_window: Seconds of sustained demand required before scaling up new containers.
             scaledown_window: Maximum duration (in seconds) idle containers wait before scaling down.
+
+        Returns:
+            A `ServerAutoscalerSettings` dataclass which contains the current autoscaler settings of
+            this Server after the call.
 
         Examples:
             ```python notest
@@ -167,7 +172,7 @@ class _Server:
             ```
 
         """
-        return await self._get_service_function()._update_autoscaler(
+        return await self._get_service_function()._update_autoscaler_server(
             min_containers=min_containers,
             max_containers=max_containers,
             scaleup_window=scaleup_window,

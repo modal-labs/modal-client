@@ -861,15 +861,25 @@ def test_cls_update_autoscaler(client, servicer):
         assert service_function_defn._experimental_buffer_containers == autoscaler_settings.buffer_containers == 1
 
         param_obj = ClsWithMethod(arg="other-instance")
-        param_obj.update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
+        settings = param_obj.update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
         assert len(servicer.app_functions) == 3  # base + 2 x instance service function
         assert cls_service_fun.warm_pool_size == 0  # base still has no warm
 
         instance_service_function_id = param_obj._cached_service_function().object_id  # type: ignore
         instance_service_defn = servicer.app_functions[instance_service_function_id]
         instance_autoscaler_settings = instance_service_defn.autoscaler_settings
-        assert instance_service_defn.warm_pool_size == instance_autoscaler_settings.min_containers == 5
-        assert instance_service_defn.concurrency_limit == instance_autoscaler_settings.max_containers == 10
+        assert (
+            settings.min_containers
+            == instance_service_defn.warm_pool_size
+            == instance_autoscaler_settings.min_containers
+            == 5
+        )
+        assert (
+            settings.max_containers
+            == instance_service_defn.concurrency_limit
+            == instance_autoscaler_settings.max_containers
+            == 10
+        )
 
 
 def test_cls_lookup_update_autoscaler(client, servicer, set_env_client):

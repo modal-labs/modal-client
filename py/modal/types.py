@@ -367,3 +367,41 @@ class EnvironmentBillingSummary:
             metered_cost=Decimal(pb_item.metered_cost),
             metered_cost_breakdown=metered_cost_breakdown,
         )
+
+
+@dataclass(slots=True, frozen=True)
+class FunctionAutoscalerSettings:
+    min_containers: int | None
+    max_containers: int | None
+    scaledown_window: int | None
+    buffer_containers: int | None
+
+    @classmethod
+    def _from_proto(cls, pb_item: api_pb2.AutoscalerSettings) -> "FunctionAutoscalerSettings":
+        return cls(
+            min_containers=pb_item.min_containers if pb_item.HasField("min_containers") else None,
+            max_containers=pb_item.max_containers if pb_item.HasField("max_containers") else None,
+            scaledown_window=pb_item.scaledown_window if pb_item.HasField("scaledown_window") else None,
+            buffer_containers=pb_item.buffer_containers if pb_item.HasField("buffer_containers") else None,
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class ServerAutoscalerSettings:
+    target_concurrency: int | None
+    min_containers: int | None
+    max_containers: int | None
+    buffer_containers: int | None
+    scaleup_window: int | None
+    scaledown_window: int | None
+
+    @classmethod
+    def _from_proto(cls, pb_item: api_pb2.AutoscalerSettings) -> "ServerAutoscalerSettings":
+        return cls(
+            min_containers=pb_item.min_containers if pb_item.HasField("min_containers") else None,
+            max_containers=pb_item.max_containers if pb_item.HasField("max_containers") else None,
+            buffer_containers=pb_item.buffer_containers if pb_item.HasField("buffer_containers") else None,
+            scaleup_window=pb_item.scaleup_window if pb_item.HasField("scaleup_window") else None,
+            scaledown_window=pb_item.scaledown_window if pb_item.HasField("scaledown_window") else None,
+            target_concurrency=pb_item.target_concurrency if pb_item.HasField("target_concurrency") else None,
+        )

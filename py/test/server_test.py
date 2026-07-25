@@ -725,17 +725,20 @@ def test_server_update_autoscaler(client, servicer):
         assert servicer.app_functions[function_id].target_concurrent_inputs == 0
 
         update_autoscaler = AutoscaleServer.update_autoscaler  # type: ignore[attr-defined]
-        update_autoscaler(min_containers=1, max_containers=5, target_concurrency=20)  # type: ignore[call-arg]
+        settings = update_autoscaler(min_containers=1, max_containers=5, target_concurrency=20)  # type: ignore[call-arg]
+        assert settings.target_concurrency == 20
         assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency == 20
         assert servicer.app_functions[function_id].target_concurrent_inputs == 20
 
-        update_autoscaler(target_concurrency=0)  # type: ignore[call-arg]
+        settings = update_autoscaler(target_concurrency=0)  # type: ignore[call-arg]
 
-    assert servicer.app_functions[function_id].autoscaler_settings.min_containers == 1
-    assert servicer.app_functions[function_id].autoscaler_settings.max_containers == 5
-    assert servicer.app_functions[function_id].autoscaler_settings.HasField("target_concurrency")
-    assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency == 0
-    assert servicer.app_functions[function_id].target_concurrent_inputs == 0
+    f = servicer.app_functions[function_id]
+
+    assert settings.min_containers == f.autoscaler_settings.min_containers == 1
+    assert settings.max_containers == f.autoscaler_settings.max_containers == 5
+    assert f.autoscaler_settings.HasField("target_concurrency")
+    assert settings.target_concurrency == f.autoscaler_settings.target_concurrency == 0
+    assert f.target_concurrent_inputs == 0
 
 
 # =============================================================================

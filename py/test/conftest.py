@@ -2479,7 +2479,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if req.settings.HasField("target_concurrency"):
             fn_definition.target_concurrent_inputs = req.settings.target_concurrency
 
-        await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
+        await stream.send_message(
+            api_pb2.FunctionUpdateSchedulingParamsResponse(
+                current_settings=fn_definition.autoscaler_settings,
+            )
+        )
 
     ### Image
 

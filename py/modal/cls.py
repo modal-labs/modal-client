@@ -33,6 +33,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .retries import Retries
 from .secret import _Secret
+from .types import FunctionAutoscalerSettings
 from .volume import _Volume
 
 T = TypeVar("T")
@@ -288,7 +289,7 @@ class _Obj:
         max_containers: int | None = None,
         scaledown_window: int | None = None,
         buffer_containers: int | None = None,
-    ) -> None:
+    ) -> FunctionAutoscalerSettings:
         """Override the current autoscaler behavior for this Cls instance.
 
         Unspecified parameters will retain their current value, i.e. either the static value
@@ -306,6 +307,10 @@ class _Obj:
             scaledown_window: Idle seconds before scaling down a container; omit to leave unchanged.
             buffer_containers: Extra idle containers under load; omit to leave unchanged.
 
+        Returns:
+            An `FunctionAutoscalerSettings` dataclass which contains the current autoscaler settings
+            of this Cls instance after the call.
+
         Examples:
             ```python notest
             Model = modal.Cls.from_name("my-app", "Model")
@@ -321,6 +326,7 @@ class _Obj:
         """
         if not self._cls.is_hydrated and not self._cls._is_local():
             await self._cls.hydrate()
+
         return await self._cached_service_function().update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,

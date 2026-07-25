@@ -93,7 +93,7 @@ from .proxy import _Proxy
 from .retries import Retries, RetryManager
 from .schedule import Schedule
 from .secret import _Secret
-from .types import FunctionStats
+from .types import FunctionAutoscalerSettings, FunctionStats, ServerAutoscalerSettings
 from .volume import _Volume, _volume_to_mount_proto
 
 if TYPE_CHECKING:
@@ -1177,10 +1177,29 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         min_containers: int | None = None,
         max_containers: int | None = None,
         buffer_containers: int | None = None,
+        scaledown_window: int | None = None,
+    ) -> FunctionAutoscalerSettings:
+        settings = api_pb2.AutoscalerSettings(
+            min_containers=min_containers,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
+        )
+        request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
+        response = await self.client.stub.FunctionUpdateSchedulingParams(request)
+
+        return FunctionAutoscalerSettings._from_proto(response.current_settings)
+
+    async def _update_autoscaler_server(
+        self,
+        *,
+        min_containers: int | None = None,
+        max_containers: int | None = None,
+        buffer_containers: int | None = None,
         scaleup_window: int | None = None,
         scaledown_window: int | None = None,
         target_concurrency: int | None = None,
-    ) -> None:
+    ) -> ServerAutoscalerSettings:
         settings = api_pb2.AutoscalerSettings(
             min_containers=min_containers,
             max_containers=max_containers,
@@ -1190,10 +1209,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             target_concurrency=target_concurrency,
         )
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
-        await self.client.stub.FunctionUpdateSchedulingParams(request)
+        response = await self.client.stub.FunctionUpdateSchedulingParams(request)
 
-        # One idea would be for FunctionUpdateScheduleParams to return the current (coalesced) settings
-        # and then we could return them here (would need some ad hoc dataclass, which I don't love)
+        return ServerAutoscalerSettings._from_proto(response.current_settings)
 
     @live_method
     async def update_autoscaler(
@@ -1203,7 +1221,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         max_containers: int | None = None,
         buffer_containers: int | None = None,
         scaledown_window: int | None = None,
-    ) -> None:
+    ) -> FunctionAutoscalerSettings:
         """Override the current autoscaler behavior for this Function.
 
         Unspecified parameters will retain their current value, i.e. either the static value
@@ -1217,6 +1235,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             max_containers: Maximum concurrent containers.
             buffer_containers: Extra containers to keep warm beyond current demand.
             scaledown_window: Maximum duration (in seconds) idle containers wait before scaling down.
+
+        Returns:
+            A `FunctionAutoscalerSettings` dataclass which contains the current autoscaler settings
+            of this Function after the call.
 
         Examples:
             ```python notest
@@ -1237,7 +1259,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if self._is_method:
             raise InvalidError("Cannot call .update_autoscaler() on a method. Call it on the class instance instead.")
 
-        await self._update_autoscaler(
+        return await self._update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,
             buffer_containers=buffer_containers,
