@@ -24,14 +24,9 @@ async def _volume_download(
     remote_path: str,
     local_destination: Path,
     overwrite: bool,
+    progress_cb: Callable,
     concurrency: int | None = None,
-    progress_cb: Callable | None = None,
 ):
-    if progress_cb is None:
-
-        def progress_cb(*_, **__):
-            pass
-
     if concurrency is None:
         concurrency = max(128, 2 * multiprocessing.cpu_count())
 
@@ -91,6 +86,8 @@ async def _volume_download(
 
                         file_progress_cb(complete=True)
                 else:
+                    # When not streaming to a pipe, the producer always enqueues a real output path.
+                    assert output_path is not None
                     if entry.type == FileEntryType.FILE:
                         progress_task_id = progress_cb(name=entry.path, size=entry.size)
                         output_path.parent.mkdir(parents=True, exist_ok=True)

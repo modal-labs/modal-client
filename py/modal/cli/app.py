@@ -27,12 +27,12 @@ from .._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
 from .._utils.time_utils import locale_tz, timestamp_to_localized_str
 from ._help import ModalGroup
 from .utils import (
+    _fetch_app_logs,
+    _stream_app_logs,
+    _tail_app_logs,
     confirm_or_suggest_yes,
     display_table,
     env_option,
-    fetch_app_logs,
-    stream_app_logs,
-    tail_app_logs,
     yes_option,
 )
 
@@ -117,7 +117,7 @@ async def list_(env: str | None = None, json: bool = False):
         "Created at",
         "Stopped at",
     ]
-    rows: list[list[Text | str]] = []
+    rows: list[list[Text | str | None]] = []
     for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(
@@ -305,7 +305,7 @@ async def logs(
     )
 
     if follow:
-        await stream_app_logs.aio(
+        await _stream_app_logs(
             app_id,
             task_id=container_id or "",
             show_timestamps=timestamps,
@@ -326,9 +326,9 @@ async def logs(
             if effective_until - since_dt > _MAX_FETCH_RANGE:
                 raise UsageError(f"Log fetch time range cannot exceed {_MAX_FETCH_RANGE.days} days.")
 
-        if since and tail is None:
+        if since_dt and tail is None:
             # Range mode: --since without --tail fetches everything in the range.
-            await fetch_app_logs.aio(
+            await _fetch_app_logs(
                 app_id,
                 since_dt,
                 until_dt or now,
@@ -340,7 +340,7 @@ async def logs(
             # Tail mode: single fetch with limit.
             # --since is a hard floor, --until shifts the anchor.
             effective_tail = tail if tail is not None else _DEFAULT_LOGS_TAIL
-            await tail_app_logs.aio(
+            await _tail_app_logs(
                 app_id,
                 effective_tail,
                 show_timestamps=timestamps,
@@ -586,9 +586,16 @@ async def history(
     for idx, app_stats in enumerate(resp.app_deployment_histories):
         style = "bold green" if idx == 0 else ""
 
+        if app_stats.deployed_at:
+            ts = timestamp_to_localized_str(app_stats.deployed_at, json)
+            assert ts is not None
+            deployed_at = Text(ts, style=style)
+        else:
+            deployed_at = None
+
         row = [
             Text(f"v{app_stats.version}", style=style),
-            Text(timestamp_to_localized_str(app_stats.deployed_at, json), style=style),
+            deployed_at,
             Text(app_stats.client_version, style=style),
             Text(app_stats.deployed_by, style=style),
         ]

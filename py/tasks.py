@@ -162,6 +162,8 @@ def type_stubs(ctx, verbose: bool = False):
     """
     from synchronicity.synchronizer import SYNCHRONIZER_ATTR
 
+    print("Generating synchronicity type stubs...")
+
     stubs_to_remove = []
     for root, _, files in os.walk("modal"):
         for file in files:
@@ -204,13 +206,16 @@ def type_stubs(ctx, verbose: bool = False):
     ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
 
 
-@task(type_stubs)
-def type_check(ctx):
+@task()
+def type_check(ctx, stubs: bool = True):
     """Run static type checking.
 
     Uses mypy for most files, but since mypy will not check the *implementation* (.py) for files that also have .pyi
     type stubs, we use pyright for checking the implementation of those files.
     """
+    if stubs:
+        type_stubs(ctx)
+
     mypy_exclude_list = [
         "playground",
         "test/cls_test.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
@@ -219,9 +224,11 @@ def type_check(ctx):
         "modal_proto",
     ]
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
+    print("Checking types with mypy...")
     ctx.run(f"mypy . {excludes}", pty=True)
 
     # Pyright checks are more limited; see pyproject.toml for configuration
+    print("Checking types with pyright...")
     ctx.run("pyright", pty=True)
 
 

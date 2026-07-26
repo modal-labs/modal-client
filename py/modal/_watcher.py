@@ -79,6 +79,8 @@ def _watch_args_from_mounts(mounts: list[_Mount]) -> tuple[set[Path], AppFilesFi
     paths = set()
     dir_filters: dict[Path, set[Path] | None] = defaultdict(set)
     for mount in mounts:
+        if mount._entries is None:
+            continue
         # TODO(elias): Make this part of the mount class instead, since it uses so much internals
         for entry in mount._entries:
             path, filter_file = entry.watch_entry()
@@ -86,8 +88,8 @@ def _watch_args_from_mounts(mounts: list[_Mount]) -> tuple[set[Path], AppFilesFi
             paths.add(path)
             if filter_file is None:
                 dir_filters[path] = None
-            elif dir_filters[path] is not None:
-                dir_filters[path].add(filter_file.absolute().resolve())
+            elif (filters := dir_filters[path]) is not None:
+                filters.add(filter_file.absolute().resolve())
 
     watch_filter = AppFilesFilter(dir_filters=dict(dir_filters))
     return paths, watch_filter

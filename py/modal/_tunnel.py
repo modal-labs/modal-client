@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 """Client for Modal relay servers, allowing users to expose TLS."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 from synchronicity.async_wrap import asynccontextmanager
@@ -60,7 +60,7 @@ class Tunnel:
 @asynccontextmanager
 async def _forward(
     port: int, *, unencrypted: bool = False, h2_enabled: bool = False, client: _Client | None = None
-) -> AsyncIterator[Tunnel]:
+) -> AsyncGenerator[Tunnel, None]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 
     If `unencrypted` is set, this also exposes the TCP socket without encryption on a random port

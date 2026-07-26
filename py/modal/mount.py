@@ -94,7 +94,7 @@ class _MountEntry(metaclass=abc.ABCMeta):
     def get_files_to_upload(self) -> typing.Iterator[tuple[Path, str]]: ...
 
     @abc.abstractmethod
-    def watch_entry(self) -> tuple[Path, Path]: ...
+    def watch_entry(self) -> tuple[Path, Path | None]: ...
 
     @abc.abstractmethod
     def top_level_paths(self) -> list[tuple[Path, PurePosixPath]]: ...
@@ -270,7 +270,7 @@ class _MountedPythonModule(_MountEntry):
         for entry in self._proxy_entries():
             yield from entry.get_files_to_upload()
 
-    def watch_entry(self) -> tuple[Path, Path]:
+    def watch_entry(self) -> tuple[Path, Path | None]:
         for entry in self._proxy_entries():
             # TODO: fix watch for mounts of multi-path packages
             return entry.watch_entry()

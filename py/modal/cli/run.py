@@ -252,7 +252,7 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
 def _get_signature(func: typing.Any) -> inspect.Signature:
     """Returns signature with the original source annotations."""
     kwargs: dict[str, typing.Any] = {}
-    if sys.version_info[:2] >= (3, 14):
+    if sys.version_info >= (3, 14):
         import annotationlib
 
         kwargs["annotation_format"] = annotationlib.Format.STRING
@@ -263,6 +263,7 @@ def _get_click_command_for_function(app: App, function: Function, ctx: click.Con
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
+    assert function.info.raw_f
     sig: inspect.Signature = _get_signature(function.info.raw_f)
     type_hints = safe_get_type_hints(function.info.raw_f)
     signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
@@ -344,6 +345,8 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference, ctx: click
 
 def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoint):
     func = entrypoint.info.raw_f
+    assert func
+
     isasync = inspect.iscoroutinefunction(func)
 
     signature = _get_cli_runnable_signature(_get_signature(func), safe_get_type_hints(func))
@@ -378,7 +381,10 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                 else:
                     res = func(*args, **kwargs)
             except Exception as exc:
-                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+                user_source = inspect.getsourcefile(func)
+                if user_source is None:
+                    raise exc
+                raise _CliUserExecutionError(user_source) from exc
 
         if result_path := ctx.obj["result_path"]:
             _write_local_result(result_path, res)
@@ -405,12 +411,14 @@ def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
 class RunGroup(ModalGroup):
     """Click group that resolves subcommands dynamically from a file/module ref."""
 
-    def get_command(self, ctx, func_ref):
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         # note: get_command here is run before the "group logic" in the `run` logic below
         # so to ensure that `env` has been globally populated before user code is loaded, it
         # needs to be handled here, and not in the `run` logic below
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
+
+        func_ref = cmd_name
 
         import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"], command="modal run")
         runnable, all_usable_commands = import_and_filter(
@@ -553,6 +561,7 @@ def deploy(
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode, command="modal deploy")
 
     OutputManager.get().set_timestamps(timestamps)
+    # Keep the app import on the main thread; user code must not run on the synchronizer thread.
     app = import_app_from_ref(import_ref, base_cmd="modal deploy")
 
     name = name or app.name or ""
@@ -569,7 +578,8 @@ def deploy(
     res = deploy_app(app, name=name, environment_name=env or "", tag=tag, deployment_strategy=strategy)
 
     if stream_logs:
-        stream_app_logs(
+        # stream_app_logs is defined in cli/utils.py, which does not get type stubs
+        stream_app_logs(  # pyright: ignore[reportCallIssue]
             app_id=res.app_id,
             app_logs_url=res.app_logs_url,
             show_timestamps=timestamps,

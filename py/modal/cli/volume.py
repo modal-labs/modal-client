@@ -33,17 +33,13 @@ volume_cli = ModalGroup(
 def humanize_filesize(value: int) -> str:
     if value < 0:
         raise ValueError("value should be >= 0")
-    suffix = (" KiB", " MiB", " GiB", " TiB", " PiB", " EiB", " ZiB")
-    format = "%.1f"
     base = 1024
-    bytes_ = float(value)
-    if bytes_ < base:
-        return f"{bytes_:0.0f} B"
-    for i, s in enumerate(suffix):
-        unit = base ** (i + 2)
-        if bytes_ < unit:
-            break
-    return format % (base * bytes_ / unit) + s
+    size = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"):
+        if size < base:
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= base
+    return f"{size:.1f} ZiB"
 
 
 @volume_cli.command("create", help="Create a named, persistent modal.Volume.", panel="Management", no_args_is_help=True)
@@ -198,6 +194,7 @@ async def put(
     """
     ensure_env(env)
     vol = await _Volume.from_name(volume_name, environment_name=env).hydrate()
+    assert vol._metadata
 
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)

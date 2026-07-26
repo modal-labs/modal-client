@@ -21,8 +21,7 @@ from ..exception import InvalidError
 from ..output import OutputManager
 
 
-@synchronizer.create_blocking
-async def stream_app_logs(
+async def _stream_app_logs(
     app_id: str | None = None,
     task_id: str | None = None,
     sandbox_id: str | None = None,
@@ -66,6 +65,11 @@ async def stream_app_logs(
         pass
 
 
+# Blocking variant just used by the `modal deploy` handler,
+# which must run on synchronizer thread.
+stream_app_logs = synchronizer.create_blocking(_stream_app_logs)
+
+
 async def _drain_batches(output_mgr, batches, prefixes, search_text=""):
     """Iterate over log batches and display them via the output manager."""
     last_data = ""
@@ -84,8 +88,7 @@ async def _drain_batches(output_mgr, batches, prefixes, search_text=""):
         output_mgr.print("")
 
 
-@synchronizer.create_blocking
-async def tail_app_logs(
+async def _tail_app_logs(
     app_id: str,
     n: int,
     show_timestamps: bool = False,
@@ -104,8 +107,7 @@ async def tail_app_logs(
     await _drain_batches(output_mgr, batches, prefix_fields or [], filters.search_text)
 
 
-@synchronizer.create_blocking
-async def fetch_app_logs(
+async def _fetch_app_logs(
     app_id: str,
     since: datetime,
     until: datetime,

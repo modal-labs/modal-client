@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import uuid
 import warnings
 from datetime import datetime, timezone
 
@@ -11,27 +10,23 @@ from rich.text import Text
 from modal._environments import ensure_env
 from modal._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
 from modal._object import _get_environment_name
-from modal._output.pty import get_pty_info
 from modal._utils.async_utils import synchronizer
-from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.app import _DEFAULT_LOGS_TAIL, _SOURCE_OPTIONS, _parse_time_arg
 from modal.cli.utils import (
+    _fetch_app_logs,
+    _stream_app_logs,
+    _tail_app_logs,
     confirm_or_suggest_yes,
     display_table,
     env_option,
-    fetch_app_logs,
     is_tty,
-    stream_app_logs,
-    tail_app_logs,
     yes_option,
 )
 from modal.client import _Client
-from modal.config import config
-from modal.container_process import _ContainerProcess
 from modal.exception import InvalidError
-from modal.stream_type import StreamType
-from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
+from modal.sandbox import _container_exec
+from modal_proto import api_pb2
 
 from ._help import ModalGroup
 
@@ -70,7 +65,7 @@ async def list_(
                 task_stats.task_id,
                 task_stats.app_id,
                 task_stats.app_description,
-                timestamp_to_localized_str(task_stats.started_at, json) if task_stats.started_at else "Pending",
+                timestamp_to_localized_str(task_stats.started_at, json) or "Pending",
             ]
         )
 
@@ -184,7 +179,7 @@ async def logs(
     )
 
     if follow:
-        await stream_app_logs.aio(
+        await _stream_app_logs(
             task_id=task_id,
             sandbox_id=sandbox_id,
             show_timestamps=timestamps,
@@ -199,6 +194,7 @@ async def logs(
             sb_resp = await client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id))
             task_id = sb_resp.task_id
 
+        assert task_id
         task_info_resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=task_id))
         app_id = task_info_resp.app_id
 
@@ -236,14 +232,13 @@ async def logs(
             warnings.warn("--until time is before the Container started, no logs to fetch.", UserWarning)
             return
 
-        if since_dt is not None:
-            effective_until = until_dt or now
-            if effective_until - since_dt > _MAX_FETCH_RANGE:
-                raise UsageError(f"Log fetch time range cannot exceed {_MAX_FETCH_RANGE.days} days.")
+        effective_until = until_dt or now
+        if effective_until - since_dt > _MAX_FETCH_RANGE:
+            raise UsageError(f"Log fetch time range cannot exceed {_MAX_FETCH_RANGE.days} days.")
 
         if all_logs or (since and tail is None):
             # Range mode: --since without --tail fetches everything in the range.
-            await fetch_app_logs.aio(
+            await _fetch_app_logs(
                 app_id,
                 since_dt,
                 until_dt or now,
@@ -254,7 +249,7 @@ async def logs(
             # Tail mode: single fetch with limit.
             # --since is a hard floor, --until shifts the anchor.
             effective_tail = tail if tail is not None else _DEFAULT_LOGS_TAIL
-            await tail_app_logs.aio(
+            await _tail_app_logs(
                 app_id,
                 effective_tail,
                 show_timestamps=timestamps,
@@ -262,67 +257,6 @@ async def logs(
                 until=until_dt,
                 filters=log_filters,
             )
-
-
-@synchronizer.create_blocking
-async def _exec_impl(
-    pty: bool | None = None,
-    container_id: str = "",
-    command: tuple[str, ...] = (),
-    object_id_for_v2: str | None = None,
-):
-    """Execute a command in a container (implementation).
-
-    For tasks belonging to V2 sandboxes, `object_id_for_v2` must be set to the
-    sandbox ID.
-    """
-
-    if pty is None:
-        pty = is_tty()
-
-    client = await _Client.from_env()
-
-    if object_id_for_v2 is not None:
-        command_router_client = await TaskCommandRouterClient.init_v2(client, object_id_for_v2, container_id)
-    else:
-        command_router_client = await TaskCommandRouterClient.init(client, container_id)
-
-    process_id = str(uuid.uuid4())
-
-    start_req = sr_pb2.TaskExecStartRequest(
-        task_id=container_id,
-        exec_id=process_id,
-        command_args=command,
-        stdout_config=sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_PIPE,
-        stderr_config=sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_PIPE,
-        pty_info=get_pty_info(shell=True) if pty else None,
-        runtime_debug=config.get("function_runtime_debug"),
-    )
-    await command_router_client.exec_start(start_req)
-
-    if pty:
-        # PTY output is raw terminal bytes (control sequences, mouse events,
-        # glyphs in non-UTF-8 locales, etc.) — not text. Strict UTF-8 decode on
-        # this stream crashes the shell as soon as anything emits a byte that
-        # isn't valid UTF-8, e.g. vim drawing a Latin-1 file under LC_CTYPE=C.
-        # Pass bytes through unmodified; `attach()` writes them straight to the
-        # local fd.
-        await _ContainerProcess(
-            process_id,
-            container_id,
-            client,
-            command_router_client=command_router_client,
-            text=False,
-        ).attach()
-    else:
-        await _ContainerProcess(
-            process_id,
-            container_id,
-            client,
-            command_router_client=command_router_client,
-            stdout=StreamType.STDOUT,
-            stderr=StreamType.STDOUT,
-        ).wait()
 
 
 @container_cli.command("exec", no_args_is_help=True)
@@ -335,7 +269,9 @@ def exec(
     command: tuple[str, ...] = (),
 ):
     """Execute a command in a container."""
-    _exec_impl(pty=pty, container_id=container_id, command=command)
+    if pty is None:
+        pty = is_tty()
+    _container_exec(pty=pty, container_id=container_id, command=command)
 
 
 @container_cli.command("stop", no_args_is_help=True)

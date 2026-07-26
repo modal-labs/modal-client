@@ -36,7 +36,7 @@ from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api, synchronizer
 from ._utils.deprecation import deprecation_warning
 from ._utils.mount_utils import (
     validate_network_file_systems,
@@ -2870,6 +2870,63 @@ class _SidecarManager:
             for container in resp.containers
             if container.container_name != _MAIN_CONTAINER_NAME
         ]
+
+
+@synchronizer.create_blocking
+async def _container_exec(
+    pty: bool,
+    container_id: str = "",
+    command: tuple[str, ...] = (),
+    object_id_for_v2: str | None = None,
+):
+    """Execute a command in a container.
+
+    For tasks belonging to V2 sandboxes, `object_id_for_v2` must be set to the
+    sandbox ID.
+    """
+    client = await _Client.from_env()
+
+    if object_id_for_v2 is not None:
+        command_router_client = await TaskCommandRouterClient.init_v2(client, object_id_for_v2, container_id)
+    else:
+        command_router_client = await TaskCommandRouterClient.init(client, container_id)
+
+    process_id = str(uuid.uuid4())
+
+    start_req = sr_pb2.TaskExecStartRequest(
+        task_id=container_id,
+        exec_id=process_id,
+        command_args=command,
+        stdout_config=sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_PIPE,
+        stderr_config=sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_PIPE,
+        pty_info=get_pty_info(shell=True) if pty else None,
+        runtime_debug=config.get("function_runtime_debug"),
+    )
+    await command_router_client.exec_start(start_req)
+
+    if pty:
+        # PTY output is raw terminal bytes (control sequences, mouse events,
+        # glyphs in non-UTF-8 locales, etc.) — not text. Strict UTF-8 decode on
+        # this stream crashes the shell as soon as anything emits a byte that
+        # isn't valid UTF-8, e.g. vim drawing a Latin-1 file under LC_CTYPE=C.
+        # Pass bytes through unmodified; `attach()` writes them straight to the
+        # local fd.
+        await _ContainerProcess(
+            process_id,
+            container_id,
+            client,
+            command_router_client=command_router_client,
+            text=False,
+        ).attach()
+    else:
+        await _ContainerProcess(
+            process_id,
+            container_id,
+            client,
+            command_router_client=command_router_client,
+            stdout=StreamType.STDOUT,
+            stderr=StreamType.STDOUT,
+        ).wait()
 
 
 SidecarContainer = synchronize_api(_SidecarContainer)
