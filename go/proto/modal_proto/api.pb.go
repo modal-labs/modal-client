@@ -38700,15 +38700,16 @@ func (b0 ProxyGetResponse_builder) Build() *ProxyGetResponse {
 }
 
 type ProxyInfo struct {
-	state                 protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_ElasticIp  string                 `protobuf:"bytes,1,opt,name=elastic_ip,json=elasticIp,proto3"`
-	xxx_hidden_ProxyKey   string                 `protobuf:"bytes,2,opt,name=proxy_key,json=proxyKey,proto3"`
-	xxx_hidden_RemoteAddr string                 `protobuf:"bytes,3,opt,name=remote_addr,json=remoteAddr,proto3"`
-	xxx_hidden_RemotePort int32                  `protobuf:"varint,4,opt,name=remote_port,json=remotePort,proto3"`
-	xxx_hidden_ProxyType  ProxyType              `protobuf:"varint,5,opt,name=proxy_type,json=proxyType,proto3,enum=modal.client.ProxyType"`
-	xxx_hidden_UseOidc    bool                   `protobuf:"varint,6,opt,name=use_oidc,json=useOidc,proto3"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_ElasticIp   string                 `protobuf:"bytes,1,opt,name=elastic_ip,json=elasticIp,proto3"`
+	xxx_hidden_ProxyKey    string                 `protobuf:"bytes,2,opt,name=proxy_key,json=proxyKey,proto3"`
+	xxx_hidden_RemoteAddr  string                 `protobuf:"bytes,3,opt,name=remote_addr,json=remoteAddr,proto3"`
+	xxx_hidden_RemotePort  int32                  `protobuf:"varint,4,opt,name=remote_port,json=remotePort,proto3"`
+	xxx_hidden_ProxyType   ProxyType              `protobuf:"varint,5,opt,name=proxy_type,json=proxyType,proto3,enum=modal.client.ProxyType"`
+	xxx_hidden_UseOidc     bool                   `protobuf:"varint,6,opt,name=use_oidc,json=useOidc,proto3"`
+	xxx_hidden_VproxNodeId string                 `protobuf:"bytes,7,opt,name=vprox_node_id,json=vproxNodeId,proto3"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ProxyInfo) Reset() {
@@ -38778,6 +38779,13 @@ func (x *ProxyInfo) GetUseOidc() bool {
 	return false
 }
 
+func (x *ProxyInfo) GetVproxNodeId() string {
+	if x != nil {
+		return x.xxx_hidden_VproxNodeId
+	}
+	return ""
+}
+
 func (x *ProxyInfo) SetElasticIp(v string) {
 	x.xxx_hidden_ElasticIp = v
 }
@@ -38802,15 +38810,20 @@ func (x *ProxyInfo) SetUseOidc(v bool) {
 	x.xxx_hidden_UseOidc = v
 }
 
+func (x *ProxyInfo) SetVproxNodeId(v string) {
+	x.xxx_hidden_VproxNodeId = v
+}
+
 type ProxyInfo_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	ElasticIp  string
-	ProxyKey   string
-	RemoteAddr string
-	RemotePort int32
-	ProxyType  ProxyType
-	UseOidc    bool
+	ElasticIp   string
+	ProxyKey    string
+	RemoteAddr  string
+	RemotePort  int32
+	ProxyType   ProxyType
+	UseOidc     bool
+	VproxNodeId string
 }
 
 func (b0 ProxyInfo_builder) Build() *ProxyInfo {
@@ -38823,6 +38836,7 @@ func (b0 ProxyInfo_builder) Build() *ProxyInfo {
 	x.xxx_hidden_RemotePort = b.RemotePort
 	x.xxx_hidden_ProxyType = b.ProxyType
 	x.xxx_hidden_UseOidc = b.UseOidc
+	x.xxx_hidden_VproxNodeId = b.VproxNodeId
 	return m0
 }
 
@@ -64341,7 +64355,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12)\n" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\"=\n" +
 	"\x10ProxyGetResponse\x12)\n" +
-	"\x05proxy\x18\x01 \x01(\v2\x13.modal.client.ProxyR\x05proxy\"\xdc\x01\n" +
+	"\x05proxy\x18\x01 \x01(\v2\x13.modal.client.ProxyR\x05proxy\"\x80\x02\n" +
 	"\tProxyInfo\x12\x1d\n" +
 	"\n" +
 	"elastic_ip\x18\x01 \x01(\tR\telasticIp\x12\x1b\n" +
@@ -64352,7 +64366,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"remotePort\x126\n" +
 	"\n" +
 	"proxy_type\x18\x05 \x01(\x0e2\x17.modal.client.ProxyTypeR\tproxyType\x12\x19\n" +
-	"\buse_oidc\x18\x06 \x01(\bR\auseOidc\"\xa3\x01\n" +
+	"\buse_oidc\x18\x06 \x01(\bR\auseOidc\x12\"\n" +
+	"\rvprox_node_id\x18\a \x01(\tR\vvproxNodeId\"\xa3\x01\n" +
 	"\aProxyIp\x12\x19\n" +
 	"\bproxy_ip\x18\x01 \x01(\tR\aproxyIp\x123\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x1b.modal.client.ProxyIpStatusR\x06status\x12\x1d\n" +

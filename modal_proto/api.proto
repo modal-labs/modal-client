@@ -3096,6 +3096,7 @@ message ProxyInfo {
   int32 remote_port = 4;
   ProxyType proxy_type = 5;
   bool use_oidc = 6;
+  string vprox_node_id = 7;
 }
 
 message ProxyIp {
