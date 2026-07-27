@@ -3,6 +3,10 @@ import { InvalidError, NotFoundError } from "modal";
 import { expect, test } from "vitest";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { Function_ } from "../src/function";
+import {
+  AutoscalerSettings,
+  FunctionUpdateSchedulingParamsRequest,
+} from "../proto/modal_proto/api";
 
 test("FunctionCall", async () => {
   const function_ = await tc.functions.fromName(
@@ -103,6 +107,8 @@ test("FunctionGetCurrentStats", async () => {
 test("FunctionUpdateAutoscaler", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
+  let curSettings: AutoscalerSettings = {};
+
   mock.handleUnary("/FunctionUpdateSchedulingParams", (req) => {
     expect(req).toMatchObject({
       functionId: "fid-auto",
@@ -113,11 +119,32 @@ test("FunctionUpdateAutoscaler", async () => {
         scaledownWindow: 300,
       },
     });
-    return {};
+
+    const newSettings = (req as FunctionUpdateSchedulingParamsRequest).settings;
+
+    curSettings = {
+      minContainers: newSettings?.minContainers ?? curSettings.minContainers,
+      maxContainers: newSettings?.maxContainers ?? curSettings.maxContainers,
+      bufferContainers:
+        newSettings?.bufferContainers ?? curSettings.bufferContainers,
+      scaledownWindow:
+        newSettings?.scaledownWindow ?? curSettings.scaledownWindow,
+    };
+
+    return {
+      currentSettings: { ...curSettings },
+    };
   });
 
   const function_ = new Function_(mc, "fid-auto");
-  await function_.updateAutoscaler({
+  let settings = await function_.updateAutoscaler({
+    minContainers: 1,
+    maxContainers: 10,
+    bufferContainers: 2,
+    scaledownWindowMs: 300 * 1000,
+  });
+
+  expect(settings).toMatchObject({
     minContainers: 1,
     maxContainers: 10,
     bufferContainers: 2,
@@ -129,10 +156,30 @@ test("FunctionUpdateAutoscaler", async () => {
       functionId: "fid-auto",
       settings: { minContainers: 2 },
     });
-    return {};
+
+    const newSettings = (req as FunctionUpdateSchedulingParamsRequest).settings;
+
+    curSettings = {
+      minContainers: newSettings?.minContainers ?? curSettings.minContainers,
+      maxContainers: newSettings?.maxContainers ?? curSettings.maxContainers,
+      bufferContainers:
+        newSettings?.bufferContainers ?? curSettings.bufferContainers,
+      scaledownWindow:
+        newSettings?.scaledownWindow ?? curSettings.scaledownWindow,
+    };
+
+    return {
+      currentSettings: { ...curSettings },
+    };
   });
 
-  await function_.updateAutoscaler({ minContainers: 2 });
+  settings = await function_.updateAutoscaler({ minContainers: 2 });
+  expect(settings).toMatchObject({
+    minContainers: 2,
+    maxContainers: 10,
+    bufferContainers: 2,
+    scaledownWindowMs: 300 * 1000,
+  });
 
   mock.assertExhausted();
 });

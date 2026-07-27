@@ -117,6 +117,13 @@ export interface FunctionUpdateAutoscalerParams {
   scaledownWindowMs?: number;
 }
 
+export type FunctionAutoscalerSettings = {
+  minContainers?: number;
+  maxContainers?: number;
+  bufferContainers?: number;
+  scaledownWindowMs?: number;
+};
+
 /** Configuration options for {@link Function_#withOptions Function_.withOptions()}. */
 export type FunctionWithOptionsParams = {
   cpu?: number;
@@ -614,10 +621,10 @@ export class Function_ {
   // Overrides the current autoscaler behavior for this Function.
   async updateAutoscaler(
     params: FunctionUpdateAutoscalerParams,
-  ): Promise<void> {
+  ): Promise<FunctionAutoscalerSettings> {
     checkForRenamedParams(params, { scaledownWindow: "scaledownWindowMs" });
 
-    await this.#client.cpClient.functionUpdateSchedulingParams({
+    const resp = await this.#client.cpClient.functionUpdateSchedulingParams({
       functionId: this.functionId,
       warmPoolSizeOverride: 0, // Deprecated field, always set to 0
       settings: {
@@ -630,6 +637,16 @@ export class Function_ {
             : undefined,
       },
     });
+
+    return {
+      minContainers: resp.currentSettings?.minContainers,
+      maxContainers: resp.currentSettings?.maxContainers,
+      bufferContainers: resp.currentSettings?.bufferContainers,
+      scaledownWindowMs:
+        resp.currentSettings?.scaledownWindow != null
+          ? resp.currentSettings?.scaledownWindow * 1000
+          : undefined,
+    };
   }
 
   /**
