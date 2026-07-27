@@ -9,6 +9,8 @@ Both client libraries are pre-1.0, and they have separate versioning.
 - (Go, JS) Added a `ConflictError` error type, returned when the current state of a resource conflicts with the requested operation.
 - **Breaking:** (Go) Unexported `AuthTokenManager`, `NewAuthTokenManager`, `TokenAndExpiry`, and `ValidateExecArgs` which were not meant to be part of the public API.
 - (Go, JS) `Sandbox.Filesystem.CopyFromLocal` / `WriteBytes` / `WriteText` (Go) and `sandbox.filesystem.copyFromLocal` / `writeBytes` / `writeText` (JS) now stream data to the Sandbox instead of issuing a request per chunk, making large writes ~2.5× faster.
+- **Breaking:** (Go) `FunctionUpdateAutoscalerParams.ScaledownWindow` now is typed as a `*time.Duration` instead of as a `*uint32`.
+- (Go, JS) `Function.UpdateAutoscaler` now returns a struct containing the current autoscaler settings immediately after applying the change.
 
 ## js/v0.9.0, go/v0.9.0
 

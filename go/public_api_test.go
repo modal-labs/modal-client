@@ -115,6 +115,7 @@ var excludedTypes = map[string]string{
 	"Client":                          "main client; Close and Version are intentionally parameter-free",
 	"CloudBucketMount":                "data type, no public methods",
 	"FunctionStats":                   "data type",
+	"FunctionAutoscalerSettings":      "data type, no public methods",
 	"Profile":                         "data type, no public methods",
 	"Probe":                           "configuration value type, no public methods",
 	"Proxy":                           "data type, no public methods",

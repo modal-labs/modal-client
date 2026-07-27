@@ -208,40 +208,75 @@ func TestFunctionUpdateAutoscaler(t *testing.T) {
 	f, err := mock.Functions.FromName(ctx, "test-app", "test-function", nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
+	currentSettings := pb.AutoscalerSettings_builder{}
+
 	grpcmock.HandleUnary(
 		mock, "/FunctionUpdateSchedulingParams",
 		func(req *pb.FunctionUpdateSchedulingParamsRequest) (*pb.FunctionUpdateSchedulingParamsResponse, error) {
 			g.Expect(req.GetFunctionId()).To(gomega.Equal("fid-auto"))
 			s := req.GetSettings()
-			g.Expect(s.GetMinContainers()).To(gomega.Equal(uint32(1)))
-			g.Expect(s.GetMaxContainers()).To(gomega.Equal(uint32(10)))
-			g.Expect(s.GetBufferContainers()).To(gomega.Equal(uint32(2)))
-			g.Expect(s.GetScaledownWindow()).To(gomega.Equal(uint32(300)))
-			return &pb.FunctionUpdateSchedulingParamsResponse{}, nil
+
+			MinContainers := s.GetMinContainers()
+			MaxContainers := s.GetMaxContainers()
+			BufferContainers := s.GetBufferContainers()
+			ScaledownWindow := s.GetScaledownWindow()
+
+			g.Expect(MinContainers).To(gomega.Equal(uint32(1)))
+			g.Expect(MaxContainers).To(gomega.Equal(uint32(10)))
+			g.Expect(BufferContainers).To(gomega.Equal(uint32(2)))
+			g.Expect(ScaledownWindow).To(gomega.Equal(uint32(300)))
+
+			currentSettings.MinContainers = &MinContainers
+			currentSettings.MaxContainers = &MaxContainers
+			currentSettings.BufferContainers = &BufferContainers
+			currentSettings.ScaledownWindow = &ScaledownWindow
+
+			return pb.FunctionUpdateSchedulingParamsResponse_builder{
+				CurrentSettings: currentSettings.Build(),
+			}.Build(), nil
 		},
 	)
 
-	err = f.UpdateAutoscaler(ctx, &modal.FunctionUpdateAutoscalerParams{
+	scaledownWindow := 300 * time.Second
+
+	settings, err := f.UpdateAutoscaler(ctx, &modal.FunctionUpdateAutoscalerParams{
 		MinContainers:    ptrU32(1),
 		MaxContainers:    ptrU32(10),
 		BufferContainers: ptrU32(2),
-		ScaledownWindow:  ptrU32(300),
+		ScaledownWindow:  &scaledownWindow,
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(*settings.MinContainers).To(gomega.Equal(uint32(1)))
+	g.Expect(*settings.MaxContainers).To(gomega.Equal(uint32(10)))
+	g.Expect(*settings.BufferContainers).To(gomega.Equal(uint32(2)))
+	g.Expect(*settings.ScaledownWindow).To(gomega.Equal(time.Duration(300) * time.Second))
 
 	grpcmock.HandleUnary(
 		mock, "/FunctionUpdateSchedulingParams",
 		func(req *pb.FunctionUpdateSchedulingParamsRequest) (*pb.FunctionUpdateSchedulingParamsResponse, error) {
 			g.Expect(req.GetFunctionId()).To(gomega.Equal("fid-auto"))
-			g.Expect(req.GetSettings().GetMinContainers()).To(gomega.Equal(uint32(2)))
-			return &pb.FunctionUpdateSchedulingParamsResponse{}, nil
+			s := req.GetSettings()
+
+			MinContainers := s.GetMinContainers()
+			g.Expect(MinContainers).To(gomega.Equal(uint32(2)))
+			currentSettings.MinContainers = &MinContainers
+
+			return pb.FunctionUpdateSchedulingParamsResponse_builder{
+				CurrentSettings: currentSettings.Build(),
+			}.Build(), nil
 		},
 	)
 
-	err = f.UpdateAutoscaler(ctx, &modal.FunctionUpdateAutoscalerParams{
+	settings, err = f.UpdateAutoscaler(ctx, &modal.FunctionUpdateAutoscalerParams{
 		MinContainers: ptrU32(2),
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(*settings.MinContainers).To(gomega.Equal(uint32(2)))
+	g.Expect(*settings.MaxContainers).To(gomega.Equal(uint32(10)))
+	g.Expect(*settings.BufferContainers).To(gomega.Equal(uint32(2)))
+	g.Expect(*settings.ScaledownWindow).To(gomega.Equal(time.Duration(300) * time.Second))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }

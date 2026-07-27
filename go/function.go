@@ -48,7 +48,7 @@ type FunctionUpdateAutoscalerParams struct {
 	MinContainers    *uint32
 	MaxContainers    *uint32
 	BufferContainers *uint32
-	ScaledownWindow  *uint32
+	ScaledownWindow  *time.Duration
 }
 
 // Function references a deployed Modal Function.
@@ -808,26 +808,73 @@ func (f *Function) GetCurrentStats(ctx context.Context, params *FunctionGetCurre
 	}, nil
 }
 
+type FunctionAutoscalerSettings struct {
+	MinContainers    *uint32
+	MaxContainers    *uint32
+	BufferContainers *uint32
+	ScaledownWindow  *time.Duration
+}
+
 // UpdateAutoscaler overrides the current autoscaler behavior for this Function.
-func (f *Function) UpdateAutoscaler(ctx context.Context, params *FunctionUpdateAutoscalerParams) error {
+func (f *Function) UpdateAutoscaler(ctx context.Context, params *FunctionUpdateAutoscalerParams) (*FunctionAutoscalerSettings, error) {
 	if params == nil {
 		params = &FunctionUpdateAutoscalerParams{}
 	}
 
-	settings := pb.AutoscalerSettings_builder{
+	settingsBuilder := pb.AutoscalerSettings_builder{
 		MinContainers:    params.MinContainers,
 		MaxContainers:    params.MaxContainers,
 		BufferContainers: params.BufferContainers,
-		ScaledownWindow:  params.ScaledownWindow,
-	}.Build()
+	}
 
-	_, err := f.client.cpClient.FunctionUpdateSchedulingParams(ctx, pb.FunctionUpdateSchedulingParamsRequest_builder{
+	if params.ScaledownWindow != nil {
+		seconds := uint32(params.ScaledownWindow.Seconds())
+		settingsBuilder.ScaledownWindow = &seconds
+	}
+
+	settings := settingsBuilder.Build()
+
+	resp, err := f.client.cpClient.FunctionUpdateSchedulingParams(ctx, pb.FunctionUpdateSchedulingParamsRequest_builder{
 		FunctionId:           f.FunctionID,
 		WarmPoolSizeOverride: 0, // Deprecated field, always set to 0
 		Settings:             settings,
 	}.Build())
+	if err != nil {
+		return nil, err
+	}
 
-	return err
+	settings = resp.GetCurrentSettings()
+	if settings == nil {
+		return nil, InternalFailure{Exception: "failed to get current autoscaler settings"}
+	}
+
+	var MinContainers *uint32 = nil
+	if settings.HasMinContainers() {
+		tmp := settings.GetMinContainers()
+		MinContainers = &tmp
+	}
+	var MaxContainers *uint32 = nil
+	if settings.HasMaxContainers() {
+		tmp := settings.GetMaxContainers()
+		MaxContainers = &tmp
+	}
+	var BufferContainers *uint32 = nil
+	if settings.HasBufferContainers() {
+		tmp := settings.GetBufferContainers()
+		BufferContainers = &tmp
+	}
+	var ScaledownWindow *time.Duration = nil
+	if settings.HasScaledownWindow() {
+		tmp := time.Duration(settings.GetScaledownWindow()) * time.Second
+		ScaledownWindow = &tmp
+	}
+
+	return &FunctionAutoscalerSettings{
+		MinContainers:    MinContainers,
+		MaxContainers:    MaxContainers,
+		BufferContainers: BufferContainers,
+		ScaledownWindow:  ScaledownWindow,
+	}, nil
 }
 
 // GetWebURL returns the URL of a Function running as a Web Function.
