@@ -1307,9 +1307,6 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-	if err := sb.ensureV1("CreateConnectToken"); err != nil {
-		return nil, err
-	}
 
 	if params == nil {
 		params = &SandboxCreateConnectTokenParams{}
@@ -1321,11 +1318,19 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 		params.Port = 8080
 	}
 	port := uint32(params.Port)
-	resp, err := sb.client.cpClient.SandboxCreateConnectToken(ctx, pb.SandboxCreateConnectTokenRequest_builder{
+	req := pb.SandboxCreateConnectTokenRequest_builder{
 		SandboxId:    sb.SandboxID,
 		UserMetadata: params.UserMetadata,
 		Port:         &port,
-	}.Build())
+	}.Build()
+
+	var resp *pb.SandboxCreateConnectTokenResponse
+	var err error
+	if sb.isV2 {
+		resp, err = sb.client.cpClient.SandboxCreateConnectTokenV2(ctx, req)
+	} else {
+		resp, err = sb.client.cpClient.SandboxCreateConnectToken(ctx, req)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1401,13 +1406,6 @@ func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID st
 func (sb *Sandbox) ensureAttached() error {
 	if !sb.attached.Load() {
 		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
-	}
-	return nil
-}
-
-func (sb *Sandbox) ensureV1(methodName string) error {
-	if sb.isV2 {
-		return InvalidError{Exception: fmt.Sprintf("Sandbox.%s is not supported for V2 sandboxes", methodName)}
 	}
 	return nil
 }

@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import inspect
+import json
 import pytest
 import time
 import typing
@@ -84,33 +85,83 @@ def test_probe_rejects_invalid_raw_configuration(kwargs, match):
         modal.Probe(**kwargs)
 
 
+_CONNECT_TOKEN_VERSIONS = [
+    pytest.param(
+        Sandbox.create,
+        "SandboxCreateConnectToken",
+        "SandboxCreateConnectTokenV2",
+        "https://sandbox.modal.host/connect",
+        "token",
+        id="v1",
+    ),
+    pytest.param(
+        Sandbox._experimental_create,
+        "SandboxCreateConnectTokenV2",
+        "SandboxCreateConnectToken",
+        "https://sandbox.modal.host/connect/v2",
+        "v2token",
+        id="v2",
+    ),
+]
+
+
+@pytest.mark.parametrize("sandbox_create", [Sandbox.create, Sandbox._experimental_create], ids=["v1", "v2"])
 @pytest.mark.parametrize("port", ["8080", 0, 65536, -1, 8080.0])
-def test_create_connect_token_bad_port_raises(app, servicer, port):
-    sb = Sandbox.create(app=app)
+def test_create_connect_token_bad_port_raises(app, servicer, sandbox_create, port):
+    sb = sandbox_create("sleep", "infinity", app=app)
     with pytest.raises(InvalidError, match="port must be between 1 and 65535"):
         sb.create_connect_token(port=port)
+    sb.terminate()
 
 
+@pytest.mark.parametrize("sandbox_create, rpc, other_rpc, expected_url, token_prefix", _CONNECT_TOKEN_VERSIONS)
 @pytest.mark.parametrize("port", [1, 8080, 9000, 65535])
-def test_create_connect_token_sends_port(app, servicer, port):
-    sb = Sandbox.create(app=app)
+def test_create_connect_token_sends_port(
+    app, servicer, sandbox_create, rpc, other_rpc, expected_url, token_prefix, port
+):
+    sb = sandbox_create("sleep", "infinity", app=app)
     with servicer.intercept() as ctx:
         creds = sb.create_connect_token(port=port)
-        req = ctx.pop_request("SandboxCreateConnectToken")
+        req = ctx.pop_request(rpc)
 
     assert req.sandbox_id == sb.object_id
     assert req.port == port
-    assert creds.token == f"token-{port}"
+    assert creds.url == expected_url
+    assert creds.token == f"{token_prefix}-{port}"
+    # The request must not be sent to the other version's RPC.
+    assert ctx.get_requests(other_rpc) == []
+    sb.terminate()
 
 
-def test_create_connect_token_defaults_to_8080(app, servicer):
-    sb = Sandbox.create(app=app)
+@pytest.mark.parametrize("sandbox_create, rpc, other_rpc, expected_url, token_prefix", _CONNECT_TOKEN_VERSIONS)
+def test_create_connect_token_defaults_to_8080(
+    app, servicer, sandbox_create, rpc, other_rpc, expected_url, token_prefix
+):
+    sb = sandbox_create("sleep", "infinity", app=app)
     with servicer.intercept() as ctx:
         creds = sb.create_connect_token()
-        req = ctx.pop_request("SandboxCreateConnectToken")
+        req = ctx.pop_request(rpc)
 
     assert req.port == 8080
-    assert creds.token == "token-8080"
+    assert creds.token == f"{token_prefix}-8080"
+    sb.terminate()
+
+
+@pytest.mark.parametrize(
+    "sandbox_create, rpc",
+    [
+        pytest.param(Sandbox.create, "SandboxCreateConnectToken", id="v1"),
+        pytest.param(Sandbox._experimental_create, "SandboxCreateConnectTokenV2", id="v2"),
+    ],
+)
+def test_create_connect_token_serializes_dict_metadata(app, servicer, sandbox_create, rpc):
+    sb = sandbox_create("sleep", "infinity", app=app)
+    with servicer.intercept() as ctx:
+        sb.create_connect_token(user_metadata={"team": "infra", "attempt": 3})
+        req = ctx.pop_request(rpc)
+
+    assert json.loads(req.user_metadata) == {"team": "infra", "attempt": 3}
+    sb.terminate()
 
 
 @skip_non_subprocess

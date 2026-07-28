@@ -237,22 +237,6 @@ func TestGetSandboxVersionRejectsInvalidID(t *testing.T) {
 	}
 }
 
-func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-	ctx := t.Context()
-
-	sb := newSandbox(&Client{}, "sb-v2-123")
-	sb.isV2 = true
-	sb.taskID = "ta-v2-123"
-
-	wantErr := "not supported for V2 sandboxes"
-
-	_, err := sb.CreateConnectToken(ctx, nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-}
-
 func TestSandboxV2FilesystemSupported(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

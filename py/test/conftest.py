@@ -2949,6 +2949,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def SandboxCreateConnectTokenV2(self, stream):
+        request: api_pb2.SandboxCreateConnectTokenRequest = await stream.recv_message()
+        port = request.port if request.HasField("port") else 8080
+        await stream.send_message(
+            api_pb2.SandboxCreateConnectTokenResponse(
+                url="https://sandbox.modal.host/connect/v2",
+                token=f"v2token-{port}",
+            )
+        )
+
     async def SandboxGetLogs(self, stream):
         _request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))

@@ -1897,18 +1897,20 @@ export class Sandbox {
     params?: SandboxCreateConnectTokenParams,
   ): Promise<SandboxCreateConnectCredentials> {
     this.#ensureAttached();
-    this.#ensureV1("createConnectToken");
     const port = params?.port ?? 8080;
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       throw new InvalidError(
         `createConnectToken() expects \`port\` in [1, 65535], got ${port}`,
       );
     }
-    const resp = await this.#client.cpClient.sandboxCreateConnectToken({
+    const req = {
       sandboxId: this.sandboxId,
       userMetadata: params?.userMetadata,
       port,
-    });
+    };
+    const resp = this.#isV2
+      ? await this.#client.cpClient.sandboxCreateConnectTokenV2(req)
+      : await this.#client.cpClient.sandboxCreateConnectToken(req);
     return { url: resp.url, token: resp.token };
   }
 

@@ -1069,25 +1069,56 @@ func TestCreateConnectTokenDefaultsTo8080(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestCreateConnectTokenV2RoutesToV2RPC(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "SandboxCreateConnectTokenV2",
+		func(req *pb.SandboxCreateConnectTokenRequest) (*pb.SandboxCreateConnectTokenResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(validV2SandboxID))
+			g.Expect(req.GetUserMetadata()).To(gomega.Equal("abc"))
+			g.Expect(req.HasPort()).To(gomega.BeTrue())
+			g.Expect(req.GetPort()).To(gomega.Equal(uint32(9000)))
+			return pb.SandboxCreateConnectTokenResponse_builder{
+				Url:   "https://sandbox.modal.host/connect/v2",
+				Token: "v2token-9000",
+			}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.FromID(ctx, validV2SandboxID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{UserMetadata: "abc", Port: 9000})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(creds.URL).To(gomega.Equal("https://sandbox.modal.host/connect/v2"))
+	g.Expect(creds.Token).To(gomega.Equal("v2token-9000"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestCreateConnectTokenRejectsInvalidPort(t *testing.T) {
 	t.Parallel()
 
-	for _, port := range []int{-1, 65536} {
-		t.Run(fmt.Sprintf("port=%d", port), func(t *testing.T) {
-			t.Parallel()
-			g := gomega.NewWithT(t)
-			ctx := t.Context()
-			mock := newGRPCMockClient(t)
+	for _, sandboxID := range []string{validV1SandboxID, validV2SandboxID} {
+		for _, port := range []int{-1, 65536} {
+			t.Run(fmt.Sprintf("sandbox=%s/port=%d", sandboxID, port), func(t *testing.T) {
+				t.Parallel()
+				g := gomega.NewWithT(t)
+				ctx := t.Context()
+				mock := newGRPCMockClient(t)
 
-			sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
-			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+				sb, err := mock.Sandboxes.FromID(ctx, sandboxID, nil)
+				g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-			_, err = sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{Port: port})
-			g.Expect(err).Should(gomega.HaveOccurred())
-			g.Expect(err.Error()).To(gomega.ContainSubstring("expects Port in [1, 65535]"))
+				_, err = sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{Port: port})
+				g.Expect(err).Should(gomega.HaveOccurred())
+				g.Expect(err.Error()).To(gomega.ContainSubstring("expects Port in [1, 65535]"))
 
-			g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
-		})
+				g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+			})
+		}
 	}
 }
 

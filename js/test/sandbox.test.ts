@@ -1016,6 +1016,33 @@ test.each([0, -1, 65536, 8080.5, NaN])(
   },
 );
 
+test("createConnectToken routes V2 sandboxes to the V2 RPC", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreateConnectTokenV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    expect(req.userMetadata).toBe("abc");
+    expect(req.port).toBe(9000);
+    return {
+      url: "https://sandbox.modal.host/connect/v2",
+      token: "v2token-9000",
+    };
+  });
+
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+  const creds = await sb.createConnectToken({
+    userMetadata: "abc",
+    port: 9000,
+  });
+  expect(creds.url).toBe("https://sandbox.modal.host/connect/v2");
+  expect(creds.token).toBe("v2token-9000");
+
+  mock.assertExhausted();
+});
+
 test("buildSandboxCreateRequestProto_defaults", async () => {
   const req = await buildSandboxCreateRequestProto("app-123", "img-456");
   const def = req.definition!;
@@ -1718,7 +1745,6 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
   expect(() => sb.stdin).toThrow(expectedError);
   expect(() => sb.stdout).toThrow(expectedError);
   expect(() => sb.stderr).toThrow(expectedError);
-  await expect(sb.createConnectToken()).rejects.toThrow(expectedError);
 });
 
 test("V2 Sandbox setTags/getTags route to V2 RPCs", async () => {

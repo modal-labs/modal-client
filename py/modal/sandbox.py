@@ -1785,7 +1785,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns:
             URL and token credentials for connecting to the sandbox over HTTP.
         """
-        self._ensure_v1("create_connect_token")
         if user_metadata is not None and isinstance(user_metadata, dict):
             try:
                 user_metadata = json.dumps(user_metadata)
@@ -1798,7 +1797,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxCreateConnectTokenRequest(
             sandbox_id=self.object_id, user_metadata=user_metadata, port=port
         )
-        resp = await self._client.stub.SandboxCreateConnectToken(req)
+        if self._is_v2:
+            assert self._client._auth_token_manager
+            auth_token = await self._client._auth_token_manager.get_token()
+            resp = await self._client.stub.SandboxCreateConnectTokenV2(
+                req, metadata=[("x-modal-auth-token", auth_token)]
+            )
+        else:
+            resp = await self._client.stub.SandboxCreateConnectToken(req)
         return SandboxConnectCredentials(resp.url, resp.token)
 
     async def reload_volumes(self, *, timeout: int = 55) -> None:
