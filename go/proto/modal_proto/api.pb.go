@@ -28297,28 +28297,29 @@ func (b0 FunctionGetSerializedResponse_builder) Build() *FunctionGetSerializedRe
 }
 
 type FunctionHandleMetadata struct {
-	state                             protoimpl.MessageState             `protogen:"opaque.v1"`
-	xxx_hidden_FunctionName           string                             `protobuf:"bytes,2,opt,name=function_name,json=functionName,proto3"`
-	xxx_hidden_FunctionType           Function_FunctionType              `protobuf:"varint,8,opt,name=function_type,json=functionType,proto3,enum=modal.client.Function_FunctionType"`
-	xxx_hidden_WebUrl                 string                             `protobuf:"bytes,28,opt,name=web_url,json=webUrl,proto3"`
-	xxx_hidden_IsMethod               bool                               `protobuf:"varint,39,opt,name=is_method,json=isMethod,proto3"`
-	xxx_hidden_UseFunctionId          string                             `protobuf:"bytes,40,opt,name=use_function_id,json=useFunctionId,proto3"`
-	xxx_hidden_UseMethodName          string                             `protobuf:"bytes,41,opt,name=use_method_name,json=useMethodName,proto3"`
-	xxx_hidden_DefinitionId           string                             `protobuf:"bytes,42,opt,name=definition_id,json=definitionId,proto3"`
-	xxx_hidden_ClassParameterInfo     *ClassParameterInfo                `protobuf:"bytes,43,opt,name=class_parameter_info,json=classParameterInfo,proto3"`
-	xxx_hidden_MethodHandleMetadata   map[string]*FunctionHandleMetadata `protobuf:"bytes,44,rep,name=method_handle_metadata,json=methodHandleMetadata,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	xxx_hidden_FunctionSchema         *FunctionSchema                    `protobuf:"bytes,45,opt,name=function_schema,json=functionSchema,proto3"`
-	xxx_hidden_InputPlaneUrl          *string                            `protobuf:"bytes,46,opt,name=input_plane_url,json=inputPlaneUrl,proto3,oneof"`
-	xxx_hidden_InputPlaneRegion       *string                            `protobuf:"bytes,47,opt,name=input_plane_region,json=inputPlaneRegion,proto3,oneof"`
-	xxx_hidden_MaxObjectSizeBytes     uint64                             `protobuf:"varint,48,opt,name=max_object_size_bytes,json=maxObjectSizeBytes,proto3,oneof"`
-	xxx_hidden_XExperimentalFlashUrls []string                           `protobuf:"bytes,49,rep,name=_experimental_flash_urls,json=ExperimentalFlashUrls,proto3"`
-	xxx_hidden_SupportedInputFormats  []DataFormat                       `protobuf:"varint,50,rep,packed,name=supported_input_formats,json=supportedInputFormats,proto3,enum=modal.client.DataFormat"`
-	xxx_hidden_SupportedOutputFormats []DataFormat                       `protobuf:"varint,51,rep,packed,name=supported_output_formats,json=supportedOutputFormats,proto3,enum=modal.client.DataFormat"`
-	xxx_hidden_AppId                  string                             `protobuf:"bytes,52,opt,name=app_id,json=appId,proto3"`
-	XXX_raceDetectHookData            protoimpl.RaceDetectHookData
-	XXX_presence                      [1]uint32
-	unknownFields                     protoimpl.UnknownFields
-	sizeCache                         protoimpl.SizeCache
+	state                              protoimpl.MessageState             `protogen:"opaque.v1"`
+	xxx_hidden_FunctionName            string                             `protobuf:"bytes,2,opt,name=function_name,json=functionName,proto3"`
+	xxx_hidden_FunctionType            Function_FunctionType              `protobuf:"varint,8,opt,name=function_type,json=functionType,proto3,enum=modal.client.Function_FunctionType"`
+	xxx_hidden_WebUrl                  string                             `protobuf:"bytes,28,opt,name=web_url,json=webUrl,proto3"`
+	xxx_hidden_IsMethod                bool                               `protobuf:"varint,39,opt,name=is_method,json=isMethod,proto3"`
+	xxx_hidden_UseFunctionId           string                             `protobuf:"bytes,40,opt,name=use_function_id,json=useFunctionId,proto3"`
+	xxx_hidden_UseMethodName           string                             `protobuf:"bytes,41,opt,name=use_method_name,json=useMethodName,proto3"`
+	xxx_hidden_DefinitionId            string                             `protobuf:"bytes,42,opt,name=definition_id,json=definitionId,proto3"`
+	xxx_hidden_ClassParameterInfo      *ClassParameterInfo                `protobuf:"bytes,43,opt,name=class_parameter_info,json=classParameterInfo,proto3"`
+	xxx_hidden_MethodHandleMetadata    map[string]*FunctionHandleMetadata `protobuf:"bytes,44,rep,name=method_handle_metadata,json=methodHandleMetadata,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	xxx_hidden_FunctionSchema          *FunctionSchema                    `protobuf:"bytes,45,opt,name=function_schema,json=functionSchema,proto3"`
+	xxx_hidden_InputPlaneUrl           *string                            `protobuf:"bytes,46,opt,name=input_plane_url,json=inputPlaneUrl,proto3,oneof"`
+	xxx_hidden_InputPlaneRegion        *string                            `protobuf:"bytes,47,opt,name=input_plane_region,json=inputPlaneRegion,proto3,oneof"`
+	xxx_hidden_MaxObjectSizeBytes      uint64                             `protobuf:"varint,48,opt,name=max_object_size_bytes,json=maxObjectSizeBytes,proto3,oneof"`
+	xxx_hidden_MaxAsyncObjectSizeBytes uint64                             `protobuf:"varint,53,opt,name=max_async_object_size_bytes,json=maxAsyncObjectSizeBytes,proto3,oneof"`
+	xxx_hidden_XExperimentalFlashUrls  []string                           `protobuf:"bytes,49,rep,name=_experimental_flash_urls,json=ExperimentalFlashUrls,proto3"`
+	xxx_hidden_SupportedInputFormats   []DataFormat                       `protobuf:"varint,50,rep,packed,name=supported_input_formats,json=supportedInputFormats,proto3,enum=modal.client.DataFormat"`
+	xxx_hidden_SupportedOutputFormats  []DataFormat                       `protobuf:"varint,51,rep,packed,name=supported_output_formats,json=supportedOutputFormats,proto3,enum=modal.client.DataFormat"`
+	xxx_hidden_AppId                   string                             `protobuf:"bytes,52,opt,name=app_id,json=appId,proto3"`
+	XXX_raceDetectHookData             protoimpl.RaceDetectHookData
+	XXX_presence                       [1]uint32
+	unknownFields                      protoimpl.UnknownFields
+	sizeCache                          protoimpl.SizeCache
 }
 
 func (x *FunctionHandleMetadata) Reset() {
@@ -28443,6 +28444,13 @@ func (x *FunctionHandleMetadata) GetMaxObjectSizeBytes() uint64 {
 	return 0
 }
 
+func (x *FunctionHandleMetadata) GetMaxAsyncObjectSizeBytes() uint64 {
+	if x != nil {
+		return x.xxx_hidden_MaxAsyncObjectSizeBytes
+	}
+	return 0
+}
+
 func (x *FunctionHandleMetadata) GetXExperimentalFlashUrls() []string {
 	if x != nil {
 		return x.xxx_hidden_XExperimentalFlashUrls
@@ -28513,17 +28521,22 @@ func (x *FunctionHandleMetadata) SetFunctionSchema(v *FunctionSchema) {
 
 func (x *FunctionHandleMetadata) SetInputPlaneUrl(v string) {
 	x.xxx_hidden_InputPlaneUrl = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 17)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 18)
 }
 
 func (x *FunctionHandleMetadata) SetInputPlaneRegion(v string) {
 	x.xxx_hidden_InputPlaneRegion = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 17)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 18)
 }
 
 func (x *FunctionHandleMetadata) SetMaxObjectSizeBytes(v uint64) {
 	x.xxx_hidden_MaxObjectSizeBytes = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 17)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 18)
+}
+
+func (x *FunctionHandleMetadata) SetMaxAsyncObjectSizeBytes(v uint64) {
+	x.xxx_hidden_MaxAsyncObjectSizeBytes = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 13, 18)
 }
 
 func (x *FunctionHandleMetadata) SetXExperimentalFlashUrls(v []string) {
@@ -28577,6 +28590,13 @@ func (x *FunctionHandleMetadata) HasMaxObjectSizeBytes() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 12)
 }
 
+func (x *FunctionHandleMetadata) HasMaxAsyncObjectSizeBytes() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 13)
+}
+
 func (x *FunctionHandleMetadata) ClearClassParameterInfo() {
 	x.xxx_hidden_ClassParameterInfo = nil
 }
@@ -28600,6 +28620,11 @@ func (x *FunctionHandleMetadata) ClearMaxObjectSizeBytes() {
 	x.xxx_hidden_MaxObjectSizeBytes = 0
 }
 
+func (x *FunctionHandleMetadata) ClearMaxAsyncObjectSizeBytes() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 13)
+	x.xxx_hidden_MaxAsyncObjectSizeBytes = 0
+}
+
 type FunctionHandleMetadata_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -28618,11 +28643,12 @@ type FunctionHandleMetadata_builder struct {
 	InputPlaneUrl        *string
 	InputPlaneRegion     *string
 	// Use optional to ensure unset values default to None instead of 0
-	MaxObjectSizeBytes     *uint64
-	XExperimentalFlashUrls []string
-	SupportedInputFormats  []DataFormat
-	SupportedOutputFormats []DataFormat
-	AppId                  string
+	MaxObjectSizeBytes      *uint64
+	MaxAsyncObjectSizeBytes *uint64
+	XExperimentalFlashUrls  []string
+	SupportedInputFormats   []DataFormat
+	SupportedOutputFormats  []DataFormat
+	AppId                   string
 }
 
 func (b0 FunctionHandleMetadata_builder) Build() *FunctionHandleMetadata {
@@ -28640,16 +28666,20 @@ func (b0 FunctionHandleMetadata_builder) Build() *FunctionHandleMetadata {
 	x.xxx_hidden_MethodHandleMetadata = b.MethodHandleMetadata
 	x.xxx_hidden_FunctionSchema = b.FunctionSchema
 	if b.InputPlaneUrl != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 17)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 18)
 		x.xxx_hidden_InputPlaneUrl = b.InputPlaneUrl
 	}
 	if b.InputPlaneRegion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 17)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 18)
 		x.xxx_hidden_InputPlaneRegion = b.InputPlaneRegion
 	}
 	if b.MaxObjectSizeBytes != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 17)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 18)
 		x.xxx_hidden_MaxObjectSizeBytes = *b.MaxObjectSizeBytes
+	}
+	if b.MaxAsyncObjectSizeBytes != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 13, 18)
+		x.xxx_hidden_MaxAsyncObjectSizeBytes = *b.MaxAsyncObjectSizeBytes
 	}
 	x.xxx_hidden_XExperimentalFlashUrls = b.XExperimentalFlashUrls
 	x.xxx_hidden_SupportedInputFormats = b.SupportedInputFormats
@@ -63777,7 +63807,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"functionId\"{\n" +
 	"\x1dFunctionGetSerializedResponse\x12/\n" +
 	"\x13function_serialized\x18\x01 \x01(\fR\x12functionSerialized\x12)\n" +
-	"\x10class_serialized\x18\x02 \x01(\fR\x0fclassSerialized\"\x85\t\n" +
+	"\x10class_serialized\x18\x02 \x01(\fR\x0fclassSerialized\"\xe8\t\n" +
 	"\x16FunctionHandleMetadata\x12#\n" +
 	"\rfunction_name\x18\x02 \x01(\tR\ffunctionName\x12H\n" +
 	"\rfunction_type\x18\b \x01(\x0e2#.modal.client.Function.FunctionTypeR\ffunctionType\x12\x17\n" +
@@ -63791,7 +63821,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0ffunction_schema\x18- \x01(\v2\x1c.modal.client.FunctionSchemaR\x0efunctionSchema\x12+\n" +
 	"\x0finput_plane_url\x18. \x01(\tH\x00R\rinputPlaneUrl\x88\x01\x01\x121\n" +
 	"\x12input_plane_region\x18/ \x01(\tH\x01R\x10inputPlaneRegion\x88\x01\x01\x126\n" +
-	"\x15max_object_size_bytes\x180 \x01(\x04H\x02R\x12maxObjectSizeBytes\x88\x01\x01\x127\n" +
+	"\x15max_object_size_bytes\x180 \x01(\x04H\x02R\x12maxObjectSizeBytes\x88\x01\x01\x12A\n" +
+	"\x1bmax_async_object_size_bytes\x185 \x01(\x04H\x03R\x17maxAsyncObjectSizeBytes\x88\x01\x01\x127\n" +
 	"\x18_experimental_flash_urls\x181 \x03(\tR\x15ExperimentalFlashUrls\x12P\n" +
 	"\x17supported_input_formats\x182 \x03(\x0e2\x18.modal.client.DataFormatR\x15supportedInputFormats\x12R\n" +
 	"\x18supported_output_formats\x183 \x03(\x0e2\x18.modal.client.DataFormatR\x16supportedOutputFormats\x12\x15\n" +
@@ -63801,7 +63832,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2$.modal.client.FunctionHandleMetadataR\x05value:\x028\x01B\x12\n" +
 	"\x10_input_plane_urlB\x15\n" +
 	"\x13_input_plane_regionB\x18\n" +
-	"\x16_max_object_size_bytes\"\xe9\x01\n" +
+	"\x16_max_object_size_bytesB\x1e\n" +
+	"\x1c_max_async_object_size_bytes\"\xe9\x01\n" +
 	"\rFunctionInput\x12\x14\n" +
 	"\x04args\x18\x01 \x01(\fH\x00R\x04args\x12\"\n" +
 	"\fargs_blob_id\x18\a \x01(\tH\x00R\n" +
