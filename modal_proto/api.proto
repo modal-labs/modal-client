@@ -3457,6 +3457,7 @@ message SandboxGetCommandRouterAccessResponse {
 
 message SandboxGetExitSnapshotRequest {
   string sandbox_id = 1;
+  float timeout = 2;
 }
 
 message SandboxGetExitSnapshotResponse {

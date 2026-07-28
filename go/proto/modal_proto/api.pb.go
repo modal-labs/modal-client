@@ -43178,6 +43178,7 @@ func (b0 SandboxGetCommandRouterAccessResponse_builder) Build() *SandboxGetComma
 type SandboxGetExitSnapshotRequest struct {
 	state                protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_SandboxId string                 `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3"`
+	xxx_hidden_Timeout   float32                `protobuf:"fixed32,2,opt,name=timeout,proto3"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -43214,14 +43215,26 @@ func (x *SandboxGetExitSnapshotRequest) GetSandboxId() string {
 	return ""
 }
 
+func (x *SandboxGetExitSnapshotRequest) GetTimeout() float32 {
+	if x != nil {
+		return x.xxx_hidden_Timeout
+	}
+	return 0
+}
+
 func (x *SandboxGetExitSnapshotRequest) SetSandboxId(v string) {
 	x.xxx_hidden_SandboxId = v
+}
+
+func (x *SandboxGetExitSnapshotRequest) SetTimeout(v float32) {
+	x.xxx_hidden_Timeout = v
 }
 
 type SandboxGetExitSnapshotRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	SandboxId string
+	Timeout   float32
 }
 
 func (b0 SandboxGetExitSnapshotRequest_builder) Build() *SandboxGetExitSnapshotRequest {
@@ -43229,6 +43242,7 @@ func (b0 SandboxGetExitSnapshotRequest_builder) Build() *SandboxGetExitSnapshotR
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_SandboxId = b.SandboxId
+	x.xxx_hidden_Timeout = b.Timeout
 	return m0
 }
 
@@ -64608,10 +64622,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"%SandboxGetCommandRouterAccessResponse\x12\x10\n" +
 	"\x03jwt\x18\x01 \x01(\tR\x03jwt\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12.\n" +
-	"\x13worker_ipv4_address\x18\x03 \x01(\tR\x11workerIpv4Address\">\n" +
+	"\x13worker_ipv4_address\x18\x03 \x01(\tR\x11workerIpv4Address\"X\n" +
 	"\x1dSandboxGetExitSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"\xa0\x04\n" +
+	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12\x18\n" +
+	"\atimeout\x18\x02 \x01(\x02R\atimeout\"\xa0\x04\n" +
 	"\x1eSandboxGetExitSnapshotResponse\x12P\n" +
 	"\asuccess\x18\x01 \x01(\v24.modal.client.SandboxGetExitSnapshotResponse.SuccessH\x00R\asuccess\x12P\n" +
 	"\apending\x18\x02 \x01(\v24.modal.client.SandboxGetExitSnapshotResponse.PendingH\x00R\apending\x12J\n" +
