@@ -63,7 +63,7 @@ func (fc *FunctionCall) Get(ctx context.Context, params *FunctionCallGetParams) 
 		params = &FunctionCallGetParams{}
 	}
 	invocation := controlPlaneInvocationFromFunctionCallID(fc.client.cpClient, fc.client.logger, fc.FunctionCallID)
-	return invocation.awaitOutput(ctx, params.Timeout)
+	return invocation.pollOutput(ctx, params.Timeout)
 }
 
 // FunctionCallCancelParams are options for cancelling Function Calls.

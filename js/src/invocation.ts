@@ -25,7 +25,7 @@ const outputsTimeoutMs = 55 * 1000;
  * For now, we support just the control plane, and will add support for the input plane soon.
  */
 export interface Invocation {
-  awaitOutput(timeoutMs?: number): Promise<any>;
+  awaitOutput(timeoutMs?: number, clearOnSuccess?: boolean): Promise<any>;
   retry(retryCount: number): Promise<void>;
 }
 
@@ -84,23 +84,34 @@ export class ControlPlaneInvocation implements Invocation {
     return new ControlPlaneInvocation(client.cpClient, functionCallId);
   }
 
-  async awaitOutput(timeoutMs?: number): Promise<any> {
+  async awaitOutput(
+    timeoutMs?: number,
+    clearOnSuccess: boolean = false,
+  ): Promise<any> {
     return await pollFunctionOutput(
       this.cpClient,
-      (timeoutMs: number) => this.#getOutput(timeoutMs),
+      (timeoutMs: number) =>
+        this.#getOutput(
+          timeoutMs,
+          clearOnSuccess,
+          this.inputJwt ? [this.inputJwt] : [],
+        ),
       timeoutMs,
     );
   }
 
   async #getOutput(
     timeoutMs: number,
+    clearOnSuccess: boolean,
+    jwts: string[] = [],
   ): Promise<FunctionGetOutputsItem | undefined> {
     const response = await this.cpClient.functionGetOutputs({
       functionCallId: this.functionCallId,
       maxValues: 1,
       timeout: timeoutMs / 1000,
       lastEntryId: "0-0",
-      clearOnSuccess: true,
+      clearOnSuccess,
+      inputJwts: jwts,
       requestedAt: timeNowSeconds(),
     });
     return response.outputs ? response.outputs[0] : undefined;

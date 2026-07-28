@@ -53,13 +53,32 @@ func createControlPlaneInvocation(ctx context.Context, cpClient pb.ModalClientCl
 	}, nil
 }
 
+// Used for Get calls
+func (c *controlPlaneInvocation) pollOutput(
+	ctx context.Context,
+	timeout *time.Duration,
+) (any, error) {
+	clearOnSuccess := false
+	return pollFunctionOutput(ctx, c.cpClient, c.logger, func(ctx context.Context, timeout time.Duration) (*pb.FunctionGetOutputsItem, error) {
+		return c.getOutput(ctx, timeout, clearOnSuccess, nil)
+	}, timeout)
+}
+
 // controlPlaneInvocationFromFunctionCallID creates a controlPlaneInvocation from a function call ID.
 func controlPlaneInvocationFromFunctionCallID(cpClient pb.ModalClientClient, logger *slog.Logger, functionCallID string) *controlPlaneInvocation {
 	return &controlPlaneInvocation{FunctionCallID: functionCallID, cpClient: cpClient, logger: logger}
 }
 
+// Used for Remote calls
 func (c *controlPlaneInvocation) awaitOutput(ctx context.Context, timeout *time.Duration) (any, error) {
-	return pollFunctionOutput(ctx, c.cpClient, c.logger, c.getOutput, timeout)
+	clearOnSuccess := true
+	var inputJwts []string
+	if c.inputJwt != "" {
+		inputJwts = []string{c.inputJwt}
+	}
+	return pollFunctionOutput(ctx, c.cpClient, c.logger, func(ctx context.Context, timeout time.Duration) (*pb.FunctionGetOutputsItem, error) {
+		return c.getOutput(ctx, timeout, clearOnSuccess, inputJwts)
+	}, timeout)
 }
 
 func (c *controlPlaneInvocation) retry(ctx context.Context, retryCount uint32) error {
@@ -83,13 +102,14 @@ func (c *controlPlaneInvocation) retry(ctx context.Context, retryCount uint32) e
 }
 
 // getOutput fetches the output for the current function call.
-func (c *controlPlaneInvocation) getOutput(ctx context.Context, timeout time.Duration) (*pb.FunctionGetOutputsItem, error) {
+func (c *controlPlaneInvocation) getOutput(ctx context.Context, timeout time.Duration, clearOnSuccess bool, inputJwts []string) (*pb.FunctionGetOutputsItem, error) {
 	response, err := c.cpClient.FunctionGetOutputs(ctx, pb.FunctionGetOutputsRequest_builder{
 		FunctionCallId: c.FunctionCallID,
 		MaxValues:      1,
 		Timeout:        float32(timeout.Seconds()),
 		LastEntryId:    "0-0",
-		ClearOnSuccess: true,
+		ClearOnSuccess: clearOnSuccess,
+		InputJwts:      inputJwts,
 		RequestedAt:    timeNowSeconds(),
 	}.Build())
 	if err != nil {

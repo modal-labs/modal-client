@@ -530,7 +530,7 @@ export class Function_ {
     let retryCount = 0;
     while (true) {
       try {
-        const result = await invocation.awaitOutput();
+        const result = await invocation.awaitOutput(undefined, true);
         this.#client.logger.debug(
           "Function call completed",
           "function_id",

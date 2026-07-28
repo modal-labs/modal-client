@@ -81,7 +81,7 @@ export class FunctionCall {
       this.#client,
       this.functionCallId,
     );
-    return invocation.awaitOutput(params.timeoutMs);
+    return invocation.awaitOutput(params.timeoutMs, false);
   }
 
   /** Cancel a running FunctionCall. */
