@@ -80,7 +80,6 @@ from .stream_type import StreamType
 from .types import FileWatchEvent, FileWatchEventType, SandboxConnectCredentials
 
 _default_image: _Image = _Image.debian_slim()
-_EXIT_SNAPSHOT_POLL_INTERVAL_SECONDS = 1.0
 _EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset((api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,))
 
 
@@ -1415,13 +1414,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskSetNetworkAccessRequest(task_id=task_id, network_access=network_access)
         await command_router_client.set_network_access(req)
 
-    async def _experimental_get_exit_snapshot(self, timeout: float | None = 60) -> _Image:
+    async def _experimental_get_exit_snapshot(self, timeout: float | None = None) -> _Image:
         """Get the exit filesystem snapshot image.
 
         Args:
-            timeout: Client-side deadline in seconds (default 60). Use `None` to
-                poll until the snapshot reaches a terminal state. Use `0` to
-                perform an immediate check.
+            timeout: Deadline in seconds. `None` polls until the snapshot reaches
+                a terminal state. `0` performs an immediate check.
 
         Returns:
             The exit snapshot Image.
@@ -1443,17 +1441,20 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         deadline = None if timeout is None else time.monotonic() + timeout
         timeout_message = f"timed out waiting for exit snapshot for Sandbox {self.object_id}"
+        # Use the private __client so the lookup works with a detached sandbox
+        client = self.__client
 
         while True:
-            resp: api_pb2.SandboxGetExitSnapshotResponse = await self._client.stub.SandboxGetExitSnapshot(
-                api_pb2.SandboxGetExitSnapshotRequest(sandbox_id=self.object_id)
+            request_timeout = 10.0 if deadline is None else min(10.0, max(0.0, deadline - time.monotonic()))
+            resp: api_pb2.SandboxGetExitSnapshotResponse = await client.stub.SandboxGetExitSnapshot(
+                api_pb2.SandboxGetExitSnapshotRequest(sandbox_id=self.object_id, timeout=request_timeout)
             )
             outcome = resp.WhichOneof("outcome")
 
             if outcome == "success":
                 if not resp.success.image_id:
                     raise InternalError("Exit snapshot result is missing image ID")
-                return _Image._new_hydrated(resp.success.image_id, self._client, None)
+                return _Image._new_hydrated(resp.success.image_id, client, None)
 
             if outcome == "error":
                 if resp.error.error_code in _EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES:
@@ -1464,15 +1465,6 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             if outcome != "pending":
                 raise InternalError("Exit snapshot response is missing an outcome")
-
-            sleep_for = _EXIT_SNAPSHOT_POLL_INTERVAL_SECONDS
-            if deadline is not None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError(timeout_message)
-                sleep_for = min(sleep_for, remaining)
-
-            await asyncio.sleep(sleep_for)
 
             if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError(timeout_message)

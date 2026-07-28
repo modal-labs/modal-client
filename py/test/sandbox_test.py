@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import hashlib
 import inspect
 import pytest
@@ -1231,12 +1232,32 @@ def test_sandbox_experimental_get_exit_snapshot_success(app, servicer):
     assert image.object_id == "im-exit-snapshot-123"
     (req,) = ctx.get_requests("SandboxGetExitSnapshot")
     assert req.sandbox_id == sb.object_id
+    assert req.timeout == 0
 
     sb.terminate()
 
 
-def test_sandbox_experimental_get_exit_snapshot_polls_until_success_without_timeout(app, servicer, monkeypatch):
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_INTERVAL_SECONDS", 0)
+def test_sandbox_experimental_get_exit_snapshot_allowed_after_detached(app, servicer):
+    sb = Sandbox.create(app=app)
+    sb.terminate()
+    sb.detach()
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetExitSnapshot",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot(timeout=0)
+
+    assert image.object_id == "im-exit-snapshot-123"
+    (req,) = ctx.get_requests("SandboxGetExitSnapshot")
+    assert req.sandbox_id == sb.object_id
+    assert req.timeout == 0
+
+
+def test_sandbox_experimental_get_exit_snapshot_waits_indefinitely(app, servicer):
     sb = Sandbox.create(app=app)
 
     with servicer.intercept() as ctx:
@@ -1253,12 +1274,39 @@ def test_sandbox_experimental_get_exit_snapshot_polls_until_success_without_time
         image = sb._experimental_get_exit_snapshot()
 
     assert image.object_id == "im-exit-snapshot-123"
-    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 2
+    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    assert len(requests) == 2
+    assert [req.timeout for req in requests] == [10, 10]
 
     sb.terminate()
 
 
-def test_sandbox_experimental_get_exit_snapshot_pending_times_out(app, servicer):
+def test_sandbox_experimental_get_exit_snapshot_repeats_long_polls(app, servicer):
+    sb = Sandbox.create(app=app)
+
+    with servicer.intercept() as ctx:
+        for _ in range(3):
+            ctx.add_response(
+                "SandboxGetExitSnapshot",
+                api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
+            )
+        ctx.add_response(
+            "SandboxGetExitSnapshot",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot(timeout=30)
+
+    assert image.object_id == "im-exit-snapshot-123"
+    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    assert len(requests) == 4
+    assert all(9 < req.timeout <= 10 for req in requests)
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_immediate_check(app, servicer):
     sb = Sandbox.create(app=app)
 
     with servicer.intercept() as ctx:
@@ -1269,7 +1317,33 @@ def test_sandbox_experimental_get_exit_snapshot_pending_times_out(app, servicer)
         with pytest.raises(TimeoutError, match="timed out"):
             sb._experimental_get_exit_snapshot(timeout=0)
 
-    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 1
+    (req,) = ctx.get_requests("SandboxGetExitSnapshot")
+    assert req.timeout == 0
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_aggregate_timeout(app, servicer):
+    sb = Sandbox.create(app=app)
+
+    async def responder(servicer, stream):
+        req = await stream.recv_message()
+        await asyncio.sleep(req.timeout)
+        await stream.send_message(
+            api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending())
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshot", responder)
+        with pytest.raises(TimeoutError, match="timed out"):
+            sb._experimental_get_exit_snapshot(timeout=0.05)
+
+    # Event loop timer granularity can wake a long poll marginally before the aggregate deadline,
+    # so the budget may be split across several requests, each bounded by the remaining time.
+    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    assert requests
+    assert all(req.timeout > 0 for req in requests)
+    assert all(req.timeout <= 0.05 or req.timeout == pytest.approx(0.05) for req in requests)
 
     sb.terminate()
 
@@ -2165,7 +2239,6 @@ detach_error_funcs = {
     "terminate": lambda sb: sb.terminate(),
     "wait_until_ready": lambda sb: sb.wait_until_ready(),
     "poll": lambda sb: sb.poll(),
-    "_experimental_get_exit_snapshot": lambda sb: sb._experimental_get_exit_snapshot(timeout=0),
     "exec": lambda sb: sb.exec("echo", "hello"),
     "mount_image": lambda sb: sb.mount_image("/mnt", modal._image._Image.from_scratch()),
     "unmount_image": lambda sb: sb.unmount_image("/mnt"),
@@ -2181,7 +2254,7 @@ detach_error_funcs = {
     "stdin": lambda sb: sb.stdin,
     "filesystem": lambda sb: sb.filesystem,
 }
-ALLOW_AFTER_DETACH = {"detach", "returncode", "wait"}
+ALLOW_AFTER_DETACH = {"detach", "returncode", "wait", "_experimental_get_exit_snapshot"}
 
 
 def test_func_map_covers_all_public_methods_and_properties():
@@ -2190,7 +2263,8 @@ def test_func_map_covers_all_public_methods_and_properties():
         for attr in inspect.classify_class_attrs(modal.sandbox._Sandbox)
         if attr.defining_class == modal.sandbox._Sandbox
         and (
-            not (attr.name.startswith("_") or attr.name in ALLOW_AFTER_DETACH) or attr.name.startswith("_experimental")
+            not (attr.name.startswith("_") or attr.name in ALLOW_AFTER_DETACH)
+            or (attr.name.startswith("_experimental") and attr.name not in ALLOW_AFTER_DETACH)
         )
         and attr.kind in ("method", "property")
     }
