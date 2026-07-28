@@ -162,6 +162,7 @@ const (
 	ModalClient_QueuePut_FullMethodName                         = "/modal.client.ModalClient/QueuePut"
 	ModalClient_SandboxCreate_FullMethodName                    = "/modal.client.ModalClient/SandboxCreate"
 	ModalClient_SandboxCreateConnectToken_FullMethodName        = "/modal.client.ModalClient/SandboxCreateConnectToken"
+	ModalClient_SandboxCreateConnectTokenV2_FullMethodName      = "/modal.client.ModalClient/SandboxCreateConnectTokenV2"
 	ModalClient_SandboxCreateV2_FullMethodName                  = "/modal.client.ModalClient/SandboxCreateV2"
 	ModalClient_SandboxGetCommandRouterAccess_FullMethodName    = "/modal.client.ModalClient/SandboxGetCommandRouterAccess"
 	ModalClient_SandboxGetExitSnapshot_FullMethodName           = "/modal.client.ModalClient/SandboxGetExitSnapshot"
@@ -423,6 +424,7 @@ type ModalClientClient interface {
 	// Sandboxes
 	SandboxCreate(ctx context.Context, in *SandboxCreateRequest, opts ...grpc.CallOption) (*SandboxCreateResponse, error)
 	SandboxCreateConnectToken(ctx context.Context, in *SandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*SandboxCreateConnectTokenResponse, error)
+	SandboxCreateConnectTokenV2(ctx context.Context, in *SandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*SandboxCreateConnectTokenResponse, error)
 	SandboxCreateV2(ctx context.Context, in *SandboxCreateV2Request, opts ...grpc.CallOption) (*SandboxCreateV2Response, error)
 	SandboxGetCommandRouterAccess(ctx context.Context, in *SandboxGetCommandRouterAccessRequest, opts ...grpc.CallOption) (*SandboxGetCommandRouterAccessResponse, error)
 	SandboxGetExitSnapshot(ctx context.Context, in *SandboxGetExitSnapshotRequest, opts ...grpc.CallOption) (*SandboxGetExitSnapshotResponse, error)
@@ -2017,6 +2019,16 @@ func (c *modalClientClient) SandboxCreateConnectToken(ctx context.Context, in *S
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxCreateConnectTokenV2(ctx context.Context, in *SandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*SandboxCreateConnectTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxCreateConnectTokenResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxCreateConnectTokenV2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxCreateV2(ctx context.Context, in *SandboxCreateV2Request, opts ...grpc.CallOption) (*SandboxCreateV2Response, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxCreateV2Response)
@@ -3140,6 +3152,7 @@ type ModalClientServer interface {
 	// Sandboxes
 	SandboxCreate(context.Context, *SandboxCreateRequest) (*SandboxCreateResponse, error)
 	SandboxCreateConnectToken(context.Context, *SandboxCreateConnectTokenRequest) (*SandboxCreateConnectTokenResponse, error)
+	SandboxCreateConnectTokenV2(context.Context, *SandboxCreateConnectTokenRequest) (*SandboxCreateConnectTokenResponse, error)
 	SandboxCreateV2(context.Context, *SandboxCreateV2Request) (*SandboxCreateV2Response, error)
 	SandboxGetCommandRouterAccess(context.Context, *SandboxGetCommandRouterAccessRequest) (*SandboxGetCommandRouterAccessResponse, error)
 	SandboxGetExitSnapshot(context.Context, *SandboxGetExitSnapshotRequest) (*SandboxGetExitSnapshotResponse, error)
@@ -3676,6 +3689,9 @@ func (UnimplementedModalClientServer) SandboxCreate(context.Context, *SandboxCre
 }
 func (UnimplementedModalClientServer) SandboxCreateConnectToken(context.Context, *SandboxCreateConnectTokenRequest) (*SandboxCreateConnectTokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxCreateConnectToken not implemented")
+}
+func (UnimplementedModalClientServer) SandboxCreateConnectTokenV2(context.Context, *SandboxCreateConnectTokenRequest) (*SandboxCreateConnectTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxCreateConnectTokenV2 not implemented")
 }
 func (UnimplementedModalClientServer) SandboxCreateV2(context.Context, *SandboxCreateV2Request) (*SandboxCreateV2Response, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxCreateV2 not implemented")
@@ -6478,6 +6494,24 @@ func _ModalClient_SandboxCreateConnectToken_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxCreateConnectTokenV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxCreateConnectTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxCreateConnectTokenV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxCreateConnectTokenV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxCreateConnectTokenV2(ctx, req.(*SandboxCreateConnectTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxCreateV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxCreateV2Request)
 	if err := dec(in); err != nil {
@@ -8627,6 +8661,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SandboxCreateConnectToken",
 			Handler:    _ModalClient_SandboxCreateConnectToken_Handler,
+		},
+		{
+			MethodName: "SandboxCreateConnectTokenV2",
+			Handler:    _ModalClient_SandboxCreateConnectTokenV2_Handler,
 		},
 		{
 			MethodName: "SandboxCreateV2",
