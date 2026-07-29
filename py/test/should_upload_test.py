@@ -59,3 +59,26 @@ def test_should_upload_with_max_object_size_bytes():
         max_object_size_bytes=1000,
         function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
     )
+
+
+def test_should_upload_with_max_async_object_size_bytes():
+    # A custom async threshold governs async invocations.
+    assert not should_upload(
+        500,
+        max_object_size_bytes=MAX_OBJECT_SIZE_BYTES,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
+        max_async_object_size_bytes=500,
+    )
+    assert should_upload(
+        501,
+        max_object_size_bytes=MAX_OBJECT_SIZE_BYTES,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
+        max_async_object_size_bytes=500,
+    )
+    # The async threshold does not affect sync invocations (governed by max_object_size_bytes).
+    assert not should_upload(
+        501,
+        max_object_size_bytes=MAX_OBJECT_SIZE_BYTES,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+        max_async_object_size_bytes=500,
+    )

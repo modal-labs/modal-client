@@ -38,6 +38,7 @@ from modal._serialization import (
 from modal._utils import async_utils
 from modal._utils.async_utils import synchronize_api
 from modal._utils.blob_utils import (
+    MAX_ASYNC_OBJECT_SIZE_BYTES,
     MAX_OBJECT_SIZE_BYTES,
     blob_download as _blob_download,
     blob_upload as _blob_upload,
@@ -1555,7 +1556,11 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
 
 @skip_github_non_linux
 def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch, deployed_support_function_definitions):
-    monkeypatch.setattr("modal._utils.blob_utils.MAX_OBJECT_SIZE_BYTES", 0)
+    # Force all outputs to be blob-uploaded by resolving a zero size threshold for this function.
+    monkeypatch.setattr(
+        "modal._runtime.container_io_manager._resolve_output_size_limits",
+        lambda container_args: (0, 0),
+    )
     ret = _run_container_auto(
         servicer,
         "ident",
@@ -1563,6 +1568,49 @@ def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch, deployed_sup
         inputs=_get_inputs(((42,), {}), upload_to_blob=True, client=client),
     )
     assert _unwrap_blob_scalar(ret, client) == 42
+
+
+def test_resolve_output_size_limits():
+    from modal._runtime.container_io_manager import _resolve_output_size_limits
+
+    def make_args(function_handle_metadata: api_pb2.FunctionHandleMetadata) -> api_pb2.ContainerArguments:
+        return api_pb2.ContainerArguments(
+            function_id="fu-123",
+            function_def=api_pb2.Function(function_name="fn"),
+            app_layout=api_pb2.AppLayout(
+                function_ids={"fn": "fu-123"},
+                objects=[api_pb2.Object(object_id="fu-123", function_handle_metadata=function_handle_metadata)],
+            ),
+        )
+
+    # Both override fields set
+    assert _resolve_output_size_limits(
+        make_args(
+            api_pb2.FunctionHandleMetadata(
+                function_name="fn", max_object_size_bytes=123, max_async_object_size_bytes=45
+            )
+        )
+    ) == (123, 45)
+
+    # Only the sync limit is set -> async stays at its default; the two limits are independent.
+    assert _resolve_output_size_limits(
+        make_args(api_pb2.FunctionHandleMetadata(function_name="fn", max_object_size_bytes=123))
+    ) == (123, MAX_ASYNC_OBJECT_SIZE_BYTES)
+
+    # Fields unset -> both fall back to the defaults used by the input upload path.
+    assert _resolve_output_size_limits(make_args(api_pb2.FunctionHandleMetadata(function_name="fn"))) == (
+        MAX_OBJECT_SIZE_BYTES,
+        MAX_ASYNC_OBJECT_SIZE_BYTES,
+    )
+
+    # No matching object in the layout -> defaults for both.
+    assert _resolve_output_size_limits(
+        api_pb2.ContainerArguments(
+            function_id="fu-999",
+            function_def=api_pb2.Function(function_name="fn"),
+            app_layout=api_pb2.AppLayout(),
+        )
+    ) == (MAX_OBJECT_SIZE_BYTES, MAX_ASYNC_OBJECT_SIZE_BYTES)
 
 
 @skip_github_non_linux

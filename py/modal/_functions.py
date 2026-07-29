@@ -45,7 +45,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.blob_utils import MAX_ASYNC_OBJECT_SIZE_BYTES, MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -424,6 +424,7 @@ class _InputPlaneInvocation:
         client: _Client,
         input_plane_url: str,
         input_plane_region: str,
+        function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_InputPlaneInvocation":
         stub = await client.get_stub(input_plane_url)
 
@@ -435,6 +436,7 @@ class _InputPlaneInvocation:
             kwargs,
             control_plane_stub,
             function=function,
+            function_call_invocation_type=function_call_invocation_type,
         )
 
         request = api_pb2.AttemptStartRequest(
@@ -1449,6 +1451,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._max_object_size_bytes = (
             metadata.max_object_size_bytes if metadata.HasField("max_object_size_bytes") else MAX_OBJECT_SIZE_BYTES
         )
+        self._max_async_object_size_bytes = (
+            metadata.max_async_object_size_bytes
+            if metadata.HasField("max_async_object_size_bytes")
+            else MAX_ASYNC_OBJECT_SIZE_BYTES
+        )
         self._experimental_flash_urls = metadata._experimental_flash_urls
         self._app_id = metadata.app_id or None
 
@@ -1473,6 +1480,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             input_plane_url=self._input_plane_url,
             input_plane_region=self._input_plane_region,
             max_object_size_bytes=self._max_object_size_bytes,
+            max_async_object_size_bytes=self._max_async_object_size_bytes,
             _experimental_flash_urls=self._experimental_flash_urls,
             supported_input_formats=self._metadata.supported_input_formats if self._metadata else [],
             supported_output_formats=self._metadata.supported_output_formats if self._metadata else [],
@@ -1736,6 +1744,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 client=self.client,
                 input_plane_url=self._input_plane_url,
                 input_plane_region=self._input_plane_region,
+                function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
         else:
             invocation = await _Invocation.create(
@@ -1777,6 +1786,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 client=self.client,
                 input_plane_url=self._input_plane_url,
                 input_plane_region=self._input_plane_region,
+                function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
             )
         else:
             invocation = await _Invocation.create(

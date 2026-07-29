@@ -31,7 +31,13 @@ from modal._serialization import (
 )
 from modal._traceback import print_exception
 from modal._utils.async_utils import TaskContext, aclosing, synchronize_api, synchronizer
-from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload, format_blob_data
+from modal._utils.blob_utils import (
+    MAX_ASYNC_OBJECT_SIZE_BYTES,
+    MAX_OBJECT_SIZE_BYTES,
+    blob_download,
+    blob_upload,
+    format_blob_data,
+)
 from modal._utils.function_utils import _stream_function_call_data
 from modal._utils.grpc_utils import Retry
 from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -52,6 +58,29 @@ class Sentinel:
     """Used to get type-stubs to work with this object."""
 
 
+def _resolve_output_size_limits(container_args: api_pb2.ContainerArguments) -> tuple[int, int]:
+    """Resolve the (sync, async) blob-upload thresholds for this function's outputs."""
+    # The server only sends a limit when an override applies, so fall back to the same defaults
+    # the input upload path uses.
+    max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
+    max_async_object_size_bytes = MAX_ASYNC_OBJECT_SIZE_BYTES
+
+    function_name = container_args.function_def.function_name
+    function_ids = container_args.app_layout.function_ids
+    function_id = function_ids[function_name] if function_name in function_ids else container_args.function_id
+
+    for obj in container_args.app_layout.objects:
+        if obj.object_id == function_id and obj.HasField("function_handle_metadata"):
+            metadata = obj.function_handle_metadata
+            if metadata.HasField("max_object_size_bytes"):
+                max_object_size_bytes = metadata.max_object_size_bytes
+            if metadata.HasField("max_async_object_size_bytes"):
+                max_async_object_size_bytes = metadata.max_async_object_size_bytes
+            break
+
+    return max_object_size_bytes, max_async_object_size_bytes
+
+
 class IOContext:
     """Context object for managing input, function calls, and function executions
     in a batched or single input context.
@@ -62,6 +91,7 @@ class IOContext:
     function_call_ids: list[str]
     attempt_tokens: list[str]
     function_inputs: list[api_pb2.FunctionInput]
+    function_call_invocation_types: list["api_pb2.FunctionCallInvocationType.ValueType"]
     finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
     _cancel_issued: bool = False
@@ -75,8 +105,11 @@ class IOContext:
         attempt_tokens: list[str],
         finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
         function_inputs: list[api_pb2.FunctionInput],
+        function_call_invocation_types: list["api_pb2.FunctionCallInvocationType.ValueType"],
         is_batched: bool,
         client: _Client,
+        max_object_size_bytes: int,
+        max_async_object_size_bytes: int,
     ):
         self.input_ids = input_ids
         self.retry_counts = retry_counts
@@ -84,19 +117,33 @@ class IOContext:
         self.attempt_tokens = attempt_tokens
         self.finalized_function = finalized_function
         self.function_inputs = function_inputs
+        self.function_call_invocation_types = function_call_invocation_types
         self._is_batched = is_batched
         self._client = client
+        self._max_object_size_bytes = max_object_size_bytes
+        self._max_async_object_size_bytes = max_async_object_size_bytes
+
+    def _output_size_limit(self, invocation_type: "api_pb2.FunctionCallInvocationType.ValueType") -> int:
+        # Mirror `should_upload` on the input path, which offloads an async payload that exceeds
+        # either threshold, so the effective async limit is the smaller of the two.
+        if invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC:
+            return min(self._max_object_size_bytes, self._max_async_object_size_bytes)
+        return self._max_object_size_bytes
 
     @classmethod
     async def create(
         cls,
         client: _Client,
         finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
-        inputs: list[tuple[str, int, str, str, api_pb2.FunctionInput]],
+        inputs: list[tuple[str, int, str, str, api_pb2.FunctionInput, "api_pb2.FunctionCallInvocationType.ValueType"]],
         is_batched: bool,
+        max_object_size_bytes: int,
+        max_async_object_size_bytes: int,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
-        input_ids, retry_counts, function_call_ids, attempt_tokens, function_inputs = zip(*inputs)
+        input_ids, retry_counts, function_call_ids, attempt_tokens, function_inputs, function_call_invocation_types = (
+            zip(*inputs)
+        )
 
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
@@ -121,8 +168,11 @@ class IOContext:
             cast(list[str], attempt_tokens),
             finalized_function,
             function_inputs,
+            cast(list["api_pb2.FunctionCallInvocationType.ValueType"], function_call_invocation_types),
             is_batched,
             client,
+            max_object_size_bytes,
+            max_async_object_size_bytes,
         )
 
     def set_cancel_callback(self, cb: Callable[[], None]):
@@ -306,6 +356,13 @@ class IOContext:
         # pickling the exception, which may have some issues (there
         # was an earlier note about it that it might not be possible
         # to unpickle it in some cases). Let's watch out for issues.
+
+        # The same exception payload is sent for every input in the batch, so offload it using the
+        # smallest applicable output threshold.
+        exception_size_limit = min(
+            self._output_size_limit(invocation_type) for invocation_type in self.function_call_invocation_types
+        )
+
         repr_exc = repr(exc)
         if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
             # We prevent large exception messages to avoid
@@ -316,7 +373,7 @@ class IOContext:
             repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
         data: bytes = pickle_exception(exc)
-        data_result_part = await format_blob_data(data, self._client.stub)
+        data_result_part = await format_blob_data(data, self._client.stub, exception_size_limit)
         serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
 
         # Failure outputs for when input exceptions occur
@@ -383,12 +440,18 @@ class IOContext:
 
         # Process all items concurrently and create output items directly
         async def package_output(
-            item: Any, input_id: str, retry_count: int, input_format: "api_pb2.DataFormat.ValueType"
+            item: Any,
+            input_id: str,
+            retry_count: int,
+            input_format: "api_pb2.DataFormat.ValueType",
+            invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         ) -> api_pb2.FunctionPutOutputsItem:
             output_format = self._determine_output_format(input_format)
 
             serialized_bytes = serialize_data_format(item, data_format=output_format)
-            formatted = await format_blob_data(serialized_bytes, self._client.stub)
+            formatted = await format_blob_data(
+                serialized_bytes, self._client.stub, self._output_size_limit(invocation_type)
+            )
             # Create the result
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -406,9 +469,13 @@ class IOContext:
         # Process all items concurrently
         return await asyncio.gather(
             *[
-                package_output(item, input_id, retry_count, function_input.data_format)
-                for item, input_id, retry_count, function_input in zip(
-                    data, self.input_ids, self.retry_counts, self.function_inputs
+                package_output(item, input_id, retry_count, function_input.data_format, invocation_type)
+                for item, input_id, retry_count, function_input, invocation_type in zip(
+                    data,
+                    self.input_ids,
+                    self.retry_counts,
+                    self.function_inputs,
+                    self.function_call_invocation_types,
                 )
             ]
         )
@@ -529,6 +596,8 @@ class _ContainerIOManager:
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
+
+        self._max_object_size_bytes, self._max_async_object_size_bytes = _resolve_output_size_limits(container_args)
 
     @property
     def heartbeat_condition(self) -> asyncio.Condition:
@@ -714,7 +783,7 @@ class _ContainerIOManager:
         data_chunks: list[api_pb2.DataChunk] = []
         for i, message_bytes in enumerate(serialized_messages):
             chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
-            if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
+            if len(message_bytes) > self._max_object_size_bytes:
                 chunk.data_blob_id = await blob_upload(message_bytes, self._client.stub)
             else:
                 chunk.data = message_bytes
@@ -789,7 +858,9 @@ class _ContainerIOManager:
         self,
         batch_max_size: int,
         batch_wait_ms: int,
-    ) -> AsyncIterator[list[tuple[str, int, str, str, api_pb2.FunctionInput]]]:
+    ) -> AsyncIterator[
+        list[tuple[str, int, str, str, api_pb2.FunctionInput, "api_pb2.FunctionCallInvocationType.ValueType"]]
+    ]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
@@ -821,7 +892,14 @@ class _ContainerIOManager:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             return
                         inputs.append(
-                            (item.input_id, item.retry_count, item.function_call_id, item.attempt_token, item.input)
+                            (
+                                item.input_id,
+                                item.retry_count,
+                                item.function_call_id,
+                                item.attempt_token,
+                                item.input,
+                                item.function_call_invocation_type,
+                            )
                         )
                         if item.input.final_input:
                             if request.batch_max_size > 0:
@@ -857,7 +935,14 @@ class _ContainerIOManager:
         )
         async with dynamic_concurrency_manager:
             async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
-                io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
+                io_context = await IOContext.create(
+                    self._client,
+                    finalized_functions,
+                    inputs,
+                    batch_max_size > 0,
+                    self._max_object_size_bytes,
+                    self._max_async_object_size_bytes,
+                )
                 for input_id in io_context.input_ids:
                     self.current_inputs[input_id] = io_context
 
