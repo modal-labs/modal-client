@@ -5,6 +5,7 @@ import { createMockModalClients } from "../test-support/grpc_mock";
 import { Function_ } from "../src/function";
 import {
   AutoscalerSettings,
+  DataFormat,
   FunctionUpdateSchedulingParamsRequest,
 } from "../proto/modal_proto/api";
 
@@ -414,4 +415,39 @@ test("TestEmptyInstance", async () => {
   const bound = await f.instance();
 
   expect(f.functionId).toBe(bound.functionId);
+});
+
+test("InstanceUsesBoundHandleMetadataThresholds", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("FunctionGet", () => ({
+    functionId: "fid-unbound",
+    handleMetadata: {
+      supportedInputFormats: [DataFormat.DATA_FORMAT_CBOR],
+    },
+  }));
+
+  // The bind response carries a tiny maxObjectSizeBytes so that even a small input must be
+  // offloaded to blob storage. The bound variant should adopt this metadata (matching Python).
+  mock.handleUnary("FunctionBindParams", () => ({
+    boundFunctionId: "fid-bound",
+    handleMetadata: {
+      supportedInputFormats: [DataFormat.DATA_FORMAT_CBOR],
+      maxObjectSizeBytes: 1,
+    },
+  }));
+
+  const f = await mc.functions.fromName("libmodal-test-support", "echo_string");
+  const boundF = await f.withOptions({ cpu: 2.0 }).instance();
+  expect(boundF.functionId).toBe("fid-bound");
+
+  // With the tiny bound threshold, remote() must reach BlobCreate even for a small input. We
+  // return a response without an upload URL so the upload fails deterministically, proving the
+  // bound metadata was used. If the bound metadata were ignored (stale 2 MiB base limit), the
+  // input would inline and BlobCreate would never be called.
+  mock.handleUnary("BlobCreate", () => ({ blobId: "bl-1" }));
+
+  await expect(boundF.remote(["hello"])).rejects.toThrow(
+    "Missing upload URL in BlobCreate response",
+  );
 });

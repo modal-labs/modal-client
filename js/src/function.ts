@@ -33,9 +33,30 @@ import { parseGpuConfig } from "./app";
 
 // From: modal/_utils/blob_utils.py
 const maxObjectSizeBytes = 2 * 1024 * 1024; // 2 MiB
+const maxAsyncObjectSizeBytes = 8 * 1024; // 8 KiB
 
 // From: client/modal/_functions.py
 const maxSystemRetries = 8;
+
+/**
+ * Async invocations use the (smaller) async threshold. Mirrors `should_upload` in
+ * modal/_utils/function_utils.py.
+ * @internal
+ * @hidden
+ */
+export function shouldUpload(
+  numBytes: number,
+  maxObjectSize: number,
+  maxAsyncObjectSize: number,
+  invocationType: FunctionCallInvocationType,
+): boolean {
+  return (
+    numBytes > maxObjectSize ||
+    (invocationType ===
+      FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_ASYNC &&
+      numBytes > maxAsyncObjectSize)
+  );
+}
 
 /** Optional parameters for `client.functions.fromName()`. */
 export type FunctionFromNameParams = {
@@ -524,7 +545,11 @@ export class Function_ {
       this.functionId,
     );
     this.#checkNoWebUrl("remote");
-    const input = await this.#createInput(args, kwargs);
+    const input = await this.#createInput(
+      args,
+      kwargs,
+      FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+    );
     const invocation = await this.#createRemoteInvocation(input);
     // TODO(ryan): Add tests for retries.
     let retryCount = 0;
@@ -584,7 +609,11 @@ export class Function_ {
       this.functionId,
     );
     this.#checkNoWebUrl("spawn");
-    const input = await this.#createInput(args, kwargs);
+    const input = await this.#createInput(
+      args,
+      kwargs,
+      FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
+    );
     const invocation = await ControlPlaneInvocation.create(
       this.#client,
       this.functionId,
@@ -660,6 +689,7 @@ export class Function_ {
   async #createInput(
     args: any[] = [],
     kwargs: Record<string, any> = {},
+    invocationType: FunctionCallInvocationType,
   ): Promise<FunctionInput> {
     const supported_input_formats = this.#handleMetadata?.supportedInputFormats
       ?.length
@@ -674,12 +704,23 @@ export class Function_ {
     }
     const payload = cborEncode([args, kwargs]);
 
+    const maxObjectSize =
+      this.#handleMetadata?.maxObjectSizeBytes ?? maxObjectSizeBytes;
+    const maxAsyncObjectSize =
+      this.#handleMetadata?.maxAsyncObjectSizeBytes ?? maxAsyncObjectSizeBytes;
+
     let argsBlobId: string | undefined = undefined;
-    if (payload.length > maxObjectSizeBytes) {
+    if (
+      shouldUpload(
+        payload.length,
+        maxObjectSize,
+        maxAsyncObjectSize,
+        invocationType,
+      )
+    ) {
       argsBlobId = await blobUpload(this.#client.cpClient, payload);
     }
 
-    // Single input sync invocation
     return {
       args: argsBlobId ? undefined : payload,
       argsBlobId,

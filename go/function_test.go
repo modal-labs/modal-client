@@ -5,8 +5,31 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
 )
+
+func TestShouldUpload(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	const maxObjectSize = 2 * 1024 * 1024 // 2 MiB
+	const maxAsyncObjectSize = 8 * 1024   // 8 KiB
+	sync := pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_SYNC
+	async := pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+
+	// Sync invocations only use the sync threshold, even above the async threshold.
+	g.Expect(shouldUpload(maxAsyncObjectSize+1, maxObjectSize, maxAsyncObjectSize, sync)).To(gomega.BeFalse())
+	// Exactly at the threshold should not upload (strict greater-than).
+	g.Expect(shouldUpload(maxObjectSize, maxObjectSize, maxAsyncObjectSize, sync)).To(gomega.BeFalse())
+	// Above the sync threshold should upload.
+	g.Expect(shouldUpload(maxObjectSize+1, maxObjectSize, maxAsyncObjectSize, sync)).To(gomega.BeTrue())
+
+	// Async invocations use the smaller async threshold.
+	g.Expect(shouldUpload(maxAsyncObjectSize, maxObjectSize, maxAsyncObjectSize, async)).To(gomega.BeFalse())
+	g.Expect(shouldUpload(maxAsyncObjectSize+1, maxObjectSize, maxAsyncObjectSize, async)).To(gomega.BeTrue())
+	g.Expect(shouldUpload(maxObjectSize+1, maxObjectSize, maxAsyncObjectSize, async)).To(gomega.BeTrue())
+}
 
 func TestFunctionWithOptions(t *testing.T) {
 	g := gomega.NewWithT(t)

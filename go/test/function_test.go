@@ -671,3 +671,51 @@ func TestEmptyInstance(t *testing.T) {
 
 	g.Expect(instance.FunctionID).To(gomega.Equal(echo.FunctionID))
 }
+
+func TestInstanceUsesBoundHandleMetadataThresholds(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+	mockFunctionGetSupportingCbor(mock, "fid-base")
+
+	fn, err := mock.Functions.FromName(ctx, "test-app", "test-function", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	// The bind response carries a tiny max_object_size_bytes so that even a small input must be
+	// offloaded to blob storage. The bound variant should adopt this metadata (matching Python).
+	tinyLimit := uint64(1)
+	grpcmock.HandleUnary(
+		mock, "/FunctionBindParams",
+		func(req *pb.FunctionBindParamsRequest) (*pb.FunctionBindParamsResponse, error) {
+			return pb.FunctionBindParamsResponse_builder{
+				BoundFunctionId: "fid-bound",
+				HandleMetadata: pb.FunctionHandleMetadata_builder{
+					SupportedInputFormats: []pb.DataFormat{pb.DataFormat_DATA_FORMAT_CBOR},
+					MaxObjectSizeBytes:    &tinyLimit,
+				}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	maxContainers := 1
+	inst, err := fn.WithOptions(&modal.FunctionWithOptionsParams{MaxContainers: &maxContainers}).Instance(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(inst.FunctionID).To(gomega.Equal("fid-bound"))
+
+	// With the tiny bound threshold, Remote must reach BlobCreate even for a small input. We return
+	// a response without an upload URL so the upload fails deterministically, proving the bound
+	// metadata was used. If the bound metadata were ignored (stale 2 MiB base limit), the input
+	// would inline and BlobCreate would never be called.
+	grpcmock.HandleUnary(
+		mock, "/BlobCreate",
+		func(req *pb.BlobCreateRequest) (*pb.BlobCreateResponse, error) {
+			return pb.BlobCreateResponse_builder{BlobId: "bl-1"}.Build(), nil
+		},
+	)
+
+	_, err = inst.Remote(ctx, []any{"hello"}, nil)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).Should(gomega.ContainSubstring("missing upload URL in BlobCreate response"))
+}

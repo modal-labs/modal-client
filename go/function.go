@@ -26,12 +26,20 @@ type functionServiceImpl struct{ client *Client }
 
 // From: modal/_utils/blob_utils.py
 const maxObjectSizeBytes int = 2 * 1024 * 1024 // 2 MiB
+const maxAsyncObjectSizeBytes int = 8 * 1024   // 8 KiB
 
 // From: modal-client/modal/_utils/function_utils.py
 const outputsTimeout time.Duration = time.Second * 55
 
 // From: client/modal/_functions.py
 const maxSystemRetries = 8
+
+// Async invocations use the (smaller) async threshold. Mirrors `should_upload` in
+// modal/_utils/function_utils.py.
+func shouldUpload(numBytes int, maxObjectSize int, maxAsyncObjectSize int, invocationType pb.FunctionCallInvocationType) bool {
+	return numBytes > maxObjectSize ||
+		(invocationType == pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_ASYNC && numBytes > maxAsyncObjectSize)
+}
 
 func timeNowSeconds() float64 {
 	return float64(time.Now().UnixNano()) / 1e9
@@ -172,7 +180,7 @@ func cborDeserialize(buffer []byte) (any, error) {
 }
 
 // createInput serializes inputs, makes a function call and returns its ID
-func (f *Function) createInput(ctx context.Context, args []any, kwargs map[string]any) (*pb.FunctionInput, error) {
+func (f *Function) createInput(ctx context.Context, args []any, kwargs map[string]any, invocationType pb.FunctionCallInvocationType) (*pb.FunctionInput, error) {
 
 	// Check supported input formats and require CBOR
 	supportedInputFormats := f.getSupportedInputFormats()
@@ -204,18 +212,26 @@ func (f *Function) createInput(ctx context.Context, args []any, kwargs map[strin
 		return nil, err
 	}
 	dataFormat := pb.DataFormat_DATA_FORMAT_CBOR
+	metadata, err := f.getHandleMetadata()
+	if err != nil {
+		return nil, err
+	}
+	maxObjectSize := maxObjectSizeBytes
+	if metadata.HasMaxObjectSizeBytes() {
+		maxObjectSize = int(metadata.GetMaxObjectSizeBytes())
+	}
+	maxAsyncObjectSize := maxAsyncObjectSizeBytes
+	if metadata.HasMaxAsyncObjectSizeBytes() {
+		maxAsyncObjectSize = int(metadata.GetMaxAsyncObjectSizeBytes())
+	}
 	var argsBlobID *string
-	if len(argsBytes) > maxObjectSizeBytes {
+	if shouldUpload(len(argsBytes), maxObjectSize, maxAsyncObjectSize, invocationType) {
 		blobID, err := blobUpload(ctx, f.client.cpClient, f.client.logger, argsBytes)
 		if err != nil {
 			return nil, err
 		}
 		argsBytes = nil
 		argsBlobID = &blobID
-	}
-	metadata, err := f.getHandleMetadata()
-	if err != nil {
-		return nil, err
 	}
 	methodName := metadata.GetUseMethodName() // this is empty if the function is not a cls method
 	return pb.FunctionInput_builder{
@@ -720,7 +736,7 @@ func (f *Function) Remote(ctx context.Context, args []any, kwargs map[string]any
 	if err := f.checkNoWebURL("Remote"); err != nil {
 		return nil, err
 	}
-	input, err := f.createInput(ctx, args, kwargs)
+	input, err := f.createInput(ctx, args, kwargs, pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_SYNC)
 	if err != nil {
 		return nil, err
 	}
@@ -773,7 +789,7 @@ func (f *Function) Spawn(ctx context.Context, args []any, kwargs map[string]any)
 	if err := f.checkNoWebURL("Spawn"); err != nil {
 		return nil, err
 	}
-	input, err := f.createInput(ctx, args, kwargs)
+	input, err := f.createInput(ctx, args, kwargs, pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 	if err != nil {
 		return nil, err
 	}
