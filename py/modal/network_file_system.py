@@ -2,7 +2,7 @@
 import functools
 import os
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
@@ -26,7 +26,7 @@ from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError
-from .volume import FileEntry
+from .types import FileEntry
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -126,7 +126,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
-                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+                object_creation_type=(
+                    api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+                    if create_if_missing
+                    else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+                ),
             )
             try:
                 response = await load_context.client.stub.SharedVolumeGetOrCreate(req)
@@ -153,7 +157,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         client: _Client | None = None,
         environment_name: str | None = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
-    ) -> AsyncIterator["_NetworkFileSystem"]:
+    ) -> AsyncGenerator["_NetworkFileSystem", None]:
         """Create an anonymous NetworkFileSystem that exists for the duration of the context manager.
 
         Args:
@@ -211,7 +215,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     async def delete(name: str, client: _Client | None = None, environment_name: str | None = None):
         obj = await _NetworkFileSystem.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.SharedVolumeDeleteRequest(shared_volume_id=obj.object_id)
-        await obj._client.stub.SharedVolumeDelete(req)
+        await obj.client.stub.SharedVolumeDelete(req)
 
     @live_method
     async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Callable[..., Any] | None = None) -> int:
@@ -232,7 +236,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             progress_task_id = progress_cb(name=remote_path, size=data_size)
             blob_id = await blob_upload_file(
                 fp,
-                self._client.stub,
+                self.client.stub,
                 progress_report_cb=functools.partial(progress_cb, progress_task_id),
                 sha256_hex=sha_hash,
             )
@@ -251,7 +255,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         t0 = time.monotonic()
         while time.monotonic() - t0 < NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT:
-            response = await self._client.stub.SharedVolumePutFile(req)
+            response = await self.client.stub.SharedVolumePutFile(req)
             if response.exists:
                 break
         else:
@@ -264,14 +268,14 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         """Read a file from the network file system"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
         try:
-            response = await self._client.stub.SharedVolumeGetFile(req)
+            response = await self.client.stub.SharedVolumeGetFile(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
         else:
-            async for data in blob_iter(response.data_blob_id, self._client.stub):
+            async for data in blob_iter(response.data_blob_id, self.client.stub):
                 yield data
 
     @live_method_gen
@@ -284,7 +288,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self.object_id, path=path)
-        async for batch in self._client.stub.SharedVolumeListFilesStream.unary_stream(req):
+        async for batch in self.client.stub.SharedVolumeListFilesStream.unary_stream(req):
             for entry in batch.entries:
                 yield FileEntry._from_proto(entry)
 
@@ -349,7 +353,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         """Remove a file in a network file system."""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self.object_id, path=path, recursive=recursive)
         try:
-            await self._client.stub.SharedVolumeRemoveFile(req)
+            await self.client.stub.SharedVolumeRemoveFile(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 

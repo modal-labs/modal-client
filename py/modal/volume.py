@@ -10,7 +10,7 @@ import re
 import sys
 import time
 import typing
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Generator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine, Generator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
@@ -23,6 +23,7 @@ from typing import (
 from google.protobuf.message import Message
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
+from typing_extensions import Self
 
 import modal.exception
 import modal_proto.api_pb2
@@ -189,14 +190,11 @@ class _VolumeManager:
             else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
         )
 
-        if version is not None and version not in {1, 2}:
-            raise InvalidError("VolumeFS version must be either 1 or 2")
-
         req = api_pb2.VolumeGetOrCreateRequest(
             deployment_name=name,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=object_creation_type,
-            version=version,
+            version=_Volume._get_version_proto(version),
             create_options=_volume_create_options_to_proto(
                 VolumeCreateOptions(experimental_options=experimental_options or {})
             ),
@@ -324,7 +322,7 @@ class _VolumeManager:
                 raise
         else:
             req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
-            await obj._client.stub.VolumeDelete(req)
+            await obj.client.stub.VolumeDelete(req)
 
 
 VolumeManager = synchronize_api(_VolumeManager)
@@ -551,11 +549,24 @@ class _Volume(_Object, type_prefix="vo"):
 
     @property
     def _is_v1(self) -> bool:
+        assert self._metadata
         return self._metadata.version in [
             None,
             api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
             api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1,
         ]
+
+    @staticmethod
+    def _get_version_proto(version: int | None) -> api_pb2.VolumeFsVersion.ValueType:
+        match version:
+            case None:
+                return api_pb2.VOLUME_FS_VERSION_UNSPECIFIED
+            case 1:
+                return api_pb2.VOLUME_FS_VERSION_V1
+            case 2:
+                return api_pb2.VOLUME_FS_VERSION_V2
+            case _:
+                raise InvalidError("VolumeFS version must be either 1 or 2")
 
     @staticmethod
     def from_name(
@@ -599,8 +610,12 @@ class _Volume(_Object, type_prefix="vo"):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
-                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
-                version=version,
+                object_creation_type=(
+                    api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+                    if create_if_missing
+                    else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+                ),
+                version=self._get_version_proto(version),
                 create_options=_volume_create_options_to_proto(create_options),
             )
             response = await load_context.client.stub.VolumeGetOrCreate(req)
@@ -701,7 +716,7 @@ class _Volume(_Object, type_prefix="vo"):
         request = api_pb2.VolumeGetOrCreateRequest(
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
             environment_name=_get_environment_name(environment_name),
-            version=version,
+            version=api_pb2.VOLUME_FS_VERSION_UNSPECIFIED if version is None else version,
             create_options=_volume_create_options_to_proto(create_options),
         )
         response = await client.stub.VolumeGetOrCreate(request)
@@ -719,12 +734,10 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def info(self) -> VolumeInfo:
         """Return information about the Volume object."""
-        metadata = self._get_metadata()
-        if not metadata:
-            return VolumeInfo()
-        creation_info = metadata.creation_info
+        assert self._metadata
+        creation_info = self._metadata.creation_info
         return VolumeInfo(
-            name=metadata.name or None,
+            name=self._metadata.name or None,
             created_at=timestamp_to_localized_dt(creation_info.created_at),
             created_by=creation_info.created_by or None,
         )
@@ -733,7 +746,7 @@ class _Volume(_Object, type_prefix="vo"):
     async def _do_reload(self, lock=True):
         async with (await self._get_lock()) if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
-            _ = await self._client.stub.VolumeReload(req)
+            _ = await self.client.stub.VolumeReload(req)
 
     @live_method
     async def commit(self):
@@ -746,7 +759,7 @@ class _Volume(_Object, type_prefix="vo"):
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
             try:
                 # TODO(gongy): only apply indefinite retries on 504 status.
-                resp = await self._client.stub.VolumeCommit(req, retry=Retry(max_retries=90))
+                resp = await self.client.stub.VolumeCommit(req, retry=Retry(max_retries=90))
                 if not resp.skip_reload:
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
@@ -801,12 +814,12 @@ class _Volume(_Object, type_prefix="vo"):
 
         if self._is_v1:
             req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-            async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
+            async for batch in self.client.stub.VolumeListFiles.unary_stream(req):
                 for entry in batch.entries:
                     yield FileEntry._from_proto(entry)
         else:
             req = api_pb2.VolumeListFiles2Request(volume_id=self.object_id, path=path, recursive=recursive)
-            async for batch in self._client.stub.VolumeListFiles2.unary_stream(req):
+            async for batch in self.client.stub.VolumeListFiles2.unary_stream(req):
                 for entry in batch.entries:
                     yield FileEntry._from_proto(entry)
 
@@ -844,7 +857,7 @@ class _Volume(_Object, type_prefix="vo"):
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
         try:
-            response = await self._client.stub.VolumeGetFile2(req)
+            response = await self.client.stub.VolumeGetFile2(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
@@ -889,8 +902,10 @@ class _Volume(_Object, type_prefix="vo"):
     ) -> int:
         if progress_cb is None:
 
-            def progress_cb(*_, **__):
+            def _progress_cb(*_, **__):
                 pass
+
+            progress_cb = _progress_cb
 
         if concurrency is None:
             concurrency = multiprocessing.cpu_count()
@@ -904,7 +919,7 @@ class _Volume(_Object, type_prefix="vo"):
         rpc_ctx = rpc_semaphore if rpc_semaphore is not None else asyncnullcontext()
         async with rpc_ctx:
             try:
-                response = await self._client.stub.VolumeGetFile2(req)
+                response = await self.client.stub.VolumeGetFile2(req)
             except modal.exception.NotFoundError as exc:
                 raise FileNotFoundError(exc.args[0])
 
@@ -954,10 +969,10 @@ class _Volume(_Object, type_prefix="vo"):
         try:
             if self._is_v1:
                 req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-                await self._client.stub.VolumeRemoveFile(req)
+                await self.client.stub.VolumeRemoveFile(req)
             else:
                 req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
-                await self._client.stub.VolumeRemoveFile2(req)
+                await self.client.stub.VolumeRemoveFile2(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
@@ -1000,12 +1015,12 @@ class _Volume(_Object, type_prefix="vo"):
             request = api_pb2.VolumeCopyFilesRequest(
                 volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
             )
-            await self._client.stub.VolumeCopyFiles(request, retry=Retry(base_delay=1))
+            await self.client.stub.VolumeCopyFiles(request, retry=Retry(base_delay=1))
         else:
             request = api_pb2.VolumeCopyFiles2Request(
                 volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
             )
-            await self._client.stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
+            await self.client.stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
 
     @live_method_contextmanager
     @asynccontextmanager
@@ -1032,8 +1047,9 @@ class _Volume(_Object, type_prefix="vo"):
         if self._read_only:
             raise InvalidError("Read-only Volume can not be written to")
 
+        assert self._metadata
         version_context_manager = _AbstractVolumeUploadContextManager.resolve(
-            self._metadata.version, self.object_id, self._client, force=force
+            self._metadata.version, self.object_id, self.client, force=force
         )
         await version_context_manager.__aenter__()
         try:
@@ -1044,7 +1060,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def _instance_delete(self):
-        await self._client.stub.VolumeDelete(api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
+        await self.client.stub.VolumeDelete(api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
 
     @staticmethod
     async def rename(
@@ -1056,7 +1072,7 @@ class _Volume(_Object, type_prefix="vo"):
     ):
         obj = await _Volume.from_name(old_name, environment_name=environment_name).hydrate(client)
         req = api_pb2.VolumeRenameRequest(volume_id=obj.object_id, name=new_name)
-        await obj._client.stub.VolumeRename(req)
+        await obj.client.stub.VolumeRename(req)
 
 
 Volume = synchronize_api(_Volume)
@@ -1064,9 +1080,9 @@ Volume = synchronize_api(_Volume)
 
 # TODO(dflemstr): Find a way to add ABC or AbstractAsyncContextManager superclasses while keeping synchronicity happy.
 class _AbstractVolumeUploadContextManager:
-    async def __aenter__(self): ...
+    async def __aenter__(self) -> "_AbstractVolumeUploadContextManager": ...
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb): ...
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None: ...
 
     def put_file(
         self,
@@ -1125,7 +1141,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
         self._force = force
         self._byte_budget = _ByteBudget.from_system_memory()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -1179,10 +1195,13 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
             raise ValueError(f"remote_path ({remote_path}) must refer to a file - cannot end with /")
 
         def gen():
-            if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: get_file_upload_spec_from_path(local_file, PurePosixPath(remote_path), mode)
+            # Bind the narrowed value to a local so the type is preserved inside the lambda closure.
+            if isinstance(local_file, (str, Path)):
+                local_path = Path(local_file)
+                yield lambda: get_file_upload_spec_from_path(local_path, PurePosixPath(remote_path), mode)
             else:
-                yield lambda: get_file_upload_spec_from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
+                fp = local_file
+                yield lambda: get_file_upload_spec_from_fileobj(fp, PurePosixPath(remote_path), mode or 0o644)
 
         self._upload_generators.append(gen())
 
@@ -1264,7 +1283,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
 
 VolumeUploadContextManager = synchronize_api(_VolumeUploadContextManager)
 
-_FileUploader2 = Callable[[asyncio.Semaphore], Awaitable[FileUploadSpec2]]
+_FileUploader2 = Callable[[asyncio.Semaphore], Coroutine[Any, Any, FileUploadSpec2]]
 
 
 class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
@@ -1296,7 +1315,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         self._hash_concurrency = hash_concurrency
         self._put_concurrency = put_concurrency
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -1337,13 +1356,16 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             raise ValueError(f"remote_path ({remote_path}) must refer to a file - cannot end with /")
 
         def gen():
+            # Bind the narrowed value to a local so the type is preserved inside the lambda closure.
             if isinstance(local_file, str) or isinstance(local_file, Path):
+                local_path = Path(local_file)
                 yield lambda hash_semaphore: FileUploadSpec2.from_path(
-                    local_file, PurePosixPath(remote_path), hash_semaphore, mode
+                    local_path, PurePosixPath(remote_path), hash_semaphore, mode
                 )
             else:
+                fp = local_file
                 yield lambda hash_semaphore: FileUploadSpec2.from_fileobj(
-                    local_file, PurePosixPath(remote_path), hash_semaphore, mode or 0o644
+                    fp, PurePosixPath(remote_path), hash_semaphore, mode or 0o644
                 )
 
         self._uploader_generators.append(gen())
@@ -1430,7 +1452,7 @@ async def _put_missing_blocks(
     file_specs: list[FileUploadSpec2],
     # TODO(dflemstr): Element type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
     # by the nested class (?)
-    missing_blocks: list,
+    missing_blocks: Sequence,
     put_responses: dict[bytes, bytes],
     put_concurrency: int,
     progress_cb: Callable[..., Any],

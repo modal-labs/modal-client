@@ -581,22 +581,26 @@ class FileUploadSpec2:
         hash_semaphore: asyncio.Semaphore,
         mode: int,
     ) -> "FileUploadSpec2":
+        source: _FileUploadSource2
         try:
             fileno = source_fp.fileno()
+        except OSError:
+            # `.fileno()` not available; assume BytesIO-like type
+            buffer = cast(BytesIO, source_fp).getbuffer()
 
-            def source():
+            def source_from_buffer():
+                return BytesIO(buffer)
+
+            source = source_from_buffer
+        else:
+
+            def source_from_fd():
                 new_fd = os.dup(fileno)
                 fp = os.fdopen(new_fd, "rb")
                 fp.seek(0)
                 return fp
 
-        except OSError:
-            # `.fileno()` not available; assume BytesIO-like type
-            source_fp = cast(BytesIO, source_fp)
-            buffer = source_fp.getbuffer()
-
-            def source():
-                return BytesIO(buffer)
+            source = source_from_fd
 
         return await FileUploadSpec2._create(
             source,
@@ -676,7 +680,7 @@ def _hash_range_sha256(source: _FileUploadSource2, start, end):
     return sha256_hash.digest()
 
 
-def _find_end_of_block(source: _FileUploadSource2, start: int, end: int) -> int | None:
+def _find_end_of_block(source: _FileUploadSource2, start: int, end: int) -> int:
     """Finds the appropriate end of a block, which is the index of the byte just past the last non-zero byte in the
     block.
 

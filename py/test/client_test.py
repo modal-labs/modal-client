@@ -65,7 +65,8 @@ async def test_container_client_type(servicer, container_client):
 def no_retry_connect_channel(monkeypatch):
     # Make the error appear faster during test by skipping the connection retry/backoff.
     org_create_channel = modal._utils.grpc_utils.create_channel_with_fallbacks
-    monkeypatch.setattr(modal._utils.grpc_utils, "create_channel_with_fallbacks", org_create_channel.__wrapped__)
+    # __wrapped__ is set by functools.wraps inside @retry, but isn't part of its return type.
+    monkeypatch.setattr(modal._utils.grpc_utils, "create_channel_with_fallbacks", org_create_channel.__wrapped__)  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio

@@ -41,8 +41,10 @@ if typing.TYPE_CHECKING:
     import modal._grpc_client
     import modal.client
 
-# Monkey patches grpclib to have a Modal User Agent header.
-grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
+# Monkey patch grpclib to send a user-agent header.
+# USER_AGENT is defined in grpclib.metadata and then imported and used by grpclib.client.
+# It needs to be monkey-patched in the latter module (despite type check error) to take effect.
+grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})".format(  # pyright: ignore[reportPrivateImportUsage]
     version=__version__,
     sys=platform.system(),
     py=platform.python_implementation(),

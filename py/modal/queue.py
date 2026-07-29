@@ -3,7 +3,7 @@ import builtins
 import queue  # The system library
 import time
 import warnings
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 
@@ -209,7 +209,7 @@ class _QueueManager:
                 raise
         else:
             req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
-            await obj._client.stub.QueueDelete(req)
+            await obj.client.stub.QueueDelete(req)
 
 
 QueueManager = synchronize_api(_QueueManager)
@@ -332,7 +332,7 @@ class _Queue(_Object, type_prefix="qu"):
         client: _Client | None = None,
         environment_name: str | None = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
-    ) -> AsyncIterator["_Queue"]:
+    ) -> AsyncGenerator["_Queue", None]:
         """Create an anonymous Queue that exists for the duration of the context manager.
 
         Args:
@@ -397,7 +397,11 @@ class _Queue(_Object, type_prefix="qu"):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
-                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+                object_creation_type=(
+                    api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+                    if create_if_missing
+                    else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+                ),
             )
             response = await load_context.client.stub.QueueGetOrCreate(req)
             self._hydrate(response.queue_id, load_context.client, response.metadata)
@@ -478,9 +482,9 @@ class _Queue(_Object, type_prefix="qu"):
             n_values=n_values,
         )
 
-        response = await self._client.stub.QueueGet(request)
+        response = await self.client.stub.QueueGet(request)
         if response.values:
-            return [deserialize(value, self._client) for value in response.values]
+            return [deserialize(value, self.client) for value in response.values]
         else:
             return []
 
@@ -503,10 +507,10 @@ class _Queue(_Object, type_prefix="qu"):
                 n_values=n_values,
             )
 
-            response = await self._client.stub.QueueGet(request)
+            response = await self.client.stub.QueueGet(request)
 
             if response.values:
-                return [deserialize(value, self._client) for value in response.values]
+                return [deserialize(value, self.client) for value in response.values]
 
             if deadline is not None and time.time() > deadline:
                 break
@@ -536,7 +540,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_key=self.validate_partition_key(partition),
             all_partitions=all,
         )
-        await self._client.stub.QueueClear(request)
+        await self.client.stub.QueueClear(request)
 
     @live_method
     async def get(
@@ -672,7 +676,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_ttl_seconds=partition_ttl,
         )
         try:
-            await self._client.stub.QueuePut(
+            await self.client.stub.QueuePut(
                 request,
                 # A full queue will return this status.
                 retry=Retry(
@@ -700,7 +704,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_ttl_seconds=partition_ttl,
         )
         try:
-            await self._client.stub.QueuePut(request)
+            await self.client.stub.QueuePut(request)
         except Error as exc:
             if "status = '413'" in str(exc):
                 method = "put_many" if len(vs) > 1 else "put"
@@ -728,7 +732,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_key=self.validate_partition_key(partition),
             total=total,
         )
-        response = await self._client.stub.QueueLen(request)
+        response = await self.client.stub.QueueLen(request)
         return response.len
 
     @warn_if_generator_is_not_consumed()
@@ -744,7 +748,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition: Partition to scan; uses the default partition when omitted.
             item_poll_timeout: How long to wait for another item before stopping the iterator.
         """
-        last_entry_id: str | None = None
+        last_entry_id = ""
         validated_partition_key = self.validate_partition_key(partition)
         fetch_deadline = time.time() + item_poll_timeout
 
@@ -758,10 +762,10 @@ class _Queue(_Object, type_prefix="qu"):
                 item_poll_timeout=poll_duration,
             )
 
-            response: api_pb2.QueueNextItemsResponse = await self._client.stub.QueueNextItems(request)
+            response: api_pb2.QueueNextItemsResponse = await self.client.stub.QueueNextItems(request)
             if response.items:
                 for item in response.items:
-                    yield deserialize(item.value, self._client)
+                    yield deserialize(item.value, self.client)
                     last_entry_id = item.entry_id
                 fetch_deadline = time.time() + item_poll_timeout
             elif time.time() > fetch_deadline:

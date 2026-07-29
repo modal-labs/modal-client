@@ -32,11 +32,11 @@ def get_pty_info(shell: bool, no_terminate_on_idle_stdin: bool = False) -> api_p
     rows, cols = get_winsz()
     return api_pb2.PTYInfo(
         enabled=True,  # TODO(erikbern): deprecated
-        winsz_rows=rows,
-        winsz_cols=cols,
-        env_term=os.environ.get("TERM"),
-        env_colorterm=os.environ.get("COLORTERM"),
-        env_term_program=os.environ.get("TERM_PROGRAM"),
+        winsz_rows=rows or 0,
+        winsz_cols=cols or 0,
+        env_term=os.environ.get("TERM", ""),
+        env_colorterm=os.environ.get("COLORTERM", ""),
+        env_term_program=os.environ.get("TERM_PROGRAM", ""),
         pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL if shell else api_pb2.PTYInfo.PTY_TYPE_FUNCTION,
         no_terminate_on_idle_stdin=no_terminate_on_idle_stdin,
     )
@@ -158,10 +158,12 @@ async def get_app_logs_loop(
                 log_prefix = _build_log_prefix(log_batch, log, _prefixes)
                 await output_mgr.put_streaming_log(log, prefix=log_prefix)
 
-    async def _get_logs():
+    async def _get_logs() -> bool:
+        """Fetch a batch of logs, returning True once the app signals that its logs are complete."""
         nonlocal last_log_batch_entry_id
         nonlocal pty_shell_finish_event, pty_shell_task_id, pty_shell_input_task
 
+        app_done = False
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id or "",
             task_id=task_id or "",
@@ -179,7 +181,7 @@ async def get_app_logs_loop(
                 last_log_batch_entry_id = log_batch.entry_id
             if log_batch.app_done:
                 logger.debug("App logs are done")
-                last_log_batch_entry_id = None
+                app_done = True
                 break
             elif log_batch.image_id and not output_mgr._show_image_logs:
                 # Ignore image logs while app is creating objects.
@@ -212,10 +214,11 @@ async def get_app_logs_loop(
                 await stop_pty_shell()
 
         output_mgr.flush_lines()
+        return app_done
 
     while True:
         try:
-            await _get_logs()
+            app_done = await _get_logs()
         except (ServiceError, InternalError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
             if isinstance(exc, (ServiceError, InternalError)):
                 # Try again if we had a temporary connection drop, for example if computer went to sleep.
@@ -237,7 +240,7 @@ async def get_app_logs_loop(
                     continue
             raise
 
-        if last_log_batch_entry_id is None or not follow:
+        if app_done or not follow:
             break
 
     await stop_pty_shell()

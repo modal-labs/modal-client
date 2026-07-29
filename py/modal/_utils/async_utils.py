@@ -19,6 +19,7 @@ from typing import (
     Generic,
     TypeVar,
     cast,
+    overload,
 )
 
 import synchronicity
@@ -342,16 +343,32 @@ def synchronize_api(obj, target_module=None):
 RETRY_N_ATTEMPTS_OVERRIDE: int | None = None
 
 
+@overload
+def retry(direct_fn: Callable[P, Awaitable[T]], /) -> Callable[P, Awaitable[T]]: ...
+
+
+@overload
+def retry(
+    *,
+    n_attempts: int = 3,
+    base_delay: float = 0.0,
+    delay_factor: float = 2,
+    max_delay: float | None = None,
+    attempt_timeout: float | None = 90,
+    total_timeout: float | None = None,
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]: ...
+
+
 def retry(
     direct_fn=None,
     *,
     n_attempts=3,
     base_delay=0.0,
-    delay_factor=2,
+    delay_factor: float = 2,
     max_delay: float | None = None,
     attempt_timeout: float | None = 90,
     total_timeout: float | None = None,
-):
+) -> Any:
     """Decorator that calls an async function multiple times, with a given timeout.
 
     If a `base_delay` is provided, the function is given an exponentially

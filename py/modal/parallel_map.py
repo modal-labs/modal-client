@@ -84,6 +84,7 @@ SPAWN_MAP_INVOCATION_CHUNK_SIZE = 512
 
 
 if typing.TYPE_CHECKING:
+    import modal._functions
     import modal.functions
 
 
@@ -98,7 +99,7 @@ class InputPreprocessor:
         *,
         raw_input_queue: _SynchronizedQueue,
         processed_input_queue: asyncio.Queue,
-        function: "modal.functions._Function",
+        function: "modal._functions._Function",
         created_callback: Callable[[int], None],
         done_callback: Callable[[], None],
     ):
@@ -157,7 +158,7 @@ class InputPumper:
         client: "modal.client._Client",
         *,
         input_queue: asyncio.Queue,
-        function: "modal.functions._Function",
+        function: "modal._functions._Function",
         function_call_id: str,
         max_batch_size: int,
         map_items_manager: "_MapItemsManager | None" = None,
@@ -221,7 +222,7 @@ class SyncInputPumper(InputPumper):
         *,
         input_queue: asyncio.Queue,
         retry_queue: TimestampPriorityQueue,
-        function: "modal.functions._Function",
+        function: "modal._functions._Function",
         function_call_jwt: str,
         function_call_id: str,
         map_items_manager: "_MapItemsManager",
@@ -264,7 +265,7 @@ class AsyncInputPumper(InputPumper):
         client: "modal.client._Client",
         *,
         input_queue: asyncio.Queue,
-        function: "modal.functions._Function",
+        function: "modal._functions._Function",
         function_call_id: str,
     ):
         super().__init__(
@@ -288,7 +289,7 @@ class AsyncInputPumper(InputPumper):
 
 
 async def _spawn_map_invocation(
-    function: "modal.functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
+    function: "modal._functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
 ) -> tuple[str, int]:
     assert client.stub
     request = api_pb2.FunctionMapRequest(
@@ -359,7 +360,7 @@ async def _spawn_map_invocation(
 
 
 async def _map_invocation(
-    function: "modal.functions._Function",
+    function: "modal._functions._Function",
     raw_input_queue: _SynchronizedQueue,
     client: "modal.client._Client",
     order_outputs: bool,
@@ -618,7 +619,7 @@ async def _map_invocation(
 
 
 async def _map_invocation_inputplane(
-    function: "modal.functions._Function",
+    function: "modal._functions._Function",
     raw_input_queue: _SynchronizedQueue,
     client: "modal.client._Client",
     order_outputs: bool,
@@ -1150,14 +1151,14 @@ def _map_sync(
     )
 
 
-async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
+async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> "modal._functions._FunctionCall":
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
     return await _spawn_map_helper(self, async_input_gen, kwargs)
 
 
 async def _spawn_map_helper(
     self: "modal.functions.Function", async_input_gen, kwargs={}
-) -> "modal.functions._FunctionCall":
+) -> "modal._functions._FunctionCall":
     raw_input_queue: Any = SynchronizedQueue()  # type: ignore
     await raw_input_queue.init.aio()
 
@@ -1171,7 +1172,7 @@ async def _spawn_map_helper(
     return fc
 
 
-def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
+def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal._functions._FunctionCall":
     """mdmd:hidden
     Spawn parallel execution over a set of inputs, returning as soon as the inputs are created.
 
