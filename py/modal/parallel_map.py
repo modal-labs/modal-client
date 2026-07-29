@@ -1201,8 +1201,9 @@ def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.fu
 
 
 async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
-    """This runs in an event loop on the main thread. It consumes inputs from the input iterators and creates async
-    function calls for each.
+    """This runs in an event loop on the main thread.
+
+    It consumes inputs from the input iterators and creates async function calls for each.
     """
 
     def _call_with_args(args):

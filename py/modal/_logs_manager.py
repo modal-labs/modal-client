@@ -121,7 +121,7 @@ class _LogsManager:
             if self._stop_stream is not None and await self._stop_stream():
                 return _StreamStopReason.STOP_STREAM
 
-            sleep_time = _STREAM_POLL_INTERVAL_SECONDS
+            sleep_time: float = _STREAM_POLL_INTERVAL_SECONDS
             if deadline.value is not None:
                 sleep_time = min(sleep_time, max(0.0, deadline.value - time.monotonic()))
             await asyncio.sleep(sleep_time)
@@ -317,15 +317,12 @@ class _LogsManager:
             pass
 
 
-LogsManager = synchronize_api(_LogsManager, target_module=__name__)
-
-
-class _FunctionLogsManager(_LogsManager):
+class _FunctionLogsManager:
     """mdmd:namespace"""
 
     def __init__(self, source: _SupportsLogs):
         """mdmd:hidden"""
-        super().__init__(source)
+        self._manager = _LogsManager(source)
 
     async def fetch(
         self,
@@ -338,7 +335,8 @@ class _FunctionLogsManager(_LogsManager):
         """Fetch Function logs corresponding to the date range and filters.
 
         Args:
-            since: Start date to fetch logs from. Must be in UTC or timezone-naive, which is interpreted as local time.
+            since: Start date to fetch logs from. Must be in UTC or timezone-naive,
+                which is interpreted as local time.
             until: Defaults to current date if None. Must be in UTC or timezone-naive, which is interpreted
                 as local time.
             source: Filter by source: 'stdout', 'stderr', or 'system'.
@@ -359,7 +357,7 @@ class _FunctionLogsManager(_LogsManager):
                 print(entry.message, end="")
             ```
         """
-        async for log_entry in super().fetch(since=since, until=until, source=source, search_text=search_text):
+        async for log_entry in self._manager.fetch(since=since, until=until, source=source, search_text=search_text):
             yield log_entry
 
     async def tail(
@@ -386,7 +384,7 @@ class _FunctionLogsManager(_LogsManager):
                 print(entry.message, end="")
             ```
         """
-        async for log_entry in super().tail(entries, source=source):
+        async for log_entry in self._manager.tail(entries, source=source):
             yield log_entry
 
     async def stream(self, timeout: float | None = None) -> AsyncGenerator[LogEntry, None]:
@@ -408,19 +406,19 @@ class _FunctionLogsManager(_LogsManager):
                 print(entry.message, end="")
             ```
         """
-        async for log_entry in super().stream(timeout=timeout):
+        async for log_entry in self._manager.stream(timeout=timeout):
             yield log_entry
 
 
 FunctionLogsManager = synchronize_api(_FunctionLogsManager, target_module=__name__)
 
 
-class _ServerLogsManager(_LogsManager):
+class _ServerLogsManager:
     """mdmd:namespace"""
 
     def __init__(self, source: _SupportsLogs):
         """mdmd:hidden"""
-        super().__init__(source)
+        self._manager = _LogsManager(source)
 
     async def fetch(
         self,
@@ -433,7 +431,8 @@ class _ServerLogsManager(_LogsManager):
         """Fetch Server logs corresponding to the date range and filters.
 
         Args:
-            since: Start date to fetch logs from. Must be in UTC or timezone-naive, which is interpreted as local time.
+            since: Start date to fetch logs from. Must be in UTC or timezone-naive,
+                which is interpreted as local time.
             until: Defaults to current date if None. Must be in UTC or timezone-naive, which is interpreted
                 as local time.
             source: Filter by source: 'stdout', 'stderr', or 'system'.
@@ -454,7 +453,7 @@ class _ServerLogsManager(_LogsManager):
                 print(entry.message, end="")
             ```
         """
-        async for log_entry in super().fetch(since=since, until=until, source=source, search_text=search_text):
+        async for log_entry in self._manager.fetch(since=since, until=until, source=source, search_text=search_text):
             yield log_entry
 
     async def tail(
@@ -481,7 +480,7 @@ class _ServerLogsManager(_LogsManager):
                 print(entry.message, end="")
             ```
         """
-        async for log_entry in super().tail(entries, source=source):
+        async for log_entry in self._manager.tail(entries, source=source):
             yield log_entry
 
     async def stream(self, timeout: float | None = None) -> AsyncGenerator[LogEntry, None]:
@@ -503,34 +502,29 @@ class _ServerLogsManager(_LogsManager):
                 print(entry.message, end="")
             ```
         """
-        async for log_entry in super().stream(timeout=timeout):
+        async for log_entry in self._manager.stream(timeout=timeout):
             yield log_entry
 
 
 ServerLogsManager = synchronize_api(_ServerLogsManager, target_module=__name__)
 
 
-class _FunctionCallLogsManager(_LogsManager):
+class _FunctionCallLogsManager:
     """mdmd:namespace"""
 
     def __init__(self, source: _SupportsLogs):
         """mdmd:hidden"""
-        super().__init__(source, stop_stream=self._determine_function_call_stop)
+        self._source = source
         self._function_id: str | None = None
-
-    async def _params(self) -> _LogQueryData:
-        params = await super()._params()
-        if self._function_id is None:
-            self._function_id = getattr(self._source, "_function_id", None)
-        return params
+        self._manager = _LogsManager(source, stop_stream=self._determine_function_call_stop)
 
     async def _get_function_call_info(self) -> api_pb2.FunctionCallInfo:
         for i in range(5):
             try:
-                params = await self._params()
-                assert hasattr(self, "_function_id") and self._function_id is not None, (
-                    "Function ID should be set during hydration"
-                )
+                params = await self._manager._params()
+                if self._function_id is None:
+                    self._function_id = getattr(self._source, "_function_id", None)
+                assert self._function_id is not None, "Function ID should be set during hydration"
                 request = api_pb2.FunctionCallGetInfoRequest(
                     function_id=self._function_id,
                     function_call_id=params.filters.function_call_id,
@@ -542,6 +536,7 @@ class _FunctionCallLogsManager(_LogsManager):
                     await asyncio.sleep(1)
                     continue
                 raise
+        raise NotFoundError(f"Function call {self._source.object_id} not found after retries.")
 
     async def _determine_function_call_stop(self) -> bool:
         try:
@@ -553,7 +548,7 @@ class _FunctionCallLogsManager(_LogsManager):
         except NotFoundError:
             return False
         except (ServiceError, InternalError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
-            if self._is_transient_stream_error(exc):
+            if self._manager._is_transient_stream_error(exc):
                 logger.debug("Function call status check interrupted. Retrying ...")
                 return False
             raise
@@ -592,7 +587,7 @@ class _FunctionCallLogsManager(_LogsManager):
                 print(entry.message, end="")
             ```
         """
-        async for log_entry in super().stream(timeout=timeout):
+        async for log_entry in self._manager.stream(timeout=timeout):
             yield log_entry
 
     async def tail(
@@ -620,7 +615,7 @@ class _FunctionCallLogsManager(_LogsManager):
                 print(entry.timestamp, entry.message, end="")
             ```
         """
-        async for log_entry in super().tail(entries, source=source):
+        async for log_entry in self._manager.tail(entries, source=source):
             yield log_entry
 
     async def fetch(
@@ -634,7 +629,8 @@ class _FunctionCallLogsManager(_LogsManager):
         """Fetch all associated logs corresponding to the date range and filters.
 
         Args:
-            since: Start date to fetch logs from. Must be in UTC or timezone-naive, which is interpreted as local time.
+            since: Start date to fetch logs from. Must be in UTC or timezone-naive,
+                which is interpreted as local time.
                 By default, this will fetch logs from the start of the function call.
             until: Defaults to current date if None. Must be in UTC or timezone-naive, which is interpreted
                 as local time.
@@ -667,7 +663,7 @@ class _FunctionCallLogsManager(_LogsManager):
         if since_was_defaulted and until_was_defaulted and since > until:
             until = since
 
-        async for log_entry in super().fetch(since=since, until=until, source=source, search_text=search_text):
+        async for log_entry in self._manager.fetch(since=since, until=until, source=source, search_text=search_text):
             yield log_entry
 
 

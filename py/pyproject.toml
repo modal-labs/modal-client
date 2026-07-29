@@ -238,17 +238,12 @@ reportUnnecessaryComparison = true
 # implementations. We type-check all of modal/ (new files are covered
 # automatically). test/cls_test.py is included because mypy limitations
 # (https://github.com/python/mypy/issues/16527) require pyright for cls-oriented checks
-include = [
-    "modal",
-    "test/cls_test.py",
-]
+include = ["modal", "test/cls_test.py"]
 # Many modal/ files are excluded from currently excluded from pyright because they were
 # written against mypy's looser standards. We aim to reduce this list over time.
 exclude = [
     "modal/_vendor",
     "modal/_clustered_functions.py",
-    "modal/_logs_manager.py",
-    "modal/_logs_manager.pyi",
     "modal/_output/pty.py",
     "modal/_partial_function.py",
     "modal/_utils/blob_utils.py",
@@ -256,7 +251,7 @@ exclude = [
     "modal/_utils/grpc_utils.py",
     "modal/_utils/task_command_router_client.py",
     "modal/_utils/time_utils.py",
-    "modal/app.py",  # 31 errors
+    "modal/app.py",                               # 31 errors
     "modal/client.py",
     "modal/cls.py",
     "modal/cls.pyi",
