@@ -7,7 +7,9 @@ import jwt
 
 from modal._utils.async_utils import synchronize_api
 from modal._utils.auth_token_manager import _AuthTokenManager
-from modal.exception import ExecutionError
+from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES
+from modal.exception import AuthError, ExecutionError, PermissionDeniedError
+from modal_proto import api_pb2
 
 
 @pytest.fixture
@@ -125,6 +127,235 @@ async def test_get_token_needs_refresh(auth_token_manager, token_near_expiry, va
     token = await wrapped_get_token.aio()
     assert token == valid_jwt_token
     assert auth_token_manager._token == valid_jwt_token
+
+
+@pytest.mark.asyncio
+async def test_get_token_expired_refresh_failure_falls_back(auth_token_manager, expired_jwt_token, monkeypatch):
+    """Test that a failed refresh falls back to the expired cached token."""
+    auth_token_manager._token = expired_jwt_token
+    auth_token_manager._expiry = exp_time(expired_jwt_token)
+
+    async def fail_auth_token_get(*args, **kwargs):
+        raise RuntimeError("auth server unavailable")
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", fail_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    assert await wrapped_get_token.aio() == expired_jwt_token
+
+
+@pytest.mark.asyncio
+async def test_get_token_without_cached_token_refresh_failure_raises(auth_token_manager, monkeypatch):
+    """Test that a failed initial fetch still raises without a cached token."""
+
+    async def fail_auth_token_get(*args, **kwargs):
+        raise RuntimeError("auth server unavailable")
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", fail_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    with pytest.raises(RuntimeError, match="auth server unavailable"):
+        await wrapped_get_token.aio()
+
+
+@pytest.mark.asyncio
+async def test_get_token_fetch_only_retries_without_cached_token(auth_token_manager, valid_jwt_token, monkeypatch):
+    """A failed fetch is only user-visible without a cached token, so that's the only case we retry."""
+    captured: dict = {}
+
+    async def recording_auth_token_get(request, **kwargs):
+        captured.update(kwargs)
+        return api_pb2.AuthTokenGetResponse(token=valid_jwt_token)
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", recording_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    assert await wrapped_get_token.aio() == valid_jwt_token
+    assert captured["retry"].max_retries == DEFAULT_MAX_RETRIES
+
+    # The token is now cached, so a subsequent refresh falls back to it instead of retrying.
+    auth_token_manager._expiry = 0.0
+    assert await wrapped_get_token.aio() == valid_jwt_token
+    assert captured["retry"].max_retries == 0
+
+
+@pytest.mark.asyncio
+async def test_get_token_expired_refresh_failure_backs_off(auth_token_manager, expired_jwt_token, monkeypatch):
+    """After a failed refresh, the cached token is reused without re-hitting the server during the backoff window."""
+    auth_token_manager._token = expired_jwt_token
+    auth_token_manager._expiry = exp_time(expired_jwt_token)
+
+    calls = 0
+
+    async def fail_auth_token_get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("auth server unavailable")
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", fail_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    # First call attempts a refresh, fails, and falls back to the cached expired token.
+    assert await wrapped_get_token.aio() == expired_jwt_token
+    assert calls == 1
+    assert auth_token_manager._in_backoff()
+    expected_retry_after = time.time() + auth_token_manager.FAILURE_BACKOFF_BASE
+    assert auth_token_manager._retry_after == pytest.approx(expected_retry_after, abs=1)
+
+    # Second call is within the backoff window, so it returns the cached token without another RPC.
+    assert await wrapped_get_token.aio() == expired_jwt_token
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_get_token_empty_response_backs_off(auth_token_manager, expired_jwt_token, monkeypatch):
+    """An empty refresh response falls back to the cached token and enters backoff."""
+    auth_token_manager._token = expired_jwt_token
+    auth_token_manager._expiry = exp_time(expired_jwt_token)
+    calls = 0
+
+    async def empty_auth_token_get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return api_pb2.AuthTokenGetResponse()
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", empty_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    assert await wrapped_get_token.aio() == expired_jwt_token
+    assert calls == 1
+    assert auth_token_manager._in_backoff()
+    assert await wrapped_get_token.aio() == expired_jwt_token
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_get_token_undecodable_response_backs_off(auth_token_manager, expired_jwt_token, monkeypatch):
+    """An undecodable refresh response falls back to the cached token and enters backoff."""
+    auth_token_manager._token = expired_jwt_token
+    auth_token_manager._expiry = exp_time(expired_jwt_token)
+    calls = 0
+
+    async def undecodable_auth_token_get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return api_pb2.AuthTokenGetResponse(token="not-a-jwt")
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", undecodable_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    assert await wrapped_get_token.aio() == expired_jwt_token
+    assert calls == 1
+    assert auth_token_manager._in_backoff()
+    assert await wrapped_get_token.aio() == expired_jwt_token
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_get_token_refresh_retried_after_backoff(
+    auth_token_manager, expired_jwt_token, valid_jwt_token, servicer
+):
+    """Once the backoff window elapses, the next call refreshes again."""
+    auth_token_manager._token = expired_jwt_token
+    auth_token_manager._expiry = exp_time(expired_jwt_token)
+    # Simulate an active backoff from a recent failure.
+    auth_token_manager._retry_after = time.time() + auth_token_manager.FAILURE_BACKOFF_BASE
+    servicer.auth_token = valid_jwt_token
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    # Within the backoff window: cached expired token is returned, no refresh.
+    assert await wrapped_get_token.aio() == expired_jwt_token
+
+    # Backoff has elapsed: the refresh happens and the new token is cached.
+    auth_token_manager._retry_after = 0.0
+    assert await wrapped_get_token.aio() == valid_jwt_token
+    assert auth_token_manager._token == valid_jwt_token
+
+
+@pytest.mark.parametrize("error_type", [AuthError, PermissionDeniedError])
+@pytest.mark.asyncio
+async def test_get_token_auth_denied_does_not_fall_back(auth_token_manager, expired_jwt_token, error_type, monkeypatch):
+    """Auth-denial errors are surfaced instead of falling back to an expired cached token."""
+    auth_token_manager._token = expired_jwt_token
+    auth_token_manager._expiry = exp_time(expired_jwt_token)
+    auth_token_manager._retry_after = 0.0
+    auth_token_manager._backoff = auth_token_manager.FAILURE_BACKOFF_BASE
+    error = error_type("credentials rejected")
+
+    async def fail_auth_token_get(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", fail_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    with pytest.raises(error_type, match="credentials rejected"):
+        await wrapped_get_token.aio()
+    assert auth_token_manager._token == expired_jwt_token
+    assert auth_token_manager._retry_after == 0.0
+    assert auth_token_manager._backoff == auth_token_manager.FAILURE_BACKOFF_BASE
+    assert not auth_token_manager._in_backoff()
+
+
+@pytest.mark.asyncio
+async def test_get_token_failure_backoff_grows_exponentially(
+    auth_token_manager, expired_jwt_token, valid_jwt_token, monkeypatch
+):
+    """Consecutive refresh failures increase the cooldown, which resets after success."""
+    now = 1_000.0
+    monkeypatch.setattr(time, "time", lambda: now)
+    auth_token_manager._token = expired_jwt_token
+    auth_token_manager._expiry = 0.0
+    should_fail = True
+
+    async def auth_token_get(*args, **kwargs):
+        if should_fail:
+            raise RuntimeError("auth server unavailable")
+        return api_pb2.AuthTokenGetResponse(token=valid_jwt_token)
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", auth_token_get)
+
+    expected_cooldowns = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0]
+    for expected_cooldown in expected_cooldowns:
+        auth_token_manager._retry_after = 0.0
+        with pytest.raises(RuntimeError, match="auth server unavailable"):
+            await auth_token_manager._refresh_token()
+        assert auth_token_manager._retry_after == now + expected_cooldown
+
+    should_fail = False
+    auth_token_manager._retry_after = 0.0
+    await auth_token_manager._refresh_token()
+    assert auth_token_manager._backoff == auth_token_manager.FAILURE_BACKOFF_BASE
+
+    should_fail = True
+    auth_token_manager._expiry = 0.0
+    auth_token_manager._retry_after = 0.0
+    with pytest.raises(RuntimeError, match="auth server unavailable"):
+        await auth_token_manager._refresh_token()
+    assert auth_token_manager._retry_after == now + auth_token_manager.FAILURE_BACKOFF_BASE
 
 
 @pytest.mark.asyncio
