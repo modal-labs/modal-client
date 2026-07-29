@@ -1055,6 +1055,11 @@ message ClusterStats {
   double started_at = 4; // Defined as start time of the first task in the cluster
 }
 
+message CommandRouterAccess {
+  string jwt = 1;
+  string url = 2;
+}
+
 message CommitInfo {
   string vcs = 1; // Only git is supported for now
   string branch = 2;
@@ -3436,6 +3441,7 @@ message SandboxCreateV2Response {
   repeated TunnelData tunnels = 2;
   string task_id = 3;
   SandboxHandleMetadata metadata = 4;
+  CommandRouterAccess command_router_access = 5;
 }
 
 // Used by the sandbox controller to get command router access for V2 sandboxes.
