@@ -24,6 +24,7 @@ from modal import (
     Volume,
 )
 from modal._utils.async_utils import synchronizer
+from modal._utils.task_command_router_client import _is_v2_task_id
 from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
 from modal.sandbox import SandboxVersion, SidecarContainer, _get_sandbox_version
 from modal.stream_type import StreamType
@@ -306,6 +307,18 @@ def test_get_sandbox_version(sandbox_id, expected_version):
 def test_get_sandbox_version_rejects_invalid_id(sandbox_id):
     with pytest.raises(InvalidError, match="Invalid Sandbox ID"):
         _get_sandbox_version(sandbox_id)
+
+
+@pytest.mark.parametrize(
+    ("task_id", "expected"),
+    [
+        ("ta-01ARZ3NDEKTSV4RRFFQ69G5FAV", True),  # trailing "V" = V2 sandbox task
+        ("ta-01ARZ3NDEKTSV4RRFFQ69G5FAS", False),  # trailing "S" = V1 sandbox task
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", False),
+    ],
+)
+def test_is_v2_task_id(task_id, expected):
+    assert _is_v2_task_id(task_id) == expected
 
 
 def test_sandbox_from_id_routes_v1(client, servicer):

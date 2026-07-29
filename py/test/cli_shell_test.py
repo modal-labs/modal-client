@@ -149,17 +149,40 @@ def test_shell_into_v2_sandbox_no_pty(servicer, set_env_client):
     assert not exec_req.HasField("pty_info")
 
 
+# Task IDs carry a kind marker in the trailing ULID character: "V" for V2
+# sandbox tasks, "S" for V1 sandbox tasks.
+_V2_SANDBOX_TASK_ID = "ta-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+_V1_SANDBOX_TASK_ID = "ta-01ARZ3NDEKTSV4RRFFQ69G5FAS"
+
+
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell_into_task_ref_no_pty(servicer, set_env_client):
+@pytest.mark.parametrize("task_id", ["ta-abc123", _V1_SANDBOX_TASK_ID])
+def test_shell_into_task_ref_no_pty(servicer, set_env_client, task_id):
     with servicer.intercept() as ctx:
         with servicer.task_command_router.intercept() as tcr_ctx:
-            run_cli_command(["shell", "--no-pty", "--cmd", "echo hi", "ta-abc123"])
+            run_cli_command(["shell", "--no-pty", "--cmd", "echo hi", task_id])
 
     assert len(ctx.get_requests("TaskGetCommandRouterAccess")) == 1
     assert ctx.get_requests("SandboxGetCommandRouterAccess") == []
 
     (exec_req,) = tcr_ctx.get_requests("TaskExecStart")
-    assert exec_req.task_id == "ta-abc123"
+    assert exec_req.task_id == task_id
+    assert list(exec_req.command_args) == ["echo", "hi"]
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_into_v2_task_ref_no_pty(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            run_cli_command(["shell", "--no-pty", "--cmd", "echo hi", _V2_SANDBOX_TASK_ID])
+
+    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
+    assert access_req.WhichOneof("target") == "task_id"
+    assert access_req.task_id == _V2_SANDBOX_TASK_ID
+    assert ctx.get_requests("TaskGetCommandRouterAccess") == []
+
+    (exec_req,) = tcr_ctx.get_requests("TaskExecStart")
+    assert exec_req.task_id == _V2_SANDBOX_TASK_ID
     assert list(exec_req.command_args) == ["echo", "hi"]
 
 

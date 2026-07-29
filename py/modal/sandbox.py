@@ -45,7 +45,7 @@ from ._utils.mount_utils import (
     validate_volumes_by_object_id,
 )
 from ._utils.name_utils import check_object_name
-from ._utils.task_command_router_client import TaskCommandRouterClient
+from ._utils.task_command_router_client import TaskCommandRouterClient, _is_v2_task_id
 from .client import _Client
 from .container_process import _ContainerProcess
 from .exception import (
@@ -1912,7 +1912,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if self._command_router_client is None:
             try:
                 if self._is_v2:
-                    self._command_router_client = await TaskCommandRouterClient.init_v2(
+                    self._command_router_client = await TaskCommandRouterClient.init_v2_by_sandbox_id(
                         self._client, self.object_id, task_id
                     )
                 else:
@@ -2891,17 +2891,20 @@ async def _container_exec(
     pty: bool,
     container_id: str = "",
     command: tuple[str, ...] = (),
-    object_id_for_v2: str | None = None,
+    sandbox_id_v2: str | None = None,
 ):
     """Execute a command in a container.
 
-    For tasks belonging to V2 sandboxes, `object_id_for_v2` must be set to the
-    sandbox ID.
+    For tasks belonging to V2 sandboxes, `sandbox_id_v2` may be set to the
+    sandbox ID; otherwise the V2 backend is used whenever the task ID itself
+    marks a V2 sandbox task.
     """
     client = await _Client.from_env()
 
-    if object_id_for_v2 is not None:
-        command_router_client = await TaskCommandRouterClient.init_v2(client, object_id_for_v2, container_id)
+    if sandbox_id_v2 is not None:
+        command_router_client = await TaskCommandRouterClient.init_v2_by_sandbox_id(client, sandbox_id_v2, container_id)
+    elif _is_v2_task_id(container_id):
+        command_router_client = await TaskCommandRouterClient.init_v2_by_task_id(client, container_id)
     else:
         command_router_client = await TaskCommandRouterClient.init(client, container_id)
 

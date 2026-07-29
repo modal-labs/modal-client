@@ -134,7 +134,7 @@ def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
     if container_name is not None and container_name != _MAIN_CONTAINER_NAME:
         return _start_shell_in_sidecar_container(sandbox_id, container_name, cmd, pty)
 
-    object_id_for_v2: str | None = None
+    sandbox_id_v2: str | None = None
 
     if _is_valid_modal_id(sandbox_id, "sb-"):
         try:
@@ -145,11 +145,11 @@ def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
         except Exception as e:
             raise ClickException(f"Error connecting to Sandbox '{sandbox_id}': {str(e)}")
         if _is_v2_sandbox_id(sandbox_id):
-            object_id_for_v2 = sandbox_id
+            sandbox_id_v2 = sandbox_id
 
     assert _is_valid_modal_id(ref, "ta-")
     try:
-        _container_exec(pty, container_id=ref, command=tuple(shlex.split(cmd)), object_id_for_v2=object_id_for_v2)
+        _container_exec(pty, container_id=ref, command=tuple(shlex.split(cmd)), sandbox_id_v2=sandbox_id_v2)
     except NotFoundError:
         raise ClickException(f"Container '{ref}' not found (is it still running?)")
     except Exception as e:
