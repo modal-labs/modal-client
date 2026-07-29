@@ -20,7 +20,7 @@ Then you can import it in your code:
 import modal "github.com/modal-labs/modal-client/go"
 ```
 
-Go 1.24.0 or later is required.
+Go 1.25.0 or later is required.
 
 ## Configuration
 

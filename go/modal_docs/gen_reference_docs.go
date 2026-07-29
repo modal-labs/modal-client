@@ -129,16 +129,9 @@ const clientTypeName = "Client"
 
 func parsePackage(srcDir string) (*pkgModel, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, srcDir, func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, parser.ParseComments)
+	entries, err := os.ReadDir(srcDir)
 	if err != nil {
-		return nil, fmt.Errorf("parsing %q: %w", srcDir, err)
-	}
-
-	pkg, ok := pkgs["modal"]
-	if !ok {
-		return nil, fmt.Errorf("package %q not found in %q", "modal", srcDir)
+		return nil, fmt.Errorf("reading %q: %w", srcDir, err)
 	}
 
 	m := &pkgModel{
@@ -149,7 +142,21 @@ func parsePackage(srcDir string) (*pkgModel, error) {
 		serviceAccessors: map[string]string{},
 	}
 
-	for _, file := range pkg.Files {
+	found := false
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, filepath.Join(srcDir, name), nil, parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %q: %w", name, err)
+		}
+		if file.Name.Name != "modal" {
+			continue
+		}
+		found = true
+
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
@@ -186,6 +193,10 @@ func parsePackage(srcDir string) (*pkgModel, error) {
 				}
 			}
 		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("package %q not found in %q", "modal", srcDir)
 	}
 
 	m.buildServiceAccessors()

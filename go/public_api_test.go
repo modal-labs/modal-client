@@ -135,7 +135,7 @@ var excludedTypes = map[string]string{
 
 // isParamsType reports whether t is a pointer to a struct whose name ends with "Params".
 func isParamsType(t reflect.Type) bool {
-	return t.Kind() == reflect.Ptr &&
+	return t.Kind() == reflect.Pointer &&
 		t.Elem().Kind() == reflect.Struct &&
 		strings.HasSuffix(t.Elem().Name(), "Params")
 }
