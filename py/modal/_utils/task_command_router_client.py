@@ -922,15 +922,19 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.TaskSetNetworkAccess, request)
             )
 
-    async def reload_volumes(self, task_id: str, timeout: float) -> sr_pb2.TaskReloadVolumesResponse:
-        """Reload all Volumes mounted in the task to reflect their latest committed state.
+    async def reload_volumes(
+        self, task_id: str, timeout: float, container_id: str = ""
+    ) -> sr_pb2.TaskReloadVolumesResponse:
+        """Reload Volumes mounted in the task to reflect their latest committed state.
 
         Args:
             task_id: The task whose mounted Volumes should be reloaded.
             timeout: Client-side deadline in seconds. If the reload does not complete within this
                 window, the call is cancelled and a `modal.exception.TimeoutError` is raised.
+            container_id: Target container whose Volumes should be reloaded. Empty targets the
+                Sandbox's main container.
         """
-        request = sr_pb2.TaskReloadVolumesRequest(task_id=task_id)
+        request = sr_pb2.TaskReloadVolumesRequest(task_id=task_id, container_id=container_id)
         return await self._unary_call_with_deadline(self._stub.TaskReloadVolumes, request, timeout=timeout)
 
     async def _unary_call_with_deadline(self, rpc, request, *, timeout: float, **kwargs):

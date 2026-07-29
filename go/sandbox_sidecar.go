@@ -70,6 +70,12 @@ type SidecarTerminateParams struct {
 	Wait bool
 }
 
+// SidecarReloadVolumesParams are options for [SidecarContainer.ReloadVolumes].
+type SidecarReloadVolumesParams struct {
+	// Timeout bounds how long the call waits. Defaults to 55 seconds.
+	Timeout time.Duration
+}
+
 func validateSidecarName(name string) error {
 	if name == "" {
 		return InvalidError{Exception: "sidecar name must not be empty"}
@@ -361,4 +367,16 @@ func (c *SidecarContainer) Terminate(ctx context.Context, params *SidecarTermina
 		return 0, nil
 	}
 	return c.Wait(ctx, nil)
+}
+
+// ReloadVolumes reloads all Volumes mounted in this sidecar container.
+//
+// Blocks until the reload completes, or returns a TimeoutError on timeout (the
+// reload may still complete in the background).
+func (c *SidecarContainer) ReloadVolumes(ctx context.Context, params *SidecarReloadVolumesParams) error {
+	var timeout time.Duration
+	if params != nil {
+		timeout = params.Timeout
+	}
+	return c.sandbox.reloadVolumes(ctx, c.ContainerID, timeout)
 }

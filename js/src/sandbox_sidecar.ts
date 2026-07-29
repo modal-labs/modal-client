@@ -63,6 +63,10 @@ type SandboxSidecarAccess = {
     containerId: string,
   ): Promise<ContainerProcess>;
   commandRouter(): Promise<[string, SandboxSidecarCommandRouter]>;
+  reloadVolumes(
+    containerId: string,
+    params: SidecarReloadVolumesParams | undefined,
+  ): Promise<void>;
 };
 
 /** Options for {@link SidecarService#create SidecarService.create()}. */
@@ -96,6 +100,12 @@ export type SidecarExecParams = SandboxExecParams;
 export type SidecarTerminateParams = {
   /** If true, wait for the sidecar container to terminate. */
   wait?: boolean;
+};
+
+/** Optional parameters for {@link SidecarContainer#reloadVolumes SidecarContainer.reloadVolumes()}. */
+export type SidecarReloadVolumesParams = {
+  /** Overall budget in milliseconds. Defaults to 55000. */
+  timeoutMs?: number;
 };
 
 function validateSidecarName(name: string): void {
@@ -387,5 +397,15 @@ export class SidecarContainer {
     if (params?.wait) {
       return this.wait();
     }
+  }
+
+  /**
+   * Reload all Volumes mounted in this sidecar container.
+   *
+   * Blocks until the reload completes, or throws a `TimeoutError` on timeout
+   * (the reload may still complete in the background).
+   */
+  async reloadVolumes(params?: SidecarReloadVolumesParams): Promise<void> {
+    await this.#access.reloadVolumes(this.containerId, params);
   }
 }

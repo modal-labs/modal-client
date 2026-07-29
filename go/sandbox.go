@@ -860,9 +860,7 @@ type SandboxUnmountImageParams struct{}
 
 // SandboxReloadVolumesParams are options for Sandbox.ReloadVolumes.
 type SandboxReloadVolumesParams struct {
-	// Timeout bounds how long the call waits for the reload to complete.
-	// Defaults to 55 seconds. If the reload does not complete within this
-	// window, the call is cancelled and a TimeoutError is returned.
+	// Timeout bounds how long the call waits. Defaults to 55 seconds.
 	Timeout time.Duration
 }
 
@@ -1806,26 +1804,32 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *Sandbo
 
 // ReloadVolumes reloads all Volumes mounted in the Sandbox.
 //
-// Blocks until the Volumes have been reloaded, bounded by the timeout (55
-// seconds by default; see [SandboxReloadVolumesParams]). If the reload does not
-// complete within that window, a TimeoutError is returned; note that the reload
-// may still complete in the background.
+// Blocks until the reload completes, or returns a TimeoutError on timeout (the
+// reload may still complete in the background).
 func (sb *Sandbox) ReloadVolumes(ctx context.Context, params *SandboxReloadVolumesParams) error {
-	timeout := 55 * time.Second
+	var timeout time.Duration
 	if params != nil {
-		if params.Timeout < 0 {
-			return InvalidError{Exception: "Timeout must not be negative"}
-		}
-		if params.Timeout != 0 {
-			timeout = params.Timeout
-		}
+		timeout = params.Timeout
+	}
+	return sb.reloadVolumes(ctx, "", timeout)
+}
+
+// reloadVolumes reloads one container's Volumes; an empty containerID targets
+// the main container. A zero timeout selects the default.
+func (sb *Sandbox) reloadVolumes(ctx context.Context, containerID string, timeout time.Duration) error {
+	if timeout < 0 {
+		return InvalidError{Exception: "Timeout must not be negative"}
+	}
+	if timeout == 0 {
+		timeout = 55 * time.Second
 	}
 	taskID, crClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
 	return crClient.ReloadVolumes(ctx, pb.TaskReloadVolumesRequest_builder{
-		TaskId: taskID,
+		TaskId:      taskID,
+		ContainerId: containerID,
 	}.Build(), timeout)
 }
 

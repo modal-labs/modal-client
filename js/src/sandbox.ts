@@ -1168,12 +1168,7 @@ export type SandboxSnapshotFilesystemParams = {
 
 /** Optional parameters for {@link Sandbox#reloadVolumes Sandbox.reloadVolumes()}. */
 export type SandboxReloadVolumesParams = {
-  /**
-   * Overall budget for the reload call, in milliseconds. Defaults to 55000.
-   * If the reload does not complete within this window, the call is cancelled
-   * and a `TimeoutError` is thrown; note that the reload may still complete in
-   * the background.
-   */
+  /** Overall budget in milliseconds. Defaults to 55000. */
   timeoutMs?: number;
 };
 
@@ -1569,6 +1564,8 @@ export class Sandbox {
         exec: (command, params, containerId) =>
           this.#execInternal(command, params, containerId),
         commandRouter: () => this.#getCommandRouter(),
+        reloadVolumes: (containerId, params) =>
+          this.#reloadVolumes(containerId, params),
       });
     }
     return this.#sidecars;
@@ -2180,15 +2177,21 @@ export class Sandbox {
   /**
    * Reload all Volumes mounted in the Sandbox.
    *
-   * Blocks until the Volumes have been reloaded, bounded by `timeoutMs` (55000
-   * by default). If the reload does not complete within that window, a
-   * `TimeoutError` is thrown; note that the reload may still complete in the
-   * background.
+   * Blocks until the reload completes, or throws a `TimeoutError` on timeout
+   * (the reload may still complete in the background).
    *
    * @param params - Optional parameters; see {@link SandboxReloadVolumesParams}.
    */
   async reloadVolumes(params?: SandboxReloadVolumesParams): Promise<void> {
     this.#ensureAttached();
+    await this.#reloadVolumes("", params);
+  }
+
+  // Reload one container's Volumes; empty `containerId` targets the main container.
+  async #reloadVolumes(
+    containerId: string,
+    params?: SandboxReloadVolumesParams,
+  ): Promise<void> {
     if (params?.timeoutMs !== undefined && params.timeoutMs < 0) {
       throw new InvalidError("`timeoutMs` must not be negative");
     }
@@ -2197,7 +2200,7 @@ export class Sandbox {
     const timeoutMs = params?.timeoutMs || 55000;
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
     await commandRouterClient.reloadVolumes(
-      TaskReloadVolumesRequest.create({ taskId }),
+      TaskReloadVolumesRequest.create({ taskId, containerId }),
       { timeoutMs },
     );
   }

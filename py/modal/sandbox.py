@@ -1812,18 +1812,21 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         Added in v1.1.0.
 
-        Blocks until the Volumes have been reloaded, bounded by `timeout` (55 seconds by default). If the reload
-        does not complete within that window, `modal.exception.TimeoutError` is raised; note that the reload may
-        still complete in the background.
+        Blocks until the reload completes, or raises `modal.exception.TimeoutError` on timeout (the reload
+        may still complete in the background).
 
         Args:
-            timeout: Maximum time in seconds to wait for the reload. Must be positive.
+            timeout: Defaults to 55 seconds.
         """
+        await self._reload_volumes(timeout=timeout)
+
+    async def _reload_volumes(self, *, timeout: int, container_id: str = "") -> None:
+        # Reload one container's Volumes; empty `container_id` targets the main container.
         if timeout <= 0:
-            raise InvalidError("The `timeout` argument to `Sandbox.reload_volumes` must be positive.")
+            raise InvalidError("The `timeout` argument to `reload_volumes` must be positive.")
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
-        await command_router_client.reload_volumes(task_id, timeout=float(timeout))
+        await command_router_client.reload_volumes(task_id, timeout=float(timeout), container_id=container_id)
 
     @overload
     async def terminate(
@@ -2741,6 +2744,19 @@ class _SidecarContainer:
         if wait:
             await self.wait(raise_on_termination=False)
             return _result_returncode(self._result)
+
+    async def reload_volumes(self, *, timeout: int = 55) -> None:
+        """Reload all Volumes mounted in this sidecar container.
+
+        EXPERIMENTAL: the API is subject to change.
+
+        Blocks until the reload completes, or raises `modal.exception.TimeoutError` on timeout (the reload
+        may still complete in the background).
+
+        Args:
+            timeout: Defaults to 55 seconds.
+        """
+        await self._sandbox._reload_volumes(timeout=timeout, container_id=self._container_id)
 
 
 _MAIN_CONTAINER_NAME: str = "main"
