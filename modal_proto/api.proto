@@ -3611,6 +3611,7 @@ message SandboxRestoreV2Response {
   repeated TunnelData tunnels = 2;
   string task_id = 3;
   SandboxHandleMetadata metadata = 4;
+  CommandRouterAccess command_router_access = 5;
 }
 
 message SandboxSetNameRequest {

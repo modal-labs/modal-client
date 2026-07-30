@@ -2402,12 +2402,10 @@ test("experimentalFromSnapshot restores a V2 snapshot via SandboxRestoreV2", asy
     "/SandboxRestoreV2",
     (req: any): SandboxRestoreV2Response => {
       expect(req.snapshotId).toBe("sn-01BX5ZZKBKACTAV9WEVGEMMVRY");
-      return {
+      return SandboxRestoreV2Response.create({
         sandboxId: V2_SANDBOX_ID,
         taskId: "ta-restored-v2-123",
-        tunnels: [],
-        metadata: undefined,
-      };
+      });
     },
   );
 
@@ -2432,12 +2430,10 @@ test("experimentalFromSnapshot fetches the snapshot version when unknown", async
     },
   );
   mock.handleUnary("/SandboxRestoreV2", (): SandboxRestoreV2Response => {
-    return {
+    return SandboxRestoreV2Response.create({
       sandboxId: V2_SANDBOX_ID,
       taskId: "ta-restored-v2-123",
-      tunnels: [],
-      metadata: undefined,
-    };
+    });
   });
 
   const snapshot = await mc.sandboxSnapshots.fromId(
