@@ -12,11 +12,18 @@ import (
 	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
 	// Start refreshing this many seconds before the token expires
-	RefreshWindow = 5 * 60
+	RefreshWindow       = 5 * 60
+	authTokenGetTimeout = 5 * time.Second
+	// After a failed refresh, wait before hitting the server again, growing exponentially
+	// with consecutive failures between these bounds.
+	failureBackoffBase = 500 * time.Millisecond
+	failureBackoffMax  = 60 * time.Second
 	// If the token doesn't have an expiry field, default to current time plus this value (not expected).
 	DefaultExpiryOffset = 20 * 60
 )
@@ -24,6 +31,18 @@ const (
 type tokenAndExpiry struct {
 	token  string
 	expiry int64
+}
+
+type atomicDuration struct {
+	nanos atomic.Int64
+}
+
+func (d *atomicDuration) Load() time.Duration {
+	return time.Duration(d.nanos.Load())
+}
+
+func (d *atomicDuration) Store(v time.Duration) {
+	d.nanos.Store(int64(v))
 }
 
 // authTokenManager manages authentication tokens, refreshing them lazily
@@ -35,6 +54,8 @@ type authTokenManager struct {
 
 	tokenAndExpiry atomic.Pointer[tokenAndExpiry]
 	refreshMu      sync.Mutex
+	retryAfter     atomic.Pointer[time.Time]
+	backoff        atomicDuration
 }
 
 func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *authTokenManager {
@@ -47,6 +68,7 @@ func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *auth
 		token:  "",
 		expiry: 0,
 	})
+	manager.backoff.Store(failureBackoffBase)
 
 	return manager
 }
@@ -64,19 +86,38 @@ func (m *authTokenManager) GetToken(ctx context.Context) (string, error) {
 	data := m.tokenAndExpiry.Load()
 
 	if data.token == "" || isExpired(*data) {
-		return m.lockedRefreshToken(ctx)
+		return m.tryRefreshToken(ctx)
 	}
 
-	if needsRefresh(*data) && m.refreshMu.TryLock() {
+	if m.shouldRefresh(*data) && m.refreshMu.TryLock() {
 		defer m.refreshMu.Unlock()
 		token, err := m.FetchToken(ctx)
 		if err != nil {
-			m.logger.ErrorContext(ctx, "refreshing auth token", "error", err)
+			if isAuthDenied(err) {
+				return "", err
+			}
+			m.logger.WarnContext(ctx, "Auth token refresh failed; falling back to cached token", "error", err)
 			return data.token, nil
 		}
 		return token, nil
 	}
 
+	return data.token, nil
+}
+
+func (m *authTokenManager) tryRefreshToken(ctx context.Context) (string, error) {
+	token, err := m.lockedRefreshToken(ctx)
+	if err == nil {
+		return token, nil
+	}
+	if isAuthDenied(err) {
+		return "", err
+	}
+	data := m.tokenAndExpiry.Load()
+	if data.token == "" {
+		return "", err
+	}
+	m.logger.WarnContext(ctx, "Auth token refresh failed; falling back to cached token", "error", err)
 	return data.token, nil
 }
 
@@ -87,7 +128,7 @@ func (m *authTokenManager) lockedRefreshToken(ctx context.Context) (string, erro
 	defer m.refreshMu.Unlock()
 
 	data := m.tokenAndExpiry.Load()
-	if data.token != "" && !needsRefresh(*data) {
+	if data.token != "" && !m.shouldRefresh(*data) {
 		return data.token, nil
 	}
 	return m.FetchToken(ctx)
@@ -95,16 +136,41 @@ func (m *authTokenManager) lockedRefreshToken(ctx context.Context) (string, erro
 
 // FetchToken fetches a new token using AuthTokenGet() and stores it.
 func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
-	resp, err := m.client.AuthTokenGet(ctx, &pb.AuthTokenGetRequest{})
+	retries := 0
+	if m.tokenAndExpiry.Load().token == "" {
+		// No cached token to fall back on, so a failure is user-visible: retry transient errors.
+		// Otherwise one attempt, and retryAfter handles the cooldown.
+		retries = defaultRetryAttempts
+	}
+	resp, err := m.client.AuthTokenGet(ctx, &pb.AuthTokenGetRequest{},
+		timeoutCallOption{timeout: authTokenGetTimeout},
+		retryCallOption{retries: &retries},
+	)
+	if err == nil && resp.GetToken() == "" {
+		err = fmt.Errorf("internal error: did not receive auth token from server, please contact Modal support")
+	}
 	if err != nil {
-		return "", fmt.Errorf("AuthTokenGet: %w", err)
+		if isAuthDenied(err) {
+			return "", err
+		}
+		// A caller-cancelled context (or a caller deadline shorter than our own
+		// timeout) isn't a server-health signal, so don't arm the shared cooldown.
+		if ctx.Err() != nil {
+			return "", err
+		}
+		// Back off (exponentially on consecutive failures) so we don't hammer a struggling server.
+		cur := m.backoff.Load()
+		t := time.Now().Add(cur)
+		m.retryAfter.Store(&t)
+		next := cur * 2
+		if next > failureBackoffMax {
+			next = failureBackoffMax
+		}
+		m.backoff.Store(next)
+		return "", err
 	}
 
 	token := resp.GetToken()
-	if token == "" {
-		return "", fmt.Errorf("internal error: did not receive auth token from server, please contact Modal support")
-	}
-
 	var expiry int64
 	if exp := m.decodeJWT(token); exp > 0 {
 		expiry = exp
@@ -124,6 +190,8 @@ func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 		"expires_in", time.Until(time.Unix(expiry, 0)),
 		"refresh_in", timeUntilRefresh)
 
+	m.retryAfter.Store(nil)
+	m.backoff.Store(failureBackoffBase)
 	return token, nil
 }
 
@@ -172,6 +240,22 @@ func isExpired(data tokenAndExpiry) bool {
 
 func needsRefresh(data tokenAndExpiry) bool {
 	return time.Now().Unix() >= data.expiry-RefreshWindow
+}
+
+func (m *authTokenManager) inBackoff() bool {
+	retryAfter := m.retryAfter.Load()
+	return retryAfter != nil && time.Now().Before(*retryAfter)
+}
+
+func (m *authTokenManager) shouldRefresh(data tokenAndExpiry) bool {
+	return needsRefresh(data) && !m.inBackoff()
+}
+
+func isAuthDenied(err error) bool {
+	// The credentials themselves were rejected (e.g. revoked/invalid key), as opposed to a
+	// transient outage/overload. Fail fast instead of reusing the cached token or backing off.
+	st, ok := status.FromError(err)
+	return ok && (st.Code() == codes.Unauthenticated || st.Code() == codes.PermissionDenied)
 }
 
 // SetToken sets the token and expiry (for testing).
