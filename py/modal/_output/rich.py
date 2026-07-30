@@ -37,6 +37,7 @@ from rich.progress import (
 )
 from rich.spinner import Spinner
 from rich.status import Status
+from rich.table import Column
 from rich.text import Text
 from rich.tree import Tree
 
@@ -476,7 +477,10 @@ class RichOutputManager(OutputManager):
         and adds it to the current render group."""
         if not self._function_queueing_progress:
             self._function_queueing_progress = Progress(
-                TextColumn("[progress.description]{task.description}"),
+                TextColumn(
+                    "[progress.description]{task.description}",
+                    table_column=Column(no_wrap=False, overflow="fold"),
+                ),
                 FunctionQueuingColumn(),
                 console=self._console,
                 transient=True,
@@ -581,11 +585,17 @@ class RichOutputManager(OutputManager):
         """Handle queueing updates, ignoring completion updates for functions that have no queue progress bar."""
         task_key = (function_id, api_pb2.FUNCTION_QUEUED)
         task_description = description or f"'{function_id}' function waiting on worker"
+        task_description = escape(task_description)
         task_desc = f"[yellow]{task_description}. Time in queue:"
         if task_key in self._task_progress_items:
             progress_task_id = self._task_progress_items[task_key]
             try:
-                self._function_queueing_progress_bar.update(progress_task_id, completed=completed, total=total)
+                self._function_queueing_progress_bar.update(
+                    progress_task_id,
+                    description=task_desc if description else None,
+                    completed=completed,
+                    total=total,
+                )
                 if completed == total:
                     del self._task_progress_items[task_key]
                     self._function_queueing_progress_bar.remove_task(progress_task_id)
