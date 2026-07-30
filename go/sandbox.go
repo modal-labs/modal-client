@@ -620,6 +620,9 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 	}
 
 	sb := newSandboxV2(s.client, createResp.GetSandboxId(), createResp.GetTaskId())
+	if access := createResp.GetCommandRouterAccess(); access != nil {
+		sb.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
+	}
 	// Unencrypted tunnel endpoints are not known at create time. Only cache a
 	// complete set so Tunnels() fetches the rest otherwise.
 	numTunnels := len(createResp.GetTunnels())
@@ -704,8 +707,9 @@ type Sandbox struct {
 
 	client *Client
 
-	commandRouterClient   *taskCommandRouterClient
-	commandRouterClientMu sync.Mutex
+	commandRouterClient     *taskCommandRouterClient
+	commandRouterClientMu   sync.Mutex
+	initCommandRouterAccess *commandRouterAccess
 
 	attached atomic.Bool
 }
@@ -1385,12 +1389,19 @@ func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID st
 	}
 
 	if sb.commandRouterClient == nil {
+		// Consume the seeded access, so if connecting with it fails the retry
+		// falls back to the authoritative RPC instead of re-trying the same
+		// credentials forever. Safe under commandRouterClientMu, held above.
+		access := sb.initCommandRouterAccess
+		sb.initCommandRouterAccess = nil
+
 		client, err := initTaskCommandRouterClient(
 			ctx,
 			sb.client.cpClient,
 			taskID,
 			sb.SandboxID,
 			sb.isV2,
+			access,
 			sb.client.logger,
 			sb.client.profile,
 		)

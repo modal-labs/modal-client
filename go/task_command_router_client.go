@@ -193,37 +193,41 @@ type taskCommandRouterClient struct {
 	refreshJwtGroup singleflight.Group
 }
 
-// initTaskCommandRouterClient attempts to initialize a TaskCommandRouterClient.
-// Returns nil if command router access is not available for this task.
+// access is the router access returned by SandboxCreateV2, which lets a freshly
+// created sandbox connect without a round-trip. Pass nil to look it up instead.
 func initTaskCommandRouterClient(
 	ctx context.Context,
 	serverClient pb.ModalClientClient,
 	taskID string,
 	sandboxID string,
 	isV2 bool,
+	access *commandRouterAccess,
 	logger *slog.Logger,
 	profile Profile,
 ) (*taskCommandRouterClient, error) {
-	resp, err := getCommandRouterAccess(ctx, serverClient, taskID, sandboxID, isV2)
-	if err != nil {
-		return nil, err
+	if access == nil {
+		var err error
+		access, err = getCommandRouterAccess(ctx, serverClient, taskID, sandboxID, isV2)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	logger.DebugContext(ctx, "Using command router access for task", "task_id", taskID, "url", resp.url)
+	logger.DebugContext(ctx, "Using command router access for task", "task_id", taskID, "url", access.url)
 
-	jwt := resp.jwt
+	jwt := access.jwt
 	jwtExp, err := parseJwtExpiration(jwt)
 	if err != nil {
 		return nil, fmt.Errorf("parseJwtExpiration: %w", err)
 	}
 
-	url, err := url.Parse(resp.url)
+	url, err := url.Parse(access.url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse task router URL: %w", err)
 	}
 
 	if url.Scheme != "https" {
-		return nil, fmt.Errorf("task router URL must be https, got: %s", resp.url)
+		return nil, fmt.Errorf("task router URL must be https, got: %s", access.url)
 	}
 
 	host := url.Hostname()
@@ -268,7 +272,7 @@ func initTaskCommandRouterClient(
 		taskID:       taskID,
 		sandboxID:    sandboxID,
 		isV2:         isV2,
-		serverURL:    resp.url,
+		serverURL:    access.url,
 		logger:       logger,
 	}
 	client.jwt.Store(&jwt)

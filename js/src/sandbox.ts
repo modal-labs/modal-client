@@ -36,6 +36,7 @@ import {
 } from "../proto/modal_proto/task_command_router";
 import {
   TaskCommandRouterClientImpl,
+  type CommandRouterAccess,
   type StdinSource,
 } from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
@@ -838,6 +839,7 @@ export class SandboxService {
       isV2: true,
       taskId: createResp.taskId,
       tunnels,
+      initCommandRouterAccess: createResp.commandRouterAccess,
     });
   }
 
@@ -1469,6 +1471,7 @@ export class Sandbox {
   #isV2: boolean;
   #commandRouterClient: TaskCommandRouterClientImpl | undefined;
   #commandRouterClientPromise: Promise<TaskCommandRouterClientImpl> | undefined;
+  #initCommandRouterAccess: CommandRouterAccess | undefined;
   #attached: boolean = true;
   #filesystem?: SandboxFilesystem;
   #sidecars?: SidecarService;
@@ -1481,6 +1484,7 @@ export class Sandbox {
       isV2?: boolean;
       taskId?: string;
       tunnels?: Record<number, Tunnel>;
+      initCommandRouterAccess?: CommandRouterAccess;
     } = {},
   ) {
     this.#client = client;
@@ -1488,6 +1492,7 @@ export class Sandbox {
     this.#isV2 = params.isV2 ?? false;
     this.#taskId = params.taskId || undefined;
     this.#tunnels = params.tunnels;
+    this.#initCommandRouterAccess = params.initCommandRouterAccess;
   }
 
   get stdin(): ModalWriteStream<string> {
@@ -1853,12 +1858,19 @@ export class Sandbox {
       return this.#commandRouterClientPromise;
     }
 
+    // Consume the seeded access, so if connecting with it fails the retry below
+    // falls back to the authoritative RPC instead of re-trying the same
+    // credentials forever.
+    const access = this.#initCommandRouterAccess;
+    this.#initCommandRouterAccess = undefined;
+
     const promise = (async () => {
       const client = await TaskCommandRouterClientImpl.tryInit(
         this.#client.cpClient,
         taskId,
         this.sandboxId,
         this.#isV2,
+        access,
         this.#client.logger,
         this.#client.profile,
       );

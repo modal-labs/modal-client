@@ -1500,6 +1500,90 @@ test("ExperimentalCreate caches encrypted-only tunnels from the create response"
   mock.assertExhausted();
 });
 
+test("ExperimentalCreate uses command router access from the create response", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
+    return { appId: "ap-1234" };
+  });
+  mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+  mock.handleUnary("/SandboxCreateV2", (_: any): SandboxCreateV2Response => {
+    return {
+      sandboxId: V2_SANDBOX_ID,
+      taskId: "ta-v2-123",
+      tunnels: [],
+      metadata: { result: undefined, appId: "ap-1234" },
+      commandRouterAccess: {
+        url: "https://task-abc123.modal.test",
+        jwt: "seeded-jwt",
+      },
+    };
+  });
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    return {
+      environmentId: "en-main-123",
+      metadata: {
+        name: "main",
+        settings: {
+          imageBuilderVersion: "2025.06",
+          webhookSuffix: "modal.run",
+        },
+      },
+    };
+  });
+
+  const setNetworkAccess = vi.fn().mockResolvedValue(undefined);
+  // Mock out the task command router so the test doesn't touch real infra.
+  const tryInit = vi
+    .spyOn(TaskCommandRouterClientImpl, "tryInit")
+    .mockResolvedValue({
+      setNetworkAccess,
+      close: vi.fn(),
+    } as unknown as TaskCommandRouterClientImpl);
+  onTestFinished(() => tryInit.mockRestore());
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = mc.images.fromRegistry("alpine:3.21");
+  const sb = await mc.sandboxes.experimentalCreate(app, image);
+
+  await sb.updateNetworkPolicy({
+    outboundCidrAllowlist: ["10.0.0.0/8"],
+    outboundDomainAllowlist: [],
+  });
+
+  // tryInit is mocked out here, so this covers the plumbing only: the access from
+  // the create response is threaded through to it. The Python tests cover that a
+  // seeded access actually suppresses the SandboxGetCommandRouterAccess call.
+  expect(tryInit).toHaveBeenCalledTimes(1);
+  expect(tryInit).toHaveBeenCalledWith(
+    expect.anything(),
+    "ta-v2-123",
+    V2_SANDBOX_ID,
+    true,
+    { url: "https://task-abc123.modal.test", jwt: "seeded-jwt" },
+    expect.anything(),
+    expect.anything(),
+  );
+
+  mock.assertExhausted();
+});
+
 test("ExperimentalCreate fetches unencrypted tunnels missing from the create response", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 

@@ -288,11 +288,21 @@ class TaskCommandRouterClient:
         server_client,
         sandbox_id: str,
         task_id: str,
+        access: api_pb2.CommandRouterAccess | None = None,
     ) -> "TaskCommandRouterClient":
-        """Initialize a TaskCommandRouterClient for a V2 sandbox."""
-        resp = await fetch_command_router_access_v2(server_client, sandbox_id=sandbox_id)
+        """Initialize a TaskCommandRouterClient for a V2 sandbox.
+
+        `access` is the router access returned by SandboxCreateV2, which lets a
+        freshly created sandbox connect without a round-trip. When it is absent —
+        a re-attached sandbox, or the server could not mint a token — we ask for it.
+        """
+        if access is not None:
+            url, jwt = access.url, access.jwt
+        else:
+            resp = await fetch_command_router_access_v2(server_client, sandbox_id=sandbox_id)
+            url, jwt = resp.url, resp.jwt
         logger.debug(f"Using command router access for sandbox {sandbox_id}")
-        return await cls._connect(server_client, task_id, resp.url, resp.jwt, sandbox_id=sandbox_id)
+        return await cls._connect(server_client, task_id, url, jwt, sandbox_id=sandbox_id)
 
     @classmethod
     async def init_v2_by_task_id(

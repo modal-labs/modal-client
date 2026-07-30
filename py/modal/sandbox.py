@@ -333,6 +333,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _tunnels: dict[int, Tunnel] | None
     _enable_snapshot: bool
     _command_router_client: TaskCommandRouterClient | None
+    _init_command_router_access: api_pb2.CommandRouterAccess | None
     _attached: bool
     _filesystem: _SandboxFilesystem | None
     _is_v2: bool = False
@@ -1034,6 +1035,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._hydrate(sandbox_id, load_context.client, create_resp.metadata)
             self._is_v2 = True
             self._task_id = create_resp.task_id
+            # An unset proto message reads as an empty one rather than None, so the
+            # presence check is what distinguishes "no access" from "empty access".
+            if create_resp.HasField("command_router_access"):
+                self._init_command_router_access = create_resp.command_router_access
             self._hydrate_metadata_v2()
             # Unencrypted tunnel endpoints are not known at create time. Only
             # cache a complete set so tunnels() fetches the rest otherwise.
@@ -1121,6 +1126,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._tunnels = None
         self._enable_snapshot = False
         self._command_router_client = None
+        self._init_command_router_access = None
         self._filesystem = None
         self._is_v2 = _is_v2_sandbox_id(self.object_id)
         if self._is_v2:
@@ -1912,8 +1918,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         if self._command_router_client is None:
             try:
                 if self._is_v2:
+                    # Consume the seeded access, so if connecting with it fails the
+                    # retry falls back to the authoritative RPC instead of
+                    # re-trying the same credentials forever.
+                    access, self._init_command_router_access = self._init_command_router_access, None
                     self._command_router_client = await TaskCommandRouterClient.init_v2_by_sandbox_id(
-                        self._client, self.object_id, task_id
+                        self._client, self.object_id, task_id, access
                     )
                 else:
                     self._command_router_client = await TaskCommandRouterClient.init(self._client, task_id)

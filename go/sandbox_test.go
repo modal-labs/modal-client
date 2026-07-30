@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -1135,4 +1136,98 @@ func TestExperimentalListForwardsTags(t *testing.T) {
 	g.Expect(tags).To(gomega.HaveLen(1))
 	g.Expect(tags[0].GetTagName()).To(gomega.Equal("env"))
 	g.Expect(tags[0].GetTagValue()).To(gomega.Equal("prod"))
+}
+
+type mockSandboxCreateV2Client struct {
+	pb.ModalClientClient
+	access *pb.CommandRouterAccess
+}
+
+func (m *mockSandboxCreateV2Client) SandboxCreateV2(
+	_ context.Context,
+	_ *pb.SandboxCreateV2Request,
+	_ ...grpc.CallOption,
+) (*pb.SandboxCreateV2Response, error) {
+	return pb.SandboxCreateV2Response_builder{
+		SandboxId:           testV2SandboxID,
+		TaskId:              "ta-v2-123",
+		CommandRouterAccess: m.access,
+	}.Build(), nil
+}
+
+func TestExperimentalCreateSeedsCommandRouterAccess(t *testing.T) {
+	newService := func(access *pb.CommandRouterAccess) *sandboxServiceImpl {
+		return &sandboxServiceImpl{client: &Client{
+			cpClient: &clientWithConn{ModalClientClient: &mockSandboxCreateV2Client{access: access}},
+			logger:   slog.New(slog.DiscardHandler),
+		}}
+	}
+
+	t.Run("seeds the access the create response carried", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		sb, err := newService(pb.CommandRouterAccess_builder{
+			Jwt: "seeded-jwt", Url: "https://task-abc123.modal.test",
+		}.Build()).ExperimentalCreate(t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.initCommandRouterAccess).ShouldNot(gomega.BeNil())
+		g.Expect(sb.initCommandRouterAccess.jwt).To(gomega.Equal("seeded-jwt"))
+		g.Expect(sb.initCommandRouterAccess.url).To(gomega.Equal("https://task-abc123.modal.test"))
+	})
+
+	// Guards against wrapping an absent field into empty credentials: the getters
+	// are nil-safe, so a missing nil check yields a non-nil access of empty strings
+	// that fails at connect instead of falling back to the RPC.
+	t.Run("leaves the access unset when the create response omits it", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		sb, err := newService(nil).ExperimentalCreate(
+			t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.initCommandRouterAccess).Should(gomega.BeNil())
+	})
+}
+
+// failOnAccessLookupClient fails the test if command-router access is looked up
+// over gRPC, which a caller passing seeded access must never do.
+type failOnAccessLookupClient struct {
+	pb.ModalClientClient
+	t *testing.T
+}
+
+func (m *failOnAccessLookupClient) SandboxGetCommandRouterAccess(
+	_ context.Context,
+	_ *pb.SandboxGetCommandRouterAccessRequest,
+	_ ...grpc.CallOption,
+) (*pb.SandboxGetCommandRouterAccessResponse, error) {
+	m.t.Fatal("SandboxGetCommandRouterAccess called despite seeded access")
+	return nil, nil
+}
+
+func TestInitTaskCommandRouterClientUsesSeededAccess(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// Mock JWT: "x" header, base64 of {"exp":9999999999}, "x" signature.
+	const mockJWT = "x.eyJleHAiOjk5OTk5OTk5OTl9.x"
+
+	client, err := initTaskCommandRouterClient(
+		context.Background(),
+		&failOnAccessLookupClient{t: t},
+		"ta-v2-123",
+		testV2SandboxID,
+		true,
+		&commandRouterAccess{jwt: mockJWT, url: "https://task-abc123.modal.test"},
+		slog.New(slog.DiscardHandler),
+		Profile{},
+	)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(client).ShouldNot(gomega.BeNil())
+	t.Cleanup(func() { _ = client.Close() })
+
+	g.Expect(client.serverURL).To(gomega.Equal("https://task-abc123.modal.test"))
+	g.Expect(*client.jwt.Load()).To(gomega.Equal(mockJWT))
+	g.Expect(*client.jwtExp.Load()).To(gomega.Equal(int64(9999999999)))
 }

@@ -921,8 +921,8 @@ def test_sandbox__experimental_set_outbound_network_policy_v2(app, servicer):
                 outbound_domain_allowlist=["example.com"], outbound_cidr_allowlist=["8.8.8.8/32"]
             )
 
-    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
-    assert access_req.sandbox_id == "sb-v2-123"
+    # Router access came back with the create, so no lookup is needed.
+    assert ctx.get_requests("SandboxGetCommandRouterAccess") == []
 
     (req,) = tcr_ctx.get_requests("TaskSetNetworkAccess")
     assert req.task_id == "ta-v2-123"
@@ -1212,8 +1212,8 @@ def test_sandbox_snapshot_fs_v2(app, servicer, monkeypatch, legacy_env_var):
             image = sb.snapshot_filesystem()
 
     assert image.object_id == "im-snapshot-fs-123"
-    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
-    assert access_req.sandbox_id == "sb-v2-123"
+    # Router access came back with the create, so no lookup is needed.
+    assert ctx.get_requests("SandboxGetCommandRouterAccess") == []
 
     (req,) = tcr_ctx.get_requests("TaskSnapshotFilesystem")
     assert req.task_id == "ta-v2-123"
@@ -1247,6 +1247,55 @@ def test_sandbox_reload_volumes_v2(app, servicer):
 
     (req,) = tcr_ctx.get_requests("TaskReloadVolumes")
     assert req.task_id == "ta-v2-123"
+
+    sb.terminate()
+
+
+def test_sandbox_v2_uses_command_router_access_from_create(app, servicer):
+    """V2 create returns router access, so reaching the worker costs no extra RPC."""
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            sb.reload_volumes()
+
+    # The call reached the worker...
+    (req,) = tcr_ctx.get_requests("TaskReloadVolumes")
+    assert req.task_id == "ta-v2-123"
+    # ...without asking the control plane where the worker is.
+    assert ctx.get_requests("SandboxGetCommandRouterAccess") == []
+
+    sb.terminate()
+
+
+def test_sandbox_v2_fetches_command_router_access_when_create_omits_it(app, servicer):
+    """A scheduler that could not mint a token omits the field, so we ask for it."""
+    servicer.sandbox_create_v2_omits_router_access = True
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            sb.reload_volumes()
+
+    assert len(tcr_ctx.get_requests("TaskReloadVolumes")) == 1
+    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
+    assert access_req.sandbox_id == "sb-v2-123"
+
+    sb.terminate()
+
+
+def test_sandbox_v2_fetches_command_router_access_when_reattached(client, servicer):
+    """A sandbox from from_id() has no create response to seed from, so it asks."""
+    sandbox_id = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    sb = Sandbox.from_id(sandbox_id, client=client)
+
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            sb.reload_volumes()
+
+    assert len(tcr_ctx.get_requests("TaskReloadVolumes")) == 1
+    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
+    assert access_req.sandbox_id == sandbox_id
 
     sb.terminate()
 

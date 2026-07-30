@@ -890,6 +890,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox_app_id = None
+        # Set True to make SandboxCreateV2 omit command_router_access, as a scheduler
+        # that could not mint a token does.
+        self.sandbox_create_v2_omits_router_access = False
         self.sandbox_restore_v2_requests = []
         self.sandbox_result: api_pb2.GenericResult | None = None
         self._sandbox_terminated = False
@@ -2889,6 +2892,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 task_id="ta-v2-123",
                 tunnels=tunnels,
                 metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
+                command_router_access=(
+                    None
+                    if self.sandbox_create_v2_omits_router_access
+                    else api_pb2.CommandRouterAccess(url=self.task_command_router_url, jwt="fake-jwt-token")
+                ),
             )
         )
 

@@ -61,7 +61,11 @@ import { ClientClosedError, TimeoutError } from "./errors";
 
 type TaskCommandRouterClient = Client<typeof TaskCommandRouterDefinition>;
 
-type CommandRouterAccess = {
+/**
+ * @internal
+ * @hidden
+ */
+export type CommandRouterAccess = {
   url: string;
   jwt: string;
 };
@@ -219,35 +223,45 @@ export class TaskCommandRouterClientImpl {
   private logger: Logger;
   private closed: boolean = false;
 
+  /**
+   * `access` is the router access returned by SandboxCreateV2, which lets a
+   * freshly created sandbox connect without a round-trip. Pass undefined to look
+   * it up — a re-attached sandbox, or the server could not mint a token.
+   */
   static async tryInit(
     serverClient: ModalGrpcClient,
     taskId: string,
     sandboxId: string,
     isV2: boolean,
+    access: CommandRouterAccess | undefined,
     logger: Logger,
     profile: Profile,
   ): Promise<TaskCommandRouterClientImpl | null> {
     let resp: CommandRouterAccess;
-    try {
-      resp = await getCommandRouterAccess(
-        serverClient,
-        taskId,
-        sandboxId,
-        isV2,
-      );
-    } catch (err) {
-      if (
-        err instanceof ClientError &&
-        err.code === Status.FAILED_PRECONDITION
-      ) {
-        logger.debug(
-          "Command router access is not enabled for task",
-          "task_id",
+    if (access !== undefined) {
+      resp = access;
+    } else {
+      try {
+        resp = await getCommandRouterAccess(
+          serverClient,
           taskId,
+          sandboxId,
+          isV2,
         );
-        return null;
+      } catch (err) {
+        if (
+          err instanceof ClientError &&
+          err.code === Status.FAILED_PRECONDITION
+        ) {
+          logger.debug(
+            "Command router access is not enabled for task",
+            "task_id",
+            taskId,
+          );
+          return null;
+        }
+        throw err;
       }
-      throw err;
     }
 
     logger.debug(
