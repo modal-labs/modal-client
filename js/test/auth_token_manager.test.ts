@@ -1,7 +1,15 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import jwt from "jsonwebtoken";
+import { ClientError, Status } from "nice-grpc";
 import { ModalClient } from "../src/client";
-import { AuthTokenManager, REFRESH_WINDOW } from "../src/auth_token_manager";
+import {
+  AUTH_TOKEN_GET_TIMEOUT_MS,
+  AUTH_TOKEN_GET_MAX_RETRIES,
+  AuthTokenManager,
+  FAILURE_BACKOFF_BASE_MS,
+  FAILURE_BACKOFF_MAX_MS,
+  REFRESH_WINDOW,
+} from "../src/auth_token_manager";
 import { newLogger } from "../src/logger";
 
 class mockAuthClient {
@@ -11,7 +19,7 @@ class mockAuthClient {
     this.authToken = token;
   }
 
-  authTokenGet = vi.fn(async () => {
+  authTokenGet = vi.fn(async (_request?: unknown, _options?: unknown) => {
     return { token: this.authToken };
   });
 }
@@ -59,6 +67,25 @@ describe("AuthTokenManager", () => {
     expect(secondToken).toBe(token);
 
     expect(mockClient.authTokenGet).toHaveBeenCalledTimes(1);
+  });
+
+  test("TestAuthToken_FetchOnlyRetriesWithoutCachedToken", async () => {
+    const token = createTestJWT(Math.floor(Date.now() / 1000) + 3600);
+    mockClient.setAuthToken(token);
+
+    await expect(manager.getToken()).resolves.toBe(token);
+    expect(mockClient.authTokenGet.mock.calls[0][1]).toEqual({
+      retries: AUTH_TOKEN_GET_MAX_RETRIES,
+      timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
+    });
+
+    const expiredToken = createTestJWT(Math.floor(Date.now() / 1000) - 60);
+    manager.setToken(expiredToken, Math.floor(Date.now() / 1000) - 60);
+    await expect(manager.getToken()).resolves.toBe(token);
+    expect(mockClient.authTokenGet.mock.calls[1][1]).toEqual({
+      retries: 0,
+      timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
+    });
   });
 
   test("TestAuthToken_IsExpired", async () => {
@@ -156,11 +183,115 @@ describe("AuthTokenManager", () => {
     expect(mockClient.authTokenGet).toHaveBeenCalledTimes(1);
   });
 
+  test("TestAuthToken_NoCachedTokenRefreshFailureRejects", async () => {
+    mockClient.authTokenGet.mockRejectedValue(new Error("server blip"));
+
+    await expect(manager.getToken()).rejects.toThrow("server blip");
+  });
+
+  test("TestAuthToken_ExpiredRefreshBackoffClearsRefreshPromise", async () => {
+    vi.useFakeTimers();
+    try {
+      const baseTime = new Date("2025-01-01T00:00:00Z");
+      vi.setSystemTime(baseTime);
+      const now = Math.floor(baseTime.getTime() / 1000);
+      const expiredToken = createTestJWT(now - 60);
+      const refreshedToken = createTestJWT(now + 3600);
+      manager.setToken(expiredToken, now - 60);
+      mockClient.authTokenGet.mockRejectedValueOnce(new Error("server blip"));
+
+      await expect(manager.getToken()).resolves.toBe(expiredToken);
+      await expect(manager.getToken()).resolves.toBe(expiredToken);
+      expect(mockClient.authTokenGet).toHaveBeenCalledTimes(1);
+
+      mockClient.setAuthToken(refreshedToken);
+      vi.advanceTimersByTime(FAILURE_BACKOFF_BASE_MS + 1);
+
+      await expect(manager.getToken()).resolves.toBe(refreshedToken);
+      expect(mockClient.authTokenGet).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("TestAuthToken_GetToken_EmptyResponse", async () => {
     // authToken is "" by default, so authTokenGet returns empty
     await expect(manager.getToken()).rejects.toThrow(
       "did not receive auth token from server",
     );
+  });
+
+  test("TestAuthToken_RefreshBackoffGrowsExponentially", async () => {
+    vi.useFakeTimers();
+    try {
+      const baseTime = new Date("2025-01-01T00:00:00Z");
+      vi.setSystemTime(baseTime);
+      const now = Math.floor(baseTime.getTime() / 1000);
+      const expiredToken = createTestJWT(now - 60);
+      const freshToken = createTestJWT(now + 3600);
+      manager.setToken(expiredToken, now - 60);
+      mockClient.authTokenGet.mockRejectedValue(new Error("server blip"));
+
+      const expectedBackoffs = [
+        FAILURE_BACKOFF_BASE_MS,
+        1000,
+        2000,
+        4000,
+        8000,
+        16000,
+        32000,
+        FAILURE_BACKOFF_MAX_MS,
+        FAILURE_BACKOFF_MAX_MS,
+      ];
+      for (const expectedBackoff of expectedBackoffs) {
+        await expect(manager.getToken()).resolves.toBe(expiredToken);
+        expect(manager["retryAfter"]).toBe(Date.now() + expectedBackoff);
+        vi.setSystemTime(new Date(Date.now() + expectedBackoff + 1));
+      }
+
+      mockClient.setAuthToken(freshToken);
+      mockClient.authTokenGet.mockResolvedValue({ token: freshToken });
+      await expect(manager.getToken()).resolves.toBe(freshToken);
+      expect(manager["backoffMs"]).toBe(FAILURE_BACKOFF_BASE_MS);
+
+      manager.setToken(expiredToken, now - 60);
+      mockClient.authTokenGet.mockRejectedValue(new Error("server blip"));
+      await expect(manager.getToken()).resolves.toBe(expiredToken);
+      expect(manager["retryAfter"]).toBe(Date.now() + FAILURE_BACKOFF_BASE_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test.each([Status.UNAUTHENTICATED, Status.PERMISSION_DENIED])(
+    "TestAuthToken_AuthDeniedDoesNotFallBack (%s)",
+    async (status) => {
+      const now = Math.floor(Date.now() / 1000);
+      const expiredToken = createTestJWT(now - 60);
+      manager.setToken(expiredToken, now - 60);
+      mockClient.authTokenGet.mockRejectedValue(
+        new ClientError("/auth-token", status, "credentials rejected"),
+      );
+
+      await expect(manager.getToken()).rejects.toThrow("credentials rejected");
+      expect(manager.getCurrentToken()).toBe(expiredToken);
+      expect(manager["backoffMs"]).toBe(FAILURE_BACKOFF_BASE_MS);
+      expect(manager["inBackoff"]()).toBe(false);
+    },
+  );
+
+  test("TestAuthToken_TransientFailureFallsBackAndBacksOff", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const expiredToken = createTestJWT(now - 60);
+    manager.setToken(expiredToken, now - 60);
+    mockClient.authTokenGet.mockRejectedValue(
+      new ClientError("/auth-token", Status.UNAVAILABLE, "server unavailable"),
+    );
+
+    await expect(manager.getToken()).resolves.toBe(expiredToken);
+    expect(manager["backoffMs"]).toBe(2 * FAILURE_BACKOFF_BASE_MS);
+    expect(manager["inBackoff"]()).toBe(true);
+    expect(manager["retryAfter"]).toBeGreaterThan(Date.now());
   });
 
   test("TestAuthToken_ExpiredThenRefreshed", async () => {
