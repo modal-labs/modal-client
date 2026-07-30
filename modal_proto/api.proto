@@ -1598,6 +1598,7 @@ message EnvironmentCreateRequest {
   bool is_managed = 2;
   EnvironmentSettings settings = 3;
   EnvironmentType environment_type = 4;
+  optional EnvironmentRole default_member_role = 5;
 }
 
 message EnvironmentDeleteRequest {
@@ -1664,11 +1665,13 @@ message EnvironmentGetRolesResponse {
     string role_str = 8;  // String representation for the CLI
     repeated EnvironmentRole choosable_roles = 9;
     MemberRole member_role = 10;
+    optional bool inherits_default_member_role = 11;
   }
 
   string name = 1;
   double created_at = 2;
   repeated Principal principal_roles = 3;
+  optional EnvironmentRole default_member_role = 4;
 }
 
 message EnvironmentListItem {
@@ -1687,6 +1690,7 @@ message EnvironmentListItem {
   double current_cycle_usage = 13;
   bool spend_limit_reached = 14;
   EnvironmentType environment_type = 15;
+  optional EnvironmentRole default_member_role = 16;
 }
 
 message EnvironmentListResponse {
@@ -1713,9 +1717,15 @@ message EnvironmentSetBudgetRequest {
   bool clear_budget = 3;
 }
 
+message EnvironmentSetDefaultMemberRoleRequest {
+  string environment_id = 1;
+  EnvironmentRole default_member_role = 2;
+}
+
 message EnvironmentSetManagedRequest {
   string environment_id = 1;
   bool managed = 2;
+  optional EnvironmentRole default_member_role = 3;
 }
 
 // Environment-scoped settings, with workspace-level defaults.
@@ -4681,6 +4691,7 @@ service ModalClient {
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentRoleSet(EnvironmentRoleSetRequest) returns (google.protobuf.Empty);
   rpc EnvironmentSetBudget(EnvironmentSetBudgetRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentSetDefaultMemberRole(EnvironmentSetDefaultMemberRoleRequest) returns (google.protobuf.Empty);
   rpc EnvironmentSetManaged(EnvironmentSetManagedRequest) returns (google.protobuf.Empty);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
 

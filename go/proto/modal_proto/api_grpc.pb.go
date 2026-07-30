@@ -97,6 +97,7 @@ const (
 	ModalClient_EnvironmentList_FullMethodName                  = "/modal.client.ModalClient/EnvironmentList"
 	ModalClient_EnvironmentRoleSet_FullMethodName               = "/modal.client.ModalClient/EnvironmentRoleSet"
 	ModalClient_EnvironmentSetBudget_FullMethodName             = "/modal.client.ModalClient/EnvironmentSetBudget"
+	ModalClient_EnvironmentSetDefaultMemberRole_FullMethodName  = "/modal.client.ModalClient/EnvironmentSetDefaultMemberRole"
 	ModalClient_EnvironmentSetManaged_FullMethodName            = "/modal.client.ModalClient/EnvironmentSetManaged"
 	ModalClient_EnvironmentUpdate_FullMethodName                = "/modal.client.ModalClient/EnvironmentUpdate"
 	ModalClient_FlashContainerDeregister_FullMethodName         = "/modal.client.ModalClient/FlashContainerDeregister"
@@ -350,6 +351,7 @@ type ModalClientClient interface {
 	EnvironmentList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EnvironmentListResponse, error)
 	EnvironmentRoleSet(ctx context.Context, in *EnvironmentRoleSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentSetBudget(ctx context.Context, in *EnvironmentSetBudgetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EnvironmentSetDefaultMemberRole(ctx context.Context, in *EnvironmentSetDefaultMemberRoleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentSetManaged(ctx context.Context, in *EnvironmentSetManagedRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentUpdate(ctx context.Context, in *EnvironmentUpdateRequest, opts ...grpc.CallOption) (*EnvironmentListItem, error)
 	// Modal Flash (experimental)
@@ -1336,6 +1338,16 @@ func (c *modalClientClient) EnvironmentSetBudget(ctx context.Context, in *Enviro
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ModalClient_EnvironmentSetBudget_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) EnvironmentSetDefaultMemberRole(ctx context.Context, in *EnvironmentSetDefaultMemberRoleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_EnvironmentSetDefaultMemberRole_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3078,6 +3090,7 @@ type ModalClientServer interface {
 	EnvironmentList(context.Context, *emptypb.Empty) (*EnvironmentListResponse, error)
 	EnvironmentRoleSet(context.Context, *EnvironmentRoleSetRequest) (*emptypb.Empty, error)
 	EnvironmentSetBudget(context.Context, *EnvironmentSetBudgetRequest) (*emptypb.Empty, error)
+	EnvironmentSetDefaultMemberRole(context.Context, *EnvironmentSetDefaultMemberRoleRequest) (*emptypb.Empty, error)
 	EnvironmentSetManaged(context.Context, *EnvironmentSetManagedRequest) (*emptypb.Empty, error)
 	EnvironmentUpdate(context.Context, *EnvironmentUpdateRequest) (*EnvironmentListItem, error)
 	// Modal Flash (experimental)
@@ -3494,6 +3507,9 @@ func (UnimplementedModalClientServer) EnvironmentRoleSet(context.Context, *Envir
 }
 func (UnimplementedModalClientServer) EnvironmentSetBudget(context.Context, *EnvironmentSetBudgetRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentSetBudget not implemented")
+}
+func (UnimplementedModalClientServer) EnvironmentSetDefaultMemberRole(context.Context, *EnvironmentSetDefaultMemberRoleRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnvironmentSetDefaultMemberRole not implemented")
 }
 func (UnimplementedModalClientServer) EnvironmentSetManaged(context.Context, *EnvironmentSetManagedRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentSetManaged not implemented")
@@ -5341,6 +5357,24 @@ func _ModalClient_EnvironmentSetBudget_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).EnvironmentSetBudget(ctx, req.(*EnvironmentSetBudgetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_EnvironmentSetDefaultMemberRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnvironmentSetDefaultMemberRoleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).EnvironmentSetDefaultMemberRole(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_EnvironmentSetDefaultMemberRole_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).EnvironmentSetDefaultMemberRole(ctx, req.(*EnvironmentSetDefaultMemberRoleRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8413,6 +8447,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EnvironmentSetBudget",
 			Handler:    _ModalClient_EnvironmentSetBudget_Handler,
+		},
+		{
+			MethodName: "EnvironmentSetDefaultMemberRole",
+			Handler:    _ModalClient_EnvironmentSetDefaultMemberRole_Handler,
 		},
 		{
 			MethodName: "EnvironmentSetManaged",
