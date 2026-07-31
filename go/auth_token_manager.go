@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -20,6 +20,11 @@ const (
 	// Start refreshing this many seconds before the token expires
 	RefreshWindow       = 5 * 60
 	authTokenGetTimeout = 5 * time.Second
+	// Bounds a whole shared refresh, whose retries are detached from any caller's context and so otherwise unlimited.
+	// Deliberately shorter than the full retry budget of authTokenGetTimeout per attempt: a refresh that has been
+	// failing this long is better given up on, and callers with a cached token keep using it. Matches the Python
+	// client's AUTH_TOKEN_RETRY_TOTAL_TIMEOUT.
+	authTokenRefreshTimeout = 3 * authTokenGetTimeout
 	// After a failed refresh, wait before hitting the server again, growing exponentially
 	// with consecutive failures between these bounds.
 	failureBackoffBase = 500 * time.Millisecond
@@ -53,9 +58,12 @@ type authTokenManager struct {
 	logger *slog.Logger
 
 	tokenAndExpiry atomic.Pointer[tokenAndExpiry]
-	refreshMu      sync.Mutex
-	retryAfter     atomic.Pointer[time.Time]
-	backoff        atomicDuration
+	refreshGroup   singleflight.Group
+	// Claimed by the caller that takes on a pre-expiry refresh, so the others keep using the still-valid token
+	// instead of waiting for the request.
+	refreshing atomic.Bool
+	retryAfter atomic.Pointer[time.Time]
+	backoff    atomicDuration
 }
 
 func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *authTokenManager {
@@ -78,8 +86,7 @@ func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *auth
 // Three states:
 //  1. Valid token (not near expiry): returned immediately, no locking.
 //  2. No token or expired: all callers block until a fresh token is fetched.
-//     Only one goroutine makes the RPC; others wait on the mutex then see the
-//     new token via a double-check.
+//     Only one goroutine makes the RPC; the others wait for its outcome.
 //  3. Valid but within RefreshWindow of expiry: one goroutine refreshes
 //     (blocking only itself); concurrent callers get the old, still-valid token.
 func (m *authTokenManager) GetToken(ctx context.Context) (string, error) {
@@ -89,9 +96,23 @@ func (m *authTokenManager) GetToken(ctx context.Context) (string, error) {
 		return m.tryRefreshToken(ctx)
 	}
 
-	if m.shouldRefresh(*data) && m.refreshMu.TryLock() {
-		defer m.refreshMu.Unlock()
-		token, err := m.FetchToken(ctx)
+	if m.shouldRefresh(*data) && m.refreshing.CompareAndSwap(false, true) {
+		results := m.startSharedRefresh(ctx)
+		var token string
+		var err error
+		select {
+		case result := <-results:
+			m.refreshing.Store(false)
+			token, err = tokenFromRefresh(result)
+		case <-ctx.Done():
+			// The refresh outlives this caller, so keep it claimed until it finishes: later callers should keep using
+			// the still-valid token instead of waiting on a request they don't need.
+			go func() {
+				<-results
+				m.refreshing.Store(false)
+			}()
+			err = ctx.Err()
+		}
 		if err != nil {
 			if isAuthDenied(err) {
 				return "", err
@@ -106,7 +127,7 @@ func (m *authTokenManager) GetToken(ctx context.Context) (string, error) {
 }
 
 func (m *authTokenManager) tryRefreshToken(ctx context.Context) (string, error) {
-	token, err := m.lockedRefreshToken(ctx)
+	token, err := m.sharedRefreshToken(ctx)
 	if err == nil {
 		return token, nil
 	}
@@ -121,17 +142,40 @@ func (m *authTokenManager) tryRefreshToken(ctx context.Context) (string, error) 
 	return data.token, nil
 }
 
-// lockedRefreshToken blocks until the mutex is acquired, then refreshes if still needed.
-// Returns the current valid token.
-func (m *authTokenManager) lockedRefreshToken(ctx context.Context) (string, error) {
-	m.refreshMu.Lock()
-	defer m.refreshMu.Unlock()
-
-	data := m.tokenAndExpiry.Load()
-	if data.token != "" && !m.shouldRefresh(*data) {
-		return data.token, nil
+// sharedRefreshToken returns the token from a single in-flight refresh: the first caller makes the RPC while the
+// others wait for its outcome, so a burst of callers results in one AuthTokenGet whether it succeeds or fails. The
+// request is detached from the calling context, so a caller going away doesn't abort the refresh the remaining
+// callers are waiting on, and bounded by authTokenRefreshTimeout so a stuck refresh can't block later ones.
+func (m *authTokenManager) sharedRefreshToken(ctx context.Context) (string, error) {
+	results := m.startSharedRefresh(ctx)
+	select {
+	case result := <-results:
+		return tokenFromRefresh(result)
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	return m.FetchToken(ctx)
+}
+
+// startSharedRefresh joins the in-flight refresh, starting one if there isn't one, and returns the channel its
+// outcome is delivered on.
+func (m *authTokenManager) startSharedRefresh(ctx context.Context) <-chan singleflight.Result {
+	return m.refreshGroup.DoChan("refresh", func() (any, error) {
+		// Maybe another goroutine refreshed while this call was being shared.
+		if data := m.tokenAndExpiry.Load(); data.token != "" && !m.shouldRefresh(*data) {
+			return data.token, nil
+		}
+		rpcCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authTokenRefreshTimeout)
+		defer cancel()
+		return m.FetchToken(rpcCtx)
+	})
+}
+
+func tokenFromRefresh(result singleflight.Result) (string, error) {
+	if result.Err != nil {
+		return "", result.Err
+	}
+	// singleflight predates generics, so the token comes back as an any.
+	return result.Val.(string), nil
 }
 
 // FetchToken fetches a new token using AuthTokenGet() and stores it.
@@ -151,11 +195,6 @@ func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 	}
 	if err != nil {
 		if isAuthDenied(err) {
-			return "", err
-		}
-		// A caller-cancelled context (or a caller deadline shorter than our own
-		// timeout) isn't a server-health signal, so don't arm the shared cooldown.
-		if ctx.Err() != nil {
 			return "", err
 		}
 		// Back off (exponentially on consecutive failures) so we don't hammer a struggling server.
