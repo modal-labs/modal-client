@@ -8,7 +8,6 @@ import {
   AuthTokenManager,
   FAILURE_BACKOFF_BASE_MS,
   FAILURE_BACKOFF_MAX_MS,
-  REFRESH_WINDOW,
 } from "../src/auth_token_manager";
 import { newLogger } from "../src/logger";
 
@@ -115,13 +114,13 @@ describe("AuthTokenManager", () => {
     expect(token).toBe(freshToken);
   });
 
-  test("TestAuthToken_RefreshNearExpiryToken", async () => {
+  test("TestAuthToken_RefreshTokenPastRefreshPoint", async () => {
     const now = Math.floor(Date.now() / 1000);
-    // Token within REFRESH_WINDOW of expiry (60s left, window is 300s)
+    // Token still valid for 60s, but already past its refresh point.
     const expiringToken = createTestJWT(now + 60);
     const freshToken = createTestJWT(now + 3600);
 
-    manager.setToken(expiringToken, now + 60);
+    manager.setToken(expiringToken, now + 60, now - 1);
     mockClient.setAuthToken(freshToken);
 
     // getToken should proactively refresh
@@ -170,9 +169,9 @@ describe("AuthTokenManager", () => {
 
   test("TestAuthToken_ProactiveRefreshFailureReturnsOldToken", async () => {
     const now = Math.floor(Date.now() / 1000);
-    // Token within REFRESH_WINDOW of expiry (60s left, window is 300s)
+    // Token still valid for 60s, but already past its refresh point.
     const nearExpiryToken = createTestJWT(now + 60);
-    manager.setToken(nearExpiryToken, now + 60);
+    manager.setToken(nearExpiryToken, now + 60, now - 1);
 
     // Make the refresh RPC fail
     mockClient.authTokenGet.mockRejectedValueOnce(new Error("server blip"));
@@ -212,6 +211,19 @@ describe("AuthTokenManager", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test("TestAuthToken_ExpiredTokenIsDueForRefreshImmediately", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const expiredToken = createTestJWT(now - 100);
+    const freshToken = createTestJWT(now + 3600);
+
+    // An expiry in the past must not schedule the refresh point in the past by a
+    // negative delay; the token is simply due for refresh.
+    manager.setToken(expiredToken, now - 100);
+    mockClient.setAuthToken(freshToken);
+
+    await expect(manager.getToken()).resolves.toBe(freshToken);
   });
 
   test("TestAuthToken_GetToken_EmptyResponse", async () => {
@@ -301,7 +313,7 @@ describe("AuthTokenManager", () => {
       vi.setSystemTime(baseTime);
       const baseTimeSeconds = Math.floor(baseTime.getTime() / 1000);
 
-      const tokenOneExpirySeconds = baseTimeSeconds + REFRESH_WINDOW + 5;
+      const tokenOneExpirySeconds = baseTimeSeconds + 305;
 
       // First getToken lazily fetches tokenOne
       const tokenOne = createTestJWT(tokenOneExpirySeconds);

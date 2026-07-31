@@ -1,8 +1,14 @@
 import { ClientError, Status } from "nice-grpc";
 import type { Logger } from "./logger";
 
-// Start refreshing this many seconds before the token expires
-export const REFRESH_WINDOW = 5 * 60;
+// Fraction of the token's lifetime to use before refreshing.
+export const REFRESH_FRACTION = 0.5;
+// Width of the random band added on top of REFRESH_FRACTION, so that clients issued
+// same-lifetime tokens at the same moment (a fan-out of containers starting together)
+// spread their refreshes out instead of refreshing in lockstep every cycle. The band
+// only ever delays a refresh, so the margin before expiry stays at no less than
+// 1 - REFRESH_FRACTION - REFRESH_JITTER of the lifetime.
+export const REFRESH_JITTER = 0.1;
 export const AUTH_TOKEN_GET_TIMEOUT_MS = 5 * 1000;
 export const AUTH_TOKEN_GET_MAX_RETRIES = 3;
 // After a failed refresh, wait before hitting the server again, growing exponentially with
@@ -14,22 +20,23 @@ export const DEFAULT_EXPIRY_OFFSET = 20 * 60;
 
 /**
  * Manages authentication tokens, refreshing them lazily when getToken is
- * called. Tokens are refreshed when expired or within REFRESH_WINDOW seconds
- * of expiry.
+ * called. Tokens are refreshed when expired, or once they have used up a
+ * jittered REFRESH_FRACTION of their lifetime.
  *
  * Three states:
- *  1. Valid token (not near expiry): returned immediately.
+ *  1. Valid token (not yet at its refresh point): returned immediately.
  *  2. No token or expired: all callers block until a fresh token is fetched.
  *     Only one fetch happens; concurrent callers await the same promise.
- *  3. Valid but within REFRESH_WINDOW of expiry: if no refresh is in progress
- *     the caller triggers one (blocking itself); concurrent callers get the
- *     old, still-valid token.
+ *  3. Valid but past its refresh point: if no refresh is in progress the caller
+ *     triggers one (blocking itself); concurrent callers get the old,
+ *     still-valid token.
  */
 export class AuthTokenManager {
   private client: any;
   private logger: Logger;
   private currentToken: string = "";
   private tokenExpiry: number = 0;
+  private tokenRefreshAt: number = 0;
   private refreshPromise: Promise<void> | null = null;
   private retryAfter: number = 0;
   private backoffMs: number = FAILURE_BACKOFF_BASE_MS;
@@ -119,25 +126,22 @@ export class AuthTokenManager {
       this.currentToken = token;
       const exp = this.decodeJWT(token);
       if (exp > 0) {
-        this.tokenExpiry = exp;
+        this.setExpiry(exp);
       } else {
         this.logger.warn("x-modal-auth-token does not contain exp field");
         // We'll use the token, and set the expiry to DEFAULT_EXPIRY_OFFSET from now.
-        this.tokenExpiry =
-          Math.floor(Date.now() / 1000) + DEFAULT_EXPIRY_OFFSET;
+        this.setExpiry(Math.floor(Date.now() / 1000) + DEFAULT_EXPIRY_OFFSET);
       }
       this.retryAfter = 0;
       this.backoffMs = FAILURE_BACKOFF_BASE_MS;
 
       const now = Math.floor(Date.now() / 1000);
-      const expiresIn = this.tokenExpiry - now;
-      const refreshIn = this.tokenExpiry - now - REFRESH_WINDOW;
       this.logger.debug(
         "Fetched auth token",
         "expires_in",
-        `${expiresIn}s`,
+        `${this.tokenExpiry - now}s`,
         "refresh_in",
-        `${refreshIn}s`,
+        `${this.tokenRefreshAt - now}s`,
       );
     } catch (error) {
       if (this.isAuthDenied(error)) {
@@ -148,6 +152,22 @@ export class AuthTokenManager {
       this.backoffMs = Math.min(this.backoffMs * 2, FAILURE_BACKOFF_MAX_MS);
       throw error;
     }
+  }
+
+  /**
+   * Records a new expiry and schedules the proactive refresh a jittered
+   * fraction of the way through the lifetime.
+   *
+   * The delay is measured from the remaining lifetime as this client sees it,
+   * so a client whose clock is skewed relative to the issuer still keeps a
+   * margin proportional to the lifetime it observes.
+   */
+  private setExpiry(expiry: number): void {
+    const now = Math.floor(Date.now() / 1000);
+    this.tokenExpiry = expiry;
+    const remaining = Math.max(expiry - now, 0);
+    const fraction = REFRESH_FRACTION + Math.random() * REFRESH_JITTER;
+    this.tokenRefreshAt = now + remaining * fraction;
   }
 
   /**
@@ -180,7 +200,7 @@ export class AuthTokenManager {
 
   private needsRefresh(): boolean {
     const now = Math.floor(Date.now() / 1000);
-    return now >= this.tokenExpiry - REFRESH_WINDOW;
+    return now >= this.tokenRefreshAt;
   }
 
   private inBackoff(): boolean {
@@ -205,8 +225,16 @@ export class AuthTokenManager {
     return this.currentToken;
   }
 
-  setToken(token: string, expiry: number): void {
+  /**
+   * Sets the token and its expiry, scheduling the refresh point from the
+   * remaining lifetime. Pass `refreshAtSeconds` (a Unix timestamp) to pin the
+   * refresh point instead.
+   */
+  setToken(token: string, expiry: number, refreshAtSeconds?: number): void {
     this.currentToken = token;
-    this.tokenExpiry = expiry;
+    this.setExpiry(expiry);
+    if (refreshAtSeconds !== undefined) {
+      this.tokenRefreshAt = refreshAtSeconds;
+    }
   }
 }
