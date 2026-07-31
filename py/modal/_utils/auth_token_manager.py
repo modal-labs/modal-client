@@ -86,39 +86,43 @@ class _AuthTokenManager:
             # new token. Once we have a new token, the other coroutines will unblock and return from here.
             if self._token and not self._should_refresh():
                 return
-            try:
-                resp: api_pb2.AuthTokenGetResponse = await self._stub.AuthTokenGet(
-                    api_pb2.AuthTokenGetRequest(),
-                    # No cached token to fall back on, so a failure is user-visible: retry transient errors.
-                    # Otherwise one attempt, and _retry_after handles the cooldown.
-                    retry=Retry(
-                        attempt_timeout=self.AUTH_TOKEN_TIMEOUT,
-                        total_timeout=self.AUTH_TOKEN_RETRY_TOTAL_TIMEOUT,
-                        max_retries=0 if self._token else DEFAULT_MAX_RETRIES,
-                    ),
+            await self._fetch_token()
+
+    async def _fetch_token(self):
+        """Make the AuthTokenGet request and cache its token, or arm the failure backoff."""
+        try:
+            resp: api_pb2.AuthTokenGetResponse = await self._stub.AuthTokenGet(
+                api_pb2.AuthTokenGetRequest(),
+                # No cached token to fall back on, so a failure is user-visible: retry transient errors.
+                # Otherwise one attempt, and _retry_after handles the cooldown.
+                retry=Retry(
+                    attempt_timeout=self.AUTH_TOKEN_TIMEOUT,
+                    total_timeout=self.AUTH_TOKEN_RETRY_TOTAL_TIMEOUT,
+                    max_retries=0 if self._token else DEFAULT_MAX_RETRIES,
+                ),
+            )
+            if not resp.token:
+                # Not expected
+                raise ExecutionError(
+                    "Internal error: Did not receive auth token from server. Please contact Modal support."
                 )
-                if not resp.token:
-                    # Not expected
-                    raise ExecutionError(
-                        "Internal error: Did not receive auth token from server. Please contact Modal support."
-                    )
-                if exp := self._decode_jwt(resp.token).get("exp"):
-                    expiry = float(exp)
-                else:
-                    # This should never happen.
-                    logger.warning("x-modal-auth-token does not contain exp field")
-                    expiry = time.time() + self.DEFAULT_EXPIRY_OFFSET
-                self._token = resp.token
-                self._expiry = expiry
-                self._retry_after = 0.0
-                self._backoff = self.FAILURE_BACKOFF_BASE
-            except AUTH_DENIED_EXCEPTIONS:
-                raise
-            except Exception as e:
-                # Back off (exponentially on consecutive failures) so we don't hammer a struggling server.
-                self._retry_after = time.time() + self._backoff
-                self._backoff = min(self._backoff * 2, self.FAILURE_BACKOFF_MAX)
-                raise
+            if exp := self._decode_jwt(resp.token).get("exp"):
+                expiry = float(exp)
+            else:
+                # This should never happen.
+                logger.warning("x-modal-auth-token does not contain exp field")
+                expiry = time.time() + self.DEFAULT_EXPIRY_OFFSET
+            self._token = resp.token
+            self._expiry = expiry
+            self._retry_after = 0.0
+            self._backoff = self.FAILURE_BACKOFF_BASE
+        except AUTH_DENIED_EXCEPTIONS:
+            raise
+        except Exception as e:
+            # Back off (exponentially on consecutive failures) so we don't hammer a struggling server.
+            self._retry_after = time.time() + self._backoff
+            self._backoff = min(self._backoff * 2, self.FAILURE_BACKOFF_MAX)
+            raise
 
     async def _get_lock(self) -> asyncio.Lock:
         # Note: this function runs no async code but is marked as async to ensure it's
