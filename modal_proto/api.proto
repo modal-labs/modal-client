@@ -1,3 +1,8 @@
+// gRPC protos for Modal's public API surface.
+// Warning: direct usage of Modal's gRPC API is discouraged,
+// and no support or compatibility guarantees are provided.
+// Message fields or entire RPCs may be changed or removed
+// without notice. We recommend using official SDKs instead.
 syntax = "proto3";
 
 option go_package = "github.com/modal-labs/modal/go/proto";
