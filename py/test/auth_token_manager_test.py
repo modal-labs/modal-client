@@ -53,10 +53,10 @@ def token_without_exp():
 
 
 @pytest.fixture
-def token_near_expiry():
-    """Create a JWT token that expires in 4 minutes (within refresh window)."""
+def token_due_for_refresh():
+    """Create a JWT token that is still valid but has used up its refresh fraction."""
     exp = int(time.time()) + 240  # 4 minutes from now
-    payload = {"exp": exp, "type": "near_expiry"}
+    payload = {"exp": exp, "type": "due_for_refresh"}
     return jwt.encode(payload, "my-secret-key", algorithm="HS256")
 
 
@@ -96,7 +96,7 @@ async def test_get_token_expired(auth_token_manager, expired_jwt_token, valid_jw
     """Test that expired token triggers refresh."""
     # Set up expired token
     auth_token_manager._token = expired_jwt_token
-    auth_token_manager._expiry = exp_time(expired_jwt_token)
+    auth_token_manager._set_expiry(exp_time(expired_jwt_token))
 
     # Set up new token in servicer
     servicer.auth_token = valid_jwt_token
@@ -111,11 +111,11 @@ async def test_get_token_expired(auth_token_manager, expired_jwt_token, valid_jw
 
 
 @pytest.mark.asyncio
-async def test_get_token_needs_refresh(auth_token_manager, token_near_expiry, valid_jwt_token, servicer):
-    """Test that token is refreshed when it's close to expiry."""
-    # Set up token that expires within refresh window
-    auth_token_manager._token = token_near_expiry
-    auth_token_manager._expiry = exp_time(token_near_expiry)
+async def test_get_token_needs_refresh(auth_token_manager, token_due_for_refresh, valid_jwt_token, servicer):
+    """Test that a still-valid token is refreshed once it is past its refresh point."""
+    auth_token_manager._token = token_due_for_refresh
+    auth_token_manager._expiry = exp_time(token_due_for_refresh)
+    auth_token_manager._refresh_at = time.time() - 1
 
     # Set up new token in servicer
     servicer.auth_token = valid_jwt_token
@@ -183,7 +183,7 @@ async def test_get_token_fetch_only_retries_without_cached_token(auth_token_mana
     assert captured["retry"].max_retries == DEFAULT_MAX_RETRIES
 
     # The token is now cached, so a subsequent refresh falls back to it instead of retrying.
-    auth_token_manager._expiry = 0.0
+    auth_token_manager._set_expiry(0.0)
     assert await wrapped_get_token.aio() == valid_jwt_token
     assert captured["retry"].max_retries == 0
 
@@ -328,7 +328,7 @@ async def test_get_token_failure_backoff_grows_exponentially(
     now = 1_000.0
     monkeypatch.setattr(time, "time", lambda: now)
     auth_token_manager._token = expired_jwt_token
-    auth_token_manager._expiry = 0.0
+    auth_token_manager._set_expiry(0.0)
     should_fail = True
 
     async def auth_token_get(*args, **kwargs):
@@ -351,7 +351,7 @@ async def test_get_token_failure_backoff_grows_exponentially(
     assert auth_token_manager._backoff == auth_token_manager.FAILURE_BACKOFF_BASE
 
     should_fail = True
-    auth_token_manager._expiry = 0.0
+    auth_token_manager._set_expiry(0.0)
     auth_token_manager._retry_after = 0.0
     with pytest.raises(RuntimeError, match="auth server unavailable"):
         await auth_token_manager._refresh_token()
@@ -373,6 +373,8 @@ async def test_get_token_no_exp_claim(auth_token_manager, token_without_exp, ser
     # Should use default expiry
     assert auth_token_manager._expiry > time.time()
     assert auth_token_manager._expiry <= time.time() + auth_token_manager.DEFAULT_EXPIRY_OFFSET
+    # And should schedule the refresh partway through that lifetime.
+    assert time.time() < auth_token_manager._refresh_at < auth_token_manager._expiry
 
 
 @pytest.mark.asyncio
@@ -421,11 +423,12 @@ async def test_concurrent_token_fetch(auth_token_manager, valid_jwt_token, servi
 
 
 @pytest.mark.asyncio
-async def test_concurrent_refresh(auth_token_manager, token_near_expiry, valid_jwt_token, servicer):
+async def test_concurrent_refresh(auth_token_manager, token_due_for_refresh, valid_jwt_token, servicer):
     """Test that when get_token is called concurrently, test that old but valid token is returned."""
     # Set up token that needs refresh
     auth_token_manager._token = "old.but.valid.token"
-    auth_token_manager._expiry = exp_time(token_near_expiry)
+    auth_token_manager._expiry = exp_time(token_due_for_refresh)
+    auth_token_manager._refresh_at = time.time() - 1
 
     # Set up new token in servicer
     servicer.auth_token = valid_jwt_token
@@ -514,17 +517,21 @@ def test_decode_jwt_invalid_format():
 
 
 def test_needs_refresh_true(auth_token_manager):
-    """Test _needs_refresh returns True when token expires soon."""
-    # Set expiry to 4 minutes from now (within refresh window)
-    auth_token_manager._expiry = time.time() + 240
+    """Test _needs_refresh returns True once the refresh point has passed."""
+    auth_token_manager._refresh_at = time.time() - 1
     assert auth_token_manager._needs_refresh() is True
 
 
 def test_needs_refresh_false(auth_token_manager):
-    """Test _needs_refresh returns False when token is not close to expiry."""
-    # Set expiry to 10 minutes from now (outside refresh window)
-    auth_token_manager._expiry = time.time() + 600
+    """Test _needs_refresh returns False before the refresh point."""
+    auth_token_manager._refresh_at = time.time() + 600
     assert auth_token_manager._needs_refresh() is False
+
+
+def test_set_expiry_of_expired_token_refreshes_immediately(auth_token_manager):
+    """Test an already-expired token is due for refresh rather than getting a negative delay."""
+    auth_token_manager._set_expiry(time.time() - 100)
+    assert auth_token_manager._needs_refresh() is True
 
 
 def test_is_expired_true(auth_token_manager):
@@ -561,7 +568,7 @@ async def test_multiple_refresh_cycles(auth_token_manager, servicer):
     assert token0 == tokens[0]
 
     # Expire the token
-    auth_token_manager._expiry = time.time() - 100
+    auth_token_manager._set_expiry(time.time() - 100)
 
     # Second call
     servicer.auth_token = tokens[1]
@@ -569,7 +576,7 @@ async def test_multiple_refresh_cycles(auth_token_manager, servicer):
     assert token1 == tokens[1]
 
     # Expire again
-    auth_token_manager._expiry = time.time() - 100
+    auth_token_manager._set_expiry(time.time() - 100)
 
     # Third call
     servicer.auth_token = tokens[2]

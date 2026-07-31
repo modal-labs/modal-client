@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import json
+import random
 import time
 from typing import Any
 
@@ -17,8 +18,14 @@ AUTH_DENIED_EXCEPTIONS = (AuthError, PermissionDeniedError)
 class _AuthTokenManager:
     """Handles fetching and refreshing of the input plane auth token."""
 
-    # Start refreshing this many seconds before the token expires
-    REFRESH_WINDOW = 5 * 60
+    # Fraction of the token's lifetime to use before refreshing.
+    REFRESH_FRACTION = 0.5
+    # Width of the random band added on top of REFRESH_FRACTION, so that clients issued
+    # same-lifetime tokens at the same moment (a fan-out of containers starting together)
+    # spread their refreshes out instead of refreshing in lockstep every cycle. The band
+    # only ever delays a refresh, so the margin before expiry stays at no less than
+    # 1 - REFRESH_FRACTION - REFRESH_JITTER of the lifetime.
+    REFRESH_JITTER = 0.1
     # Bound each AuthTokenGet attempt so a refresh can't hang.
     AUTH_TOKEN_TIMEOUT = 5.0
     AUTH_TOKEN_RETRY_TOTAL_TIMEOUT = 3 * AUTH_TOKEN_TIMEOUT
@@ -33,6 +40,7 @@ class _AuthTokenManager:
         self._stub = stub
         self._token = ""
         self._expiry = 0.0
+        self._refresh_at = 0.0
         self._retry_after = 0.0
         self._backoff = self.FAILURE_BACKOFF_BASE
         self._refresh_task: asyncio.Task | None = None
@@ -45,15 +53,15 @@ class _AuthTokenManager:
         concurrently by multiple coroutines, all requests will block until the token has been fetched. But only one
         coroutine will actually make a request to the control plane to fetch the new token. This ensures we do not hit
         the control plane with more requests than needed.
-        3. Has a valid cached token, but it is going to expire in the next 5 minutes. In this case we fetch a new token
-        and cache it. If `get_token` is called concurrently, only one request will fetch the new token, and the others
-        will be given the old (but still valid) token - i.e. they will not block.
+        3. Has a valid cached token that has used up its refresh fraction of its lifetime. In this case we fetch a new
+        token and cache it. If `get_token` is called concurrently, only one request will fetch the new token, and the
+        others will be given the old (but still valid) token - i.e. they will not block.
         """
         if not self._token or self._is_expired():
             # We either have no token or it is expired - block everyone until we get a new token
             await self._try_refresh_token()
         elif self._should_refresh():
-            # The token hasn't expired yet, but will soon, so it needs a refresh.
+            # The token is still valid, but has used up its refresh fraction of its lifetime.
             if self._refresh_task is not None:
                 # A refresh is in flight, so someone else is refreshing. Continue to use the old token.
                 return self._token
@@ -122,7 +130,7 @@ class _AuthTokenManager:
                 logger.warning("x-modal-auth-token does not contain exp field")
                 expiry = time.time() + self.DEFAULT_EXPIRY_OFFSET
             self._token = resp.token
-            self._expiry = expiry
+            self._set_expiry(expiry)
             self._retry_after = 0.0
             self._backoff = self.FAILURE_BACKOFF_BASE
         except AUTH_DENIED_EXCEPTIONS:
@@ -154,8 +162,20 @@ class _AuthTokenManager:
         # Fetch only when the token is stale/expiring and we're not in a post-failure backoff.
         return self._needs_refresh() and not self._in_backoff()
 
+    def _set_expiry(self, expiry: float) -> None:
+        """Record a new expiry and schedule the proactive refresh a jittered fraction of the way through.
+
+        The delay is measured from the remaining lifetime as this client sees it, so a client whose clock is
+        skewed relative to the issuer still keeps a margin proportional to the lifetime it observes.
+        """
+        now = time.time()
+        self._expiry = expiry
+        remaining = max(expiry - now, 0.0)
+        fraction = self.REFRESH_FRACTION + random.random() * self.REFRESH_JITTER
+        self._refresh_at = now + remaining * fraction
+
     def _needs_refresh(self):
-        return time.time() >= (self._expiry - self.REFRESH_WINDOW)
+        return time.time() >= self._refresh_at
 
     def _is_expired(self):
         return time.time() >= self._expiry
