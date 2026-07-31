@@ -46,6 +46,7 @@ const (
 	ModalClient_AttemptRetry_FullMethodName                     = "/modal.client.ModalClient/AttemptRetry"
 	ModalClient_AttemptStart_FullMethodName                     = "/modal.client.ModalClient/AttemptStart"
 	ModalClient_AuthTokenGet_FullMethodName                     = "/modal.client.ModalClient/AuthTokenGet"
+	ModalClient_AutoscalerOverrideHistory_FullMethodName        = "/modal.client.ModalClient/AutoscalerOverrideHistory"
 	ModalClient_BlobCreate_FullMethodName                       = "/modal.client.ModalClient/BlobCreate"
 	ModalClient_BlobGet_FullMethodName                          = "/modal.client.ModalClient/BlobGet"
 	ModalClient_ClassCreate_FullMethodName                      = "/modal.client.ModalClient/ClassCreate"
@@ -290,6 +291,8 @@ type ModalClientClient interface {
 	AttemptStart(ctx context.Context, in *AttemptStartRequest, opts ...grpc.CallOption) (*AttemptStartResponse, error)
 	// Auth Token
 	AuthTokenGet(ctx context.Context, in *AuthTokenGetRequest, opts ...grpc.CallOption) (*AuthTokenGetResponse, error)
+	// Autoscaler
+	AutoscalerOverrideHistory(ctx context.Context, in *AutoscalerOverrideHistoryRequest, opts ...grpc.CallOption) (*AutoscalerOverrideHistoryResponse, error)
 	// Blobs
 	BlobCreate(ctx context.Context, in *BlobCreateRequest, opts ...grpc.CallOption) (*BlobCreateResponse, error)
 	BlobGet(ctx context.Context, in *BlobGetRequest, opts ...grpc.CallOption) (*BlobGetResponse, error)
@@ -801,6 +804,16 @@ func (c *modalClientClient) AuthTokenGet(ctx context.Context, in *AuthTokenGetRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AuthTokenGetResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AuthTokenGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AutoscalerOverrideHistory(ctx context.Context, in *AutoscalerOverrideHistoryRequest, opts ...grpc.CallOption) (*AutoscalerOverrideHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AutoscalerOverrideHistoryResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AutoscalerOverrideHistory_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3029,6 +3042,8 @@ type ModalClientServer interface {
 	AttemptStart(context.Context, *AttemptStartRequest) (*AttemptStartResponse, error)
 	// Auth Token
 	AuthTokenGet(context.Context, *AuthTokenGetRequest) (*AuthTokenGetResponse, error)
+	// Autoscaler
+	AutoscalerOverrideHistory(context.Context, *AutoscalerOverrideHistoryRequest) (*AutoscalerOverrideHistoryResponse, error)
 	// Blobs
 	BlobCreate(context.Context, *BlobCreateRequest) (*BlobCreateResponse, error)
 	BlobGet(context.Context, *BlobGetRequest) (*BlobGetResponse, error)
@@ -3354,6 +3369,9 @@ func (UnimplementedModalClientServer) AttemptStart(context.Context, *AttemptStar
 }
 func (UnimplementedModalClientServer) AuthTokenGet(context.Context, *AuthTokenGetRequest) (*AuthTokenGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuthTokenGet not implemented")
+}
+func (UnimplementedModalClientServer) AutoscalerOverrideHistory(context.Context, *AutoscalerOverrideHistoryRequest) (*AutoscalerOverrideHistoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AutoscalerOverrideHistory not implemented")
 }
 func (UnimplementedModalClientServer) BlobCreate(context.Context, *BlobCreateRequest) (*BlobCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BlobCreate not implemented")
@@ -4460,6 +4478,24 @@ func _ModalClient_AuthTokenGet_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AuthTokenGet(ctx, req.(*AuthTokenGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AutoscalerOverrideHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AutoscalerOverrideHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AutoscalerOverrideHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AutoscalerOverrideHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AutoscalerOverrideHistory(ctx, req.(*AutoscalerOverrideHistoryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8255,6 +8291,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AuthTokenGet",
 			Handler:    _ModalClient_AuthTokenGet_Handler,
+		},
+		{
+			MethodName: "AutoscalerOverrideHistory",
+			Handler:    _ModalClient_AutoscalerOverrideHistory_Handler,
 		},
 		{
 			MethodName: "BlobCreate",

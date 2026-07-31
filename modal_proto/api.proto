@@ -815,6 +815,26 @@ message AutoscalerConfiguration {
   AutoscalerSettings override_settings = 5;
 }
 
+// A historical autoscaler override for a Function, used to render an audit trail.
+message AutoscalerOverrideHistoryItem {
+  double created_at = 1;
+  // True if this request has not yet been superseded by a later override or deploy.
+  bool in_effect = 2;
+  // Resolved display name of the user or service user that made the request.
+  string requested_by = 3;
+  string requested_by_avatar_url = 4;
+  // Only the fields that were explicitly set in this particular request.
+  AutoscalerSettings settings = 5;
+}
+
+message AutoscalerOverrideHistoryRequest {
+  string function_id = 1;
+}
+
+message AutoscalerOverrideHistoryResponse {
+  repeated AutoscalerOverrideHistoryItem items = 1;
+}
+
 message AutoscalerSettings {
   // A collection of user-configurable settings for Function autoscaling
   // These are used for static configuration and for dynamic autoscaler updates
@@ -4620,6 +4640,9 @@ service ModalClient {
 
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
+
+  // Autoscaler
+  rpc AutoscalerOverrideHistory(AutoscalerOverrideHistoryRequest) returns (AutoscalerOverrideHistoryResponse);
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
