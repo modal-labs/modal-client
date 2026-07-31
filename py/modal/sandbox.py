@@ -2288,6 +2288,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
         sandbox._task_id = restore_resp.task_id
+        # Seeded after from_id, whose hydration resets the field.
+        if restore_resp.HasField("command_router_access"):
+            sandbox._init_command_router_access = restore_resp.command_router_access
         return sandbox
 
     @property

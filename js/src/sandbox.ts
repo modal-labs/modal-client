@@ -960,6 +960,7 @@ export class SandboxService {
       return new Sandbox(this.#client, restoreResp.sandboxId, {
         isV2: true,
         taskId: restoreResp.taskId,
+        initCommandRouterAccess: restoreResp.commandRouterAccess,
       });
     }
 

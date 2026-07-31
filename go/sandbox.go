@@ -1039,7 +1039,11 @@ func (s *sandboxServiceImpl) ExperimentalFromSnapshot(ctx context.Context, snaps
 		if err != nil {
 			return nil, err
 		}
-		return newSandboxV2(s.client, resp.GetSandboxId(), resp.GetTaskId()), nil
+		sb := newSandboxV2(s.client, resp.GetSandboxId(), resp.GetTaskId())
+		if access := resp.GetCommandRouterAccess(); access != nil {
+			sb.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
+		}
+		return sb, nil
 	}
 
 	resp, err := s.client.cpClient.SandboxRestore(ctx, pb.SandboxRestoreRequest_builder{

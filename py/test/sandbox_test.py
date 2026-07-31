@@ -1284,6 +1284,21 @@ def test_sandbox_v2_fetches_command_router_access_when_create_omits_it(app, serv
     sb.terminate()
 
 
+def test_sandbox_v2_uses_command_router_access_from_restore(app, client, servicer):
+    """V2 restore returns router access, so reaching the worker costs no extra RPC."""
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    snapshot = sb._experimental_snapshot()
+    restored = Sandbox._experimental_from_snapshot(snapshot, client=client)
+
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            restored.reload_volumes()
+
+    (req,) = tcr_ctx.get_requests("TaskReloadVolumes")
+    assert req.task_id == "ta-restored-v2-123"
+    assert ctx.get_requests("SandboxGetCommandRouterAccess") == []
+
+
 def test_sandbox_v2_fetches_command_router_access_when_reattached(client, servicer):
     """A sandbox from from_id() has no create response to seed from, so it asks."""
     sandbox_id = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"

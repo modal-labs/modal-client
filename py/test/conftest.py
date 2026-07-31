@@ -3125,6 +3125,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 sandbox_id="sb-01ARZ3NDEKTSV4RRFFQ69G5FAV",
                 task_id="ta-restored-v2-123",
                 tunnels=[api_pb2.TunnelData(host="sb-restored-8080.modal.host", port=443, container_port=8080)],
+                command_router_access=api_pb2.CommandRouterAccess(
+                    url=self.task_command_router_url, jwt="fake-jwt-token"
+                ),
             )
         )
 

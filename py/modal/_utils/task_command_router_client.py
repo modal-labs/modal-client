@@ -292,9 +292,10 @@ class TaskCommandRouterClient:
     ) -> "TaskCommandRouterClient":
         """Initialize a TaskCommandRouterClient for a V2 sandbox.
 
-        `access` is the router access returned by SandboxCreateV2, which lets a
-        freshly created sandbox connect without a round-trip. When it is absent —
-        a re-attached sandbox, or the server could not mint a token — we ask for it.
+        `access` is the router access returned by SandboxCreateV2/SandboxRestoreV2,
+        which lets a freshly scheduled sandbox connect without a round-trip. When it
+        is absent — a re-attached sandbox, or the server could not mint a token — we
+        ask for it.
         """
         if access is not None:
             url, jwt = access.url, access.jwt

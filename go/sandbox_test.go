@@ -1190,6 +1190,60 @@ func TestExperimentalCreateSeedsCommandRouterAccess(t *testing.T) {
 	})
 }
 
+type mockSandboxRestoreV2Client struct {
+	pb.ModalClientClient
+	access *pb.CommandRouterAccess
+}
+
+func (m *mockSandboxRestoreV2Client) SandboxRestoreV2(
+	_ context.Context,
+	_ *pb.SandboxRestoreV2Request,
+	_ ...grpc.CallOption,
+) (*pb.SandboxRestoreV2Response, error) {
+	return pb.SandboxRestoreV2Response_builder{
+		SandboxId:           testV2SandboxID,
+		TaskId:              "ta-restored-v2-123",
+		CommandRouterAccess: m.access,
+	}.Build(), nil
+}
+
+func TestExperimentalFromSnapshotSeedsCommandRouterAccess(t *testing.T) {
+	isV2 := true
+	restoreV2 := func(access *pb.CommandRouterAccess) (*Sandbox, error) {
+		svc := &sandboxServiceImpl{client: &Client{
+			cpClient: &clientWithConn{ModalClientClient: &mockSandboxRestoreV2Client{access: access}},
+			logger:   slog.New(slog.DiscardHandler),
+		}}
+		return svc.ExperimentalFromSnapshot(
+			context.Background(),
+			&SandboxSnapshot{SnapshotID: "sn-123", isV2: &isV2, client: svc.client},
+			nil,
+		)
+	}
+
+	t.Run("seeds the access the restore response carried", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		sb, err := restoreV2(pb.CommandRouterAccess_builder{
+			Jwt: "seeded-jwt", Url: "https://task-abc123.modal.test",
+		}.Build())
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.initCommandRouterAccess).ShouldNot(gomega.BeNil())
+		g.Expect(sb.initCommandRouterAccess.jwt).To(gomega.Equal("seeded-jwt"))
+		g.Expect(sb.initCommandRouterAccess.url).To(gomega.Equal("https://task-abc123.modal.test"))
+	})
+
+	t.Run("leaves the access unset when the restore response omits it", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		sb, err := restoreV2(nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.initCommandRouterAccess).Should(gomega.BeNil())
+	})
+}
+
 // failOnAccessLookupClient fails the test if command-router access is looked up
 // over gRPC, which a caller passing seeded access must never do.
 type failOnAccessLookupClient struct {
