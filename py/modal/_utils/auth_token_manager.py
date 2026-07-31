@@ -35,7 +35,7 @@ class _AuthTokenManager:
         self._expiry = 0.0
         self._retry_after = 0.0
         self._backoff = self.FAILURE_BACKOFF_BASE
-        self._lock: asyncio.Lock | None = None
+        self._refresh_task: asyncio.Task | None = None
 
     async def get_token(self) -> str:
         """
@@ -54,12 +54,11 @@ class _AuthTokenManager:
             await self._try_refresh_token()
         elif self._should_refresh():
             # The token hasn't expired yet, but will soon, so it needs a refresh.
-            lock = await self._get_lock()
-            if lock.locked():
-                # The lock is taken, so someone else is refreshing. Continue to use the old token.
+            if self._refresh_task is not None:
+                # A refresh is in flight, so someone else is refreshing. Continue to use the old token.
                 return self._token
             else:
-                # The lock is not taken, so we need to fetch a new token.
+                # Nobody is refreshing, so we need to fetch a new token.
                 await self._try_refresh_token()
 
         return self._token
@@ -76,17 +75,27 @@ class _AuthTokenManager:
 
     async def _refresh_token(self):
         """
-        Fetch a new token from the control plane. If called concurrently, only one coroutine will make a request for a
-        new token. The others will block on a lock, until the first coroutine has fetched the new token.
+        Fetch a new token from the control plane. Concurrent callers share a single request: the first caller starts it
+        and the others await the same task, so a burst of callers results in one RPC whether it succeeds or fails. The
+        task is owned by the event loop rather than by the caller that started it, so it runs to completion even if that
+        caller goes away.
         """
-        lock = await self._get_lock()
-        async with lock:
-            # Double check inside lock - maybe another coroutine refreshed already. This happens the first time we fetch
-            # the token. The first coroutine will fetch the token, while the others block on the lock, waiting for the
-            # new token. Once we have a new token, the other coroutines will unblock and return from here.
+        if self._refresh_task is None:
+            # Maybe another coroutine refreshed already, or we're cooling down after a failure.
             if self._token and not self._should_refresh():
                 return
-            await self._fetch_token()
+            # Note: the task is created in async code so it binds to the synchronicity event loop.
+            self._refresh_task = asyncio.create_task(self._fetch_token())
+            self._refresh_task.add_done_callback(self._refresh_task_done)
+        # Shielded so a cancelled caller doesn't cancel the refresh for everyone else.
+        await asyncio.shield(self._refresh_task)
+
+    def _refresh_task_done(self, task: "asyncio.Task"):
+        if self._refresh_task is task:
+            self._refresh_task = None
+        if not task.cancelled():
+            # Retrieve the exception, if any, so a failure isn't logged as unhandled when no caller is waiting.
+            task.exception()
 
     async def _fetch_token(self):
         """Make the AuthTokenGet request and cache its token, or arm the failure backoff."""
@@ -123,15 +132,6 @@ class _AuthTokenManager:
             self._retry_after = time.time() + self._backoff
             self._backoff = min(self._backoff * 2, self.FAILURE_BACKOFF_MAX)
             raise
-
-    async def _get_lock(self) -> asyncio.Lock:
-        # Note: this function runs no async code but is marked as async to ensure it's
-        # being run inside the synchronicity event loop and binds the lock to the
-        # correct event loop on Python 3.9 which eagerly assigns event loops on
-        # constructions of locks
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        return self._lock
 
     @staticmethod
     def _decode_jwt(token: str) -> dict[str, Any]:

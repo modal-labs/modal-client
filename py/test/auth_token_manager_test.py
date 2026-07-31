@@ -448,6 +448,49 @@ async def test_concurrent_refresh(auth_token_manager, token_near_expiry, valid_j
     assert auth_token_manager._token == valid_jwt_token
 
 
+@pytest.mark.asyncio
+async def test_concurrent_fetch_failure_makes_one_request(auth_token_manager, monkeypatch):
+    """Concurrent callers with no cached token share one failing request instead of one request each."""
+    calls = 0
+
+    async def fail_auth_token_get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.1)
+        raise RuntimeError("auth server unavailable")
+
+    monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", fail_auth_token_get)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    results = await asyncio.gather(*[wrapped_get_token.aio() for _ in range(5)], return_exceptions=True)
+
+    assert all(isinstance(result, RuntimeError) for result in results)
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelling_a_caller_does_not_cancel_the_refresh(auth_token_manager, valid_jwt_token, servicer):
+    """The refresh runs to completion for the remaining callers when the caller that started it is cancelled."""
+    servicer.auth_token = valid_jwt_token
+    servicer.auth_token_delay = 0.5
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await auth_token_manager.get_token()
+
+    first = asyncio.create_task(wrapped_get_token.aio())
+    await asyncio.sleep(0.1)
+    second = asyncio.create_task(wrapped_get_token.aio())
+    await asyncio.sleep(0.1)
+    first.cancel()
+
+    assert await second == valid_jwt_token
+    assert servicer.auth_tokens_generated == 1
+
+
 def test_decode_jwt_valid(valid_jwt_token):
     """Test JWT decoding with valid token."""
     decoded = _AuthTokenManager._decode_jwt(valid_jwt_token)
