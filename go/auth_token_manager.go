@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -17,8 +18,6 @@ import (
 )
 
 const (
-	// Start refreshing this many seconds before the token expires
-	RefreshWindow       = 5 * 60
 	authTokenGetTimeout = 5 * time.Second
 	// Bounds a whole shared refresh, whose retries are detached from any caller's context and so otherwise unlimited.
 	// Deliberately shorter than the full retry budget of authTokenGetTimeout per attempt: a refresh that has been
@@ -29,13 +28,48 @@ const (
 	// with consecutive failures between these bounds.
 	failureBackoffBase = 500 * time.Millisecond
 	failureBackoffMax  = 60 * time.Second
+
+	// The fraction of the token's lifetime to use before refreshing.
+	refreshFraction = 0.5
+	// The width of the random band added on top of refreshFraction, so that clients issued
+	// same-lifetime tokens at the same moment (a fan-out of containers starting together)
+	// spread their refreshes out instead of refreshing in lockstep every cycle. The band
+	// only ever delays a refresh, so the margin before expiry stays at no less than
+	// 1 - refreshFraction - refreshJitter of the lifetime.
+	refreshJitter = 0.1
 	// If the token doesn't have an expiry field, default to current time plus this value (not expected).
 	DefaultExpiryOffset = 20 * 60
+
+	// RefreshWindow was the fixed number of seconds before expiry at which a token was
+	// refreshed.
+	//
+	// Deprecated: refreshes are now scheduled a jittered fraction of the way through the
+	// token's lifetime, so this value has no effect.
+	RefreshWindow = 5 * 60
 )
 
 type tokenAndExpiry struct {
 	token  string
 	expiry int64
+	// Time at which the token should be proactively refreshed, always at or before expiry.
+	refreshAt int64
+}
+
+// newTokenAndExpiry schedules the proactive refresh a jittered fraction of the way through
+// the token's lifetime.
+//
+// The delay is measured from the remaining lifetime as this client sees it, so a client
+// whose clock is skewed relative to the issuer still keeps a margin proportional to the
+// lifetime it observes.
+func newTokenAndExpiry(token string, expiry int64) *tokenAndExpiry {
+	now := time.Now().Unix()
+	remaining := max(expiry-now, 0)
+	fraction := refreshFraction + rand.Float64()*refreshJitter
+	return &tokenAndExpiry{
+		token:     token,
+		expiry:    expiry,
+		refreshAt: now + int64(float64(remaining)*fraction),
+	}
 }
 
 type atomicDuration struct {
@@ -51,8 +85,8 @@ func (d *atomicDuration) Store(v time.Duration) {
 }
 
 // authTokenManager manages authentication tokens, refreshing them lazily
-// when GetToken is called. Tokens are refreshed when expired or within
-// RefreshWindow seconds of expiry.
+// when GetToken is called. Tokens are refreshed when expired, or once they
+// have used up a jittered fraction of their lifetime.
 type authTokenManager struct {
 	client pb.ModalClientClient
 	logger *slog.Logger
@@ -72,10 +106,7 @@ func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *auth
 		logger: logger,
 	}
 
-	manager.tokenAndExpiry.Store(&tokenAndExpiry{
-		token:  "",
-		expiry: 0,
-	})
+	manager.tokenAndExpiry.Store(&tokenAndExpiry{})
 	manager.backoff.Store(failureBackoffBase)
 
 	return manager
@@ -84,11 +115,11 @@ func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *auth
 // GetToken returns a valid auth token, fetching or refreshing as needed.
 //
 // Three states:
-//  1. Valid token (not near expiry): returned immediately, no locking.
+//  1. Valid token (not yet at its refresh point): returned immediately, no locking.
 //  2. No token or expired: all callers block until a fresh token is fetched.
 //     Only one goroutine makes the RPC; the others wait for its outcome.
-//  3. Valid but within RefreshWindow of expiry: one goroutine refreshes
-//     (blocking only itself); concurrent callers get the old, still-valid token.
+//  3. Valid but past its refresh point: one goroutine refreshes (blocking only
+//     itself); concurrent callers get the old, still-valid token.
 func (m *authTokenManager) GetToken(ctx context.Context) (string, error) {
 	data := m.tokenAndExpiry.Load()
 
@@ -219,15 +250,12 @@ func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 		expiry = time.Now().Unix() + DefaultExpiryOffset
 	}
 
-	m.tokenAndExpiry.Store(&tokenAndExpiry{
-		token:  token,
-		expiry: expiry,
-	})
+	data := newTokenAndExpiry(token, expiry)
+	m.tokenAndExpiry.Store(data)
 
-	timeUntilRefresh := time.Duration(expiry-time.Now().Unix()-RefreshWindow) * time.Second
 	m.logger.DebugContext(ctx, "Fetched auth token",
 		"expires_in", time.Until(time.Unix(expiry, 0)),
-		"refresh_in", timeUntilRefresh)
+		"refresh_in", time.Until(time.Unix(data.refreshAt, 0)))
 
 	m.retryAfter.Store(nil)
 	m.backoff.Store(failureBackoffBase)
@@ -278,7 +306,7 @@ func isExpired(data tokenAndExpiry) bool {
 }
 
 func needsRefresh(data tokenAndExpiry) bool {
-	return time.Now().Unix() >= data.expiry-RefreshWindow
+	return time.Now().Unix() >= data.refreshAt
 }
 
 func (m *authTokenManager) inBackoff() bool {
@@ -297,10 +325,17 @@ func isAuthDenied(err error) bool {
 	return ok && (st.Code() == codes.Unauthenticated || st.Code() == codes.PermissionDenied)
 }
 
-// SetToken sets the token and expiry (for testing).
+// SetToken sets the token and expiry, scheduling the refresh point from the remaining
+// lifetime (for testing).
 func (m *authTokenManager) SetToken(token string, expiry int64) {
+	m.tokenAndExpiry.Store(newTokenAndExpiry(token, expiry))
+}
+
+// setTokenWithRefreshAt sets the token, expiry and refresh point (for testing).
+func (m *authTokenManager) setTokenWithRefreshAt(token string, expiry int64, refreshAt int64) {
 	m.tokenAndExpiry.Store(&tokenAndExpiry{
-		token:  token,
-		expiry: expiry,
+		token:     token,
+		expiry:    expiry,
+		refreshAt: refreshAt,
 	})
 }

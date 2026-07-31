@@ -210,25 +210,38 @@ func TestAuthTokenManager_RefreshExpiredToken(t *testing.T) {
 	g.Expect(token).Should(gomega.Equal(freshToken))
 }
 
-func TestAuthTokenManager_RefreshNearExpiryToken(t *testing.T) {
+func TestAuthTokenManager_RefreshTokenPastRefreshPoint(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
 	mockClient := newMockAuthClient()
 	now := time.Now().Unix()
 
-	// Token within RefreshWindow of expiry (60s left, window is 300s)
+	// Token still valid for 60s, but already past its refresh point.
 	expiringToken := createTestJWT(now + 60)
 	freshToken := createTestJWT(now + 3600)
 
 	manager := newAuthTokenManager(mockClient, slog.Default())
-	manager.SetToken(expiringToken, now+60)
+	manager.setTokenWithRefreshAt(expiringToken, now+60, now-1)
 	mockClient.setAuthToken(freshToken)
 
 	// GetToken should proactively refresh
 	token, err := manager.GetToken(t.Context())
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(token).Should(gomega.Equal(freshToken))
+}
+
+func TestAuthTokenManager_ExpiredTokenIsDueForRefresh(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// An expiry in the past must not schedule the refresh point by a negative delay; the
+	// token is simply due for refresh.
+	now := time.Now().Unix()
+	data := newTokenAndExpiry(createTestJWT(now-100), now-100)
+
+	g.Expect(data.refreshAt).Should(gomega.Equal(now))
+	g.Expect(needsRefresh(*data)).Should(gomega.BeTrue())
 }
 
 func TestAuthTokenManager_GetToken_EmptyResponse(t *testing.T) {
@@ -458,7 +471,7 @@ func TestAuthToken_NearExpiryRefreshDoesNotBlockOtherCallers(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	now := time.Now().Unix()
-	nearExpiry := now + RefreshWindow - 10
+	nearExpiry := now + 290
 	nearExpiryToken := createTestJWT(nearExpiry)
 	freshToken := createTestJWT(now + 7200)
 
@@ -467,7 +480,7 @@ func TestAuthToken_NearExpiryRefreshDoesNotBlockOtherCallers(t *testing.T) {
 	mockClient.setDelay(500 * time.Millisecond)
 
 	manager := newAuthTokenManager(mockClient, slog.Default())
-	manager.SetToken(nearExpiryToken, nearExpiry)
+	manager.setTokenWithRefreshAt(nearExpiryToken, nearExpiry, now-1)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -494,7 +507,7 @@ func TestAuthToken_AbandonedNearExpiryRefreshDoesNotBlockOtherCallers(t *testing
 	g := gomega.NewWithT(t)
 
 	now := time.Now().Unix()
-	nearExpiry := now + RefreshWindow - 10
+	nearExpiry := now + 290
 	nearExpiryToken := createTestJWT(nearExpiry)
 
 	mockClient := newMockAuthClient()
@@ -502,7 +515,7 @@ func TestAuthToken_AbandonedNearExpiryRefreshDoesNotBlockOtherCallers(t *testing
 	mockClient.setDelay(500 * time.Millisecond)
 
 	manager := newAuthTokenManager(mockClient, slog.Default())
-	manager.SetToken(nearExpiryToken, nearExpiry)
+	manager.setTokenWithRefreshAt(nearExpiryToken, nearExpiry, now-1)
 
 	// Start the refresh, then abandon it: the request keeps running without anyone waiting on it.
 	ctx, cancel := context.WithCancel(t.Context())

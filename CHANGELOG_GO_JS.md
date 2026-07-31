@@ -11,6 +11,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 - (Go, JS) `Sandbox.Filesystem.CopyFromLocal` / `WriteBytes` / `WriteText` (Go) and `sandbox.filesystem.copyFromLocal` / `writeBytes` / `writeText` (JS) now stream data to the Sandbox instead of issuing a request per chunk, making large writes ~2.5× faster.
 - **Breaking:** (Go) `FunctionUpdateAutoscalerParams.ScaledownWindow` now is typed as a `*time.Duration` instead of as a `*uint32`.
 - (Go, JS) `Function.UpdateAutoscaler` now returns a struct containing the current autoscaler settings immediately after applying the change.
+- (Go) `RefreshWindow` is deprecated and has no effect. Auth tokens are now refreshed a jittered fraction of the way through their lifetime instead of a fixed five minutes before expiry.
 
 ## js/v0.9.0, go/v0.9.0
 
