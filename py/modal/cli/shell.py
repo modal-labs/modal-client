@@ -17,7 +17,7 @@ from ..functions import Function
 from ..image import Image
 from ..mount import _Mount
 from ..runner import interactive_shell
-from ..sandbox import _MAIN_CONTAINER_NAME, Sandbox, _container_exec, _is_v2_sandbox_id
+from ..sandbox import _MAIN_CONTAINER_NAME, Sandbox, SandboxVersion, _container_exec, _get_sandbox_version
 from ..secret import Secret
 from ..stream_type import StreamType
 from ..volume import Volume
@@ -144,7 +144,7 @@ def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
             raise ClickException(f"Sandbox '{sandbox_id}' not found (is it still running?)")
         except Exception as e:
             raise ClickException(f"Error connecting to Sandbox '{sandbox_id}': {str(e)}")
-        if _is_v2_sandbox_id(sandbox_id):
+        if _get_sandbox_version(sandbox_id) == SandboxVersion.V2:
             sandbox_id_v2 = sandbox_id
 
     assert _is_valid_modal_id(ref, "ta-")

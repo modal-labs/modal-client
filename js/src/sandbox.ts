@@ -139,7 +139,6 @@ export function validateExperimentalEncryptionKey(
 const V1_SANDBOX_ID_ALPHABET = new Set(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
 );
-const ULID_ALPHABET = new Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ");
 
 /** @ignore */
 export enum SandboxVersion {
@@ -158,27 +157,16 @@ function isV1SandboxId(sandboxId: string): boolean {
   );
 }
 
-function isV2SandboxId(sandboxId: string): boolean {
-  const [prefix, suffix, ...extra] = sandboxId.split("-");
-  return (
-    prefix === "sb" &&
-    extra.length === 0 &&
-    suffix !== undefined &&
-    suffix.length === 26 &&
-    "01234567".includes(suffix[0]) &&
-    Array.from(suffix).every((ch) => ULID_ALPHABET.has(ch))
-  );
-}
-
-/** @ignore */
+/** @ignore
+ * Determines which backend a Sandbox ID belongs to. IDs that don't match the
+ * V1 shape are assumed to be V2, so that Sandbox IDs minted in newer formats
+ * route to the newer backend instead of failing client-side.
+ */
 export function getSandboxVersion(sandboxId: string): SandboxVersion {
-  if (isV2SandboxId(sandboxId)) {
-    return SandboxVersion.V2;
-  }
   if (isV1SandboxId(sandboxId)) {
     return SandboxVersion.V1;
   }
-  throw new InvalidError(`Invalid Sandbox ID: ${sandboxId}`);
+  return SandboxVersion.V2;
 }
 
 /**

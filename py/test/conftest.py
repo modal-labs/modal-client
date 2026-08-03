@@ -2865,10 +2865,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._sandbox_terminated = False
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
-        self.sandbox_tags["sb-123"] = {tag.tag_name: tag.tag_value for tag in request.tags}
+        self.sandbox_tags["sb-nGEijt9WbBMlGrsPH9FOaC"] = {tag.tag_name: tag.tag_value for tag in request.tags}
         await stream.send_message(
             api_pb2.SandboxCreateResponse(
-                sandbox_id="sb-123",
+                sandbox_id="sb-nGEijt9WbBMlGrsPH9FOaC",
                 metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
             )
         )
@@ -2929,7 +2929,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         _request: api_pb2.SandboxGetFromNameRequest = await stream.recv_message()
         await stream.send_message(
             api_pb2.SandboxGetFromNameResponse(
-                sandbox_id="sb-123",
+                sandbox_id="sb-nGEijt9WbBMlGrsPH9FOaC",
                 metadata=api_pb2.SandboxHandleMetadata(app_id=self.sandbox_app_id),
             )
         )

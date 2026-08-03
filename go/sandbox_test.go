@@ -199,6 +199,16 @@ func TestGetSandboxVersion(t *testing.T) {
 	}{
 		{name: "v1", sandboxID: testV1SandboxID, want: sandboxVersionV1},
 		{name: "v2", sandboxID: testV2SandboxID, want: sandboxVersionV2},
+		// IDs that match neither known shape are assumed to be V2, so that
+		// future ID formats route to the newer backend instead of erroring.
+		{name: "short suffix", sandboxID: "sb-123", want: sandboxVersionV2},
+		{name: "invalid v1 char", sandboxID: "sb-nGEijt9WbBMlGrsPH9FOa_", want: sandboxVersionV2},
+		{name: "ulid timestamp overflow", sandboxID: "sb-81ARZ3NDEKTSV4RRFFQ69G5FAV", want: sandboxVersionV2},
+		{name: "lowercase ulid", sandboxID: "sb-01arz3ndektsv4rrffq69g5fav", want: sandboxVersionV2},
+		{name: "longer suffix", sandboxID: "sb-01ARZ3NDEKTSV4RRFFQ69G5FAVXY", want: sandboxVersionV2},
+		{name: "other prefix", sandboxID: "fu-01ARZ3NDEKTSV4RRFFQ69G5FAV", want: sandboxVersionV2},
+		{name: "extra separator", sandboxID: "sb-foo-bar", want: sandboxVersionV2},
+		{name: "no sb prefix", sandboxID: "not-a-sandbox-id", want: sandboxVersionV2},
 	}
 
 	for _, tt := range tests {
@@ -206,34 +216,7 @@ func TestGetSandboxVersion(t *testing.T) {
 			t.Parallel()
 			g := gomega.NewWithT(t)
 
-			got, err := getSandboxVersion(tt.sandboxID)
-			g.Expect(err).ShouldNot(gomega.HaveOccurred())
-			g.Expect(got).To(gomega.Equal(tt.want))
-		})
-	}
-}
-
-func TestGetSandboxVersionRejectsInvalidID(t *testing.T) {
-	t.Parallel()
-
-	tests := []string{
-		"sb-123",
-		"sb-nGEijt9WbBMlGrsPH9FOa_",
-		"sb-81ARZ3NDEKTSV4RRFFQ69G5FAV",
-		"sb-01arz3ndektsv4rrffq69g5fav",
-		"fu-01ARZ3NDEKTSV4RRFFQ69G5FAV",
-		"sb-foo-bar",
-		"not-a-sandbox-id",
-	}
-
-	for _, sandboxID := range tests {
-		t.Run(sandboxID, func(t *testing.T) {
-			t.Parallel()
-			g := gomega.NewWithT(t)
-
-			_, err := getSandboxVersion(sandboxID)
-			g.Expect(err).Should(gomega.HaveOccurred())
-			g.Expect(err.Error()).To(gomega.ContainSubstring("Invalid Sandbox ID"))
+			g.Expect(getSandboxVersion(tt.sandboxID)).To(gomega.Equal(tt.want))
 		})
 	}
 }

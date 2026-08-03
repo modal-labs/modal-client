@@ -288,25 +288,18 @@ def test_sandbox_from_id(app, client, servicer, sandbox_subprocess):
     [
         ("sb-nGEijt9WbBMlGrsPH9FOaC", SandboxVersion.V1),
         ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", SandboxVersion.V2),
+        # IDs that match neither known shape are assumed to be V2, so that
+        # future ID formats route to the newer backend instead of erroring.
+        ("sb-123", SandboxVersion.V2),
+        ("sb-nGEijt9WbBMlGrsPH9FOa_", SandboxVersion.V2),
+        ("sb-81ARZ3NDEKTSV4RRFFQ69G5FAV", SandboxVersion.V2),
+        ("sb-01arz3ndektsv4rrffq69g5fav", SandboxVersion.V2),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAVXY", SandboxVersion.V2),
+        ("fu-01ARZ3NDEKTSV4RRFFQ69G5FAV", SandboxVersion.V2),
     ],
 )
 def test_get_sandbox_version(sandbox_id, expected_version):
     assert _get_sandbox_version(sandbox_id) == expected_version
-
-
-@pytest.mark.parametrize(
-    "sandbox_id",
-    [
-        "sb-123",
-        "sb-nGEijt9WbBMlGrsPH9FOa_",
-        "sb-81ARZ3NDEKTSV4RRFFQ69G5FAV",
-        "sb-01arz3ndektsv4rrffq69g5fav",
-        "fu-01ARZ3NDEKTSV4RRFFQ69G5FAV",
-    ],
-)
-def test_get_sandbox_version_rejects_invalid_id(sandbox_id):
-    with pytest.raises(InvalidError, match="Invalid Sandbox ID"):
-        _get_sandbox_version(sandbox_id)
 
 
 @pytest.mark.parametrize(
@@ -377,13 +370,18 @@ def test_sandbox_from_name_hydrates_app_id(app, client, servicer, sandbox_versio
     assert request.sandbox_name == "my-sandbox"
 
 
-def test_sandbox_from_id_rejects_invalid_id(client, servicer):
-    with servicer.intercept() as ctx:
-        with pytest.raises(InvalidError, match="Invalid Sandbox ID"):
-            Sandbox.from_id("sb-123", client=client)
+def test_sandbox_from_id_routes_unrecognized_id_to_v2(client, servicer):
+    # An ID that matches neither known shape (e.g. a format introduced after
+    # this client version) routes to the V2 backend instead of erroring.
+    sandbox_id = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAVXY"
 
+    with servicer.intercept() as ctx:
+        sb = Sandbox.from_id(sandbox_id, client=client)
+
+    assert sb.returncode == 0
     assert ctx.get_requests("SandboxWait") == []
-    assert ctx.get_requests("SandboxWaitV2") == []
+    (wait_req,) = ctx.get_requests("SandboxWaitV2")
+    assert wait_req.sandbox_id == sandbox_id
 
 
 # Two distinct valid V2 (ULID) Sandbox IDs, used to exercise name reservations
@@ -1575,7 +1573,7 @@ def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
             api_pb2.SandboxListResponse(
                 sandboxes=[
                     api_pb2.SandboxInfo(
-                        id="sb-123",
+                        id="sb-nGEijt9WbBMlGrsPH9FOaC",
                         metadata=api_pb2.SandboxHandleMetadata(app_id="ap-list-running"),
                         task_info=api_pb2.TaskInfo(
                             result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED)
@@ -1600,7 +1598,7 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
             api_pb2.SandboxListResponse(
                 sandboxes=[
                     api_pb2.SandboxInfo(
-                        id="sb-123",
+                        id="sb-nGEijt9WbBMlGrsPH9FOaC",
                         metadata=api_pb2.SandboxHandleMetadata(app_id="ap-list-stopped"),
                         task_info=api_pb2.TaskInfo(
                             result=api_pb2.GenericResult(
@@ -2782,7 +2780,7 @@ def test_sandbox_create_reuses_hydrated_image(app, servicer):
         servicer_self.sandbox_defs.append(request.definition)
         await stream.send_message(
             api_pb2.SandboxCreateResponse(
-                sandbox_id="sb-123",
+                sandbox_id="sb-nGEijt9WbBMlGrsPH9FOaC",
                 metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
             )
         )

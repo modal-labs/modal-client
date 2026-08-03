@@ -154,7 +154,6 @@ def _ttl_to_wire_ttl(ttl: int | None) -> int:
 
 
 _V1_SANDBOX_ID_ALPHABET = frozenset("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-_ULID_ALPHABET = frozenset("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
 _CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16
 _CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH = 512
 
@@ -196,23 +195,13 @@ def _is_v1_sandbox_id(sandbox_id: str) -> bool:
     )
 
 
-def _is_v2_sandbox_id(sandbox_id: str) -> bool:
-    prefix, separator, suffix = sandbox_id.partition("-")
-    return (
-        prefix == "sb"
-        and separator == "-"
-        and len(suffix) == 26
-        and suffix[0] in "01234567"
-        and all(ch in _ULID_ALPHABET for ch in suffix)
-    )
-
-
 def _get_sandbox_version(sandbox_id: str) -> SandboxVersion:
-    if _is_v2_sandbox_id(sandbox_id):
-        return SandboxVersion.V2
+    # IDs that don't match the V1 shape are assumed to be V2, so that Sandbox
+    # IDs minted in newer formats route to the newer backend instead of
+    # failing client-side.
     if _is_v1_sandbox_id(sandbox_id):
         return SandboxVersion.V1
-    raise InvalidError(f"Invalid Sandbox ID: {sandbox_id!r}")
+    return SandboxVersion.V2
 
 
 def _result_returncode(result: api_pb2.GenericResult | None) -> int | None:
@@ -1137,7 +1126,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._command_router_client = None
         self._init_command_router_access = None
         self._filesystem = None
-        self._is_v2 = _is_v2_sandbox_id(self.object_id)
+        self._is_v2 = _get_sandbox_version(self.object_id) == SandboxVersion.V2
         if self._is_v2:
             self._hydrate_metadata_v2()
 

@@ -1950,20 +1950,18 @@ test("V2 Sandbox supports filesystem", () => {
 test.each([
   [V1_SANDBOX_ID, SandboxVersion.V1],
   [V2_SANDBOX_ID, SandboxVersion.V2],
+  // IDs that match neither known shape are assumed to be V2, so that future
+  // ID formats route to the newer backend instead of erroring.
+  ["sb-123", SandboxVersion.V2],
+  ["sb-nGEijt9WbBMlGrsPH9FOa_", SandboxVersion.V2],
+  ["sb-81ARZ3NDEKTSV4RRFFQ69G5FAV", SandboxVersion.V2],
+  ["sb-01arz3ndektsv4rrffq69g5fav", SandboxVersion.V2],
+  ["sb-01ARZ3NDEKTSV4RRFFQ69G5FAVXY", SandboxVersion.V2],
+  ["fu-01ARZ3NDEKTSV4RRFFQ69G5FAV", SandboxVersion.V2],
+  ["sb-foo-bar", SandboxVersion.V2],
+  ["not-a-sandbox-id", SandboxVersion.V2],
 ])("getSandboxVersion classifies %s", (sandboxId, expectedVersion) => {
   expect(getSandboxVersion(sandboxId)).toBe(expectedVersion);
-});
-
-test.each([
-  "sb-123",
-  "sb-nGEijt9WbBMlGrsPH9FOa_",
-  "sb-81ARZ3NDEKTSV4RRFFQ69G5FAV",
-  "sb-01arz3ndektsv4rrffq69g5fav",
-  "fu-01ARZ3NDEKTSV4RRFFQ69G5FAV",
-  "sb-foo-bar",
-  "not-a-sandbox-id",
-])("getSandboxVersion rejects invalid ID %s", (sandboxId) => {
-  expect(() => getSandboxVersion(sandboxId)).toThrow("Invalid Sandbox ID");
 });
 
 test("client.sandboxes.fromId routes V1 IDs to SandboxWait", async () => {
@@ -2011,12 +2009,24 @@ test("client.sandboxes.fromId routes V2 IDs to SandboxWaitV2", async () => {
   mock.assertExhausted();
 });
 
-test("client.sandboxes.fromId rejects invalid IDs before RPC", async () => {
+test("client.sandboxes.fromId routes unrecognized IDs to the V2 backend", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  // An ID that matches neither known shape (e.g. a format introduced after
+  // this client version) routes to the V2 backend instead of erroring.
+  const sandboxId = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAVXY";
 
-  await expect(mc.sandboxes.fromId("sb-123")).rejects.toThrow(
-    "Invalid Sandbox ID",
-  );
+  mock.handleUnary("/SandboxWaitV2", (req: any) => {
+    expect(req.sandboxId).toBe(sandboxId);
+    return {
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exitcode: 0,
+      },
+    };
+  });
+
+  const sb = await mc.sandboxes.fromId(sandboxId);
+  expect(await sb.poll()).toBe(0);
 
   mock.assertExhausted();
 });

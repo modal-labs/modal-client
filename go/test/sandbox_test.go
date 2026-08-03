@@ -1733,15 +1733,32 @@ func TestSandboxExperimentalSetNameRejectsInvalidName(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxFromIDRejectsInvalidID(t *testing.T) {
+func TestSandboxFromIDRoutesUnrecognizedIDToV2(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
+	sandboxID := "sb-123"
 
-	_, err := mock.Sandboxes.FromID(ctx, "sb-123", nil)
-	g.Expect(err).Should(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("Invalid Sandbox ID"))
+	grpcmock.HandleUnary(mock, "SandboxWaitV2",
+		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(0)))
+			return pb.SandboxWaitResponse_builder{
+				Result: pb.GenericResult_builder{
+					Status:   pb.GenericResult_GENERIC_STATUS_SUCCESS,
+					Exitcode: 0,
+				}.Build(),
+			}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.FromID(ctx, sandboxID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	exitCode, err := sb.Poll(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).ShouldNot(gomega.BeNil())
+	g.Expect(*exitCode).To(gomega.Equal(0))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }

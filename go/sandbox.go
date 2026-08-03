@@ -45,10 +45,7 @@ const (
 	customerSuppliedEncryptionKeyMaxLength = 512
 )
 
-const (
-	v1SandboxIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	ulidAlphabet        = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-)
+const v1SandboxIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 type sandboxVersion int
 
@@ -70,27 +67,15 @@ func isV1SandboxID(sandboxID string) bool {
 	return true
 }
 
-func isV2SandboxID(sandboxID string) bool {
-	prefix, suffix, ok := strings.Cut(sandboxID, "-")
-	if !ok || prefix != "sb" || len(suffix) != 26 || suffix[0] < '0' || suffix[0] > '7' {
-		return false
-	}
-	for _, ch := range suffix {
-		if !strings.ContainsRune(ulidAlphabet, ch) {
-			return false
-		}
-	}
-	return true
-}
-
-func getSandboxVersion(sandboxID string) (sandboxVersion, error) {
-	if isV2SandboxID(sandboxID) {
-		return sandboxVersionV2, nil
-	}
+// getSandboxVersion determines which backend a Sandbox ID belongs to. IDs
+// that don't match the V1 shape are assumed to be V2, so that Sandbox IDs
+// minted in newer formats route to the newer backend instead of failing
+// client-side.
+func getSandboxVersion(sandboxID string) sandboxVersion {
 	if isV1SandboxID(sandboxID) {
-		return sandboxVersionV1, nil
+		return sandboxVersionV1
 	}
-	return 0, InvalidError{Exception: fmt.Sprintf("Invalid Sandbox ID: %q", sandboxID)}
+	return sandboxVersionV2
 }
 
 // Probe configures a sandbox readiness probe.
@@ -836,12 +821,7 @@ func (sb *Sandbox) sandboxGetTunnels(ctx context.Context, timeout time.Duration)
 
 // FromID returns a running Sandbox object from an ID.
 func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error) {
-	version, err := getSandboxVersion(sandboxID)
-	if err != nil {
-		return nil, err
-	}
-	isV2 := version == sandboxVersionV2
-	if isV2 {
+	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
 		return newSandboxV2(s.client, sandboxID, ""), nil
 	}
 	return newSandbox(s.client, sandboxID), nil
