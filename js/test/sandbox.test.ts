@@ -1,6 +1,7 @@
 import { tc } from "../test-support/test-client";
 import { parseGpuConfig } from "../src/app";
 import {
+  buildOutboundNetworkAccess,
   buildSandboxCreateRequestProto,
   buildSandboxCreateV2RequestProto,
   buildTaskMountDirectoryRequestProto,
@@ -538,6 +539,40 @@ test("buildSandboxCreateRequestProto sets i6pn", async () => {
       i6pn: true,
     }),
   ).rejects.toThrow("blockNetwork disables all networking, including i6pn");
+});
+
+test("buildOutboundNetworkAccess sidecar rules", () => {
+  // No allowlist (the sidecar default) maps to open access, independent of the
+  // main container. Sidecars never pass blockNetwork=true.
+  const open = buildOutboundNetworkAccess(false, undefined, undefined);
+  expect(open.networkAccessType).toBe(NetworkAccess_NetworkAccessType.OPEN);
+
+  // CIDR allowlist.
+  const cidr = buildOutboundNetworkAccess(false, ["10.0.0.0/8"], undefined);
+  expect(cidr.networkAccessType).toBe(
+    NetworkAccess_NetworkAccessType.ALLOWLIST,
+  );
+  expect(cidr.allowedCidrs).toEqual(["10.0.0.0/8"]);
+  expect(cidr.allowedDomains).toEqual([]);
+
+  // Domain allowlist.
+  const domain = buildOutboundNetworkAccess(false, undefined, [
+    "*.example.com",
+  ]);
+  expect(domain.networkAccessType).toBe(
+    NetworkAccess_NetworkAccessType.ALLOWLIST,
+  );
+  expect(domain.allowedDomains).toEqual(["*.example.com"]);
+  expect(domain.allowedCidrs).toEqual([]);
+
+  // An empty allowlist blocks external egress while keeping main-container
+  // connectivity; it must remain ALLOWLIST, not BLOCKED.
+  const empty = buildOutboundNetworkAccess(false, [], undefined);
+  expect(empty.networkAccessType).toBe(
+    NetworkAccess_NetworkAccessType.ALLOWLIST,
+  );
+  expect(empty.allowedCidrs).toEqual([]);
+  expect(empty.allowedDomains).toEqual([]);
 });
 
 test("SandboxPollAndReturnCode", async () => {

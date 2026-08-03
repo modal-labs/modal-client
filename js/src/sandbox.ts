@@ -400,6 +400,49 @@ export type SandboxCreateParams = {
   experimentalEnableSnapshot?: boolean;
 };
 
+/**
+ * Build the outbound {@link NetworkAccess} for the given params, defaulting to
+ * open access when nothing is specified. Shared by the Sandbox and sidecar
+ * create paths.
+ * @internal
+ * @hidden
+ */
+export function buildOutboundNetworkAccess(
+  blockNetwork: boolean | undefined,
+  outboundCidrAllowlist: string[] | undefined,
+  outboundDomainAllowlist: string[] | undefined,
+): NetworkAccess {
+  if (blockNetwork) {
+    if (outboundCidrAllowlist) {
+      throw new InvalidError(
+        "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
+      );
+    }
+    if (outboundDomainAllowlist) {
+      throw new InvalidError(
+        "outboundDomainAllowlist cannot be used when blockNetwork is enabled",
+      );
+    }
+    return NetworkAccess.create({
+      networkAccessType: NetworkAccess_NetworkAccessType.BLOCKED,
+      allowedCidrs: [],
+      allowedDomains: [],
+    });
+  }
+  if (outboundCidrAllowlist || outboundDomainAllowlist) {
+    return NetworkAccess.create({
+      networkAccessType: NetworkAccess_NetworkAccessType.ALLOWLIST,
+      allowedCidrs: outboundCidrAllowlist || [],
+      allowedDomains: outboundDomainAllowlist || [],
+    });
+  }
+  return NetworkAccess.create({
+    networkAccessType: NetworkAccess_NetworkAccessType.OPEN,
+    allowedCidrs: [],
+    allowedDomains: [],
+  });
+}
+
 export async function buildSandboxCreateRequestProto(
   appId: string,
   imageId: string,
@@ -486,7 +529,6 @@ export async function buildSandboxCreateRequestProto(
 
   const secretIds = (params.secrets || []).map((secret) => secret.secretId);
 
-  let networkAccess: NetworkAccess;
   if (params.blockNetwork) {
     if (params.i6pn) {
       throw new InvalidError(
@@ -494,39 +536,17 @@ export async function buildSandboxCreateRequestProto(
           "public egress, use an empty outbound allowlist (outboundCidrAllowlist: []) instead.",
       );
     }
-    if (params.outboundCidrAllowlist) {
-      throw new Error(
-        "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
-      );
-    }
-    if (params.outboundDomainAllowlist) {
-      throw new Error(
-        "outboundDomainAllowlist cannot be used when blockNetwork is enabled",
-      );
-    }
     if (params.inboundCidrAllowlist) {
       throw new Error(
         "inboundCidrAllowlist cannot be used when blockNetwork is enabled",
       );
     }
-    networkAccess = NetworkAccess.create({
-      networkAccessType: NetworkAccess_NetworkAccessType.BLOCKED,
-      allowedCidrs: [],
-      allowedDomains: [],
-    });
-  } else if (params.outboundCidrAllowlist || params.outboundDomainAllowlist) {
-    networkAccess = NetworkAccess.create({
-      networkAccessType: NetworkAccess_NetworkAccessType.ALLOWLIST,
-      allowedCidrs: params.outboundCidrAllowlist || [],
-      allowedDomains: params.outboundDomainAllowlist || [],
-    });
-  } else {
-    networkAccess = NetworkAccess.create({
-      networkAccessType: NetworkAccess_NetworkAccessType.OPEN,
-      allowedCidrs: [],
-      allowedDomains: [],
-    });
   }
+  const networkAccess = buildOutboundNetworkAccess(
+    params.blockNetwork,
+    params.outboundCidrAllowlist,
+    params.outboundDomainAllowlist,
+  );
 
   const schedulerPlacement: SchedulerPlacement | undefined = params.regions
     ?.length

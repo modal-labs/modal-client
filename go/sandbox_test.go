@@ -1035,6 +1035,37 @@ func TestUpdateNetworkPolicyValidation(t *testing.T) {
 	g.Expect(err).Should(gomega.HaveOccurred())
 }
 
+func TestBuildOutboundNetworkAccess_SidecarRules(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// No allowlist (the sidecar default) maps to open access, independent of the
+	// main container. Sidecars never pass blockNetwork=true.
+	open, err := buildOutboundNetworkAccess(false, nil, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(open.GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_OPEN))
+
+	// CIDR allowlist.
+	cidr, err := buildOutboundNetworkAccess(false, &Allowlist{Entries: []string{"10.0.0.0/8"}}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(cidr.GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
+	g.Expect(cidr.GetAllowedCidrs()).To(gomega.Equal([]string{"10.0.0.0/8"}))
+
+	// Domain allowlist.
+	domain, err := buildOutboundNetworkAccess(false, nil, &Allowlist{Entries: []string{"*.example.com"}})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(domain.GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
+	g.Expect(domain.GetAllowedDomains()).To(gomega.Equal([]string{"*.example.com"}))
+
+	// An empty allowlist blocks external egress while keeping main-container
+	// connectivity; it must remain ALLOWLIST, not BLOCKED.
+	empty, err := buildOutboundNetworkAccess(false, &Allowlist{}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(empty.GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
+	g.Expect(empty.GetAllowedCidrs()).To(gomega.BeEmpty())
+	g.Expect(empty.GetAllowedDomains()).To(gomega.BeEmpty())
+}
+
 func TestSandboxCreateRequestProto_InboundCIDRAllowlist(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

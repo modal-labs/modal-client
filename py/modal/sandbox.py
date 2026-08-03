@@ -237,6 +237,31 @@ def _validate_exec_args(args: Sequence[str]) -> None:
         )
 
 
+def _build_outbound_network_access(
+    block_network: bool,
+    outbound_cidr_allowlist: Sequence[str] | None,
+    outbound_domain_allowlist: Sequence[str] | None,
+) -> api_pb2.NetworkAccess:
+    """Build the outbound `NetworkAccess` for the given params.
+
+    Shared by `Sandbox.create` and the sidecar create path. When nothing is
+    specified, defaults to open network access.
+    """
+    if block_network:
+        if outbound_cidr_allowlist is not None:
+            raise InvalidError("`outbound_cidr_allowlist` cannot be used when `block_network` is enabled")
+        if outbound_domain_allowlist is not None:
+            raise InvalidError("`outbound_domain_allowlist` cannot be used when `block_network` is enabled")
+        return api_pb2.NetworkAccess(network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED)
+    if outbound_cidr_allowlist is None and outbound_domain_allowlist is None:
+        return api_pb2.NetworkAccess(network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN)
+    return api_pb2.NetworkAccess(
+        network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
+        allowed_cidrs=list(outbound_cidr_allowlist or []),
+        allowed_domains=list(outbound_domain_allowlist or []),
+    )
+
+
 class DefaultSandboxNameOverride(str):
     """A singleton class that represents the default sandbox name override.
 
@@ -439,27 +464,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 ]
             )
 
-            if block_network:
-                if outbound_cidr_allowlist is not None:
-                    raise InvalidError("`outbound_cidr_allowlist` cannot be used when `block_network` is enabled")
-                if outbound_domain_allowlist is not None:
-                    raise InvalidError("`outbound_domain_allowlist` cannot be used when `block_network` is enabled")
-                if inbound_cidr_allowlist is not None:
-                    raise InvalidError("`inbound_cidr_allowlist` cannot be used when `block_network` is enabled")
-                network_access = api_pb2.NetworkAccess(
-                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED,
-                )
-            else:
-                if outbound_domain_allowlist is None and outbound_cidr_allowlist is None:
-                    network_access = api_pb2.NetworkAccess(
-                        network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
-                    )
-                else:
-                    network_access = api_pb2.NetworkAccess(
-                        network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
-                        allowed_cidrs=list(outbound_cidr_allowlist or []),
-                        allowed_domains=list(outbound_domain_allowlist or []),
-                    )
+            if block_network and inbound_cidr_allowlist is not None:
+                raise InvalidError("`inbound_cidr_allowlist` cannot be used when `block_network` is enabled")
+            network_access = _build_outbound_network_access(
+                block_network, outbound_cidr_allowlist, outbound_domain_allowlist
+            )
 
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
@@ -2796,12 +2805,20 @@ class _SidecarManager:
         secrets: Collection[_Secret] | None = None,
         workdir: str | None = None,
         volumes: dict[str | os.PathLike, _Volume] | None = None,
+        outbound_cidr_allowlist: Sequence[str] | None = None,
+        outbound_domain_allowlist: Sequence[str] | None = None,
     ) -> _SidecarContainer:
         """Create a sidecar container running alongside the Sandbox's main container.
 
         Sidecar containers share the Sandbox's lifecycle but run their own Image and command. They
         can be used to run auxiliary processes, such as a database or a service the main container
         depends on.
+
+        The sidecar's outbound network policy is independent of the main container's and defaults to
+        open network access. To restrict it, pass `outbound_cidr_allowlist` and/or
+        `outbound_domain_allowlist`. To block all external egress while keeping connectivity to the
+        main container, pass an empty allowlist (`outbound_cidr_allowlist=[]`); a fully network-blocked
+        sidecar is not supported because it would have no IP and could not reach the main container.
 
         Args:
             *args: Command and arguments to run inside the sidecar container.
@@ -2811,6 +2828,11 @@ class _SidecarManager:
             secrets: Secrets to inject as environment variables in the sidecar container.
             workdir: Working directory for the command; must be absolute if set.
             volumes: Mapping of mount paths to `Volume` objects to mount in the sidecar container.
+            outbound_cidr_allowlist: If set, restrict the sidecar's outbound traffic to these CIDR
+                blocks. An empty list blocks all external egress while preserving connectivity to the
+                main container.
+            outbound_domain_allowlist: If set, restrict the sidecar's outbound TLS connections (port
+                443) to these SNI domains. Supports wildcards like ``*.example.com``.
 
         Returns:
             A `SidecarContainer` handle for the running container.
@@ -2865,6 +2887,7 @@ class _SidecarManager:
             workdir=workdir or "",
             secret_ids=[secret.object_id for secret in secrets],
             volume_mounts=volume_mounts,
+            network_access=_build_outbound_network_access(False, outbound_cidr_allowlist, outbound_domain_allowlist),
         )
         create_resp = await command_router_client.container_create(create_req)
         container_id = create_resp.container_id

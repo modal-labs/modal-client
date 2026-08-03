@@ -13,6 +13,7 @@ import {
   TaskContainerWaitRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
+  buildOutboundNetworkAccess,
   ContainerProcess,
   getReturnCode,
   validateExecArgs,
@@ -79,6 +80,17 @@ export type SidecarCreateParams = {
   secrets?: Secret[];
   /** Working directory of the sidecar container. */
   workdir?: string;
+  /**
+   * List of CIDRs the sidecar is allowed to access. Independent of the main
+   * container; if not set, all CIDRs are allowed. An empty list blocks all
+   * external egress while preserving connectivity to the main container.
+   */
+  outboundCidrAllowlist?: string[];
+  /**
+   * List of domain names the sidecar is allowed to access. Supports wildcard
+   * prefixes (`*.example.com`). Independent of the main container.
+   */
+  outboundDomainAllowlist?: string[];
 };
 
 /** Options for {@link SidecarService#get SidecarService.get()}. */
@@ -190,6 +202,11 @@ export class SidecarService {
           env: envDict,
           workdir: params?.workdir ?? "",
           secretIds,
+          networkAccess: buildOutboundNetworkAccess(
+            false,
+            params?.outboundCidrAllowlist,
+            params?.outboundDomainAllowlist,
+          ),
         }),
       );
     } catch (err) {

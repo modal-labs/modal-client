@@ -233,6 +233,46 @@ type SandboxCreateParams struct {
 	ExperimentalEnableSnapshot bool                         // Enable memory snapshots.
 }
 
+// buildOutboundNetworkAccess builds the outbound network policy for the given
+// params, defaulting to open access when nothing is specified. A non-nil
+// allowlist enables allowlist mode (empty Entries blocks that dimension).
+// Shared by the Sandbox and sidecar create paths.
+func buildOutboundNetworkAccess(blockNetwork bool, outboundCIDRAllowlist, outboundDomainAllowlist *Allowlist) (*pb.NetworkAccess, error) {
+	if blockNetwork {
+		if outboundCIDRAllowlist != nil {
+			return nil, fmt.Errorf("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
+		}
+		if outboundDomainAllowlist != nil {
+			return nil, fmt.Errorf("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled")
+		}
+		return pb.NetworkAccess_builder{
+			NetworkAccessType: pb.NetworkAccess_BLOCKED,
+			AllowedCidrs:      []string{},
+			AllowedDomains:    []string{},
+		}.Build(), nil
+	}
+	if outboundCIDRAllowlist != nil || outboundDomainAllowlist != nil {
+		var cidrs []string
+		var domains []string
+		if outboundCIDRAllowlist != nil {
+			cidrs = outboundCIDRAllowlist.Entries
+		}
+		if outboundDomainAllowlist != nil {
+			domains = outboundDomainAllowlist.Entries
+		}
+		return pb.NetworkAccess_builder{
+			NetworkAccessType: pb.NetworkAccess_ALLOWLIST,
+			AllowedCidrs:      cidrs,
+			AllowedDomains:    domains,
+		}.Build(), nil
+	}
+	return pb.NetworkAccess_builder{
+		NetworkAccessType: pb.NetworkAccess_OPEN,
+		AllowedCidrs:      []string{},
+		AllowedDomains:    []string{},
+	}.Build(), nil
+}
+
 // buildSandboxCreateRequestProto builds a SandboxCreateRequest proto from options.
 func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateParams) (*pb.SandboxCreateRequest, error) {
 	gpuConfig, err := parseGPUConfig(params.GPU)
@@ -299,45 +339,17 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		return nil, err
 	}
 
-	var networkAccess *pb.NetworkAccess
 	if params.BlockNetwork {
 		if params.I6PN {
 			return nil, fmt.Errorf("BlockNetwork disables all networking, including i6pn. To keep i6pn while blocking public egress, use an empty outbound allowlist (OutboundCIDRAllowlist: &Allowlist{}) instead")
 		}
-		if params.OutboundCIDRAllowlist != nil {
-			return nil, fmt.Errorf("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
-		}
-		if params.OutboundDomainAllowlist != nil {
-			return nil, fmt.Errorf("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled")
-		}
 		if params.InboundCIDRAllowlist != nil {
 			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
-		networkAccess = pb.NetworkAccess_builder{
-			NetworkAccessType: pb.NetworkAccess_BLOCKED,
-			AllowedCidrs:      []string{},
-			AllowedDomains:    []string{},
-		}.Build()
-	} else if params.OutboundCIDRAllowlist != nil || params.OutboundDomainAllowlist != nil {
-		var cidrs []string
-		var domains []string
-		if params.OutboundCIDRAllowlist != nil {
-			cidrs = params.OutboundCIDRAllowlist.Entries
-		}
-		if params.OutboundDomainAllowlist != nil {
-			domains = params.OutboundDomainAllowlist.Entries
-		}
-		networkAccess = pb.NetworkAccess_builder{
-			NetworkAccessType: pb.NetworkAccess_ALLOWLIST,
-			AllowedCidrs:      cidrs,
-			AllowedDomains:    domains,
-		}.Build()
-	} else {
-		networkAccess = pb.NetworkAccess_builder{
-			NetworkAccessType: pb.NetworkAccess_OPEN,
-			AllowedCidrs:      []string{},
-			AllowedDomains:    []string{},
-		}.Build()
+	}
+	networkAccess, err := buildOutboundNetworkAccess(params.BlockNetwork, params.OutboundCIDRAllowlist, params.OutboundDomainAllowlist)
+	if err != nil {
+		return nil, err
 	}
 
 	var schedulerPlacement *pb.SchedulerPlacement

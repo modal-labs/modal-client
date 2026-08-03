@@ -2564,6 +2564,83 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer):
     assert list(container_create_request.secret_ids) == [secret.object_id]
 
 
+@skip_non_subprocess
+def test_sandbox_container_create_defaults_to_open_network_access(app, servicer):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
+    assert container_create_request.network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_with_outbound_cidr_allowlist(app, servicer):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_sidecars.create(
+            "bash", "-c", "sleep 100", name="worker", image=image, outbound_cidr_allowlist=["10.0.0.0/8"]
+        )
+
+    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
+    network_access = container_create_request.network_access
+    assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(network_access.allowed_cidrs) == ["10.0.0.0/8"]
+    assert list(network_access.allowed_domains) == []
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_with_outbound_domain_allowlist(app, servicer):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_sidecars.create(
+            "bash", "-c", "sleep 100", name="worker", image=image, outbound_domain_allowlist=["*.example.com"]
+        )
+
+    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
+    network_access = container_create_request.network_access
+    assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(network_access.allowed_domains) == ["*.example.com"]
+    assert list(network_access.allowed_cidrs) == []
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_empty_cidr_allowlist_blocks_egress(app, servicer):
+    # An empty allowlist is the supported way to block external egress while
+    # keeping connectivity to the main container; it must not become BLOCKED.
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_sidecars.create(
+            "bash", "-c", "sleep 100", name="worker", image=image, outbound_cidr_allowlist=[]
+        )
+
+    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
+    network_access = container_create_request.network_access
+    assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(network_access.allowed_cidrs) == []
+    assert list(network_access.allowed_domains) == []
+
+
 def test_sandbox_container_create_rejects_image_with_mount_layers(app):
     image = mock.Mock()
     image._mount_layers = [mock.Mock()]

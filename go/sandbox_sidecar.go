@@ -43,6 +43,13 @@ type SidecarCreateParams struct {
 	Secrets []*Secret
 	// Workdir sets the working directory of the sidecar container.
 	Workdir string
+	// OutboundCIDRAllowlist restricts the sidecar's outbound traffic to these CIDRs. Independent of the main
+	// container; nil means all CIDRs are allowed. A non-nil allowlist with empty Entries blocks all external
+	// egress while preserving connectivity to the main container.
+	OutboundCIDRAllowlist *Allowlist
+	// OutboundDomainAllowlist restricts the sidecar's outbound TLS connections (port 443) to these SNI domains.
+	// Supports wildcard prefixes (*.example.com). Independent of the main container.
+	OutboundDomainAllowlist *Allowlist
 }
 
 // SidecarGetParams holds options for retrieving a sidecar by name.
@@ -126,6 +133,11 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		return nil, err
 	}
 
+	networkAccess, err := buildOutboundNetworkAccess(false, params.OutboundCIDRAllowlist, params.OutboundDomainAllowlist)
+	if err != nil {
+		return nil, err
+	}
+
 	req := pb.TaskContainerCreateRequest_builder{
 		TaskId:        taskID,
 		ContainerName: name,
@@ -134,6 +146,7 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		Env:           envDict,
 		Workdir:       params.Workdir,
 		SecretIds:     secretIds,
+		NetworkAccess: networkAccess,
 	}.Build()
 
 	resp, err := client.ContainerCreate(ctx, req)
