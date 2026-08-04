@@ -2611,6 +2611,23 @@ message Image {
   repeated VolumeMount volume_mounts = 23;
 }
 
+message ImageBuildChainGetRequest {
+  string image_id = 1;
+}
+
+message ImageBuildChainGetResponse {
+  repeated ImageBuildStep build_steps = 1;
+}
+
+message ImageBuildStep {
+  string image_id = 1;
+  google.protobuf.Timestamp started_at = 2;
+  google.protobuf.Timestamp finished_at = 3;
+  string builder_app_id = 4;
+  string builder_task_id = 5;
+}
+
+
 message ImageContextFile {
   string filename = 1;
   bytes data = 2;
@@ -4736,6 +4753,7 @@ service ModalClient {
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Images
+  rpc ImageBuildChainGet(ImageBuildChainGetRequest) returns (ImageBuildChainGetResponse);
   rpc ImageDelete(ImageDeleteRequest) returns (google.protobuf.Empty);
   rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetByTag(ImageGetByTagRequest) returns (ImageGetByTagResponse);
