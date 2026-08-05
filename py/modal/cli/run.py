@@ -552,8 +552,11 @@ def deploy(
     """Deploy a Modal application.
 
     Examples:
+
+    ```
     modal deploy my_script.py
     modal deploy -m my_package.my_mod
+    ```
     """
     # this ensures that lookups without environment specification use the same env as specified
     env = ensure_env(env)
@@ -612,9 +615,9 @@ def serve(
 
     Examples:
 
-        ```
-        modal serve hello_world.py
-        ```
+    ```
+    modal serve hello_world.py
+    ```
 
     Modal-generated URLs will have a `-dev` suffix appended to them when running with `modal serve`.
     To customize this suffix (i.e., to avoid collisions with other users in your workspace who are
