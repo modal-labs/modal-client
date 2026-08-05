@@ -1271,10 +1271,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         auth_token = await client._auth_token_manager.get_token()
         resp = await client.stub.SandboxGetFromNameV2(req, metadata=[("x-modal-auth-token", auth_token)])
 
-        obj = _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
-        obj._is_v2 = True
-        obj._hydrate_metadata_v2()
-        return obj
+        return _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
 
     @staticmethod
     async def from_id(sandbox_id: str, client: _Client | None = None) -> "_Sandbox":
@@ -2569,10 +2566,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             for sandbox_info in resp.sandboxes:
                 sandbox_info: api_pb2.SandboxInfo
                 obj = _Sandbox._new_hydrated(sandbox_info.id, client, sandbox_info.metadata)
-                # SandboxListV2 only returns V2 sandboxes; mark them as such so
-                # operations like wait/terminate/exec use the V2 RPCs and stdio.
-                obj._is_v2 = True
-                obj._hydrate_metadata_v2()
                 obj._result = sandbox_info.task_info.result
                 yield obj
 

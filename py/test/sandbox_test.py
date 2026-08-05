@@ -790,6 +790,39 @@ def test_sandbox_experimental_list_tags(client, servicer):
         assert experimental_list({"env": "staging"}) == []
 
 
+def test_sandbox_experimental_list_routes_mirrored_v1_sandbox_to_v1(client, servicer):
+    # V1 sandboxes are mirrored into the V2 store during the V1->V2 migration,
+    # so SandboxListV2 can return V1 sandboxes; their handles must route to the
+    # V1 RPCs based on the ID shape.
+    v1_sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
+    servicer.sandbox_app_id = "ap-list-mirrored"
+    servicer.sandbox_tags[v1_sandbox_id] = {}
+
+    with servicer.intercept() as ctx:
+        (sb,) = list(Sandbox._experimental_list(app_id="ap-list-mirrored", client=client))
+        sb.terminate()
+
+    assert sb.object_id == v1_sandbox_id
+    (terminate_req,) = ctx.get_requests("SandboxTerminate")
+    assert terminate_req.sandbox_id == v1_sandbox_id
+    assert ctx.get_requests("SandboxTerminateV2") == []
+
+
+def test_sandbox_experimental_from_name_routes_mirrored_v1_sandbox_to_v1(client, servicer):
+    # Same as above: the V2 backend may resolve a mirrored V1 sandbox by name.
+    v1_sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
+    servicer.sandbox_names[v1_sandbox_id] = "mirrored-v1"
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox._experimental_from_name("my-app", "mirrored-v1", client=client)
+        sb.terminate()
+
+    assert sb.object_id == v1_sandbox_id
+    (terminate_req,) = ctx.get_requests("SandboxTerminate")
+    assert terminate_req.sandbox_id == v1_sandbox_id
+    assert ctx.get_requests("SandboxTerminateV2") == []
+
+
 def test_sandbox_create_with_tags(app, client, servicer):
     tags = {"env": "prod", "team": "core"}
     with servicer.intercept() as ctx:
