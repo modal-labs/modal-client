@@ -256,13 +256,16 @@ async def _refine_dense_ranges(
                 )
                 sub_resp = await client.stub.AppCountLogs(sub_req)
                 sub_ranges = _buckets_to_ranges(list(sub_resp.buckets), smaller_secs)
-                # Clamp the last sub-range to the parent's end. When bucket_secs
-                # doesn't evenly divide the parent duration, the last bucket
-                # boundary overshoots (e.g. parent (0,30) with 20s buckets
-                # produces (20,40)), causing overlaps with sibling ranges.
+                # Clamp the edge sub-ranges to the parent boundaries. Bucket
+                # alignment can make the first bucket begin before the parent
+                # (e.g. parent (6,12) with 4s buckets produces (4,8)) or make
+                # the last bucket end after it (e.g. parent (0,30) with 20s
+                # buckets produces (20,40)), causing overlaps with siblings.
                 if sub_ranges:
-                    s, _, c = sub_ranges[-1]
-                    sub_ranges[-1] = (s, min(s + smaller_secs, end), c)
+                    first_start, first_end, first_count = sub_ranges[0]
+                    sub_ranges[0] = (max(first_start, start), first_end, first_count)
+                    last_start, last_end, last_count = sub_ranges[-1]
+                    sub_ranges[-1] = (last_start, min(last_end, end), last_count)
                 return sub_ranges
 
         refine_set = {i for i, _ in to_refine}

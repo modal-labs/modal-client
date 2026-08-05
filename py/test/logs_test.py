@@ -458,6 +458,34 @@ async def test_refine_clamps_sub_ranges_to_parent_boundary():
 
 
 @pytest.mark.asyncio
+async def test_refine_clamps_first_sub_range_to_parent_boundary():
+    ranges = [
+        (0.0, 6.0, 100),
+        (6.0, 12.0, _FETCH_LIMIT + 1),
+    ]
+    client: Any = _MockClient(
+        {
+            (6.0, 12.0, 4): _count_response([(4.0, 5000), (8.0, 5000)], 4),
+        }
+    )
+
+    result = await _refine_dense_ranges(
+        client,
+        "app-1",
+        ranges,
+        LogsFilters(),
+        max_ranges=500,
+        max_iterations=20,
+    )
+
+    assert result == [
+        (0.0, 6.0, 100),
+        (6.0, 8.0, 5000),
+        (8.0, 12.0, 5000),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_refine_stops_at_smallest_bucket():
     """Refinement should stop when ranges are already at the smallest bucket size (2s)."""
     # A 2s range that's dense — can't subdivide further
