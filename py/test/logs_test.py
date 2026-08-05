@@ -780,6 +780,177 @@ async def test_tail_logs_errors_on_range_exceeding_max():
             pass
 
 
+# ---------------------------------------------------------------------------
+# Image logs
+# ---------------------------------------------------------------------------
+
+
+def _image_build_step(index: int) -> api_pb2.ImageBuildStep:
+    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=index)
+    finished_at = started_at + timedelta(seconds=30)
+    step = api_pb2.ImageBuildStep(
+        image_id=f"im-{index}",
+        builder_app_id=f"ap-{index}",
+        builder_task_id=f"ta-{index}",
+    )
+    step.started_at.FromDatetime(started_at)
+    step.finished_at.FromDatetime(finished_at)
+    return step
+
+
+class _ImageLogSource:
+    object_id = "im-result"
+
+    def __init__(self, client: Any, build_steps: list[api_pb2.ImageBuildStep]):
+        from modal._supports_logs import _ImageLogQueryData
+
+        self._query_data = _ImageLogQueryData(client=client, build_steps=build_steps, object_id=self.object_id)
+
+    async def _get_log_query_data(self):
+        return self._query_data
+
+
+@pytest.mark.asyncio
+async def test_image_logs_fetch_runs_steps_concurrently_and_returns_build_order(monkeypatch):
+    from modal import _logs_manager
+
+    build_steps = [_image_build_step(i) for i in range(3)]
+    selected_steps_started = asyncio.Event()
+    calls = []
+
+    async def fake_fetch_logs(client, app_id, since, until, *, filters):
+        calls.append((app_id, since, until, filters.task_id))
+        if len(calls) == 2:
+            selected_steps_started.set()
+        await asyncio.wait_for(selected_steps_started.wait(), timeout=1)
+        yield api_pb2.TaskLogsBatch(
+            task_id=filters.task_id,
+            items=[api_pb2.TaskLogs(data=f"{app_id}\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
+        )
+
+    monkeypatch.setattr(_logs_manager, "fetch_logs", fake_fetch_logs)
+    manager = _logs_manager._ImageLogsManager(_ImageLogSource(object(), build_steps))
+
+    entries = await asyncio.wait_for(_collect_entries(manager.fetch(layers=2)), timeout=2)
+
+    assert [entry.message for entry in entries] == ["ap-1\n", "ap-2\n"]
+    assert {(app_id, task_id) for app_id, _, _, task_id in calls} == {("ap-1", "ta-1"), ("ap-2", "ta-2")}
+    assert all(since.tzinfo is timezone.utc and until.tzinfo is timezone.utc for _, since, until, _ in calls)
+
+
+async def _collect_entries(generator):
+    return [entry async for entry in generator]
+
+
+@pytest.mark.asyncio
+async def test_image_logs_fetch_propagates_worker_errors(monkeypatch):
+    from modal import _logs_manager
+
+    async def failing_fetch_logs(*args, **kwargs):
+        raise RuntimeError("fetch failed")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(_logs_manager, "fetch_logs", failing_fetch_logs)
+    manager = _logs_manager._ImageLogsManager(_ImageLogSource(object(), [_image_build_step(0)]))
+
+    with pytest.raises(RuntimeError, match="fetch failed"):
+        await asyncio.wait_for(_collect_entries(manager.fetch()), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_image_logs_fetch_closes_while_producer_queue_is_full(monkeypatch):
+    from modal import _logs_manager
+
+    producer_reached_full_queue = asyncio.Event()
+
+    async def fake_fetch_logs(*args, **kwargs):
+        for i in range(200):
+            if i == 101:
+                producer_reached_full_queue.set()
+            yield api_pb2.TaskLogsBatch(
+                items=[api_pb2.TaskLogs(data=f"line-{i}\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)]
+            )
+
+    monkeypatch.setattr(_logs_manager, "fetch_logs", fake_fetch_logs)
+    manager = _logs_manager._ImageLogsManager(_ImageLogSource(object(), [_image_build_step(0)]))
+    stream = manager.fetch()
+
+    await anext(stream)
+    await asyncio.wait_for(producer_reached_full_queue.wait(), timeout=1)
+    await asyncio.wait_for(stream.aclose(), timeout=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("layers", [0, -1])
+async def test_image_logs_fetch_validates_layers(layers):
+    from modal._logs_manager import _ImageLogsManager
+
+    manager = _ImageLogsManager(_ImageLogSource(object(), [_image_build_step(0), _image_build_step(1)]))
+
+    with pytest.raises(ValueError, match="layers"):
+        await _collect_entries(manager.fetch(layers=layers))
+
+
+@pytest.mark.asyncio
+async def test_image_logs_tail_queries_backwards_and_returns_chronological_build_order(monkeypatch):
+    from modal import _logs_manager
+
+    build_steps = [_image_build_step(i) for i in range(3)]
+    calls = []
+    messages_by_task = {
+        "ta-2": ["step-2-a\n", "step-2-b\n"],
+        "ta-1": ["step-1-a\n", "step-1-b\n"],
+        "ta-0": ["step-0-a\n"],
+    }
+
+    async def fake_tail_logs(client, app_id, n, *, since, until, filters):
+        calls.append((app_id, n, since, until, filters.task_id))
+        yield api_pb2.TaskLogsBatch(
+            task_id=filters.task_id,
+            items=[
+                api_pb2.TaskLogs(data=message, file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
+                for message in messages_by_task[filters.task_id][:n]
+            ],
+        )
+
+    monkeypatch.setattr(_logs_manager, "tail_logs", fake_tail_logs)
+    manager = _logs_manager._ImageLogsManager(_ImageLogSource(object(), build_steps))
+
+    entries = await _collect_entries(manager.tail(entries=4))
+
+    assert [entry.message for entry in entries] == ["step-1-a\n", "step-1-b\n", "step-2-a\n", "step-2-b\n"]
+    assert [(app_id, n, task_id) for app_id, n, _, _, task_id in calls] == [
+        ("ap-2", 4, "ta-2"),
+        ("ap-1", 2, "ta-1"),
+    ]
+    assert all(since.tzinfo is timezone.utc and until.tzinfo is timezone.utc for _, _, since, until, _ in calls)
+
+
+@pytest.mark.asyncio
+async def test_image_logs_tail_does_not_cap_step_request_at_100(monkeypatch):
+    from modal import _logs_manager
+
+    requested_entries = 150
+    requested_limits = []
+
+    async def fake_tail_logs(client, app_id, n, *, since, until, filters):
+        requested_limits.append(n)
+        yield api_pb2.TaskLogsBatch(
+            task_id=filters.task_id,
+            items=[
+                api_pb2.TaskLogs(data=f"line-{i}\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT) for i in range(n)
+            ],
+        )
+
+    monkeypatch.setattr(_logs_manager, "tail_logs", fake_tail_logs)
+    manager = _logs_manager._ImageLogsManager(_ImageLogSource(object(), [_image_build_step(0)]))
+
+    entries = await _collect_entries(manager.tail(entries=requested_entries))
+
+    assert requested_limits == [requested_entries]
+    assert len(entries) == requested_entries
+
+
 # ===========================================================================
 # CLI integration tests (require servicer fixtures)
 # ===========================================================================
@@ -1000,19 +1171,9 @@ def test_server_logs_tail(client, servicer):
     assert fetch_requests[0].limit == 1
 
 
-class _StaticLogSource:
-    def __init__(self, object_id: str):
-        self.object_id = object_id
-
-    async def _get_log_query_data(self):
-        raise NotImplementedError
-
-
 def test_log_entry_context_ids_for_function_query():
-    from modal._logs_manager import _LogsManager
+    from modal._logs_manager import _entry_from_item
 
-    source = _StaticLogSource("fu-parent")
-    manager = _LogsManager(source)
     item = api_pb2.TaskLogs(
         data="hello\n",
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
@@ -1025,17 +1186,15 @@ def test_log_entry_context_ids_for_function_query():
         task_id="ta-batch",
     )
 
-    entry = manager._entry_from_item(item, batch)
+    entry = _entry_from_item("fu-parent", item, batch)
 
     assert entry.object_id == "fu-parent"
     assert entry.context_ids == ["fc-child", "in-item:entry", "ta-item"]
 
 
 def test_log_entry_context_ids_fall_back_to_batch_fields():
-    from modal._logs_manager import _LogsManager
+    from modal._logs_manager import _entry_from_item
 
-    source = _StaticLogSource("fu-parent")
-    manager = _LogsManager(source)
     item = api_pb2.TaskLogs(
         data="hello\n",
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
@@ -1046,16 +1205,14 @@ def test_log_entry_context_ids_fall_back_to_batch_fields():
         task_id="ta-batch",
     )
 
-    entry = manager._entry_from_item(item, batch)
+    entry = _entry_from_item("fu-parent", item, batch)
 
     assert entry.context_ids == ["fc-child", "in-batch", "ta-batch"]
 
 
 def test_log_entry_context_ids_for_function_call_query():
-    from modal._logs_manager import _LogsManager
+    from modal._logs_manager import _entry_from_item
 
-    source = _StaticLogSource("fc-parent")
-    manager = _LogsManager(source)
     item = api_pb2.TaskLogs(
         data="hello\n",
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
@@ -1066,17 +1223,15 @@ def test_log_entry_context_ids_for_function_call_query():
         task_id="ta-child",
     )
 
-    entry = manager._entry_from_item(item, batch)
+    entry = _entry_from_item("fc-parent", item, batch)
 
     assert entry.object_id == "fc-parent"
     assert entry.context_ids == ["in-child", "ta-child"]
 
 
 def test_log_entry_context_ids_for_unsupported_query_object():
-    from modal._logs_manager import _LogsManager
+    from modal._logs_manager import _entry_from_item
 
-    source = _StaticLogSource("ap-parent")
-    manager = _LogsManager(source)
     item = api_pb2.TaskLogs(
         data="hello\n",
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
@@ -1089,7 +1244,7 @@ def test_log_entry_context_ids_for_unsupported_query_object():
         task_id="ta-batch",
     )
 
-    entry = manager._entry_from_item(item, batch)
+    entry = _entry_from_item("ap-parent", item, batch)
 
     assert entry.object_id == "ap-parent"
     assert entry.context_ids == []

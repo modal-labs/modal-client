@@ -23,6 +23,7 @@ import modal
 from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
 from modal.exception import DeprecationError, InvalidError
+from modal.types import LogEntry
 from modal_proto import api_pb2
 
 from . import helpers
@@ -264,6 +265,39 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
 
     list_help_text = run_cli_command(["image", "names", "list", "--help"]).stdout
     assert "--prefix" in list_help_text
+
+
+def test_image_cli_logs(set_env_client, monkeypatch):
+    fetch_calls: list[int | None] = []
+
+    async def fake_fetch(*, layers=1):
+        fetch_calls.append(layers)
+        yield LogEntry(
+            message=f"logs for {layers=}\n",
+            timestamp=datetime.now(timezone.utc),
+            source="stdout",
+            object_id="im-123",
+            context_ids=[],
+        )
+
+    image_api = mock.Mock()
+    image_api.from_id.return_value.logs.fetch.aio.side_effect = fake_fetch
+    monkeypatch.setattr("modal.cli.image.Image", image_api)
+
+    assert run_cli_command(["image", "logs", "im-123"]).stdout == "logs for layers=1\n"
+    assert run_cli_command(["image", "logs", "im-123", "--layers", "3"]).stdout == "logs for layers=3\n"
+    assert run_cli_command(["image", "logs", "im-123", "--all"]).stdout == "logs for layers=None\n"
+    assert fetch_calls == [1, 3, None]
+    assert image_api.from_id.call_args_list == [mock.call("im-123")] * 3
+
+    result = run_cli_command(
+        ["image", "logs", "im-123", "--layers", "3", "--all"],
+        expected_exit_code=2,
+    )
+    assert "--all cannot be combined with --layers" in result.stderr
+
+    result = run_cli_command(["image", "logs", "im-123", "--layers", "0"], expected_exit_code=2)
+    assert "--layers" in result.stderr
 
 
 def test_image_cli_history(servicer, set_env_client, monkeypatch):

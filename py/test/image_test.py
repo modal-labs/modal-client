@@ -21,6 +21,7 @@ from modal._image import (
     ImageBuilderVersion,
     _base_image_config,
     _dockerhub_python_version,
+    _FailedBuildAttempt,
     _get_modal_requirements_path,
     _validate_python_version,
 )
@@ -29,9 +30,11 @@ from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import (
     ExecutionError,
+    ImageBuildError,
     InvalidError,
     ModuleNotMountable,
     NotFoundError,
+    RemoteError,
     VersionError,
 )
 from modal.file_pattern_matcher import FilePatternMatcher
@@ -2130,6 +2133,83 @@ def test_build_using_lookup_app(client):
     app = modal.App.lookup("remote-app", client=client, create_if_missing=True)
     image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
     image.build(app=app)
+
+
+def test_image_logs_require_build_attempt():
+    image = modal.Image.debian_slim()
+
+    with pytest.raises(InvalidError, match="has not been built"):
+        list(image.logs.fetch())
+
+
+def test_build_failure_logs_use_failed_attempt(client, servicer):
+    app = modal.App.lookup("remote-app", client=client, create_if_missing=True)
+    image = modal.Image.debian_slim().pip_install("does-not-exist").run_commands("echo never-runs")
+    image_impl = synchronizer._translate_in(image)
+    client_impl = synchronizer._translate_in(client)
+
+    # Model a rebuild of an Image that was previously hydrated with another client.
+    image_impl._hydrate("im-previous", mock.Mock(), None)
+    image_impl._build_steps = [api_pb2.ImageBuildStep(image_id="im-stale")]
+
+    get_or_create_calls = 0
+
+    async def image_get_or_create_failure(servicer, stream):
+        nonlocal get_or_create_calls
+        await stream.recv_message()
+        get_or_create_calls += 1
+
+        if get_or_create_calls == 1:
+            response = api_pb2.ImageGetOrCreateResponse(
+                image_id="im-base",
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                metadata=api_pb2.ImageMetadata(),
+            )
+        else:
+            response = api_pb2.ImageGetOrCreateResponse(
+                image_id="im-failed",
+                result=api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                    exception="package installation failed",
+                ),
+            )
+        await stream.send_message(response)
+
+    failed_step = api_pb2.ImageBuildStep(image_id="im-failed")
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ImageGetOrCreate", image_get_or_create_failure)
+
+        with pytest.raises(ImageBuildError) as exc_info:
+            image.build(app)
+
+        assert isinstance(exc_info.value, RemoteError)
+        assert exc_info.value.image_id == "im-failed"
+        assert get_or_create_calls == 2  # The layer after the failed dependency was never attempted.
+        assert image_impl._failed_build_attempt == _FailedBuildAttempt("im-failed", client_impl)
+        assert image_impl._build_steps is None
+
+        ctx.add_response("ImageBuildChainGet", api_pb2.ImageBuildChainGetResponse(build_steps=[failed_step]))
+        query_data = image._get_log_query_data()
+
+    assert query_data.client is client_impl
+    assert query_data.object_id == "im-failed"
+    assert query_data.build_steps == [failed_step]
+    assert ctx.pop_request("ImageBuildChainGet").image_id == "im-failed"
+
+
+def test_successful_image_hydration_clears_failed_build_attempt():
+    image = modal.Image.debian_slim()
+    image_impl = synchronizer._translate_in(image)
+    image_impl._failed_build_attempt = _FailedBuildAttempt("im-failed", mock.Mock())
+    image_impl._build_steps = [api_pb2.ImageBuildStep(image_id="im-failed")]
+
+    successful_client = mock.Mock()
+    image_impl._hydrate("im-success", successful_client, api_pb2.ImageMetadata())
+
+    assert image_impl._failed_build_attempt is None
+    assert image_impl._build_steps is None
+    assert image_impl.object_id == "im-success"
+    assert image_impl.client is successful_client
 
 
 def test_debian_slim_free_threading_not_supported(servicer, client):

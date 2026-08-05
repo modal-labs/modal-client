@@ -410,7 +410,6 @@ async def fetch_logs(
 
     if until - since > _MAX_FETCH_RANGE:
         raise LogsFetchError(f"Time range cannot exceed {_MAX_FETCH_RANGE.days} days.")
-
     # Phase 1: Count logs per bucket
     bucket_secs = _pick_bucket_secs(since, until)
     count_req = api_pb2.AppCountLogsRequest(

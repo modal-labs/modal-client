@@ -386,3 +386,11 @@ class SandboxFilesystemPathAlreadyExistsError(SandboxFilesystemError):
     """Raised when a path already exists and the operation requires it to be absent."""
 
     pass
+
+
+class ImageBuildError(RemoteError):
+    """Raised when an image build fails."""
+
+    def __init__(self, message: str, image_id: str):
+        super().__init__(message)
+        self.image_id = image_id

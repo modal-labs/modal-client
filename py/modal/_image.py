@@ -30,9 +30,11 @@ from modal_proto import api_pb2
 
 from ._environments import _get_environment_cached
 from ._load_context import LoadContext
+from ._logs_manager import _ImageLogsManager
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
+from ._supports_logs import _ImageLogQueryData
 from ._utils.async_utils import TaskContext, deprecate_aio_usage, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
@@ -47,10 +49,10 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .exception import (
     ExecutionError,
+    ImageBuildError,
     InternalError,
     InvalidError,
     NotFoundError,
-    RemoteError,
     ServiceError,
     VersionError,
 )
@@ -477,6 +479,12 @@ def _requires_image_instance(method):
     return wrapper
 
 
+@dataclass(frozen=True)
+class _FailedBuildAttempt:
+    image_id: str
+    client: _Client
+
+
 class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
@@ -493,6 +501,9 @@ class _Image(_Object, type_prefix="im"):
     _added_python_source_set: frozenset[str]  # used to warn about missing mounts during auto-mount deprecation
     _metadata: api_pb2.ImageMetadata | None = None  # set on hydration, private for now
     _is_empty: bool
+    _build_steps: list[api_pb2.ImageBuildStep] | None = None
+    # A failed image ID is only queryable through the client that performed the build.
+    _failed_build_attempt: _FailedBuildAttempt | None = None
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
@@ -524,6 +535,9 @@ class _Image(_Object, type_prefix="im"):
         if metadata:
             assert isinstance(metadata, api_pb2.ImageMetadata)
             self._metadata = metadata
+        # Successful hydration supersedes diagnostic state retained from a failed build.
+        self._failed_build_attempt = None
+        self._build_steps = None
 
     def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
         if copy:
@@ -752,12 +766,12 @@ class _Image(_Object, type_prefix="im"):
 
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
                 if result.exception:
-                    raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
+                    raise ImageBuildError(
+                        f"Image build for {image_id} failed with the exception:\n{result.exception}", image_id
+                    )
                 else:
-                    msg = f"Image build for {image_id} failed. See build logs for more details."
-                    if not OutputManager.get().is_enabled:
-                        msg += " (Hint: Use `modal.enable_output()` to see logs from the process building the Image.)"
-                    raise RemoteError(msg)
+                    msg = f"Image build for {image_id} failed.\nView the build logs:\n  modal image logs {image_id}"
+                    raise ImageBuildError(msg, image_id)
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
                 msg = f"Image build for {image_id} terminated due to external shut-down. Please try again."
                 if result.exception:
@@ -765,15 +779,16 @@ class _Image(_Object, type_prefix="im"):
                         f"Image build for {image_id} terminated due to external shut-down with the exception:\n"
                         f"{result.exception}"
                     )
-                raise RemoteError(msg)
+                raise ImageBuildError(msg, image_id)
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError(
-                    f"Image build for {image_id} timed out. Please try again with a larger `timeout` parameter."
+                raise ImageBuildError(
+                    f"Image build for {image_id} timed out. Please try again with a larger `timeout` parameter.",
+                    image_id,
                 )
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 pass
             else:
-                raise RemoteError("Unknown status %s!" % result.status)
+                raise ImageBuildError("Unknown status %s!" % result.status, image_id)
 
             self._hydrate(image_id, load_context.client, metadata)
             local_mounts: set[_Mount] = set()
@@ -1064,8 +1079,18 @@ class _Image(_Object, type_prefix="im"):
 
         resolver = Resolver()
         async with TaskContext() as tc:
+            self._build_steps = None
+            self._failed_build_attempt = None
             load_context = LoadContext(task_context=tc).merged_with(app._root_load_context)
-            await resolver.load(self, load_context)
+            try:
+                await resolver.load(self, load_context)
+            except ImageBuildError as e:
+                self._failed_build_attempt = _FailedBuildAttempt(
+                    image_id=e.image_id,
+                    client=load_context.client,
+                )
+
+                raise
         return self
 
     @_requires_image_instance
@@ -3028,3 +3053,38 @@ class _Image(_Object, type_prefix="im"):
                 "Images cannot currently be hydrated on demand; you can build an Image by running an App that uses it."
             )
         return self
+
+    async def _resolve_image_id_client_for_logs(self) -> tuple[str, _Client]:
+        if self._failed_build_attempt is not None:
+            return self._failed_build_attempt.image_id, self._failed_build_attempt.client
+        if self._object_id is None:
+            raise InvalidError("Cannot fetch logs for an image that has not been built yet.")
+        if self._is_hydrated:
+            return self._object_id, self.client
+        # Use self._load_context_overrides to handle case of explicitly passed
+        # client in from_id
+        client = (await self._load_context_overrides.apply_defaults()).client
+        return self._object_id, client
+
+    async def _get_log_query_data(self) -> _ImageLogQueryData:
+        image_id, client = await self._resolve_image_id_client_for_logs()
+
+        if self._build_steps is None:
+            request = api_pb2.ImageBuildChainGetRequest(image_id=image_id)
+            response = await client.stub.ImageBuildChainGet(request)
+            self._build_steps = list(response.build_steps)
+        return _ImageLogQueryData(client, self._build_steps or [], image_id)
+
+    @property
+    def logs(self) -> _ImageLogsManager:
+        """Access logs for an `Image`.
+
+        Use [`fetch()`](#logsfetch)
+        to read logs for individual build layers and [`tail()`](#logstail)
+        to read the most recent logs.
+
+        See also:
+            - [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs):
+              CLI access to logs for an App.
+        """
+        return _ImageLogsManager(self)
