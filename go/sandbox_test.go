@@ -221,13 +221,26 @@ func TestGetSandboxVersion(t *testing.T) {
 	}
 }
 
+func TestNewSandboxDeducesVersionFromIDShape(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	v1 := newSandbox(&Client{}, testV1SandboxID)
+	g.Expect(v1.isV2).To(gomega.BeFalse())
+
+	v2 := newSandbox(&Client{}, testV2SandboxID)
+	g.Expect(v2.isV2).To(gomega.BeTrue())
+	_, err := v2.Stdout.Read(nil)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("not supported for V2 sandboxes"))
+}
+
 func TestSandboxV2FilesystemSupported(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 
-	sb := newSandbox(&Client{}, "sb-v2-123")
-	sb.isV2 = true
+	sb := newSandbox(&Client{}, testV2SandboxID)
 	sb.taskID = "ta-v2-123"
 
 	g.Expect(sb.Filesystem).ShouldNot(gomega.BeNil())
@@ -256,13 +269,12 @@ func (m *mockWaitUntilReadyStub) SandboxWaitUntilReady(
 
 func newReadinessSandbox(version sandboxVersion, stub pb.TaskCommandRouterClient) *Sandbox {
 	client := &Client{}
-	var sb *Sandbox
+	sandboxID := testV1SandboxID
 	if version == sandboxVersionV2 {
-		sb = newSandboxV2(client, testV2SandboxID, "ta-wait-123")
-	} else {
-		sb = newSandbox(client, testV1SandboxID)
-		sb.taskID = "ta-wait-123"
+		sandboxID = testV2SandboxID
 	}
+	sb := newSandbox(client, sandboxID)
+	sb.taskID = "ta-wait-123"
 	crClient := &taskCommandRouterClient{stub: stub}
 	jwt := "fake-jwt"
 	crClient.jwt.Store(&jwt)
@@ -343,7 +355,7 @@ func TestSandboxV2StdioUnsupported(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
-	sb := newSandboxV2(&Client{}, "sb-v2-123", "ta-v2-123")
+	sb := newSandbox(&Client{}, testV2SandboxID)
 	wantErr := "not supported for V2 sandboxes"
 
 	_, err := sb.Stdin.Write([]byte("hello"))

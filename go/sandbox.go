@@ -616,7 +616,8 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 		return nil, err
 	}
 
-	sb := newSandboxV2(s.client, createResp.GetSandboxId(), createResp.GetTaskId())
+	sb := newSandbox(s.client, createResp.GetSandboxId())
+	sb.taskID = createResp.GetTaskId()
 	if access := createResp.GetCommandRouterAccess(); access != nil {
 		sb.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
 	}
@@ -723,12 +724,19 @@ func defaultSandboxPTYInfo() *pb.PTYInfo {
 	}.Build()
 }
 
-// newSandbox creates a new Sandbox object from ID.
+// newSandbox creates a Sandbox handle for a server-returned ID.
 func newSandbox(client *Client, sandboxID string) *Sandbox {
 	sb := &Sandbox{SandboxID: sandboxID, client: client}
 	sb.Filesystem = &SandboxFilesystem{sandbox: sb, logger: client.logger}
 	sb.ExperimentalSidecars = &sidecarServiceImpl{sandbox: sb}
 	sb.attached.Store(true)
+	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
+		sb.isV2 = true
+		sb.Stdin = unsupportedSandboxWriteCloser{name: "Stdin"}
+		sb.Stdout = unsupportedSandboxReadCloser{name: "Stdout"}
+		sb.Stderr = unsupportedSandboxReadCloser{name: "Stderr"}
+		return sb
+	}
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
 	sb.Stdout = &lazyStreamReader{
 		initFunc: func() io.ReadCloser {
@@ -740,16 +748,6 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 			return outputStreamSb(client.cpClient, client.logger, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
 		},
 	}
-	return sb
-}
-
-func newSandboxV2(client *Client, sandboxID, taskID string) *Sandbox {
-	sb := newSandbox(client, sandboxID)
-	sb.isV2 = true
-	sb.taskID = taskID
-	sb.Stdin = unsupportedSandboxWriteCloser{name: "Stdin"}
-	sb.Stdout = unsupportedSandboxReadCloser{name: "Stdout"}
-	sb.Stderr = unsupportedSandboxReadCloser{name: "Stderr"}
 	return sb
 }
 
@@ -821,9 +819,6 @@ func (sb *Sandbox) sandboxGetTunnels(ctx context.Context, timeout time.Duration)
 
 // FromID returns a running Sandbox object from an ID.
 func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error) {
-	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
-		return newSandboxV2(s.client, sandboxID, ""), nil
-	}
 	return newSandbox(s.client, sandboxID), nil
 }
 
@@ -939,7 +934,7 @@ func (s *sandboxServiceImpl) ExperimentalFromName(ctx context.Context, appName, 
 		return nil, err
 	}
 
-	return newSandboxV2(s.client, resp.GetSandboxId(), ""), nil
+	return newSandbox(s.client, resp.GetSandboxId()), nil
 }
 
 // SandboxSnapshot is a stored Sandbox memory snapshot created by calling
@@ -1031,7 +1026,8 @@ func (s *sandboxServiceImpl) ExperimentalFromSnapshot(ctx context.Context, snaps
 		if err != nil {
 			return nil, err
 		}
-		sb := newSandboxV2(s.client, resp.GetSandboxId(), resp.GetTaskId())
+		sb := newSandbox(s.client, resp.GetSandboxId())
+		sb.taskID = resp.GetTaskId()
 		if access := resp.GetCommandRouterAccess(); access != nil {
 			sb.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
 		}
@@ -2113,8 +2109,7 @@ func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *Sandb
 				return
 			}
 			for _, info := range sandboxes {
-				// SandboxListV2 only returns V2 Sandboxes, so mark them as such.
-				if !yield(newSandboxV2(s.client, info.GetId(), ""), nil) {
+				if !yield(newSandbox(s.client, info.GetId()), nil) {
 					return
 				}
 			}

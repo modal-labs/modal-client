@@ -844,7 +844,6 @@ export class SandboxService {
       : undefined;
 
     return new Sandbox(this.#client, createResp.sandboxId, {
-      isV2: true,
       taskId: createResp.taskId,
       tunnels,
       initCommandRouterAccess: createResp.commandRouterAccess,
@@ -856,9 +855,7 @@ export class SandboxService {
    * @returns Sandbox with ID
    */
   async fromId(sandboxId: string): Promise<Sandbox> {
-    const sandboxVersion = getSandboxVersion(sandboxId);
-    const isV2 = sandboxVersion === SandboxVersion.V2;
-    return new Sandbox(this.#client, sandboxId, { isV2 });
+    return new Sandbox(this.#client, sandboxId);
   }
 
   /** Get a running {@link Sandbox} by name from a deployed {@link App}.
@@ -919,7 +916,8 @@ export class SandboxService {
         appName,
         environmentName: this.#client.environmentName(params?.environment),
       });
-      return new Sandbox(this.#client, resp.sandboxId, { isV2: true });
+
+      return new Sandbox(this.#client, resp.sandboxId);
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(
@@ -966,7 +964,6 @@ export class SandboxService {
         sandboxNameOverride: nameOverride ?? "",
       });
       return new Sandbox(this.#client, restoreResp.sandboxId, {
-        isV2: true,
         taskId: restoreResp.taskId,
         initCommandRouterAccess: restoreResp.commandRouterAccess,
       });
@@ -1087,9 +1084,7 @@ export class SandboxService {
         return;
       }
       for (const info of resp.sandboxes) {
-        // SandboxListV2 only returns V2 Sandboxes; mark them as such so
-        // operations like wait/terminate/exec use the V2 RPCs.
-        yield new Sandbox(this.#client, info.id, { isV2: true });
+        yield new Sandbox(this.#client, info.id);
       }
       // Fetch the next batch starting from the end of the current one.
       beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
@@ -1485,12 +1480,16 @@ export class Sandbox {
   #filesystem?: SandboxFilesystem;
   #sidecars?: SidecarService;
 
-  /** @ignore */
+  /**
+   * Creates a Sandbox handle for a server-returned ID, deducing the backend
+   * version from the ID shape.
+   *
+   * @ignore
+   */
   constructor(
     client: ModalClient,
     sandboxId: string,
     params: {
-      isV2?: boolean;
       taskId?: string;
       tunnels?: Record<number, Tunnel>;
       initCommandRouterAccess?: CommandRouterAccess;
@@ -1498,7 +1497,7 @@ export class Sandbox {
   ) {
     this.#client = client;
     this.sandboxId = sandboxId;
-    this.#isV2 = params.isV2 ?? false;
+    this.#isV2 = getSandboxVersion(sandboxId) === SandboxVersion.V2;
     this.#taskId = params.taskId || undefined;
     this.#tunnels = params.tunnels;
     this.#initCommandRouterAccess = params.initCommandRouterAccess;

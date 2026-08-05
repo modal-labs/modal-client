@@ -3,6 +3,11 @@ import { ModalClient, Sandbox } from "modal";
 import { ClientError, Status } from "nice-grpc";
 import { setTimeout as sleep } from "timers/promises";
 
+// A valid V1-shaped Sandbox ID ("sb-" + 22 alphanumeric chars). These tests
+// exercise the V1 SandboxGetLogs streams, and the Sandbox constructor deduces
+// the version from the ID shape (anything not V1-shaped routes to V2).
+const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
+
 function makeClient(cpClient: any): ModalClient {
   return new ModalClient({
     cpClient: cpClient as any,
@@ -30,7 +35,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-123");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     // Constructor should not trigger logs
     expect(calls).toBe(0);
@@ -56,7 +61,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-denied");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     let caught: unknown = null;
     try {
@@ -82,7 +87,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-retry-exhaust");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     let caught: unknown = null;
     try {
@@ -121,7 +126,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-last-entry");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     const out = await sb.stdout.readText();
     expect(out).toContain("part");
@@ -138,7 +143,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-456");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     expect(calls).toBe(0);
 
@@ -171,7 +176,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-789");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     const reader = sb.stdout.getReader();
     await reader.read();
@@ -219,7 +224,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-000");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     const reader = sb.stdout.getReader();
     // First read triggers attempt 1 (error) and attempt 2 (success with one chunk)
@@ -252,7 +257,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-cancel");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     const reader = sb.stdout.getReader();
     const first = await reader.read(); // pull first chunk
@@ -282,7 +287,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       },
     };
     const client = makeClient(cpClient);
-    const sb = new Sandbox(client, "sb-empty-cancel");
+    const sb = new Sandbox(client, V1_SANDBOX_ID);
 
     const reader = sb.stdout.getReader();
     const first = await reader.read();

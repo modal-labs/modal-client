@@ -1065,7 +1065,6 @@ test("createConnectToken routes V2 sandboxes to the V2 RPC", async () => {
   });
 
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
   const creds = await sb.createConnectToken({
@@ -1257,6 +1256,149 @@ test("testSandboxExperimentalDockerMock", async () => {
     experimentalOptions: options,
   });
   expect(sb.sandboxId).toEqual("sb-1234");
+
+  mock.assertExhausted();
+});
+
+test("create deduces V2 from the returned Sandbox ID shape", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/AppGetOrCreate", (): AppGetOrCreateResponse => {
+    return { appId: "ap-1234" };
+  });
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    return {
+      environmentId: "en-main-123",
+      metadata: {
+        name: "main",
+        settings: {
+          imageBuilderVersion: "2025.06",
+          webhookSuffix: "modal.run",
+        },
+      },
+    };
+  });
+  mock.handleUnary("/ImageGetOrCreate", (): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+  mock.handleUnary("/SandboxCreate", (): SandboxCreateResponse => {
+    return {
+      sandboxId: V2_SANDBOX_ID,
+      metadata: { result: undefined, appId: "ap-1234" },
+    };
+  });
+  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    return {};
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = mc.images.fromRegistry("alpine:3.21");
+  const sb = await mc.sandboxes.create(app, image);
+  expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+  await sb.terminate();
+
+  mock.assertExhausted();
+});
+
+test("fromName deduces V2 from the returned Sandbox ID shape", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetFromName", (req: any) => {
+    expect(req.sandboxName).toBe("my-sandbox");
+    return { sandboxId: V2_SANDBOX_ID };
+  });
+  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.fromName("libmodal-test", "my-sandbox");
+  await sb.terminate();
+
+  mock.assertExhausted();
+});
+
+test("experimentalList routes mirrored V1 sandboxes to the V1 backend", async () => {
+  // V1 Sandboxes are mirrored into the V2 store during the V1->V2 migration,
+  // so SandboxListV2 can return V1 Sandboxes.
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxListV2", () => {
+    return { sandboxes: [{ id: V1_SANDBOX_ID, createdAt: 1 }] };
+  });
+  mock.handleUnary("/SandboxListV2", () => {
+    return { sandboxes: [] };
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sandboxes = [];
+  for await (const sb of mc.sandboxes.experimentalList({ appId: "ap-123" })) {
+    sandboxes.push(sb);
+  }
+  expect(sandboxes).toHaveLength(1);
+  await sandboxes[0].terminate();
+
+  mock.assertExhausted();
+});
+
+test("experimentalFromName routes a mirrored V1 sandbox to the V1 backend", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetFromNameV2", () => {
+    return { sandboxId: V1_SANDBOX_ID };
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.experimentalFromName(
+    "libmodal-test",
+    "mirrored-v1",
+  );
+  await sb.terminate();
+
+  mock.assertExhausted();
+});
+
+test("list deduces V2 from returned Sandbox ID shapes", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxList", () => {
+    return { sandboxes: [{ id: V2_SANDBOX_ID, createdAt: 1 }] };
+  });
+  mock.handleUnary("/SandboxList", () => {
+    return { sandboxes: [] };
+  });
+  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    return {};
+  });
+
+  const sandboxes = [];
+  for await (const sb of mc.sandboxes.list()) {
+    sandboxes.push(sb);
+  }
+  expect(sandboxes).toHaveLength(1);
+  await sandboxes[0].terminate();
 
   mock.assertExhausted();
 });
@@ -1834,7 +1976,6 @@ test("ExperimentalFromName routes to V2 RPCs", async () => {
 test("experimentalSetName routes to V2 RPC", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
 
@@ -1861,7 +2002,6 @@ test("experimentalSetName rejects V1 sandboxes", async () => {
 test("experimentalSetName rejects invalid names", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
 
@@ -1880,7 +2020,6 @@ test.each([
   async (status, errorClass) => {
     const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
     const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-      isV2: true,
       taskId: "ta-v2-123",
     });
 
@@ -1903,7 +2042,6 @@ test.each([
 test("V2 Sandbox rejects V1-only runtime methods", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
   const expectedError = "not supported for V2 sandboxes";
@@ -1916,7 +2054,6 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
 test("V2 Sandbox setTags/getTags route to V2 RPCs", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
 
@@ -1940,7 +2077,6 @@ test("V2 Sandbox setTags/getTags route to V2 RPCs", async () => {
 test("V2 Sandbox supports filesystem", () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
   expect(() => sb.filesystem).not.toThrow();
@@ -2493,7 +2629,6 @@ test("SandboxDetachForbidsAllOperations", async () => {
 test("updateNetworkPolicy sends correct request via mocked command router", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
 
@@ -2526,7 +2661,6 @@ test("updateNetworkPolicy sends correct request via mocked command router", asyn
 test("updateNetworkPolicy rejects when a dimension is missing", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
 
@@ -2546,7 +2680,6 @@ test("updateNetworkPolicy rejects when a dimension is missing", async () => {
 test("experimentalSnapshot takes a memory snapshot via the command router for V2 sandboxes", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    isV2: true,
     taskId: "ta-v2-123",
   });
 
