@@ -47,10 +47,12 @@ def members_list(json: bool = False):
 PROXY_TOKENS_HELP_TEXT = """Manage the proxy tokens of the current Workspace.
 
 Proxy tokens provide authentication to HTTP interfaces on Modal Servers and Web Functions.
-They are passed as request headers (`Modal-Key` and `Modal-Secret`). See
+They are passed as request headers (`Modal-Key` and `Modal-Secret`). On Modal Servers and
+Endpoints they can also be joined into a single `Authorization: Bearer
+wk-<id>.ws-<secret>` header, which OpenAI-compatible clients accept as an API key. See
 https://modal.com/docs/guide/webhook-proxy-auth for more information.
 
-Proxy tokens and secrets have `wk-` and `ws-` prefixes, respectively. The cannot be
+Proxy tokens and secrets have `wk-` and `ws-` prefixes, respectively. They cannot be
 interchanged with API tokens (which use `ak-` and `as-` prefixes).
 
 On workspaces with RBAC enabled, tokens are scoped to specific environments;
@@ -71,10 +73,25 @@ def proxy_tokens_create(*, json: bool = False):
     """
     token = Workspace.from_context().proxy_tokens.create()
     output_manager = OutputManager.get()
+    bearer = f"Bearer {token.token_id}.{token.token_secret}"
     if json:
-        output_manager.print_json(json_mod.dumps({"Modal-Key": token.token_id, "Modal-Secret": token.token_secret}))
+        output_manager.print_json(
+            json_mod.dumps(
+                {
+                    "Modal-Key": token.token_id,
+                    "Modal-Secret": token.token_secret,
+                    "Authorization": bearer,
+                }
+            )
+        )
     else:
-        output_manager.print(f"Modal-Key: {token.token_id}\nModal-Secret: {token.token_secret}")
+        output_manager.print(
+            f"Modal-Key: {token.token_id}\n"
+            f"Modal-Secret: {token.token_secret}\n"
+            "\n"
+            "Or as a single header (Endpoints and Servers only):\n"
+            f"Authorization: {bearer}"
+        )
 
 
 @proxy_tokens_cli.command("list", help="List the proxy tokens of the current Workspace.")

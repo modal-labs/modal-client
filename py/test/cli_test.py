@@ -116,11 +116,14 @@ def test_workspace_members_list_cli(servicer, set_env_client):
 
 
 def test_workspace_proxy_tokens_cli(servicer, set_env_client):
-    # `create` prints the Modal-Key / Modal-Secret request headers; `--json` emits them as JSON
+    # `create` prints the Modal-Key / Modal-Secret request headers and the bearer
+    # credential; `--json` emits them as JSON
     data = json.loads(run_cli_command(["workspace", "proxy-tokens", "create", "--json"]).stdout)
-    assert set(data) == {"Modal-Key", "Modal-Secret"}
+    assert set(data) == {"Authorization", "Modal-Key", "Modal-Secret"}
     token_id = data["Modal-Key"]
     assert token_id in servicer.webhook_tokens
+    # The bearer credential joins the token id and secret with a period
+    assert data["Authorization"] == f"Bearer {token_id}.{data['Modal-Secret']}"
 
     # `list` shows the token, including its scoped status
     listed = json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "--json"]).stdout)
