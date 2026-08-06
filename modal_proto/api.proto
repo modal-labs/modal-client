@@ -4198,6 +4198,7 @@ message UploadUrlList {
 // Used for capturing context about an action performed by a user
 message UserActionInfo {
   string user_id = 1;
+  string service_user_id = 4;
   double timestamp = 2;
   // Resolved display name, could be a user or service user.
   string requested_by = 3;

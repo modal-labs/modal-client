@@ -53722,12 +53722,13 @@ func (b0 UploadUrlList_builder) Build() *UploadUrlList {
 
 // Used for capturing context about an action performed by a user
 type UserActionInfo struct {
-	state                  protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_UserId      string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3"`
-	xxx_hidden_Timestamp   float64                `protobuf:"fixed64,2,opt,name=timestamp,proto3"`
-	xxx_hidden_RequestedBy string                 `protobuf:"bytes,3,opt,name=requested_by,json=requestedBy,proto3"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3"`
+	xxx_hidden_ServiceUserId string                 `protobuf:"bytes,4,opt,name=service_user_id,json=serviceUserId,proto3"`
+	xxx_hidden_Timestamp     float64                `protobuf:"fixed64,2,opt,name=timestamp,proto3"`
+	xxx_hidden_RequestedBy   string                 `protobuf:"bytes,3,opt,name=requested_by,json=requestedBy,proto3"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *UserActionInfo) Reset() {
@@ -53762,6 +53763,13 @@ func (x *UserActionInfo) GetUserId() string {
 	return ""
 }
 
+func (x *UserActionInfo) GetServiceUserId() string {
+	if x != nil {
+		return x.xxx_hidden_ServiceUserId
+	}
+	return ""
+}
+
 func (x *UserActionInfo) GetTimestamp() float64 {
 	if x != nil {
 		return x.xxx_hidden_Timestamp
@@ -53780,6 +53788,10 @@ func (x *UserActionInfo) SetUserId(v string) {
 	x.xxx_hidden_UserId = v
 }
 
+func (x *UserActionInfo) SetServiceUserId(v string) {
+	x.xxx_hidden_ServiceUserId = v
+}
+
 func (x *UserActionInfo) SetTimestamp(v float64) {
 	x.xxx_hidden_Timestamp = v
 }
@@ -53791,8 +53803,9 @@ func (x *UserActionInfo) SetRequestedBy(v string) {
 type UserActionInfo_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	UserId    string
-	Timestamp float64
+	UserId        string
+	ServiceUserId string
+	Timestamp     float64
 	// Resolved display name, could be a user or service user.
 	RequestedBy string
 }
@@ -53802,6 +53815,7 @@ func (b0 UserActionInfo_builder) Build() *UserActionInfo {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_UserId = b.UserId
+	x.xxx_hidden_ServiceUserId = b.ServiceUserId
 	x.xxx_hidden_Timestamp = b.Timestamp
 	x.xxx_hidden_RequestedBy = b.RequestedBy
 	return m0
@@ -65851,9 +65865,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12TunnelStopResponse\x12\x16\n" +
 	"\x06exists\x18\x01 \x01(\bR\x06exists\"%\n" +
 	"\rUploadUrlList\x12\x14\n" +
-	"\x05items\x18\x01 \x03(\tR\x05items\"j\n" +
+	"\x05items\x18\x01 \x03(\tR\x05items\"\x92\x01\n" +
 	"\x0eUserActionInfo\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1c\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12&\n" +
+	"\x0fservice_user_id\x18\x04 \x01(\tR\rserviceUserId\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\x01R\ttimestamp\x12!\n" +
 	"\frequested_by\x18\x03 \x01(\tR\vrequestedBy\"C\n" +
 	"\fUserIdentity\x12\x17\n" +
