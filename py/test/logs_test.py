@@ -8,6 +8,7 @@ from typing import Any, cast
 import modal
 from modal._logs import (
     _FETCH_LIMIT,
+    _MAX_FETCH_RANGE,
     _MAX_FETCHES,
     LogsFilters,
     _buckets_to_ranges,
@@ -2219,8 +2220,12 @@ def test_container_logs_source_filter(servicer, server_url_env, set_env_client):
         assert fetch_requests[0].source == api_pb2.FILE_DESCRIPTOR_STDERR
 
 
+_V1_SANDBOX_ID = "sb-5KVZxNfcAc41qh9aBA2ELv"
+_V2_SANDBOX_ID = "sb-01KZEGTPDX4KKP4JA2ADH82JAG"
+
+
 def test_container_logs_sandbox_id(servicer, server_url_env, set_env_client):
-    """Passing sb- ID resolves task_id via SandboxGetTaskId, then fetches logs."""
+    """Passing a V1 sb- ID resolves task_id via SandboxGetTaskId, then fetches logs."""
     sandbox_get_task_requests = []
     task_get_info_requests = []
     fetch_requests = []
@@ -2250,15 +2255,130 @@ def test_container_logs_sandbox_id(servicer, server_url_env, set_env_client):
         ctx.set_responder("TaskGetInfo", task_get_info_handler)
         ctx.set_responder("AppFetchLogs", fetch_handler)
 
-        res = run_cli_command(["container", "logs", "sb-test1"])
+        res = run_cli_command(["container", "logs", _V1_SANDBOX_ID])
         assert "line-0" in res.stdout
         # Verify the full resolution chain
         assert len(sandbox_get_task_requests) == 1
-        assert sandbox_get_task_requests[0].sandbox_id == "sb-test1"
+        assert sandbox_get_task_requests[0].sandbox_id == _V1_SANDBOX_ID
         assert len(task_get_info_requests) == 1
         assert task_get_info_requests[0].task_id == "ta-from-sandbox"
         assert len(fetch_requests) == 1
         assert fetch_requests[0].app_id == "ap-sandbox-app"
+        assert fetch_requests[0].sandbox_id == _V1_SANDBOX_ID
+        assert fetch_requests[0].task_id == ""
+
+
+def test_container_logs_sandbox_id_v2(servicer, server_url_env, set_env_client):
+    sandbox_wait_v2_requests = []
+    get_task_id_v2_requests = []
+    fetch_requests = []
+
+    async def sandbox_wait_v2_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_wait_v2_requests.append(req)
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id="ap-sandbox-v2-app"))
+        )
+
+    async def get_task_id_v2_handler(self, stream):
+        req = await stream.recv_message()
+        get_task_id_v2_requests.append(req)
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-from-sandbox-v2"))
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100, task_id="ta-from-sandbox-v2"))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWaitV2", sandbox_wait_v2_handler)
+        ctx.set_responder("SandboxGetTaskIdV2", get_task_id_v2_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", _V2_SANDBOX_ID])
+        assert "line-0" in res.stdout
+        assert len(sandbox_wait_v2_requests) == 1
+        assert sandbox_wait_v2_requests[0].sandbox_id == _V2_SANDBOX_ID
+        assert len(get_task_id_v2_requests) == 1
+        assert get_task_id_v2_requests[0].sandbox_id == _V2_SANDBOX_ID
+        assert len(fetch_requests) == 1
+        assert fetch_requests[0].app_id == "ap-sandbox-v2-app"
+        assert fetch_requests[0].task_id == "ta-from-sandbox-v2"
+        assert fetch_requests[0].sandbox_id == ""
+        window = fetch_requests[0].until - fetch_requests[0].since
+        assert window.total_seconds() == pytest.approx(_MAX_FETCH_RANGE.total_seconds(), abs=5)
+
+
+def test_container_logs_sandbox_id_v2_not_started(servicer, server_url_env, set_env_client, monkeypatch):
+    from modal.cli import container
+
+    monkeypatch.setattr(container, "_SANDBOX_TASK_ID_WAIT_SECS", 0.4)
+
+    get_task_id_v2_requests = []
+    fetch_requests = []
+
+    async def sandbox_wait_v2_handler(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id="ap-sandbox-v2-app"))
+        )
+
+    async def get_task_id_v2_handler(self, stream):
+        req = await stream.recv_message()
+        get_task_id_v2_requests.append(req)
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse())
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWaitV2", sandbox_wait_v2_handler)
+        ctx.set_responder("SandboxGetTaskIdV2", get_task_id_v2_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", _V2_SANDBOX_ID])
+        assert len(get_task_id_v2_requests) >= 1
+        assert fetch_requests == []
+        assert res.stdout.strip() == ""
+
+
+def test_container_logs_sandbox_id_v2_finished_without_task(servicer, server_url_env, set_env_client):
+    """A V2 Sandbox that finished without ever running a container returns no logs, without hanging."""
+    fetch_requests = []
+
+    async def sandbox_wait_v2_handler(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id="ap-sandbox-v2-app"))
+        )
+
+    async def get_task_id_v2_handler(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_result=api_pb2.GenericResult()))
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWaitV2", sandbox_wait_v2_handler)
+        ctx.set_responder("SandboxGetTaskIdV2", get_task_id_v2_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", _V2_SANDBOX_ID])
+        assert fetch_requests == []
+        assert res.stdout.strip() == ""
+
+
+def test_container_logs_sandbox_id_v2_follow_unsupported(servicer, server_url_env, set_env_client):
+    res = run_cli_command(
+        ["container", "logs", _V2_SANDBOX_ID, "-f"],
+        expected_exit_code=2,
+    )
+    assert "not supported for this Sandbox" in res.stderr
 
 
 def test_container_logs_search(servicer, server_url_env, set_env_client):
