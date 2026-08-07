@@ -3681,6 +3681,7 @@ func (b0 AppDeploymentHistoryRequest_builder) Build() *AppDeploymentHistoryReque
 type AppDeploymentHistoryResponse struct {
 	state                             protoimpl.MessageState   `protogen:"opaque.v1"`
 	xxx_hidden_AppDeploymentHistories *[]*AppDeploymentHistory `protobuf:"bytes,1,rep,name=app_deployment_histories,json=appDeploymentHistories,proto3"`
+	xxx_hidden_ProductionAppVersion   uint32                   `protobuf:"varint,2,opt,name=production_app_version,json=productionAppVersion,proto3"`
 	unknownFields                     protoimpl.UnknownFields
 	sizeCache                         protoimpl.SizeCache
 }
@@ -3719,14 +3720,26 @@ func (x *AppDeploymentHistoryResponse) GetAppDeploymentHistories() []*AppDeploym
 	return nil
 }
 
+func (x *AppDeploymentHistoryResponse) GetProductionAppVersion() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ProductionAppVersion
+	}
+	return 0
+}
+
 func (x *AppDeploymentHistoryResponse) SetAppDeploymentHistories(v []*AppDeploymentHistory) {
 	x.xxx_hidden_AppDeploymentHistories = &v
+}
+
+func (x *AppDeploymentHistoryResponse) SetProductionAppVersion(v uint32) {
+	x.xxx_hidden_ProductionAppVersion = v
 }
 
 type AppDeploymentHistoryResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	AppDeploymentHistories []*AppDeploymentHistory
+	ProductionAppVersion   uint32
 }
 
 func (b0 AppDeploymentHistoryResponse_builder) Build() *AppDeploymentHistoryResponse {
@@ -3734,6 +3747,7 @@ func (b0 AppDeploymentHistoryResponse_builder) Build() *AppDeploymentHistoryResp
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_AppDeploymentHistories = &b.AppDeploymentHistories
+	x.xxx_hidden_ProductionAppVersion = b.ProductionAppVersion
 	return m0
 }
 
@@ -63047,9 +63061,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"commitInfo\x88\x01\x01B\x0e\n" +
 	"\f_commit_info\"4\n" +
 	"\x1bAppDeploymentHistoryRequest\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\"|\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\"\xb2\x01\n" +
 	"\x1cAppDeploymentHistoryResponse\x12\\\n" +
-	"\x18app_deployment_histories\x18\x01 \x03(\v2\".modal.client.AppDeploymentHistoryR\x16appDeploymentHistories\"\x80\x03\n" +
+	"\x18app_deployment_histories\x18\x01 \x03(\v2\".modal.client.AppDeploymentHistoryR\x16appDeploymentHistories\x124\n" +
+	"\x16production_app_version\x18\x02 \x01(\rR\x14productionAppVersion\"\x80\x03\n" +
 	"\x13AppFetchLogsRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x120\n" +
 	"\x05since\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x120\n" +

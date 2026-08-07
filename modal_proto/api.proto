@@ -443,6 +443,7 @@ message AppDeploymentHistoryRequest {
 
 message AppDeploymentHistoryResponse {
   repeated AppDeploymentHistory app_deployment_histories = 1;
+  uint32 production_app_version = 2;
 }
 
 message AppFetchLogsRequest {
