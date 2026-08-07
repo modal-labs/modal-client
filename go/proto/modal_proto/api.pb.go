@@ -5681,6 +5681,7 @@ type AppPublishRequest struct {
 	xxx_hidden_ClientVersion   string                 `protobuf:"bytes,9,opt,name=client_version,json=clientVersion,proto3"`
 	xxx_hidden_CommitInfo      *CommitInfo            `protobuf:"bytes,10,opt,name=commit_info,json=commitInfo,proto3"`
 	xxx_hidden_Tags            map[string]string      `protobuf:"bytes,11,rep,name=tags,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	xxx_hidden_Staged          bool                   `protobuf:"varint,12,opt,name=staged,proto3"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -5787,6 +5788,13 @@ func (x *AppPublishRequest) GetTags() map[string]string {
 	return nil
 }
 
+func (x *AppPublishRequest) GetStaged() bool {
+	if x != nil {
+		return x.xxx_hidden_Staged
+	}
+	return false
+}
+
 func (x *AppPublishRequest) SetAppId(v string) {
 	x.xxx_hidden_AppId = v
 }
@@ -5831,6 +5839,10 @@ func (x *AppPublishRequest) SetTags(v map[string]string) {
 	x.xxx_hidden_Tags = v
 }
 
+func (x *AppPublishRequest) SetStaged(v bool) {
+	x.xxx_hidden_Staged = v
+}
+
 func (x *AppPublishRequest) HasCommitInfo() bool {
 	if x == nil {
 		return false
@@ -5856,6 +5868,9 @@ type AppPublishRequest_builder struct {
 	ClientVersion   string
 	CommitInfo      *CommitInfo
 	Tags            map[string]string
+	// If true, create a version pinned deployment but don't update the production deployment
+	// definition on publish
+	Staged bool
 }
 
 func (b0 AppPublishRequest_builder) Build() *AppPublishRequest {
@@ -5873,6 +5888,7 @@ func (b0 AppPublishRequest_builder) Build() *AppPublishRequest {
 	x.xxx_hidden_ClientVersion = b.ClientVersion
 	x.xxx_hidden_CommitInfo = b.CommitInfo
 	x.xxx_hidden_Tags = b.Tags
+	x.xxx_hidden_Staged = b.Staged
 	return m0
 }
 
@@ -63183,7 +63199,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bapp_name\x18\x02 \x01(\tR\aappName\x12)\n" +
 	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentName\"*\n" +
 	"\x11AppLookupResponse\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\"\xda\x06\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\"\xf2\x06\n" +
 	"\x11AppPublishRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12%\n" +
@@ -63197,7 +63213,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vcommit_info\x18\n" +
 	" \x01(\v2\x18.modal.client.CommitInfoR\n" +
 	"commitInfo\x12=\n" +
-	"\x04tags\x18\v \x03(\v2).modal.client.AppPublishRequest.TagsEntryR\x04tags\x1a>\n" +
+	"\x04tags\x18\v \x03(\v2).modal.client.AppPublishRequest.TagsEntryR\x04tags\x12\x16\n" +
+	"\x06staged\x18\f \x01(\bR\x06staged\x1a>\n" +
 	"\x10FunctionIdsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a;\n" +
