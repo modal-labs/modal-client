@@ -1722,6 +1722,7 @@ def test_run_write_result(servicer, set_env_client, test_dir):
         (["--name=deployment_name", str(app_file)], True),
         (["--name=deployment_name", app_module], False),
         (["--name=deployment_name", "-m", app_module], True),
+        (["--name=deployment_name", "-m", app_module, "--staged"], True),
     ],
 )
 def test_deploy(servicer, set_env_client, supports_dir, monkeypatch, args, success):

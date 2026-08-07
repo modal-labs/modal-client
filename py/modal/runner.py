@@ -280,9 +280,13 @@ async def _publish_app(
     commit_info: api_pb2.CommitInfo | None = None,  # Git commit information
     deployment_strategy: str = "rolling",
     environment_name: str | None = None,
+    staged: bool = False,
 ) -> tuple[str, list[api_pb2.Warning], float]:
     """Wrapper for AppPublish RPC."""
     deployment_strategy = _validate_deployment_strategy(deployment_strategy)
+
+    if staged and deployment_strategy == "recreate":
+        raise InvalidError("Cannot use `recreate` deployment strategy with a staged deployment")
 
     functions = app_local_state.functions
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
@@ -297,6 +301,7 @@ async def _publish_app(
         function_ids=running_app.function_ids,
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
+        staged=staged,
     )
     response = await client.stub.AppPublish(request)
     print_server_warnings(response.server_warnings)
@@ -590,6 +595,7 @@ async def _deploy_app(
     tag: str = "",
     deployment_strategy: str = "rolling",
     client: _Client | None = None,
+    staged: bool = False,
 ) -> DeployResult:
     """Internal function for deploying an App.
 
@@ -665,6 +671,7 @@ async def _deploy_app(
                 commit_info=commit_info,
                 environment_name=root_load_context.environment_name,
                 deployment_strategy=deployment_strategy,
+                staged=staged,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

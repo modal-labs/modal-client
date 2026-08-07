@@ -539,6 +539,13 @@ def run(
     help="Deployment strategy",
     type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
 )
+@click.option(
+    "--staged",
+    "staged",
+    is_flag=True,
+    default=False,
+    hidden=True,
+)
 def deploy(
     app_ref: str,
     name: str = "",
@@ -548,6 +555,7 @@ def deploy(
     use_module_mode: bool = False,
     timestamps: bool = False,
     strategy: str = "rolling",
+    staged: bool = False,
 ):
     """Deploy a Modal application.
 
@@ -578,7 +586,14 @@ def deploy(
             "modal deploy ... --name=some-name"
         )
 
-    res = deploy_app(app, name=name, environment_name=env or "", tag=tag, deployment_strategy=strategy)
+    res = deploy_app(
+        app,
+        name=name,
+        environment_name=env or "",
+        tag=tag,
+        deployment_strategy=strategy,
+        staged=staged,
+    )
 
     if stream_logs:
         # stream_app_logs is defined in cli/utils.py, which does not get type stubs

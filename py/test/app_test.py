@@ -14,7 +14,7 @@ from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.cls import _Cls
 from modal.exception import ExecutionError, InternalError, InvalidError, NotFoundError
-from modal.runner import run_app
+from modal.runner import deploy_app, run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -544,3 +544,16 @@ def test_dashboard_url(client):
     app = App(include_source=False)
     with app.run(client=client):
         assert app.get_dashboard_url() == f"https://modal.com/id/{app.app_id}"
+
+
+def test_staged_deploy(client, servicer):
+    main_app = App(name="main-app")
+    main_app.function()(square)
+
+    main_app.deploy(client=client)
+
+    with servicer.intercept() as ctx:
+        deploy_app(main_app, client=client, staged=True)
+
+    request = ctx.pop_request("AppPublish")
+    assert request.staged
