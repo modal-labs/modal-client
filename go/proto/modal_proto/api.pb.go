@@ -7978,18 +7978,19 @@ func (b0 AutoscalerConfiguration_builder) Build() *AutoscalerConfiguration {
 }
 
 type AutoscalerSettings struct {
-	state                         protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_MinContainers      uint32                 `protobuf:"varint,1,opt,name=min_containers,json=minContainers,proto3,oneof"`
-	xxx_hidden_MaxContainers      uint32                 `protobuf:"varint,2,opt,name=max_containers,json=maxContainers,proto3,oneof"`
-	xxx_hidden_BufferContainers   uint32                 `protobuf:"varint,3,opt,name=buffer_containers,json=bufferContainers,proto3,oneof"`
-	xxx_hidden_ScaleupWindow      uint32                 `protobuf:"varint,4,opt,name=scaleup_window,json=scaleupWindow,proto3,oneof"`
-	xxx_hidden_ScaledownWindow    uint32                 `protobuf:"varint,5,opt,name=scaledown_window,json=scaledownWindow,proto3,oneof"`
-	xxx_hidden_TargetConcurrency  uint32                 `protobuf:"varint,7,opt,name=target_concurrency,json=targetConcurrency,proto3,oneof"`
-	xxx_hidden_ScaledownRateLimit uint32                 `protobuf:"varint,8,opt,name=scaledown_rate_limit,json=scaledownRateLimit,proto3,oneof"`
-	XXX_raceDetectHookData        protoimpl.RaceDetectHookData
-	XXX_presence                  [1]uint32
-	unknownFields                 protoimpl.UnknownFields
-	sizeCache                     protoimpl.SizeCache
+	state                             protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_MinContainers          uint32                 `protobuf:"varint,1,opt,name=min_containers,json=minContainers,proto3,oneof"`
+	xxx_hidden_MaxContainers          uint32                 `protobuf:"varint,2,opt,name=max_containers,json=maxContainers,proto3,oneof"`
+	xxx_hidden_BufferContainers       uint32                 `protobuf:"varint,3,opt,name=buffer_containers,json=bufferContainers,proto3,oneof"`
+	xxx_hidden_ScaleupWindow          uint32                 `protobuf:"varint,4,opt,name=scaleup_window,json=scaleupWindow,proto3,oneof"`
+	xxx_hidden_ScaledownWindow        uint32                 `protobuf:"varint,5,opt,name=scaledown_window,json=scaledownWindow,proto3,oneof"`
+	xxx_hidden_TargetConcurrency      uint32                 `protobuf:"varint,7,opt,name=target_concurrency,json=targetConcurrency,proto3,oneof"`
+	xxx_hidden_ScaledownRateLimit     uint32                 `protobuf:"varint,8,opt,name=scaledown_rate_limit,json=scaledownRateLimit,proto3,oneof"`
+	xxx_hidden_TargetConcurrencyFloat float64                `protobuf:"fixed64,9,opt,name=target_concurrency_float,json=targetConcurrencyFloat,proto3,oneof"`
+	XXX_raceDetectHookData            protoimpl.RaceDetectHookData
+	XXX_presence                      [1]uint32
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
 }
 
 func (x *AutoscalerSettings) Reset() {
@@ -8066,39 +8067,51 @@ func (x *AutoscalerSettings) GetScaledownRateLimit() uint32 {
 	return 0
 }
 
+func (x *AutoscalerSettings) GetTargetConcurrencyFloat() float64 {
+	if x != nil {
+		return x.xxx_hidden_TargetConcurrencyFloat
+	}
+	return 0
+}
+
 func (x *AutoscalerSettings) SetMinContainers(v uint32) {
 	x.xxx_hidden_MinContainers = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 7)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 8)
 }
 
 func (x *AutoscalerSettings) SetMaxContainers(v uint32) {
 	x.xxx_hidden_MaxContainers = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 7)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 8)
 }
 
 func (x *AutoscalerSettings) SetBufferContainers(v uint32) {
 	x.xxx_hidden_BufferContainers = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 7)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 8)
 }
 
 func (x *AutoscalerSettings) SetScaleupWindow(v uint32) {
 	x.xxx_hidden_ScaleupWindow = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 7)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 8)
 }
 
 func (x *AutoscalerSettings) SetScaledownWindow(v uint32) {
 	x.xxx_hidden_ScaledownWindow = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 7)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 8)
 }
 
 func (x *AutoscalerSettings) SetTargetConcurrency(v uint32) {
 	x.xxx_hidden_TargetConcurrency = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 7)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 8)
 }
 
 func (x *AutoscalerSettings) SetScaledownRateLimit(v uint32) {
 	x.xxx_hidden_ScaledownRateLimit = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 7)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 8)
+}
+
+func (x *AutoscalerSettings) SetTargetConcurrencyFloat(v float64) {
+	x.xxx_hidden_TargetConcurrencyFloat = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
 }
 
 func (x *AutoscalerSettings) HasMinContainers() bool {
@@ -8150,6 +8163,13 @@ func (x *AutoscalerSettings) HasScaledownRateLimit() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 6)
 }
 
+func (x *AutoscalerSettings) HasTargetConcurrencyFloat() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
+}
+
 func (x *AutoscalerSettings) ClearMinContainers() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_MinContainers = 0
@@ -8185,6 +8205,11 @@ func (x *AutoscalerSettings) ClearScaledownRateLimit() {
 	x.xxx_hidden_ScaledownRateLimit = 0
 }
 
+func (x *AutoscalerSettings) ClearTargetConcurrencyFloat() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 7)
+	x.xxx_hidden_TargetConcurrencyFloat = 0
+}
+
 type AutoscalerSettings_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -8198,10 +8223,13 @@ type AutoscalerSettings_builder struct {
 	ScaleupWindow *uint32
 	// Maximum amount of time a container can be idle before being scaled down, in seconds; pka "container_idle_timeout"
 	ScaledownWindow *uint32
-	// Target concurrent inputs per replica for Flash autoscaling.
+	// Integer-valued target concurrent requests per replica for Flash autoscaling.
+	// Superseded by `target_concurrency_float`, which allows non-integer targets.
 	TargetConcurrency *uint32
 	// Maximum number of containers that can be scaled down per minute for Flash autoscaling.
 	ScaledownRateLimit *uint32
+	// Target concurrent requests per replica for Flash autoscaling; may be fractional.
+	TargetConcurrencyFloat *float64
 }
 
 func (b0 AutoscalerSettings_builder) Build() *AutoscalerSettings {
@@ -8209,32 +8237,36 @@ func (b0 AutoscalerSettings_builder) Build() *AutoscalerSettings {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.MinContainers != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 7)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 8)
 		x.xxx_hidden_MinContainers = *b.MinContainers
 	}
 	if b.MaxContainers != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 7)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 8)
 		x.xxx_hidden_MaxContainers = *b.MaxContainers
 	}
 	if b.BufferContainers != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 7)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 8)
 		x.xxx_hidden_BufferContainers = *b.BufferContainers
 	}
 	if b.ScaleupWindow != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 7)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 8)
 		x.xxx_hidden_ScaleupWindow = *b.ScaleupWindow
 	}
 	if b.ScaledownWindow != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 7)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 8)
 		x.xxx_hidden_ScaledownWindow = *b.ScaledownWindow
 	}
 	if b.TargetConcurrency != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 7)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 8)
 		x.xxx_hidden_TargetConcurrency = *b.TargetConcurrency
 	}
 	if b.ScaledownRateLimit != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 7)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
 		x.xxx_hidden_ScaledownRateLimit = *b.ScaledownRateLimit
+	}
+	if b.TargetConcurrencyFloat != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 8)
+		x.xxx_hidden_TargetConcurrencyFloat = *b.TargetConcurrencyFloat
 	}
 	return m0
 }
@@ -63376,7 +63408,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x11override_settings\x18\x05 \x01(\v2 .modal.client.AutoscalerSettingsR\x10overrideSettings\x1a_\n" +
 	"\x13OverrideEventsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x122\n" +
-	"\x05value\x18\x02 \x01(\v2\x1c.modal.client.UserActionInfoR\x05value:\x028\x01\"\xff\x03\n" +
+	"\x05value\x18\x02 \x01(\v2\x1c.modal.client.UserActionInfoR\x05value:\x028\x01\"\xdb\x04\n" +
 	"\x12AutoscalerSettings\x12*\n" +
 	"\x0emin_containers\x18\x01 \x01(\rH\x00R\rminContainers\x88\x01\x01\x12*\n" +
 	"\x0emax_containers\x18\x02 \x01(\rH\x01R\rmaxContainers\x88\x01\x01\x120\n" +
@@ -63384,14 +63416,16 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0escaleup_window\x18\x04 \x01(\rH\x03R\rscaleupWindow\x88\x01\x01\x12.\n" +
 	"\x10scaledown_window\x18\x05 \x01(\rH\x04R\x0fscaledownWindow\x88\x01\x01\x122\n" +
 	"\x12target_concurrency\x18\a \x01(\rH\x05R\x11targetConcurrency\x88\x01\x01\x125\n" +
-	"\x14scaledown_rate_limit\x18\b \x01(\rH\x06R\x12scaledownRateLimit\x88\x01\x01B\x11\n" +
+	"\x14scaledown_rate_limit\x18\b \x01(\rH\x06R\x12scaledownRateLimit\x88\x01\x01\x12=\n" +
+	"\x18target_concurrency_float\x18\t \x01(\x01H\aR\x16targetConcurrencyFloat\x88\x01\x01B\x11\n" +
 	"\x0f_min_containersB\x11\n" +
 	"\x0f_max_containersB\x14\n" +
 	"\x12_buffer_containersB\x11\n" +
 	"\x0f_scaleup_windowB\x13\n" +
 	"\x11_scaledown_windowB\x15\n" +
 	"\x13_target_concurrencyB\x17\n" +
-	"\x15_scaledown_rate_limitJ\x04\b\x06\x10\a\"\xc1\x01\n" +
+	"\x15_scaledown_rate_limitB\x1b\n" +
+	"\x19_target_concurrency_floatJ\x04\b\x06\x10\a\"\xc1\x01\n" +
 	"\x12AutoscalingMetrics\x12*\n" +
 	"\x11cpu_usage_percent\x18\x01 \x01(\x01R\x0fcpuUsagePercent\x120\n" +
 	"\x14memory_usage_percent\x18\x02 \x01(\x01R\x12memoryUsagePercent\x12/\n" +
