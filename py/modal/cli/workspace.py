@@ -3,6 +3,8 @@ import json as json_mod
 
 import click
 import rich
+import rich.box
+import rich.table
 
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import confirm_or_suggest_yes, display_table, yes_option
@@ -46,14 +48,25 @@ def members_list(json: bool = False):
 
 PROXY_TOKENS_HELP_TEXT = """Manage the proxy tokens of the current Workspace.
 
-Proxy tokens provide authentication to HTTP interfaces on Modal Servers and Web Functions.
-They are passed as request headers (`Modal-Key` and `Modal-Secret`). On Modal Servers and
-Endpoints they can also be joined into a single `Authorization: Bearer
-wk-<id>.ws-<secret>` header, which OpenAI-compatible clients accept as an API key. See
-https://modal.com/docs/guide/webhook-proxy-auth for more information.
+Proxy tokens provide authentication to Modal Endpoints, Servers, and Web Functions.
 
 Proxy tokens and secrets have `wk-` and `ws-` prefixes, respectively. They cannot be
 interchanged with API tokens (which use `ak-` and `as-` prefixes).
+
+Proxy tokens are passed as request headers, either as a key / secret pair:
+
+```
+Modal-Key: wk-123
+Modal-Secret: ws-456
+```
+
+Or as a single Bearer token:
+
+```
+Authorization: Bearer wk-123.ws-456
+```
+
+See https://modal.com/docs/guide/webhook-proxy-auth for more information.
 
 On workspaces with RBAC enabled, tokens are scoped to specific environments;
 use the `allow` and `revoke` commands to manage environment associations.
@@ -85,13 +98,10 @@ def proxy_tokens_create(*, json: bool = False):
             )
         )
     else:
-        output_manager.print(
-            f"Modal-Key: {token.token_id}\n"
-            f"Modal-Secret: {token.token_secret}\n"
-            "\n"
-            "Or as a single header (Endpoints and Servers only):\n"
-            f"Authorization: {bearer}"
-        )
+        table = rich.table.Table(show_header=False, box=rich.box.HORIZONTALS, show_lines=True)
+        table.add_row(f"Modal-Key: {token.token_id}\nModal-Secret: {token.token_secret}")
+        table.add_row(f"Authorization: {bearer}")
+        output_manager.print(table)
 
 
 @proxy_tokens_cli.command("list", help="List the proxy tokens of the current Workspace.")
@@ -138,8 +148,7 @@ def proxy_tokens_revoke(token_id: str, environment_name: str):
 def proxy_tokens_delete(token_id: str, yes: bool = False):
     if not yes:
         message = (
-            f"Are you sure you want to delete proxy token {token_id!r}? "
-            "Any web endpoints relying on it will no longer accept it."
+            f"Are you sure you want to delete proxy token {token_id!r}? Requests using this token will be rejected."
         )
         confirm_or_suggest_yes(message)
     Workspace.from_context().proxy_tokens.delete(token_id)
