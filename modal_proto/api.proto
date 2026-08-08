@@ -4532,6 +4532,13 @@ message WebhookTokenListResponse {
   repeated WebhookToken tokens = 1;
 }
 
+message WorkspaceBillingRatesRequest {}
+
+message WorkspaceBillingRatesResponse {
+  // compute rates are per unit per hour, storage rate is per GiB-month
+  map<string, string> rates = 1;
+}
+
 message WorkspaceBillingReportItem {
   string object_id = 1;
   string description = 2;
@@ -4913,6 +4920,7 @@ service ModalClient {
   rpc WebhookTokenListForEnvironment(WebhookTokenListForEnvironmentRequest) returns (WebhookTokenListResponse);
 
   // Workspaces
+  rpc WorkspaceBillingRates(WorkspaceBillingRatesRequest) returns (WorkspaceBillingRatesResponse);
   rpc WorkspaceBillingReport(WorkspaceBillingReportRequest) returns (stream WorkspaceBillingReportItem);
   rpc WorkspaceBillingSummary(WorkspaceBillingSummaryRequest) returns (WorkspaceBillingSummaryResponse);
   rpc WorkspaceDashboardUrlGet(WorkspaceDashboardUrlRequest) returns (WorkspaceDashboardUrlResponse);

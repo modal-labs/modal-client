@@ -254,6 +254,7 @@ const (
 	ModalClient_WebhookTokenEnvironmentRemove_FullMethodName    = "/modal.client.ModalClient/WebhookTokenEnvironmentRemove"
 	ModalClient_WebhookTokenList_FullMethodName                 = "/modal.client.ModalClient/WebhookTokenList"
 	ModalClient_WebhookTokenListForEnvironment_FullMethodName   = "/modal.client.ModalClient/WebhookTokenListForEnvironment"
+	ModalClient_WorkspaceBillingRates_FullMethodName            = "/modal.client.ModalClient/WorkspaceBillingRates"
 	ModalClient_WorkspaceBillingReport_FullMethodName           = "/modal.client.ModalClient/WorkspaceBillingReport"
 	ModalClient_WorkspaceBillingSummary_FullMethodName          = "/modal.client.ModalClient/WorkspaceBillingSummary"
 	ModalClient_WorkspaceDashboardUrlGet_FullMethodName         = "/modal.client.ModalClient/WorkspaceDashboardUrlGet"
@@ -528,6 +529,7 @@ type ModalClientClient interface {
 	WebhookTokenList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WebhookTokenListResponse, error)
 	WebhookTokenListForEnvironment(ctx context.Context, in *WebhookTokenListForEnvironmentRequest, opts ...grpc.CallOption) (*WebhookTokenListResponse, error)
 	// Workspaces
+	WorkspaceBillingRates(ctx context.Context, in *WorkspaceBillingRatesRequest, opts ...grpc.CallOption) (*WorkspaceBillingRatesResponse, error)
 	WorkspaceBillingReport(ctx context.Context, in *WorkspaceBillingReportRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceBillingReportItem], error)
 	WorkspaceBillingSummary(ctx context.Context, in *WorkspaceBillingSummaryRequest, opts ...grpc.CallOption) (*WorkspaceBillingSummaryResponse, error)
 	WorkspaceDashboardUrlGet(ctx context.Context, in *WorkspaceDashboardUrlRequest, opts ...grpc.CallOption) (*WorkspaceDashboardUrlResponse, error)
@@ -2925,6 +2927,16 @@ func (c *modalClientClient) WebhookTokenListForEnvironment(ctx context.Context, 
 	return out, nil
 }
 
+func (c *modalClientClient) WorkspaceBillingRates(ctx context.Context, in *WorkspaceBillingRatesRequest, opts ...grpc.CallOption) (*WorkspaceBillingRatesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceBillingRatesResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WorkspaceBillingRates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) WorkspaceBillingReport(ctx context.Context, in *WorkspaceBillingReportRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceBillingReportItem], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[11], ModalClient_WorkspaceBillingReport_FullMethodName, cOpts...)
@@ -3278,6 +3290,7 @@ type ModalClientServer interface {
 	WebhookTokenList(context.Context, *emptypb.Empty) (*WebhookTokenListResponse, error)
 	WebhookTokenListForEnvironment(context.Context, *WebhookTokenListForEnvironmentRequest) (*WebhookTokenListResponse, error)
 	// Workspaces
+	WorkspaceBillingRates(context.Context, *WorkspaceBillingRatesRequest) (*WorkspaceBillingRatesResponse, error)
 	WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error
 	WorkspaceBillingSummary(context.Context, *WorkspaceBillingSummaryRequest) (*WorkspaceBillingSummaryResponse, error)
 	WorkspaceDashboardUrlGet(context.Context, *WorkspaceDashboardUrlRequest) (*WorkspaceDashboardUrlResponse, error)
@@ -3979,6 +3992,9 @@ func (UnimplementedModalClientServer) WebhookTokenList(context.Context, *emptypb
 }
 func (UnimplementedModalClientServer) WebhookTokenListForEnvironment(context.Context, *WebhookTokenListForEnvironmentRequest) (*WebhookTokenListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method WebhookTokenListForEnvironment not implemented")
+}
+func (UnimplementedModalClientServer) WorkspaceBillingRates(context.Context, *WorkspaceBillingRatesRequest) (*WorkspaceBillingRatesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WorkspaceBillingRates not implemented")
 }
 func (UnimplementedModalClientServer) WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error {
 	return status.Error(codes.Unimplemented, "method WorkspaceBillingReport not implemented")
@@ -8052,6 +8068,24 @@ func _ModalClient_WebhookTokenListForEnvironment_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_WorkspaceBillingRates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkspaceBillingRatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WorkspaceBillingRates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WorkspaceBillingRates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WorkspaceBillingRates(ctx, req.(*WorkspaceBillingRatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_WorkspaceBillingReport_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(WorkspaceBillingReportRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -9063,6 +9097,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WebhookTokenListForEnvironment",
 			Handler:    _ModalClient_WebhookTokenListForEnvironment_Handler,
+		},
+		{
+			MethodName: "WorkspaceBillingRates",
+			Handler:    _ModalClient_WorkspaceBillingRates_Handler,
 		},
 		{
 			MethodName: "WorkspaceBillingSummary",
