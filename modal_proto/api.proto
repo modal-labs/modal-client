@@ -126,6 +126,15 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
+enum DeploymentType {
+  DEPLOYMENT_TYPE_UNSPECIFIED = 0;
+  DEPLOYMENT_TYPE_STANDARD = 1;
+  DEPLOYMENT_TYPE_ROLLBACK = 2;
+  DEPLOYMENT_TYPE_ROLLOVER = 3;
+  DEPLOYMENT_TYPE_PROMOTION = 4;
+  DEPLOYMENT_TYPE_STAGED = 5;
+}
+
 enum EndpointApiSurface {
   ENDPOINT_API_SURFACE_UNSPECIFIED = 0;
   ENDPOINT_API_SURFACE_OPENAI_CHAT_COMPLETIONS = 1;
@@ -435,6 +444,7 @@ message AppDeploymentHistory {
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
   optional CommitInfo commit_info = 10;
+  DeploymentType deployment_type = 11;
 }
 
 message AppDeploymentHistoryRequest {
@@ -586,6 +596,17 @@ message AppLookupResponse {
   string app_id = 1;
 }
 
+message AppPromoteRequest {
+  string app_id = 1;
+  int32 version = 2;
+}
+
+message AppPromoteResponse {
+  string url = 1;
+  repeated Warning server_warnings = 2;
+  double deployed_at = 3;
+}
+
 message AppPublishRequest {
   string app_id = 1;
   string name = 2;
@@ -602,6 +623,8 @@ message AppPublishRequest {
   // If true, create a version pinned deployment but don't update the production deployment
   // definition on publish
   bool staged = 12;
+  DeploymentType deployment_type = 13;
+
 }
 
 message AppPublishResponse {
@@ -4646,6 +4669,7 @@ service ModalClient {
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
+  rpc AppPromote(AppPromoteRequest) returns (AppPromoteResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppRollback(AppRollbackRequest) returns (AppRollbackResponse);
   rpc AppRollover(AppRolloverRequest) returns (AppRolloverResponse);

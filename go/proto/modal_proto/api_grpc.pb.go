@@ -42,6 +42,7 @@ const (
 	ModalClient_AppHeartbeat_FullMethodName                     = "/modal.client.ModalClient/AppHeartbeat"
 	ModalClient_AppList_FullMethodName                          = "/modal.client.ModalClient/AppList"
 	ModalClient_AppLookup_FullMethodName                        = "/modal.client.ModalClient/AppLookup"
+	ModalClient_AppPromote_FullMethodName                       = "/modal.client.ModalClient/AppPromote"
 	ModalClient_AppPublish_FullMethodName                       = "/modal.client.ModalClient/AppPublish"
 	ModalClient_AppRollback_FullMethodName                      = "/modal.client.ModalClient/AppRollback"
 	ModalClient_AppRollover_FullMethodName                      = "/modal.client.ModalClient/AppRollover"
@@ -286,6 +287,7 @@ type ModalClientClient interface {
 	AppHeartbeat(ctx context.Context, in *AppHeartbeatRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AppList(ctx context.Context, in *AppListRequest, opts ...grpc.CallOption) (*AppListResponse, error)
 	AppLookup(ctx context.Context, in *AppLookupRequest, opts ...grpc.CallOption) (*AppLookupResponse, error)
+	AppPromote(ctx context.Context, in *AppPromoteRequest, opts ...grpc.CallOption) (*AppPromoteResponse, error)
 	AppPublish(ctx context.Context, in *AppPublishRequest, opts ...grpc.CallOption) (*AppPublishResponse, error)
 	AppRollback(ctx context.Context, in *AppRollbackRequest, opts ...grpc.CallOption) (*AppRollbackResponse, error)
 	AppRollover(ctx context.Context, in *AppRolloverRequest, opts ...grpc.CallOption) (*AppRolloverResponse, error)
@@ -711,6 +713,16 @@ func (c *modalClientClient) AppLookup(ctx context.Context, in *AppLookupRequest,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppLookupResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AppLookup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AppPromote(ctx context.Context, in *AppPromoteRequest, opts ...grpc.CallOption) (*AppPromoteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppPromoteResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AppPromote_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3047,6 +3059,7 @@ type ModalClientServer interface {
 	AppHeartbeat(context.Context, *AppHeartbeatRequest) (*emptypb.Empty, error)
 	AppList(context.Context, *AppListRequest) (*AppListResponse, error)
 	AppLookup(context.Context, *AppLookupRequest) (*AppLookupResponse, error)
+	AppPromote(context.Context, *AppPromoteRequest) (*AppPromoteResponse, error)
 	AppPublish(context.Context, *AppPublishRequest) (*AppPublishResponse, error)
 	AppRollback(context.Context, *AppRollbackRequest) (*AppRollbackResponse, error)
 	AppRollover(context.Context, *AppRolloverRequest) (*AppRolloverResponse, error)
@@ -3356,6 +3369,9 @@ func (UnimplementedModalClientServer) AppList(context.Context, *AppListRequest) 
 }
 func (UnimplementedModalClientServer) AppLookup(context.Context, *AppLookupRequest) (*AppLookupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppLookup not implemented")
+}
+func (UnimplementedModalClientServer) AppPromote(context.Context, *AppPromoteRequest) (*AppPromoteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AppPromote not implemented")
 }
 func (UnimplementedModalClientServer) AppPublish(context.Context, *AppPublishRequest) (*AppPublishResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppPublish not implemented")
@@ -4318,6 +4334,24 @@ func _ModalClient_AppLookup_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AppLookup(ctx, req.(*AppLookupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AppPromote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AppPromoteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AppPromote(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AppPromote_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AppPromote(ctx, req.(*AppPromoteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8289,6 +8323,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AppLookup",
 			Handler:    _ModalClient_AppLookup_Handler,
+		},
+		{
+			MethodName: "AppPromote",
+			Handler:    _ModalClient_AppPromote_Handler,
 		},
 		{
 			MethodName: "AppPublish",
