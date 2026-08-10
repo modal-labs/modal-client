@@ -4235,6 +4235,12 @@ message UserActionInfo {
   string requested_by = 3;
 }
 
+message UserGroupEnvironmentSetRequest {
+  string environment_id = 1;
+  string user_group_id = 2;
+  EnvironmentRole role = 3;
+}
+
 message UserIdentity {
   string user_id = 1;
   string username = 2;
@@ -4913,6 +4919,9 @@ service ModalClient {
   // Tunnels
   rpc TunnelStart(TunnelStartRequest) returns (TunnelStartResponse);
   rpc TunnelStop(TunnelStopRequest) returns (TunnelStopResponse);
+
+  // User groups
+  rpc UserGroupEnvironmentSet(UserGroupEnvironmentSetRequest) returns (google.protobuf.Empty);
 
   // Volumes
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);

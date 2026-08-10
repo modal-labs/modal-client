@@ -230,6 +230,7 @@ const (
 	ModalClient_TokenInfoGet_FullMethodName                     = "/modal.client.ModalClient/TokenInfoGet"
 	ModalClient_TunnelStart_FullMethodName                      = "/modal.client.ModalClient/TunnelStart"
 	ModalClient_TunnelStop_FullMethodName                       = "/modal.client.ModalClient/TunnelStop"
+	ModalClient_UserGroupEnvironmentSet_FullMethodName          = "/modal.client.ModalClient/UserGroupEnvironmentSet"
 	ModalClient_VolumeCommit_FullMethodName                     = "/modal.client.ModalClient/VolumeCommit"
 	ModalClient_VolumeCopyFiles_FullMethodName                  = "/modal.client.ModalClient/VolumeCopyFiles"
 	ModalClient_VolumeCopyFiles2_FullMethodName                 = "/modal.client.ModalClient/VolumeCopyFiles2"
@@ -503,6 +504,8 @@ type ModalClientClient interface {
 	// Tunnels
 	TunnelStart(ctx context.Context, in *TunnelStartRequest, opts ...grpc.CallOption) (*TunnelStartResponse, error)
 	TunnelStop(ctx context.Context, in *TunnelStopRequest, opts ...grpc.CallOption) (*TunnelStopResponse, error)
+	// User groups
+	UserGroupEnvironmentSet(ctx context.Context, in *UserGroupEnvironmentSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Volumes
 	VolumeCommit(ctx context.Context, in *VolumeCommitRequest, opts ...grpc.CallOption) (*VolumeCommitResponse, error)
 	VolumeCopyFiles(ctx context.Context, in *VolumeCopyFilesRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -2671,6 +2674,16 @@ func (c *modalClientClient) TunnelStop(ctx context.Context, in *TunnelStopReques
 	return out, nil
 }
 
+func (c *modalClientClient) UserGroupEnvironmentSet(ctx context.Context, in *UserGroupEnvironmentSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_UserGroupEnvironmentSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) VolumeCommit(ctx context.Context, in *VolumeCommitRequest, opts ...grpc.CallOption) (*VolumeCommitResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(VolumeCommitResponse)
@@ -3275,6 +3288,8 @@ type ModalClientServer interface {
 	// Tunnels
 	TunnelStart(context.Context, *TunnelStartRequest) (*TunnelStartResponse, error)
 	TunnelStop(context.Context, *TunnelStopRequest) (*TunnelStopResponse, error)
+	// User groups
+	UserGroupEnvironmentSet(context.Context, *UserGroupEnvironmentSetRequest) (*emptypb.Empty, error)
 	// Volumes
 	VolumeCommit(context.Context, *VolumeCommitRequest) (*VolumeCommitResponse, error)
 	VolumeCopyFiles(context.Context, *VolumeCopyFilesRequest) (*emptypb.Empty, error)
@@ -3933,6 +3948,9 @@ func (UnimplementedModalClientServer) TunnelStart(context.Context, *TunnelStartR
 }
 func (UnimplementedModalClientServer) TunnelStop(context.Context, *TunnelStopRequest) (*TunnelStopResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TunnelStop not implemented")
+}
+func (UnimplementedModalClientServer) UserGroupEnvironmentSet(context.Context, *UserGroupEnvironmentSetRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method UserGroupEnvironmentSet not implemented")
 }
 func (UnimplementedModalClientServer) VolumeCommit(context.Context, *VolumeCommitRequest) (*VolumeCommitResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method VolumeCommit not implemented")
@@ -7666,6 +7684,24 @@ func _ModalClient_TunnelStop_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_UserGroupEnvironmentSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UserGroupEnvironmentSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).UserGroupEnvironmentSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_UserGroupEnvironmentSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).UserGroupEnvironmentSet(ctx, req.(*UserGroupEnvironmentSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_VolumeCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(VolumeCommitRequest)
 	if err := dec(in); err != nil {
@@ -9043,6 +9079,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TunnelStop",
 			Handler:    _ModalClient_TunnelStop_Handler,
+		},
+		{
+			MethodName: "UserGroupEnvironmentSet",
+			Handler:    _ModalClient_UserGroupEnvironmentSet_Handler,
 		},
 		{
 			MethodName: "VolumeCommit",
