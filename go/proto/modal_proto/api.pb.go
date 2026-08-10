@@ -2475,6 +2475,9 @@ const (
 	GenericResult_GENERIC_STATUS_INTERNAL_FAILURE GenericResult_GenericStatus = 6
 	// Used when sandboxes are terminated due to idle_timeout
 	GenericResult_GENERIC_STATUS_IDLE_TIMEOUT GenericResult_GenericStatus = 7
+	// Used when a task was killed because it was evicted by the memory manager when the worker was
+	// under memory pressure.
+	GenericResult_GENERIC_STATUS_MEMORY_MANAGER_EVICTION GenericResult_GenericStatus = 8
 )
 
 // Enum value maps for GenericResult_GenericStatus.
@@ -2488,16 +2491,18 @@ var (
 		5: "GENERIC_STATUS_INIT_FAILURE",
 		6: "GENERIC_STATUS_INTERNAL_FAILURE",
 		7: "GENERIC_STATUS_IDLE_TIMEOUT",
+		8: "GENERIC_STATUS_MEMORY_MANAGER_EVICTION",
 	}
 	GenericResult_GenericStatus_value = map[string]int32{
-		"GENERIC_STATUS_UNSPECIFIED":      0,
-		"GENERIC_STATUS_SUCCESS":          1,
-		"GENERIC_STATUS_FAILURE":          2,
-		"GENERIC_STATUS_TERMINATED":       3,
-		"GENERIC_STATUS_TIMEOUT":          4,
-		"GENERIC_STATUS_INIT_FAILURE":     5,
-		"GENERIC_STATUS_INTERNAL_FAILURE": 6,
-		"GENERIC_STATUS_IDLE_TIMEOUT":     7,
+		"GENERIC_STATUS_UNSPECIFIED":             0,
+		"GENERIC_STATUS_SUCCESS":                 1,
+		"GENERIC_STATUS_FAILURE":                 2,
+		"GENERIC_STATUS_TERMINATED":              3,
+		"GENERIC_STATUS_TIMEOUT":                 4,
+		"GENERIC_STATUS_INIT_FAILURE":            5,
+		"GENERIC_STATUS_INTERNAL_FAILURE":        6,
+		"GENERIC_STATUS_IDLE_TIMEOUT":            7,
+		"GENERIC_STATUS_MEMORY_MANAGER_EVICTION": 8,
 	}
 )
 
@@ -65167,7 +65172,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"itemsTotal\"\x8d\x01\n" +
 	"\x12GenericPayloadType\x128\n" +
 	"\tbase_type\x18\x01 \x01(\x0e2\x1b.modal.client.ParameterTypeR\bbaseType\x12=\n" +
-	"\tsub_types\x18\x02 \x03(\v2 .modal.client.GenericPayloadTypeR\bsubTypes\"\xf6\x04\n" +
+	"\tsub_types\x18\x02 \x03(\v2 .modal.client.GenericPayloadTypeR\bsubTypes\"\xa2\x05\n" +
 	"\rGenericResult\x12A\n" +
 	"\x06status\x18\x01 \x01(\x0e2).modal.client.GenericResult.GenericStatusR\x06status\x12\x1c\n" +
 	"\texception\x18\x02 \x01(\tR\texception\x12\x1a\n" +
@@ -65179,7 +65184,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\fdata_blob_id\x18\n" +
 	" \x01(\tH\x00R\n" +
 	"dataBlobId\x12-\n" +
-	"\x12propagation_reason\x18\r \x01(\tR\x11propagationReason\"\x89\x02\n" +
+	"\x12propagation_reason\x18\r \x01(\tR\x11propagationReason\"\xb5\x02\n" +
 	"\rGenericStatus\x12\x1e\n" +
 	"\x1aGENERIC_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16GENERIC_STATUS_SUCCESS\x10\x01\x12\x1a\n" +
@@ -65188,7 +65193,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x16GENERIC_STATUS_TIMEOUT\x10\x04\x12\x1f\n" +
 	"\x1bGENERIC_STATUS_INIT_FAILURE\x10\x05\x12#\n" +
 	"\x1fGENERIC_STATUS_INTERNAL_FAILURE\x10\x06\x12\x1f\n" +
-	"\x1bGENERIC_STATUS_IDLE_TIMEOUT\x10\aB\f\n" +
+	"\x1bGENERIC_STATUS_IDLE_TIMEOUT\x10\a\x12*\n" +
+	"&GENERIC_STATUS_MEMORY_MANAGER_EVICTION\x10\bB\f\n" +
 	"\n" +
 	"data_oneof\"\x92\x02\n" +
 	"\n" +
