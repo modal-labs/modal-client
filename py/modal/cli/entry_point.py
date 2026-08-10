@@ -97,6 +97,9 @@ async def setup(profile: str | None = None):
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
     await _new_token(profile=profile, next_url="/home")
 
+    output = OutputManager.get()
+    output.print("[green]→[/green] Run [bold]modal skills install[/bold] to install agent skills")
+
 
 entrypoint_cli.add_command(curl, "curl", panel="Commands")
 entrypoint_cli.add_command(run.deploy, "deploy", panel="Commands")
