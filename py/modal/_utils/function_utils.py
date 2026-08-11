@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
+import math
 import os
 import typing
 from collections.abc import AsyncGenerator, Callable
@@ -79,6 +80,28 @@ def is_global_object(object_qual_name: str):
 
 def is_flash_object(experimental_options: dict[str, Any] | None, http_config: api_pb2.HTTPConfig | None) -> bool:
     return bool(experimental_options and experimental_options.get("flash", False)) or http_config is not None
+
+
+def validate_target_concurrency(value: float, param_name: str, allow_fractional: bool) -> None:
+    """Validate a user-supplied target concurrency.
+
+    Only `@app.server` may use a fractional Flash autoscaling target.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidError(f"The `{param_name}` argument must be a number, not {type(value).__name__}.")
+    if not math.isfinite(value):
+        raise InvalidError(f"The `{param_name}` argument must be finite, not {value}.")
+    if value < 0:
+        raise InvalidError(f"The `{param_name}` argument must be non-negative.")
+    if not allow_fractional and not isinstance(value, int):
+        raise InvalidError(
+            f"The `{param_name}` argument must be an integer; fractional values are only supported for Servers."
+        )
+
+
+def normalize_fractional_target_concurrency(value: float) -> float:
+    """Clamp (0, 1) up to 1 and round to the nearest hundredth for Flash targets."""
+    return 1.0 if 0 < value < 1 else round(float(value), 2)
 
 
 def is_method_fn(object_qual_name: str):

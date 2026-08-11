@@ -15,7 +15,10 @@ from modal._utils.function_utils import (
     _stream_function_call_data,
     callable_has_non_self_non_default_params,
     callable_has_non_self_params,
+    normalize_fractional_target_concurrency,
+    validate_target_concurrency,
 )
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 GLOBAL_VARIABLE = "whatever"
@@ -181,3 +184,48 @@ def test_url_displayed_function_create_status_web_url(monkeypatch):
 
     finish_message = status_row_mock.finish.call_args.args[0]
     assert web_url in finish_message
+
+
+def test_validate_target_concurrency_accepts_valid_values():
+    validate_target_concurrency(0, "target_concurrency", allow_fractional=False)
+    validate_target_concurrency(10, "target_concurrency", allow_fractional=False)
+    validate_target_concurrency(0.0, "target_concurrency", allow_fractional=True)
+    validate_target_concurrency(2.5, "target_concurrency", allow_fractional=True)
+    validate_target_concurrency(1.234, "target_concurrency", allow_fractional=True)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, 0.0),
+        (0.0, 0.0),
+        (0.01, 1.0),
+        (0.5, 1.0),
+        (0.99, 1.0),
+        (1, 1.0),
+        (1.0, 1.0),
+        (1.234, 1.23),
+        (1.235, 1.24),
+        (2.5, 2.5),
+        (20, 20.0),
+    ],
+)
+def test_normalize_fractional_target_concurrency(value, expected):
+    assert normalize_fractional_target_concurrency(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "allow_fractional", "match"),
+    [
+        ("10", False, "must be a number"),
+        (True, False, "must be a number"),
+        (float("nan"), False, "must be finite"),
+        (float("inf"), False, "must be finite"),
+        (-1, False, "must be non-negative"),
+        (1.5, False, "must be an integer"),
+        (1.0, False, "must be an integer"),
+    ],
+)
+def test_validate_target_concurrency_rejects_invalid_values(value, allow_fractional, match):
+    with pytest.raises(InvalidError, match=match):
+        validate_target_concurrency(value, "target_concurrency", allow_fractional=allow_fractional)

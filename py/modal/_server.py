@@ -124,7 +124,7 @@ class _Server:
     async def update_autoscaler(
         self,
         *,
-        target_concurrency: int | None = None,
+        target_concurrency: float | None = None,
         min_containers: int | None = None,
         max_containers: int | None = None,
         buffer_containers: int | None = None,
@@ -140,7 +140,9 @@ class _Server:
         its static configuration.
 
         Args:
-            target_concurrency: Target number of concurrent requests per container.
+            target_concurrency:
+                Target number of concurrent requests per container. May be fractional, e.g. 1.5 to
+                target three concurrent requests per two containers.
             min_containers: Minimum number of containers to keep running regardless of demand.
             max_containers: Limit on the number of containers that can be concurrently running.
             buffer_containers: Extra containers to scale up beyond current demand.
@@ -166,6 +168,9 @@ class _Server:
 
             # Adjust Server autoscaling to target 20 concurrent requests per replica
             server.update_autoscaler(target_concurrency=20)
+
+            # Target three concurrent requests for every two containers
+            server.update_autoscaler(target_concurrency=1.5)
 
             # Disable the Server autoscaling by setting target_concurrency to 0
             server.update_autoscaler(target_concurrency=0)

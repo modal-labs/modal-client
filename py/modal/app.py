@@ -39,6 +39,7 @@ from ._utils.function_utils import (
     is_flash_object,
     is_global_object,
     is_method_fn,
+    validate_target_concurrency,
 )
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
@@ -1288,7 +1289,7 @@ class _App:
         cpu: float | tuple[float, float] | None = None,  # CPU cores to request
         memory: int | tuple[int, int] | None = None,  # Memory in MiB to request
         ephemeral_disk: int | None = None,  # Ephemeral disk size in MiB
-        target_concurrency: int | None = None,  # Target concurrency for the server; 0 disables autoscaling
+        target_concurrency: float | None = None,  # Target concurrency for the server; 0 disables autoscaling
         min_containers: int | None = None,  # Minimum number of containers to keep warm
         max_containers: int | None = None,  # Maximum number of containers
         buffer_containers: int | None = None,  # Additional idle containers under active load
@@ -1335,7 +1336,9 @@ class _App:
                 Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to
                 additionally specify a hard limit in MiB.
             ephemeral_disk: Specify, in MiB, the ephemeral disk size for the server.
-            target_concurrency: Target concurrency for the server; 0 disables autoscaling.
+            target_concurrency:
+                Target number of concurrent requests per container; 0 disables autoscaling. May be
+                fractional, e.g. 1.5 to target three concurrent requests per two containers.
             min_containers: Minimum number of containers to keep running regardless of demand.
             max_containers: Limit on the number of containers that can be concurrently running.
             buffer_containers: Extra containers to scale up beyond current demand.
@@ -1383,8 +1386,7 @@ class _App:
         )
 
         if target_concurrency is not None:
-            if not isinstance(target_concurrency, int) or target_concurrency < 0:
-                raise InvalidError("The `target_concurrency` argument must be a non-negative integer.")
+            validate_target_concurrency(target_concurrency, "target_concurrency", allow_fractional=True)
 
         if scaleup_window is not None and scaleup_window <= 0:
             raise InvalidError("`scaleup_window` must be > 0")

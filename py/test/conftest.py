@@ -2471,7 +2471,28 @@ class MockClientServicer(api_grpc.ModalClientBase):
         assert isinstance(fn_definition, api_pb2.Function)
         # Note that this doesn't mock the full server logic very well
         fn_definition.warm_pool_size = req.warm_pool_size_override
-        fn_definition.autoscaler_settings.MergeFrom(req.settings)
+
+        settings = api_pb2.AutoscalerSettings()
+        settings.CopyFrom(req.settings)
+        if settings.HasField("target_concurrency") and not settings.HasField("target_concurrency_float"):
+            settings.target_concurrency_float = settings.target_concurrency
+        settings.ClearField("target_concurrency")
+        fn_definition.autoscaler_settings.MergeFrom(settings)
+        fn_definition.autoscaler_settings.ClearField("target_concurrency")
+
+        is_flash = fn_definition.is_server
+        if not is_flash:
+            merged = fn_definition.autoscaler_settings
+            flash_only_fields = []
+            if merged.HasField("target_concurrency_float"):
+                flash_only_fields.append("target_concurrency")
+            if merged.HasField("scaleup_window"):
+                flash_only_fields.append("scaleup_window")
+            if merged.HasField("scaledown_rate_limit"):
+                flash_only_fields.append("scaledown_rate_limit")
+            if flash_only_fields:
+                names = ", ".join(f"`{field}`" for field in flash_only_fields)
+                raise GRPCError(Status.INVALID_ARGUMENT, f"{names} can only be used for Servers.")
 
         # Hacky that we're modifying the function definition directly
         # In the server we track autoscaler updates separately
@@ -2479,12 +2500,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         fn_definition.concurrency_limit = fn_definition.autoscaler_settings.max_containers
         fn_definition._experimental_buffer_containers = fn_definition.autoscaler_settings.buffer_containers
         fn_definition.task_idle_timeout_secs = fn_definition.autoscaler_settings.scaledown_window
-        if req.settings.HasField("target_concurrency"):
-            fn_definition.target_concurrent_inputs = req.settings.target_concurrency
+
+        current_settings = api_pb2.AutoscalerSettings()
+        current_settings.CopyFrom(fn_definition.autoscaler_settings)
+        if current_settings.HasField("target_concurrency_float"):
+            value = current_settings.target_concurrency_float
+            current_settings.target_concurrency = 0 if value == 0 else max(1, round(value))
 
         await stream.send_message(
             api_pb2.FunctionUpdateSchedulingParamsResponse(
-                current_settings=fn_definition.autoscaler_settings,
+                current_settings=current_settings,
             )
         )
 

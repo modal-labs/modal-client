@@ -56,7 +56,9 @@ from ._utils.function_utils import (
     _stream_function_call_data,
     get_function_type,
     is_async,
+    normalize_fractional_target_concurrency,
     parse_gpu_config,
+    validate_target_concurrency,
 )
 from ._utils.grpc_utils import Retry, RetryWarningMessage
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
@@ -681,7 +683,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         scaleup_window: int | None = None,
         scaledown_window: int | None = None,
         max_concurrent_inputs: int | None = None,
-        target_concurrent_inputs: int | None = None,
+        target_concurrent_inputs: float | None = None,
         batch_max_size: int | None = None,
         batch_wait_ms: int | None = None,
         cloud: str | None = None,
@@ -788,6 +790,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             scaleup_window=scaleup_window,
             scaledown_window=scaledown_window,
         )
+
+        target_concurrent_inputs_int = 0
+        if target_concurrent_inputs is not None:
+            if is_server:
+                validate_target_concurrency(target_concurrent_inputs, "target_inputs", allow_fractional=True)
+                autoscaler_settings.target_concurrency_float = normalize_fractional_target_concurrency(
+                    target_concurrent_inputs
+                )
+            else:
+                validate_target_concurrency(target_concurrent_inputs, "target_inputs", allow_fractional=False)
+                target_concurrent_inputs_int = int(target_concurrent_inputs)
 
         # For clustered functions, container settings must be multiples of cluster_size
         if cluster_size is not None and cluster_size > 1:
@@ -1014,7 +1027,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     app_name=app_name,
                     is_builder_function=is_builder_function,
                     max_concurrent_inputs=max_concurrent_inputs or 0,
-                    target_concurrent_inputs=target_concurrent_inputs or 0,
+                    target_concurrent_inputs=target_concurrent_inputs_int,
                     batch_max_size=batch_max_size or 0,
                     batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
@@ -1200,7 +1213,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         buffer_containers: int | None = None,
         scaleup_window: int | None = None,
         scaledown_window: int | None = None,
-        target_concurrency: int | None = None,
+        target_concurrency: float | None = None,
     ) -> ServerAutoscalerSettings:
         settings = api_pb2.AutoscalerSettings(
             min_containers=min_containers,
@@ -1208,8 +1221,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             buffer_containers=buffer_containers,
             scaleup_window=scaleup_window,
             scaledown_window=scaledown_window,
-            target_concurrency=target_concurrency,
         )
+        if target_concurrency is not None:
+            validate_target_concurrency(target_concurrency, "target_concurrency", allow_fractional=True)
+            settings.target_concurrency_float = normalize_fractional_target_concurrency(target_concurrency)
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
         response = await self.client.stub.FunctionUpdateSchedulingParams(request)
 

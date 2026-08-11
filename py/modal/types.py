@@ -388,7 +388,7 @@ class FunctionAutoscalerSettings:
 
 @dataclass(slots=True, frozen=True)
 class ServerAutoscalerSettings:
-    target_concurrency: int | None
+    target_concurrency: int | float | None
     min_containers: int | None
     max_containers: int | None
     buffer_containers: int | None
@@ -397,11 +397,18 @@ class ServerAutoscalerSettings:
 
     @classmethod
     def _from_proto(cls, pb_item: api_pb2.AutoscalerSettings) -> "ServerAutoscalerSettings":
+        if pb_item.HasField("target_concurrency_float"):
+            target_concurrency = pb_item.target_concurrency_float
+        elif pb_item.HasField("target_concurrency"):
+            target_concurrency = pb_item.target_concurrency
+        else:
+            target_concurrency = None
+
         return cls(
             min_containers=pb_item.min_containers if pb_item.HasField("min_containers") else None,
             max_containers=pb_item.max_containers if pb_item.HasField("max_containers") else None,
             buffer_containers=pb_item.buffer_containers if pb_item.HasField("buffer_containers") else None,
             scaleup_window=pb_item.scaleup_window if pb_item.HasField("scaleup_window") else None,
             scaledown_window=pb_item.scaledown_window if pb_item.HasField("scaledown_window") else None,
-            target_concurrency=pb_item.target_concurrency if pb_item.HasField("target_concurrency") else None,
+            target_concurrency=target_concurrency,
         )

@@ -144,7 +144,7 @@ def test_run_server(client, servicer):
 
     assert servicer.app_functions[server_function_id].module_name == "test.server_test"
     assert servicer.app_functions[server_function_id].function_name == "FlashClassDefault"
-    assert servicer.app_functions[server_function_id].target_concurrent_inputs == 10
+    assert servicer.app_functions[server_function_id].autoscaler_settings.target_concurrency_float == 10.0
     assert servicer.app_functions[server_function_id].method_definitions_set
     assert servicer.app_functions[server_function_id].startup_timeout_secs == 30
     assert servicer.app_functions[server_function_id].app_name == "flash-app-default"
@@ -388,7 +388,7 @@ def test_flash_params_override_experimental_options(client, servicer):
         objects = servicer.app_objects[app_id]
         server_function_id = objects["FlashParamsOverrideClass"]
 
-        assert servicer.app_functions[server_function_id].target_concurrent_inputs == 11
+        assert servicer.app_functions[server_function_id].autoscaler_settings.target_concurrency_float == 11.0
         assert servicer.app_functions[server_function_id].experimental_options["flash"] == "us-east"
 
 
@@ -705,6 +705,27 @@ def test_server_get_url(client, servicer):
         assert url == "https://modal-labs--urlserver.modal-us-east.modal.direct"
 
 
+def test_server_autoscaler_settings_from_proto_prefers_float():
+    from modal.types import ServerAutoscalerSettings
+
+    assert (
+        ServerAutoscalerSettings._from_proto(
+            api_pb2.AutoscalerSettings(target_concurrency_float=2.5)
+        ).target_concurrency
+        == 2.5
+    )
+    assert (
+        ServerAutoscalerSettings._from_proto(api_pb2.AutoscalerSettings(target_concurrency=3)).target_concurrency == 3.0
+    )
+    assert (
+        ServerAutoscalerSettings._from_proto(
+            api_pb2.AutoscalerSettings(target_concurrency=3, target_concurrency_float=1.5)
+        ).target_concurrency
+        == 1.5
+    )
+    assert ServerAutoscalerSettings._from_proto(api_pb2.AutoscalerSettings()).target_concurrency is None
+
+
 def test_server_update_autoscaler(client, servicer):
     """Test that Server.update_autoscaler() works without raising AttributeError.
 
@@ -727,8 +748,20 @@ def test_server_update_autoscaler(client, servicer):
         update_autoscaler = AutoscaleServer.update_autoscaler  # type: ignore[attr-defined]
         settings = update_autoscaler(min_containers=1, max_containers=5, target_concurrency=20)  # type: ignore[call-arg]
         assert settings.target_concurrency == 20
-        assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency == 20
-        assert servicer.app_functions[function_id].target_concurrent_inputs == 20
+        assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency_float == 20
+        # Overrides are tracked on autoscaler_settings; the static definition field is unchanged.
+        assert servicer.app_functions[function_id].target_concurrent_inputs == 0
+        assert not servicer.app_functions[function_id].autoscaler_settings.HasField("target_concurrency")
+
+        settings = update_autoscaler(target_concurrency=0)  # type: ignore[call-arg]
+
+        settings = update_autoscaler(target_concurrency=0.5)  # type: ignore[call-arg]
+        assert settings.target_concurrency == 1.0
+        assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency_float == 1.0
+
+        settings = update_autoscaler(target_concurrency=1.234)  # type: ignore[call-arg]
+        assert settings.target_concurrency == 1.23
+        assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency_float == 1.23
 
         settings = update_autoscaler(target_concurrency=0)  # type: ignore[call-arg]
 
@@ -736,9 +769,10 @@ def test_server_update_autoscaler(client, servicer):
 
     assert settings.min_containers == f.autoscaler_settings.min_containers == 1
     assert settings.max_containers == f.autoscaler_settings.max_containers == 5
-    assert f.autoscaler_settings.HasField("target_concurrency")
-    assert settings.target_concurrency == f.autoscaler_settings.target_concurrency == 0
+    assert f.autoscaler_settings.HasField("target_concurrency_float")
+    assert settings.target_concurrency == f.autoscaler_settings.target_concurrency_float == 0
     assert f.target_concurrent_inputs == 0
+    assert not f.autoscaler_settings.HasField("target_concurrency")
 
 
 # =============================================================================
@@ -792,7 +826,7 @@ def test_server_target_concurrency(client, servicer):
         function_id = service_function.object_id
         function_def = servicer.app_functions[function_id]
 
-        assert function_def.target_concurrent_inputs == 50
+        assert function_def.autoscaler_settings.target_concurrency_float == 50.0
 
 
 def test_server_target_concurrency_zero(client, servicer):
@@ -810,11 +844,34 @@ def test_server_target_concurrency_zero(client, servicer):
         function_id = service_function.object_id
         function_def = servicer.app_functions[function_id]
 
-        assert function_def.target_concurrent_inputs == 0
+        assert function_def.autoscaler_settings.target_concurrency_float == 0.0
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [
+        (0.5, 1.0),
+        (1.234, 1.23),
+        (2.5, 2.5),
+    ],
+)
+def test_server_target_concurrency_clamped_and_rounded(client, servicer, requested, expected):
+    """Values in (0, 1) clamp to 1; other values round to the nearest hundredth."""
+    app = modal.App(f"server-target-concurrency-norm-{requested}", include_source=False)
+
+    @app.server(port=8000, routing_region="us-east", target_concurrency=requested, serialized=True)
+    class NormConcurrencyServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        function_id = NormConcurrencyServer._get_service_function().object_id  # type: ignore[attr-defined]
+        assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency_float == expected
 
 
 def test_server_rejects_negative_target_concurrency():
-    with pytest.raises(InvalidError, match="must be a non-negative integer"):
+    with pytest.raises(InvalidError, match="must be non-negative"):
         app = modal.App("server-negative-target-concurrency-test", include_source=False)
 
         @app.server(port=8000, routing_region="us-east", target_concurrency=-1, serialized=True)
