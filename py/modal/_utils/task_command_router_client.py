@@ -14,6 +14,7 @@ from contextlib import suppress
 from typing import BinaryIO, TypeVar
 
 import grpclib.client
+import grpclib.events
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 

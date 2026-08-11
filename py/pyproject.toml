@@ -243,22 +243,16 @@ include = ["modal", "test/cls_test.py"]
 # written against mypy's looser standards. We aim to reduce this list over time.
 exclude = [
     "modal/_vendor",
-    "modal/_clustered_functions.py",
-    "modal/_partial_function.py",
-    "modal/_utils/function_utils.py",
-    "modal/_utils/task_command_router_client.py",
-    "modal/_utils/time_utils.py",
+    "modal/_partial_function.py",  # 7 errors, fussiness around cls
+    "modal/_utils/function_utils.py",  # 23 errors, some tricky
     "modal/app.py",  # 31 errors
     "modal/client.py",  # 2 errors, solved by implementation / interface module split
     "modal/cls.py",  # 22 errors together with stub
     "modal/cls.pyi",
-    "modal/experimental/flash.py",
-    "modal/image.pyi",
-    "modal/mount.py",
+    "modal/image.pyi",  # 1 error, s11y Self type stub issue
+    "modal/mount.py",  # 23 errors together with stub
     "modal/mount.pyi",
     "modal/parallel_map.py",  # 18 errors, needs some thought around implementation / interface types
-    "modal/runner.py",
     "modal/sandbox.py",  # 31 errors together with stub
     "modal/sandbox.pyi",
-    "modal/token_flow.py",
 ]

@@ -38,8 +38,8 @@ class _TokenFlow:
         app.add_routes([aiohttp.web.get("/", slash)])
         async with run_temporary_http_server(app) as url:
             req = api_pb2.TokenFlowCreateRequest(
-                utm_source=utm_source,
-                next_url=next_url,
+                utm_source=utm_source or "",
+                next_url=next_url or "",
                 localhost_port=int(url.split(":")[-1]),
             )
             resp = await self.stub.TokenFlowCreate(req)
@@ -129,8 +129,10 @@ async def _set_token(
     verify: bool = True,
     server_url: str | None = None,
 ):
-    # TODO add server_url as a parameter for verification?
-    server_url = config.get("server_url", profile=profile)
+    if server_url is None:
+        server_url = config.get("server_url", profile=profile)
+    # config always resolves server_url, falling back to DEFAULT_SERVER_URL
+    assert server_url is not None
     output = OutputManager.get()
     if verify:
         output.print(f"Verifying token against [blue]{server_url}[/blue]")
@@ -152,7 +154,7 @@ async def _set_token(
             profile = workspace.username
 
     config_data = {"token_id": token_id, "token_secret": token_secret}
-    if server_url is not None and server_url != DEFAULT_SERVER_URL:
+    if server_url != DEFAULT_SERVER_URL:
         config_data["server_url"] = server_url
     # Activate the profile when requested or if no other profiles currently exist
     active_profile = profile if (activate or not config_profiles()) else None

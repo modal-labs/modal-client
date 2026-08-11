@@ -84,6 +84,7 @@ class _Client:
     _snapshotted: bool = False
     _connection_manager: ConnectionManager | None = None
     client_type: "api_pb2.ClientType.ValueType"
+    server_url: str
 
     def __init__(
         self,

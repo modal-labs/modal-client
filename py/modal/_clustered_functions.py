@@ -2,6 +2,7 @@
 import os
 import socket
 from dataclasses import dataclass
+from typing import cast
 
 from modal._utils.async_utils import synchronize_api
 from modal.client import _Client
@@ -41,9 +42,11 @@ def get_fabric_peers() -> list[int]:
 async def _initialize_clustered_function(client: _Client, task_id: str, world_size: int):
     global cluster_info
 
-    def get_i6pn():
+    def get_i6pn() -> str:
         """Returns the ipv6 address assigned to this container."""
-        return socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
+        # An AF_INET6 result always carries a (host, port, flowinfo, scope_id) sockaddr,
+        # but getaddrinfo is typed for every address family, some of which lead with an int
+        return cast(str, socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0])
 
     hostname = socket.gethostname()
     container_ip = get_i6pn()
@@ -77,9 +80,9 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
         cluster_info = ClusterInfo(
             rank=resp.cluster_rank,
             cluster_id=resp.cluster_id,
-            container_ips=resp.container_ips,
-            container_ipv4_ips=resp.container_ipv4_ips,
-            fabric_ids=resp.fabric_ids,
+            container_ips=list(resp.container_ips),
+            container_ipv4_ips=list(resp.container_ipv4_ips),
+            fabric_ids=list(resp.fabric_ids),
         )
     else:
         cluster_info = ClusterInfo(

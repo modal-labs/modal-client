@@ -120,3 +120,9 @@ def _import_context():
         yield
     finally:
         _is_currently_importing = False
+
+
+def _in_import_context() -> bool:
+    # Accessor rather than direct attribute reads, since module-level variables
+    # are not exposed in the generated .pyi stub for this module
+    return _is_currently_importing

@@ -17,7 +17,7 @@ from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
 
-from .._runtime.container_io_manager import UserException
+from .._runtime.task_lifecycle_manager import UserException
 from .._server import validate_http_server_config
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
@@ -86,6 +86,7 @@ class _FlashManager:
         self.tunnel = await self.tunnel_manager.__aenter__()
         parsed_url = urlparse(self.tunnel.url)
         host = parsed_url.hostname
+        assert host is not None, f"Tunnel URL has no host: {self.tunnel.url}"
         port = parsed_url.port or 443
 
         if self.is_server:
@@ -326,7 +327,7 @@ class _FlashPrometheusAutoscaler:
         self.autoscaling_interval_seconds = autoscaling_interval_seconds
 
         FlashClass = _Cls.from_name(app_name, cls_name)
-        self.fn = FlashClass._class_service_function
+        self.fn = FlashClass._get_class_service_function()
         self.cls = FlashClass()
 
         self.http_client = aiohttp.ClientSession()
@@ -335,7 +336,7 @@ class _FlashPrometheusAutoscaler:
             create_if_missing=True,
         )
 
-        self.autoscaler_thread = None
+        self.autoscaler_thread: asyncio.Task | None = None
 
     async def start(self):
         await self.fn.hydrate(client=self.client)
@@ -519,11 +520,13 @@ class _FlashPrometheusAutoscaler:
         return sum_metric, n_containers_with_metrics
 
     async def _get_metrics(self, url: str) -> dict[str, list[Any]] | None:  # technically any should be Sample
-        from prometheus_client.parser import Sample, text_string_to_metric_families
+        import aiohttp
+        from prometheus_client.parser import text_string_to_metric_families
+        from prometheus_client.samples import Sample
 
         # Fetch the metrics from the endpoint
         try:
-            response = await self.http_client.get(url, timeout=3)
+            response = await self.http_client.get(url, timeout=aiohttp.ClientTimeout(total=3))
             response.raise_for_status()
         except asyncio.TimeoutError:
             logger.warning(f"[Modal Flash] Timeout getting metrics from {url}")
@@ -627,6 +630,8 @@ class _FlashPrometheusAutoscaler:
         return new_replicas
 
     async def stop(self):
+        if self.autoscaler_thread is None:
+            return
         self.autoscaler_thread.cancel()
         await self.autoscaler_thread
 
@@ -696,20 +701,21 @@ async def flash_prometheus_autoscaler(
 
 
 @synchronizer.create_blocking
-async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, Any]]:
+async def flash_get_containers(app_name: str, cls_name: str) -> list[Any]:
     """
     Return a list of flash containers for a deployed Flash service.
+
+    Each entry exposes `task_id`, `host`, and `port` attributes.
 
     This is a highly experimental method that can break or be removed at any time without warning.
     Do not use this method unless explicitly instructed to do so by Modal support.
     """
     client = await _Client.from_env()
-    fn = _Cls.from_name(app_name, cls_name)._class_service_function
-    assert fn is not None
+    fn = _Cls.from_name(app_name, cls_name)._get_class_service_function()
     await fn.hydrate(client=client)
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
     resp = await client.stub.FlashContainerList(req)
-    return resp.containers
+    return list(resp.containers)
 
 
 def _http_server(

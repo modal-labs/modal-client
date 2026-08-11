@@ -8,7 +8,7 @@ def is_leap(year: int):
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
-def month_length(month: int, year: int):
+def month_length(month: int, year: int) -> int:
     match month:
         # January, March, May, July, August, October, December
         case 1 | 3 | 5 | 7 | 8 | 10 | 12:
@@ -21,6 +21,9 @@ def month_length(month: int, year: int):
         # February (28 days in a common year and 29 days in leap years)
         case 2:
             return 29 if is_leap(year) else 28
+
+        case _:
+            raise ValueError(f"Invalid month: {month}")
 
 
 # also accepts negative inputs for n_months

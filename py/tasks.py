@@ -207,7 +207,7 @@ def type_stubs(ctx, verbose: bool = False):
 
 
 @task()
-def type_check(ctx, stubs: bool = True):
+def type_check(ctx, stubs: bool = True, mypy: bool = True, pyright: bool = True):
     """Run static type checking.
 
     Uses mypy for most files, but since mypy will not check the *implementation* (.py) for files that also have .pyi
@@ -224,12 +224,14 @@ def type_check(ctx, stubs: bool = True):
         "modal_proto",
     ]
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
-    print("Checking types with mypy...")
-    ctx.run(f"mypy . {excludes}", pty=True)
+    if mypy:
+        print("Checking types with mypy...")
+        ctx.run(f"mypy . {excludes}", pty=True)
 
     # Pyright checks are more limited; see pyproject.toml for configuration
-    print("Checking types with pyright...")
-    ctx.run("pyright", pty=True)
+    if pyright:
+        print("Checking types with pyright...")
+        ctx.run("pyright", pty=True)
 
 
 @task(
