@@ -81,6 +81,8 @@ message TaskContainerCreateRequest {
   // container. When unset, defaults to open network access. BLOCKED is not
   // accepted: a blocked sidecar has no IP and cannot reach the main container.
   optional modal.client.NetworkAccess network_access = 10;
+  // Optional PTY info for sidecar.
+  optional modal.client.PTYInfo pty_info = 11;
 }
 
 message TaskContainerCreateResponse {
