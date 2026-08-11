@@ -3407,6 +3407,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def WorkspaceBillingRates(self, stream):
+        _ = await stream.recv_message()
+
+        self.rates = {
+            "normal_key": "1.0",
+            "warning_key": "1.0",
+        }
+
+        await stream.send_message(
+            api_pb2.WorkspaceBillingRatesResponse(
+                rates=self.rates,
+                deprecation_warnings={"warning_key": "this is a warning"},
+                deprecation_errors={"error_key": "this is an error"},
+                formatted="formatted output",
+            )
+        )
+
     async def WorkspaceBillingReport(self, stream):
         # Dummy implementation
         request = await stream.recv_message()
@@ -4600,7 +4617,9 @@ def mock_webbrowser(monkeypatch):
     return _mock_browser
 
 
-def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
+def run_cli_command(
+    args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""
+) -> click.testing.Result:
     from importlib.metadata import version as get_version
 
     from packaging.version import parse as parse_version

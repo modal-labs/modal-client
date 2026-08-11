@@ -145,3 +145,31 @@ def test_environment_object_billing_summary(servicer, client):
 
     assert isinstance(summary.metered_cost, Decimal)
     assert isinstance(summary.metered_cost_breakdown, dict)
+
+
+def test_workspace_billing_rates(servicer, client):
+    # make sure the dict works as expected
+    with servicer.intercept() as ctx:
+        w = Workspace.from_context(client=client)
+        rates = w.billing.rates()
+
+        assert len(ctx.get_requests("WorkspaceBillingRates")) == 1
+
+    assert hasattr(servicer, "rates")
+
+    expected_keys = set(servicer.rates.keys())
+    expected_keys.remove("warning_key")
+
+    assert set(rates.keys()) == expected_keys
+
+    with pytest.warns(DeprecationError) as warns:
+        rates["warning_key"]
+        rates.get("error_key")
+
+    assert str(warns[0].message) == "this is a warning"
+    assert str(warns[1].message) == "this is an error"
+
+    with pytest.raises(DeprecationError) as exc:
+        rates["error_key"]
+
+    assert str(exc.value) == "this is an error"

@@ -5,6 +5,7 @@ from json import dumps
 
 import click
 from rich.box import SIMPLE_HEAD
+from rich.padding import Padding
 from rich.table import Table
 from rich.text import Text
 
@@ -296,3 +297,32 @@ async def summary(for_: str | None, json: bool):
     )
 
     output.print(t)
+
+
+@billing_cli.command("rates")
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@synchronizer.create_blocking
+async def rates(json: bool = False):
+    """Return current pricing rates.
+
+    Examples:
+
+    ```bash
+    modal billing rates
+    ```
+    """
+
+    rates = await _Workspace.from_context().billing.rates()
+
+    output = OutputManager.get()
+
+    if json:
+        output.print_json(
+            dumps(
+                {k: str(v) for k, v in rates.items()},
+                sort_keys=True,
+            )
+        )
+        return
+
+    output.print(Padding(Text(rates._formatted), (1, 2)))

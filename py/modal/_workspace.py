@@ -1,11 +1,14 @@
 # Copyright Modal Labs 2025
 import builtins
+import warnings
+from collections.abc import Mapping
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from google.protobuf.empty_pb2 import Empty
 
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -246,12 +249,91 @@ class _WorkspaceProxyTokenManager:
         return environment.object_id
 
 
+class _WorkspaceBillingRates(Mapping[str, Decimal]):
+    def __init__(
+        self, rates: Mapping[str, str], warnings: Mapping[str, str], errors: Mapping[str, str], formatted: str
+    ):
+        self._rates = {k: Decimal(v) for k, v in rates.items()}
+        self._warnings = warnings
+        self._errors = errors
+        self._formatted = formatted
+
+    def __getitem__(self, key: str) -> Decimal:
+        if key in self._errors:
+            raise DeprecationError(self._errors[key])
+        elif key in self._warnings:
+            warnings.warn(self._warnings[key], DeprecationError)
+
+        return self._rates[key]
+
+    def __iter__(self):
+        for k in self._rates:
+            # We don't want iteration over the dict to surface any deprecated keys
+            if k in self._warnings:
+                continue
+            if k in self._errors:
+                continue
+
+            yield k
+
+    def __len__(self):
+        return len(set(self._rates.keys()) - set(self._warnings.keys()) - set(self._errors.keys()))
+
+    # Ensures that `rates.get()` doesn't throw `DeprecationError`s
+    # fixme(ayush): pyright seems to assume that the return type of `.get` for a `Mapping[K, V]` is
+    # always `V` regardless of the type of `default`. Fix this somehow?
+    def get(self, key, default=None):  # pyright: ignore [reportIncompatibleMethodOverride]
+        try:
+            return self[key]
+        except KeyError:
+            return default
+        except DeprecationError as e:
+            warnings.warn(str(e), DeprecationError)
+            return default
+
+    # Ensures that `'k' in rates` doesn't throw `DeprecationError`s
+    def __contains__(self, key):
+        try:
+            self[key]
+        except (KeyError, DeprecationError):
+            return False
+        else:
+            return True
+
+    def __str__(self) -> str:
+        return self._formatted
+
+    def __repr__(self) -> str:
+        return repr({k: v for k, v in self.items()})
+
+
 class _WorkspaceBillingManager:
     """mdmd:namespace"""
 
     def __init__(self, workspace: _Workspace):
         """mdmd:hidden"""
         self._workspace = workspace
+
+    async def rates(self) -> _WorkspaceBillingRates:
+        """Return current pricing rates for the given workspace.
+
+        Returns:
+            A single mapping containing cost values. All values are reported as `decimal.Decimal`s.
+        """
+
+        if not self._workspace.is_hydrated:
+            await self._workspace.hydrate()
+
+        response = await self._workspace.client.stub.WorkspaceBillingRates(
+            api_pb2.WorkspaceBillingRatesRequest(),
+        )
+
+        return _WorkspaceBillingRates(
+            response.rates,
+            response.deprecation_warnings,
+            response.deprecation_errors,
+            response.formatted,
+        )
 
     async def report(
         self,

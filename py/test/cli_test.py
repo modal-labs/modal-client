@@ -22,7 +22,7 @@ import toml
 import modal
 from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, _CliUserExecutionError
 from modal.types import LogEntry
 from modal_proto import api_pb2
 
@@ -1947,7 +1947,11 @@ def test_run_literal_args_function(servicer, set_env_client, test_dir):
 def test_run_user_script_exception(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
     res = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1)
-    assert res.exc_info[1].user_source == str(app_file.resolve())
+    assert res.exc_info is not None
+    exc = res.exc_info[1]
+    assert isinstance(exc, _CliUserExecutionError)
+
+    assert exc.user_source == str(app_file.resolve())
 
 
 @pytest.fixture
@@ -3203,6 +3207,15 @@ def test_environment_billing_report(servicer, set_env_client):
         ["environment", "billing", "report", "does-not-exist", "--start", "2025-01-01"], expected_exit_code=1
     )
     assert str(res.exception) == "Environment 'does-not-exist' not found"
+
+
+def test_billing_rates(servicer, set_env_client):
+    # check normal table output
+    _ = run_cli_command(["billing", "rates"])
+
+    # check keys in json
+    output = run_cli_command(["billing", "rates", "--json"])
+    json.loads(output.stdout)
 
 
 @pytest.mark.parametrize("cmd", ["rollover", "rollback"])
