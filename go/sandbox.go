@@ -2062,23 +2062,27 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 
 // SandboxExperimentalListParams are options for SandboxService.ExperimentalList.
 type SandboxExperimentalListParams struct {
-	AppID string            // The App to list Sandboxes under.
-	Tags  map[string]string // Only include Sandboxes that have all these tags.
+	AppID       string            // The App to list Sandboxes under. Omit to list across the environment (deprecated).
+	Tags        map[string]string // Only include Sandboxes that have all these tags.
+	Environment string            // Override environment for this request (used only when AppID is empty).
 }
 
-// ExperimentalList lists the V2 Sandboxes in an App, i.e. Sandboxes created via
-// ExperimentalCreate. If Tags are specified, only Sandboxes that have all those
-// tags are returned.
+// ExperimentalList lists V2 Sandboxes, i.e. Sandboxes created via
+// ExperimentalCreate. Pass AppID to scope to an App; omit it to list across the
+// environment (deprecated — prefer scoping by AppID). If Tags are specified,
+// only Sandboxes that have all those tags are returned.
 //
 // EXPERIMENTAL: the API is subject to change.
 func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error) {
 	if params == nil {
 		params = &SandboxExperimentalListParams{}
 	}
+
+	var environmentName string
 	if params.AppID == "" {
-		return nil, InvalidError{Exception: "ExperimentalList requires an `AppID`:\n\n" +
-			"app, err := mc.Apps.FromName(ctx, \"my-app\", nil)\n" +
-			"sandboxes, err := mc.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{AppID: app.AppID})"}
+		s.client.logger.WarnContext(ctx,
+			"Sandboxes.ExperimentalList without an AppID lists across the whole environment and is deprecated; pass AppID to scope the query")
+		environmentName = firstNonEmpty(params.Environment, s.client.profile.Environment)
 	}
 
 	tagsList := make([]*pb.SandboxTag, 0, len(params.Tags))
@@ -2097,6 +2101,7 @@ func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *Sandb
 			resp, err := s.client.cpClient.SandboxListV2(ctx, pb.SandboxListRequest_builder{
 				AppId:           params.AppID,
 				BeforeTimestamp: before,
+				EnvironmentName: environmentName,
 				IncludeFinished: false,
 				Tags:            tagsList,
 			}.Build())

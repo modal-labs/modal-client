@@ -753,12 +753,18 @@ def test_sandbox_list_tags(app, client, servicer):
 
 
 @pytest.mark.parametrize("app_id", [None, ""])
-def test_sandbox_experimental_list_requires_app_id(app_id, client, servicer):
-    # Outside a Modal container there is no default App to deduce, so a
-    # non-empty app_id is required. An empty string must not silently widen
-    # the listing to the whole environment.
-    with pytest.raises(InvalidError, match="requires an `app_id`"):
-        list(Sandbox._experimental_list(app_id=app_id, client=client))
+def test_sandbox_experimental_list_environment_scoped(app_id, client, servicer):
+    # Without an app_id (None or ""), _experimental_list lists across the current
+    # environment and emits a soft deprecation warning steering callers toward
+    # app_id. pytest.warns records the warning (the suite otherwise treats
+    # DeprecationError as an error) and lets the call proceed, so we can also
+    # assert it returns results.
+    app = App()
+    with app.run(client=client):
+        sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+        with pytest.warns(DeprecationError, match="without an `app_id`"):
+            listed = [s.object_id for s in Sandbox._experimental_list(app_id=app_id, client=client)]
+        assert sb.object_id in listed
 
 
 def test_sandbox_experimental_list_app(client, servicer):

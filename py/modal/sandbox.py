@@ -2521,24 +2521,30 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _experimental_list(
         *, app_id: str | None = None, tags: dict[str, str] | None = None, client: _Client | None = None
     ) -> AsyncGenerator["_Sandbox", None]:
-        """List v2 Sandboxes in an App.
+        """List v2 Sandboxes.
 
         This function lists v2 sandboxes, ie sandboxes created via modal.Sandbox._experimental_create.
+        Pass `app_id` to scope to an App; without it, Sandboxes across the current Environment are
+        listed (deprecated — prefer scoping by `app_id`).
 
         Args:
-            app_id: The App to list Sandboxes under.
+            app_id: If set, restrict results to Sandboxes under this App.
             tags: If set, only sandboxes containing at least these tags are returned.
             client: Optional client to use for the session.
 
         Yields:
-            `Sandbox` objects that are currently running in the App.
+            `Sandbox` objects that are currently running.
         """
+        environment_name = ""
         if not app_id:
-            raise InvalidError(
-                "Sandbox._experimental_list requires an `app_id`:\n\n"
+            deprecation_warning(
+                (2026, 8, 10),
+                "Sandbox._experimental_list without an `app_id` lists across the entire Environment, "
+                "which is deprecated. Pass `app_id` to scope the query:\n\n"
                 'app = modal.App.lookup("my-app")\n'
-                "Sandbox._experimental_list(app_id=app.app_id)"
+                "Sandbox._experimental_list(app_id=app.app_id)",
             )
+            environment_name = _get_environment_name()
 
         before_timestamp = None
         if client is None:
@@ -2549,8 +2555,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         assert client._auth_token_manager
         while True:
             req = api_pb2.SandboxListRequest(
-                app_id=app_id,
+                app_id=app_id or "",
                 before_timestamp=before_timestamp,
+                environment_name=environment_name,
                 include_finished=False,
                 tags=tags_list,
             )

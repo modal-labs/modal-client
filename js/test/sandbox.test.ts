@@ -1916,12 +1916,28 @@ test("ExperimentalList yields V2 Sandboxes and paginates", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalList requires an appId", async () => {
-  const { mockClient: mc } = createMockModalClients();
-  const iter = mc.sandboxes.experimentalList({ appId: "" });
-  await expect(iter.next()).rejects.toThrow(
-    "experimentalList requires an `appId`",
-  );
+test("ExperimentalList lists environment-scoped without an appId", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  // Without an appId the query is environment-scoped. The empty second batch
+  // terminates the loop.
+  mock.handleUnary("/SandboxListV2", (req: any) => {
+    expect(req.appId).toBeFalsy();
+    expect(req.environmentName).toBe("my-env");
+    return { sandboxes: [{ id: V2_SANDBOX_ID, createdAt: 100 }] };
+  });
+  mock.handleUnary("/SandboxListV2", () => {
+    return { sandboxes: [] };
+  });
+
+  const ids: string[] = [];
+  for await (const sb of mc.sandboxes.experimentalList({
+    environment: "my-env",
+  })) {
+    ids.push(sb.sandboxId);
+  }
+  expect(ids).toEqual([V2_SANDBOX_ID]);
+  mock.assertExhausted();
 });
 
 test("ExperimentalList forwards tag filters", async () => {

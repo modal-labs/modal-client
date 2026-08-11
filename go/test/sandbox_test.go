@@ -939,14 +939,38 @@ func TestSandboxExperimentalListMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxExperimentalListRequiresAppID(t *testing.T) {
+func TestSandboxExperimentalListEnvironmentScoped(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
 
-	_, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{})
-	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("ExperimentalList requires an `AppID`")))
+	// Without an AppID the query is environment-scoped.
+	grpcmock.HandleUnary(mock, "SandboxListV2",
+		func(req *pb.SandboxListRequest) (*pb.SandboxListResponse, error) {
+			g.Expect(req.GetAppId()).To(gomega.BeEmpty())
+			g.Expect(req.GetEnvironmentName()).To(gomega.Equal("my-env"))
+			return pb.SandboxListResponse_builder{
+				Sandboxes: []*pb.SandboxInfo{
+					pb.SandboxInfo_builder{Id: validV2SandboxID, CreatedAt: 100}.Build(),
+				},
+			}.Build(), nil
+		})
+	grpcmock.HandleUnary(mock, "SandboxListV2",
+		func(req *pb.SandboxListRequest) (*pb.SandboxListResponse, error) {
+			return pb.SandboxListResponse_builder{}.Build(), nil
+		})
+
+	it, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{Environment: "my-env"})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	var ids []string
+	for s, err := range it {
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		ids = append(ids, s.SandboxID)
+	}
+	g.Expect(ids).To(gomega.Equal([]string{validV2SandboxID}))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestNamedSandbox(t *testing.T) {

@@ -1039,27 +1039,29 @@ export class SandboxService {
   }
 
   /**
-   * List the V2 {@link Sandbox}es in an {@link App}.
+   * List V2 {@link Sandbox}es.
    *
    * This lists V2 Sandboxes, i.e. Sandboxes created via
    * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
    * Such Sandboxes are not returned by
-   * {@link SandboxService#list client.sandboxes.list()}. If tags are specified,
-   * only Sandboxes that have at least those tags are returned.
+   * {@link SandboxService#list client.sandboxes.list()}. Pass `appId` to scope to
+   * an App; omit it to list across the current environment (deprecated — prefer
+   * scoping by `appId`). If tags are specified, only Sandboxes that have at least
+   * those tags are returned.
    *
-   * Yields {@link Sandbox} objects that are currently running in the App.
+   * Yields {@link Sandbox} objects that are currently running.
    *
    * EXPERIMENTAL: the API is subject to change.
    */
   async *experimentalList(
-    params: SandboxExperimentalListParams,
+    params: SandboxExperimentalListParams = {},
   ): AsyncGenerator<Sandbox, void, unknown> {
-    if (!params?.appId) {
-      throw new InvalidError(
-        "experimentalList requires an `appId`:\n\n" +
-          'const app = await modal.apps.fromName("my-app");\n' +
-          "modal.sandboxes.experimentalList({ appId: app.appId });",
+    let environmentName: string | undefined = undefined;
+    if (!params.appId) {
+      this.#client.logger.warn(
+        "experimentalList without an `appId` lists across the whole environment and is deprecated; pass `appId` to scope the query.",
       );
+      environmentName = this.#client.environmentName(params.environment);
     }
 
     const tagsList = params.tags
@@ -1077,6 +1079,7 @@ export class SandboxService {
       const resp = await this.#client.cpClient.sandboxListV2({
         appId: params.appId,
         beforeTimestamp,
+        environmentName,
         includeFinished: false,
         tags: tagsList,
       });
@@ -1104,10 +1107,12 @@ export type SandboxListParams = {
 
 /** Parameters for {@link SandboxService#experimentalList client.sandboxes.experimentalList()}. */
 export type SandboxExperimentalListParams = {
-  /** The App to list Sandboxes under. */
-  appId: string;
+  /** The App to list Sandboxes under. Omit to list across the environment (deprecated). */
+  appId?: string;
   /** Only return Sandboxes that include all specified tags. */
   tags?: Record<string, string>;
+  /** Override environment for the request; defaults to current profile. */
+  environment?: string;
 };
 
 /** Optional parameters for {@link SandboxService#fromName client.sandboxes.fromName()}. */
