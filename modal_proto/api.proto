@@ -4569,6 +4569,9 @@ message WorkspaceBillingRatesRequest {}
 message WorkspaceBillingRatesResponse {
   // compute rates are per unit per hour, storage rate is per GiB-month
   map<string, string> rates = 1;
+  map<string, string> deprecation_warnings = 2;
+  map<string, string> deprecation_errors = 3;
+  string formatted = 4;
 }
 
 message WorkspaceBillingReportItem {
