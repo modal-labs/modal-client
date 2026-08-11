@@ -321,6 +321,7 @@ _SETTINGS = {
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
+    "sandbox_v2": _Setting(None, transform=_to_boolean),
     "snapshot_debug": _Setting(False, transform=_to_boolean),
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
     "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),

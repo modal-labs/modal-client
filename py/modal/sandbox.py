@@ -332,6 +332,39 @@ class Probe:
         raise InvalidError("Probe must be created with Probe.with_tcp(...) or Probe.with_exec(...)")
 
 
+def _resolve_app_id_and_client(
+    app: "modal.app._App | None",
+    client: "_Client | None",
+) -> "tuple[str | None, _Client | None]":
+    """Resolve the App id and client for Sandbox creation, validating that an App is available."""
+    from .app import _App
+
+    if app is not None:
+        if app.app_id is None:
+            raise ValueError(
+                "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
+                "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
+            )
+        app_id = app.app_id
+        app_client = app._client
+    elif (container_app := _App._get_container_app()) is not None:
+        app_id = container_app.app_id
+        app_client = container_app._client
+    else:
+        raise InvalidError(
+            "Sandboxes require an App when created outside of a Modal container.\n\n"
+            "Run an ephemeral App (`with app.run(): ...`), or reference a deployed App using `App.lookup`:\n\n"
+            "```\n"
+            'app = modal.App.lookup("sandbox-app", create_if_missing=True)\n'
+            "sb = modal.Sandbox.create(..., app=app)\n"
+            "```",
+        )
+
+    return app_id, client or app_client
+
+
 class _Sandbox(_Object, type_prefix="sb"):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
@@ -645,6 +678,44 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
             outbound_cidr_allowlist = cidr_allowlist
 
+        # Opt-in to the V2 backend. GPUs and network file systems are not supported on V2, so
+        # those calls stay on V1 even when the flag is set.
+        if config.get("sandbox_v2") is True and gpu is None and not network_file_systems and pty_info is None:
+            _, client = _resolve_app_id_and_client(app, client)
+            return await _Sandbox._experimental_create(
+                *args,
+                app=app,
+                name=name,
+                tags=tags,
+                image=image,
+                env=env,
+                secrets=secrets,
+                timeout=timeout,
+                idle_timeout=idle_timeout,
+                workdir=workdir,
+                cpu=cpu,
+                memory=memory,
+                cloud=cloud,
+                region=region,
+                block_network=block_network,
+                outbound_cidr_allowlist=outbound_cidr_allowlist,
+                outbound_domain_allowlist=outbound_domain_allowlist,
+                inbound_cidr_allowlist=inbound_cidr_allowlist,
+                volumes=volumes,
+                pty=pty,
+                encrypted_ports=encrypted_ports,
+                h2_ports=h2_ports,
+                unencrypted_ports=unencrypted_ports,
+                proxy=proxy,
+                readiness_probe=readiness_probe,
+                experimental_options=experimental_options,
+                include_oidc_identity_token=include_oidc_identity_token,
+                verbose=verbose,
+                custom_domain=custom_domain,
+                client=client,
+                _experimental_enable_snapshot=_experimental_enable_snapshot,
+            )
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
@@ -729,8 +800,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
         sandbox that runs the shell session.
         """
-        from .app import _App
-
         _validate_exec_args(args)
         if name is not None:
             check_object_name(name, "Sandbox")
@@ -779,35 +848,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
-        app_id: str | None = None
-        app_client: _Client | None = None
-
-        if app is not None:
-            if app.app_id is None:
-                raise ValueError(
-                    "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
-                    "app = modal.App.lookup('my-app', create_if_missing=True)\n"
-                    "modal.Sandbox.create('echo', 'hi', app=app)\n"
-                    "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
-                )
-
-            app_id = app.app_id
-            app_client = app._client
-        elif (container_app := _App._get_container_app()) is not None:
-            # implicit app/client provided by running in a modal Function
-            app_id = container_app.app_id
-            app_client = container_app._client
-        else:
-            raise InvalidError(
-                "Sandboxes require an App when created outside of a Modal container.\n\n"
-                "Run an ephemeral App (`with app.run(): ...`), or reference a deployed App using `App.lookup`:\n\n"
-                "```\n"
-                'app = modal.App.lookup("sandbox-app", create_if_missing=True)\n'
-                "sb = modal.Sandbox.create(..., app=app)\n"
-                "```",
-            )
-
-        client = client or app_client
+        app_id, client = _resolve_app_id_and_client(app, client)
 
         resolver = Resolver()
         async with TaskContext() as tc:
@@ -880,8 +921,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         `sandbox.object_id` and use `Sandbox.from_id(sandbox.object_id)` to
         reattach.
         """
-        from .app import _App
-
         _validate_exec_args(args)
         if name is not None:
             check_object_name(name, "Sandbox")
@@ -1053,33 +1092,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         obj = _Sandbox._from_loader(_load, "Sandbox()", load_context_overrides=LoadContext.empty())
 
-        app_id: str | None = None
-        app_client: _Client | None = None
-
-        if app is not None:
-            if app.app_id is None:
-                raise ValueError(
-                    "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
-                    "app = modal.App.lookup('my-app', create_if_missing=True)\n"
-                    "modal.Sandbox._experimental_create('echo', 'hi', app=app)\n"
-                    "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
-                )
-            app_id = app.app_id
-            app_client = app._client
-        elif (container_app := _App._get_container_app()) is not None:
-            app_id = container_app.app_id
-            app_client = container_app._client
-        else:
-            raise InvalidError(
-                "Sandboxes require an App when created outside of a Modal container.\n\n"
-                "Run an ephemeral App (`with app.run(): ...`), or reference a deployed App using `App.lookup`:\n\n"
-                "```\n"
-                'app = modal.App.lookup("sandbox-app", create_if_missing=True)\n'
-                "sb = modal.Sandbox._experimental_create(..., app=app)\n"
-                "```",
-            )
-
-        client = client or app_client
+        app_id, client = _resolve_app_id_and_client(app, client)
 
         resolver = Resolver()
         async with TaskContext() as tc:
@@ -1232,6 +1245,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
         if client is None:
             client = await _Client.from_env()
+
+        if config.get("sandbox_v2") is True:
+            try:
+                return await _Sandbox._experimental_from_name(
+                    app_name, name, environment_name=environment_name, client=client
+                )
+            except NotFoundError:
+                pass
+
         env_name = _get_environment_name(environment_name)
 
         req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
@@ -2486,6 +2508,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns:
             An async generator yielding `Sandbox` objects.
         """
+        if config.get("sandbox_v2") is True:
+            async for sandbox in _Sandbox._experimental_list(app_id=app_id, tags=tags, client=client):
+                yield sandbox
+            return
+
         before_timestamp = None
         environment_name = _get_environment_name()
         if client is None:
@@ -2539,10 +2566,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         if not app_id:
             deprecation_warning(
                 (2026, 8, 10),
-                "Sandbox._experimental_list without an `app_id` lists across the entire Environment, "
-                "which is deprecated. Pass `app_id` to scope the query:\n\n"
+                "Listing Sandboxes without an `app_id` scans the entire Environment, which is deprecated. "
+                "Pass an `app_id` to scope the query:\n\n"
                 'app = modal.App.lookup("my-app")\n'
-                "Sandbox._experimental_list(app_id=app.app_id)",
+                "modal.Sandbox.list(app_id=app.app_id)",
             )
             environment_name = _get_environment_name()
 

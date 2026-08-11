@@ -829,6 +829,119 @@ def test_sandbox_experimental_from_name_routes_mirrored_v1_sandbox_to_v1(client,
     assert ctx.get_requests("SandboxTerminateV2") == []
 
 
+def test_sandbox_create_env_flag_routes_to_v2(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.create("echo", "hi", app=app)
+
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V2
+    assert ctx.get_requests("SandboxCreate") == []
+    (req,) = ctx.get_requests("SandboxCreateV2")
+    assert list(req.definition.entrypoint_args) == ["echo", "hi"]
+
+
+def test_sandbox_create_env_flag_false_stays_v1(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.create("echo", "hi", app=app)
+
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
+    assert ctx.get_requests("SandboxCreateV2") == []
+    assert len(ctx.get_requests("SandboxCreate")) == 1
+
+
+def test_sandbox_create_env_flag_gpu_stays_v1(app, servicer, monkeypatch):
+    # GPUs have no V2 equivalent, so the call stays on V1 even with the flag set.
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.create("echo", "hi", app=app, gpu="A10G")
+
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
+    assert ctx.get_requests("SandboxCreateV2") == []
+    assert len(ctx.get_requests("SandboxCreate")) == 1
+
+
+def test_sandbox_create_env_flag_nfs_stays_v1(app, client, servicer, monkeypatch):
+    # Network file systems have no V2 equivalent, so the call stays on V1.
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+
+    with NetworkFileSystem.ephemeral(client=client) as nfs:
+        with servicer.intercept() as ctx:
+            sb = Sandbox.create("echo", "hi", network_file_systems={"/cache": nfs}, app=app)
+
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
+    assert ctx.get_requests("SandboxCreateV2") == []
+    assert len(ctx.get_requests("SandboxCreate")) == 1
+
+
+def test_sandbox_from_name_env_flag_resolves_v2(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    servicer.sandbox_names[_V2_SANDBOX_ID] = "my-sandbox"
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.from_name("my-app", "my-sandbox", client=client)
+
+    assert sb.object_id == _V2_SANDBOX_ID
+    assert len(ctx.get_requests("SandboxGetFromNameV2")) == 1
+    assert ctx.get_requests("SandboxGetFromName") == []
+
+
+def test_sandbox_from_name_env_flag_falls_back_to_v1(client, servicer, monkeypatch):
+    # A name unknown to the V2 backend falls back to the V1 lookup rather than raising.
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.from_name("my-app", "not-on-v2", client=client)
+
+    assert sb.object_id == "sb-nGEijt9WbBMlGrsPH9FOaC"
+    assert len(ctx.get_requests("SandboxGetFromNameV2")) == 1
+    assert len(ctx.get_requests("SandboxGetFromName")) == 1
+
+
+def test_sandbox_list_env_flag_routes_to_v2(client, servicer, monkeypatch):
+    app = App()
+    with app.run(client=client):
+        sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+        with servicer.intercept() as ctx:
+            listed = [s.object_id for s in Sandbox.list(app_id=app.app_id, client=client)]
+
+    assert sb.object_id in listed
+    assert len(ctx.get_requests("SandboxListV2")) >= 1
+    assert ctx.get_requests("SandboxList") == []
+
+
+def test_sandbox_list_env_flag_env_wide_warns_and_routes_to_v2(client, servicer, monkeypatch):
+    app = App()
+    with app.run(client=client):
+        sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+        with servicer.intercept() as ctx:
+            with pytest.warns(DeprecationError, match="without an `app_id`") as record:
+                listed = [s.object_id for s in Sandbox.list(client=client)]
+
+    assert sb.object_id in listed
+    assert len(ctx.get_requests("SandboxListV2")) >= 1
+    assert ctx.get_requests("SandboxList") == []
+    assert "_experimental_list" not in str(record[0].message)
+
+
+def test_sandbox_list_env_flag_false_stays_v1(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+    app = App()
+    with app.run(client=client):
+        sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+        with servicer.intercept() as ctx:
+            listed = [s.object_id for s in Sandbox.list(app_id=app.app_id, client=client)]
+
+    assert sb.object_id in listed
+    assert len(ctx.get_requests("SandboxList")) >= 1
+    assert ctx.get_requests("SandboxListV2") == []
+
+
 def test_sandbox_create_with_tags(app, client, servicer):
     tags = {"env": "prod", "team": "core"}
     with servicer.intercept() as ctx:
