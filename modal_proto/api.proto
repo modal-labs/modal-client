@@ -1641,6 +1641,7 @@ message EnvironmentCreateRequest {
   EnvironmentSettings settings = 3;
   EnvironmentType environment_type = 4;
   optional EnvironmentRole default_member_role = 5;
+  string default_member_role_str = 6;  // String representation; parsed when the enum is unspecified.
 }
 
 message EnvironmentDeleteRequest {

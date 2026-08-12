@@ -20214,16 +20214,17 @@ func (b0 EnvironmentBillingSummaryResponse_builder) Build() *EnvironmentBillingS
 }
 
 type EnvironmentCreateRequest struct {
-	state                        protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Name              string                 `protobuf:"bytes,1,opt,name=name,proto3"`
-	xxx_hidden_IsManaged         bool                   `protobuf:"varint,2,opt,name=is_managed,json=isManaged,proto3"`
-	xxx_hidden_Settings          *EnvironmentSettings   `protobuf:"bytes,3,opt,name=settings,proto3"`
-	xxx_hidden_EnvironmentType   EnvironmentType        `protobuf:"varint,4,opt,name=environment_type,json=environmentType,proto3,enum=modal.client.EnvironmentType"`
-	xxx_hidden_DefaultMemberRole EnvironmentRole        `protobuf:"varint,5,opt,name=default_member_role,json=defaultMemberRole,proto3,enum=modal.client.EnvironmentRole,oneof"`
-	XXX_raceDetectHookData       protoimpl.RaceDetectHookData
-	XXX_presence                 [1]uint32
-	unknownFields                protoimpl.UnknownFields
-	sizeCache                    protoimpl.SizeCache
+	state                           protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Name                 string                 `protobuf:"bytes,1,opt,name=name,proto3"`
+	xxx_hidden_IsManaged            bool                   `protobuf:"varint,2,opt,name=is_managed,json=isManaged,proto3"`
+	xxx_hidden_Settings             *EnvironmentSettings   `protobuf:"bytes,3,opt,name=settings,proto3"`
+	xxx_hidden_EnvironmentType      EnvironmentType        `protobuf:"varint,4,opt,name=environment_type,json=environmentType,proto3,enum=modal.client.EnvironmentType"`
+	xxx_hidden_DefaultMemberRole    EnvironmentRole        `protobuf:"varint,5,opt,name=default_member_role,json=defaultMemberRole,proto3,enum=modal.client.EnvironmentRole,oneof"`
+	xxx_hidden_DefaultMemberRoleStr string                 `protobuf:"bytes,6,opt,name=default_member_role_str,json=defaultMemberRoleStr,proto3"`
+	XXX_raceDetectHookData          protoimpl.RaceDetectHookData
+	XXX_presence                    [1]uint32
+	unknownFields                   protoimpl.UnknownFields
+	sizeCache                       protoimpl.SizeCache
 }
 
 func (x *EnvironmentCreateRequest) Reset() {
@@ -20288,6 +20289,13 @@ func (x *EnvironmentCreateRequest) GetDefaultMemberRole() EnvironmentRole {
 	return EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED
 }
 
+func (x *EnvironmentCreateRequest) GetDefaultMemberRoleStr() string {
+	if x != nil {
+		return x.xxx_hidden_DefaultMemberRoleStr
+	}
+	return ""
+}
+
 func (x *EnvironmentCreateRequest) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -20306,7 +20314,11 @@ func (x *EnvironmentCreateRequest) SetEnvironmentType(v EnvironmentType) {
 
 func (x *EnvironmentCreateRequest) SetDefaultMemberRole(v EnvironmentRole) {
 	x.xxx_hidden_DefaultMemberRole = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 6)
+}
+
+func (x *EnvironmentCreateRequest) SetDefaultMemberRoleStr(v string) {
+	x.xxx_hidden_DefaultMemberRoleStr = v
 }
 
 func (x *EnvironmentCreateRequest) HasSettings() bool {
@@ -20335,11 +20347,12 @@ func (x *EnvironmentCreateRequest) ClearDefaultMemberRole() {
 type EnvironmentCreateRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Name              string
-	IsManaged         bool
-	Settings          *EnvironmentSettings
-	EnvironmentType   EnvironmentType
-	DefaultMemberRole *EnvironmentRole
+	Name                 string
+	IsManaged            bool
+	Settings             *EnvironmentSettings
+	EnvironmentType      EnvironmentType
+	DefaultMemberRole    *EnvironmentRole
+	DefaultMemberRoleStr string
 }
 
 func (b0 EnvironmentCreateRequest_builder) Build() *EnvironmentCreateRequest {
@@ -20351,9 +20364,10 @@ func (b0 EnvironmentCreateRequest_builder) Build() *EnvironmentCreateRequest {
 	x.xxx_hidden_Settings = b.Settings
 	x.xxx_hidden_EnvironmentType = b.EnvironmentType
 	if b.DefaultMemberRole != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 6)
 		x.xxx_hidden_DefaultMemberRole = *b.DefaultMemberRole
 	}
+	x.xxx_hidden_DefaultMemberRoleStr = b.DefaultMemberRoleStr
 	return m0
 }
 
@@ -64511,14 +64525,15 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x16metered_cost_breakdown\x18\x04 \x03(\v2I.modal.client.EnvironmentBillingSummaryResponse.MeteredCostBreakdownEntryR\x14meteredCostBreakdown\x1aG\n" +
 	"\x19MeteredCostBreakdownEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc2\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf9\x02\n" +
 	"\x18EnvironmentCreateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
 	"is_managed\x18\x02 \x01(\bR\tisManaged\x12=\n" +
 	"\bsettings\x18\x03 \x01(\v2!.modal.client.EnvironmentSettingsR\bsettings\x12H\n" +
 	"\x10environment_type\x18\x04 \x01(\x0e2\x1d.modal.client.EnvironmentTypeR\x0fenvironmentType\x12R\n" +
-	"\x13default_member_role\x18\x05 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x00R\x11defaultMemberRole\x88\x01\x01B\x16\n" +
+	"\x13default_member_role\x18\x05 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x00R\x11defaultMemberRole\x88\x01\x01\x125\n" +
+	"\x17default_member_role_str\x18\x06 \x01(\tR\x14defaultMemberRoleStrB\x16\n" +
 	"\x14_default_member_role\".\n" +
 	"\x18EnvironmentDeleteRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"D\n" +
