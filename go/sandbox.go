@@ -2067,8 +2067,8 @@ type SandboxExperimentalListParams struct {
 	Environment string            // Override environment for this request (used only when AppID is empty).
 }
 
-// ExperimentalList lists V2 Sandboxes, i.e. Sandboxes created via
-// ExperimentalCreate. Pass AppID to scope to an App; omit it to list across the
+// ExperimentalList lists all sandboxes (v1 and v2).
+// Pass AppID to scope to an App; omit it to list across the
 // environment (deprecated — prefer scoping by AppID). If Tags are specified,
 // only Sandboxes that have all those tags are returned.
 //

@@ -1041,13 +1041,10 @@ export class SandboxService {
   /**
    * List V2 {@link Sandbox}es.
    *
-   * This lists V2 Sandboxes, i.e. Sandboxes created via
-   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
-   * Such Sandboxes are not returned by
-   * {@link SandboxService#list client.sandboxes.list()}. Pass `appId` to scope to
-   * an App; omit it to list across the current environment (deprecated — prefer
-   * scoping by `appId`). If tags are specified, only Sandboxes that have at least
-   * those tags are returned.
+   * This lists all Sandboxes (both v1 and v2).
+   * Pass `appId` to scope to an App; omit it to list across the current
+   * environment (deprecated — prefer scoping by `appId`). If tags are specified,
+   * only Sandboxes that have at least those tags are returned.
    *
    * Yields {@link Sandbox} objects that are currently running.
    *

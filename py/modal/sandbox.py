@@ -2548,11 +2548,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _experimental_list(
         *, app_id: str | None = None, tags: dict[str, str] | None = None, client: _Client | None = None
     ) -> AsyncGenerator["_Sandbox", None]:
-        """List v2 Sandboxes.
+        """List all sandboxes (both v1 and v2).
 
-        This function lists v2 sandboxes, ie sandboxes created via modal.Sandbox._experimental_create.
-        Pass `app_id` to scope to an App; without it, Sandboxes across the current Environment are
-        listed (deprecated — prefer scoping by `app_id`).
+        Pass `app_id` to scope to an App; without it, Sandboxes across the current
+        Environment are listed (deprecated — prefer scoping by `app_id`).
 
         Args:
             app_id: If set, restrict results to Sandboxes under this App.
