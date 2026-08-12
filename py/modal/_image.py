@@ -764,7 +764,10 @@ class _Image(_Object, type_prefix="im"):
                 if build_resp.HasField("metadata"):
                     metadata = build_resp.metadata
 
-            if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+            if result.status in (
+                api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                api_pb2.GenericResult.GENERIC_STATUS_MEMORY_MANAGER_EVICTION,
+            ):
                 if result.exception:
                     raise ImageBuildError(
                         f"Image build for {image_id} failed with the exception:\n{result.exception}", image_id

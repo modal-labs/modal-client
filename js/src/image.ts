@@ -491,7 +491,9 @@ export class Image {
       }
 
       if (
-        result.status === GenericResult_GenericStatus.GENERIC_STATUS_FAILURE
+        result.status === GenericResult_GenericStatus.GENERIC_STATUS_FAILURE ||
+        result.status ===
+          GenericResult_GenericStatus.GENERIC_STATUS_MEMORY_MANAGER_EVICTION
       ) {
         throw new Error(
           `Image build for ${resp.imageId} failed with the exception:\n${result.exception}`,

@@ -465,7 +465,7 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 		}
 
 		switch result.GetStatus() {
-		case pb.GenericResult_GENERIC_STATUS_FAILURE:
+		case pb.GenericResult_GENERIC_STATUS_FAILURE, pb.GenericResult_GENERIC_STATUS_MEMORY_MANAGER_EVICTION:
 			return nil, RemoteError{fmt.Sprintf("Image build for %s failed with the exception:\n%s", resp.GetImageId(), result.GetException())}
 		case pb.GenericResult_GENERIC_STATUS_TERMINATED:
 			return nil, RemoteError{fmt.Sprintf("Image build for %s terminated due to external shut-down. Please try again.", resp.GetImageId())}
