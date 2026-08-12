@@ -554,7 +554,6 @@ class _ContainerIOManager:
     _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
-    _fetching_inputs: bool
 
     _singleton: ClassVar["_ContainerIOManager | None"] = None
 
@@ -595,7 +594,6 @@ class _ContainerIOManager:
         self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
-        self._fetching_inputs = True
 
         self._max_object_size_bytes, self._max_async_object_size_bytes = _resolve_output_size_limits(container_args)
 
@@ -863,7 +861,7 @@ class _ContainerIOManager:
     ]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
-        while self._fetching_inputs:
+        while True:
             await self._input_slots.acquire()
 
             request.input_concurrency = self.get_input_concurrency()
@@ -1112,10 +1110,15 @@ class _ContainerIOManager:
         io_manager._input_slots.set_value(concurrency)
 
     @classmethod
-    def stop_fetching_inputs(cls):
-        if not cls._singleton:
+    async def stop_fetching_inputs(cls):
+        io_manager = cls._singleton
+        if not io_manager:
             raise RuntimeError("Must be called from within a Modal container.")
-        cls._singleton._fetching_inputs = False
+        request = api_pb2.ContainerStopRequest(task_id=io_manager.task_id, graceful=True)
+        await io_manager._client.stub.ContainerStop(
+            request,
+            retry=Retry(total_timeout=5.0),
+        )
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

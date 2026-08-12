@@ -523,6 +523,6 @@ def web_server_proxy(host: str, port: int):
         except aiohttp.ClientConnectorError as exc:
             # If the server is not running or not reachable, we should stop fetching new inputs.
             logger.warning(f"Terminating runner due to @web_server connection issue: {exc}")
-            stop_fetching_inputs()
+            await stop_fetching_inputs.aio()  # type: ignore
 
     return web_server_proxy_app

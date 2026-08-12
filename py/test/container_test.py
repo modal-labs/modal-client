@@ -1818,6 +1818,7 @@ def test_stop_fetching_inputs(servicer, deployed_support_function_definitions):
 
     assert len(ret.items) == 2
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert [(req.task_id, req.graceful) for req in servicer.container_stop_requests] == [("ta-123", True)]
 
 
 @skip_github_non_linux

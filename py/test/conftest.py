@@ -910,6 +910,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_abort = threading.Event()
         self.container_hello_event = threading.Event()
         self.container_server_lifecycle_ready_count = 0
+        self.container_stop_requests = []
         self.container_stop_ids = []
 
         self.image_join_sleep_duration = None
@@ -1631,7 +1632,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ContainerStop(self, stream):
         req: api_pb2.ContainerStopRequest = await stream.recv_message()
+        self.container_stop_requests.append(req)
         self.container_stop_ids.append(req.task_id)
+        if req.graceful:
+            self.container_inputs.insert(
+                0,
+                api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+            )
         await stream.send_message(api_pb2.ContainerStopResponse())
 
     ### Dict
