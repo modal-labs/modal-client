@@ -241,7 +241,11 @@ def type_check(ctx, stubs: bool = True, mypy: bool = True, pyright: bool = True)
 )
 def test(ctx, pytest_args="-v"):
     """Run all tests."""
-    ctx.run(f"pytest {pytest_args}", pty=sys.platform != "win32")  # win32 doesn't support the 'pty' module
+    ctx.run(
+        f"pytest {pytest_args}",
+        pty=sys.platform != "win32",
+        in_stream=sys.stdin if "--pdb" in pytest_args else False,
+    )  # win32 doesn't support the 'pty' module
 
 
 @task()
