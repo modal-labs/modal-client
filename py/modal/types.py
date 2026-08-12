@@ -59,10 +59,11 @@ LogSource = Literal["stdout", "stderr", "system"]
 
 @dataclass(frozen=True, slots=True)
 class LogEntry:
-    """A log entry emitted by a Modal object.
+    """A log entry queried through a Modal object or App.
 
-    The context_ids field contains a list of IDs corresponding to the context in which the log entry was emitted.
-    For example, for a function log entry, this will contain the function call ID, the input ID, and the container ID.
+    The object_id field identifies the object or App whose log manager produced the entry. The context_ids field
+    contains progressively narrower IDs corresponding to the context in which the log entry was emitted. For example,
+    for a function log entry, this will contain the function call ID, the input ID, and the container ID.
     """
 
     message: str

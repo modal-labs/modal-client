@@ -19,6 +19,7 @@ class _LogQueryData:
     client: _Client
     app_id: str
     filters: LogsFilters
+    source_object_id: str
 
 
 class _SupportsLogs(Protocol):
@@ -28,9 +29,6 @@ class _SupportsLogs(Protocol):
     """
 
     async def _get_log_query_data(self) -> _LogQueryData: ...
-
-    @property
-    def object_id(self) -> str: ...
 
 
 @dataclasses.dataclass(frozen=True)

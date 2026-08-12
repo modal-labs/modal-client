@@ -1088,6 +1088,42 @@ def test_function_logs_tail(client, servicer):
     assert fetch_requests[0].limit == 1
 
 
+def test_app_logs_tail_entry_context(client, servicer):
+    app = modal.App()
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        item = api_pb2.TaskLogs(
+            data="hello\n",
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            timestamp=_TEST_TIMESTAMP,
+            function_call_id="fc-child",
+            input_id="in-child",
+            container_id="ta-child",
+        )
+        batch = api_pb2.TaskLogsBatch(items=[item], function_id="fu-child", task_id="ta-batch")
+        await stream.send_message(api_pb2.AppFetchLogsResponse(batches=[batch]))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        with app.run(client=client):
+            app_id = app.app_id
+            logs = list(app.logs.tail(1))
+
+    assert len(logs) == 1
+    assert logs[0].object_id == app_id
+    assert logs[0].context_ids == ["fu-child", "fc-child", "in-child", "ta-child"]
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].function_id == ""
+    assert fetch_requests[0].function_call_id == ""
+    assert fetch_requests[0].task_id == ""
+    assert fetch_requests[0].sandbox_id == ""
+
+
 def test_function_call_spawn_logs_tail(client, servicer):
     app = modal.App()
 
@@ -1258,7 +1294,7 @@ def test_log_entry_context_ids_for_function_call_query():
     assert entry.context_ids == ["in-child", "ta-child"]
 
 
-def test_log_entry_context_ids_for_unsupported_query_object():
+def test_log_entry_context_ids_for_app_query():
     from modal._logs_manager import _entry_from_item
 
     item = api_pb2.TaskLogs(
@@ -1269,6 +1305,7 @@ def test_log_entry_context_ids_for_unsupported_query_object():
         container_id="ta-child",
     )
     batch = api_pb2.TaskLogsBatch(
+        function_id="fu-child",
         input_id="in-batch",
         task_id="ta-batch",
     )
@@ -1276,7 +1313,7 @@ def test_log_entry_context_ids_for_unsupported_query_object():
     entry = _entry_from_item("ap-parent", item, batch)
 
     assert entry.object_id == "ap-parent"
-    assert entry.context_ids == []
+    assert entry.context_ids == ["fu-child", "fc-child", "in-child", "ta-child"]
 
 
 class _FakeLogSource:
@@ -1316,7 +1353,12 @@ class _FakeLogSource:
             def __init__(self):
                 self.stub = _FakeStub()
 
-        return _LogQueryData(cast(Any, _FakeClient()), "ap-test", LogsFilters(function_id="fu-test"))
+        return _LogQueryData(
+            cast(Any, _FakeClient()),
+            "ap-test",
+            LogsFilters(function_id="fu-test"),
+            source_object_id=self.object_id,
+        )
 
 
 @pytest.mark.asyncio
@@ -1414,7 +1456,12 @@ class _ScriptedLogSource:
             def __init__(self):
                 self.stub = _FakeStub()
 
-        return _LogQueryData(cast(Any, _FakeClient()), "ap-test", LogsFilters(function_id="fu-test"))
+        return _LogQueryData(
+            cast(Any, _FakeClient()),
+            "ap-test",
+            LogsFilters(function_id="fu-test"),
+            source_object_id=self.object_id,
+        )
 
 
 @pytest.mark.asyncio

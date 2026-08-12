@@ -640,7 +640,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await self.hydrate()
         if not self._app_id:
             raise ExecutionError("app_id should have been set during function hydration")
-        return _LogQueryData(self.client, self._app_id, LogsFilters(function_id=self.object_id))
+        return _LogQueryData(
+            self.client,
+            self._app_id,
+            LogsFilters(function_id=self.object_id),
+            source_object_id=self.object_id,
+        )
 
     @property
     def logs(self) -> _FunctionLogsManager:
@@ -2077,7 +2082,12 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             await self._hydrate_from_id_metadata()
         if not self._app_id:
             raise ExecutionError("app_id should have been set during function call hydration")
-        return _LogQueryData(self.client, self._app_id, LogsFilters(function_call_id=self.object_id))
+        return _LogQueryData(
+            self.client,
+            self._app_id,
+            LogsFilters(function_call_id=self.object_id),
+            source_object_id=self.object_id,
+        )
 
     @property
     def logs(self) -> _FunctionCallLogsManager:

@@ -15,12 +15,14 @@ import typing_extensions
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
+from modal._logs import LogsFilters
 from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._image import _Image
 from ._ipython import is_interactive_ipython
 from ._load_context import LoadContext
+from ._logs_manager import _AppLogsManager
 from ._object import _get_environment_name, _Object
 from ._partial_function import (
     _find_partial_methods_for_user_cls,
@@ -29,6 +31,7 @@ from ._partial_function import (
     verify_concurrent_params,
 )
 from ._server import _Server, validate_http_server_config
+from ._supports_logs import _LogQueryData
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
     deprecation_warning,
@@ -1614,6 +1617,32 @@ class _App:
     def _reset_container_app(cls):
         """Only used for tests."""
         cls._container_app = None
+
+    async def _get_log_query_data(self) -> _LogQueryData:
+        """Get the data needed to query logs for this app."""
+        if not self._app_id:
+            raise InvalidError("`app._logs` requires a running/stopped app.")
+        client = self._client or await _Client.from_env()
+        filters = LogsFilters()
+        return _LogQueryData(client=client, app_id=self._app_id, filters=filters, source_object_id=self._app_id)
+
+    @property
+    def logs(self) -> _AppLogsManager:
+        """Access logs for an `App`.
+
+        Use [`fetch()`](#logsfetch)
+        to read logs from a UTC time range, [`tail()`](#logstail)
+        to read the most recent logs, and [`stream()`](#logsstream)
+        to follow new logs as they arrive.
+
+        See also:
+            - [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs):
+                CLI access to logs for an App.
+        """
+        if not self._app_id:
+            raise InvalidError("`app.logs` requires a running/stopped app.")
+
+        return _AppLogsManager(self)
 
 
 App = synchronize_api(_App)

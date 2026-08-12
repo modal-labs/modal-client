@@ -78,6 +78,13 @@ def _resolve_source(source: LogSource | None) -> api_pb2.FileDescriptor.ValueTyp
 
 def _entry_context_ids(object_id: str, item: api_pb2.TaskLogs, batch: api_pb2.TaskLogsBatch) -> list[str]:
     match object_id[:2]:
+        case "ap":
+            context_ids = [
+                batch.function_id,
+                item.function_call_id,
+                item.input_id or batch.input_id,
+                item.container_id or batch.task_id,
+            ]
         case "fu":
             context_ids = [
                 item.function_call_id,
@@ -140,10 +147,14 @@ class _LogsManager:
         since = _normalize_utc_datetime(since, "since")
         until = _normalize_utc_datetime(until or datetime.now(timezone.utc), "until")
         target = await self._params()
-        filters = dataclasses.replace(target.filters, source=_resolve_source(source), search_text=search_text)
+        filters = dataclasses.replace(
+            target.filters,
+            source=_resolve_source(source),
+            search_text=search_text,
+        )
         async for batch in fetch_logs(target.client, target.app_id, since=since, until=until, filters=filters):
             for item in batch.items:
-                yield _entry_from_item(self._source.object_id, item, batch)
+                yield _entry_from_item(target.source_object_id, item, batch)
 
     async def tail(
         self,
@@ -161,7 +172,7 @@ class _LogsManager:
             filters=filters,
         ):
             for item in batch.items:
-                yield _entry_from_item(self._source.object_id, item, batch)
+                yield _entry_from_item(params.source_object_id, item, batch)
 
     def _create_log_stream(
         self, params: _LogQueryData, last_entry_id: str, timeout: float
@@ -179,10 +190,10 @@ class _LogsManager:
         )
         return params.client.stub.AppGetLogs.unary_stream(request)
 
-    def _stream_entries(self, batch: api_pb2.TaskLogsBatch):
+    def _stream_entries(self, batch: api_pb2.TaskLogsBatch, source_object_id: str):
         for item in batch.items:
             if item.data:
-                yield _entry_from_item(self._source.object_id, item, batch)
+                yield _entry_from_item(source_object_id, item, batch)
 
     @staticmethod
     def _advance_batch(batch: api_pb2.TaskLogsBatch, last_entry_id: str) -> tuple[str, bool]:
@@ -205,7 +216,7 @@ class _LogsManager:
         log_stream = self._create_log_stream(params, last_entry_id, timeout)
         try:
             async for batch in log_stream:
-                for entry in self._stream_entries(batch):
+                for entry in self._stream_entries(batch, params.source_object_id):
                     yield entry
                 if batch.app_done:
                     return
@@ -243,7 +254,7 @@ class _LogsManager:
                             except StopAsyncIteration:
                                 break
                             last_entry_id, app_done = self._advance_batch(batch, last_entry_id)
-                            for log_entry in self._stream_entries(batch):
+                            for log_entry in self._stream_entries(batch, params.source_object_id):
                                 deadline.reset(timeout)
                                 yield log_entry
                             if app_done:
@@ -262,7 +273,7 @@ class _LogsManager:
                                 except StopAsyncIteration:
                                     break
                                 last_entry_id, app_done = self._advance_batch(batch, last_entry_id)
-                                for log_entry in self._stream_entries(batch):
+                                for log_entry in self._stream_entries(batch, params.source_object_id):
                                     deadline.reset(timeout)
                                     yield log_entry
                                 if app_done:
@@ -538,7 +549,7 @@ class _FunctionCallLogsManager:
                     await asyncio.sleep(1)
                     continue
                 raise
-        raise NotFoundError(f"Function call {self._source.object_id} not found after retries.")
+        raise AssertionError("unreachable")
 
     async def _determine_function_call_stop(self) -> bool:
         try:
@@ -789,3 +800,107 @@ class _ImageLogsManager:
 
 
 ImageLogsManager = synchronize_api(_ImageLogsManager, target_module=__name__)
+
+
+class _AppLogsManager:
+    """mdmd:namespace"""
+
+    def __init__(self, source: _SupportsLogs):
+        """mdmd:hidden"""
+        self._manager = _LogsManager(source)
+
+    async def fetch(
+        self,
+        *,
+        since: datetime,
+        until: datetime | None = None,
+        source: LogSource | None = None,
+        search_text: str = "",
+    ) -> AsyncGenerator[LogEntry, None]:
+        """Fetch App logs corresponding to the date range and filters.
+
+        Args:
+            since: Start date to fetch logs from. Must be in UTC or timezone-naive,
+                which is interpreted as local time.
+            until: Defaults to current date if None. Must be in UTC or timezone-naive, which is interpreted
+                as local time.
+            source: Filter by source: 'stdout', 'stderr', or 'system'.
+            search_text: Filter by search text.
+
+        Yields:
+            `LogEntry` objects in chronological order.
+
+        Examples:
+
+            ```python notest
+            app = modal.App.lookup("my-app")
+
+            for entry in app.logs.fetch(
+                since=datetime.now() - timedelta(hours=4),
+                source="stdout",
+            ):
+                print(entry.message, end="")
+            ```
+        """
+        async for log_entry in self._manager.fetch(
+            since=since,
+            until=until,
+            source=source,
+            search_text=search_text,
+        ):
+            yield log_entry
+
+    async def tail(
+        self,
+        entries: int = 100,
+        *,
+        source: LogSource | None = None,
+    ) -> AsyncGenerator[LogEntry, None]:
+        """Fetch the most recent App logs.
+
+        Args:
+            entries: The number of log entries to return.
+            source: Filter by source: 'stdout', 'stderr', or 'system'.
+
+        Yields:
+            `LogEntry` objects in chronological order.
+
+        Examples:
+
+            ```python notest
+            app = modal.App.lookup("my-app")
+
+            for entry in app.logs.tail(20):
+                print(entry.message, end="")
+            ```
+        """
+        async for log_entry in self._manager.tail(
+            entries,
+            source=source,
+        ):
+            yield log_entry
+
+    async def stream(self, timeout: float | None = None) -> AsyncGenerator[LogEntry, None]:
+        """Stream new App logs until the timeout is reached.
+
+        Args:
+            timeout: Number of seconds to wait between log entries before terminating the stream.
+                By default, this will block until it is interrupted.
+
+        Yields:
+            `LogEntry` objects as they arrive.
+
+        Examples:
+
+            ```python notest
+            app = modal.App.lookup("my-app")
+
+            for entry in app.logs.stream(timeout=60):
+                print(entry.message, end="")
+            ```
+        """
+        async for log_entry in self._manager.stream(timeout=timeout):
+            yield log_entry
+
+
+AppLogsManager = synchronize_api(_AppLogsManager, target_module=__name__)
