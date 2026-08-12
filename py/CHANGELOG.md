@@ -4,6 +4,18 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.5.4 (2026-08-12)
+
+With this release, it's now possible to opt into a [more performant Sandbox backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds), which affords substantially higher creation rates and concurrency. Set `MODAL_SANDBOX_V2=1` as an environment variable and your Sandboxes will use this new system without any code changes. This will become the default behavior in version 1.6.0 of the Python SDK. Note that the new backend does not support the deprecated FileIO-based Sandbox filesystem API; please [migrate](/docs/guide/migrate-sandbox-filesystem) any code that is currently issuing deprecation warnings before enabling the feature flag.
+
+- We've added logs APIs to the `modal.App` and `modal.Image` objects:
+  - The [`App.logs`](/docs/sdk/py/latest/App#logs) API allows you to `fetch()`, `tail()`, or `stream()` all logs from an App.
+  - The [`Image.logs`](/docs/sdk/py/latest/Image#logs) API supports `fetch()` and `tail()` on Image build logs. Streaming build logs is not supported at this time.
+- We've also added a [`modal image logs`](/docs/cli/latest/image#modal-image-logs) CLI command with equivalent functionality.
+- We now support querying basic information about your Workspace's current pricing structure via the [`Workspace.billing.rates()`](/docs/sdk/py/latest/Workspace#billingrates) API and [`modal billing rates`](/docs/cli/latest/billing#modal-billing-rates) CLI.
+- The [`Function.update_autoscaler()`](/docs/sdk/py/latest/Function#update_autoscaler) and [`Server.update_autoscaler()`](/docs/sdk/py/latest/Server#update_autoscaler) methods now return the complete state of the autoscaler configuration after applying the update.
+- The `target_concurrency` parameter in [`@app.server()`](/docs/sdk/py/latest/App#server) and [`Server.update_autoscaler()`](/docs/sdk/py/latest/Server#update_autoscaler) now supports fractional values for more fine-grained control over autoscaling behavior.
+
 ### 1.5.3 (2026-07-23)
 
 - We've added new APIs for programmatically retrieving logs on several object types: [`Function`](/docs/sdk/py/latest/Function#logs), [`Server`](/docs/sdk/py/latest/Server#logs), and [`FunctionCall`](/docs/sdk/py/latest/FunctionCall#logs). Each object exposes three different methods, allowing you to `stream()` logs as they are generated, `fetch()` logs from a specific date/time range, or `tail()` the most recent logs.
