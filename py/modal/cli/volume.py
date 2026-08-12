@@ -86,10 +86,10 @@ async def get(
 
     Examples:
 
-        ```
-        modal volume get <volume_name> logs/april-12-1.txt
-        modal volume get <volume_name> / volume_data_dump
-        ```
+    ```
+    modal volume get <volume_name> logs/april-12-1.txt
+    modal volume get <volume_name> / volume_data_dump
+    ```
 
     Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
@@ -337,9 +337,9 @@ async def dashboard(
 
     Examples:
 
-        ```
-        modal volume dashboard my-volume
-        ```
+    ```
+    modal volume dashboard my-volume
+    ```
     """
     env = ensure_env(env)
     volume = await _Volume.from_name(volume_name, environment_name=env).hydrate()
