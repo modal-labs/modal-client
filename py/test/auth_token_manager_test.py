@@ -11,6 +11,8 @@ from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES
 from modal.exception import AuthError, ExecutionError, PermissionDeniedError
 from modal_proto import api_pb2
 
+SECRET_KEY = "your-super-flexible-and-long-shared-secret-key"
+
 
 @pytest.fixture
 def auth_token_manager(client):
@@ -24,7 +26,7 @@ def valid_jwt_token():
     # Create a JWT with exp claim set to 1 hour from now
     exp = int(time.time()) + 3600
     payload = {"exp": exp, "type": "valid"}
-    return jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
 @pytest.fixture
@@ -33,7 +35,7 @@ def another_valid_jwt_token():
     # Create a JWT with exp claim set to 1 hour from now
     exp = int(time.time()) + 3600
     payload = {"exp": exp, "type": "another_valid"}
-    return jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
 @pytest.fixture
@@ -42,14 +44,14 @@ def expired_jwt_token():
     # Create a JWT with exp claim set to 1 hour ago
     exp = int(time.time()) - 3600
     payload = {"exp": exp, "type": "expired"}
-    return jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
 @pytest.fixture
 def token_without_exp():
     """Create a JWT token without exp claim."""
     payload = {"type": "without_exp"}
-    return jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
 @pytest.fixture
@@ -57,7 +59,7 @@ def token_due_for_refresh():
     """Create a JWT token that is still valid but has used up its refresh fraction."""
     exp = int(time.time()) + 240  # 4 minutes from now
     payload = {"exp": exp, "type": "due_for_refresh"}
-    return jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
 @pytest.mark.asyncio
@@ -553,9 +555,9 @@ async def test_multiple_refresh_cycles(auth_token_manager, servicer):
     """Test multiple refresh cycles work correctly."""
     exp = int(time.time()) + 3600
     tokens = [
-        jwt.encode({"exp": exp, "name": "t0"}, "my-secret-key", algorithm="HS256"),
-        jwt.encode({"exp": exp, "name": "t1"}, "my-secret-key", algorithm="HS256"),
-        jwt.encode({"exp": exp, "name": "t2"}, "my-secret-key", algorithm="HS256"),
+        jwt.encode({"exp": exp, "name": "t0"}, SECRET_KEY, algorithm="HS256"),
+        jwt.encode({"exp": exp, "name": "t1"}, SECRET_KEY, algorithm="HS256"),
+        jwt.encode({"exp": exp, "name": "t2"}, SECRET_KEY, algorithm="HS256"),
     ]
 
     @synchronize_api

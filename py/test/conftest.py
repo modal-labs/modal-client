@@ -925,7 +925,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # This mock server will return responses in order. The regular behavior will resume once this list is exhausted.
         self.attempt_await_responses: list[api_pb2.AttemptAwaitResponse] = []
         # Value returned by AuthTokenGet
-        self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
+        self.auth_token = jwt.encode(
+            {"exp": int(time.time()) + 3600}, "your-super-flexible-and-long-shared-secret-key", algorithm="HS256"
+        )
         self.auth_tokens_generated = 0
         self.flash_endpoint_auth_token = "flash-endpoint-auth-token"
         self.cli_get_flash_endpoint_auth_token_requests: list[api_pb2.CurlAuthTokenRequest] = []
