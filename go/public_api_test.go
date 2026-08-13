@@ -23,6 +23,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/onsi/gomega"
 )
 
 // skipMethods lists public methods that are intentionally exempt from the
@@ -102,6 +104,8 @@ var typeRegistry = []typeEntry{
 	{name: "Tunnel", typ: reflect.TypeOf((*Tunnel)(nil)), isInterface: false},
 	{name: "SandboxFilesystem", typ: reflect.TypeOf((*SandboxFilesystem)(nil)), isInterface: false},
 	{name: "SidecarContainer", typ: reflect.TypeOf((*SidecarContainer)(nil)), isInterface: false},
+	{name: "FunctionLogsManager", typ: reflect.TypeOf((*FunctionLogsManager)(nil)), isInterface: false},
+	{name: "FunctionCallLogsManager", typ: reflect.TypeOf((*FunctionCallLogsManager)(nil)), isInterface: false},
 }
 
 // excludedTypes lists exported types that are intentionally absent from
@@ -131,6 +135,8 @@ var excludedTypes = map[string]string{
 	"FileWatchEventType":              "string enum, no public methods",
 	"FileWatchEvent":                  "data type, no public methods",
 	"VolumeMountOptionsParams":        "configuration value type",
+	"LogEntry":                        "data type, no public methods",
+	"LogSource":                       "string enum, no public methods",
 }
 
 // isParamsType reports whether t is a pointer to a struct whose name ends with "Params".
@@ -185,6 +191,25 @@ func TestPublicMethodsHaveParamsArg(t *testing.T) {
 	for _, e := range typeRegistry {
 		checkMethodsHaveParams(t, e.name, e.typ, e.isInterface)
 	}
+}
+
+func TestLogsNamespacesAreFields(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	function := newFunction(nil, "fu-123", nil, nil)
+	g.Expect(function.Logs).NotTo(gomega.BeNil())
+	g.Expect(function.Logs.functionID).To(gomega.Equal("fu-123"))
+	_, hasFunctionLogsMethod := reflect.TypeOf(function).MethodByName("Logs")
+	g.Expect(hasFunctionLogsMethod).To(gomega.BeFalse())
+
+	functionCall := newFunctionCall(nil, "fc-123", "fu-123", "ap-123")
+	g.Expect(functionCall.Logs).NotTo(gomega.BeNil())
+	g.Expect(functionCall.Logs.functionCallID).To(gomega.Equal("fc-123"))
+	g.Expect(functionCall.Logs.functionID).To(gomega.Equal("fu-123"))
+	g.Expect(functionCall.Logs.appID).To(gomega.Equal("ap-123"))
+	_, hasFunctionCallLogsMethod := reflect.TypeOf(functionCall).MethodByName("Logs")
+	g.Expect(hasFunctionCallLogsMethod).To(gomega.BeFalse())
 }
 
 // parseExportedTypeNames parses all non-test .go files in the package directory

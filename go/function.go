@@ -61,11 +61,34 @@ type FunctionUpdateAutoscalerParams struct {
 
 // Function references a deployed Modal Function.
 type Function struct {
-	FunctionID     string
+	FunctionID string
+
+	// Logs provides access to logs emitted by this Function.
+	Logs *FunctionLogsManager
+
 	handleMetadata *pb.FunctionHandleMetadata
 
 	client  *Client
 	options *functionOptions
+}
+
+func newFunction(
+	client *Client,
+	functionID string,
+	handleMetadata *pb.FunctionHandleMetadata,
+	options *functionOptions,
+) *Function {
+	return &Function{
+		FunctionID: functionID,
+		Logs: &FunctionLogsManager{
+			client:     client,
+			appID:      handleMetadata.GetAppId(),
+			functionID: functionID,
+		},
+		handleMetadata: handleMetadata,
+		client:         client,
+		options:        options,
+	}
 }
 
 // FunctionFromNameParams are options for client.Functions.FromName.
@@ -112,12 +135,7 @@ func (s *functionServiceImpl) FromName(ctx context.Context, appName string, name
 		"app_name", appName,
 		"function_name", name)
 
-	return &Function{
-		FunctionID:     resp.GetFunctionId(),
-		handleMetadata: handleMetadata,
-		client:         s.client,
-		options:        &functionOptions{},
-	}, nil
+	return newFunction(s.client, resp.GetFunctionId(), handleMetadata, &functionOptions{}), nil
 }
 
 // pickleSerialize serializes Go data types to the Python pickle format.
@@ -657,12 +675,7 @@ func (f *Function) WithOptions(options *FunctionWithOptionsParams) *Function {
 		routingRegion:    options.RoutingRegion,
 	})
 
-	return &Function{
-		FunctionID:     f.FunctionID,
-		handleMetadata: f.handleMetadata,
-		client:         f.client,
-		options:        merged,
-	}
+	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged)
 }
 
 func (f *Function) WithConcurrency(params *FunctionWithConcurrencyParams) *Function {
@@ -675,12 +688,7 @@ func (f *Function) WithConcurrency(params *FunctionWithConcurrencyParams) *Funct
 		targetConcurrentInputs: params.TargetInputs,
 	})
 
-	return &Function{
-		FunctionID:     f.FunctionID,
-		handleMetadata: f.handleMetadata,
-		client:         f.client,
-		options:        merged,
-	}
+	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged)
 }
 
 func (f *Function) WithBatching(params *FunctionWithBatchingParams) *Function {
@@ -693,12 +701,7 @@ func (f *Function) WithBatching(params *FunctionWithBatchingParams) *Function {
 		batchWait:    &params.Wait,
 	})
 
-	return &Function{
-		FunctionID:     f.FunctionID,
-		handleMetadata: f.handleMetadata,
-		client:         f.client,
-		options:        merged,
-	}
+	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged)
 }
 
 func (f *Function) Instance(ctx context.Context) (*Function, error) {
@@ -719,12 +722,7 @@ func (f *Function) Instance(ctx context.Context) (*Function, error) {
 		handleMetadata = bindResp.GetHandleMetadata()
 	}
 
-	return &Function{
-		FunctionID:     boundFnID,
-		handleMetadata: handleMetadata,
-		client:         f.client,
-		options:        &functionOptions{},
-	}, nil
+	return newFunction(f.client, boundFnID, handleMetadata, &functionOptions{}), nil
 }
 
 // FunctionGetCurrentStatsParams are options for Function.GetCurrentStats.
@@ -797,16 +795,16 @@ func (f *Function) Spawn(ctx context.Context, args []any, kwargs map[string]any)
 	if err != nil {
 		return nil, err
 	}
-	functionCall := FunctionCall{
-		FunctionCallID: invocation.FunctionCallID,
-		functionID:     f.FunctionID,
-		appID:          f.handleMetadata.GetAppId(),
-		client:         f.client,
-	}
+	functionCall := newFunctionCall(
+		f.client,
+		invocation.FunctionCallID,
+		f.FunctionID,
+		f.handleMetadata.GetAppId(),
+	)
 	f.client.logger.DebugContext(ctx, "Function call spawned",
 		"function_id", f.FunctionID,
 		"function_call_id", invocation.FunctionCallID)
-	return &functionCall, nil
+	return functionCall, nil
 }
 
 // GetCurrentStats returns a FunctionStats object with statistics about the Function.

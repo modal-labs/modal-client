@@ -23,9 +23,33 @@ type functionCallServiceImpl struct{ client *Client }
 // asynchronously (see Get()) or cancelled (see Cancel()).
 type FunctionCall struct {
 	FunctionCallID string
-	functionID     string
-	appID          string
-	client         *Client
+
+	// Logs provides access to logs emitted by this FunctionCall.
+	Logs *FunctionCallLogsManager
+
+	functionID string
+	appID      string
+	client     *Client
+}
+
+func newFunctionCall(
+	client *Client,
+	functionCallID string,
+	functionID string,
+	appID string,
+) *FunctionCall {
+	return &FunctionCall{
+		FunctionCallID: functionCallID,
+		Logs: &FunctionCallLogsManager{
+			client:         client,
+			appID:          appID,
+			functionID:     functionID,
+			functionCallID: functionCallID,
+		},
+		functionID: functionID,
+		appID:      appID,
+		client:     client,
+	}
 }
 
 // FromID looks up a FunctionCall by ID.
@@ -39,13 +63,12 @@ func (s *functionCallServiceImpl) FromID(ctx context.Context, functionCallID str
 
 	meta := response.GetMetadata()
 
-	functionCall := FunctionCall{
-		FunctionCallID: functionCallID,
-		functionID:     meta.GetFunctionId(),
-		appID:          meta.GetAppId(),
-		client:         s.client,
-	}
-	return &functionCall, nil
+	return newFunctionCall(
+		s.client,
+		functionCallID,
+		meta.GetFunctionId(),
+		meta.GetAppId(),
+	), nil
 }
 
 // FunctionCallGetParams are options for getting outputs from Function Calls.
