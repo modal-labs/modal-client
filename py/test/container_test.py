@@ -2157,6 +2157,58 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     assert not triggered_assertions
 
 
+def test_container_io_manager_drops_duplicate_input_delivery(client, servicer):
+    dummy_container_args = api_pb2.ContainerArguments(
+        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=2)
+    )
+    from modal._utils.async_utils import synchronizer
+
+    io_manager = ContainerIOManager(dummy_container_args, client)
+    _io_manager = synchronizer._translate_in(io_manager)
+
+    async def _func(x):
+        await asyncio.sleep(x)
+
+    fin_func = FinalizedFunction(
+        _func, is_async=True, is_generator=False, supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE]
+    )
+
+    duplicate_input_id = "in-xyz0"
+    servicer.container_inputs = _get_inputs(((42,), {}), n=4)
+    servicer.container_inputs[1].inputs[0].input_id = duplicate_input_id  # duplicate of a running input
+    servicer.container_inputs[2].inputs[0].input_id = duplicate_input_id  # retry of the running input
+    servicer.container_inputs[2].inputs[0].retry_count = 1
+    servicer.container_inputs[3].inputs[0].input_id = duplicate_input_id  # redelivery after completion
+    yielded: list[IOContext] = []
+
+    for io_context in io_manager.run_inputs_outputs(finalized_functions={"": fin_func}):
+        yielded.append(io_context)
+        if len(yielded) == 2:
+            # The same-id same-retry-count duplicate was dropped and its slot freed, while the
+            # same-id delivery with a new retry count is a genuine retry and runs.
+            assert yielded[0].input_ids == (duplicate_input_id,)
+            assert yielded[0].retry_counts == (0,)
+            assert yielded[1].input_ids == (duplicate_input_id,)
+            assert yielded[1].retry_counts == (1,)
+            io_manager.push_outputs(yielded[0], started_at=0.0, output_data=[None])
+            # The predecessor's exit must not evict the retry's tracking entry (cancel routing).
+            assert _io_manager.current_inputs == {duplicate_input_id: yielded[1]}
+            io_manager.push_outputs(yielded[1], started_at=0.0, output_data=[None])
+            assert duplicate_input_id not in _io_manager.current_inputs
+        elif len(yielded) == 3:
+            # Once the first copy completed, a redelivery of the same input id runs again.
+            assert io_context.input_ids == (duplicate_input_id,)
+            assert io_context.retry_counts == (0,)
+            io_manager.push_outputs(yielded[2], started_at=0.0, output_data=[None])
+            # A repeated exit for an already-exited context must not release its slot twice.
+            active_after = _io_manager._input_slots.active
+            io_manager.exit_context(yielded[2])
+            assert _io_manager._input_slots.active == active_after
+
+    assert len(yielded) == 3
+    assert not _io_manager.current_inputs
+
+
 @pytest.mark.asyncio
 async def test_input_slots():
     slots = InputSlots(10)

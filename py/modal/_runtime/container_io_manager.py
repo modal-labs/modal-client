@@ -96,6 +96,7 @@ class IOContext:
 
     _cancel_issued: bool = False
     _cancel_callback: Callable[[], None] | None = None
+    _exited: bool = False
 
     def __init__(
         self,
@@ -889,25 +890,35 @@ class _ContainerIOManager:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             return
-                        inputs.append(
-                            (
-                                item.input_id,
-                                item.retry_count,
-                                item.function_call_id,
-                                item.attempt_token,
-                                item.input,
-                                item.function_call_invocation_type,
+                        live_io_context = self.current_inputs.get(item.input_id)
+                        if live_io_context is not None and (
+                            live_io_context.retry_counts[live_io_context.input_ids.index(item.input_id)]
+                            == item.retry_count
+                        ):
+                            # An expired fetch lease redelivers a still-running attempt under the same
+                            # input id and retry count; a retry of a failed attempt gets a new retry count.
+                            logger.warning(f"Skipping duplicate delivery of input {item.input_id}")
+                        else:
+                            inputs.append(
+                                (
+                                    item.input_id,
+                                    item.retry_count,
+                                    item.function_call_id,
+                                    item.attempt_token,
+                                    item.input,
+                                    item.function_call_invocation_type,
+                                )
                             )
-                        )
                         if item.input.final_input:
                             if request.batch_max_size > 0:
                                 logger.debug(f"Task {self.task_id} Final input not expected in batch input stream")
                             final_input_received = True
                             break
 
-                    # If yielded, allow input slots to be released via exit_context
-                    yield inputs
-                    yielded = True
+                    if inputs:
+                        # If yielded, allow input slots to be released via exit_context
+                        yield inputs
+                        yielded = True
 
                     # TODO(michael): Remove use of max_inputs after worker rollover
                     single_use_container = self.function_def.single_use_containers or self.function_def.max_inputs == 1
@@ -950,7 +961,7 @@ class _ContainerIOManager:
             # collect all active input slots, meaning all inputs have wrapped up.
             await self._input_slots.close()
 
-    async def _send_outputs(self, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
+    async def _send_outputs(self, io_context: IOContext, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
         """Send pre-built output items with retry and chunking."""
         # There are multiple outputs for a single IOContext in the case of @modal.batched.
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
@@ -963,8 +974,7 @@ class _ContainerIOManager:
                     max_retries=None,  # Retry indefinitely, trying every 1s.
                 ),
             )
-        input_ids = [output.input_id for output in outputs]
-        self.exit_context(input_ids)
+        self.exit_context(io_context)
 
     @asynccontextmanager
     async def handle_input_exception(
@@ -984,7 +994,7 @@ class _ContainerIOManager:
             raise
         except (InputCancellation, asyncio.CancelledError):
             outputs = await io_context.output_items_cancellation(started_at)
-            await self._send_outputs(outputs)
+            await self._send_outputs(io_context, outputs)
             logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
@@ -995,13 +1005,24 @@ class _ContainerIOManager:
             # print exception so it's logged
             print_exception(*sys.exc_info())
             outputs = await io_context.output_items_exception(started_at, self.task_id, exc)
-            await self._send_outputs(outputs)
+            await self._send_outputs(io_context, outputs)
 
-    def exit_context(self, input_ids: list[str]):
-        for input_id in input_ids:
-            self.current_inputs.pop(input_id)
-
-        self._input_slots.release()
+    def exit_context(self, io_context: IOContext):
+        # A cancellation can land after outputs were already sent, re-entering here for the same
+        # context; exit at most once so the input slot is not released twice.
+        if io_context._exited:
+            return
+        io_context._exited = True
+        try:
+            for input_id in io_context.input_ids:
+                # A retry admitted before its predecessor finished exiting takes over the
+                # tracking entry, so remove it only if this context still owns it.
+                if self.current_inputs.get(input_id) is io_context:
+                    self.current_inputs.pop(input_id)
+                else:
+                    logger.warning(f"Input {input_id} missing from active input tracking")
+        finally:
+            self._input_slots.release()
 
     # skip inspection of user-generated output_data for synchronicity input translation
     @synchronizer.no_io_translation
@@ -1013,7 +1034,7 @@ class _ContainerIOManager:
     ) -> None:
         # The standard output encoding+sending method for successful function outputs
         outputs = await io_context.output_items(started_at, output_data)
-        await self._send_outputs(outputs)
+        await self._send_outputs(io_context, outputs)
 
     @asynccontextmanager
     async def snapshot_context_manager(self) -> AsyncGenerator[None, None]:
