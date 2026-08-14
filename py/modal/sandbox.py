@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, Union, overload
 
+from modal._logs_manager import _SandboxLogsManager
+from modal._supports_logs import LogsFilters, _LogQueryData
 from modal.secret import _split_env_dict_and_resolvable_secrets
 
 from ._output.pty import get_pty_info
@@ -1931,6 +1933,27 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
+    async def _resolve_task_id_for_logs(self) -> str:
+        """Try to resolve the task ID in one shot for historical log fetches.
+
+        For a historical log api, we should not wait for the task to be created.
+        If the Sandbox created logs worth fetching, the task ID should be available.
+        """
+        if self._task_id:
+            return self._task_id
+
+        req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
+        stub = self.__client.stub
+        if self._is_v2:
+            assert self.__client._auth_token_manager
+            auth_token = await self.__client._auth_token_manager.get_token()
+            resp = await stub.SandboxGetTaskIdV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        else:
+            resp = await stub.SandboxGetTaskId(req)
+        if not resp.task_id:
+            raise ExecutionError("Sandbox task_id is not available yet.")
+        return resp.task_id
+
     async def _get_command_router_client(self, task_id: str) -> TaskCommandRouterClient:
         if self._command_router_client is None:
             try:
@@ -2604,6 +2627,36 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             # Fetch the next batch starting from the end of the current one.
             before_timestamp = resp.sandboxes[-1].created_at
+
+    async def _get_log_query_data(self) -> _LogQueryData:
+        if not self._app_id:
+            if not self._attached:
+                raise ExecutionError("Cannot fetch logs for a detached Sandbox without hydrated app_id")
+            await self.hydrate()
+
+        if not self._app_id:
+            raise ExecutionError("app_id should have been set during sandbox hydration")
+
+        task_id = await self._resolve_task_id_for_logs()
+        return _LogQueryData(self.__client, self._app_id, LogsFilters(task_id=task_id), self.object_id)
+
+    @property
+    def logs(self) -> _SandboxLogsManager:
+        """Access logs for a `Sandbox` entrypoint.
+
+        Useful for inspecting logs after a Sandbox terminates.
+        Use [`fetch()`](#logsfetch)
+        to read logs from a UTC time range, [`tail()`](#logstail)
+        to read the most recent logs.
+
+        Note that the logs from executed commands in the sandbox (via `exec()`) are not included in the
+        entrypoint logs.
+
+        See also:
+            - [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs):
+              CLI access to logs for an App.
+        """
+        return _SandboxLogsManager(self)
 
 
 class _SidecarContainer:

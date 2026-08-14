@@ -2532,7 +2532,7 @@ detach_error_funcs = {
     "stdin": lambda sb: sb.stdin,
     "filesystem": lambda sb: sb.filesystem,
 }
-ALLOW_AFTER_DETACH = {"detach", "returncode", "wait", "_experimental_get_exit_snapshot"}
+ALLOW_AFTER_DETACH = {"detach", "returncode", "wait", "_experimental_get_exit_snapshot", "logs"}
 
 
 def test_func_map_covers_all_public_methods_and_properties():

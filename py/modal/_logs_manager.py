@@ -93,6 +93,8 @@ def _entry_context_ids(object_id: str, item: api_pb2.TaskLogs, batch: api_pb2.Ta
             ]
         case "fc":
             context_ids = [item.input_id or batch.input_id, item.container_id or batch.task_id]
+        case "sb":
+            context_ids = [item.container_id or batch.task_id]
         case _:
             context_ids = []
     # filter for empty strings, can happen for Server which have function_ids but no input/container
@@ -800,6 +802,71 @@ class _ImageLogsManager:
 
 
 ImageLogsManager = synchronize_api(_ImageLogsManager, target_module=__name__)
+
+
+class _SandboxLogsManager:
+    """mdmd:namespace"""
+
+    def __init__(self, source: _SupportsLogs):
+        """mdmd:hidden"""
+        self._manager = _LogsManager(source)
+
+    async def fetch(
+        self,
+        *,
+        since: datetime,
+        until: datetime | None = None,
+        source: LogSource | None = None,
+        search_text: str = "",
+    ) -> AsyncGenerator[LogEntry, None]:
+        """Fetch Sandbox logs corresponding to the date range and filters.
+
+        Args:
+            since: Start date to fetch logs from. Must be in UTC or timezone-naive,
+                which is interpreted as local time.
+            until: Defaults to current date if None. Must be in UTC or timezone-naive, which is interpreted
+                as local time.
+            source: Filter by source: 'stdout', 'stderr', or 'system'.
+            search_text: Filter by search text.
+
+        Yields:
+            `LogEntry` objects in chronological order.
+
+        Examples:
+
+            ```python notest
+            sandbox = modal.Sandbox.from_name("my-app", "sandbox")
+
+            for entry in sandbox.logs.fetch(
+                since=datetime.now() - timedelta(minutes=25),
+                source="stdout",
+            ):
+                print(entry.message, end="")
+            ```
+        """
+        async for log_entry in self._manager.fetch(since=since, until=until, source=source, search_text=search_text):
+            yield log_entry
+
+    async def tail(
+        self,
+        entries: int = 100,
+        *,
+        source: LogSource | None = None,
+    ) -> AsyncGenerator[LogEntry, None]:
+        """Fetch the most recent Sandbox logs.
+
+        Args:
+            entries: The number of log entries to return.
+            source: Filter by source: 'stdout', 'stderr', or 'system'.
+
+        Yields:
+            `LogEntry` objects in chronological order.
+        """
+        async for log_entry in self._manager.tail(entries, source=source):
+            yield log_entry
+
+
+SandboxLogsManager = synchronize_api(_SandboxLogsManager, target_module=__name__)
 
 
 class _AppLogsManager:

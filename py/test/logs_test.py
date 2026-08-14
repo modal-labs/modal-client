@@ -1236,6 +1236,201 @@ def test_server_logs_tail(client, servicer):
     assert fetch_requests[0].limit == 1
 
 
+def test_sandbox_logs_tail(client, servicer):
+    app = modal.App()
+    sandbox_get_task_id_requests = []
+    fetch_requests = []
+    sandbox_get_logs_requests = []
+
+    async def sandbox_get_task_id_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_get_task_id_requests.append(req)
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-sandbox"))
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id="", task_id="ta-sandbox"))
+
+    async def sandbox_get_logs_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_get_logs_requests.append(req)
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", sandbox_get_task_id_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+        ctx.set_responder("SandboxGetLogs", sandbox_get_logs_handler)
+
+        with app.run(client=client):
+            sandbox = modal.Sandbox.create("echo", "hello", app=app)
+            sandbox_id = sandbox.object_id
+            app_id = app.app_id
+
+            logs = list(sandbox.logs.tail(1))
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].object_id == sandbox_id
+    assert len(sandbox_get_task_id_requests) == 1
+    assert sandbox_get_task_id_requests[0].sandbox_id == sandbox_id
+    assert len(fetch_requests) == 1
+    assert sandbox_get_logs_requests == []
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].sandbox_id == ""
+    assert fetch_requests[0].function_id == ""
+    assert fetch_requests[0].function_call_id == ""
+    assert fetch_requests[0].task_id == "ta-sandbox"
+    assert fetch_requests[0].limit == 1
+
+
+def test_sandbox_logs_tail_after_detach(client, servicer):
+    app = modal.App()
+    sandbox_get_task_id_requests = []
+    fetch_requests = []
+
+    async def sandbox_get_task_id_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_get_task_id_requests.append(req)
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-sandbox"))
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id="", task_id="ta-sandbox"))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", sandbox_get_task_id_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        with app.run(client=client):
+            sandbox = modal.Sandbox.create("echo", "hello", app=app)
+            sandbox_id = sandbox.object_id
+            app_id = app.app_id
+            sandbox.detach()
+
+            logs = list(sandbox.logs.tail(1))
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].object_id == sandbox_id
+    assert len(sandbox_get_task_id_requests) == 1
+    assert sandbox_get_task_id_requests[0].sandbox_id == sandbox_id
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].sandbox_id == ""
+    assert fetch_requests[0].task_id == "ta-sandbox"
+    assert fetch_requests[0].limit == 1
+
+
+def test_sandbox_logs_fetch(client, servicer):
+    app = modal.App()
+    sandbox_get_task_id_requests = []
+    count_requests = []
+    fetch_requests = []
+    sandbox_get_logs_requests = []
+
+    async def sandbox_get_task_id_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_get_task_id_requests.append(req)
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-sandbox"))
+
+    async def count_handler(self, stream):
+        req = await stream.recv_message()
+        count_requests.append(req)
+        await stream.send_message(_make_count_response())
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id="", task_id="ta-sandbox"))
+
+    async def sandbox_get_logs_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_get_logs_requests.append(req)
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
+
+    since = datetime.fromisoformat(_SINCE_ARG)
+    until = datetime.fromisoformat(_UNTIL_ARG)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", sandbox_get_task_id_handler)
+        ctx.set_responder("AppCountLogs", count_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+        ctx.set_responder("SandboxGetLogs", sandbox_get_logs_handler)
+
+        with app.run(client=client):
+            sandbox = modal.Sandbox.create("echo", "hello", app=app)
+            sandbox_id = sandbox.object_id
+            app_id = app.app_id
+
+            logs = list(sandbox.logs.fetch(since=since, until=until, source="stdout", search_text="needle"))
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].object_id == sandbox_id
+    assert len(sandbox_get_task_id_requests) == 1
+    assert sandbox_get_task_id_requests[0].sandbox_id == sandbox_id
+    assert len(count_requests) == 1
+    assert len(fetch_requests) == 1
+    assert sandbox_get_logs_requests == []
+
+    assert count_requests[0].app_id == app_id
+    assert count_requests[0].sandbox_id == ""
+    assert count_requests[0].task_id == "ta-sandbox"
+    assert count_requests[0].source == api_pb2.FILE_DESCRIPTOR_STDOUT
+    assert count_requests[0].search_text == "needle"
+
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].sandbox_id == ""
+    assert fetch_requests[0].function_id == ""
+    assert fetch_requests[0].function_call_id == ""
+    assert fetch_requests[0].task_id == "ta-sandbox"
+    assert fetch_requests[0].source == api_pb2.FILE_DESCRIPTOR_STDOUT
+    assert fetch_requests[0].search_text == "needle"
+
+
+def test_sandbox_logs_tail_v2_uses_task_id(client, servicer):
+    app = modal.App()
+    sandbox_get_task_id_requests = []
+    fetch_requests = []
+
+    async def sandbox_get_task_id_v2_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_get_task_id_requests.append(req)
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-unexpected"))
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id="", task_id="ta-v2-123"))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskIdV2", sandbox_get_task_id_v2_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        with app.run(client=client):
+            sandbox = modal.Sandbox._experimental_create("echo", "hello", app=app)
+            sandbox_id = sandbox.object_id
+            app_id = app.app_id
+
+            logs = list(sandbox.logs.tail(1))
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert logs[0].object_id == sandbox_id
+    assert sandbox_get_task_id_requests == []
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == app_id
+    assert fetch_requests[0].sandbox_id == ""
+    assert fetch_requests[0].task_id == "ta-v2-123"
+
+
+def test_sandbox_logs_does_not_expose_stream(client):
+    app = modal.App()
+
+    with app.run(client=client):
+        sandbox = modal.Sandbox.create("echo", "hello", app=app)
+
+    assert not hasattr(sandbox.logs, "stream")
+
+
 def test_log_entry_context_ids_for_function_query():
     from modal._logs_manager import _entry_from_item
 
