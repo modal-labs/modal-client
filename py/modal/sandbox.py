@@ -2877,6 +2877,7 @@ class _SidecarManager:
         volumes: dict[str | os.PathLike, _Volume] | None = None,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
+        pty: bool = False,
     ) -> _SidecarContainer:
         """Create a sidecar container running alongside the Sandbox's main container.
 
@@ -2903,6 +2904,7 @@ class _SidecarManager:
                 main container.
             outbound_domain_allowlist: If set, restrict the sidecar's outbound TLS connections (port
                 443) to these SNI domains. Supports wildcards like ``*.example.com``.
+            pty: Whether to enable PTY for the sidecar container.
 
         Returns:
             A `SidecarContainer` handle for the running container.
@@ -2958,6 +2960,7 @@ class _SidecarManager:
             secret_ids=[secret.object_id for secret in secrets],
             volume_mounts=volume_mounts,
             network_access=_build_outbound_network_access(False, outbound_cidr_allowlist, outbound_domain_allowlist),
+            pty_info=_Sandbox._default_pty_info() if pty else None,
         )
         create_resp = await command_router_client.container_create(create_req)
         container_id = create_resp.container_id

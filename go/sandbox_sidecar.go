@@ -50,6 +50,8 @@ type SidecarCreateParams struct {
 	// OutboundDomainAllowlist restricts the sidecar's outbound TLS connections (port 443) to these SNI domains.
 	// Supports wildcard prefixes (*.example.com). Independent of the main container.
 	OutboundDomainAllowlist *Allowlist
+	// PTY sets whether to enable a PTY for the sidecar container.
+	PTY bool
 }
 
 // SidecarGetParams holds options for retrieving a sidecar by name.
@@ -110,6 +112,11 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		return nil, err
 	}
 
+	var ptyInfo *pb.PTYInfo
+	if params.PTY {
+		ptyInfo = defaultSandboxPTYInfo()
+	}
+
 	// Locally-created Secrets (FromMap) are passed directly to the worker as
 	// environment variables, so only the remaining Secrets need hydrating. This
 	// avoids a SecretGetOrCreate round-trip for env-dict Secrets.
@@ -147,6 +154,7 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		Workdir:       params.Workdir,
 		SecretIds:     secretIds,
 		NetworkAccess: networkAccess,
+		PtyInfo:       ptyInfo,
 	}.Build()
 
 	resp, err := client.ContainerCreate(ctx, req)

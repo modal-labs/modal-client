@@ -2856,6 +2856,30 @@ def test_sandbox_container_volume_mounts(app, servicer):
     assert rw_mount.read_only is False
 
 
+@skip_non_subprocess
+def test_sandbox_container_pty(app, servicer):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_sidecars.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="test",
+            image=image,
+            pty=True,
+        )
+
+        req = tcr_ctx.pop_request("TaskContainerCreate")
+
+        assert req.pty_info is not None
+        assert req.pty_info.enabled
+
+
 def test_sandbox_wait_allowed_after_detached(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
     sb.terminate()

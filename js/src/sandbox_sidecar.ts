@@ -15,6 +15,7 @@ import {
 import {
   buildOutboundNetworkAccess,
   ContainerProcess,
+  defaultSandboxPTYInfo,
   getReturnCode,
   validateExecArgs,
   validateWorkdir,
@@ -91,6 +92,8 @@ export type SidecarCreateParams = {
    * prefixes (`*.example.com`). Independent of the main container.
    */
   outboundDomainAllowlist?: string[];
+  /** Enable a PTY for the sidecar. */
+  pty?: boolean;
 };
 
 /** Options for {@link SidecarService#get SidecarService.get()}. */
@@ -189,6 +192,8 @@ export class SidecarService {
     await hydrateSecrets(this.#access.client, resolvableSecrets);
     const secretIds = collectSecretIds(resolvableSecrets);
 
+    const ptyInfo = params?.pty ? defaultSandboxPTYInfo() : undefined;
+
     const [taskId, client] = await this.#access.commandRouter();
 
     let resp;
@@ -207,6 +212,7 @@ export class SidecarService {
             params?.outboundCidrAllowlist,
             params?.outboundDomainAllowlist,
           ),
+          ptyInfo,
         }),
       );
     } catch (err) {
