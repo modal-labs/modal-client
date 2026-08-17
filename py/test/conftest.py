@@ -3105,7 +3105,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SandboxSetNameRequest = await stream.recv_message()
         if not request.name:
             raise GRPCError(Status.INVALID_ARGUMENT, "name is required")
-        if request.sandbox_id in self.sandbox_names:
+        held = self.sandbox_names.get(request.sandbox_id)
+        if held is not None and held != request.name:
             raise GRPCError(Status.FAILED_PRECONDITION, f"sandbox {request.sandbox_id} already has a name")
         for holder_id, held_name in self.sandbox_names.items():
             if held_name == request.name and holder_id != request.sandbox_id:
