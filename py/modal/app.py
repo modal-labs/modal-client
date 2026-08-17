@@ -1579,33 +1579,6 @@ class _App:
         resp = await client.stub.AppGetTags(req)
         return dict(resp.tags)
 
-    async def _logs(self, client: _Client | None = None) -> AsyncGenerator[str, None]:
-        """Stream logs from the app.
-
-        This method is considered private and its interface may change - use at your own risk!
-        """
-        if not self._app_id:
-            raise InvalidError("`app._logs` requires a running/stopped app.")
-
-        client = client or self._client or await _Client.from_env()
-
-        last_log_batch_entry_id: str | None = None
-        while True:
-            request = api_pb2.AppGetLogsRequest(
-                app_id=self._app_id,
-                timeout=55,
-                last_entry_id=last_log_batch_entry_id,
-            )
-            async for log_batch in client.stub.AppGetLogs.unary_stream(request):
-                if log_batch.entry_id:
-                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                    last_log_batch_entry_id = log_batch.entry_id
-                if log_batch.app_done:
-                    return
-                for log in log_batch.items:
-                    if log.data:
-                        yield log.data
-
     @classmethod
     def _get_container_app(cls) -> "_App | None":
         """Returns the `App` running inside a container.
@@ -1621,7 +1594,7 @@ class _App:
     async def _get_log_query_data(self) -> _LogQueryData:
         """Get the data needed to query logs for this app."""
         if not self._app_id:
-            raise InvalidError("`app._logs` requires a running/stopped app.")
+            raise InvalidError("`app.logs` requires a running/stopped app.")
         client = self._client or await _Client.from_env()
         filters = LogsFilters()
         return _LogQueryData(client=client, app_id=self._app_id, filters=filters, source_object_id=self._app_id)

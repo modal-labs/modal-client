@@ -358,14 +358,14 @@ def test_non_string_app_name():
         App(Image.debian_slim())  # type: ignore
 
 
-def test_app_logs(servicer, client):
+def test_app_logs(servicer, client, set_env_client):
     app = App(include_source=False)
     f = app.function()(dummy)
 
     with app.run(client=client):
         f.remote()
 
-    logs = [data for data in app._logs(client=client)]
+    logs = [entry.message for entry in app.logs.stream()]
     assert logs == ["hello, world (1)\n"]
 
 
