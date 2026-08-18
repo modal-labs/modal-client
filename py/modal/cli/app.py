@@ -351,6 +351,57 @@ async def logs(
             )
 
 
+@app_cli.command("promote", no_args_is_help=True, hidden=True)
+@click.argument("app_identifier")
+@click.argument("version")
+@env_option
+@synchronizer.create_blocking
+async def promote(
+    app_identifier: str,
+    version: str,
+    *,
+    env: str | None = None,
+):
+    """Deploy a staged version from an App's deployment history.
+
+    When a staged version gets promoted, the app is deployed with a new version that
+    refers back to the staged version.
+
+    Examples:
+
+    Promote an App to a specific version:
+
+    ```
+    modal app promote my-app v5
+    ```
+
+    Promote an App using its App ID instead of its name:
+
+    ```
+    modal app promote ap-abcdefghABCDEFGH123456 v5
+    ```
+
+    """
+    if m := re.fullmatch(r"v?([1-9]\d*)", version):
+        version_number = int(m.group(1))
+    else:
+        raise UsageError(f"Invalid version specifier: {version}. Expected a positive version number, e.g. 'v5' or '5'.")
+
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
+    if lifecycle.app_state != api_pb2.APP_STATE_DEPLOYED:
+        env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
+        raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
+
+    resp = await client.stub.AppPromote(api_pb2.AppPromoteRequest(app_id=app_id, version=version_number))
+    print_server_warnings(resp.server_warnings)
+
+    output_mgr = OutputManager.get()
+    output_mgr.print(f"[green]✓[/green] Promoted App to v{version_number}!")
+    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+
+
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
 @click.argument("app_identifier")
 @click.argument("version", default="")

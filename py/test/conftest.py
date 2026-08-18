@@ -747,6 +747,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_apps: dict[tuple[str, str], str] = {}
         self.app_environments: dict[str, str] = {}
         self.app_deployment_history: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+        # The currently live version of each App, which can lag behind the newest version in the
+        # deployment history (e.g. after a rollback, or when a newer version has not been promoted).
+        self.app_live_version: dict[str, int] = {}
         self.app_deployment_history["ap-x"] = [
             {
                 "app_id": "ap-x",
@@ -1234,23 +1237,81 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
         await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
 
-    async def AppRollback(self, stream):
-        request: api_pb2.AppRollbackRequest = await stream.recv_message()
-        history = self.app_deployment_history[request.app_id][-1]
-        current_version = history["version"]
-        if request.version < 0:
-            rollback_version = current_version + request.version
-        else:
-            rollback_version = request.version
+    def _max_history_version(self, app_id: str) -> int:
+        return max((h["version"] for h in self.app_deployment_history[app_id]), default=0)
 
-        rollback_history = self.app_deployment_history[request.app_id][rollback_version - 1]
-        rollback_client = rollback_history["client_version"]
+    async def AppPromote(self, stream):
+        request: api_pb2.AppPromoteRequest = await stream.recv_message()
+        history = self.app_deployment_history[request.app_id]
+        current_version = self.app_live_version.get(request.app_id, self._max_history_version(request.app_id))
+
+        if request.version <= 0:
+            raise GRPCError(Status.INVALID_ARGUMENT, "Invalid promote version request.")
+        if request.version <= current_version:
+            raise GRPCError(
+                Status.INVALID_ARGUMENT,
+                f"Promote version must be newer than the current App version ({current_version}).",
+            )
+
+        promote_history = next((h for h in history if h["version"] == request.version), None)
+        if promote_history is None:
+            raise GRPCError(Status.NOT_FOUND, "Promote version not found in App history.")
+
+        # Mirrors the server: the new version clears every row in history, not just the live one,
+        # so promoting the immediately-next version does not reuse its version number.
+        new_version = max(current_version, self._max_history_version(request.app_id)) + 1
         deployed_at = datetime.datetime.now().timestamp()
         self.app_deployment_history[request.app_id].append(
             {
                 "app_id": request.app_id,
                 "deployed_at": deployed_at,
-                "version": current_version + 1,
+                "version": new_version,
+                "client_version": promote_history["client_version"],
+                "deployed_by": "foo-user",
+                "tag": promote_history["tag"],
+                "rollback_version": request.version,
+                "definition_ids": promote_history["definition_ids"],
+                "function_ids": promote_history["function_ids"],
+                "commit_info": promote_history.get("commit_info", None),
+            }
+        )
+        self.app_live_version[request.app_id] = new_version
+        self.app_objects[request.app_id] = dict(promote_history["function_ids"])
+        self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
+        response = api_pb2.AppPromoteResponse(
+            url="http://test.modal.com/foo/bar",
+            server_warnings=[],
+            deployed_at=deployed_at,
+        )
+        await stream.send_message(response)
+
+    async def AppRollback(self, stream):
+        request: api_pb2.AppRollbackRequest = await stream.recv_message()
+        history = self.app_deployment_history[request.app_id]
+        # Mirrors the server: relative versions resolve against the App's live version, which can trail
+        # staged rows in history.
+        current_version = self.app_live_version.get(request.app_id, self._max_history_version(request.app_id))
+        if request.version < 0:
+            rollback_version = current_version + request.version
+            if rollback_version <= 0:
+                raise GRPCError(Status.INVALID_ARGUMENT, "Rollback request exceeds number of App deployments.")
+        elif request.version > 0:
+            rollback_version = request.version
+        else:
+            raise GRPCError(Status.INVALID_ARGUMENT, "Invalid rollback version request.")
+
+        rollback_history = next((h for h in history if h["version"] == rollback_version), None)
+        if rollback_history is None:
+            raise GRPCError(Status.NOT_FOUND, "Rollback version not found in App history.")
+        rollback_client = rollback_history["client_version"]
+        # Mirrors the server: the new version sits above every row in history, not just the live one.
+        new_version = max(current_version, self._max_history_version(request.app_id)) + 1
+        deployed_at = datetime.datetime.now().timestamp()
+        self.app_deployment_history[request.app_id].append(
+            {
+                "app_id": request.app_id,
+                "deployed_at": deployed_at,
+                "version": new_version,
                 "client_version": rollback_client,
                 "deployed_by": "foo-user",
                 "tag": "latest",
@@ -1260,6 +1321,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "commit_info": rollback_history.get("commit_info", None),
             }
         )
+        self.app_live_version[request.app_id] = new_version
 
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
         response = api_pb2.AppRollbackResponse(
@@ -1333,10 +1395,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
         self.app_state_history[request.app_id].append(request.app_state)
-        if current_history := self.app_deployment_history[request.app_id]:
-            current_version = current_history[-1]["version"]
-        else:
-            current_version = 0
+        current_version = self._max_history_version(request.app_id)
 
         self.app_deployment_history[request.app_id].append(
             {
@@ -1352,6 +1411,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "function_ids": dict(request.function_ids),
             }
         )
+        self.app_live_version[request.app_id] = current_version + 1
         return response
 
     async def AppGetByDeploymentName(self, stream):

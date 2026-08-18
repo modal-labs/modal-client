@@ -2496,6 +2496,107 @@ def test_app_rollback(servicer, mock_dir, set_env_client):
     run_cli_command(["app", "rollback", "my_app", "2"], expected_exit_code=2)
 
 
+def _record_future_deployment(servicer, app_id: str, version: int) -> None:
+    """Add a deployment to an App's history that is newer than the currently deployed version."""
+    latest = servicer.app_deployment_history[app_id][-1]
+    servicer.app_deployment_history[app_id].append({**latest, "version": version, "tag": f"deploy{version}"})
+
+
+def test_app_rollback_relative_to_live_version(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        for _ in range(3):
+            run_cli_command(["deploy", "myapp.py", "--name", "my_app"])
+    app_id = servicer.deployed_apps[("main", "my_app")]
+    _record_future_deployment(servicer, app_id, version=5)
+
+    # Relative versions resolve against the live version (v3), not the newest staged row (v5),
+    # but the new deployment still lands above everything in history.
+    run_cli_command(["app", "rollback", "my_app"])
+    assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 2
+    assert servicer.app_deployment_history[app_id][-1]["version"] == 6
+
+
+@pytest.mark.parametrize("version", ["v5", "5"])
+def test_app_promote(servicer, mock_dir, set_env_client, version):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        run_cli_command(["deploy", "myapp.py", "--name", "my_app"])
+    app_id = servicer.deployed_apps[("main", "my_app")]
+    _record_future_deployment(servicer, app_id, version=5)
+
+    with servicer.intercept() as ctx:
+        res = run_cli_command(["app", "promote", "my_app", version])
+
+    (request,) = ctx.get_requests("AppPromote")
+    assert request.app_id == app_id
+    assert request.version == 5
+
+    assert "Promoted App to v5" in res.stdout
+    assert "http://test.modal.com/foo/bar" in res.stdout
+
+    # The promotion is recorded as a new deployment above every version in history
+    assert servicer.app_deployment_history[app_id][-1]["version"] == 6
+    assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 5
+
+
+@pytest.mark.parametrize("version", ["v0", "0", "v", "latest", "-1", "v5.1", "5x"])
+def test_app_promote_invalid_version(servicer, mock_dir, set_env_client, version):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        run_cli_command(["deploy", "myapp.py", "--name", "my_app"])
+
+    with servicer.intercept() as ctx:
+        run_cli_command(["app", "promote", "my_app", version], expected_exit_code=2)
+
+    # Version specifiers are validated before we hit the server
+    assert not ctx.get_requests("AppPromote")
+
+
+def test_app_promote_requires_version(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        run_cli_command(["deploy", "myapp.py", "--name", "my_app"])
+
+    run_cli_command(["app", "promote", "my_app"], expected_exit_code=2)
+
+
+def test_app_promote_not_deployed(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        run_cli_command(["deploy", "myapp.py", "--name", "my_app"])
+    app_id = servicer.deployed_apps[("main", "my_app")]
+    _record_future_deployment(servicer, app_id, version=5)
+    servicer.app_state_history[app_id].append(api_pb2.APP_STATE_STOPPED)
+
+    with servicer.intercept() as ctx:
+        run_cli_command(
+            ["app", "promote", "my_app", "v5"], expected_exit_code=1, expected_error="App .* is not deployed"
+        )
+
+    assert not ctx.get_requests("AppPromote")
+
+
+def test_app_promote_version_not_newer(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        for _ in range(2):
+            run_cli_command(["deploy", "myapp.py", "--name", "my_app"])
+
+    # v1 and v2 exist in the App history, but the App already serves v2
+    for version in ["v1", "v2"]:
+        run_cli_command(
+            ["app", "promote", "my_app", version],
+            expected_exit_code=1,
+            expected_error="must be newer than the current App version",
+        )
+
+
+def test_app_promote_version_not_in_history(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        run_cli_command(["deploy", "myapp.py", "--name", "my_app"])
+
+    run_cli_command(
+        ["app", "promote", "my_app", "v100"],
+        expected_exit_code=1,
+        expected_error="not found in App history",
+    )
+
+
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
     run_cli_command(["dict", "create", "foo-dict"])
     run_cli_command(["dict", "create", "bar-dict"])
@@ -3246,6 +3347,8 @@ def test_recreate_strategy(cmd, servicer, mock_dir, set_env_client, monkeypatch)
         ctx.set_responder("TaskList", task_list)
 
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+            # Deploy twice so that there is an earlier version for `rollback` to target
+            run_cli_command(["deploy", "myapp.py"])
             run_cli_command(["deploy", "myapp.py"])
 
         res = run_cli_command(["app", cmd, "my_app", "--strategy", "recreate"])
@@ -3259,6 +3362,8 @@ def test_recreate_strategy(cmd, servicer, mock_dir, set_env_client, monkeypatch)
 @pytest.mark.parametrize("cmd", ["rollover", "rollback"])
 def test_rolling_strategy(cmd, servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        # Deploy twice so that there is an earlier version for `rollback` to target
+        run_cli_command(["deploy", "myapp.py"])
         run_cli_command(["deploy", "myapp.py"])
 
     res = run_cli_command(["app", cmd, "my_app"])
