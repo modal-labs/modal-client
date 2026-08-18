@@ -2708,6 +2708,44 @@ def test_create_environment_name_valid(servicer, set_env_client, name):
     )
 
 
+@pytest.mark.parametrize(
+    ("args", "expected_role_str"),
+    [
+        (["--restricted"], None),
+        (["--restricted", "--default-role", "contributor"], "contributor"),
+        (["--restricted", "--default-role", "viewer"], "viewer"),
+        (["--restricted", "--default-role", "no-access"], "no-access"),
+        (["--restricted", "--default-role", "custom-role"], "custom-role"),
+    ],
+)
+def test_create_restricted_environment_default_role(servicer, set_env_client, args, expected_role_str):
+    with servicer.intercept() as ctx:
+        assert (
+            "Restricted Environment created"
+            in run_cli_command(
+                ["environment", "create", "restricted-env", *args],
+                0,
+            ).stdout
+        )
+        (req,) = ctx.get_requests("EnvironmentCreate")
+        assert req.default_member_role_str == (expected_role_str or "")
+        assert not req.HasField("default_member_role")
+
+
+def test_create_environment_default_role_requires_restricted(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        result = run_cli_command(
+            ["environment", "create", "new-env", "--default-role", "viewer"],
+            1,
+            expected_error="Default member role can only be set for a Restricted environment.",
+        )
+    assert isinstance(result.exception, InvalidError)
+    (request,) = ctx.get_requests("EnvironmentCreate")
+    assert request.default_member_role_str == "viewer"
+    assert not request.is_managed
+    assert "new-env" not in servicer.environments
+
+
 def test_create_public_environment(servicer, set_env_client):
     with servicer.intercept() as ctx:
         assert (

@@ -1959,6 +1959,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def EnvironmentCreate(self, stream):
         request: api_pb2.EnvironmentCreateRequest = await stream.recv_message()
+        if request.default_member_role_str and not request.is_managed:
+            raise GRPCError(
+                Status.INVALID_ARGUMENT,
+                "Default member role can only be set for a Restricted environment.",
+            )
         name = request.name
         if name not in self.environments:
             env_id = f"en-{len(self.environments) + 1}"

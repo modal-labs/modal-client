@@ -104,13 +104,42 @@ def test_environment_objects_create(servicer, client):
     assert "new-env" in servicer.environments
     assert servicer.environments["new-env"] not in servicer.environment_managed
 
-    Environment.objects.create("restricted-env", restricted=True, client=client)
+    with servicer.intercept() as ctx:
+        Environment.objects.create("restricted-env", restricted=True, client=client)
     assert "restricted-env" in servicer.environments
-    assert servicer.environment_managed[servicer.environments["restricted-env"]] is True
+    restricted_env_id = servicer.environments["restricted-env"]
+    assert servicer.environment_managed[restricted_env_id] is True
+    request = ctx.pop_request("EnvironmentCreate")
+    assert not request.HasField("default_member_role")
+
+    for default_role in ("no-access", "viewer", "contributor", "custom-role"):
+        with servicer.intercept() as ctx:
+            Environment.objects.create(
+                f"{default_role}-env",
+                restricted=True,
+                default_role=default_role,
+                client=client,
+            )
+        request = ctx.pop_request("EnvironmentCreate")
+        assert request.default_member_role_str == default_role
+        assert not request.HasField("default_member_role")
 
     Environment.objects.create("public-env", experimental_options={"is_public": True}, client=client)
     assert "public-env" in servicer.environments
     assert servicer.environment_type[servicer.environments["public-env"]] == api_pb2.ENVIRONMENT_TYPE_PUBLIC
+
+
+def test_environment_objects_create_default_role_requires_restricted(servicer, client):
+    with servicer.intercept() as ctx:
+        with pytest.raises(
+            InvalidError,
+            match="Default member role can only be set for a Restricted environment.",
+        ):
+            Environment.objects.create("new-env", default_role="viewer", client=client)
+    request = ctx.pop_request("EnvironmentCreate")
+    assert request.default_member_role_str == "viewer"
+    assert not request.is_managed
+    assert "new-env" not in servicer.environments
 
 
 def test_environment_objects_list(servicer, client):
