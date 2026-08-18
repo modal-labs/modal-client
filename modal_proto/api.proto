@@ -4863,6 +4863,7 @@ service ModalClient {
   rpc SandboxCreateV2(SandboxCreateV2Request) returns (SandboxCreateV2Response);
   rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetExitSnapshot(SandboxGetExitSnapshotRequest) returns (SandboxGetExitSnapshotResponse);
+  rpc SandboxGetExitSnapshotV2(SandboxGetExitSnapshotRequest) returns (SandboxGetExitSnapshotResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetFromNameV2(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
