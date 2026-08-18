@@ -1709,6 +1709,7 @@ message EnvironmentGetRolesResponse {
     repeated EnvironmentRole choosable_roles = 9;
     MemberRole member_role = 10;
     optional bool inherits_default_member_role = 11;
+    optional bool has_role_assignment = 12;
   }
 
   string name = 1;

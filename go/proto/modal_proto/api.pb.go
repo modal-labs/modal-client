@@ -61330,6 +61330,7 @@ type EnvironmentGetRolesResponse_Principal struct {
 	xxx_hidden_ChoosableRoles            []EnvironmentRole      `protobuf:"varint,9,rep,packed,name=choosable_roles,json=choosableRoles,proto3,enum=modal.client.EnvironmentRole"`
 	xxx_hidden_MemberRole                MemberRole             `protobuf:"varint,10,opt,name=member_role,json=memberRole,proto3,enum=modal.client.MemberRole"`
 	xxx_hidden_InheritsDefaultMemberRole bool                   `protobuf:"varint,11,opt,name=inherits_default_member_role,json=inheritsDefaultMemberRole,proto3,oneof"`
+	xxx_hidden_HasRoleAssignment         bool                   `protobuf:"varint,12,opt,name=has_role_assignment,json=hasRoleAssignment,proto3,oneof"`
 	XXX_raceDetectHookData               protoimpl.RaceDetectHookData
 	XXX_presence                         [1]uint32
 	unknownFields                        protoimpl.UnknownFields
@@ -61438,6 +61439,13 @@ func (x *EnvironmentGetRolesResponse_Principal) GetInheritsDefaultMemberRole() b
 	return false
 }
 
+func (x *EnvironmentGetRolesResponse_Principal) GetHasRoleAssignment() bool {
+	if x != nil {
+		return x.xxx_hidden_HasRoleAssignment
+	}
+	return false
+}
+
 func (x *EnvironmentGetRolesResponse_Principal) SetUserId(v string) {
 	x.xxx_hidden_UserId = v
 }
@@ -61480,7 +61488,12 @@ func (x *EnvironmentGetRolesResponse_Principal) SetMemberRole(v MemberRole) {
 
 func (x *EnvironmentGetRolesResponse_Principal) SetInheritsDefaultMemberRole(v bool) {
 	x.xxx_hidden_InheritsDefaultMemberRole = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 11)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 12)
+}
+
+func (x *EnvironmentGetRolesResponse_Principal) SetHasRoleAssignment(v bool) {
+	x.xxx_hidden_HasRoleAssignment = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 12)
 }
 
 func (x *EnvironmentGetRolesResponse_Principal) HasInheritsDefaultMemberRole() bool {
@@ -61490,9 +61503,21 @@ func (x *EnvironmentGetRolesResponse_Principal) HasInheritsDefaultMemberRole() b
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 10)
 }
 
+func (x *EnvironmentGetRolesResponse_Principal) HasHasRoleAssignment() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 11)
+}
+
 func (x *EnvironmentGetRolesResponse_Principal) ClearInheritsDefaultMemberRole() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 10)
 	x.xxx_hidden_InheritsDefaultMemberRole = false
+}
+
+func (x *EnvironmentGetRolesResponse_Principal) ClearHasRoleAssignment() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 11)
+	x.xxx_hidden_HasRoleAssignment = false
 }
 
 type EnvironmentGetRolesResponse_Principal_builder struct {
@@ -61509,6 +61534,7 @@ type EnvironmentGetRolesResponse_Principal_builder struct {
 	ChoosableRoles            []EnvironmentRole
 	MemberRole                MemberRole
 	InheritsDefaultMemberRole *bool
+	HasRoleAssignment         *bool
 }
 
 func (b0 EnvironmentGetRolesResponse_Principal_builder) Build() *EnvironmentGetRolesResponse_Principal {
@@ -61526,8 +61552,12 @@ func (b0 EnvironmentGetRolesResponse_Principal_builder) Build() *EnvironmentGetR
 	x.xxx_hidden_ChoosableRoles = b.ChoosableRoles
 	x.xxx_hidden_MemberRole = b.MemberRole
 	if b.InheritsDefaultMemberRole != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 11)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 12)
 		x.xxx_hidden_InheritsDefaultMemberRole = *b.InheritsDefaultMemberRole
+	}
+	if b.HasRoleAssignment != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 12)
+		x.xxx_hidden_HasRoleAssignment = *b.HasRoleAssignment
 	}
 	return m0
 }
@@ -64572,13 +64602,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12=\n" +
 	"\bmetadata\x18\x02 \x01(\v2!.modal.client.EnvironmentMetadataR\bmetadata\"C\n" +
 	"\x1aEnvironmentGetRolesRequest\x12%\n" +
-	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\"\x9f\x06\n" +
+	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\"\xec\x06\n" +
 	"\x1bEnvironmentGetRolesResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\x02 \x01(\x01R\tcreatedAt\x12\\\n" +
 	"\x0fprincipal_roles\x18\x03 \x03(\v23.modal.client.EnvironmentGetRolesResponse.PrincipalR\x0eprincipalRoles\x12R\n" +
-	"\x13default_member_role\x18\x04 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x00R\x11defaultMemberRole\x88\x01\x01\x1a\x82\x04\n" +
+	"\x13default_member_role\x18\x04 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x00R\x11defaultMemberRole\x88\x01\x01\x1a\xcf\x04\n" +
 	"\tPrincipal\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12&\n" +
 	"\x0fservice_user_id\x18\x02 \x01(\tR\rserviceUserId\x12\x14\n" +
@@ -64593,8 +64623,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vmember_role\x18\n" +
 	" \x01(\x0e2\x18.modal.client.MemberRoleR\n" +
 	"memberRole\x12D\n" +
-	"\x1cinherits_default_member_role\x18\v \x01(\bH\x00R\x19inheritsDefaultMemberRole\x88\x01\x01B\x1f\n" +
+	"\x1cinherits_default_member_role\x18\v \x01(\bH\x00R\x19inheritsDefaultMemberRole\x88\x01\x01\x123\n" +
+	"\x13has_role_assignment\x18\f \x01(\bH\x01R\x11hasRoleAssignment\x88\x01\x01B\x1f\n" +
 	"\x1d_inherits_default_member_roleB\x16\n" +
+	"\x14_has_role_assignmentB\x16\n" +
 	"\x14_default_member_role\"\x83\a\n" +
 	"\x13EnvironmentListItem\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12%\n" +
