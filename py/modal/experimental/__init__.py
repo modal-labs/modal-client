@@ -105,6 +105,7 @@ async def list_deployed_apps(environment_name: str = "", client: _Client | None 
 class AppLifecycle:
     """Lifecycle information about an App."""
 
+    version: int | None  # Current version of a deployed App, or None for an ephemeral App
     created_at: datetime  # Time the App was initially created
     created_by: str  # User or service user name
     deployed_at: datetime | None  # Time of the most recent deployment event, if ever deployed
@@ -132,6 +133,7 @@ async def get_app_lifecycle(app_id: str, *, client: _Client | None = None) -> Ap
     )
     lifecycle = resp.lifecycle
     return AppLifecycle(
+        version=lifecycle.version or None,
         created_at=datetime.fromtimestamp(lifecycle.created_at, timezone.utc),
         created_by=lifecycle.created_by,
         deployed_at=_timestamp_to_datetime(lifecycle.deployed_at),
