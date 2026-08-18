@@ -7,6 +7,7 @@ import inspect
 import os
 import shutil
 import sys
+from collections.abc import Sequence
 from typing import Any
 
 import click
@@ -26,6 +27,83 @@ _ERROR_STYLE = "red"
 
 _MAX_HELP_WIDTH = 80
 _HELP_PADDING = 1
+
+
+class ModalGlobalOption(click.Option):
+    """An option supported at every level of the Modal CLI."""
+
+    def __init__(self, *args: Any, environment_variable: str, **kwargs: Any) -> None:
+        kwargs.setdefault("expose_value", False)
+        super().__init__(*args, **kwargs)
+        self.environment_variable = environment_variable
+
+    def set_environment_value(self, value: object) -> None:
+        os.environ[self.environment_variable] = str(value)
+
+
+class ModalProfileOption(ModalGlobalOption):
+    """Global option that updates Modal's active-profile cache."""
+
+    def set_environment_value(self, value: object) -> None:
+        from modal.config import _set_profile
+
+        # The profile is a global variable and currently set when modal is imported
+        # We could probably clean this up and simplify to just setting MODAL_PROFILE
+        _set_profile(str(value))
+
+
+def _root_global_options(ctx: click.Context) -> list[tuple[ModalGlobalOption, click.Context]]:
+    root_ctx = ctx.find_root()
+    return [
+        (param, root_ctx) for param in root_ctx.command.get_params(root_ctx) if isinstance(param, ModalGlobalOption)
+    ]
+
+
+def _global_option_token_length(ctx: click.Context, args: list[str], index: int) -> int:
+    option_name = args[index].split("=", 1)[0]
+    for option, _ in _root_global_options(ctx):
+        if option_name in (*option.opts, *option.secondary_opts):
+            return 1 if "=" in args[index] or option.is_flag else option.nargs + 1
+    return 0
+
+
+def _consume_global_options(ctx: click.Context, args: list[str]) -> list[str]:
+    remaining_args: list[str] = []
+    value: str | bool
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        option_name, separator, option_value = arg.partition("=")
+        global_option = next(
+            (
+                option
+                for option, _ in _root_global_options(ctx)
+                if option_name in (*option.opts, *option.secondary_opts)
+            ),
+            None,
+        )
+        if global_option is None:
+            remaining_args.append(arg)
+            index += 1
+            continue
+
+        if separator:
+            value = option_value
+            index += 1
+        elif global_option.is_flag:
+            value = global_option.flag_value
+            if option_name in global_option.secondary_opts and isinstance(value, bool):
+                value = not value
+            index += 1
+        else:
+            if index + global_option.nargs >= len(args):
+                raise click.UsageError(f"Option '{option_name}' requires an argument.", ctx)
+            value = args[index + 1]
+            index += global_option.nargs + 1
+
+        global_option.set_environment_value(value)
+
+    return remaining_args
 
 
 def use_rich_style() -> bool:
@@ -82,11 +160,11 @@ def _option_label(param: click.Parameter, ctx: click.Context) -> Text:
 
 def _build_options(cmd: click.Command, ctx: click.Context) -> RenderableType | None:
     rows: list[tuple[Text, str]] = []
-    for param in cmd.get_params(ctx):
-        rec = param.get_help_record(ctx)
+    for param, param_ctx in _options_with_global_options(cmd, ctx):
+        rec = param.get_help_record(param_ctx)
         if rec is None:  # skips arguments and hidden options
             continue
-        rows.append((_option_label(param, ctx), rec[1] or ""))
+        rows.append((_option_label(param, param_ctx), rec[1] or ""))
     if not rows:
         return None
 
@@ -96,6 +174,36 @@ def _build_options(cmd: click.Command, ctx: click.Context) -> RenderableType | N
     for label, help_str in rows:
         table.add_row(label, help_str)
     return Group(Text("Options", style=_HEADING_STYLE), table)
+
+
+def _global_options(ctx: click.Context) -> Sequence[tuple[click.Option, click.Context]]:
+    root_ctx = ctx.find_root()
+    if root_ctx is ctx:
+        return []
+    return _root_global_options(ctx)
+
+
+def _options_with_global_options(cmd: click.Command, ctx: click.Context) -> list[tuple[click.Parameter, click.Context]]:
+    params = [(param, ctx) for param in cmd.get_params(ctx)]
+    if global_options := _global_options(ctx):
+        for index, (param, _) in enumerate(params):
+            if "--help" in param.opts or "--help" in param.secondary_opts:
+                params[index:index] = global_options
+                break
+        else:
+            params.extend(global_options)
+    return params
+
+
+def _format_options(cmd: click.Command, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+    records = [
+        rec
+        for param, param_ctx in _options_with_global_options(cmd, ctx)
+        if (rec := param.get_help_record(param_ctx)) is not None
+    ]
+    if records:
+        with formatter.section("Options"):
+            formatter.write_dl(records)
 
 
 def _build_epilog(cmd: click.Command) -> RenderableType | None:
@@ -112,6 +220,10 @@ def group_commands_by_panel(group: click.Group) -> dict[str, list[tuple[str, cli
             continue
         panels.setdefault(getattr(sub, "panel", None) or "Commands", []).append((name, sub))
     return panels
+
+
+def _has_visible_commands(group: click.Group) -> bool:
+    return bool(group_commands_by_panel(group))
 
 
 def _build_commands(group: click.Group, available_width: int) -> RenderableType | None:
@@ -189,6 +301,9 @@ class ModalCommand(click.Command):
         super().__init__(*args, **kwargs)
         self.panel = panel
 
+    def format_options(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        _format_options(self, ctx, formatter)
+
     def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         if not use_rich_style():
             return super().format_help(ctx, formatter)
@@ -210,6 +325,7 @@ class ModalGroup(click.Group):
 
     command_class = ModalCommand
     group_class = type  # nested @group.group() reuses the enclosing class
+    defer_global_option_parsing = False
 
     def __init__(self, *args: Any, panel: str | None = None, **kwargs: Any) -> None:
         # Default to showing help when a group is invoked with no subcommand.
@@ -232,6 +348,29 @@ class ModalGroup(click.Group):
         if hidden is not None:
             cmd.hidden = hidden
 
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if global_option_length := _global_option_token_length(ctx, args, index):
+                index += global_option_length
+                continue
+            command = self.commands.get(arg)
+            if command and getattr(command, "defer_global_option_parsing", False):
+                args[:] = _consume_global_options(ctx, args[:index]) + args[index:]
+                break
+            index += 1
+        else:
+            args[:] = _consume_global_options(ctx, args)
+
+        return super().parse_args(ctx, args)
+
+    def format_options(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        if _has_visible_commands(self):
+            self.format_commands(ctx, formatter)
+        else:
+            _format_options(self, ctx, formatter)
+
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         # Replaces click's single flat "Commands:" section with one section per
         # panel so the simple-style help output still preserves grouping.
@@ -249,7 +388,7 @@ class ModalGroup(click.Group):
             [
                 _build_usage(self, ctx),
                 _build_help_text(self),
-                _build_options(self, ctx),
+                None if _has_visible_commands(self) else _build_options(self, ctx),
                 _build_commands(self, _available_width(console)),
                 _build_epilog(self),
             ],

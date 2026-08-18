@@ -17,6 +17,7 @@ from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2, modal_api_grpc
 from modal_version import __version__
 
+from . import config as config_module
 from ._traceback import print_server_warnings
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
@@ -240,6 +241,13 @@ class _Client:
                 client_type = api_pb2.CLIENT_TYPE_CLIENT
                 credentials = (token_id, token_secret)
             else:
+                profile = config_module._profile
+                if os.environ.get("MODAL_PROFILE") and profile not in config_module._user_config:
+                    raise AuthError(
+                        f"Modal profile '{profile}' was not found in {config_module.user_config_path}. "
+                        "Run `modal profile list` to see available profiles, or "
+                        f"`modal token new --profile {profile}` to configure it."
+                    )
                 raise AuthError(
                     "Token missing. Could not authenticate client."
                     " If you have token credentials, see modal.com/docs/sdk/py/latest/config for setup help."

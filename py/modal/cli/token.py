@@ -15,11 +15,6 @@ from ._help import ModalGroup
 
 token_cli = ModalGroup(name="token", help="Manage tokens.")
 
-_PROFILE_HELP = (
-    "Modal profile to set credentials for. If unspecified "
-    "(and MODAL_PROFILE environment variable is not set), "
-    "uses the workspace name associated with the credentials."
-)
 _ACTIVATE_HELP = "Activate the profile containing this token after creation."
 _VERIFY_HELP = "Make a test request to verify the new credentials."
 
@@ -27,14 +22,12 @@ _VERIFY_HELP = "Make a test request to verify the new credentials."
 @token_cli.command("set")
 @click.option("--token-id", default=None, help="Account token ID.")
 @click.option("--token-secret", default=None, help="Account token secret.")
-@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
 @click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
 @synchronizer.create_blocking
 async def set(
     token_id: str | None,
     token_secret: str | None,
-    profile: str | None,
     activate: bool,
     verify: bool,
 ):
@@ -46,18 +39,17 @@ async def set(
         token_id = getpass.getpass("Token ID:")
     if token_secret is None:
         token_secret = getpass.getpass("Token secret:")
-    await _set_token(token_id, token_secret, profile=profile, activate=activate, verify=verify)
+    await _set_token(token_id, token_secret, activate=activate, verify=verify)
 
 
 @token_cli.command("new")
-@click.option("--profile", default=None, help=_PROFILE_HELP)
 @click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
 @click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
 @click.option("--source", default=None, hidden=True)
 @synchronizer.create_blocking
-async def new(profile: str | None, activate: bool, verify: bool, source: str | None):
+async def new(activate: bool, verify: bool, source: str | None):
     """Create a new token by using an authenticated web session."""
-    await _new_token(profile=profile, activate=activate, verify=verify, source=source)
+    await _new_token(activate=activate, verify=verify, source=source)
 
 
 @token_cli.command("info")

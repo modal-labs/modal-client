@@ -4699,6 +4699,7 @@ def run_cli_command(
 
     from packaging.version import parse as parse_version
 
+    from modal import config as config_module
     from modal.output import enable_output
 
     if parse_version(get_version("click")) < parse_version("8.2"):
@@ -4709,10 +4710,19 @@ def run_cli_command(
         runner = click.testing.CliRunner()
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
-    with mock.patch.object(sys, "argv", args):
-        # Enable rich output during CLI tests, just like __main__.py does
-        with enable_output():
-            res = runner.invoke(entrypoint_cli, args)
+    previous_env_profile = os.environ.get("MODAL_PROFILE")
+    previous_profile = config_module._profile
+    try:
+        with mock.patch.object(sys, "argv", args):
+            # Enable rich output during CLI tests, just like __main__.py does
+            with enable_output():
+                res = runner.invoke(entrypoint_cli, args)
+    finally:
+        if previous_env_profile is None:
+            os.environ.pop("MODAL_PROFILE", None)
+        else:
+            os.environ["MODAL_PROFILE"] = previous_env_profile
+        config_module._profile = previous_profile
     if res.exit_code != expected_exit_code:
         print("stdout:", repr(res.stdout))
         print("stderr:", repr(res.stderr))

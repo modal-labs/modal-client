@@ -33,6 +33,11 @@ def unannotated_default_arg(i=10):
     print(repr(i), type(i))
 
 
+@app.local_entrypoint()
+def profile_arg(profile: str):
+    print(profile)
+
+
 @app.function()
 def int_arg_fn(i: int):
     print(repr(i), type(i))

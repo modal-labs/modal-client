@@ -8,7 +8,7 @@ from modal._utils.async_utils import synchronizer
 from modal.output import OutputManager
 
 from . import run, shell as shell_module
-from ._help import ModalCommand, ModalGroup
+from ._help import ModalCommand, ModalGroup, ModalProfileOption
 from .app import app_cli
 from .billing import billing_cli
 from .bootstrap import bootstrap
@@ -52,6 +52,12 @@ from .workspace import workspace_cli
     expose_value=False,
     callback=lambda ctx, param, value: _version_callback(ctx, value),
 )
+@click.option(
+    "--profile",
+    cls=ModalProfileOption,
+    environment_variable="MODAL_PROFILE",
+    help="Use this Modal profile for the command.",
+)
 def entrypoint_cli():
     pass
 
@@ -88,14 +94,13 @@ def check_path():
 
 
 @click.command("setup", cls=ModalCommand, help="Bootstrap Modal's configuration.")
-@click.option("--profile", default=None)
 @synchronizer.create_blocking
-async def setup(profile: str | None = None):
+async def setup():
     check_path()
     print_logo()
 
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
-    await _new_token(profile=profile, next_url="/home")
+    await _new_token(next_url="/home")
 
     output = OutputManager.get()
     output.print("[green]→[/green] Run [bold]modal skills install[/bold] to install agent skills")

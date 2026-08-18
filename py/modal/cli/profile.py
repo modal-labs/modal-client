@@ -8,11 +8,11 @@ import click
 from rich.json import JSON
 from rich.table import Table
 
+from modal import config as config_module
 from modal._utils.async_utils import synchronizer
 from modal.config import (
     Config,
     _lookup_workspace,
-    _profile,
     config_profiles,
     config_set_active_profile,
 )
@@ -41,7 +41,7 @@ def activate(profile: str):
 
 @profile_cli.command("current", help="Print the currently active Modal profile.")
 def current():
-    click.echo(_profile)
+    click.echo(config_module._profile)
 
 
 @profile_cli.command("list", help="Show all Modal profiles and highlight the active one.")
@@ -62,7 +62,7 @@ async def list_(json: bool | None = False):
 
     rows = []
     for profile, resp in zip(profiles, responses):
-        active = profile == _profile
+        active = profile == config_module._profile
         if isinstance(resp, AuthError):
             workspace = "Unknown (authentication failure)"
         elif isinstance(resp, TimeoutError):
@@ -80,7 +80,7 @@ async def list_(json: bool | None = False):
     if "MODAL_TOKEN_ID" in os.environ:
         try:
             env_based_resp = await _lookup_workspace(
-                config.get("server_url", profile=_profile),
+                config.get("server_url", profile=config_module._profile),
                 os.environ["MODAL_TOKEN_ID"],
                 os.environ.get("MODAL_TOKEN_SECRET", ""),
             )

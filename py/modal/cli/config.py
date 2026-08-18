@@ -3,7 +3,8 @@ import json
 
 import click
 
-from modal.config import _profile, _store_user_config, config
+from modal import config as config_module
+from modal.config import _store_user_config, config
 from modal.environments import Environment
 from modal.output import OutputManager
 
@@ -46,7 +47,7 @@ def set_environment(environment_name: str):
     # Confirm that the environment exists by looking it up
     Environment.from_name(environment_name).hydrate()
     _store_user_config({"environment": environment_name})
-    click.echo(f"New default environment for profile {_profile}: {environment_name}")
+    click.echo(f"New default environment for profile {config_module._profile}: {environment_name}")
 
 
 @config_cli.command("set", hidden=True, no_args_is_help=True)

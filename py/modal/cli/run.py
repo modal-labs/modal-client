@@ -23,7 +23,7 @@ from ..functions import Function
 from ..output import OutputManager
 from ..runner import DEPLOYMENT_STRATEGY_TYPE, deploy_app, run_app
 from ..serving import serve_app
-from ._help import ModalCommand, ModalGroup
+from ._help import ModalCommand, ModalGroup, _consume_global_options, _global_option_token_length
 from .import_refs import (
     CLICommand,
     MethodReference,
@@ -410,6 +410,33 @@ def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
 
 class RunGroup(ModalGroup):
     """Click group that resolves subcommands dynamically from a file/module ref."""
+
+    defer_global_option_parsing = True
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        option_params: dict[str, click.Option] = {}
+        for param in self.get_params(ctx):
+            if isinstance(param, click.Option):
+                for option in (*param.opts, *param.secondary_opts):
+                    option_params[option] = param
+
+        func_ref_index = 0
+        while func_ref_index < len(args):
+            arg = args[func_ref_index]
+            if global_option_length := _global_option_token_length(ctx, args, func_ref_index):
+                func_ref_index += global_option_length
+            elif arg == "--":
+                func_ref_index += 1
+                break
+            elif param := option_params.get(arg.split("=", 1)[0]):
+                func_ref_index += 1 if "=" in arg or param.is_flag else param.nargs + 1
+            elif arg.startswith("-"):
+                func_ref_index += 1
+            else:
+                break
+
+        args[:] = _consume_global_options(ctx, args[:func_ref_index]) + args[func_ref_index:]
+        return click.Group.parse_args(self, ctx, args)
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         # note: get_command here is run before the "group logic" in the `run` logic below

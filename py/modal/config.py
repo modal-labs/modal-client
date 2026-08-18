@@ -242,6 +242,13 @@ def _check_config() -> None:
 
 _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
+
+def _set_profile(profile: str) -> None:
+    os.environ["MODAL_PROFILE"] = profile
+    global _profile
+    _profile = profile
+
+
 # Define settings
 
 

@@ -1820,6 +1820,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         (["run", f"{app_file.as_posix()}::dt_arg", "--dt=2022-10-31"], "the day is 31"),
         (["run", f"{app_file.as_posix()}::int_arg", "--i=200"], "200 <class 'int'>"),
         (["run", f"{app_file.as_posix()}::default_arg"], "10 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::profile_arg", "--profile=foo"], "foo"),
         (["run", f"{app_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
         (["run", f"{app_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
         (["run", f"{app_file.as_posix()}::optional_arg", "--i=20"], "20 <class 'int'>"),
@@ -2409,6 +2410,68 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 os.environ["MODAL_TOKEN_SECRET"] = orig_env_token_secret
             else:
                 del os.environ["MODAL_TOKEN_SECRET"]
+
+
+def test_global_profile_option(servicer, set_env_client, modal_config, test_dir):
+    with modal_config(
+        """
+        [default]
+        environment = "main"
+
+        [staging]
+        environment = "staging"
+        """
+    ):
+        res = run_cli_command(["profile", "current", "--profile", "staging"])
+        assert res.stdout == "staging\n"
+
+        run_cli_command(
+            [
+                "endpoint",
+                "create",
+                "--model=Qwen/Qwen3.6-27B-FP8",
+                "--profile",
+                "staging",
+            ]
+        )
+
+        app_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+        res = run_cli_command(["run", "--profile", "staging", app_file.as_posix()])
+        assert "called locally" in res.stdout
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.environment_name == "staging"
+
+
+def test_global_profile_option_is_shown_in_command_help(monkeypatch):
+    plain_help = run_cli_command(["app", "list", "--help"]).stdout
+    assert "Global options:" not in plain_help
+    assert plain_help.index("--profile TEXT") < plain_help.index("-h, --help")
+
+    monkeypatch.setenv("MODAL_RICH_CLI", "1")
+    rich_help = run_cli_command(["app", "list", "--help"]).stdout
+    assert "Global options" not in rich_help
+    assert rich_help.index("--profile TEXT") < rich_help.index("--help")
+
+
+def test_group_help_omits_options(monkeypatch):
+    plain_help = run_cli_command(["app", "--help"]).stdout
+    assert "Options:" not in plain_help
+    assert "--profile" not in plain_help
+    assert "-h, --help" not in plain_help
+
+    monkeypatch.setenv("MODAL_RICH_CLI", "1")
+    rich_help = run_cli_command(["app", "--help"]).stdout
+    assert "Options" not in rich_help
+    assert "--profile" not in rich_help
+    assert "-h, --help" not in rich_help
+
+
+def test_unknown_global_profile_error(modal_config):
+    with modal_config("[default]"):
+        res = run_cli_command(["app", "list", "--profile", "main"], expected_exit_code=1)
+
+    assert "Modal profile 'main' was not found" in str(res.exception)
 
 
 def test_config_show(servicer, server_url_env, modal_config):
