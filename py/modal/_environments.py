@@ -120,8 +120,11 @@ class _EnvironmentRolesManager:
         """mdmd:hidden"""
         self._environment = environment
 
-    async def list(self) -> dict[Literal["users", "service_users"], dict[str, str]]:
+    async def list(self, *, exclude_default: bool = False) -> dict[Literal["users", "service_users"], dict[str, str]]:
         """Enumerate the Environment Role for each user and service user in the workspace.
+
+        Args:
+            exclude_default: If `True`, only include roles that are directly assigned.
 
         **Examples:**
 
@@ -141,6 +144,8 @@ class _EnvironmentRolesManager:
         users: dict[str, str] = {}
         service_users: dict[str, str] = {}
         for principal in resp.principal_roles:
+            if exclude_default and not principal.has_role_assignment:
+                continue
             if principal.user_id:
                 users[principal.user_name] = principal.role_str
             elif principal.service_user_id:
@@ -256,8 +261,8 @@ class _EnvironmentMembersManager:
         """Remove the Environment Role of users and service users, reverting them to the default."""
         deprecation_warning(
             (2026, 7, 23),
-            "`Environment.members.remove()` is deprecated. Environment Roles are now explicit; "
-            "set a role (e.g. 'no-access') with `Environment.roles.update()` instead.",
+            "`Environment.members.remove()` is deprecated; assign a role (e.g. 'no-access') with "
+            "`Environment.roles.update()` instead.",
         )
         await self._environment.hydrate()
         users = users or []

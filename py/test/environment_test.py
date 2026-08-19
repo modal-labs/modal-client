@@ -176,6 +176,45 @@ def test_environment_get_roles(servicer, client):
     }
 
 
+def test_environment_get_roles_excludes_default(servicer, client):
+    env = Environment.from_name("main", client=client)
+    env.hydrate()
+    response = api_pb2.EnvironmentGetRolesResponse(
+        principal_roles=[
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                user_id="us-alice",
+                user_name="alice",
+                role_str="viewer",
+                has_role_assignment=False,
+            ),
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                user_id="us-bob",
+                user_name="bob",
+                role_str="viewer",
+                has_role_assignment=True,
+            ),
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                service_user_id="sv-bot",
+                service_user_name="bot",
+                role_str="no-access",
+                has_role_assignment=False,
+            ),
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                service_user_id="sv-assigned-bot",
+                service_user_name="assigned-bot",
+                role_str="no-access",
+                has_role_assignment=True,
+            ),
+        ],
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("EnvironmentGetRoles", response)
+        roles = env.roles.list(exclude_default=True)
+
+    assert roles == {"users": {"bob": "viewer"}, "service_users": {"assigned-bot": "no-access"}}
+
+
 def test_environment_update_roles(servicer, client):
     env = Environment.from_name("main", client=client)
 

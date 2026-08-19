@@ -2872,6 +2872,60 @@ def test_environment_roles_list_cli(servicer, set_env_client):
     assert "ops-bot (service user)" in table
 
 
+def test_environment_roles_list_cli_excludes_default(servicer, set_env_client):
+    response = api_pb2.EnvironmentGetRolesResponse(
+        principal_roles=[
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                user_id="us-alice",
+                user_name="alice",
+                role=api_pb2.ENVIRONMENT_ROLE_VIEWER,
+                role_str="viewer",
+                has_role_assignment=False,
+            ),
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                user_id="us-bob",
+                user_name="bob",
+                role=api_pb2.ENVIRONMENT_ROLE_VIEWER,
+                role_str="viewer",
+                has_role_assignment=True,
+            ),
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                service_user_id="sv-bot",
+                service_user_name="implicit-bot",
+                role=api_pb2.ENVIRONMENT_ROLE_NO_ACCESS,
+                role_str="no-access",
+                has_role_assignment=False,
+            ),
+            api_pb2.EnvironmentGetRolesResponse.Principal(
+                service_user_id="sv-assigned-bot",
+                service_user_name="assigned-bot",
+                role=api_pb2.ENVIRONMENT_ROLE_NO_ACCESS,
+                role_str="no-access",
+                has_role_assignment=True,
+            ),
+        ],
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("EnvironmentGetRoles", response)
+        ctx.add_response("EnvironmentGetRoles", response)
+        table = run_cli_command(["environment", "roles", "list", "main", "--exclude-default"]).stdout
+        roles = json.loads(
+            run_cli_command(["environment", "roles", "list", "main", "--exclude-default", "--json"]).stdout
+        )
+
+    assert "alice" not in table
+    assert "bob" in table
+    assert "implicit-bot (service user)" not in table
+    assert "assigned-bot (service user)" in table
+    assert roles == {"users": {"bob": "viewer"}, "service_users": {"assigned-bot": "no-access"}}
+
+    help_output = run_cli_command(["environment", "roles", "list", "--help"]).stdout
+    help_text = " ".join(help_output.split())
+    assert help_output.index("--exclude-default") < help_output.index("--json")
+    assert "Only list roles that are directly assigned" in help_text
+
+
 def test_environment_roles_update_cli(servicer, set_env_client):
     run_cli_command(["environment", "roles", "update", "main", "alice", "--role", "no-access"])
     run_cli_command(["environment", "roles", "update", "main", "ops-bot", "--role", "viewer", "--service-user"])
