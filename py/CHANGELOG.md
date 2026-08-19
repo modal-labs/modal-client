@@ -1,6 +1,6 @@
-# Changelog
+# Python SDK Release Notes
 
-This changelog documents user-facing updates (features, enhancements, fixes, and deprecations) to the `modal` client library.
+These release notes document user-facing updates (features, enhancements, fixes, and deprecations) to the `modal` client library.
 
 ## Latest
 
