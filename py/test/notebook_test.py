@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import pytest
+import time
 from pathlib import Path
 
 
@@ -9,7 +10,7 @@ def notebook_runner(servicer, credentials):
     import jupytext
     import nbformat
     from nbclient import NotebookClient
-    from nbclient.exceptions import CellExecutionError
+    from nbclient.exceptions import CellExecutionError, DeadKernelError
 
     def runner(notebook_path: Path):
         output_notebook_path = notebook_path.with_suffix(".output.ipynb")
@@ -25,18 +26,29 @@ token_id = "{credentials[0]}"
 token_secret = "{credentials[1]}"
 '''
 
-        client = NotebookClient(nb)
-
-        try:
-            client.execute()
-        except CellExecutionError:
-            nbformat.write(nb, output_notebook_path)
-            pytest.fail(
-                f"""There was an error when executing the notebook.
+        # Only transient kernel-startup failures are retried; cell failures
+        # are real test failures. The worst-case budget (attempts * timeout
+        # + sleep) must stay under the 300s per-test pytest timeout.
+        startup_attempts = 2
+        for attempt in range(startup_attempts):
+            client = NotebookClient(nb, startup_timeout=120)
+            try:
+                client.execute()
+                break
+            except CellExecutionError:
+                nbformat.write(nb, output_notebook_path)
+                pytest.fail(
+                    f"""There was an error when executing the notebook.
 
 Inspect the output notebook: {output_notebook_path}
 """
-            )
+                )
+            except DeadKernelError:
+                raise
+            except (RuntimeError, ValueError):
+                if attempt == startup_attempts - 1:
+                    raise
+                time.sleep(5)
         tagged_cells = {}
         for cell in nb["cells"]:
             for tag in cell["metadata"].get("tags", []):
