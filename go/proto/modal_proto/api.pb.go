@@ -23116,6 +23116,7 @@ type Function struct {
 	xxx_hidden_SingleUseContainers                  bool                         `protobuf:"varint,91,opt,name=single_use_containers,json=singleUseContainers,proto3"`
 	xxx_hidden_IsServer                             bool                         `protobuf:"varint,92,opt,name=is_server,json=isServer,proto3"`
 	xxx_hidden_RoutingRegion                        string                       `protobuf:"bytes,93,opt,name=routing_region,json=routingRegion,proto3"`
+	xxx_hidden_IsSessioned                          bool                         `protobuf:"varint,95,opt,name=is_sessioned,json=isSessioned,proto3"`
 	XXX_raceDetectHookData                          protoimpl.RaceDetectHookData
 	XXX_presence                                    [3]uint32
 	unknownFields                                   protoimpl.UnknownFields
@@ -23737,6 +23738,13 @@ func (x *Function) GetRoutingRegion() string {
 	return ""
 }
 
+func (x *Function) GetIsSessioned() bool {
+	if x != nil {
+		return x.xxx_hidden_IsSessioned
+	}
+	return false
+}
+
 func (x *Function) SetModuleName(v string) {
 	x.xxx_hidden_ModuleName = v
 }
@@ -23790,7 +23798,7 @@ func (x *Function) SetSharedVolumeMounts(v []*SharedVolumeMount) {
 
 func (x *Function) SetProxyId(v string) {
 	x.xxx_hidden_ProxyId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 81)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 82)
 }
 
 func (x *Function) SetRetryPolicy(v *FunctionRetryPolicy) {
@@ -23822,7 +23830,7 @@ func (x *Function) SetTaskIdleTimeoutSecs(v uint32) {
 
 func (x *Function) SetCloudProvider(v CloudProvider) {
 	x.xxx_hidden_CloudProvider = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 81)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 82)
 }
 
 func (x *Function) SetWarmPoolSize(v uint32) {
@@ -23976,7 +23984,7 @@ func (x *Function) SetXExperimentalBufferContainers(v uint32) {
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *Function) SetXExperimentalProxyIp(v string) {
 	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 57, 81)
+	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 57, 82)
 }
 
 func (x *Function) SetRuntimePerfRecord(v bool) {
@@ -24069,6 +24077,10 @@ func (x *Function) SetIsServer(v bool) {
 
 func (x *Function) SetRoutingRegion(v string) {
 	x.xxx_hidden_RoutingRegion = v
+}
+
+func (x *Function) SetIsSessioned(v bool) {
+	x.xxx_hidden_IsSessioned = v
 }
 
 func (x *Function) HasResources() bool {
@@ -24358,6 +24370,8 @@ type Function_builder struct {
 	SingleUseContainers bool
 	IsServer            bool
 	RoutingRegion       string
+	// True when the function is a Sessioned Server. Only valid together with is_server.
+	IsSessioned bool
 }
 
 func (b0 Function_builder) Build() *Function {
@@ -24377,7 +24391,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_SharedVolumeMounts = &b.SharedVolumeMounts
 	if b.ProxyId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 81)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 82)
 		x.xxx_hidden_ProxyId = b.ProxyId
 	}
 	x.xxx_hidden_RetryPolicy = b.RetryPolicy
@@ -24387,7 +24401,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_ClassSerialized = b.ClassSerialized
 	x.xxx_hidden_TaskIdleTimeoutSecs = b.TaskIdleTimeoutSecs
 	if b.CloudProvider != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 81)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 82)
 		x.xxx_hidden_CloudProvider = *b.CloudProvider
 	}
 	x.xxx_hidden_WarmPoolSize = b.WarmPoolSize
@@ -24428,7 +24442,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_Untrusted = b.Untrusted
 	x.xxx_hidden_XExperimentalBufferContainers = b.XExperimentalBufferContainers
 	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 57, 81)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 57, 82)
 		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
 	}
 	x.xxx_hidden_RuntimePerfRecord = b.RuntimePerfRecord
@@ -24454,6 +24468,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_SingleUseContainers = b.SingleUseContainers
 	x.xxx_hidden_IsServer = b.IsServer
 	x.xxx_hidden_RoutingRegion = b.RoutingRegion
+	x.xxx_hidden_IsSessioned = b.IsSessioned
 	return m0
 }
 
@@ -26447,6 +26462,7 @@ type FunctionData struct {
 	xxx_hidden_ImplementationName             string                          `protobuf:"bytes,40,opt,name=implementation_name,json=implementationName,proto3"`
 	xxx_hidden_IsServer                       bool                            `protobuf:"varint,41,opt,name=is_server,json=isServer,proto3"`
 	xxx_hidden_RoutingRegion                  string                          `protobuf:"bytes,42,opt,name=routing_region,json=routingRegion,proto3"`
+	xxx_hidden_IsSessioned                    bool                            `protobuf:"varint,44,opt,name=is_sessioned,json=isSessioned,proto3"`
 	XXX_raceDetectHookData                    protoimpl.RaceDetectHookData
 	XXX_presence                              [2]uint32
 	unknownFields                             protoimpl.UnknownFields
@@ -26780,6 +26796,13 @@ func (x *FunctionData) GetRoutingRegion() string {
 	return ""
 }
 
+func (x *FunctionData) GetIsSessioned() bool {
+	if x != nil {
+		return x.xxx_hidden_IsSessioned
+	}
+	return false
+}
+
 func (x *FunctionData) SetModuleName(v string) {
 	x.xxx_hidden_ModuleName = v
 }
@@ -26851,7 +26874,7 @@ func (x *FunctionData) SetCustomDomainInfo(v []*CustomDomainInfo) {
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *FunctionData) SetXExperimentalProxyIp(v string) {
 	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 42)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 43)
 }
 
 func (x *FunctionData) SetMethodDefinitions(v map[string]*MethodDefinition) {
@@ -26948,6 +26971,10 @@ func (x *FunctionData) SetIsServer(v bool) {
 
 func (x *FunctionData) SetRoutingRegion(v string) {
 	x.xxx_hidden_RoutingRegion = v
+}
+
+func (x *FunctionData) SetIsSessioned(v bool) {
+	x.xxx_hidden_IsSessioned = v
 }
 
 func (x *FunctionData) HasWebUrlInfo() bool {
@@ -27096,6 +27123,8 @@ type FunctionData_builder struct {
 	ImplementationName string
 	IsServer           bool
 	RoutingRegion      string
+	// True when the function is a Sessioned Server. Only valid together with is_server.
+	IsSessioned bool
 }
 
 func (b0 FunctionData_builder) Build() *FunctionData {
@@ -27120,7 +27149,7 @@ func (b0 FunctionData_builder) Build() *FunctionData {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_CustomDomainInfo = &b.CustomDomainInfo
 	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 42)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 43)
 		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
 	}
 	x.xxx_hidden_MethodDefinitions = b.MethodDefinitions
@@ -27147,6 +27176,7 @@ func (b0 FunctionData_builder) Build() *FunctionData {
 	x.xxx_hidden_ImplementationName = b.ImplementationName
 	x.xxx_hidden_IsServer = b.IsServer
 	x.xxx_hidden_RoutingRegion = b.RoutingRegion
+	x.xxx_hidden_IsSessioned = b.IsSessioned
 	return m0
 }
 
@@ -64741,7 +64771,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12!\n" +
 	"\ftarget_slots\x18\x02 \x01(\rR\vtargetSlots\"$\n" +
-	"\"FlashSetTargetSlotsMetricsResponse\"\xc8&\n" +
+	"\"FlashSetTargetSlotsMetricsResponse\"\xeb&\n" +
 	"\bFunction\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -64832,7 +64862,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13implementation_name\x18Z \x01(\tR\x12implementationName\x122\n" +
 	"\x15single_use_containers\x18[ \x01(\bR\x13singleUseContainers\x12\x1b\n" +
 	"\tis_server\x18\\ \x01(\bR\bisServer\x12%\n" +
-	"\x0erouting_region\x18] \x01(\tR\rroutingRegion\x1ad\n" +
+	"\x0erouting_region\x18] \x01(\tR\rroutingRegion\x12!\n" +
+	"\fis_sessioned\x18_ \x01(\bR\visSessioned\x1ad\n" +
 	"\x16MethodDefinitionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x124\n" +
 	"\x05value\x18\x02 \x01(\v2\x1e.modal.client.MethodDefinitionR\x05value:\x028\x01\x1aF\n" +
@@ -64943,7 +64974,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x14__deprecated_web_url\x18\x02 \x01(\tB\x02\x18\x01R\x10DeprecatedWebUrl\x122\n" +
 	"\bfunction\x18\x04 \x01(\v2\x16.modal.client.FunctionR\bfunction\x12M\n" +
 	"\x0fhandle_metadata\x18\x05 \x01(\v2$.modal.client.FunctionHandleMetadataR\x0ehandleMetadata\x12>\n" +
-	"\x0fserver_warnings\x18\x06 \x03(\v2\x15.modal.client.WarningR\x0eserverWarnings\"\xea\x14\n" +
+	"\x0fserver_warnings\x18\x06 \x03(\v2\x15.modal.client.WarningR\x0eserverWarnings\"\x8d\x15\n" +
 	"\fFunctionData\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -64990,7 +65021,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"httpConfig\x88\x01\x01\x12/\n" +
 	"\x13implementation_name\x18( \x01(\tR\x12implementationName\x12\x1b\n" +
 	"\tis_server\x18) \x01(\bR\bisServer\x12%\n" +
-	"\x0erouting_region\x18* \x01(\tR\rroutingRegion\x1ad\n" +
+	"\x0erouting_region\x18* \x01(\tR\rroutingRegion\x12!\n" +
+	"\fis_sessioned\x18, \x01(\bR\visSessioned\x1ad\n" +
 	"\x16MethodDefinitionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x124\n" +
 	"\x05value\x18\x02 \x01(\v2\x1e.modal.client.MethodDefinitionR\x05value:\x028\x01\x1aX\n" +

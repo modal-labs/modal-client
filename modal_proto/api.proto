@@ -2035,6 +2035,9 @@ message Function {
   bool is_server = 92; // When True, the function is a server function
 
   string routing_region = 93; // Where inputs to a function should be routed through.
+
+  // True when the function is a Sessioned Server. Only valid together with is_server.
+  bool is_sessioned = 95;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -2240,6 +2243,9 @@ message FunctionData {
   bool is_server = 41; // When True, the function is a server function
 
   string routing_region = 42; // Where inputs to a function should be routed through.
+
+  // True when the function is a Sessioned Server. Only valid together with is_server.
+  bool is_sessioned = 44;
 }
 
 message FunctionExtended {

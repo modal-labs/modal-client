@@ -1110,6 +1110,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         http_config=http_config,
                         is_server=function_definition.is_server,
                         routing_region=function_definition.routing_region,
+                        is_sessioned=function_definition.is_sessioned,
                     )
 
                     ranked_functions = []
