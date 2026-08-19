@@ -142,7 +142,7 @@ if !ok {
 fmt.Println(response)
 ```
 
-All Function invocation methods are available:
+Synchronous and asynchronous [invocation methods](/docs/guide/function-invocation-methods) are both supported:
 
 ```go
 fc, err := f.Spawn(ctx, []any{"Hello, Modal!"}, nil)
@@ -156,6 +156,8 @@ if err != nil {
 }
 fmt.Println(result)
 ```
+
+Batched invocation is not currently supported from the Go SDK.
 
 ## Errors
 

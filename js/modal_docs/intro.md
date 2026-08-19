@@ -108,13 +108,15 @@ ret = await echo.remote([], { s: "Hello, Modal!" });
 console.log(ret);
 ```
 
-All Function invocation methods are available:
+Synchronous and asynchronous [invocation methods](/docs/guide/function-invocation-methods) are both supported:
 
 ```typescript
 const functionCall = await echo.spawn(["Hello, Modal!"]);
 const ret = await functionCall.get();
 console.log(ret);
 ```
+
+Batched invocation is not currently supported from the JS SDK.
 
 ## Errors
 
