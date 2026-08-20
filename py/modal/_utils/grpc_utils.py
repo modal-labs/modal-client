@@ -152,6 +152,15 @@ class ModalChannel(grpclib.client.Channel):
         )
         return protocol
 
+    @property
+    def _connected(self) -> bool:
+        return (
+            self._protocol is not None
+            # the H2Protocol handler does have connection_lost
+            and not self._protocol.handler.connection_lost  # type: ignore
+            and not self._protocol.connection.is_closing()
+        )
+
     def close(self):
         self.__closed = True
         return super().close()

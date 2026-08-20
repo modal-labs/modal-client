@@ -2,6 +2,7 @@
 import pytest
 import time
 import urllib.parse
+from unittest import mock
 
 from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
@@ -391,6 +392,20 @@ async def test_ModalChannel(servicer):
 
     with pytest.raises(ClientClosed, match=error_msg):
         await client_stub.BlobCreate(req, metadata=metadata)
+
+
+@pytest.mark.asyncio
+def test_modal_channel_connected_checks_transport():
+    channel = ModalChannel()
+    assert not channel._connected
+
+    channel._protocol = mock.Mock()  # type: ignore
+    channel._protocol.handler.connection_lost = False  # type: ignore
+    channel._protocol.connection.is_closing.return_value = False  # type: ignore
+    assert channel._connected
+
+    channel._protocol.connection.is_closing.return_value = True
+    assert not channel._connected
 
 
 @pytest.mark.asyncio
