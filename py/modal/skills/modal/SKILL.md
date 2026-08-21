@@ -78,8 +78,8 @@ When writing async Python, use Modal's `.aio()` interface (e.g. `await modal.San
 
 Python is currently the only runtime language for Modal Functions, but there are Modal SDKs in both JavaScript (TypeScript) and Go:
 
-- JavaScript SDK: https://github.com/modal-labs/modal-client/blob/main/js/README.md
-- Go SDK: https://github.com/modal-labs/modal-client/blob/main/go/README.md
+- JavaScript SDK: https://modal.com/docs/sdk/js/latest/intro.md
+- Go SDK: https://modal.com/docs/sdk/go/latest/intro.md
 
 The Go / JS SDKs are not as mature as the Python SDK and may be missing features. The current scope for the Go / JS SDKs includes (1) creating and interacting with Sandboxes and (2) calling into deployed Modal Functions (i.e., Functions defined in Python).
 
