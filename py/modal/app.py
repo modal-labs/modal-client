@@ -275,6 +275,11 @@ class _App:
 
     @property
     def is_interactive(self) -> bool:
+        """mdmd:hidden"""
+        return self._is_interactive_
+
+    @property
+    def _is_interactive_(self) -> bool:
         """mdmd:hidden
         Whether the current app for the app is running in interactive mode.
 
@@ -304,6 +309,11 @@ class _App:
             Human-readable description string for the app.
         """
         return self._description
+
+    @description.setter
+    def description(self, value):
+        """mdmd:hidden"""
+        self._description = value
 
     @staticmethod
     async def lookup(
@@ -379,7 +389,7 @@ class _App:
 
         Note: we don't recommend using the method and may deprecate it in the future.
         """
-        self._description = description
+        self.description = description
 
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Object):

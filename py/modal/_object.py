@@ -209,7 +209,7 @@ class _Object:
         name: str | None = None,
         *,
         load_context_overrides: LoadContext,
-    ):
+    ) -> Self:
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
         obj._init(
@@ -313,7 +313,10 @@ class _Object:
     @property
     def deps(self) -> Callable[..., Sequence["_Object"]]:
         """mdmd:hidden"""
+        return self._deps_
 
+    @property
+    def _deps_(self) -> Callable[..., Sequence["_Object"]]:
         def default_deps(*args, **kwargs) -> Sequence["_Object"]:
             return []
 

@@ -563,7 +563,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._method_metadata = method_metadata
 
     @staticmethod
-    def validate_construction_mechanism(user_cls):
+    def _validate_construction_mechanism(user_cls):
         """mdmd:hidden"""
         params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
         has_custom_constructor = user_cls.__init__ != object.__init__
@@ -600,8 +600,11 @@ More information on class parameterization can be found here: https://modal.com/
             except TypeError as exc:
                 raise InvalidError(f"Class parameter '{k}': {exc}")
 
+    validate_construction_mechanism = _validate_construction_mechanism
+    """mdmd:hidden"""
+
     @staticmethod
-    def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
+    def _from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
@@ -641,6 +644,9 @@ More information on class parameterization can be found here: https://modal.com/
         cls._callables = callables
         cls._name = user_cls.__name__
         return cls
+
+    from_local = _from_local
+    """mdmd:hidden"""
 
     @classmethod
     def from_name(

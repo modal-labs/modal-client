@@ -663,7 +663,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return _FunctionLogsManager(self)
 
     @staticmethod
-    def from_local(
+    def _from_local(
         info: FunctionInfo,
         app: "modal.app._App | None",  # App here should only be None in case of Image.run_function
         image: _Image,
@@ -1164,7 +1164,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # the only way to infer a LoadContext for an `@app.function`, and the App doesn't
         # get its client until *after* the Function is created.
         load_context = app._root_load_context if app else LoadContext.empty()
-        obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps, load_context_overrides=load_context)
+        obj: _Function = _Function._from_loader(
+            _load, rep, preload=_preload, deps=_deps, load_context_overrides=load_context
+        )
 
         obj._raw_f = info.raw_f
         obj._info = info
@@ -1191,6 +1193,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             obj._build_args["scheduler_placement"] = repr(scheduler_placement)
 
         return obj
+
+    from_local = _from_local
+    """mdmd:hidden"""
 
     async def _update_autoscaler(
         self,
@@ -1386,6 +1391,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @property
     def tag(self) -> str:
         """mdmd:hidden"""
+        return self._tag_
+
+    @property
+    def _tag_(self) -> str:
         assert self._tag
         return self._tag
 
@@ -1406,12 +1415,20 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @property
     def info(self) -> FunctionInfo:
         """mdmd:hidden"""
+        return self._info_
+
+    @property
+    def _info_(self) -> FunctionInfo:
         assert self._info
         return self._info
 
     @property
     def spec(self) -> _FunctionSpec:
         """mdmd:hidden"""
+        return self._spec_
+
+    @property
+    def _spec_(self) -> _FunctionSpec:
         assert self._spec
         return self._spec
 
@@ -1419,12 +1436,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # only defined in definition scope/locally, and not for class methods at the moment
         return bool(self._webhook_config and self._webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED)
 
-    def get_build_def(self) -> str:
+    def _get_build_def(self) -> str:
         """mdmd:hidden"""
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
         assert hasattr(self, "_raw_f") and hasattr(self, "_build_args") and self._raw_f is not None
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
+
+    get_build_def = _get_build_def
+    """mdmd:hidden"""
 
     # Live handle methods
 
@@ -1675,6 +1695,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @property
     async def is_generator(self) -> bool:
         """mdmd:hidden"""
+        return await self._is_generator_
+
+    @property
+    async def _is_generator_(self) -> bool:
         # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
         # TODO(michael) use a common / lightweight method for handling unhydrated metadata properties
         if self._is_generator is not None:
@@ -2014,6 +2038,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Returns:
             The original function object registered with Modal.
         """
+        return self._raw_f_
+
+    @property
+    def _raw_f_(self) -> Callable[..., Any]:
         assert self._raw_f is not None
         return self._raw_f
 
