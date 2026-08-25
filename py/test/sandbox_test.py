@@ -1697,6 +1697,214 @@ def test_sandbox_experimental_get_exit_snapshot_internal_error(app, servicer):
     sb.terminate()
 
 
+_EXIT_SNAPSHOT_V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+
+
+def test_sandbox_experimental_get_exit_snapshot_success_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot(timeout=0)
+
+    assert image.object_id == "im-exit-snapshot-123"
+    (req,) = ctx.get_requests("SandboxGetExitSnapshotV2")
+    assert req.sandbox_id == sb.object_id
+    assert req.timeout == 0
+    assert ctx.get_requests("SandboxGetExitSnapshot") == []
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_allowed_after_detached_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+    sb.terminate()
+    sb.detach()
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot(timeout=0)
+
+    assert image.object_id == "im-exit-snapshot-123"
+    (req,) = ctx.get_requests("SandboxGetExitSnapshotV2")
+    assert req.sandbox_id == sb.object_id
+    assert req.timeout == 0
+    assert ctx.get_requests("SandboxGetExitSnapshot") == []
+
+
+def test_sandbox_experimental_get_exit_snapshot_waits_indefinitely_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
+        )
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot()
+
+    assert image.object_id == "im-exit-snapshot-123"
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
+    assert len(requests) == 2
+    assert [req.timeout for req in requests] == [10, 10]
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_repeats_long_polls_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    with servicer.intercept() as ctx:
+        for _ in range(3):
+            ctx.add_response(
+                "SandboxGetExitSnapshotV2",
+                api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
+            )
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot(timeout=30)
+
+    assert image.object_id == "im-exit-snapshot-123"
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
+    assert len(requests) == 4
+    assert all(9 < req.timeout <= 10 for req in requests)
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_immediate_check_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
+        )
+        with pytest.raises(TimeoutError, match="timed out"):
+            sb._experimental_get_exit_snapshot(timeout=0)
+
+    (req,) = ctx.get_requests("SandboxGetExitSnapshotV2")
+    assert req.timeout == 0
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_aggregate_timeout_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    async def responder(servicer, stream):
+        req = await stream.recv_message()
+        await asyncio.sleep(req.timeout)
+        await stream.send_message(
+            api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending())
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", responder)
+        with pytest.raises(TimeoutError, match="timed out"):
+            sb._experimental_get_exit_snapshot(timeout=0.05)
+
+    # Event loop timer granularity can wake a long poll marginally before the aggregate deadline,
+    # so the budget may be split across several requests, each bounded by the remaining time.
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
+    assert requests
+    assert all(req.timeout > 0 for req in requests)
+    assert all(req.timeout <= 0.05 or req.timeout == pytest.approx(0.05) for req in requests)
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_rejects_negative_timeout_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="timeout"):
+            sb._experimental_get_exit_snapshot(timeout=-1)
+
+    assert ctx.get_requests("SandboxGetExitSnapshotV2") == []
+    assert ctx.get_requests("SandboxGetExitSnapshot") == []
+
+    sb.terminate()
+
+
+@pytest.mark.parametrize(
+    "error_code",
+    [
+        api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,
+    ],
+)
+def test_sandbox_experimental_get_exit_snapshot_not_found_errors_v2(client, servicer, error_code):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                error=api_pb2.SandboxGetExitSnapshotResponse.Error(
+                    error_code=error_code,
+                    message="no exit snapshot",
+                )
+            ),
+        )
+        with pytest.raises(modal.exception.SnapshotCreationError, match="no exit snapshot"):
+            sb._experimental_get_exit_snapshot(timeout=0)
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_not_enabled_raises_invalid_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    async def responder(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.INVALID_ARGUMENT, "Exit snapshot is not enabled for this sandbox")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", responder)
+        with pytest.raises(InvalidError, match="not enabled"):
+            sb._experimental_get_exit_snapshot(timeout=0)
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_internal_error_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                error=api_pb2.SandboxGetExitSnapshotResponse.Error(
+                    error_code=api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_INTERNAL,
+                    message="malformed snapshot result",
+                )
+            ),
+        )
+        with pytest.raises(modal.exception.InternalError, match="malformed snapshot result"):
+            sb._experimental_get_exit_snapshot(timeout=0)
+
+    sb.terminate()
+
+
 def test_sandbox_cpu_request(app, servicer):
     _ = Sandbox.create(cpu=2.0, app=app)
 

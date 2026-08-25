@@ -1473,9 +1473,14 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         while True:
             request_timeout = 10.0 if deadline is None else min(10.0, max(0.0, deadline - time.monotonic()))
-            resp: api_pb2.SandboxGetExitSnapshotResponse = await client.stub.SandboxGetExitSnapshot(
-                api_pb2.SandboxGetExitSnapshotRequest(sandbox_id=self.object_id, timeout=request_timeout)
-            )
+            req = api_pb2.SandboxGetExitSnapshotRequest(sandbox_id=self.object_id, timeout=request_timeout)
+            resp: api_pb2.SandboxGetExitSnapshotResponse
+            if self._is_v2:
+                assert client._auth_token_manager
+                auth_token = await client._auth_token_manager.get_token()
+                resp = await client.stub.SandboxGetExitSnapshotV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            else:
+                resp = await client.stub.SandboxGetExitSnapshot(req)
             outcome = resp.WhichOneof("outcome")
 
             if outcome == "success":
