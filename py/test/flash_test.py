@@ -5,7 +5,6 @@ import os
 import pytest
 from types import MethodType
 from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import urlparse
 
 from modal._clustered_functions import ClusterInfo
 from modal.experimental.flash import _FlashContainerEntry, _FlashManager, _FlashPrometheusAutoscaler
@@ -75,16 +74,37 @@ class TestFlashAutoscalerLogic:
         async def _get_all_containers(_self):
             return [_DummyContainer(h) for h in metrics_by_host.keys()]
 
-        async def _get_metrics(_self, url: str):
-            host = urlparse(url).hostname or ""
+        async def _get_metrics(_self, url: str, headers: dict[str, str] | None = None):
+            assert headers is not None
+            host = headers["modal-flash-upstream"].rsplit(":", 1)[0]
             value = metrics_by_host.get(host, None)
             if value is None:
                 return None
             return {"test_metric": [_DummySample(value)]}
 
+        autoscaler._flash_service_url = "https://flash.example.com"  # type: ignore[attr-defined]
         autoscaler._get_all_containers = MethodType(_get_all_containers, autoscaler)  # type: ignore
         autoscaler._get_metrics = MethodType(_get_metrics, autoscaler)  # type: ignore
         return autoscaler
+
+    @pytest.mark.asyncio
+    async def test_metrics_are_routed_through_flash_service(self, autoscaler):
+        autoscaler._flash_service_url = "https://flash.example.com/"  # type: ignore[attr-defined]
+        requests = []
+
+        async def _get_metrics(_self, url: str, headers: dict[str, str] | None = None):
+            requests.append((url, headers))
+            return {"test_metric": [_DummySample(1.0)]}
+
+        autoscaler._get_metrics = MethodType(_get_metrics, autoscaler)  # type: ignore
+
+        result = await autoscaler._get_scaling_info([_DummyContainer("host-a"), _DummyContainer("host-b")])
+
+        assert result == (2.0, 2)
+        assert requests == [
+            ("https://flash.example.com/metrics", {"modal-flash-upstream": "host-a:443"}),
+            ("https://flash.example.com/metrics", {"modal-flash-upstream": "host-b:443"}),
+        ]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

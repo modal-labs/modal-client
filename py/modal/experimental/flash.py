@@ -25,6 +25,7 @@ from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError
 
+_FLASH_UPSTREAM_HEADER = "modal-flash-upstream"
 _MAX_FAILURES = 10
 
 
@@ -337,9 +338,14 @@ class _FlashPrometheusAutoscaler:
         )
 
         self.autoscaler_thread: asyncio.Task | None = None
+        self._flash_service_url: str | None = None
 
     async def start(self):
         await self.fn.hydrate(client=self.client)
+        flash_service_urls = await self.fn._experimental_get_flash_urls()
+        if not flash_service_urls:
+            raise InvalidError(f"Could not find a Flash service URL for {self.app_name}.{self.cls_name}")
+        self._flash_service_url = flash_service_urls[0]
         self.autoscaler_thread = asyncio.create_task(self._run_autoscaler_loop())
 
     async def _run_autoscaler_loop(self):
@@ -496,13 +502,20 @@ class _FlashPrometheusAutoscaler:
         return desired_replicas
 
     async def _get_scaling_info(self, containers) -> tuple[float, int]:
-        """Get metrics using container exposed metrics endpoints."""
+        """Get metrics from each container through the Flash service."""
+        if self._flash_service_url is None:
+            raise RuntimeError("Flash Prometheus autoscaler has not been started")
+
         sum_metric = 0
         n_containers_with_metrics = 0
+        metrics_url = f"{self._flash_service_url.rstrip('/')}/{self.metrics_endpoint.lstrip('/')}"
 
         container_metrics_list = await asyncio.gather(
             *[
-                self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
+                self._get_metrics(
+                    metrics_url,
+                    headers={_FLASH_UPSTREAM_HEADER: f"{container.host}:{container.port}"},
+                )
                 for container in containers
             ]
         )
@@ -519,14 +532,20 @@ class _FlashPrometheusAutoscaler:
 
         return sum_metric, n_containers_with_metrics
 
-    async def _get_metrics(self, url: str) -> dict[str, list[Any]] | None:  # technically any should be Sample
+    async def _get_metrics(
+        self, url: str, headers: dict[str, str] | None = None
+    ) -> dict[str, list[Any]] | None:  # technically any should be Sample
         import aiohttp
         from prometheus_client.parser import text_string_to_metric_families
         from prometheus_client.samples import Sample
 
         # Fetch the metrics from the endpoint
         try:
-            response = await self.http_client.get(url, timeout=aiohttp.ClientTimeout(total=3))
+            response = await self.http_client.get(
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=3),
+            )
             response.raise_for_status()
         except asyncio.TimeoutError:
             logger.warning(f"[Modal Flash] Timeout getting metrics from {url}")
