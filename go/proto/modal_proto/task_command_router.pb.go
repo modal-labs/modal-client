@@ -3849,6 +3849,7 @@ type TaskSnapshotFilesystemRequest struct {
 	xxx_hidden_SnapshotId                    string                 `protobuf:"bytes,2,opt,name=snapshot_id,json=snapshotId,proto3"`
 	xxx_hidden_TtlSeconds                    int64                  `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3,oneof"`
 	xxx_hidden_CustomerSuppliedEncryptionKey []byte                 `protobuf:"bytes,4,opt,name=customer_supplied_encryption_key,json=customerSuppliedEncryptionKey,proto3,oneof"`
+	xxx_hidden_ContainerId                   string                 `protobuf:"bytes,5,opt,name=container_id,json=containerId,proto3"`
 	XXX_raceDetectHookData                   protoimpl.RaceDetectHookData
 	XXX_presence                             [1]uint32
 	unknownFields                            protoimpl.UnknownFields
@@ -3908,6 +3909,13 @@ func (x *TaskSnapshotFilesystemRequest) GetCustomerSuppliedEncryptionKey() []byt
 	return nil
 }
 
+func (x *TaskSnapshotFilesystemRequest) GetContainerId() string {
+	if x != nil {
+		return x.xxx_hidden_ContainerId
+	}
+	return ""
+}
+
 func (x *TaskSnapshotFilesystemRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -3918,7 +3926,7 @@ func (x *TaskSnapshotFilesystemRequest) SetSnapshotId(v string) {
 
 func (x *TaskSnapshotFilesystemRequest) SetTtlSeconds(v int64) {
 	x.xxx_hidden_TtlSeconds = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 4)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 5)
 }
 
 func (x *TaskSnapshotFilesystemRequest) SetCustomerSuppliedEncryptionKey(v []byte) {
@@ -3926,7 +3934,11 @@ func (x *TaskSnapshotFilesystemRequest) SetCustomerSuppliedEncryptionKey(v []byt
 		v = []byte{}
 	}
 	x.xxx_hidden_CustomerSuppliedEncryptionKey = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+}
+
+func (x *TaskSnapshotFilesystemRequest) SetContainerId(v string) {
+	x.xxx_hidden_ContainerId = v
 }
 
 func (x *TaskSnapshotFilesystemRequest) HasTtlSeconds() bool {
@@ -3970,6 +3982,8 @@ type TaskSnapshotFilesystemRequest_builder struct {
 	// Customer-supplied encryption key used to encrypt the resulting image's data and tree
 	// metadata keys. This key is not persisted by Modal.
 	CustomerSuppliedEncryptionKey []byte
+	// Fully qualified target container ID. Empty targets the main container.
+	ContainerId string
 }
 
 func (b0 TaskSnapshotFilesystemRequest_builder) Build() *TaskSnapshotFilesystemRequest {
@@ -3979,13 +3993,14 @@ func (b0 TaskSnapshotFilesystemRequest_builder) Build() *TaskSnapshotFilesystemR
 	x.xxx_hidden_TaskId = b.TaskId
 	x.xxx_hidden_SnapshotId = b.SnapshotId
 	if b.TtlSeconds != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 4)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 5)
 		x.xxx_hidden_TtlSeconds = *b.TtlSeconds
 	}
 	if b.CustomerSuppliedEncryptionKey != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
 		x.xxx_hidden_CustomerSuppliedEncryptionKey = b.CustomerSuppliedEncryptionKey
 	}
+	x.xxx_hidden_ContainerId = b.ContainerId
 	return m0
 }
 
@@ -4413,14 +4428,15 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\f_ttl_secondsB#\n" +
 	"!_customer_supplied_encryption_key\":\n" +
 	"\x1dTaskSnapshotDirectoryResponse\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\x82\x02\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xa5\x02\n" +
 	"\x1dTaskSnapshotFilesystemRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vsnapshot_id\x18\x02 \x01(\tR\n" +
 	"snapshotId\x12$\n" +
 	"\vttl_seconds\x18\x03 \x01(\x03H\x00R\n" +
 	"ttlSeconds\x88\x01\x01\x12L\n" +
-	" customer_supplied_encryption_key\x18\x04 \x01(\fH\x01R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01B\x0e\n" +
+	" customer_supplied_encryption_key\x18\x04 \x01(\fH\x01R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01\x12!\n" +
+	"\fcontainer_id\x18\x05 \x01(\tR\vcontainerIdB\x0e\n" +
 	"\f_ttl_secondsB#\n" +
 	"!_customer_supplied_encryption_key\";\n" +
 	"\x1eTaskSnapshotFilesystemResponse\x12\x19\n" +

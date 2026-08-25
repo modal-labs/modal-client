@@ -350,6 +350,8 @@ message TaskSnapshotFilesystemRequest {
   // Customer-supplied encryption key used to encrypt the resulting image's data and tree
   // metadata keys. This key is not persisted by Modal.
   optional bytes customer_supplied_encryption_key = 4;
+  // Fully qualified target container ID. Empty targets the main container.
+  string container_id = 5;
 }
 
 message TaskSnapshotFilesystemResponse {
