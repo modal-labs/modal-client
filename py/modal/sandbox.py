@@ -40,6 +40,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api, synchronizer
 from ._utils.deprecation import deprecation_warning
+from ._utils.grpc_utils import Retry
 from ._utils.mount_utils import (
     validate_network_file_systems,
     validate_only_modal_volumes,
@@ -53,12 +54,15 @@ from .container_process import _ContainerProcess
 from .exception import (
     ClientClosed,
     ConflictError,
+    ConnectionError,
     ExecutionError,
     InternalError,
     InvalidError,
     NotFoundError,
+    ResourceExhaustedError,
     SandboxTerminatedError,
     SandboxTimeoutError,
+    ServiceError,
     SnapshotCreationError,
     TimeoutError,
 )
@@ -83,6 +87,20 @@ from .types import FileWatchEvent, FileWatchEventType, SandboxConnectCredentials
 
 _default_image: _Image = _Image.debian_slim()
 _EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset((api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,))
+
+# Exit snapshot polling holds a server-side long poll for at most _EXIT_SNAPSHOT_LONG_POLL_TIMEOUT seconds and
+# then re-polls from the client, so a request is never held open indefinitely however long the caller waits.
+_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT = 10.0
+# Margin added to each poll's network deadline over the server-side hold, covering the
+# response's return trip so an answer sent just before the hold expires isn't lost to the
+# client-side deadline.
+_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN = 5.0
+# The fetch loop absorbs transient poll failures and re-polls. It gives up once this many
+# polls fail in a row, so an extended outage still surfaces to the caller.
+_EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES = 3
+# Pause between failed polls, so failures that reject instantly (e.g. a refused connection)
+# don't burn through the failure budget in milliseconds.
+_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF = 1.0
 
 
 async def _gather_load_with_timings(
@@ -1445,8 +1463,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Get the exit filesystem snapshot image.
 
         Args:
-            timeout: Deadline in seconds. `None` polls until the snapshot reaches
-                a terminal state. `0` performs an immediate check.
+            timeout: Total time to wait in seconds, spread across repeated long
+                polls of at most `_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT` seconds each.
+                `None` (the default) waits until the snapshot reaches a terminal
+                state; `0` performs an immediate check without waiting.
 
         Returns:
             The exit snapshot Image.
@@ -1460,8 +1480,16 @@ class _Sandbox(_Object, type_prefix="sb"):
             SnapshotCreationError: If no exit snapshot image will be produced.
             NotFoundError: If the sandbox does not exist.
             PermissionDeniedError: If the caller cannot access the sandbox.
-            InternalError: If persisted snapshot state is malformed.
-            ServiceError: If a transient client/server communication failure occurs.
+            InternalError: If persisted snapshot state is malformed, or if polls
+                keep failing on an internal server error while the caller still
+                has budget left.
+            ServiceError: If polls keep failing on a transient client/server
+                communication failure while the caller still has budget left.
+            ConnectionError: If polls keep outliving their network deadline
+                while the caller still has budget left.
+            ResourceExhaustedError: If the server rate-limits polling without
+                providing a retry instruction. Instructed backoffs are honored
+                within the caller's budget and do not raise.
         """
         if timeout is not None and timeout < 0:
             raise InvalidError("timeout must be non-negative or None")
@@ -1471,16 +1499,49 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Use the private __client so the lookup works with a detached sandbox
         client = self.__client
 
+        consecutive_poll_failures = 0
         while True:
-            request_timeout = 10.0 if deadline is None else min(10.0, max(0.0, deadline - time.monotonic()))
-            req = api_pb2.SandboxGetExitSnapshotRequest(sandbox_id=self.object_id, timeout=request_timeout)
-            resp: api_pb2.SandboxGetExitSnapshotResponse
-            if self._is_v2:
-                assert client._auth_token_manager
-                auth_token = await client._auth_token_manager.get_token()
-                resp = await client.stub.SandboxGetExitSnapshotV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            if deadline is None:
+                request_timeout = _EXIT_SNAPSHOT_LONG_POLL_TIMEOUT
             else:
-                resp = await client.stub.SandboxGetExitSnapshot(req)
+                request_timeout = min(_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT, max(0.0, deadline - time.monotonic()))
+            req = api_pb2.SandboxGetExitSnapshotRequest(sandbox_id=self.object_id, timeout=request_timeout)
+            poll_budget = request_timeout + _EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN
+            poll_retry = Retry(attempt_timeout=poll_budget, max_retries=0, total_timeout=poll_budget)
+            resp: api_pb2.SandboxGetExitSnapshotResponse
+            try:
+                if self._is_v2:
+                    assert client._auth_token_manager
+                    auth_token = await client._auth_token_manager.get_token()
+                    resp = await client.stub.SandboxGetExitSnapshotV2(
+                        req, retry=poll_retry, metadata=[("x-modal-auth-token", auth_token)]
+                    )
+                else:
+                    resp = await client.stub.SandboxGetExitSnapshot(req, retry=poll_retry)
+            except (ConnectionError, InternalError, ServiceError):
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError(timeout_message)
+                consecutive_poll_failures += 1
+                if consecutive_poll_failures >= _EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES:
+                    raise
+                backoff = _EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF
+                if deadline is not None:
+                    backoff = min(backoff, max(0.0, deadline - time.monotonic()))
+                await asyncio.sleep(backoff)
+                continue
+            except ResourceExhaustedError as exc:
+                retry_policy = next((d for d in exc._grpc_details or () if isinstance(d, api_pb2.RPCRetryPolicy)), None)
+                if retry_policy is None:
+                    raise
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError(timeout_message)
+                consecutive_poll_failures = 0
+                throttle_delay = max(retry_policy.retry_after_secs, 0.1)
+                if deadline is not None:
+                    throttle_delay = min(throttle_delay, max(0.0, deadline - time.monotonic()))
+                await asyncio.sleep(throttle_delay)
+                continue
+            consecutive_poll_failures = 0
             outcome = resp.WhichOneof("outcome")
 
             if outcome == "success":

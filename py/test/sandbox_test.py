@@ -1559,6 +1559,179 @@ def test_sandbox_experimental_get_exit_snapshot_waits_indefinitely(app, servicer
     sb.terminate()
 
 
+def test_sandbox_experimental_get_exit_snapshot_applies_no_default_deadline(app, servicer):
+    sb = Sandbox.create(app=app)
+
+    pending_polls = 20
+    with servicer.intercept() as ctx:
+        for _ in range(pending_polls):
+            ctx.add_response(
+                "SandboxGetExitSnapshot",
+                api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
+            )
+        ctx.add_response(
+            "SandboxGetExitSnapshot",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot()
+
+    assert image.object_id == "im-exit-snapshot-123"
+    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    assert len(requests) == pending_polls + 1
+    assert all(req.timeout == 10 for req in requests)
+
+    sb.terminate()
+
+
+@pytest.mark.parametrize("transient_status", [Status.UNAVAILABLE, Status.INTERNAL])
+def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures(
+    app, servicer, monkeypatch, transient_status
+):
+    sb = Sandbox.create(app=app)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
+
+    calls = 0
+
+    async def flaky(servicer, stream):
+        nonlocal calls
+        calls += 1
+        await stream.recv_message()
+        if calls <= 2:
+            raise GRPCError(transient_status, "server hiccup")
+        await stream.send_message(
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshot", flaky)
+        image = sb._experimental_get_exit_snapshot()
+
+    assert image.object_id == "im-exit-snapshot-123"
+    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 3
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failures(app, servicer, monkeypatch):
+    sb = Sandbox.create(app=app)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
+
+    async def wedged(servicer, stream):
+        await stream.recv_message()
+        await asyncio.sleep(30)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshot", wedged)
+        started = time.monotonic()
+        with pytest.raises(modal.exception.ConnectionError):
+            sb._experimental_get_exit_snapshot()
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 3
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_expired_poll_deadline_maps_to_timeout(app, servicer, monkeypatch):
+    sb = Sandbox.create(app=app)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+
+    async def wedged(servicer, stream):
+        await stream.recv_message()
+        await asyncio.sleep(30)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshot", wedged)
+        with pytest.raises(TimeoutError, match="timed out"):
+            sb._experimental_get_exit_snapshot(timeout=0.05)
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_honors_server_retry_policy(app, servicer, monkeypatch):
+    sb = Sandbox.create(app=app)
+    # Shrink the poll budget below the instructed backoff so the throttle surfaces to the
+    # polling loop instead of being absorbed inside a single poll.
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+
+    calls = 0
+
+    async def throttled(servicer, stream):
+        nonlocal calls
+        calls += 1
+        await stream.recv_message()
+        if calls == 1:
+            raise GRPCError(
+                Status.RESOURCE_EXHAUSTED, "throttled", details=[api_pb2.RPCRetryPolicy(retry_after_secs=0.3)]
+            )
+        await stream.send_message(
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshot", throttled)
+        started = time.monotonic()
+        image = sb._experimental_get_exit_snapshot()
+        elapsed = time.monotonic() - started
+
+    assert image.object_id == "im-exit-snapshot-123"
+    # The instructed backoff was waited out before the poll that succeeded.
+    assert elapsed >= 0.3
+    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 2
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_server_retry_policy_respects_deadline(app, servicer, monkeypatch):
+    sb = Sandbox.create(app=app)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+
+    async def throttled(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.RESOURCE_EXHAUSTED, "throttled", details=[api_pb2.RPCRetryPolicy(retry_after_secs=0.2)])
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshot", throttled)
+        started = time.monotonic()
+        # A persistent throttle is honored only until the caller's budget runs out.
+        with pytest.raises(TimeoutError, match="timed out"):
+            sb._experimental_get_exit_snapshot(timeout=0.3)
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_rate_limit_without_policy_raises(app, servicer):
+    sb = Sandbox.create(app=app)
+
+    async def limited(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.RESOURCE_EXHAUSTED, "rate limit exceeded")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshot", limited)
+        with pytest.raises(modal.exception.ResourceExhaustedError):
+            sb._experimental_get_exit_snapshot()
+
+    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 1
+
+    sb.terminate()
+
+
 def test_sandbox_experimental_get_exit_snapshot_repeats_long_polls(app, servicer):
     sb = Sandbox.create(app=app)
 
@@ -1762,6 +1935,182 @@ def test_sandbox_experimental_get_exit_snapshot_waits_indefinitely_v2(client, se
     requests = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert len(requests) == 2
     assert [req.timeout for req in requests] == [10, 10]
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_applies_no_default_deadline_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    pending_polls = 20
+    with servicer.intercept() as ctx:
+        for _ in range(pending_polls):
+            ctx.add_response(
+                "SandboxGetExitSnapshotV2",
+                api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
+            )
+        ctx.add_response(
+            "SandboxGetExitSnapshotV2",
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            ),
+        )
+        image = sb._experimental_get_exit_snapshot()
+
+    assert image.object_id == "im-exit-snapshot-123"
+    # Without a caller deadline every poll asks for the full long-poll hold; a budget would shrink
+    # the later ones, and a finite default would eventually raise instead of returning the snapshot.
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
+    assert len(requests) == pending_polls + 1
+    assert all(req.timeout == 10 for req in requests)
+
+    sb.terminate()
+
+
+@pytest.mark.parametrize("transient_status", [Status.UNAVAILABLE, Status.INTERNAL])
+def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures_v2(
+    client, servicer, monkeypatch, transient_status
+):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
+
+    calls = 0
+
+    async def flaky(servicer, stream):
+        nonlocal calls
+        calls += 1
+        await stream.recv_message()
+        if calls <= 2:
+            raise GRPCError(transient_status, "server hiccup")
+        await stream.send_message(
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", flaky)
+        image = sb._experimental_get_exit_snapshot()
+
+    assert image.object_id == "im-exit-snapshot-123"
+    # Transient failures below the consecutive limit are absorbed by re-polling.
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 3
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failures_v2(client, servicer, monkeypatch):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+    # Shrink the hold and the slack so a wedged poll trips the network deadline quickly.
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
+
+    async def wedged(servicer, stream):
+        await stream.recv_message()
+        await asyncio.sleep(30)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", wedged)
+        started = time.monotonic()
+        # Polls that never answer fail on their own network deadline instead of stalling the loop,
+        # and the loop gives up after the consecutive-failure limit.
+        with pytest.raises(modal.exception.ConnectionError):
+            sb._experimental_get_exit_snapshot()
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 3
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_expired_poll_deadline_maps_to_timeout_v2(client, servicer, monkeypatch):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+
+    async def wedged(servicer, stream):
+        await stream.recv_message()
+        await asyncio.sleep(30)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", wedged)
+        # Once the caller's own budget is gone, a blown poll deadline is a caller timeout.
+        with pytest.raises(TimeoutError, match="timed out"):
+            sb._experimental_get_exit_snapshot(timeout=0.05)
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_honors_server_retry_policy_v2(client, servicer, monkeypatch):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+
+    calls = 0
+
+    async def throttled(servicer, stream):
+        nonlocal calls
+        calls += 1
+        await stream.recv_message()
+        if calls == 1:
+            raise GRPCError(
+                Status.RESOURCE_EXHAUSTED, "throttled", details=[api_pb2.RPCRetryPolicy(retry_after_secs=0.3)]
+            )
+        await stream.send_message(
+            api_pb2.SandboxGetExitSnapshotResponse(
+                success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", throttled)
+        started = time.monotonic()
+        image = sb._experimental_get_exit_snapshot()
+        elapsed = time.monotonic() - started
+
+    assert image.object_id == "im-exit-snapshot-123"
+    assert elapsed >= 0.3
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 2
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_server_retry_policy_respects_deadline_v2(client, servicer, monkeypatch):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+
+    async def throttled(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.RESOURCE_EXHAUSTED, "throttled", details=[api_pb2.RPCRetryPolicy(retry_after_secs=0.2)])
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", throttled)
+        started = time.monotonic()
+        with pytest.raises(TimeoutError, match="timed out"):
+            sb._experimental_get_exit_snapshot(timeout=0.3)
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+
+    sb.terminate()
+
+
+def test_sandbox_experimental_get_exit_snapshot_rate_limit_without_policy_raises_v2(client, servicer):
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+
+    async def limited(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.RESOURCE_EXHAUSTED, "rate limit exceeded")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetExitSnapshotV2", limited)
+        with pytest.raises(modal.exception.ResourceExhaustedError):
+            sb._experimental_get_exit_snapshot()
+
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 1
 
     sb.terminate()
 
