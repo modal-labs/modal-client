@@ -6,6 +6,7 @@ import sys
 import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, Collection, Mapping
+from dataclasses import dataclass, field
 from typing import Any, ClassVar, Coroutine, TypeVar
 
 import grpclib.client
@@ -24,13 +25,25 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.auth_token_manager import _AuthTokenManager
 from ._utils.grpc_utils import ConnectionManager
 from .config import _agent_environment, _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed
+from .exception import AuthError, ClientClosed, InvalidError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
 
 
-def _get_metadata(client_type: int, credentials: tuple[str, str] | None, version: str) -> dict[str, str]:
+@dataclass(frozen=True, slots=True)
+class _OAuthCredentials:
+    refresh_token: str = field(repr=False)
+    client_id: str
+    client_secret: str = field(repr=False)
+
+
+def _get_metadata(
+    client_type: int,
+    credentials: tuple[str, str] | None,
+    version: str,
+    oauth_credentials: _OAuthCredentials | None = None,
+) -> dict[str, str]:
     # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
     if uname.system == "Darwin":
@@ -55,6 +68,14 @@ def _get_metadata(client_type: int, credentials: tuple[str, str] | None, version
             {
                 "x-modal-token-id": token_id,
                 "x-modal-token-secret": token_secret,
+            }
+        )
+    if oauth_credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
+        metadata.update(
+            {
+                "x-modal-refresh-token": oauth_credentials.refresh_token,
+                "x-modal-oauth-client-id": oauth_credentials.client_id,
+                "x-modal-oauth-client-secret": oauth_credentials.client_secret,
             }
         )
     if agent_env := _agent_environment():
@@ -93,6 +114,8 @@ class _Client:
         client_type: "api_pb2.ClientType.ValueType",
         credentials: tuple[str, str] | None,
         version: str = __version__,
+        *,
+        oauth_credentials: _OAuthCredentials | None = None,
     ):
         """mdmd:hidden
         The Modal client object is not intended to be instantiated directly by users.
@@ -100,6 +123,7 @@ class _Client:
         self.server_url = server_url
         self.client_type = client_type
         self._credentials = credentials
+        self._oauth_credentials = oauth_credentials
         self.version = version
         self._closed = False
         self._stub = None
@@ -148,7 +172,12 @@ class _Client:
     async def _open(self):
         self._closed = False
         assert self._stub is None
-        metadata = _get_metadata(self.client_type, self._credentials, self.version)
+        metadata = _get_metadata(
+            self.client_type,
+            self._credentials,
+            self.version,
+            self._oauth_credentials,
+        )
         self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
@@ -219,6 +248,7 @@ class _Client:
             c = config
 
         credentials: tuple[str, str] | None
+        oauth_credentials: _OAuthCredentials | None
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -229,33 +259,69 @@ class _Client:
 
             token_id = c["token_id"]
             token_secret = c["token_secret"]
+            oauth_refresh_token = c.get("oauth_refresh_token")
+            oauth_client_id = c.get("oauth_client_id")
+            oauth_client_secret = c.get("oauth_client_secret")
             if _is_remote():
-                if token_id or token_secret:
+                ignored_credential_settings = [
+                    name
+                    for name, value in (
+                        ("MODAL_TOKEN_ID", token_id),
+                        ("MODAL_TOKEN_SECRET", token_secret),
+                        ("MODAL_OAUTH_REFRESH_TOKEN", oauth_refresh_token),
+                        ("MODAL_OAUTH_CLIENT_ID", oauth_client_id),
+                        ("MODAL_OAUTH_CLIENT_SECRET", oauth_client_secret),
+                    )
+                    if value
+                ]
+                if ignored_credential_settings:
                     warnings.warn(
-                        "Modal tokens provided by MODAL_TOKEN_ID and MODAL_TOKEN_SECRET"
-                        " (or through the config file) are ignored inside containers."
+                        "The following credential settings are ignored inside containers: "
+                        + ", ".join(ignored_credential_settings)
                     )
                 client_type = api_pb2.CLIENT_TYPE_CONTAINER
                 credentials = None
-            elif token_id and token_secret:
-                client_type = api_pb2.CLIENT_TYPE_CLIENT
-                credentials = (token_id, token_secret)
+                oauth_credentials = None
             else:
-                profile = config_module._profile
-                if os.environ.get("MODAL_PROFILE") and profile not in config_module._user_config:
-                    raise AuthError(
-                        f"Modal profile '{profile}' was not found in {config_module.user_config_path}. "
-                        "Run `modal profile list` to see available profiles, or "
-                        f"`modal token new --profile {profile}` to configure it."
+                has_token_config = bool(token_id or token_secret)
+                has_oauth_config = bool(oauth_refresh_token or oauth_client_id or oauth_client_secret)
+                if has_token_config and has_oauth_config:
+                    raise InvalidError("Modal token credentials and OAuth credentials cannot both be configured.")
+                if has_oauth_config:
+                    if not oauth_refresh_token or not oauth_client_id or not oauth_client_secret:
+                        raise InvalidError("OAuth refresh token, client ID, and client secret must all be configured.")
+                    client_type = api_pb2.CLIENT_TYPE_CLIENT
+                    credentials = None
+                    oauth_credentials = _OAuthCredentials(
+                        refresh_token=oauth_refresh_token,
+                        client_id=oauth_client_id,
+                        client_secret=oauth_client_secret,
                     )
-                raise AuthError(
-                    "Token missing. Could not authenticate client."
-                    " If you have token credentials, see modal.com/docs/sdk/py/latest/config for setup help."
-                    " If you are a new user, register an account at modal.com, then run `modal token new`."
-                )
+                elif token_id and token_secret:
+                    client_type = api_pb2.CLIENT_TYPE_CLIENT
+                    credentials = (token_id, token_secret)
+                    oauth_credentials = None
+                else:
+                    profile = config_module._profile
+                    if os.environ.get("MODAL_PROFILE") and profile not in config_module._user_config:
+                        raise AuthError(
+                            f"Modal profile '{profile}' was not found in {config_module.user_config_path}. "
+                            "Run `modal profile list` to see available profiles, or "
+                            f"`modal token new --profile {profile}` to configure it."
+                        )
+                    raise AuthError(
+                        "Token missing. Could not authenticate client."
+                        " If you have token credentials, see modal.com/docs/sdk/py/latest/config for setup help."
+                        " If you are a new user, register an account at modal.com, then run `modal token new`."
+                    )
 
             server_url = c["server_url"]
-            client = _Client(server_url, client_type, credentials)
+            client = _Client(
+                server_url,
+                client_type,
+                credentials,
+                oauth_credentials=oauth_credentials,
+            )
             await client._open()
             async_utils.on_shutdown(client._close())
             cls._client_from_env = client
@@ -289,6 +355,57 @@ class _Client:
         client_type = api_pb2.CLIENT_TYPE_CLIENT
         credentials = (token_id, token_secret)
         client = _Client(server_url, client_type, credentials)
+        await client._open()
+        async_utils.on_shutdown(client._close())
+        return client
+
+    @classmethod
+    async def from_oauth_credentials(
+        cls,
+        refresh_token: str,
+        *,
+        oauth_client_id: str,
+        oauth_client_secret: str,
+    ) -> "_Client":
+        """
+        Constructor based on OAuth credentials; useful for managing Modal on behalf of third-party users.
+
+        Args:
+            refresh_token: OAuth refresh token returned by Modal's token endpoint.
+            oauth_client_id: Modal-issued OAuth client ID, with an `oc-` prefix.
+            oauth_client_secret: Modal-issued OAuth client secret, with an `ov-` prefix.
+
+        Returns:
+            An authenticated `Client` with its connection opened.
+
+        Examples:
+            ```python notest
+            client = modal.Client.from_oauth_credentials(
+                refresh_token,
+                oauth_client_id=oauth_client_id,
+                oauth_client_secret=oauth_client_secret,
+            )
+
+            modal.Sandbox.create("echo", "hi", client=client, app=app)
+            ```
+        """
+        _check_config()
+        if not refresh_token or not oauth_client_id or not oauth_client_secret:
+            raise AuthError("OAuth refresh token, client ID, and client secret must all be provided.")
+
+        server_url = config["server_url"]
+        client_type = api_pb2.CLIENT_TYPE_CLIENT
+        oauth_credentials = _OAuthCredentials(
+            refresh_token=refresh_token,
+            client_id=oauth_client_id,
+            client_secret=oauth_client_secret,
+        )
+        client = _Client(
+            server_url,
+            client_type,
+            None,
+            oauth_credentials=oauth_credentials,
+        )
         await client._open()
         async_utils.on_shutdown(client._close())
         return client

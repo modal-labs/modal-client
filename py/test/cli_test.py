@@ -2487,6 +2487,21 @@ def test_config_show(servicer, server_url_env, modal_config):
         assert '"token_secret": "***"' in res.stdout
 
 
+def test_config_show_redacts_oauth_secrets(servicer, server_url_env, modal_config):
+    config = """
+    [test-profile]
+    oauth_refresh_token = "ak-oauth.as-oauth"
+    oauth_client_id = "oc-client"
+    oauth_client_secret = "ov-secret"
+    active = true
+    """
+    with modal_config(config):
+        res = run_cli_command(["config", "show"])
+        assert '"oauth_refresh_token": "***"' in res.stdout
+        assert '"oauth_client_id": "oc-client"' in res.stdout
+        assert '"oauth_client_secret": "***"' in res.stdout
+
+
 def test_app_list(servicer, mock_dir, set_env_client):
     res = run_cli_command(["app", "list"])
     assert "my_app_foo" not in res.stdout

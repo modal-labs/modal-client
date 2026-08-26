@@ -22,12 +22,16 @@ config_cli = ModalGroup(
 
 
 @config_cli.command("show", help="Show current configuration values (debugging command).")
-@click.option("--redact/--no-redact", default=True, help="Redact the `token_secret` value.")
+@click.option("--redact/--no-redact", default=True, help="Redact secret credential values.")
 def show(redact: bool):
     # This is just a test command
     config_dict = config.to_dict()
     if redact and config_dict.get("token_secret"):
         config_dict["token_secret"] = "***"
+    if redact and config_dict.get("oauth_refresh_token"):
+        config_dict["oauth_refresh_token"] = "***"
+    if redact and config_dict.get("oauth_client_secret"):
+        config_dict["oauth_client_secret"] = "***"
 
     OutputManager.get().print_json(json.dumps(config_dict))
 

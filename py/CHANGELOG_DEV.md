@@ -9,3 +9,4 @@
 - `modal environment roles list --exclude-default` and
   `Environment.roles.list(exclude_default=True)` list only users and service users who have been
   directly assigned a role for the Environment.
+- Added implicit OAuth refresh token authentication through the `MODAL_OAUTH_REFRESH_TOKEN`, `MODAL_OAUTH_CLIENT_ID`, and `MODAL_OAUTH_CLIENT_SECRET` environment variables, with [`modal.Client.from_oauth_credentials()`](/docs/sdk/py/latest/Client#from_oauth_credentials) available for explicitly constructed clients.

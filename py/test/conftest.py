@@ -1012,6 +1012,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 token_id = event.metadata.get("x-modal-token-id")
                 token_secret = event.metadata.get("x-modal-token-secret")
+                refresh_token = event.metadata.get("x-modal-refresh-token")
+                if refresh_token:
+                    assert isinstance(refresh_token, str)
+                    if token_id or token_secret:
+                        raise GRPCError(Status.UNAUTHENTICATED, "OAuth and Modal credentials cannot be combined")
+                    try:
+                        token_id, token_secret = refresh_token.split(".")
+                    except ValueError:
+                        raise GRPCError(Status.UNAUTHENTICATED, "Malformed OAuth refresh token") from None
                 if not token_id or not token_secret:
                     raise GRPCError(Status.UNAUTHENTICATED, f"No credentials for method {event.method_name}")
                 elif token_id not in self.required_creds:
@@ -1022,6 +1031,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             for header in [
                 "x-modal-token-id",
                 "x-modal-token-secret",
+                "x-modal-refresh-token",
                 "x-modal-task-id",  # old
                 "x-modal-task-secret",  # old
             ]:

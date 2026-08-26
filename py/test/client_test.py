@@ -9,6 +9,7 @@ from google.protobuf.empty_pb2 import Empty
 
 import modal._utils.grpc_utils
 from modal import Client
+from modal.client import _OAuthCredentials
 from modal.exception import AuthError, ConflictError, ConnectionError, InvalidError, ServerWarning
 from modal_proto import api_pb2
 
@@ -142,6 +143,75 @@ def test_client_from_env_client(servicer, credentials):
     assert client_1 == client_2
 
 
+def test_client_from_env_oauth_refresh_token(servicer, credentials):
+    token_id, token_secret = credentials
+    servicer.required_creds = {token_id: token_secret}
+    override_config = {
+        "server_url": servicer.client_addr,
+        "token_id": None,
+        "token_secret": None,
+        "oauth_refresh_token": f"{token_id}.{token_secret}",
+        "oauth_client_id": "oc-client-id",
+        "oauth_client_secret": "ov-client-secret",
+    }
+
+    client = Client.from_env(_override_config=override_config)
+    client.hello()
+
+    assert servicer.last_metadata["x-modal-refresh-token"] == f"{token_id}.{token_secret}"
+    assert "x-modal-token-id" not in servicer.last_metadata
+    assert "x-modal-token-secret" not in servicer.last_metadata
+    assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
+    assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
+
+
+@pytest.mark.parametrize(
+    "override_config",
+    [
+        {
+            "oauth_refresh_token": "ak-token.as-secret",
+            "oauth_client_id": "oc-client-id",
+            "oauth_client_secret": None,
+        },
+        {
+            "oauth_refresh_token": "ak-token.as-secret",
+            "oauth_client_id": None,
+            "oauth_client_secret": "ov-client-secret",
+        },
+        {
+            "oauth_refresh_token": None,
+            "oauth_client_id": "oc-client-id",
+            "oauth_client_secret": "ov-client-secret",
+        },
+    ],
+)
+def test_client_from_env_rejects_incomplete_oauth_credentials(servicer, override_config):
+    full_config = {
+        "server_url": servicer.client_addr,
+        "token_id": None,
+        "token_secret": None,
+        **override_config,
+    }
+
+    with pytest.raises(InvalidError, match="must all be configured"):
+        Client.from_env(_override_config=full_config)
+
+
+def test_client_from_env_rejects_mixed_token_and_oauth_credentials(servicer, credentials):
+    token_id, token_secret = credentials
+    override_config = {
+        "server_url": servicer.client_addr,
+        "token_id": token_id,
+        "token_secret": token_secret,
+        "oauth_refresh_token": f"{token_id}.{token_secret}",
+        "oauth_client_id": "oc-client-id",
+        "oauth_client_secret": "ov-client-secret",
+    }
+
+    with pytest.raises(InvalidError, match="cannot both be configured"):
+        Client.from_env(_override_config=override_config)
+
+
 def test_client_from_env_failing(servicer, credentials, monkeypatch):
     monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     with pytest.raises(ConnectionError):
@@ -224,9 +294,20 @@ def test_from_env_container(servicer, container_env):
 
 
 def test_from_env_container_with_tokens(servicer, container_env, token_env):
-    # Even if MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are set, if we're in a containers, ignore those
+    # Even if MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are set, ignore them inside containers.
     servicer.required_creds = {}  # Disallow default client creds
-    with pytest.warns(match="token"):
+    with pytest.warns(match="MODAL_TOKEN_ID, MODAL_TOKEN_SECRET") as warning_records:
+        client = Client.from_env()
+    assert "MODAL_OAUTH" not in str(warning_records[0].message)
+    client.hello()
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+
+
+@pytest.mark.parametrize("env_var", ["MODAL_OAUTH_REFRESH_TOKEN", "MODAL_OAUTH_CLIENT_ID", "MODAL_OAUTH_CLIENT_SECRET"])
+def test_from_env_container_with_partial_oauth_credentials(servicer, container_env, monkeypatch, env_var):
+    monkeypatch.setenv(env_var, "oauth-value")
+    servicer.required_creds = {}  # Disallow default client creds
+    with pytest.warns(match=env_var):
         client = Client.from_env()
     client.hello()
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
@@ -249,6 +330,53 @@ def test_from_credentials_container(servicer, container_env):
     client = Client.from_credentials(token_id, token_secret)
     client.hello()
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+
+
+def test_from_oauth_credentials(servicer, server_url_env, credentials):
+    token_id, token_secret = credentials
+    servicer.required_creds = {token_id: token_secret}
+    client = Client.from_oauth_credentials(
+        f"{token_id}.{token_secret}",
+        oauth_client_id="oc-client-id",
+        oauth_client_secret="ov-client-secret",
+    )
+    client.hello()
+
+    assert servicer.last_metadata["x-modal-refresh-token"] == f"{token_id}.{token_secret}"
+    assert "x-modal-token-id" not in servicer.last_metadata
+    assert "x-modal-token-secret" not in servicer.last_metadata
+    assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
+    assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
+
+
+def test_oauth_credentials_repr_redacts_secrets():
+    credentials = _OAuthCredentials(
+        refresh_token="refresh-token",
+        client_id="client-id",
+        client_secret="client-secret",
+    )
+
+    assert repr(credentials) == "_OAuthCredentials(client_id='client-id')"
+
+
+@pytest.mark.parametrize(
+    ("refresh_token", "oauth_client_id", "oauth_client_secret"),
+    [
+        ("", "oc-client-id", "ov-client-secret"),
+        ("refresh-token", "", "ov-client-secret"),
+        ("refresh-token", "oc-client-id", ""),
+    ],
+)
+def test_from_oauth_credentials_rejects_missing_credentials(
+    monkeypatch, refresh_token, oauth_client_id, oauth_client_secret
+):
+    monkeypatch.setenv("MODAL_SERVER_URL", "http://localhost:1234")
+    with pytest.raises(AuthError, match="must all be provided"):
+        Client.from_oauth_credentials(
+            refresh_token,
+            oauth_client_id=oauth_client_id,
+            oauth_client_secret=oauth_client_secret,
+        )
 
 
 def test_client_verify(
