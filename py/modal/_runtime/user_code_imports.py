@@ -522,8 +522,8 @@ def import_single_function_service(
         f = getattr(module, qual_name)
         if isinstance(f, Function):
             _function: modal._functions._Function[Any, Any, Any] = synchronizer._translate_in(f)  # type: ignore
-            service_deps = _function.deps(only_explicit_mounts=True)
-            user_defined_callable = _function.get_raw_f()
+            service_deps = _function._deps_(only_explicit_mounts=True)
+            user_defined_callable = _function._raw_f_
             assert _function._app  # app should always be set on a decorated function
             active_app = _function._app
         else:
@@ -594,7 +594,7 @@ def import_class_service(
     if isinstance(cls_or_user_cls, modal.cls.Cls):
         _cls = typing.cast(modal.cls._Cls, synchronizer._translate_in(cls_or_user_cls))
         class_service_function: _Function = _cls._get_class_service_function()
-        service_deps = class_service_function.deps(only_explicit_mounts=True)
+        service_deps = class_service_function._deps_(only_explicit_mounts=True)
         active_app = class_service_function.app
     else:
         # Undecorated user class (serialized or local scope-decoration).
@@ -606,7 +606,7 @@ def import_class_service(
             service_function_hydration_data.function_handle_metadata,
             skip_reload=True,  # this skips re-loading the function, which is required since it doesn't have a loader
         )
-        _cls = modal.cls._Cls.from_local(cls_or_user_cls, active_app, _service_function)
+        _cls = modal.cls._Cls._from_local(cls_or_user_cls, active_app, _service_function)
         # hydration of the class itself - just sets the id and triggers some side effects
         # that transfers metadata from the service function to the class. TODO: cleanup!
         _cls._hydrate(class_id, _client, api_pb2.ClassHandleMetadata())
@@ -647,7 +647,7 @@ def import_server_service(
     if isinstance(cls_or_user_cls, modal.server.Server):
         _server = typing.cast(modal._server._Server, synchronizer._translate_in(cls_or_user_cls))
         server_service_function: _Function = _server._get_service_function()
-        service_deps = server_service_function.deps(only_explicit_mounts=True)
+        service_deps = server_service_function._deps_(only_explicit_mounts=True)
         active_app = _server._get_app()
 
     else:

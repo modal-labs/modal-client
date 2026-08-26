@@ -8,14 +8,15 @@ import time
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, get_args
+from typing import Any, cast, get_args
 
 import click
 from click import ClickException
 from typing_extensions import TypedDict
 
 from .._environments import ensure_env
-from ..app import App, LocalEntrypoint
+from .._utils.async_utils import synchronizer
+from ..app import App, LocalEntrypoint, _App
 from ..cls import _get_class_constructor_signature
 from ..config import config
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
@@ -466,9 +467,10 @@ class RunGroup(ModalGroup):
             raise ClickException(f"{help_header}\n\n{help_footer}")
 
         app = _get_runnable_app(runnable)
+        inner = cast(_App, synchronizer._translate_in(app))
 
-        if app.description is None:
-            app.set_description(_get_clean_app_description(func_ref))
+        if inner._description is None:
+            inner._description = _get_clean_app_description(func_ref)
 
         if isinstance(runnable, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(app, runnable)
@@ -672,8 +674,10 @@ def serve(
 
     OutputManager.get().set_timestamps(timestamps)
     app = import_app_from_ref(import_ref, base_cmd="modal serve")
-    if app.description is None:
-        app.set_description(_get_clean_app_description(app_ref))
+    inner = cast(_App, synchronizer._translate_in(app))
+
+    if inner._description is None:
+        inner._description = _get_clean_app_description(app_ref)
     with serve_app(app, import_ref, name=name, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]

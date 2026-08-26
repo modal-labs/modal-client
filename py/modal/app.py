@@ -599,14 +599,14 @@ class _App:
             raise ExecutionError("`_get_watch_mounts` requires a running app.")
 
         all_mounts = []
-        for function in self.registered_functions.values():
+        for function in self._local_state.functions.values():
             all_mounts.extend(function._serve_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function, is_web_endpoint: bool):
         local_state = self._local_state
-        if old_function := local_state.functions.get(function.tag, None):
+        if old_function := local_state.functions.get(function._tag_, None):
             if old_function is function:
                 return  # already added the same exact instance, ignore
 
@@ -615,25 +615,25 @@ class _App:
             # and we don't want to warn about a collision in that case.
             if not is_interactive_ipython():
                 logger.warning(
-                    f"Warning: function name '{function.tag}' collision!"
+                    f"Warning: function name '{function._tag_}' collision!"
                     " Overriding existing function "
                     f"[{old_function._info.module_name}].{old_function._info.function_name}"
                     f" with new function [{function._info.module_name}].{function._info.function_name}"
                 )
-        if function.tag in local_state.classes:
-            logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
+        if function._tag_ in local_state.classes:
+            logger.warning(f"Warning: tag {function._tag_} exists but is overridden by function")
 
         if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
-            if function.tag in self._running_app.function_ids:
-                object_id: str = self._running_app.function_ids[function.tag]
+            if function._tag_ in self._running_app.function_ids:
+                object_id: str = self._running_app.function_ids[function._tag_]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 function._hydrate(object_id, self._client, metadata)
 
-        local_state.functions[function.tag] = function
+        local_state.functions[function._tag_] = function
         if is_web_endpoint:
-            local_state.web_endpoints.append(function.tag)
+            local_state.web_endpoints.append(function._tag_)
 
     def _add_class(self, tag: str, cls: _Cls):
         if self._running_app:
@@ -995,7 +995,7 @@ class _App:
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
-            function = _Function.from_local(
+            function = _Function._from_local(
                 info,
                 app=self,
                 image=image,
@@ -1231,7 +1231,7 @@ class _App:
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
-            cls_func = _Function.from_local(
+            cls_func = _Function._from_local(
                 info,
                 app=self,
                 image=image or self._get_default_image(),
@@ -1274,7 +1274,7 @@ class _App:
 
             self._add_function(cls_func, is_web_endpoint=False)
 
-            cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
+            cls: _Cls = _Cls._from_local(user_cls, self, cls_func)
 
             for method_name, partial_function in cls._method_partials.items():
                 if partial_function.params.webhook_config is not None:
@@ -1442,7 +1442,7 @@ class _App:
             # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=name or user_cls.__name__)
             # Create the service function
-            service_function = _Function.from_local(
+            service_function = _Function._from_local(
                 info,
                 app=self,
                 image=image or self._get_default_image(),

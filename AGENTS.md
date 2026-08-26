@@ -26,6 +26,10 @@ Any `inv` commands given can be run from the Modal monorepo root as
 `import`, `enum`, `message`, `service`. Within each section, definitions must be
 lexicographically sorted by name. Verify with `inv lint-protos`.
 
+Certain implementation classes expose type-guarded versions of private attributes
+as `@property` decorated accessors which are the attribute name suffixed with an `_`.
+These should be used instead of the raw underlying attribute.
+
 ## Changelog updates
 
 The SDK source includes changelog files. These document public API or behavioral changes that are relevant to how end users interface with Modal. Examples where a changelog update is needed:

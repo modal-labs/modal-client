@@ -937,7 +937,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             with FunctionCreationStatus(tag) as function_creation_status:
                 timeout_secs = timeout
 
-                if app and app.is_interactive and not is_builder_function:
+                if app and app._is_interactive_ and not is_builder_function:
                     pty_info = get_pty_info(shell=False)
                 else:
                     pty_info = None
@@ -1934,7 +1934,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             # TODO: check if we end up here in a container for a serialized function?
             raise ExecutionError("Can't call .local on service function")
 
-        if is_local() and self.spec.volumes or self.spec.network_file_systems:
+        if is_local() and self._spec_.volumes or self._spec_.network_file_systems:
             warnings.warn(
                 f"The {info.function_name} function is executing locally "
                 + "and will not have access to the mounted Volume or NetworkFileSystem data"

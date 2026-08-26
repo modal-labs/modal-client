@@ -44,19 +44,19 @@ class Resolver:
         existing_object_id: str | None = None,
     ):
         if obj._is_hydrated and obj._skip_reload:
-            if obj.local_uuid not in self._local_uuid_to_future:
+            if obj._local_uuid not in self._local_uuid_to_future:
                 # a bit dumb - but we still need to store a reference to the object here
                 # to be able to include all referenced objects when setting up the app
                 fut: Future = Future()
                 fut.set_result(obj)
-                self._local_uuid_to_future[obj.local_uuid] = fut
+                self._local_uuid_to_future[obj._local_uuid] = fut
             return obj
 
         deduplication_key: Hashable | None = None
         if obj._deduplication_key:
             deduplication_key = await obj._deduplication_key()
 
-        cached_future = self._local_uuid_to_future.get(obj.local_uuid)
+        cached_future = self._local_uuid_to_future.get(obj._local_uuid)
 
         if not cached_future and deduplication_key is not None:
             # deduplication cache makes sure duplicate mounts are resolved only
@@ -78,7 +78,7 @@ class Resolver:
                     # Use asyncio.gather here (not TaskContext.gather) - the shared TaskContext
                     # in load_context handles cancellation at the top level, preventing premature
                     # cancellation of shared dependencies when sibling tasks fail.
-                    await asyncio.gather(*[self.load(dep, load_context) for dep in obj.deps()])
+                    await asyncio.gather(*[self.load(dep, load_context) for dep in obj._deps_()])
 
                     # Load the object itself
                     if not obj._load:
@@ -102,7 +102,7 @@ class Resolver:
 
             # use task_context from load_context to make sure tasks are cleaned up eventually
             cached_future = parent_load_context.task_context.create_task(loader())
-            self._local_uuid_to_future[obj.local_uuid] = cached_future
+            self._local_uuid_to_future[obj._local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
         with suppress_tb_frame():

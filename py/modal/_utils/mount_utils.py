@@ -108,7 +108,7 @@ def validate_volumes_by_object_id(validated_volumes: Sequence[tuple[str, _Volume
     """
     object_id_to_paths: dict[str, list[str]] = {}
     for path, volume in validated_volumes:
-        if not volume.is_hydrated:
+        if not volume._is_hydrated:
             # This should never happen since this function is only called at load time
             raise RuntimeError(f"Internal error: Volume at '{path}' is not hydrated when validating mounts")
         object_id_to_paths.setdefault(volume.object_id, []).append(path)

@@ -478,7 +478,7 @@ class _EnvironmentBillingManager:
         elif end.tzinfo != timezone.utc:
             raise InvalidError("Timezone-aware 'end' parameter must be in UTC.")
 
-        if not self._environment.is_hydrated:
+        if not self._environment._is_hydrated:
             await self._environment.hydrate()
 
         request = api_pb2.WorkspaceBillingReportRequest(
@@ -549,7 +549,7 @@ class _EnvironmentBillingManager:
         if cycle > datetime.now(timezone.utc):
             raise InvalidError("Provided 'cycle' parameter cannot be in the future.")
 
-        if not self._environment.is_hydrated:
+        if not self._environment._is_hydrated:
             await self._environment.hydrate()
 
         request = api_pb2.EnvironmentBillingSummaryRequest(environment_id=self._environment.object_id)

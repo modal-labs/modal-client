@@ -27,6 +27,8 @@ from modal.exception import InvalidError, _CliUserExecutionError
 from modal.functions import Function
 from modal.output import OutputManager
 
+from .._utils.async_utils import synchronizer
+
 
 @dataclasses.dataclass
 class ImportRef:
@@ -165,15 +167,18 @@ def list_cli_commands(
     all_runnables: dict[Runnable, list[str]] = defaultdict(list)
     priorities: dict[Runnable, int] = defaultdict(lambda: AutoRunPriority.APP_FUNCTION)
     for app_name, app in apps:
-        for name, local_entrypoint in app.registered_entrypoints.items():
+        for name, inner_entrypoint in app._local_state.local_entrypoints.items():
+            local_entrypoint = cast(LocalEntrypoint, synchronizer._translate_out(inner_entrypoint))
             all_runnables[local_entrypoint].append(f"{app_name}.{name}")
             priorities[local_entrypoint] = AutoRunPriority.APP_LOCAL_ENTRYPOINT
-        for name, function in app.registered_functions.items():
-            if function.info.is_service_class() and not include_service_functions:
+        for name, inner_function in app._local_state.functions.items():
+            function = cast(Function, synchronizer._translate_out(inner_function))
+            if function._info_.is_service_class() and not include_service_functions:
                 continue  # Skip class and server service functions for all commands except `modal shell`.
             all_runnables[function].append(f"{app_name}.{name}")
             priorities[function] = AutoRunPriority.APP_FUNCTION
-        for cls_name, cls in app.registered_classes.items():
+        for cls_name, inner_cls in app._local_state.classes.items():
+            cls = cast(Cls, synchronizer._translate_out(inner_cls))
             for method_name in cls._get_method_names():
                 method_ref = MethodReference(cls, method_name)
                 all_runnables[method_ref].append(f"{app_name}.{cls_name}.{method_name}")

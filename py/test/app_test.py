@@ -190,7 +190,7 @@ def test_registered_fastapi_endpoints(client, servicer):
         def web3(self):
             pass
 
-    assert app.registered_web_endpoints == ["web1", "web2", "Cls.web3"]
+    assert app._local_state.web_endpoints == ["web1", "web2", "Cls.web3"]
 
 
 def test_init_types():

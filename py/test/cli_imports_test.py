@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2023
 import pytest
+from typing import cast
 
 import modal
-from modal.app import App, LocalEntrypoint
+from modal._utils.async_utils import synchronizer
+from modal.app import App, LocalEntrypoint, _App
 from modal.cli.import_refs import (
     AutoRunPriority,
     CLICommand,
@@ -238,6 +240,7 @@ def test_relative_import_error_guidance(mock_dir, command, object_path):
 
 def test_list_cli_commands():
     app = App()
+    _app = cast(_App, synchronizer._translate_in(app))
     other_app = App()
 
     @app.function(serialized=True, name="foo")
@@ -288,10 +291,16 @@ def test_list_cli_commands():
         priority=AutoRunPriority.MODULE_FUNCTION,
     )
     cls_command = CLICommand(
-        ["app.Cls.*"], app.registered_functions["Cls.*"], False, priority=AutoRunPriority.APP_FUNCTION
+        ["app.Cls.*"],
+        cast(Function, synchronizer._translate_out(_app._local_state.functions["Cls.*"])),
+        False,
+        priority=AutoRunPriority.APP_FUNCTION,
     )
     simple_server_command = CLICommand(
-        ["app.SimpleServer"], app.registered_functions["SimpleServer"], False, priority=AutoRunPriority.APP_FUNCTION
+        ["app.SimpleServer"],
+        cast(Function, synchronizer._translate_out(_app._local_state.functions["SimpleServer"])),
+        False,
+        priority=AutoRunPriority.APP_FUNCTION,
     )
 
     assert res == [

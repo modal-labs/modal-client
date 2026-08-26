@@ -20,6 +20,7 @@ from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._partial_function import MAX_MAX_BATCH_SIZE
 from modal._utils.async_utils import synchronize_api, synchronizer
 from modal._vendor import cloudpickle
+from modal.app import _App
 from modal.client import Client
 from modal.exception import (
     DeprecationError,
@@ -392,7 +393,7 @@ def test_remote_input_plane(
         monkeypatch.setattr(modal._functions, "ATTEMPT_TIMEOUT_GRACE_PERIOD", 0)
 
     servicer.attempt_await_responses = attempt_await_responses
-    servicer.function_body(func.get_raw_f())
+    servicer.function_body(func._raw_f_)
     with app.run(client=client), expectation as e:
         assert func.remote() == e
     assert servicer.attempt_await_count == attempt_await_count
@@ -1419,7 +1420,8 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "xyz")
     app.function()(dummy)
     with app.run(client=client):
-        object_id: str = app.registered_functions["dummy"].object_id
+        _app = typing.cast(_App, synchronizer._translate_in(app))
+        object_id: str = _app._local_state.functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer sent
@@ -1537,7 +1539,8 @@ def test_deps_explicit(client, servicer):
     app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
     with app.run(client=client):
-        object_id: str = app.registered_functions["dummy"].object_id
+        _app = typing.cast(_App, synchronizer._translate_in(app))
+        object_id: str = _app._local_state.functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     dep_object_ids = {d.object_id for d in f.object_dependencies}

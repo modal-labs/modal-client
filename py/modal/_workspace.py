@@ -321,7 +321,7 @@ class _WorkspaceBillingManager:
             A single mapping containing cost values. All values are reported as `decimal.Decimal`s.
         """
 
-        if not self._workspace.is_hydrated:
+        if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
 
         response = await self._workspace.client.stub.WorkspaceBillingRates(
@@ -386,7 +386,7 @@ class _WorkspaceBillingManager:
         elif end.tzinfo != timezone.utc:
             raise InvalidError("Timezone-aware 'end' parameter must be in UTC.")
 
-        if not self._workspace.is_hydrated:
+        if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
 
         request = api_pb2.WorkspaceBillingReportRequest(
@@ -457,7 +457,7 @@ class _WorkspaceBillingManager:
         if cycle > datetime.now(timezone.utc):
             raise InvalidError("Provided 'cycle' parameter cannot be in the future.")
 
-        if not self._workspace.is_hydrated:
+        if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
 
         request = api_pb2.WorkspaceBillingSummaryRequest()
@@ -483,7 +483,7 @@ class _WorkspaceSettingsManager:
         Returns:
             A `WorkspaceSettings` dataclass.
         """
-        if not self._workspace.is_hydrated:
+        if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
         resp = await self._workspace.client.stub.WorkspaceSettings(Empty())
         return WorkspaceSettings(
@@ -494,14 +494,14 @@ class _WorkspaceSettingsManager:
         """mdmd:hidden
         Set the image builder version for the Workspace.
         """
-        if not self._workspace.is_hydrated:
+        if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
         req = api_pb2.WorkspaceSetImageBuilderVersionRequest(new_image_builder_version=version)
         await self._workspace.client.stub.WorkspaceSetImageBuilderVersion(req)
 
     async def _set_default_environment(self, name: str) -> None:
         """Set the default environment for the Workspace."""
-        if not self._workspace.is_hydrated:
+        if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
         req = api_pb2.WorkspaceSetDefaultEnvironmentRequest(environment_name=name)
         await self._workspace.client.stub.WorkspaceSetDefaultEnvironment(req)

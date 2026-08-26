@@ -704,7 +704,7 @@ class _Image(_Object, type_prefix="im"):
                 # TODO: better way to filter out types that don't have a stable hash?
                 build_function_globals = serialize(filtered_globals) if filtered_globals else b""
                 _build_function = api_pb2.BuildFunction(
-                    definition=build_function.get_build_def(),
+                    definition=build_function._get_build_def(),
                     globals=build_function_globals,
                     input=build_function_input,
                 )
@@ -2756,7 +2756,7 @@ class _Image(_Object, type_prefix="im"):
 
         info = FunctionInfo(raw_f)
 
-        function = _Function.from_local(
+        function = _Function._from_local(
             info,
             app=None,
             image=self,
@@ -2938,7 +2938,7 @@ class _Image(_Object, type_prefix="im"):
         try:
             yield
         except Exception as exc:
-            if not self.is_hydrated:
+            if not self._is_hydrated:
                 # Might be hydrated later (if it's the container's used image)
                 self.inside_exceptions.append(exc)
             elif env_image_id == self.object_id:
@@ -3051,7 +3051,7 @@ class _Image(_Object, type_prefix="im"):
         """mdmd:hidden"""
         # Image inherits hydrate() from Object but can't be hydrated on demand
         # Overriding the method lets us hide it from the docs and raise a better error message
-        if not self.is_hydrated:
+        if not self._is_hydrated:
             raise ExecutionError(
                 "Images cannot currently be hydrated on demand; you can build an Image by running an App that uses it."
             )

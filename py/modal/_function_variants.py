@@ -157,7 +157,7 @@ class _FunctionOptions:
             + list(self.secrets)
             + [mount.secret for _, mount in self.cloud_bucket_mounts if mount.secret]
         )
-        return [dep for dep in all_deps if not dep.is_hydrated]
+        return [dep for dep in all_deps if not dep._is_hydrated]
 
     def to_proto(self) -> api_pb2.FunctionOptions:
         """Convert the dataclass to a FunctionOptions protobuf message."""
@@ -246,7 +246,7 @@ def _make_function_variant(
         load_context: "LoadContext",
         existing_object_id: str | None,
     ):
-        if not base_function.is_hydrated:
+        if not base_function._is_hydrated:
             await base_function.hydrate(load_context.client)
         assert base_function._client and base_function._client.stub
 

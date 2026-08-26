@@ -3,9 +3,12 @@ import asyncio
 import pytest
 import threading
 import time
+from typing import cast
 from unittest import mock
 
 from modal import Function, enable_output
+from modal._utils.async_utils import synchronizer
+from modal.app import _App
 from modal.cli.import_refs import ImportRef
 from modal.serving import serve_app
 
@@ -48,7 +51,11 @@ def test_file_changes_trigger_reloads(import_ref, server_url_env, token_env, ser
 
     with serve_app(app, import_ref, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
-        foo: Function = app.registered_functions["foo"]
+        _app = cast(_App, synchronizer._translate_in(app))
+        foo: Function = cast(
+            Function,
+            synchronizer._translate_out(_app._local_state.functions["foo"]),
+        )
         assert foo.get_web_url().startswith("http://")
 
     stderr = capfd.readouterr().err

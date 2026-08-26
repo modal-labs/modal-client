@@ -4,12 +4,15 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 import rich.panel
 from rich.markdown import Markdown
 
+from modal.app import _App
+
+from .._utils.async_utils import synchronizer
 from ..exception import _CliUserExecutionError
 from ..output import OutputManager
 from ..runner import run_app
@@ -40,7 +43,8 @@ def _launch_program(
     entrypoint = module.main
 
     app = _get_runnable_app(entrypoint)
-    app.set_description(description if description else base_cmd)
+    inner = cast(_App, synchronizer._translate_in(app))
+    inner._description = description if description else base_cmd
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
     func = entrypoint.info.raw_f
