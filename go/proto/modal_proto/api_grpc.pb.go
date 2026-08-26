@@ -129,6 +129,7 @@ const (
 	ModalClient_FunctionGetInputs_FullMethodName                = "/modal.client.ModalClient/FunctionGetInputs"
 	ModalClient_FunctionGetOutputs_FullMethodName               = "/modal.client.ModalClient/FunctionGetOutputs"
 	ModalClient_FunctionGetSerialized_FullMethodName            = "/modal.client.ModalClient/FunctionGetSerialized"
+	ModalClient_FunctionGetTimeRangeStats_FullMethodName        = "/modal.client.ModalClient/FunctionGetTimeRangeStats"
 	ModalClient_FunctionMap_FullMethodName                      = "/modal.client.ModalClient/FunctionMap"
 	ModalClient_FunctionPrecreate_FullMethodName                = "/modal.client.ModalClient/FunctionPrecreate"
 	ModalClient_FunctionPutInputs_FullMethodName                = "/modal.client.ModalClient/FunctionPutInputs"
@@ -390,6 +391,7 @@ type ModalClientClient interface {
 	FunctionGetInputs(ctx context.Context, in *FunctionGetInputsRequest, opts ...grpc.CallOption) (*FunctionGetInputsResponse, error)
 	FunctionGetOutputs(ctx context.Context, in *FunctionGetOutputsRequest, opts ...grpc.CallOption) (*FunctionGetOutputsResponse, error)
 	FunctionGetSerialized(ctx context.Context, in *FunctionGetSerializedRequest, opts ...grpc.CallOption) (*FunctionGetSerializedResponse, error)
+	FunctionGetTimeRangeStats(ctx context.Context, in *FunctionGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*FunctionGetTimeRangeStatsResponse, error)
 	FunctionMap(ctx context.Context, in *FunctionMapRequest, opts ...grpc.CallOption) (*FunctionMapResponse, error)
 	FunctionPrecreate(ctx context.Context, in *FunctionPrecreateRequest, opts ...grpc.CallOption) (*FunctionPrecreateResponse, error)
 	FunctionPutInputs(ctx context.Context, in *FunctionPutInputsRequest, opts ...grpc.CallOption) (*FunctionPutInputsResponse, error)
@@ -1633,6 +1635,16 @@ func (c *modalClientClient) FunctionGetSerialized(ctx context.Context, in *Funct
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FunctionGetSerializedResponse)
 	err := c.cc.Invoke(ctx, ModalClient_FunctionGetSerialized_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) FunctionGetTimeRangeStats(ctx context.Context, in *FunctionGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*FunctionGetTimeRangeStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FunctionGetTimeRangeStatsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionGetTimeRangeStats_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3185,6 +3197,7 @@ type ModalClientServer interface {
 	FunctionGetInputs(context.Context, *FunctionGetInputsRequest) (*FunctionGetInputsResponse, error)
 	FunctionGetOutputs(context.Context, *FunctionGetOutputsRequest) (*FunctionGetOutputsResponse, error)
 	FunctionGetSerialized(context.Context, *FunctionGetSerializedRequest) (*FunctionGetSerializedResponse, error)
+	FunctionGetTimeRangeStats(context.Context, *FunctionGetTimeRangeStatsRequest) (*FunctionGetTimeRangeStatsResponse, error)
 	FunctionMap(context.Context, *FunctionMapRequest) (*FunctionMapResponse, error)
 	FunctionPrecreate(context.Context, *FunctionPrecreateRequest) (*FunctionPrecreateResponse, error)
 	FunctionPutInputs(context.Context, *FunctionPutInputsRequest) (*FunctionPutInputsResponse, error)
@@ -3658,6 +3671,9 @@ func (UnimplementedModalClientServer) FunctionGetOutputs(context.Context, *Funct
 }
 func (UnimplementedModalClientServer) FunctionGetSerialized(context.Context, *FunctionGetSerializedRequest) (*FunctionGetSerializedResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetSerialized not implemented")
+}
+func (UnimplementedModalClientServer) FunctionGetTimeRangeStats(context.Context, *FunctionGetTimeRangeStatsRequest) (*FunctionGetTimeRangeStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionGetTimeRangeStats not implemented")
 }
 func (UnimplementedModalClientServer) FunctionMap(context.Context, *FunctionMapRequest) (*FunctionMapResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionMap not implemented")
@@ -5899,6 +5915,24 @@ func _ModalClient_FunctionGetSerialized_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).FunctionGetSerialized(ctx, req.(*FunctionGetSerializedRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_FunctionGetTimeRangeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FunctionGetTimeRangeStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionGetTimeRangeStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionGetTimeRangeStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionGetTimeRangeStats(ctx, req.(*FunctionGetTimeRangeStatsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8721,6 +8755,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FunctionGetSerialized",
 			Handler:    _ModalClient_FunctionGetSerialized_Handler,
+		},
+		{
+			MethodName: "FunctionGetTimeRangeStats",
+			Handler:    _ModalClient_FunctionGetTimeRangeStats_Handler,
 		},
 		{
 			MethodName: "FunctionMap",

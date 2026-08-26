@@ -2374,6 +2374,49 @@ message FunctionGetSerializedResponse {
   bytes class_serialized = 2;
 }
 
+message FunctionGetTimeRangeStatsRequest {
+  string function_id = 1;
+  google.protobuf.Timestamp since = 2;  // Inclusive.
+  google.protobuf.Timestamp until = 3;  // Exclusive.
+  // Aggregate the root Function pool and its non-version-pinned variant pools.
+  bool rollup = 4;
+}
+
+
+message FunctionGetTimeRangeStatsResponse {
+  google.protobuf.Timestamp since = 1;  // Inclusive.
+  google.protobuf.Timestamp until = 2;  // Exclusive.
+
+  // Per-input latency distributions.
+  // Execution time derived from inputs that finish in the window
+  FunctionStatsPercentiles execution_time_seconds = 3;
+  // Purposely omitted for now since it can't be computed
+  // from the desired tables without caveats that are confusing
+  // to explain to users
+  FunctionStatsPercentiles queue_time_seconds = 4;
+  FunctionStatsPercentiles end_to_end_latency_seconds = 5;
+
+  // Container startup is measured from enqueue to start.
+  FunctionStatsPercentiles container_startup_time_seconds = 6;
+
+  // Counts of inputs that finish in the requested time range.
+  uint64 input_success_count = 7;
+  uint64 input_failure_count = 8;
+  uint64 input_timeout_count = 9;
+
+  // Resource distributions are computed from normalized container heartbeat
+  // observations and expressed as fractions, where 1.0 represents 100% utilization.
+  // A missing message indicates that no observations were available.
+  FunctionStatsPercentiles cpu_utilization = 10;
+  FunctionStatsPercentiles memory_utilization = 11;
+  FunctionStatsPercentiles gpu_utilization = 12;
+
+  // Number of direct non-version-pinned variants included in the roll-up.
+  // Zero when roll-up is disabled or the base Function has no variants.
+  uint32 variant_count = 13;
+}
+
+
 message FunctionHandleMetadata {
   // contains all the info about a function that is needed to trigger the right
   // behaviour when using a FunctionHandler. Notably excludes things purely
@@ -2478,6 +2521,8 @@ message FunctionPrecreateResponse {
   FunctionHandleMetadata handle_metadata = 2;
 }
 
+
+
 message FunctionPutInputsItem {
   int32 idx = 1;
   FunctionInput input = 2;
@@ -2557,6 +2602,11 @@ message FunctionStats {
   uint32 num_total_tasks = 3;
   uint32 num_running_inputs = 4;
   uint32 input_headroom = 5;
+}
+
+message FunctionStatsPercentiles {
+  double p50 = 1;
+  double p90 = 2;
 }
 
 message FunctionUpdateSchedulingParamsRequest {
@@ -4810,6 +4860,7 @@ service ModalClient {
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
+  rpc FunctionGetTimeRangeStats(FunctionGetTimeRangeStatsRequest) returns (FunctionGetTimeRangeStatsResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
