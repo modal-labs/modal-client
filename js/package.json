@@ -50,7 +50,7 @@
     "eslint": "^9.28.0",
     "eslint-plugin-import-x": "^4.16.1",
     "globals": "^16.2.0",
-    "grpc-tools": "^1.13.0",
+    "grpc-tools": "^1.13.1",
     "jsonwebtoken": "^9.0.2",
     "p-queue": "^8.1.0",
     "prettier": "^3.5.3",
