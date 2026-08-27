@@ -561,6 +561,10 @@ func retryInterceptor(c *Client) grpc.UnaryClientInterceptor {
 					}
 				}
 
+				if deadline, ok := ctx.Deadline(); ok && time.Now().Add(serverDelay).After(deadline) {
+					return err
+				}
+
 				var errArgs []any
 				if st, ok := status.FromError(err); ok {
 					errArgs = []any{"status", st.Code(), "message", st.Message()}

@@ -3,6 +3,7 @@ package modal
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -17,6 +18,7 @@ import (
 	"github.com/djherbis/nio/v3"
 	"github.com/google/uuid"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -815,6 +817,17 @@ func (sb *Sandbox) sandboxGetTunnels(ctx context.Context, timeout time.Duration)
 		return sb.client.cpClient.SandboxGetTunnelsV2(ctx, req)
 	}
 	return sb.client.cpClient.SandboxGetTunnels(ctx, req)
+}
+
+func (sb *Sandbox) sandboxGetExitSnapshot(ctx context.Context, timeout float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error) {
+	req := pb.SandboxGetExitSnapshotRequest_builder{
+		SandboxId: sb.SandboxID,
+		Timeout:   timeout,
+	}.Build()
+	if sb.isV2 {
+		return sb.client.cpClient.SandboxGetExitSnapshotV2(ctx, req, opts...)
+	}
+	return sb.client.cpClient.SandboxGetExitSnapshot(ctx, req, opts...)
 }
 
 // FromID returns a running Sandbox object from an ID.
@@ -1704,6 +1717,145 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 	}
 
 	return &Image{ImageID: response.GetImageId(), client: sb.client}, nil
+}
+
+// SandboxExperimentalGetExitSnapshotParams are options for Sandbox.ExperimentalGetExitSnapshot.
+type SandboxExperimentalGetExitSnapshotParams struct {
+	// Timeout is the total time to wait, spread across repeated long polls of
+	// at most exitSnapshotLongPollTimeout each. nil (the default) waits until
+	// the snapshot reaches a terminal state. 0 performs an immediate check
+	// without waiting.
+	Timeout *time.Duration
+}
+
+const (
+	// Exit snapshot polling holds a server-side long poll for at most exitSnapshotLongPollTimeout
+	// and then re-polls from the client, so a request is never held open indefinitely however
+	// long the caller waits.
+	exitSnapshotLongPollTimeout = 10 * time.Second
+	// Margin added to each poll's network deadline over the server-side hold, covering the
+	// response's return trip so an answer sent just before the hold expires isn't lost to the
+	// client-side deadline.
+	exitSnapshotPollDeadlineMargin = 5 * time.Second
+	// The fetch loop absorbs transient poll failures and re-polls. It gives up once this many
+	// polls fail in a row, so an extended outage still surfaces to the caller.
+	exitSnapshotMaxConsecutivePollFailures = 3
+	// Pause between failed polls, so failures that reject instantly (e.g. a refused connection)
+	// don't burn through the failure budget in milliseconds.
+	exitSnapshotPollFailureBackoff = time.Second
+)
+
+// ExperimentalGetExitSnapshot gets the exit filesystem snapshot image.
+//
+// Returns InvalidError if the Timeout is negative, or if exit snapshot is not
+// enabled for the Sandbox. Returns TimeoutError if the Timeout elapses before
+// the snapshot reaches a terminal state. This includes a Timeout of 0 when the
+// snapshot is still pending. Returns SnapshotCreationError if no exit snapshot
+// image will be produced. Returns NotFoundError if the Sandbox does not exist.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (sb *Sandbox) ExperimentalGetExitSnapshot(ctx context.Context, params *SandboxExperimentalGetExitSnapshotParams) (*Image, error) {
+	var timeout *time.Duration
+	if params != nil {
+		timeout = params.Timeout
+	}
+	if timeout != nil && *timeout < 0 {
+		return nil, InvalidError{Exception: fmt.Sprintf("Timeout must be non-negative, got %v", *timeout)}
+	}
+
+	var deadline time.Time
+	if timeout != nil {
+		deadline = time.Now().Add(*timeout)
+	}
+	timeoutErr := TimeoutError{Exception: fmt.Sprintf("timed out waiting for exit snapshot for Sandbox %s", sb.SandboxID)}
+	pollRetries := 0
+	consecutivePollFailures := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		requestTimeout := exitSnapshotLongPollTimeout
+		if timeout != nil {
+			requestTimeout = min(exitSnapshotLongPollTimeout, max(0, time.Until(deadline)))
+		}
+
+		pollCtx, cancel := context.WithTimeout(ctx, requestTimeout+exitSnapshotPollDeadlineMargin)
+		resp, err := sb.sandboxGetExitSnapshot(pollCtx, float32(requestTimeout.Seconds()), retryCallOption{retries: &pollRetries})
+		cancel()
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			if policy := getServerRetryPolicy(err); policy != nil {
+				if timeout != nil && !time.Now().Before(deadline) {
+					return nil, timeoutErr
+				}
+				consecutivePollFailures = 0
+				throttleDelay := max(time.Duration(float64(policy.GetRetryAfterSecs())*float64(time.Second)), defaultRetryBaseDelay)
+				if timeout != nil {
+					throttleDelay = min(throttleDelay, max(0, time.Until(deadline)))
+				}
+				if sleepErr := sleepCtx(ctx, throttleDelay); sleepErr != nil {
+					return nil, sleepErr
+				}
+				continue
+			}
+			if st, ok := status.FromError(err); ok {
+				switch st.Code() {
+				case codes.InvalidArgument:
+					return nil, InvalidError{Exception: st.Message()}
+				case codes.NotFound:
+					return nil, NotFoundError{Exception: st.Message()}
+				}
+			}
+			if isRetryableGrpc(err) || errors.Is(err, context.DeadlineExceeded) {
+				if timeout != nil && !time.Now().Before(deadline) {
+					return nil, timeoutErr
+				}
+				consecutivePollFailures++
+				if consecutivePollFailures >= exitSnapshotMaxConsecutivePollFailures {
+					return nil, err
+				}
+				backoff := exitSnapshotPollFailureBackoff
+				if timeout != nil {
+					backoff = min(backoff, max(0, time.Until(deadline)))
+				}
+				if sleepErr := sleepCtx(ctx, backoff); sleepErr != nil {
+					return nil, sleepErr
+				}
+				continue
+			}
+			return nil, err
+		}
+		consecutivePollFailures = 0
+
+		switch {
+		case resp.GetSuccess() != nil:
+			if resp.GetSuccess().GetImageId() == "" {
+				return nil, ExecutionError{Exception: "Exit snapshot result is missing image ID"}
+			}
+			return &Image{ImageID: resp.GetSuccess().GetImageId(), client: sb.client}, nil
+		case resp.GetError() != nil:
+			message := resp.GetError().GetMessage()
+			if resp.GetError().GetErrorCode() == pb.SandboxGetExitSnapshotResponse_ERROR_CODE_TIMEOUT {
+				if message == "" {
+					message = "No exit snapshot image will be produced"
+				}
+				return nil, SnapshotCreationError{Exception: message}
+			}
+			if message == "" {
+				message = "Exit snapshot state is malformed"
+			}
+			return nil, ExecutionError{Exception: message}
+		case resp.GetPending() == nil:
+			return nil, ExecutionError{Exception: "Exit snapshot response is missing an outcome"}
+		}
+
+		if timeout != nil && !time.Now().Before(deadline) {
+			return nil, timeoutErr
+		}
+	}
 }
 
 // SandboxExperimentalSnapshotParams are options for Sandbox.ExperimentalSnapshot.

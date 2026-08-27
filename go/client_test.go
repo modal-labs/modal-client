@@ -326,6 +326,32 @@ func TestRetryInterceptorMaxThrottleWaitNil(t *testing.T) {
 	g.Expect(callCount).To(gomega.Equal(3)) // 2 throttle failures + 1 success
 }
 
+func TestRetryInterceptorThrottleExceedingContextDeadline(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	throttleErr := makeThrottleError(t, 60.0)
+
+	callCount := 0
+	c, err := NewClientWithOptions(&ClientParams{Logger: slog.New(slog.DiscardHandler)})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		return throttleErr
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	started := time.Now()
+	err = interceptor(ctx, "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).To(gomega.MatchError(throttleErr))
+	g.Expect(callCount).To(gomega.Equal(1))
+	g.Expect(time.Since(started)).To(gomega.BeNumerically("<", 40*time.Millisecond))
+}
+
 func TestRetryInterceptorMaxThrottleWaitConfigHigherPrecedence(t *testing.T) {
 	t.Setenv("MODAL_MAX_THROTTLE_WAIT", "30")
 	g := gomega.NewWithT(t)
