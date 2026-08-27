@@ -470,31 +470,95 @@ def show_deprecations(ctx):
             self.current_class = None
             self.current_function = None
 
-        def visit_ClassDef(self, node):
+        def visit_ClassDef(self, node: ast.ClassDef):
             self.current_class = node.name
             self.generic_visit(node)
             self.current_class = None
 
-        def visit_FunctionDef(self, node):
+        def get_message_string(self, message: ast.expr):
+            # Handle a few different ways that the message can get passed to the deprecation helper
+            # since it's not always a literal string (e.g. it's often a functions .__doc__ attribute)
+            if isinstance(message, ast.Name):
+                assert message  # mypy apparently thinks message can be None here
+                message_str = str(self.assignments.get(message.id, ""))
+            elif isinstance(message, ast.Attribute):
+                assert message  # mypy apparently thinks message can be None here
+                message_str = str(self.assignments.get(message.attr, ""))
+            elif isinstance(message, ast.Constant):
+                assert message  # mypy apparently thinks message can be None here
+                message_str = str(message.s)
+            elif isinstance(message, ast.JoinedStr):
+                assert message  # mypy apparently thinks message can be None here
+                message_str = "".join(str(v.s) for v in message.values if isinstance(v, ast.Constant))
+            else:
+                message_str = str(message)
+
+            ret = message_str.replace("\n", " ")
+            if len(ret) > (max_length := 80):
+                ret = ret[:max_length] + "..."
+
+            return ret
+
+        def shared_visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef):
             self.current_function = node.name
             self.assignments["__doc__"] = ast.get_docstring(node)
+
+            for decorator in node.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+
+                func = decorator.func
+                if not isinstance(func, ast.Name):
+                    continue
+
+                if func.id != "with_deprecation_warning":
+                    continue
+
+                args = decorator.args
+                if len(args) < 2:
+                    continue
+
+                date_element = args[0]
+                if not isinstance(date_element, ast.Tuple):
+                    continue
+
+                depr_date = date(*(getattr(elt, "n") for elt in date_element.elts))
+                function = (
+                    f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
+                )
+
+                message_expr = args[1]
+                message = self.get_message_string(message_expr)
+
+                is_pending = any(
+                    kw.arg == "pending" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                    for kw in decorator.keywords
+                )
+                level = "[blue]pending[/blue]" if is_pending else "[yellow]warning[/yellow]"
+
+                self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
+
             self.generic_visit(node)
             self.current_function = None
             self.assignments.pop("__doc__", None)
 
-        visit_AsyncFunctionDef = visit_FunctionDef
+        def visit_FunctionDef(self, node: ast.FunctionDef):
+            return self.shared_visit_FunctionDef(node)
 
-        def visit_Assign(self, node):
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+            return self.shared_visit_FunctionDef(node)
+
+        def visit_Assign(self, node: ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     self.assignments[target.id] = node.value
             self.generic_visit(node)
 
-        def visit_Attribute(self, node):
+        def visit_Attribute(self, node: ast.Attribute):
             self.assignments[node.attr] = node.value
             self.generic_visit(node)
 
-        def visit_Call(self, node):
+        def visit_Call(self, node: ast.Call):
             level: str | None = None
             if isinstance(node.func, ast.Name):
                 if node.func.id == "deprecation_error":
@@ -520,26 +584,7 @@ def show_deprecations(ctx):
                     new_name = getattr(node.args[2], "s")
                     message = f"Renamed parameter: {old_name} -> {new_name}"
                 else:
-                    message = node.args[1]
-                    # Handle a few different ways that the message can get passed to the deprecation helper
-                    # since it's not always a literal string (e.g. it's often a functions .__doc__ attribute)
-                    if isinstance(message, ast.Name):
-                        assert message  # mypy apparently thinks message can be None here
-                        message_str = self.assignments.get(message.id, "")
-                    if isinstance(message, ast.Attribute):
-                        assert message  # mypy apparently thinks message can be None here
-                        message_str = self.assignments.get(message.attr, "")
-                    if isinstance(message, ast.Constant):
-                        assert message  # mypy apparently thinks message can be None here
-                        message_str = str(message.s)
-                    elif isinstance(message, ast.JoinedStr):
-                        assert message  # mypy apparently thinks message can be None here
-                        message_str = "".join(str(v.s) for v in message.values if isinstance(v, ast.Constant))
-                    else:
-                        message_str = str(message)
-                    message = message_str.replace("\n", " ")
-                    if len(message) > (max_length := 80):
-                        message = message[:max_length] + "..."
+                    message = self.get_message_string(node.args[1])
 
                 self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
 
