@@ -2156,9 +2156,10 @@ message FunctionCreateRequest {
 message FunctionCreateResponse {
   string function_id = 1;
   string __deprecated_web_url = 2  [ deprecated = true];  // Used up until 0.62.212
-  Function function = 4;
+  Function function = 4; // deprecated soon
   FunctionHandleMetadata handle_metadata = 5;
   repeated Warning server_warnings = 6;
+  FunctionData function_data = 7;
 }
 
 message FunctionData {
@@ -2363,6 +2364,7 @@ message FunctionGetResponse {
   string function_id = 1;
   FunctionHandleMetadata handle_metadata = 2;
   repeated Warning server_warnings = 4;
+  FunctionData function = 5;
 }
 
 message FunctionGetSerializedRequest {
