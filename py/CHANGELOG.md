@@ -1,7 +1,5 @@
 # Python SDK Release Notes
 
-These release notes document user-facing updates (features, enhancements, fixes, and deprecations) to the `modal` client library.
-
 ## Latest
 
 ### 1.5.4 (2026-08-12)

@@ -48,3 +48,5 @@ Changelog updates are not needed in the following cases:
 - Minor bug fixes or performance improvements
 
 For multiple changes to the same feature within a single release cycle, edit an existing changelog entry rather than treating each update as a distinct change.
+
+During development, updates are made to `client/CHANGELOG_DEV.md`. When making a release, changelog entries are moved to the language-specific changelogs (`client/py/CHANGELOG.md`, etc.) and edited for publication.

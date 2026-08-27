@@ -14,5 +14,5 @@ inv update-version-go-js --update minor
 inv update-version-go-js --update patch
 ```
 
-2. You can change the wording or order of items in `client/CHANGELOG_GO_JS.md`
+2. Move `CHANGELOG_DEV.md` items into relevant language-specific changelogs, reordering and editing as needed.
 3. Open PR with your changes.
