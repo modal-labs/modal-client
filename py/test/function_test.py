@@ -20,7 +20,6 @@ from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._partial_function import MAX_MAX_BATCH_SIZE
 from modal._utils.async_utils import synchronize_api, synchronizer
 from modal._vendor import cloudpickle
-from modal.app import _App
 from modal.client import Client
 from modal.exception import (
     DeprecationError,
@@ -690,7 +689,7 @@ def test_function_cpu_request(client, servicer):
         f.remote()
         assert servicer.app_functions["fu-1"].resources.milli_cpu == 2000
         assert servicer.app_functions["fu-1"].resources.milli_cpu_max == 0
-    assert f.spec.cpu == 2.0
+    assert f._spec_.cpu == 2.0
 
     app = App(include_source=False)
     g = app.function(cpu=7)(dummy)
@@ -699,13 +698,13 @@ def test_function_cpu_request(client, servicer):
         g.remote()
         assert servicer.app_functions["fu-2"].resources.milli_cpu == 7000
         assert servicer.app_functions["fu-2"].resources.milli_cpu_max == 0
-    assert g.spec.cpu == 7
+    assert g._spec_.cpu == 7
 
 
 def test_function_cpu_limit(client, servicer):
     app = App(include_source=False)
     f = app.function(cpu=(1, 3))(dummy)
-    assert f.spec.cpu == (1, 3)
+    assert f._spec_.cpu == (1, 3)
 
     with app.run(client=client):
         f.remote()
@@ -881,7 +880,7 @@ def test_generator(client, servicer):
 
     assert len(servicer.cleared_function_calls) == 0
     with app.run(client=client):
-        assert later_gen_modal.is_generator
+        assert later_gen_modal._is_generator_
         res: typing.Generator = later_gen_modal.remote_gen()
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
@@ -950,7 +949,7 @@ async def test_generator_async(client, servicer):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             # ignore that the following runs sync stuff in async code
-            assert later_gen_modal.is_generator
+            assert later_gen_modal._is_generator_
         res = later_gen_modal.remote_gen.aio()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
         # https://peps.python.org/pep-0525/#support-for-asynchronous-iteration-protocol
@@ -1420,8 +1419,7 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "xyz")
     app.function()(dummy)
     with app.run(client=client):
-        _app = typing.cast(_App, synchronizer._translate_in(app))
-        object_id: str = _app._local_state.functions["dummy"].object_id
+        object_id: str = app._local_state.functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer sent
@@ -1539,8 +1537,7 @@ def test_deps_explicit(client, servicer):
     app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
     with app.run(client=client):
-        _app = typing.cast(_App, synchronizer._translate_in(app))
-        object_id: str = _app._local_state.functions["dummy"].object_id
+        object_id: str = app._local_state.functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     dep_object_ids = {d.object_id for d in f.object_dependencies}

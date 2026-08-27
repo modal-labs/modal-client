@@ -13,7 +13,7 @@ async def test_serialize_deserialize_function(servicer, client):
     async def foo():
         2 * await foo.remote.aio()
 
-    assert not foo.is_hydrated
+    assert not foo._is_hydrated
     with pytest.raises(Exception):
         foo.object_id  # noqa
 

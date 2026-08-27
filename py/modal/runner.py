@@ -185,7 +185,7 @@ async def _create_all_objects(
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
             await resolver.preload(obj, load_context, existing_object_id)
-            if obj.is_hydrated:
+            if obj._is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
         async def _load(tag, obj):

@@ -33,15 +33,15 @@ def function_calling_method(x, y, z):
 
 @app.function()
 def check_sibling_hydration(x):
-    assert square.is_hydrated
-    assert fastapi_app.is_hydrated
+    assert square._is_hydrated
+    assert fastapi_app._is_hydrated
     assert fastapi_app.get_web_url()
-    assert fun_returning_gen.is_hydrated
-    assert fun_returning_gen.is_generator
+    assert fun_returning_gen._is_hydrated
+    assert fun_returning_gen._is_generator_
 
     # make sure the underlying service function for the class is hydrated:
-    assert NonParamCls._get_class_service_function().is_hydrated  # type: ignore
-    assert ParamCls._get_class_service_function().is_hydrated  # type: ignore
+    assert NonParamCls._get_class_service_function()._is_hydrated  # type: ignore
+    assert ParamCls._get_class_service_function()._is_hydrated  # type: ignore
 
     # notably not hydrated at this point:
     # NonParamCls()  (instance of parameter-less class - note that hydration shouldn't require any roundtrips for this)
@@ -70,7 +70,7 @@ class NonParamCls:
         from fastapi import FastAPI
 
         k_at_construction = self._k  # expected to be 111
-        hydrated_at_contruction = square.is_hydrated
+        hydrated_at_contruction = square._is_hydrated
         web_app = FastAPI()
 
         @web_app.get("/")

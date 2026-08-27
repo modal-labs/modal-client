@@ -271,12 +271,12 @@ async def test_unhydrate(servicer, client):
 
     f = app.function()(dummy)
 
-    assert not f.is_hydrated
+    assert not f._is_hydrated
     async with app.run(client=client):
-        assert f.is_hydrated
+        assert f._is_hydrated
 
     # After app finishes, it should unhydrate
-    assert not f.is_hydrated
+    assert not f._is_hydrated
 
 
 def test_keyboard_interrupt(servicer, client):

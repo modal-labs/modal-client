@@ -4,7 +4,7 @@ import io
 import pickle
 import typing
 from inspect import Parameter
-from typing import Any, cast
+from typing import Any
 
 from modal._traceback import extract_traceback
 from modal.config import config
@@ -43,11 +43,8 @@ class Pickler(cloudpickle.Pickler):
 
         if isinstance(obj, _Object):
             flag = "_o"
-            is_hydrated = obj._is_hydrated
         elif isinstance(obj, Object):
             flag = "o"
-            inner = cast(_Object, synchronizer._translate_in(obj))
-            is_hydrated = inner._is_hydrated
         elif isinstance(obj, PartialFunction):
             # Special case for PartialObject since it's a synchronicity wrapped object
             # that's set on serialized classes.
@@ -70,7 +67,7 @@ class Pickler(cloudpickle.Pickler):
         else:
             return
 
-        if not is_hydrated:
+        if not obj._is_hydrated:
             raise InvalidError(f"Can't serialize object {obj} which hasn't been hydrated.")
 
         return (obj.object_id, flag, obj._get_metadata())

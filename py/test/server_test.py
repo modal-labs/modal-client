@@ -640,7 +640,7 @@ def test_server_with_proxy(client, servicer):
 def test_server_from_name(client, servicer):
     server_app.deploy(client=client)
     my_server = Server.from_name("server-test-app", "BasicServer", client=client)
-    assert not my_server._get_service_function().is_hydrated
+    assert not my_server._get_service_function()._is_hydrated
     url = my_server.get_url()
     assert url == "https://modal-labs--basicserver.modal-us-east.modal.direct"
 

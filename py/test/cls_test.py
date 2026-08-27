@@ -565,7 +565,7 @@ def test_from_name_lazy_method_hydration(client, servicer):
 
     # Check that function properties are preserved
     with servicer.intercept() as ctx:
-        assert obj.bar.is_generator is False
+        assert obj.bar._is_generator_ is False
         assert len(ctx.get_requests("FunctionBindParams")) == 1  # to determine this attribute, hydration is needed
 
     # Make sure we can methods

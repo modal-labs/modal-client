@@ -8,15 +8,14 @@ import time
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast, get_args
+from typing import Any, get_args
 
 import click
 from click import ClickException
 from typing_extensions import TypedDict
 
 from .._environments import ensure_env
-from .._utils.async_utils import synchronizer
-from ..app import App, LocalEntrypoint, _App
+from ..app import App, LocalEntrypoint
 from ..cls import _get_class_constructor_signature
 from ..config import config
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
@@ -261,12 +260,12 @@ def _get_signature(func: typing.Any) -> inspect.Signature:
 
 
 def _get_click_command_for_function(app: App, function: Function, ctx: click.Context):
-    if function.is_generator:
+    if function._is_generator_:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    assert function.info.raw_f
-    sig: inspect.Signature = _get_signature(function.info.raw_f)
-    type_hints = safe_get_type_hints(function.info.raw_f)
+    assert function._info_.raw_f
+    sig: inspect.Signature = _get_signature(function._info_.raw_f)
+    type_hints = safe_get_type_hints(function._info_.raw_f)
     signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     def _inner(args, click_kwargs):
@@ -467,10 +466,8 @@ class RunGroup(ModalGroup):
             raise ClickException(f"{help_header}\n\n{help_footer}")
 
         app = _get_runnable_app(runnable)
-        inner = cast(_App, synchronizer._translate_in(app))
-
-        if inner._description is None:
-            inner._description = _get_clean_app_description(func_ref)
+        if app.description is None:
+            app.description = _get_clean_app_description(func_ref)
 
         if isinstance(runnable, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(app, runnable)
@@ -674,10 +671,9 @@ def serve(
 
     OutputManager.get().set_timestamps(timestamps)
     app = import_app_from_ref(import_ref, base_cmd="modal serve")
-    inner = cast(_App, synchronizer._translate_in(app))
 
-    if inner._description is None:
-        inner._description = _get_clean_app_description(app_ref)
+    if app.description is None:
+        app.description = _get_clean_app_description(app_ref)
     with serve_app(app, import_ref, name=name, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]

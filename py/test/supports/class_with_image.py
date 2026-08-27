@@ -9,4 +9,4 @@ app = modal.App(image=image, include_source=False)
 class ClassWithImage:
     @modal.method()
     def image_is_hydrated(self):
-        return image.is_hydrated
+        return image._is_hydrated

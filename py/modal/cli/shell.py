@@ -182,9 +182,9 @@ def _function_spec_from_ref(ref: str, use_module_mode: bool) -> _FunctionSpec:
     if isinstance(runnable, MethodReference):
         # TODO: let users specify a class instead of a method, since they use the same environment
         class_service_function = runnable.cls._get_class_service_function()
-        return class_service_function.spec
+        return class_service_function._spec_
     elif isinstance(runnable, Function):
-        return runnable.spec
+        return runnable._spec_
 
     raise ValueError("Referenced entity is not a Modal Function or Cls")
 
