@@ -1100,7 +1100,7 @@ export class FunctionLogsManager extends LogsManager implements FunctionLogs {
    * }
    * ```
    */
-  stream(params: LogStreamParams = {}): AsyncIterable<LogEntry> {
+  stream(params: FunctionLogStreamParams = {}): AsyncIterable<LogEntry> {
     return super.stream(params);
   }
 }
