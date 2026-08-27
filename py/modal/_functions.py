@@ -46,6 +46,7 @@ from ._utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 from ._utils.blob_utils import MAX_ASYNC_OBJECT_SIZE_BYTES, MAX_OBJECT_SIZE_BYTES
+from ._utils.deprecation import with_deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -1194,7 +1195,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         return obj
 
-    from_local = _from_local
+    from_local = with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.from_local` is deprecated and will be removed in `modal` version 1.6.0",
+    )(_from_local)
     """mdmd:hidden"""
 
     async def _update_autoscaler(
@@ -1389,6 +1393,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.tag` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def tag(self) -> str:
         """mdmd:hidden"""
         return self._tag_
@@ -1407,12 +1415,20 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._app
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.stub` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def stub(self) -> "modal.app._App":
         """mdmd:hidden"""
         # Deprecated soon, only for backwards compatibility
         return self.app
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.info` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def info(self) -> FunctionInfo:
         """mdmd:hidden"""
         return self._info_
@@ -1423,6 +1439,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._info
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.spec` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def spec(self) -> _FunctionSpec:
         """mdmd:hidden"""
         return self._spec_
@@ -1443,7 +1463,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert hasattr(self, "_raw_f") and hasattr(self, "_build_args") and self._raw_f is not None
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
-    get_build_def = _get_build_def
+    get_build_def = with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.get_build_def` is deprecated and will be removed in `modal` version 1.6.0",
+    )(_get_build_def)
     """mdmd:hidden"""
 
     # Live handle methods
@@ -1693,6 +1716,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._apply_dynamic_config(options, "with_batching")
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.is_generator` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     async def is_generator(self) -> bool:
         """mdmd:hidden"""
         return await self._is_generator_
@@ -2032,6 +2059,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fc._function_id = self.object_id
         return fc
 
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`Function.get_raw_f` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function.
 

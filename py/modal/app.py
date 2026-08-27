@@ -33,10 +33,7 @@ from ._partial_function import (
 from ._server import _Server, validate_http_server_config
 from ._supports_logs import _LogQueryData
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import (
-    deprecation_warning,
-    handle_deprecated_parameters,
-)
+from ._utils.deprecation import deprecation_warning, handle_deprecated_parameters, with_deprecation_warning
 from ._utils.function_utils import (
     FunctionInfo,
     is_flash_object,
@@ -274,6 +271,10 @@ class _App:
         return self._name
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`App.is_interactive` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def is_interactive(self) -> bool:
         """mdmd:hidden"""
         return self._is_interactive_
@@ -383,6 +384,11 @@ class _App:
             raise InvalidError("App is not running")
         return f"https://modal.com/id/{self._app_id}"
 
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`App.set_description` is deprecated and will be removed in `modal` version 1.6.0. "
+        "Set `App.description` directly instead",
+    )
     def set_description(self, description: str):
         """mdmd:hidden
         Set the description of the App before it starts running.
@@ -396,6 +402,10 @@ class _App:
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`App.image` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def image(self) -> _Image:
         """mdmd:hidden
         Retrieve the Image that will be used as the default for any Functions registered to the App.
@@ -668,6 +678,10 @@ class _App:
                 obj._hydrate(object_id, client, handle_metadata)
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`App.registered_functions` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def registered_functions(self) -> dict[str, _Function]:
         """mdmd:hidden
         All modal.Function objects registered on the app.
@@ -680,6 +694,10 @@ class _App:
         return self._local_state.functions
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`App.registered_classes` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def registered_classes(self) -> dict[str, _Cls]:
         """mdmd:hidden
         All modal.Cls objects registered on the app.
@@ -692,6 +710,10 @@ class _App:
         return self._local_state.classes
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`App.registered_entrypoints` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
         """mdmd:hidden
         All local CLI entrypoints registered on the app.
@@ -703,6 +725,10 @@ class _App:
         return self._local_state.local_entrypoints
 
     @property
+    @with_deprecation_warning(
+        (2026, 8, 26),
+        "`App.registered_web_endpoints` is deprecated and will be removed in `modal` version 1.6.0",
+    )
     def registered_web_endpoints(self) -> list[str]:
         """mdmd:hidden
         Names of Web Functions registered on the app.

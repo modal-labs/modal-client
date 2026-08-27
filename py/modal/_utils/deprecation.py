@@ -118,3 +118,32 @@ def handle_deprecated_parameters(func: Callable[P, R]) -> Callable[P, R]:
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def with_deprecation_warning(
+    deprecated_on: tuple[int, int, int], msg: str, *, show_source: bool = True
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def decorator(method: Callable[P, R]) -> Callable[P, R]:
+        is_static = False
+        if isinstance(method, staticmethod):
+            is_static = True
+            method = method.__wrapped__
+
+        # Note: despite `wrapped` being synchronous, this also works with async functions, in that if
+        # a function returns a coroutine, then this function will also return a coroutine. So, when
+        # called from an async context, the return can be awaited without issues. However, code that
+        # introspects `wrapped` with, e.g. inspect.iscoroutinefunction(), will not pick up on the
+        # fact that it returns a coroutine unless it unwraps `wrapped` and tries to introspect `method`
+        # directly. Synchronicity already does this (https://github.com/modal-labs/synchronicity/blob/441085df7dfa953c86304d06da5e0e74cebbe858/src/synchronicity/async_wrap.py#L42-L57),
+        # but this is fixable on Python >= 3.12, which adds `inspect.markcoroutinefunction`.
+        @functools.wraps(method)
+        def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+            deprecation_warning(deprecated_on, msg, show_source=show_source)
+            return method(*args, **kwargs)
+
+        if is_static:
+            return staticmethod(wrapped)
+
+        return wrapped
+
+    return decorator

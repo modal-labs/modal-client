@@ -9,11 +9,11 @@ from typing import ClassVar
 from google.protobuf.message import Message
 from typing_extensions import Self
 
-from modal._traceback import suppress_tb_frame
-
 from ._load_context import LoadContext
 from ._resolver import Resolver
+from ._traceback import suppress_tb_frame
 from ._utils.async_utils import TaskContext, aclosing
+from ._utils.deprecation import deprecation_warning
 from .client import _Client
 from .config import config, logger
 from .exception import ExecutionError, InvalidError
@@ -290,8 +290,17 @@ class _Object:
         return self._rep
 
     @property
+    def _class_name(self):
+        return self.__class__.__name__.removeprefix("_")
+
+    @property
     def local_uuid(self):
         """mdmd:hidden"""
+        deprecation_warning(
+            (2026, 8, 26),
+            f"`{self._class_name}.local_uuid` is deprecated and will be removed in `modal` version 1.6.0",
+        )
+
         return self._local_uuid
 
     @property
@@ -316,11 +325,21 @@ class _Object:
     @property
     def is_hydrated(self) -> bool:
         """mdmd:hidden"""
+        deprecation_warning(
+            (2026, 8, 26),
+            f"`{self._class_name}.is_hydrated` is deprecated and will be removed in `modal` version 1.6.0",
+        )
+
         return self._is_hydrated
 
     @property
     def deps(self) -> Callable[..., Sequence["_Object"]]:
         """mdmd:hidden"""
+        deprecation_warning(
+            (2026, 8, 26),
+            f"`{self._class_name}.deps` is deprecated and will be removed in `modal` version 1.6.0",
+        )
+
         return self._deps_
 
     @property

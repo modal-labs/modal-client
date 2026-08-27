@@ -14,6 +14,11 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
   `Environment.roles.list(exclude_default=True)` list only users and service users who have been
   directly assigned a role for the Environment.
 - Added implicit OAuth refresh token authentication through the `MODAL_OAUTH_REFRESH_TOKEN`, `MODAL_OAUTH_CLIENT_ID`, and `MODAL_OAUTH_CLIENT_SECRET` environment variables, with [`modal.Client.from_oauth_credentials()`](/docs/sdk/py/latest/Client#from_oauth_credentials) available for explicitly constructed clients.
+- Added deprecation warnings for the following methods:
+  - `_Object.deps`, `_Object.is_hydrated`, `_Object.local_uuid`
+  - `_Function.from_local`, `_Function.get_build_def`, `_Function.get_raw_f`, `_Function.info`, `_Function.is_generator`, `_Function.spec`, `_Function.stub`, `_Function.tag`
+  - `_App.image`, `_App.is_interactive`, `_App.registered_classes`, `_App.registered_entrypoints`, `_App.registered_functions`, `_App.registered_web_endpoints`, `_App.set_description`
+  - `_Cls.validate_construction_mechanism`, `_Cls.from_local`
 
 ## JS
 
