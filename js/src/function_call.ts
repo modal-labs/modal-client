@@ -4,6 +4,7 @@ import { FunctionCallFromIdRequest } from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
 import { ControlPlaneInvocation } from "./invocation";
 import { checkForRenamedParams } from "./validation";
+import { FunctionCallLogsManager } from "./logs";
 
 /**
  * Service for managing {@link FunctionCall}s.
@@ -55,9 +56,7 @@ export type FunctionCallCancelParams = {
 export class FunctionCall {
   readonly functionCallId: string;
   #client: ModalClient;
-  // eslint-disable-next-line
   #appId: string;
-  // eslint-disable-next-line
   #functionId: string;
 
   /** @ignore */
@@ -92,5 +91,25 @@ export class FunctionCall {
       functionCallId: this.functionCallId,
       terminateContainers: params.terminateContainers,
     });
+  }
+
+  /**
+   * Access logs for this FunctionCall.
+   *
+   * Use {@link FunctionCallLogsManager#fetch fetch()} to read logs from a UTC
+   * time range, {@link FunctionCallLogsManager#tail tail()} to read the most
+   * recent logs, and {@link FunctionCallLogsManager#stream stream()} to follow
+   * new logs as they arrive.
+   *
+   * See also: [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs)
+   * for CLI access to logs for an App.
+   */
+  get logs(): FunctionCallLogsManager {
+    return new FunctionCallLogsManager(
+      this.#client,
+      this.functionCallId,
+      this.#appId,
+      this.#functionId,
+    );
   }
 }

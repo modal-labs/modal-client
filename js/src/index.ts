@@ -133,4 +133,17 @@ export {
 export { ModalClient, type ModalClientParams } from "./client";
 export { type Profile } from "./config";
 export { type Logger, type LogLevel } from "./logger";
+export {
+  FunctionLogsManager,
+  FunctionCallLogsManager,
+  type LogEntry,
+  type FunctionLogFetchParams as LogFetchParams,
+  type LogSource,
+  type FunctionLogFetchParams,
+  type FunctionCallLogFetchParams,
+  type FunctionLogTailParams,
+  type FunctionCallLogTailParams,
+  type FunctionLogStreamParams,
+  type FunctionCallLogStreamParams,
+} from "./logs";
 export { checkForRenamedParams } from "./validation";

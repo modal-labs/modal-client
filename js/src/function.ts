@@ -19,6 +19,7 @@ import { FunctionCall } from "./function_call";
 import { InternalFailure, InvalidError, NotFoundError } from "./errors";
 import { cborEncode } from "./serialization";
 import { ClientError, Status } from "nice-grpc";
+import { FunctionLogsManager } from "./logs";
 import {
   ControlPlaneInvocation,
   InputPlaneInvocation,
@@ -467,6 +468,25 @@ export class Function_ {
         `A webhook Function cannot be invoked for remote execution with '.${fnName}'. Invoke this Function via its web url '${this.#handleMetadata.webUrl}' instead.`,
       );
     }
+  }
+
+  /**
+   * Access logs for this Function.
+   *
+   * Use {@link FunctionLogsManager#fetch fetch()} to read logs from a UTC time
+   * range, {@link FunctionLogsManager#tail tail()} to read the most recent
+   * logs, and {@link FunctionLogsManager#stream stream()} to follow new logs as
+   * they arrive.
+   *
+   * See also: [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs)
+   * for CLI access to logs for an App.
+   */
+  get logs(): FunctionLogsManager {
+    return new FunctionLogsManager(
+      this.#client,
+      this.functionId,
+      this.#handleMetadata?.appId ?? "",
+    );
   }
 
   /** Override the static Function configuration at runtime. */
