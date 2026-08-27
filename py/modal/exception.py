@@ -2,7 +2,7 @@
 """
 Modal-specific exception types.
 
-## Notes on `grpclib.GRPCError` migration
+**Notes on `grpclib.GRPCError` migration**
 
 Historically, the Modal SDK could propagate `grpclib.GRPCError` exceptions out
 to user code.  As of v1.3, we are in the process of gracefully migrating to
@@ -82,14 +82,17 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
     _grpc_details: Any
 
     def __init__(self, message: str | None = None):
+        """mdmd:hidden"""
         # Override GRPCError's init and repr to behave more like a regular Exception
         # (We don't customize these anywhere in our custom error types currently).
         self._message = message or ""
 
     def __repr__(self) -> str:
+        """mdmd:hidden"""
         return f"{type(self).__name__}({self._message!r})"
 
     def _attribute_warning(self) -> None:
+        """mdmd:hidden"""
         from ._utils.deprecation import deprecation_warning  # Avoid circular import
 
         exc_type = type(self).__name__
@@ -102,6 +105,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
 
     @property
     def message(self) -> str:
+        """mdmd:hidden"""
         self._attribute_warning()
         return self._grpc_message
 
@@ -111,6 +115,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
 
     @property
     def status(self) -> grpclib.Status:
+        """mdmd:hidden"""
         self._attribute_warning()
         return self._grpc_status
 
@@ -120,6 +125,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
 
     @property
     def details(self) -> Any:
+        """mdmd:hidden"""
         self._attribute_warning()
         return self._grpc_details
 
@@ -276,6 +282,7 @@ class _CliUserExecutionError(Exception):
     """
 
     def __init__(self, user_source: str):
+        """mdmd:hidden"""
         # `user_source` should be the filepath for the user code that is the source of the exception.
         # This is used by our exception handler to show the traceback starting from that point.
         self.user_source = user_source
@@ -389,8 +396,12 @@ class SandboxFilesystemPathAlreadyExistsError(SandboxFilesystemError):
 
 
 class ImageBuildError(RemoteError):
-    """Raised when an image build fails."""
+    """Raised when an Image build fails.
+
+    Use the `image_id` attribute to reference the failed Image, e.g. to fetch build logs.
+    """
 
     def __init__(self, message: str, image_id: str):
+        """mdmd:hidden"""
         super().__init__(message)
         self.image_id = image_id
