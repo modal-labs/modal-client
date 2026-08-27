@@ -3258,6 +3258,7 @@ type TaskMountDirectoryRequest struct {
 	xxx_hidden_Path                          []byte                 `protobuf:"bytes,2,opt,name=path,proto3"`
 	xxx_hidden_ImageId                       string                 `protobuf:"bytes,3,opt,name=image_id,json=imageId,proto3"`
 	xxx_hidden_CustomerSuppliedEncryptionKey []byte                 `protobuf:"bytes,4,opt,name=customer_supplied_encryption_key,json=customerSuppliedEncryptionKey,proto3,oneof"`
+	xxx_hidden_ContainerId                   string                 `protobuf:"bytes,5,opt,name=container_id,json=containerId,proto3"`
 	XXX_raceDetectHookData                   protoimpl.RaceDetectHookData
 	XXX_presence                             [1]uint32
 	unknownFields                            protoimpl.UnknownFields
@@ -3317,6 +3318,13 @@ func (x *TaskMountDirectoryRequest) GetCustomerSuppliedEncryptionKey() []byte {
 	return nil
 }
 
+func (x *TaskMountDirectoryRequest) GetContainerId() string {
+	if x != nil {
+		return x.xxx_hidden_ContainerId
+	}
+	return ""
+}
+
 func (x *TaskMountDirectoryRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -3337,7 +3345,11 @@ func (x *TaskMountDirectoryRequest) SetCustomerSuppliedEncryptionKey(v []byte) {
 		v = []byte{}
 	}
 	x.xxx_hidden_CustomerSuppliedEncryptionKey = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+}
+
+func (x *TaskMountDirectoryRequest) SetContainerId(v string) {
+	x.xxx_hidden_ContainerId = v
 }
 
 func (x *TaskMountDirectoryRequest) HasCustomerSuppliedEncryptionKey() bool {
@@ -3361,6 +3373,8 @@ type TaskMountDirectoryRequest_builder struct {
 	// Customer-supplied encryption key used to decrypt CSEK-encrypted image metadata keys.
 	// This key is not persisted by Modal.
 	CustomerSuppliedEncryptionKey []byte
+	// Fully qualified target container ID. Empty targets the main container.
+	ContainerId string
 }
 
 func (b0 TaskMountDirectoryRequest_builder) Build() *TaskMountDirectoryRequest {
@@ -3371,9 +3385,10 @@ func (b0 TaskMountDirectoryRequest_builder) Build() *TaskMountDirectoryRequest {
 	x.xxx_hidden_Path = b.Path
 	x.xxx_hidden_ImageId = b.ImageId
 	if b.CustomerSuppliedEncryptionKey != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
 		x.xxx_hidden_CustomerSuppliedEncryptionKey = b.CustomerSuppliedEncryptionKey
 	}
+	x.xxx_hidden_ContainerId = b.ContainerId
 	return m0
 }
 
@@ -3626,6 +3641,7 @@ type TaskSnapshotDirectoryRequest struct {
 	xxx_hidden_SnapshotId                    string                 `protobuf:"bytes,3,opt,name=snapshot_id,json=snapshotId,proto3"`
 	xxx_hidden_TtlSeconds                    int64                  `protobuf:"varint,4,opt,name=ttl_seconds,json=ttlSeconds,proto3,oneof"`
 	xxx_hidden_CustomerSuppliedEncryptionKey []byte                 `protobuf:"bytes,5,opt,name=customer_supplied_encryption_key,json=customerSuppliedEncryptionKey,proto3,oneof"`
+	xxx_hidden_ContainerId                   string                 `protobuf:"bytes,6,opt,name=container_id,json=containerId,proto3"`
 	XXX_raceDetectHookData                   protoimpl.RaceDetectHookData
 	XXX_presence                             [1]uint32
 	unknownFields                            protoimpl.UnknownFields
@@ -3692,6 +3708,13 @@ func (x *TaskSnapshotDirectoryRequest) GetCustomerSuppliedEncryptionKey() []byte
 	return nil
 }
 
+func (x *TaskSnapshotDirectoryRequest) GetContainerId() string {
+	if x != nil {
+		return x.xxx_hidden_ContainerId
+	}
+	return ""
+}
+
 func (x *TaskSnapshotDirectoryRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -3709,7 +3732,7 @@ func (x *TaskSnapshotDirectoryRequest) SetSnapshotId(v string) {
 
 func (x *TaskSnapshotDirectoryRequest) SetTtlSeconds(v int64) {
 	x.xxx_hidden_TtlSeconds = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
 }
 
 func (x *TaskSnapshotDirectoryRequest) SetCustomerSuppliedEncryptionKey(v []byte) {
@@ -3717,7 +3740,11 @@ func (x *TaskSnapshotDirectoryRequest) SetCustomerSuppliedEncryptionKey(v []byte
 		v = []byte{}
 	}
 	x.xxx_hidden_CustomerSuppliedEncryptionKey = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 6)
+}
+
+func (x *TaskSnapshotDirectoryRequest) SetContainerId(v string) {
+	x.xxx_hidden_ContainerId = v
 }
 
 func (x *TaskSnapshotDirectoryRequest) HasTtlSeconds() bool {
@@ -3766,6 +3793,8 @@ type TaskSnapshotDirectoryRequest_builder struct {
 	// Customer-supplied encryption key used to encrypt the resulting image's data and tree
 	// metadata keys. This key is not persisted by Modal.
 	CustomerSuppliedEncryptionKey []byte
+	// Fully qualified target container ID. Empty targets the main container.
+	ContainerId string
 }
 
 func (b0 TaskSnapshotDirectoryRequest_builder) Build() *TaskSnapshotDirectoryRequest {
@@ -3776,13 +3805,14 @@ func (b0 TaskSnapshotDirectoryRequest_builder) Build() *TaskSnapshotDirectoryReq
 	x.xxx_hidden_Path = b.Path
 	x.xxx_hidden_SnapshotId = b.SnapshotId
 	if b.TtlSeconds != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 6)
 		x.xxx_hidden_TtlSeconds = *b.TtlSeconds
 	}
 	if b.CustomerSuppliedEncryptionKey != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 6)
 		x.xxx_hidden_CustomerSuppliedEncryptionKey = b.CustomerSuppliedEncryptionKey
 	}
+	x.xxx_hidden_ContainerId = b.ContainerId
 	return m0
 }
 
@@ -4190,11 +4220,12 @@ func (b0 TaskSnapshotMemoryResponse_builder) Build() *TaskSnapshotMemoryResponse
 }
 
 type TaskUnmountDirectoryRequest struct {
-	state             protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
-	xxx_hidden_Path   []byte                 `protobuf:"bytes,2,opt,name=path,proto3"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId      string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_Path        []byte                 `protobuf:"bytes,2,opt,name=path,proto3"`
+	xxx_hidden_ContainerId string                 `protobuf:"bytes,3,opt,name=container_id,json=containerId,proto3"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *TaskUnmountDirectoryRequest) Reset() {
@@ -4236,6 +4267,13 @@ func (x *TaskUnmountDirectoryRequest) GetPath() []byte {
 	return nil
 }
 
+func (x *TaskUnmountDirectoryRequest) GetContainerId() string {
+	if x != nil {
+		return x.xxx_hidden_ContainerId
+	}
+	return ""
+}
+
 func (x *TaskUnmountDirectoryRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -4247,11 +4285,17 @@ func (x *TaskUnmountDirectoryRequest) SetPath(v []byte) {
 	x.xxx_hidden_Path = v
 }
 
+func (x *TaskUnmountDirectoryRequest) SetContainerId(v string) {
+	x.xxx_hidden_ContainerId = v
+}
+
 type TaskUnmountDirectoryRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	TaskId string
 	Path   []byte
+	// Fully qualified target container ID. Empty targets the main container.
+	ContainerId string
 }
 
 func (b0 TaskUnmountDirectoryRequest_builder) Build() *TaskUnmountDirectoryRequest {
@@ -4260,6 +4304,7 @@ func (b0 TaskUnmountDirectoryRequest_builder) Build() *TaskUnmountDirectoryReque
 	_, _ = b, x
 	x.xxx_hidden_TaskId = b.TaskId
 	x.xxx_hidden_Path = b.Path
+	x.xxx_hidden_ContainerId = b.ContainerId
 	return m0
 }
 
@@ -4402,12 +4447,13 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x14TaskExecWaitResponse\x12\x14\n" +
 	"\x04code\x18\x01 \x01(\x05H\x00R\x04code\x12\x18\n" +
 	"\x06signal\x18\x02 \x01(\x05H\x00R\x06signalB\r\n" +
-	"\vexit_status\"\xd6\x01\n" +
+	"\vexit_status\"\xf9\x01\n" +
 	"\x19TaskMountDirectoryRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x19\n" +
 	"\bimage_id\x18\x03 \x01(\tR\aimageId\x12L\n" +
-	" customer_supplied_encryption_key\x18\x04 \x01(\fH\x00R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01B#\n" +
+	" customer_supplied_encryption_key\x18\x04 \x01(\fH\x00R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01\x12!\n" +
+	"\fcontainer_id\x18\x05 \x01(\tR\vcontainerIdB#\n" +
 	"!_customer_supplied_encryption_key\"V\n" +
 	"\x18TaskReloadVolumesRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
@@ -4416,7 +4462,7 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x1bTaskSetNetworkAccessRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12B\n" +
 	"\x0enetwork_access\x18\x02 \x01(\v2\x1b.modal.client.NetworkAccessR\rnetworkAccess\"\x1e\n" +
-	"\x1cTaskSetNetworkAccessResponse\"\x95\x02\n" +
+	"\x1cTaskSetNetworkAccessResponse\"\xb8\x02\n" +
 	"\x1cTaskSnapshotDirectoryRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x1f\n" +
@@ -4424,7 +4470,8 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"snapshotId\x12$\n" +
 	"\vttl_seconds\x18\x04 \x01(\x03H\x00R\n" +
 	"ttlSeconds\x88\x01\x01\x12L\n" +
-	" customer_supplied_encryption_key\x18\x05 \x01(\fH\x01R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01B\x0e\n" +
+	" customer_supplied_encryption_key\x18\x05 \x01(\fH\x01R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01\x12!\n" +
+	"\fcontainer_id\x18\x06 \x01(\tR\vcontainerIdB\x0e\n" +
 	"\f_ttl_secondsB#\n" +
 	"!_customer_supplied_encryption_key\":\n" +
 	"\x1dTaskSnapshotDirectoryResponse\x12\x19\n" +
@@ -4446,10 +4493,11 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\"=\n" +
 	"\x1aTaskSnapshotMemoryResponse\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
-	"snapshotId\"J\n" +
+	"snapshotId\"m\n" +
 	"\x1bTaskUnmountDirectoryRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\fR\x04path*p\n" +
+	"\x04path\x18\x02 \x01(\fR\x04path\x12!\n" +
+	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId*p\n" +
 	"\x1aSandboxStdioFileDescriptor\x12(\n" +
 	"$SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT\x10\x00\x12(\n" +
 	"$SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR\x10\x01*\x81\x01\n" +

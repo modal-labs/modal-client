@@ -290,6 +290,8 @@ message TaskMountDirectoryRequest {
   // Customer-supplied encryption key used to decrypt CSEK-encrypted image metadata keys.
   // This key is not persisted by Modal.
   optional bytes customer_supplied_encryption_key = 4;
+  // Fully qualified target container ID. Empty targets the main container.
+  string container_id = 5;
 }
 
 message TaskReloadVolumesRequest {
@@ -329,6 +331,8 @@ message TaskSnapshotDirectoryRequest {
   // Customer-supplied encryption key used to encrypt the resulting image's data and tree
   // metadata keys. This key is not persisted by Modal.
   optional bytes customer_supplied_encryption_key = 5;
+  // Fully qualified target container ID. Empty targets the main container.
+  string container_id = 6;
 }
 
 message TaskSnapshotDirectoryResponse {
@@ -370,6 +374,8 @@ message TaskSnapshotMemoryResponse {
 message TaskUnmountDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
+  // Fully qualified target container ID. Empty targets the main container.
+  string container_id = 3;
 }
 
 service TaskCommandRouter {
