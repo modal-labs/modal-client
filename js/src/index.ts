@@ -30,6 +30,7 @@ export {
   SandboxFilesystemNotFoundError,
   SandboxFilesystemPathAlreadyExistsError,
   SandboxFilesystemPermissionError,
+  SnapshotCreationError,
 } from "./errors";
 export {
   Function_,
@@ -76,6 +77,7 @@ export type {
   SandboxTerminateParams,
   SandboxCreateConnectCredentials,
   SandboxCreateConnectTokenParams,
+  SandboxExperimentalGetExitSnapshotParams,
   SandboxMountImageParams,
   SandboxReloadVolumesParams,
   SandboxSnapshotDirectoryParams,

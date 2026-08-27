@@ -24,8 +24,11 @@ import {
   AppGetOrCreateResponse,
   SandboxCreateResponse,
   SandboxCreateV2Response,
+  SandboxGetExitSnapshotResponse_ErrorCode,
   SandboxRestoreV2Response,
   SandboxSnapshotGetResponse,
+  RPCRetryPolicy,
+  RPCStatus,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
@@ -37,10 +40,13 @@ import {
 import {
   AlreadyExistsError,
   ConflictError,
+  ExecutionError,
   InvalidError,
+  NotFoundError,
+  SnapshotCreationError,
   TimeoutError,
 } from "modal";
-import { ClientError, Status } from "nice-grpc";
+import { ClientError, Metadata, Status } from "nice-grpc";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -2765,4 +2771,345 @@ test("experimentalFromSnapshot fetches the snapshot version when unknown", async
   );
   const sb = await mc.sandboxes.experimentalFromSnapshot(snapshot);
   expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+});
+
+test("experimentalGetExitSnapshot routes V1 Sandboxes to SandboxGetExitSnapshot", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshot", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    expect(req.timeout).toBe(0);
+    return { success: { imageId: "im-exit-snapshot-123" } };
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const image = await sb.experimentalGetExitSnapshot({ timeoutMs: 0 });
+  expect(image.imageId).toBe("im-exit-snapshot-123");
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot routes V2 Sandboxes to SandboxGetExitSnapshotV2", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    expect(req.timeout).toBe(0);
+    return { success: { imageId: "im-exit-snapshot-123" } };
+  });
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const image = await sb.experimentalGetExitSnapshot({ timeoutMs: 0 });
+  expect(image.imageId).toBe("im-exit-snapshot-123");
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot polls until the snapshot is ready", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", (req: any) => {
+    expect(req.timeout).toBe(10);
+    return { pending: {} };
+  });
+  mock.handleUnary("/SandboxGetExitSnapshotV2", (req: any) => {
+    expect(req.timeout).toBe(10);
+    return { success: { imageId: "im-exit-snapshot-123" } };
+  });
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const image = await sb.experimentalGetExitSnapshot();
+  expect(image.imageId).toBe("im-exit-snapshot-123");
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot works after detach", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", (req: any) => {
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
+    return { success: { imageId: "im-exit-snapshot-123" } };
+  });
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  sb.detach();
+
+  const image = await sb.experimentalGetExitSnapshot({ timeoutMs: 0 });
+  expect(image.imageId).toBe("im-exit-snapshot-123");
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot repeats long polls", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  for (let i = 0; i < 3; i++) {
+    mock.handleUnary("/SandboxGetExitSnapshotV2", (req: any) => {
+      expect(req.timeout).toBeGreaterThan(9);
+      expect(req.timeout).toBeLessThanOrEqual(10);
+      return { pending: {} };
+    });
+  }
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => ({
+    success: { imageId: "im-exit-snapshot-123" },
+  }));
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const image = await sb.experimentalGetExitSnapshot({ timeoutMs: 30_000 });
+  expect(image.imageId).toBe("im-exit-snapshot-123");
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot enforces the aggregate deadline", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  for (let i = 0; i < 3; i++) {
+    mock.handleUnary("/SandboxGetExitSnapshotV2", async (req: any) => {
+      expect(req.timeout).toBeGreaterThanOrEqual(0);
+      expect(req.timeout).toBeLessThanOrEqual(0.05);
+      await new Promise((resolve) => setTimeout(resolve, req.timeout * 1000));
+      return { pending: {} };
+    });
+  }
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: 50 }),
+  ).rejects.toThrow(TimeoutError);
+});
+
+test("experimentalGetExitSnapshot maps not-enabled to InvalidError", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
+      Status.INVALID_ARGUMENT,
+      "Exit snapshot is not enabled for this sandbox",
+    );
+  });
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: 0 }),
+  ).rejects.toThrow(InvalidError);
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot maps a missing Sandbox to NotFoundError", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
+      Status.NOT_FOUND,
+      "Sandbox not found",
+    );
+  });
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: 0 }),
+  ).rejects.toThrow(NotFoundError);
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot surfaces an internal error outcome", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => ({
+    error: {
+      errorCode: SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_INTERNAL,
+      message: "malformed snapshot result",
+    },
+  }));
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const err = await sb
+    .experimentalGetExitSnapshot({ timeoutMs: 0 })
+    .catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(ExecutionError);
+  expect((err as Error).message).toBe("malformed snapshot result");
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot times out on an immediate check while pending", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", (req: any) => {
+    expect(req.timeout).toBe(0);
+    return { pending: {} };
+  });
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: 0 }),
+  ).rejects.toThrow(TimeoutError);
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot maps a failed snapshot to SnapshotCreationError", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => ({
+    error: {
+      errorCode: SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_TIMEOUT,
+      message: "no exit snapshot",
+    },
+  }));
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: 0 }),
+  ).rejects.toThrow(SnapshotCreationError);
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot rejects a negative timeout", async () => {
+  const { mockClient: mc } = createMockModalClients();
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: -1 }),
+  ).rejects.toThrow(InvalidError);
+});
+
+test("experimentalGetExitSnapshot absorbs transient poll failures", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  for (const code of [Status.UNAVAILABLE, Status.INTERNAL]) {
+    mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+      throw new ClientError(
+        "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
+        code,
+        "server hiccup",
+      );
+    });
+  }
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => ({
+    success: { imageId: "im-exit-snapshot-123" },
+  }));
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const image = await sb.experimentalGetExitSnapshot();
+  expect(image.imageId).toBe("im-exit-snapshot-123");
+  // Transient failures below the consecutive limit are absorbed by re-polling.
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot surfaces repeated poll failures", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  for (let i = 0; i < 3; i++) {
+    mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+      throw new ClientError(
+        "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
+        Status.UNAVAILABLE,
+        "server restarting",
+      );
+    });
+  }
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const err = await sb.experimentalGetExitSnapshot().catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(ClientError);
+  expect((err as ClientError).code).toBe(Status.UNAVAILABLE);
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot maps a poll failure after the deadline to TimeoutError", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  for (let i = 0; i < 2; i++) {
+    mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+      throw new ClientError(
+        "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
+        Status.UNAVAILABLE,
+        "server restarting",
+      );
+    });
+  }
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  // Once the caller's own budget is gone, a failed poll is a caller timeout.
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: 50 }),
+  ).rejects.toThrow(TimeoutError);
+  mock.assertExhausted();
+});
+
+function exitSnapshotThrottleError(retryAfterSecs: number): ClientError {
+  const err = new ClientError(
+    "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
+    Status.RESOURCE_EXHAUSTED,
+    "throttled",
+  );
+  const details = RPCStatus.encode(
+    RPCStatus.create({
+      code: Status.RESOURCE_EXHAUSTED,
+      message: "throttled",
+      details: [
+        {
+          typeUrl: "type.modal.com/modal.client.RPCRetryPolicy",
+          value: RPCRetryPolicy.encode(
+            RPCRetryPolicy.create({ retryAfterSecs }),
+          ).finish(),
+        },
+      ],
+    }),
+  ).finish();
+  (err as ClientError & { trailer?: Metadata }).trailer = new Metadata({
+    "grpc-status-details-bin": details,
+  });
+  return err;
+}
+
+test("experimentalGetExitSnapshot honors a server retry policy", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+    throw exitSnapshotThrottleError(0.3);
+  });
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => ({
+    success: { imageId: "im-exit-snapshot-123" },
+  }));
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const started = Date.now();
+  const image = await sb.experimentalGetExitSnapshot();
+  expect(image.imageId).toBe("im-exit-snapshot-123");
+  expect(Date.now() - started).toBeGreaterThanOrEqual(300);
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot bounds a server retry policy by the deadline", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  for (let i = 0; i < 2; i++) {
+    mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+      throw exitSnapshotThrottleError(10);
+    });
+  }
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  // A persistent throttle is honored only until the caller's budget runs out.
+  await expect(
+    sb.experimentalGetExitSnapshot({ timeoutMs: 200 }),
+  ).rejects.toThrow(TimeoutError);
+  mock.assertExhausted();
+});
+
+test("experimentalGetExitSnapshot surfaces a rate limit without a retry policy", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
+      Status.RESOURCE_EXHAUSTED,
+      "rate limit exceeded",
+    );
+  });
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const err = await sb.experimentalGetExitSnapshot().catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(ClientError);
+  expect((err as ClientError).code).toBe(Status.RESOURCE_EXHAUSTED);
+  mock.assertExhausted();
 });

@@ -530,7 +530,7 @@ const retryableGrpcStatusCodes = new Set([
 const SERVER_RETRY_WARNING_INTERVAL_MS = 30_000;
 
 /** Extract RPCRetryPolicy from the grpc-status-details-bin trailer bytes, or null if absent. */
-function getServerRetryPolicy(
+export function getServerRetryPolicy(
   statusDetails: Uint8Array | undefined,
 ): RPCRetryPolicy | null {
   if (!statusDetails) return null;
@@ -569,7 +569,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     );
   });
 
-type RetryOptions = {
+export type RetryOptions = {
   /** Number of retries to take. */
   retries?: number;
 

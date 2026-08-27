@@ -1,3 +1,4 @@
+import type { Metadata } from "nice-grpc";
 import { ModalClient } from "../src/client";
 
 export class MockGrpcClient {
@@ -11,8 +12,8 @@ export class MockGrpcClient {
     return new Proxy(this, {
       get(target, propKey) {
         if (typeof propKey === "string" && !(propKey in target)) {
-          return (actualRequest: unknown) =>
-            target.dispatch(propKey, actualRequest);
+          return (actualRequest: unknown, options?: MockCallOptions) =>
+            target.dispatch(propKey, actualRequest, options);
         }
         return (target as any)[propKey];
       },
@@ -22,6 +23,7 @@ export class MockGrpcClient {
   private readonly dispatch = async (
     methodKey: string,
     actualRequest: unknown,
+    options?: MockCallOptions,
   ): Promise<unknown> => {
     const queue = this.methodHandlerQueues.get(methodKey) ?? [];
     if (queue.length === 0) {
@@ -30,8 +32,16 @@ export class MockGrpcClient {
       );
     }
     const handler = queue.shift()!;
-    const response = await handler(actualRequest);
-    return structuredClone(response);
+    try {
+      const response = await handler(actualRequest);
+      return structuredClone(response);
+    } catch (err) {
+      // A mock error can carry a `trailer` for callers that read trailing
+      // metadata (e.g. grpc-status-details-bin), as the real transport would.
+      const trailer = (err as { trailer?: Metadata }).trailer;
+      if (trailer != null) options?.onTrailer?.(trailer);
+      throw err;
+    }
   };
 
   handleUnary(
@@ -70,6 +80,10 @@ export function createMockModalClients(): {
 
   return { mockClient, mockCpClient };
 }
+
+type MockCallOptions = {
+  onTrailer?: (trailer: Metadata) => void;
+};
 
 function rpcToClientMethodName(name: string): string {
   return name.length ? name[0].toLowerCase() + name.slice(1) : name;

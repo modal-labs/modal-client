@@ -1,4 +1,4 @@
-import { ClientError, Status } from "nice-grpc";
+import { ClientError, Status, type CallOptions } from "nice-grpc";
 import { setTimeout } from "timers/promises";
 import {
   FileDescriptor,
@@ -20,6 +20,7 @@ import {
   PortSpecs,
   Probe as ProbeProto,
   StringMap,
+  SandboxGetExitSnapshotResponse_ErrorCode,
   SandboxRestoreRequest_SandboxNameOverrideType,
 } from "../proto/modal_proto/api";
 import {
@@ -40,7 +41,14 @@ import {
   type StdinSource,
 } from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
-import { type ModalClient, isRetryableGrpc, ModalGrpcClient } from "./client";
+import {
+  type ModalClient,
+  type RetryOptions,
+  type TimeoutOptions,
+  getServerRetryPolicy,
+  isRetryableGrpc,
+  ModalGrpcClient,
+} from "./client";
 import { SandboxFilesystem } from "./sandbox_fs";
 import { SidecarService } from "./sandbox_sidecar";
 import {
@@ -63,6 +71,8 @@ import {
   InvalidError,
   NotFoundError,
   SandboxTimeoutError,
+  SnapshotCreationError,
+  TimeoutError,
   AlreadyExistsError,
   ClientClosedError,
 } from "./errors";
@@ -84,6 +94,21 @@ const SB_LOGS_MAX_RETRIES = 10;
 const TTL_NO_EXPIRY_SENTINEL = -1;
 const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16;
 const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH = 512;
+
+// Exit snapshot polling holds a server-side long poll for at most EXIT_SNAPSHOT_LONG_POLL_TIMEOUT
+// seconds and then re-polls from the client, so a request is never held open indefinitely however
+// long the caller waits.
+const EXIT_SNAPSHOT_LONG_POLL_TIMEOUT = 10;
+// Margin added to each poll's network deadline over the server-side hold, covering the
+// response's return trip so an answer sent just before the hold expires isn't lost to the
+// client-side deadline.
+const EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN = 5;
+// The fetch loop absorbs transient poll failures and re-polls. It gives up once this many
+// polls fail in a row, so an extended outage still surfaces to the caller.
+const EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES = 3;
+// Pause between failed polls, so failures that reject instantly (e.g. a refused connection)
+// don't burn through the failure budget in milliseconds.
+const EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF = 1;
 
 /**
  * Resolve the caller-facing `ttlMs` field on snapshot params into the
@@ -1174,6 +1199,17 @@ export type SandboxSnapshotFilesystemParams = {
   ttlMs?: number | null;
 };
 
+/** Optional parameters for Sandbox.experimentalGetExitSnapshot(). */
+export type SandboxExperimentalGetExitSnapshotParams = {
+  /**
+   * Total time to wait in milliseconds, spread across repeated long polls of
+   * at most `EXIT_SNAPSHOT_LONG_POLL_TIMEOUT` seconds each. `undefined` (the
+   * default) waits until the snapshot reaches a terminal state. `0` performs
+   * an immediate check without waiting.
+   */
+  timeoutMs?: number;
+};
+
 /** Optional parameters for {@link Sandbox#reloadVolumes Sandbox.reloadVolumes()}. */
 export type SandboxReloadVolumesParams = {
   /** Overall budget in milliseconds. Defaults to 55000. */
@@ -1817,6 +1853,17 @@ export class Sandbox {
     return this.#client.cpClient.sandboxGetTunnels(req);
   }
 
+  #sandboxGetExitSnapshot(
+    timeoutSecs: number,
+    options?: CallOptions & TimeoutOptions & RetryOptions,
+  ) {
+    const req = { sandboxId: this.sandboxId, timeout: timeoutSecs };
+    if (this.#isV2) {
+      return this.#client.cpClient.sandboxGetExitSnapshotV2(req, options);
+    }
+    return this.#client.cpClient.sandboxGetExitSnapshot(req, options);
+  }
+
   async #sandboxTerminate(): Promise<void> {
     const req = { sandboxId: this.sandboxId };
     if (this.#isV2) {
@@ -2070,6 +2117,128 @@ export class Sandbox {
     }
 
     return new Image(this.#client, response.imageId, "");
+  }
+
+  /**
+   * Get the exit filesystem snapshot image.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   *
+   * @param params - Optional parameters; see SandboxExperimentalGetExitSnapshotParams.
+   * @returns The exit snapshot Image.
+   * @throws {TimeoutError} If `timeoutMs` elapses before the snapshot
+   *   reaches a terminal state. This includes `timeoutMs = 0` when the
+   *   snapshot is still pending.
+   */
+  async experimentalGetExitSnapshot(
+    params?: SandboxExperimentalGetExitSnapshotParams,
+  ): Promise<Image> {
+    const timeoutMs = params?.timeoutMs;
+    if (timeoutMs !== undefined && timeoutMs < 0) {
+      throw new InvalidError(
+        `timeoutMs must be non-negative, got ${timeoutMs}`,
+      );
+    }
+
+    const deadline =
+      timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+    const timeoutMessage = `timed out waiting for exit snapshot for Sandbox ${this.sandboxId}`;
+    let consecutivePollFailures = 0;
+    while (true) {
+      const requestTimeoutSecs =
+        deadline === undefined
+          ? EXIT_SNAPSHOT_LONG_POLL_TIMEOUT
+          : Math.min(
+              EXIT_SNAPSHOT_LONG_POLL_TIMEOUT,
+              Math.max(0, (deadline - Date.now()) / 1000),
+            );
+
+      let statusDetails: Uint8Array | undefined;
+      let resp;
+      try {
+        resp = await this.#sandboxGetExitSnapshot(requestTimeoutSecs, {
+          timeoutMs:
+            (requestTimeoutSecs + EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN) * 1000,
+          retries: 0,
+          onTrailer: (trailer) => {
+            const raw = trailer.get("grpc-status-details-bin");
+            if (raw != null) statusDetails = raw as Uint8Array;
+          },
+        });
+      } catch (err) {
+        const retryPolicy = getServerRetryPolicy(statusDetails);
+        if (retryPolicy) {
+          if (deadline !== undefined && Date.now() >= deadline) {
+            throw new TimeoutError(timeoutMessage);
+          }
+          consecutivePollFailures = 0;
+          let throttleDelayMs = Math.max(
+            retryPolicy.retryAfterSecs * 1000,
+            100,
+          );
+          if (deadline !== undefined) {
+            throttleDelayMs = Math.min(
+              throttleDelayMs,
+              Math.max(0, deadline - Date.now()),
+            );
+          }
+          await setTimeout(throttleDelayMs);
+          continue;
+        }
+        if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT)
+          throw new InvalidError(err.details);
+        if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+          throw new NotFoundError(err.details);
+        if (isRetryableGrpc(err)) {
+          if (deadline !== undefined && Date.now() >= deadline) {
+            throw new TimeoutError(timeoutMessage);
+          }
+          consecutivePollFailures += 1;
+          if (
+            consecutivePollFailures >=
+            EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES
+          ) {
+            throw err;
+          }
+          let backoffMs = EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF * 1000;
+          if (deadline !== undefined) {
+            backoffMs = Math.min(backoffMs, Math.max(0, deadline - Date.now()));
+          }
+          await setTimeout(backoffMs);
+          continue;
+        }
+        throw err;
+      }
+      consecutivePollFailures = 0;
+
+      if (resp.success) {
+        if (!resp.success.imageId) {
+          throw new ExecutionError("Exit snapshot result is missing image ID");
+        }
+        return new Image(this.#client, resp.success.imageId, "");
+      }
+      if (resp.error) {
+        if (
+          resp.error.errorCode ===
+          SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_TIMEOUT
+        ) {
+          throw new SnapshotCreationError(
+            resp.error.message || "No exit snapshot image will be produced",
+          );
+        }
+        throw new ExecutionError(
+          resp.error.message || "Exit snapshot state is malformed",
+        );
+      }
+      if (!resp.pending) {
+        throw new ExecutionError(
+          "Exit snapshot response is missing an outcome",
+        );
+      }
+      if (deadline !== undefined && Date.now() >= deadline) {
+        throw new TimeoutError(timeoutMessage);
+      }
+    }
   }
 
   /**

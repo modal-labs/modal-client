@@ -158,6 +158,14 @@ export class SandboxTimeoutError extends Error {
   }
 }
 
+/** No snapshot image will be produced for a Sandbox. */
+export class SnapshotCreationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SnapshotCreationError";
+  }
+}
+
 /** Thrown when attempting operations on a detached Sandbox. */
 export class ClientClosedError extends Error {
   constructor(
