@@ -1480,16 +1480,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             SnapshotCreationError: If no exit snapshot image will be produced.
             NotFoundError: If the sandbox does not exist.
             PermissionDeniedError: If the caller cannot access the sandbox.
-            InternalError: If persisted snapshot state is malformed, or if polls
-                keep failing on an internal server error while the caller still
-                has budget left.
-            ServiceError: If polls keep failing on a transient client/server
-                communication failure while the caller still has budget left.
-            ConnectionError: If polls keep outliving their network deadline
-                while the caller still has budget left.
-            ResourceExhaustedError: If the server rate-limits polling without
-                providing a retry instruction. Instructed backoffs are honored
-                within the caller's budget and do not raise.
         """
         if timeout is not None and timeout < 0:
             raise InvalidError("timeout must be non-negative or None")
