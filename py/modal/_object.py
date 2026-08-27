@@ -91,12 +91,20 @@ class _Object:
     # For hydrated objects
     _object_id: str | None
     _client: _Client | None
-    _is_hydrated: bool
+    __is_hydrated: bool
     _is_rehydrated: bool
 
     # Not all object subclasses have a meaningful "name" concept
     # So whether they expose this is a matter of having a name property
     _name: str | None
+
+    @property
+    def _is_hydrated(self) -> bool:
+        return self.__is_hydrated
+
+    @_is_hydrated.setter
+    def _is_hydrated(self, value: bool):
+        self.__is_hydrated = value
 
     @classmethod
     def __init_subclass__(cls, type_prefix: str | None = None):
