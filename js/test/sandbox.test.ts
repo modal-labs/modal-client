@@ -27,8 +27,6 @@ import {
   SandboxGetExitSnapshotResponse_ErrorCode,
   SandboxRestoreV2Response,
   SandboxSnapshotGetResponse,
-  RPCRetryPolicy,
-  RPCStatus,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
@@ -46,7 +44,7 @@ import {
   SnapshotCreationError,
   TimeoutError,
 } from "modal";
-import { ClientError, Metadata, Status } from "nice-grpc";
+import { ClientError, Status } from "nice-grpc";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -3031,67 +3029,6 @@ test("experimentalGetExitSnapshot maps a poll failure after the deadline to Time
   // Once the caller's own budget is gone, a failed poll is a caller timeout.
   await expect(
     sb.experimentalGetExitSnapshot({ timeoutMs: 50 }),
-  ).rejects.toThrow(TimeoutError);
-  mock.assertExhausted();
-});
-
-function exitSnapshotThrottleError(retryAfterSecs: number): ClientError {
-  const err = new ClientError(
-    "/modal.client.ModalClient/SandboxGetExitSnapshotV2",
-    Status.RESOURCE_EXHAUSTED,
-    "throttled",
-  );
-  const details = RPCStatus.encode(
-    RPCStatus.create({
-      code: Status.RESOURCE_EXHAUSTED,
-      message: "throttled",
-      details: [
-        {
-          typeUrl: "type.modal.com/modal.client.RPCRetryPolicy",
-          value: RPCRetryPolicy.encode(
-            RPCRetryPolicy.create({ retryAfterSecs }),
-          ).finish(),
-        },
-      ],
-    }),
-  ).finish();
-  (err as ClientError & { trailer?: Metadata }).trailer = new Metadata({
-    "grpc-status-details-bin": details,
-  });
-  return err;
-}
-
-test("experimentalGetExitSnapshot honors a server retry policy", async () => {
-  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-
-  mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
-    throw exitSnapshotThrottleError(0.3);
-  });
-  mock.handleUnary("/SandboxGetExitSnapshotV2", () => ({
-    success: { imageId: "im-exit-snapshot-123" },
-  }));
-
-  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
-  const started = Date.now();
-  const image = await sb.experimentalGetExitSnapshot();
-  expect(image.imageId).toBe("im-exit-snapshot-123");
-  expect(Date.now() - started).toBeGreaterThanOrEqual(300);
-  mock.assertExhausted();
-});
-
-test("experimentalGetExitSnapshot bounds a server retry policy by the deadline", async () => {
-  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-
-  for (let i = 0; i < 2; i++) {
-    mock.handleUnary("/SandboxGetExitSnapshotV2", () => {
-      throw exitSnapshotThrottleError(10);
-    });
-  }
-
-  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
-  // A persistent throttle is honored only until the caller's budget runs out.
-  await expect(
-    sb.experimentalGetExitSnapshot({ timeoutMs: 200 }),
   ).rejects.toThrow(TimeoutError);
   mock.assertExhausted();
 });

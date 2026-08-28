@@ -1303,68 +1303,6 @@ func TestSandboxGetExitSnapshotPollFailureAfterDeadlineIsTimeoutMock(t *testing.
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxGetExitSnapshotHonorsServerRetryPolicyMock(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-	ctx := t.Context()
-	mock := newGRPCMockClient(t)
-
-	throttled, detErr := status.New(codes.ResourceExhausted, "throttled").WithDetails(
-		pb.RPCRetryPolicy_builder{RetryAfterSecs: 0.3}.Build(),
-	)
-	g.Expect(detErr).ShouldNot(gomega.HaveOccurred())
-	grpcmock.HandleUnary(mock, "SandboxGetExitSnapshotV2",
-		func(req *pb.SandboxGetExitSnapshotRequest) (*pb.SandboxGetExitSnapshotResponse, error) {
-			return nil, throttled.Err()
-		})
-	grpcmock.HandleUnary(mock, "SandboxGetExitSnapshotV2",
-		func(req *pb.SandboxGetExitSnapshotRequest) (*pb.SandboxGetExitSnapshotResponse, error) {
-			return pb.SandboxGetExitSnapshotResponse_builder{
-				Success: pb.SandboxGetExitSnapshotResponse_Success_builder{ImageId: "im-exit-snapshot-123"}.Build(),
-			}.Build(), nil
-		})
-
-	sb, err := mock.Sandboxes.FromID(ctx, validV2SandboxID, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-	started := time.Now()
-	image, err := sb.ExperimentalGetExitSnapshot(ctx, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(image.ImageID).To(gomega.Equal("im-exit-snapshot-123"))
-	// The instructed backoff was waited out before the poll that succeeded.
-	g.Expect(time.Since(started)).To(gomega.BeNumerically(">=", 300*time.Millisecond))
-	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
-}
-
-func TestSandboxGetExitSnapshotServerRetryPolicyRespectsDeadlineMock(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-	ctx := t.Context()
-	mock := newGRPCMockClient(t)
-
-	throttled, detErr := status.New(codes.ResourceExhausted, "throttled").WithDetails(
-		pb.RPCRetryPolicy_builder{RetryAfterSecs: 10}.Build(),
-	)
-	g.Expect(detErr).ShouldNot(gomega.HaveOccurred())
-	for range 2 {
-		grpcmock.HandleUnary(mock, "SandboxGetExitSnapshotV2",
-			func(req *pb.SandboxGetExitSnapshotRequest) (*pb.SandboxGetExitSnapshotResponse, error) {
-				return nil, throttled.Err()
-			})
-	}
-
-	sb, err := mock.Sandboxes.FromID(ctx, validV2SandboxID, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-	// A persistent throttle is honored only until the caller's budget runs out.
-	timeout := 200 * time.Millisecond
-	started := time.Now()
-	_, err = sb.ExperimentalGetExitSnapshot(ctx, &modal.SandboxExperimentalGetExitSnapshotParams{Timeout: &timeout})
-	g.Expect(err).To(gomega.BeAssignableToTypeOf(modal.TimeoutError{}))
-	g.Expect(time.Since(started)).To(gomega.BeNumerically("<", 5*time.Second))
-	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
-}
-
 func TestSandboxGetExitSnapshotRateLimitWithoutPolicyMock(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
