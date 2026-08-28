@@ -173,7 +173,7 @@ def list_cli_commands(
             priorities[local_entrypoint] = AutoRunPriority.APP_LOCAL_ENTRYPOINT
         for name, inner_function in app._local_state.functions.items():
             function = cast(Function, synchronizer._translate_out(inner_function))
-            if function._info_.is_service_class() and not include_service_functions:
+            if function._source_info_.is_service_class() and not include_service_functions:
                 continue  # Skip class and server service functions for all commands except `modal shell`.
             all_runnables[function].append(f"{app_name}.{name}")
             priorities[function] = AutoRunPriority.APP_FUNCTION

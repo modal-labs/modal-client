@@ -41,7 +41,7 @@ from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
 )
-from ._utils.function_utils import FunctionInfo, parse_gpu_config
+from ._utils.function_utils import FunctionSourceInfo, parse_gpu_config
 from ._utils.mount_utils import validate_only_modal_volumes, validate_volumes_by_object_id
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -681,8 +681,8 @@ class _Image(_Object, type_prefix="im"):
 
             if build_function:
                 build_function_id = build_function.object_id
-                globals = build_function._get_info().get_globals()
-                attrs = build_function._get_info().get_cls_var_attrs()
+                globals = build_function._get_source_info().get_globals()
+                attrs = build_function._get_source_info().get_cls_var_attrs()
                 globals = {**globals, **attrs}
                 filtered_globals = {}
                 for k, v in globals.items():
@@ -694,7 +694,7 @@ class _Image(_Object, type_prefix="im"):
                         # Skip unserializable values for now.
                         logger.warning(
                             f"Skipping unserializable global variable {k} for "
-                            f"{build_function._get_info().function_name}. "
+                            f"{build_function._get_source_info().function_name}. "
                             "Changes to this variable won't invalidate the image."
                         )
                         continue
@@ -2754,7 +2754,7 @@ class _Image(_Object, type_prefix="im"):
             # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
             raise InvalidError("Image.run_function does not support lambda functions.")
 
-        info = FunctionInfo(raw_f)
+        info = FunctionSourceInfo(raw_f)
 
         function = _Function._from_local(
             info,

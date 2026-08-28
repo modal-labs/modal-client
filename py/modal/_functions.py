@@ -50,7 +50,7 @@ from ._utils.deprecation import with_deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
-    FunctionInfo,
+    FunctionSourceInfo,
     _create_input,
     _parse_retries,
     _process_result,
@@ -604,7 +604,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     """
 
     # TODO: more type annotations
-    _info: FunctionInfo | None
+    _source_info: FunctionSourceInfo | None
     _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: "modal.app._App | None" = None
     # only set for InstanceServiceFunctions and bound instance methods
@@ -665,7 +665,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @staticmethod
     def _from_local(
-        info: FunctionInfo,
+        info: FunctionSourceInfo,
         app: "modal.app._App | None",  # App here should only be None in case of Image.run_function
         image: _Image,
         env: dict[str, str | None] | None = None,
@@ -1170,7 +1170,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
         obj._raw_f = info.raw_f
-        obj._info = info
+        obj._source_info = info
         obj._tag = tag
         obj._app = app  # needed for CLI right now
         obj._obj = None
@@ -1429,14 +1429,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         (2026, 8, 26),
         "`Function.info` is deprecated and will be removed in `modal` version 1.6.0",
     )
-    def info(self) -> FunctionInfo:
+    def info(self) -> FunctionSourceInfo:
         """mdmd:hidden"""
-        return self._info_
+        return self._source_info_
 
     @property
-    def _info_(self) -> FunctionInfo:
-        assert self._info
-        return self._info
+    def _source_info_(self) -> FunctionSourceInfo:
+        assert self._source_info
+        return self._source_info
 
     @property
     @with_deprecation_warning(
@@ -1477,7 +1477,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._is_generator = None
         self._web_url = None
         self._function_name = None
-        self._info = None
+        self._source_info = None
         self._serve_mounts = frozenset()
         self._metadata = None
         self._experimental_flash_urls = None
@@ -1609,7 +1609,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         new_function._webhook_config = self._webhook_config
 
         # Other fields not necessarily initialized
-        if self._info is not None:
+        if self._source_info is not None:
             new_function._build_args = self._build_args
             new_function._is_method = self._is_method
             new_function._raw_f = self._raw_f
@@ -1915,12 +1915,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             yield item
 
     def _is_local(self):
-        return self._info is not None
+        return self._source_info is not None
 
-    def _get_info(self) -> FunctionInfo:
-        if not self._info:
-            raise ExecutionError("Can't get info for a function that isn't locally defined")
-        return self._info
+    def _get_source_info(self) -> FunctionSourceInfo:
+        if not self._source_info:
+            raise ExecutionError("Can't get source info for a function that isn't locally defined")
+        return self._source_info
 
     def _get_obj(self) -> "modal.cls._Obj | None":
         if not self._is_method:
@@ -1955,7 +1955,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
             raise ExecutionError(msg)
 
-        info = self._get_info()
+        info = self._get_source_info()
         if not info.raw_f:
             # Here if calling .local on a service function itself which should never happen
             # TODO: check if we end up here in a container for a serialized function?

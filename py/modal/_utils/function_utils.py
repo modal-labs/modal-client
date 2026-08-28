@@ -48,7 +48,7 @@ if typing.TYPE_CHECKING:
     import modal._functions
 
 
-class FunctionInfoType(Enum):
+class FunctionSourceInfoType(Enum):
     PACKAGE = "package"
     FILE = "file"
     SERIALIZED = "serialized"
@@ -162,7 +162,7 @@ def _parse_retries(
         raise InvalidError(msg)
 
 
-class FunctionInfo:
+class FunctionSourceInfo:
     """Utility that determines serialization/deserialization mechanisms for functions
 
     * Stored as file vs serialized
@@ -178,7 +178,7 @@ class FunctionInfo:
     user_cls: type[Any] | None
     module_name: str | None
 
-    _type: FunctionInfoType
+    _type: FunctionSourceInfoType
     _file: str | None
     _base_dir: str
     _remote_dir: PurePosixPath | None = None
@@ -245,7 +245,7 @@ class FunctionInfo:
             self.module_name = module.__spec__.name
             self._remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
             self._is_serialized = False
-            self._type = FunctionInfoType.PACKAGE
+            self._type = FunctionSourceInfoType.PACKAGE
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
@@ -255,16 +255,16 @@ class FunctionInfo:
             self.module_name = inspect.getmodulename(self._file)
             self._base_dir = os.path.dirname(self._file)
             self._is_serialized = False
-            self._type = FunctionInfoType.FILE
+            self._type = FunctionSourceInfoType.FILE
         else:
             self.module_name = None
             self._base_dir = os.path.abspath("")  # get current dir
             self._is_serialized = True  # either explicitly, or by being in a notebook
             if serialized:  # if explicit
-                self._type = FunctionInfoType.SERIALIZED
+                self._type = FunctionSourceInfoType.SERIALIZED
             else:
                 # notebook, or in general any exec() on a function definition
-                self._type = FunctionInfoType.NOTEBOOK
+                self._type = FunctionSourceInfoType.NOTEBOOK
 
         if not self.is_serialized():
             # Sanity check that this function is defined in global scope
@@ -372,14 +372,14 @@ class FunctionInfo:
             return {}
 
         # make sure the function's own entrypoint is included:
-        if self._type == FunctionInfoType.PACKAGE:
+        if self._type == FunctionSourceInfoType.PACKAGE:
             top_level_package = self.module_name.split(".")[0]
             # TODO: add deprecation warning if the following entrypoint mount
             #  includes non-.py files, since we'll want to migrate to .py-only
             #  soon to get it consistent with the `add_local_python_source()`
             #  defaults.
             return {top_level_package: _Mount._from_local_python_packages(top_level_package)}
-        elif self._type == FunctionInfoType.FILE:
+        elif self._type == FunctionSourceInfoType.FILE:
             # TODO: inspect if this file is already included as part of
             #  a package mount, and skip it + reference that package
             #  instead if that's the case. This avoids possible module

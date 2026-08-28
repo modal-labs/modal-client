@@ -263,9 +263,9 @@ def _get_click_command_for_function(app: App, function: Function, ctx: click.Con
     if function._is_generator_:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    assert function._info_.raw_f
-    sig: inspect.Signature = _get_signature(function._info_.raw_f)
-    type_hints = safe_get_type_hints(function._info_.raw_f)
+    assert function._source_info_.raw_f
+    sig: inspect.Signature = _get_signature(function._source_info_.raw_f)
+    type_hints = safe_get_type_hints(function._source_info_.raw_f)
     signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     def _inner(args, click_kwargs):

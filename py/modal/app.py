@@ -35,7 +35,7 @@ from ._supports_logs import _LogQueryData
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_warning, handle_deprecated_parameters, with_deprecation_warning
 from ._utils.function_utils import (
-    FunctionInfo,
+    FunctionSourceInfo,
     is_flash_object,
     is_global_object,
     is_method_fn,
@@ -62,10 +62,10 @@ _default_image: _Image = _Image.debian_slim()
 
 
 class _LocalEntrypoint:
-    _info: FunctionInfo
+    _info: FunctionSourceInfo
     _app: "_App"
 
-    def __init__(self, info: FunctionInfo, app: "_App") -> None:
+    def __init__(self, info: FunctionSourceInfo, app: "_App") -> None:
         self._info = info
         self._app = app
 
@@ -73,7 +73,7 @@ class _LocalEntrypoint:
         return self._info.raw_f(*args, **kwargs)
 
     @property
-    def info(self) -> FunctionInfo:
+    def info(self) -> FunctionSourceInfo:
         return self._info
 
     @property
@@ -627,8 +627,8 @@ class _App:
                 logger.warning(
                     f"Warning: function name '{function._tag_}' collision!"
                     " Overriding existing function "
-                    f"[{old_function._info.module_name}].{old_function._info.function_name}"
-                    f" with new function [{function._info.module_name}].{function._info.function_name}"
+                    f"[{old_function._source_info.module_name}].{old_function._source_info.function_name}"
+                    f" with new function [{function._source_info.module_name}].{function._source_info.function_name}"
                 )
         if function._tag_ in local_state.classes:
             logger.warning(f"Warning: tag {function._tag_} exists but is overridden by function")
@@ -803,7 +803,7 @@ class _App:
             raise InvalidError("Invalid value for `name`: Must be string.")
 
         def wrapped(raw_f: Callable[..., Any]) -> _LocalEntrypoint:
-            info = FunctionInfo(raw_f)
+            info = FunctionSourceInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
             local_state = self._local_state
             if tag in local_state.local_entrypoints:
@@ -962,7 +962,7 @@ class _App:
                 rdma = f.params.rdma
                 fabric_size = f.params.fabric_size
 
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                info = FunctionSourceInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.params.webhook_config
                 is_generator = f.params.is_generator
@@ -1005,7 +1005,7 @@ class _App:
                         )
                     )
 
-                info = FunctionInfo(f, serialized=serialized, name_override=name)
+                info = FunctionSourceInfo(f, serialized=serialized, name_override=name)
                 raw_f = f
                 webhook_config = None
                 batch_max_size = None
@@ -1254,7 +1254,7 @@ class _App:
                 ).values():
                     raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
+            info = FunctionSourceInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
             cls_func = _Function._from_local(
@@ -1466,7 +1466,9 @@ class _App:
             local_state = self._local_state
 
             # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=name or user_cls.__name__)
+            info = FunctionSourceInfo(
+                None, serialized=serialized, user_cls=user_cls, name_override=name or user_cls.__name__
+            )
             # Create the service function
             service_function = _Function._from_local(
                 info,

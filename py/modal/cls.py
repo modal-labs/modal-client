@@ -125,9 +125,9 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
 
     if cls._is_local():
         partial_function = cls._method_partials[method_name]
-        from modal._utils.function_utils import FunctionInfo
+        from modal._utils.function_utils import FunctionSourceInfo
 
-        fun._info = FunctionInfo(
+        fun._source_info = FunctionSourceInfo(
             # ugly - needed for .local()  TODO (elias): Clean up!
             partial_function.raw_f,
             user_cls=cls._user_cls,
@@ -242,7 +242,7 @@ class _Obj:
                     load_context_overrides=parent._load_context_overrides,
                 )
                 fun._obj = self
-                fun._info = parent._info
+                fun._source_info = parent._source_info
                 fun._spec = parent._spec
 
             self._instance_service_function = fun

@@ -290,6 +290,6 @@ def _make_function_variant(
         deps=_deps,
         load_context_overrides=base_function._load_context_overrides,
     )
-    fun._info = base_function._info
+    fun._source_info = base_function._source_info
     fun._spec = base_function._spec  # TODO (elias): fix - this is incorrect when using with_options
     return fun

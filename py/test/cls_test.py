@@ -21,7 +21,7 @@ from modal._partial_function import (
 )
 from modal._serialization import deserialize, deserialize_params, deserialize_proto_params, serialize
 from modal._utils.async_utils import synchronizer
-from modal._utils.function_utils import FunctionInfo
+from modal._utils.function_utils import FunctionSourceInfo
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
@@ -1090,7 +1090,9 @@ def test_implicit_constructor(client):
             UsingAnnotationParameters().get_value.remote()  # type: ignore
 
     # check that implicit constructors trigger strict parametrization
-    function_info: FunctionInfo = synchronizer._translate_in(UsingAnnotationParameters)._class_service_function._info  # type: ignore
+    function_info: FunctionSourceInfo = synchronizer._translate_in(
+        UsingAnnotationParameters
+    )._class_service_function._source_info_  # type: ignore
     assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
 
 
@@ -1119,7 +1121,9 @@ def test_custom_constructor_has_deprecation_warning():
     d2 = UsingCustomConstructor(11)
     assert d2.get_value.local() == 11  # run constructor before running locally
     # check that explicit constructors trigger pickle parametrization
-    function_info: FunctionInfo = synchronizer._translate_in(UsingCustomConstructor)._class_service_function._info  # type: ignore
+    function_info: FunctionSourceInfo = synchronizer._translate_in(
+        UsingCustomConstructor
+    )._class_service_function._source_info_  # type: ignore
     assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE
 
 

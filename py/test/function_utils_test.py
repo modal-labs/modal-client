@@ -11,7 +11,7 @@ from modal._output.status import FunctionCreationStatus
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import (
-    FunctionInfo,
+    FunctionSourceInfo,
     _stream_function_call_data,
     callable_has_non_self_non_default_params,
     callable_has_non_self_params,
@@ -37,10 +37,10 @@ def wildcard_args(*wildcard_list, **wildcard_dict): ...
 
 
 def test_is_nullary():
-    assert not FunctionInfo(hasarg).is_nullary()
-    assert FunctionInfo(noarg).is_nullary()
-    assert FunctionInfo(defaultarg).is_nullary()
-    assert FunctionInfo(wildcard_args).is_nullary()
+    assert not FunctionSourceInfo(hasarg).is_nullary()
+    assert FunctionSourceInfo(noarg).is_nullary()
+    assert FunctionSourceInfo(defaultarg).is_nullary()
+    assert FunctionSourceInfo(wildcard_args).is_nullary()
 
 
 class Cls:
@@ -154,7 +154,7 @@ def has_global_ref():
 
 @pytest.mark.parametrize("func", [has_global_ref, decorator(has_global_ref)])
 def test_global_variable_extraction(func):
-    info = FunctionInfo(func)
+    info = FunctionSourceInfo(func)
     assert info.get_globals().get("GLOBAL_VARIABLE") == GLOBAL_VARIABLE
 
 
