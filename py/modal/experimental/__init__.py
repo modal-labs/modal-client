@@ -28,7 +28,6 @@ from ..secret import _Secret as _Secret
 from .flash import (  # noqa: F401
     flash_forward,
     flash_get_containers,
-    flash_prometheus_autoscaler,
     http_server,
 )
 

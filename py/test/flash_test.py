@@ -3,13 +3,14 @@
 import asyncio
 import os
 import pytest
-from types import MethodType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from modal._clustered_functions import ClusterInfo
-from modal.experimental.flash import _FlashContainerEntry, _FlashManager, _FlashPrometheusAutoscaler
+from modal.experimental.flash import _FlashContainerEntry, _FlashManager
 from modal_proto import api_pb2
 from test.supports.skip import skip_windows
+
+_MAX_FAILURES = 10
 
 
 @pytest.fixture
@@ -47,154 +48,6 @@ class _DummyContainer:
 class _DummySample:
     def __init__(self, value: float):
         self.value = value
-
-
-class TestFlashAutoscalerLogic:
-    @pytest.fixture
-    def autoscaler(self, client):
-        with patch("aiohttp.ClientSession"):
-            return _FlashPrometheusAutoscaler(
-                client=client,
-                app_name="test_app",
-                cls_name="test_cls",
-                metrics_endpoint="metrics",
-                target_metric="test_metric",
-                target_metric_value=10,
-                min_containers=None,
-                max_containers=None,
-                scale_up_tolerance=0.1,
-                scale_down_tolerance=0.1,
-                scale_up_stabilization_window_seconds=0,
-                scale_down_stabilization_window_seconds=300,
-                autoscaling_interval_seconds=15,
-                buffer_containers=None,
-            )
-
-    def _make_autoscaler(self, autoscaler: _FlashPrometheusAutoscaler, metrics_by_host: dict[str, float]):
-        async def _get_all_containers(_self):
-            return [_DummyContainer(h) for h in metrics_by_host.keys()]
-
-        async def _get_metrics(_self, url: str, headers: dict[str, str] | None = None):
-            assert headers is not None
-            host = headers["modal-flash-upstream"].rsplit(":", 1)[0]
-            value = metrics_by_host.get(host, None)
-            if value is None:
-                return None
-            return {"test_metric": [_DummySample(value)]}
-
-        autoscaler._flash_service_url = "https://flash.example.com"  # type: ignore[attr-defined]
-        autoscaler._get_all_containers = MethodType(_get_all_containers, autoscaler)  # type: ignore
-        autoscaler._get_metrics = MethodType(_get_metrics, autoscaler)  # type: ignore
-        return autoscaler
-
-    @pytest.mark.asyncio
-    async def test_metrics_are_routed_through_flash_service(self, autoscaler):
-        autoscaler._flash_service_url = "https://flash.example.com/"  # type: ignore[attr-defined]
-        requests = []
-
-        async def _get_metrics(_self, url: str, headers: dict[str, str] | None = None):
-            requests.append((url, headers))
-            return {"test_metric": [_DummySample(1.0)]}
-
-        autoscaler._get_metrics = MethodType(_get_metrics, autoscaler)  # type: ignore
-
-        result = await autoscaler._get_scaling_info([_DummyContainer("host-a"), _DummyContainer("host-b")])
-
-        assert result == (2.0, 2)
-        assert requests == [
-            ("https://flash.example.com/metrics", {"modal-flash-upstream": "host-a:443"}),
-            ("https://flash.example.com/metrics", {"modal-flash-upstream": "host-b:443"}),
-        ]
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "metrics_by_host,current_replicas,overprovision_containers,expected_replicas",
-        [
-            # No containers discovered; current_replicas == 0 should return 1
-            ({}, 0, None, 1),
-            # 3 containers, all emit value 15 with target 10 -> avg=15 -> ratio=1.5 -> ceil(3*1.5)=5
-            ({"h1": 15.0, "h2": 15.0, "h3": 15.0}, 3, None, 5),
-            # 4 containers, all emit value 5 with target 10 -> avg=5 -> ratio=0.5 -> ceil(4*0.5)=2
-            ({"h1": 5.0, "h2": 5.0, "h3": 5.0, "h4": 5.0}, 4, None, 2),
-            # 3 containers, only one emits 10 (target), two unhealthy -> both assumed at target for scale-up calc
-            ({"h1": 10.0, "h2": None, "h3": None}, 3, None, 5),
-            # current_replicas (1) < discoverable containers (3) -> adjusted up to 3; metrics equal target -> stay at 3
-            ({"h1": 10.0, "h2": 10.0, "h3": 10.0}, 1, None, 3),
-            # Overprovision reduces denominator in scale-up avg: 3 containers at 15,
-            # overprov=1 -> (45)/(3-1)=22.5 -> ratio=2.25 -> ceil((3-1)*2.25)=5
-            ({"h1": 15.0, "h2": 15.0, "h3": 15.0}, 3, 1, 5),
-            # All below target triggers scale-down; overprovision should not change scale-down computation
-            ({"h1": 5.0, "h2": 5.0, "h3": 5.0, "h4": 5.0}, 4, 2, 2),
-            # Overprovision greater than discoverable containers -> denominator would be <= 0 -> floored to 1
-            ({"h1": 15.0}, 1, 5, 2),
-            # One healthy at target, one unhealthy; with overprovision=1 denominator becomes 1, leading to scale-up.
-            ({"h1": 10.0, "h2": None}, 2, 1, 3),
-            # 5 containers, h2 and h4 unhealthy, others at 15.0
-            ({"h1": 15.0, "h2": None, "h3": 15.0, "h4": None, "h5": 15.0}, 5, None, 8),
-            # 5 containers, mixed metrics and some unhealthy
-            ({"h1": 12.0, "h2": 8.0, "h3": 15.0, "h4": None, "h5": None}, 5, None, 7),
-            # 4 containers all with the same metric value
-            ({"h1": 5.0, "h2": 5.0, "h3": 5.0, "h4": 5.0}, 4, None, 2),
-            # Custom target values, tolerances, and overprovision settings
-            ({"h1": 25.0, "h2": 30.0, "h3": None}, 3, 1, 8),
-            # All unhealthy, 20 current replicas, 17 provisioned, target_metric_value=20.0
-            (
-                {f"h{i}": None for i in range(1, 21)},
-                20,
-                1,
-                33,
-            ),
-            # 13 containers, 0 healthy, 9 unhealthy, 1 missing, 3 buffer
-            # expected number should just be > 10
-            (
-                {f"h{i}": None for i in range(1, 10)},
-                13,
-                3,
-                15,
-            ),
-        ],
-    )
-    async def test_metric_scaling(
-        self,
-        metrics_by_host,
-        current_replicas,
-        overprovision_containers,
-        expected_replicas,
-        autoscaler,
-    ):
-        autoscaler = self._make_autoscaler(autoscaler, metrics_by_host)
-
-        if overprovision_containers is not None:
-            autoscaler.buffer_containers = overprovision_containers
-
-        result = await autoscaler._compute_target_containers(current_replicas=current_replicas)
-        assert result == expected_replicas
-
-
-_MAX_FAILURES = 10
-
-
-class TestFlashInternalMetricAutoscalerLogic:
-    @pytest.fixture
-    def autoscaler(self, client):
-        """Single autoscaler instance shared across all tests."""
-        with patch("aiohttp.ClientSession"):
-            return _FlashPrometheusAutoscaler(
-                client=client,
-                app_name="test_app",
-                cls_name="test_cls",
-                metrics_endpoint="internal",
-                target_metric="cpu_usage_percent",
-                target_metric_value=0.5,
-                min_containers=None,
-                max_containers=None,
-                scale_up_tolerance=0.1,
-                scale_down_tolerance=0.1,
-                scale_up_stabilization_window_seconds=0,
-                scale_down_stabilization_window_seconds=300,
-                autoscaling_interval_seconds=15,
-                buffer_containers=None,
-            )
 
 
 class TestFlashManagerStopping:
