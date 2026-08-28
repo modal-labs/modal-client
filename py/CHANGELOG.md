@@ -2,6 +2,14 @@
 
 ## Latest
 
+### 1.5.5 (2026-08-28)
+
+- We've added a [`modal.Sandbox.logs`](/docs/sdk/py/latest/Sandbox#logs) API, allowing you to `fetch()` logs from a specific date/time range or to `tail()` the most recent logs. Note that only logs from the entrypoint process of a Sandbox are currently stored, and streaming logs via this interface is not currently supported.
+- It's now possible to configure the default role when creating a new Restricted Environment via the CLI or SDK. See the [RBAC Guide](https://modal.com/docs/guide/rbac) for more details on default environment roles.
+- The `modal` CLI now accepts a global `--profile` option for simpler ad hoc profile selection.
+- We are deprecating a number of undocumented APIs on object types in the Modal SDK. These APIs have no intended user-facing functionality and will be removed in version 1.6.0. To be safe, check for deprecation warnings on this version before upgrading.
+
+
 ### 1.5.4 (2026-08-12)
 
 With this release, it's now possible to opt into a [more performant Sandbox backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds), which affords substantially higher creation rates and concurrency. Set `MODAL_SANDBOX_V2=1` as an environment variable and your Sandboxes will use this new system without any code changes. This will become the default behavior in version 1.6.0 of the Python SDK. Note that the new backend does not support the deprecated FileIO-based Sandbox filesystem API; please [migrate](/docs/guide/migrate-sandbox-filesystem) any code that is currently issuing deprecation warnings before enabling the feature flag.
