@@ -1218,7 +1218,7 @@ test("testSandboxExperimentalDockerMock", async () => {
   });
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
-    return { appId: "ap-1234" };
+    return AppGetOrCreateResponse.create({ appId: "ap-1234" });
   });
 
   const app = await mc.apps.fromName("libmodal-test", {
@@ -1268,7 +1268,7 @@ test("create deduces V2 from the returned Sandbox ID shape", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/AppGetOrCreate", (): AppGetOrCreateResponse => {
-    return { appId: "ap-1234" };
+    return AppGetOrCreateResponse.create({ appId: "ap-1234" });
   });
   mock.handleUnary("/EnvironmentGetOrCreate", () => {
     return {
@@ -1542,7 +1542,7 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
-    return { appId: "ap-1234" };
+    return AppGetOrCreateResponse.create({ appId: "ap-1234" });
   });
   mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
     return {
@@ -1623,7 +1623,7 @@ test("ExperimentalCreate caches encrypted-only tunnels from the create response"
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
-    return { appId: "ap-1234" };
+    return AppGetOrCreateResponse.create({ appId: "ap-1234" });
   });
   mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
     return {
@@ -1685,7 +1685,7 @@ test("ExperimentalCreate uses command router access from the create response", a
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
-    return { appId: "ap-1234" };
+    return AppGetOrCreateResponse.create({ appId: "ap-1234" });
   });
   mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
     return {
@@ -1815,7 +1815,7 @@ test("ExperimentalCreate fetches unencrypted tunnels missing from the create res
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
-    return { appId: "ap-1234" };
+    return AppGetOrCreateResponse.create({ appId: "ap-1234" });
   });
   mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
     return {

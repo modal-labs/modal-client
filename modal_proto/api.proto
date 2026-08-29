@@ -553,6 +553,7 @@ message AppGetOrCreateRequest {
 
 message AppGetOrCreateResponse {
   string app_id = 1;
+  AppHandleMetadata handle_metadata = 2;
 }
 
 message AppGetTagsRequest {
