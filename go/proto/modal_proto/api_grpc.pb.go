@@ -33,6 +33,7 @@ const (
 	ModalClient_AppDeploymentHistory_FullMethodName             = "/modal.client.ModalClient/AppDeploymentHistory"
 	ModalClient_AppFetchLogs_FullMethodName                     = "/modal.client.ModalClient/AppFetchLogs"
 	ModalClient_AppGetByDeploymentName_FullMethodName           = "/modal.client.ModalClient/AppGetByDeploymentName"
+	ModalClient_AppGetInfo_FullMethodName                       = "/modal.client.ModalClient/AppGetInfo"
 	ModalClient_AppGetLayout_FullMethodName                     = "/modal.client.ModalClient/AppGetLayout"
 	ModalClient_AppGetLifecycle_FullMethodName                  = "/modal.client.ModalClient/AppGetLifecycle"
 	ModalClient_AppGetLogs_FullMethodName                       = "/modal.client.ModalClient/AppGetLogs"
@@ -281,6 +282,7 @@ type ModalClientClient interface {
 	AppDeploymentHistory(ctx context.Context, in *AppDeploymentHistoryRequest, opts ...grpc.CallOption) (*AppDeploymentHistoryResponse, error)
 	AppFetchLogs(ctx context.Context, in *AppFetchLogsRequest, opts ...grpc.CallOption) (*AppFetchLogsResponse, error)
 	AppGetByDeploymentName(ctx context.Context, in *AppGetByDeploymentNameRequest, opts ...grpc.CallOption) (*AppGetByDeploymentNameResponse, error)
+	AppGetInfo(ctx context.Context, in *AppGetInfoRequest, opts ...grpc.CallOption) (*AppGetInfoResponse, error)
 	AppGetLayout(ctx context.Context, in *AppGetLayoutRequest, opts ...grpc.CallOption) (*AppGetLayoutResponse, error)
 	AppGetLifecycle(ctx context.Context, in *AppGetLifecycleRequest, opts ...grpc.CallOption) (*AppGetLifecycleResponse, error)
 	AppGetLogs(ctx context.Context, in *AppGetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskLogsBatch], error)
@@ -621,6 +623,16 @@ func (c *modalClientClient) AppGetByDeploymentName(ctx context.Context, in *AppG
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppGetByDeploymentNameResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AppGetByDeploymentName_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AppGetInfo(ctx context.Context, in *AppGetInfoRequest, opts ...grpc.CallOption) (*AppGetInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppGetInfoResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AppGetInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3087,6 +3099,7 @@ type ModalClientServer interface {
 	AppDeploymentHistory(context.Context, *AppDeploymentHistoryRequest) (*AppDeploymentHistoryResponse, error)
 	AppFetchLogs(context.Context, *AppFetchLogsRequest) (*AppFetchLogsResponse, error)
 	AppGetByDeploymentName(context.Context, *AppGetByDeploymentNameRequest) (*AppGetByDeploymentNameResponse, error)
+	AppGetInfo(context.Context, *AppGetInfoRequest) (*AppGetInfoResponse, error)
 	AppGetLayout(context.Context, *AppGetLayoutRequest) (*AppGetLayoutResponse, error)
 	AppGetLifecycle(context.Context, *AppGetLifecycleRequest) (*AppGetLifecycleResponse, error)
 	AppGetLogs(*AppGetLogsRequest, grpc.ServerStreamingServer[TaskLogsBatch]) error
@@ -3383,6 +3396,9 @@ func (UnimplementedModalClientServer) AppFetchLogs(context.Context, *AppFetchLog
 }
 func (UnimplementedModalClientServer) AppGetByDeploymentName(context.Context, *AppGetByDeploymentNameRequest) (*AppGetByDeploymentNameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppGetByDeploymentName not implemented")
+}
+func (UnimplementedModalClientServer) AppGetInfo(context.Context, *AppGetInfoRequest) (*AppGetInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AppGetInfo not implemented")
 }
 func (UnimplementedModalClientServer) AppGetLayout(context.Context, *AppGetLayoutRequest) (*AppGetLayoutResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppGetLayout not implemented")
@@ -4229,6 +4245,24 @@ func _ModalClient_AppGetByDeploymentName_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AppGetByDeploymentName(ctx, req.(*AppGetByDeploymentNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AppGetInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AppGetInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AppGetInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AppGetInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AppGetInfo(ctx, req.(*AppGetInfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8395,6 +8429,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AppGetByDeploymentName",
 			Handler:    _ModalClient_AppGetByDeploymentName_Handler,
+		},
+		{
+			MethodName: "AppGetInfo",
+			Handler:    _ModalClient_AppGetInfo_Handler,
 		},
 		{
 			MethodName: "AppGetLayout",

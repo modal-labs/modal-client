@@ -492,6 +492,14 @@ message AppGetByDeploymentNameResponse {
   AppLifecycle lifecycle = 4;  // Lifecycle of current App or recently stopped App
 }
 
+message AppGetInfoRequest {
+  string app_id = 1;
+}
+
+message AppGetInfoResponse {
+  AppHandleMetadata info = 1;
+}
+
 message AppGetLayoutRequest {
   string app_id = 1;
 }
@@ -553,6 +561,15 @@ message AppGetTagsRequest {
 
 message AppGetTagsResponse {
   map<string, string> tags = 1;
+}
+
+message AppHandleMetadata {
+  string description = 1;
+  string app_id = 2;
+  string environment_name = 3;
+  AppLifecycle lifecycle = 4;
+  map<string, string> functions = 5;  // tag -> function id
+  map<string, string> servers = 6;  // tag -> function id
 }
 
 message AppHeartbeatRequest {
@@ -4738,6 +4755,7 @@ service ModalClient {
   rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
   rpc AppFetchLogs(AppFetchLogsRequest) returns (AppFetchLogsResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
+  rpc AppGetInfo(AppGetInfoRequest) returns (AppGetInfoResponse);
   rpc AppGetLayout(AppGetLayoutRequest) returns (AppGetLayoutResponse);
   rpc AppGetLifecycle(AppGetLifecycleRequest) returns (AppGetLifecycleResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
