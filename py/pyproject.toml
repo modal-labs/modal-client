@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools~=77.0.3", "wheel"]
+requires = ["setuptools>=83,<84", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -53,10 +53,10 @@ dev = [
     "pytest-env~=1.1.5",
     "pytest-markdown-docs==0.9.2",
     "pytest-timeout~=2.4.0",
-    "python-dotenv~=1.0.0",
-    "requests~=2.32.4",
+    "python-dotenv~=1.2.2",
+    "requests==2.33.0",
     "ruff~=0.9.6",
-    "setuptools<82",                  # Required by grpcio-tools for pkg_resources (v82+ removed pkg_resources)"
+    "setuptools>=83,<84",
     "types-croniter~=1.0.8",
     "types-python-dateutil~=2.8.10",
     "types-requests~=2.31.0",
@@ -97,10 +97,6 @@ dev = [
     "python-socks[asyncio]>=2.5",
     "aiohttp-socks>=0.8",
 ]
-
-[tool.uv.extra-build-dependencies]
-grpcio-tools = ["setuptools<82"]
-
 
 [project.urls]
 Homepage = "https://modal.com"
