@@ -339,6 +339,8 @@ _SETTINGS = {
     "sandbox_v2": _Setting(None, transform=_to_boolean),
     "snapshot_debug": _Setting(False, transform=_to_boolean),
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
+    # Used to indicate gVisor cuda-checkpoint automation.
+    "runtime_managed_cuda_checkpoint": _Setting(False, transform=_to_boolean),
     "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
     # Payload format for function inputs/outputs: 'pickle' (default) or 'cbor'
     "payload_format": _Setting(
