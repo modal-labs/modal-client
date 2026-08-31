@@ -22,14 +22,8 @@ CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
 # stay in sync with `GPU_SNAPSHOT_RESTORE_FAILED_EXIT_CODE` in runner.rs.
 SNAPSHOT_RESTORE_FAILED_EXIT_CODE: int = 222
 
-# Maximum total duration for each individual `cuda-checkpoint` invocation.
-CUDA_CHECKPOINT_TIMEOUT: float = 3 * 60.0
-
 # Number of retries for each individual `cuda-checkpoint --toggle` invocation.
 CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES: int = 3
-
-# Maximum total duration for an entire toggle operation.
-CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES * CUDA_CHECKPOINT_TIMEOUT
 
 
 class CudaCheckpointState(Enum):
@@ -63,14 +57,11 @@ class CudaCheckpointProcess:
         """
         logger.debug(f"PID: {self.pid} Toggling CUDA checkpoint state to {target_state.value}")
 
-        start_time = time.monotonic()
         retry_count = 0
         max_retries = CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES
 
         attempts = 0
-        while self._should_continue_toggle(
-            target_state, start_time, refresh=not (skip_first_refresh and attempts == 0)
-        ):
+        while self._should_continue_toggle(target_state, refresh=not (skip_first_refresh and attempts == 0)):
             attempts += 1
             try:
                 self._execute_toggle_command()
@@ -89,10 +80,8 @@ class CudaCheckpointProcess:
 
         logger.debug(f"PID: {self.pid} Target state {target_state.value} reached")
 
-    def _should_continue_toggle(
-        self, target_state: CudaCheckpointState, start_time: float, refresh: bool = True
-    ) -> bool:
-        """Check if toggle operation should continue based on current state and timeout."""
+    def _should_continue_toggle(self, target_state: CudaCheckpointState, refresh: bool = True) -> bool:
+        """Check if toggle operation should continue based on current state."""
         if refresh:
             self.refresh_state()
 
@@ -101,13 +90,6 @@ class CudaCheckpointProcess:
 
         if self.state == CudaCheckpointState.FAILED:
             raise CudaCheckpointException(f"PID: {self.pid} CUDA process state is {self.state}")
-
-        elapsed = time.monotonic() - start_time
-        if elapsed >= CUDA_CHECKPOINT_TOGGLE_TIMEOUT:
-            raise CudaCheckpointException(
-                f"PID: {self.pid} Timeout after {elapsed:.2f}s waiting for state {target_state.value}. "
-                f"Current state: {self.state}"
-            )
 
         return True
 
@@ -119,15 +101,10 @@ class CudaCheckpointProcess:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=CUDA_CHECKPOINT_TIMEOUT,
             )
             logger.debug(f"PID: {self.pid} Successfully toggled CUDA checkpoint state")
         except subprocess.CalledProcessError as e:
             error_msg = f"PID: {self.pid} Failed to toggle CUDA checkpoint state: {e.stderr}"
-            logger.debug(error_msg)
-            raise CudaCheckpointException(error_msg)
-        except subprocess.TimeoutExpired:
-            error_msg = f"PID: {self.pid} Toggle command timed out"
             logger.debug(error_msg)
             raise CudaCheckpointException(error_msg)
 
@@ -139,7 +116,6 @@ class CudaCheckpointProcess:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=CUDA_CHECKPOINT_TIMEOUT,
             )
 
             state_str = result.stdout.strip().lower()
@@ -147,10 +123,6 @@ class CudaCheckpointProcess:
 
         except subprocess.CalledProcessError as e:
             error_msg = f"PID: {self.pid} Failed to get CUDA checkpoint state: {e.stderr}"
-            logger.debug(error_msg)
-            raise CudaCheckpointException(error_msg)
-        except subprocess.TimeoutExpired:
-            error_msg = f"PID: {self.pid} Get state command timed out"
             logger.debug(error_msg)
             raise CudaCheckpointException(error_msg)
 
@@ -208,7 +180,6 @@ class CudaCheckpointSession:
                 [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)],
                 capture_output=True,
                 text=True,
-                timeout=CUDA_CHECKPOINT_TIMEOUT,
             )
 
             # If the command succeeds (return code 0), this PID has a CUDA session
@@ -220,8 +191,6 @@ class CudaCheckpointSession:
         except subprocess.CalledProcessError:
             # Command failed, which is expected for PIDs without CUDA sessions
             pass
-        except subprocess.TimeoutExpired:
-            logger.debug(f"Timeout checking CUDA state for PID {pid}")
         except Exception as e:
             logger.debug(f"Error checking PID {pid}: {e}")
 
