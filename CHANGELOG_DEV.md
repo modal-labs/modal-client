@@ -6,7 +6,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Python
 
-- Added `Sandbox.logs`(/docs/sdk/py/latest/Sandbox#logs) namespace to retrieve Sandbox entrypoint logs directly from the SDK. The namespace has two different methods, allowing you `fetch()` logs from a specific date/time range, or `tail()` the most recent logs.
+- Added the [`Sandbox.logs`](/docs/sdk/py/latest/Sandbox#logs) namespace to retrieve Sandbox entrypoint logs directly from the SDK. The namespace has two different methods, allowing you to `fetch()` logs from a specific date/time range, or `tail()` the most recent logs.
 - Added support for setting the default member Role when creating Restricted Environments through the Python SDK and CLI.
 - The `modal` CLI now accepts a global `--profile` option for simpler ad hoc profile selection.
 - Fixed gRPC channels attempting to reuse connections whose underlying transport is closing.
@@ -22,6 +22,6 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## JS
 
-- A Sandbox's stdout/stderr, and the ditos of ContainerProcess (as returned by `sandbox.exec()`), now defer fetching output until `.stdout`/`.stderr` is first read. This makes the JS SDK consistent with the Go/Python SDKs in this regard.
+- A Sandbox's stdout/stderr, and the same streams on `ContainerProcess` (as returned by `sandbox.exec()`), now defer fetching output until `.stdout`/`.stderr` is first read. This makes the JS SDK consistent with the Go/Python SDKs in this regard.
 
 ## Go
