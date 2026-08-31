@@ -145,12 +145,12 @@ const writeMixin = {
  * If the stream is canceled, we signal the iterator via return() to stop
  * consumption and allow the source to clean up promptly.
  */
-export function streamConsumingIter(
-  iterable: AsyncIterable<Uint8Array>,
+export function streamConsumingIter<R extends string | Uint8Array = Uint8Array>(
+  iterable: AsyncIterable<R>,
   onCancel?: () => void,
-): ReadableStream<Uint8Array> {
+): ReadableStream<R> {
   const iter = iterable[Symbol.asyncIterator]();
-  return new ReadableStream<Uint8Array>(
+  return new ReadableStream<R>(
     {
       async pull(controller) {
         const { done, value } = await iter.next();
@@ -173,8 +173,33 @@ export function streamConsumingIter(
         }
       },
     },
-    new ByteLengthQueuingStrategy({
-      highWaterMark: 64 * 1024, // 64 KiB
-    }),
+    // The high water mark is set to zero intentionally to not run any
+    // background buffering of data, since that would eagerly start streams etc.
+    // If users want a buffered stream they can add buffing on top of the returned
+    // streams instead.
+    new CountQueuingStrategy({ highWaterMark: 0 }),
   );
+}
+
+/**
+ * Decode a byte stream to text, holding partial characters across chunk
+ * boundaries.
+ *
+ * This is used instead of built in decoder streams to avoid eager fetching
+ * of data which would keep streams open unnecessarly.
+ */
+export async function* decodeTextIter(
+  source: AsyncIterable<Uint8Array>,
+): AsyncIterable<string> {
+  const decoder = new TextDecoder();
+  for await (const chunk of source) {
+    const text = decoder.decode(chunk, { stream: true });
+    if (text) {
+      yield text;
+    }
+  }
+  const rest = decoder.decode();
+  if (rest) {
+    yield rest;
+  }
 }

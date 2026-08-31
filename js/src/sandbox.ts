@@ -52,6 +52,7 @@ import {
 import { SandboxFilesystem } from "./sandbox_fs";
 import { SidecarService } from "./sandbox_sidecar";
 import {
+  decodeTextIter,
   type ModalReadStream,
   type ModalWriteStream,
   streamConsumingIter,
@@ -1555,17 +1556,16 @@ export class Sandbox {
     this.#ensureV1("stdout");
     if (!this.#stdout) {
       this.#stdoutAbort = new AbortController();
-      const bytesStream = streamConsumingIter(
-        outputStreamSb(
-          this.#client.cpClient,
-          this.sandboxId,
-          FileDescriptor.FILE_DESCRIPTOR_STDOUT,
-          this.#stdoutAbort.signal,
-        ),
-        () => this.#stdoutAbort?.abort(),
-      );
       this.#stdout = toModalReadStream(
-        bytesStream.pipeThrough(new TextDecoderStream()),
+        streamConsumingIter(
+          outputStreamSb(
+            this.#client.cpClient,
+            this.sandboxId,
+            FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+            this.#stdoutAbort.signal,
+          ),
+          () => this.#stdoutAbort?.abort(),
+        ),
       );
     }
     return this.#stdout;
@@ -1575,17 +1575,16 @@ export class Sandbox {
     this.#ensureV1("stderr");
     if (!this.#stderr) {
       this.#stderrAbort = new AbortController();
-      const bytesStream = streamConsumingIter(
-        outputStreamSb(
-          this.#client.cpClient,
-          this.sandboxId,
-          FileDescriptor.FILE_DESCRIPTOR_STDERR,
-          this.#stderrAbort.signal,
-        ),
-        () => this.#stderrAbort?.abort(),
-      );
       this.#stderr = toModalReadStream(
-        bytesStream.pipeThrough(new TextDecoderStream()),
+        streamConsumingIter(
+          outputStreamSb(
+            this.#client.cpClient,
+            this.sandboxId,
+            FileDescriptor.FILE_DESCRIPTOR_STDERR,
+            this.#stderrAbort.signal,
+          ),
+          () => this.#stderrAbort?.abort(),
+        ),
       );
     }
     return this.#stderr;
@@ -2485,43 +2484,37 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
       inputStreamCp<R>(commandRouterClient, taskId, execId),
     );
 
-    const stdoutStream =
-      stdout === "ignore"
-        ? ReadableStream.from([])
-        : streamConsumingIter(
-            outputStreamCp(
-              commandRouterClient,
-              taskId,
-              execId,
-              FileDescriptor.FILE_DESCRIPTOR_STDOUT,
-              this.#deadline,
-            ),
-          );
+    // Nothing here reads: the first read is what opens the request. Decoding
+    // must stay in the iterable, above the stream - a transform pumps its
+    // source on its own schedule rather than on demand, and for these sources
+    // a read is what opens the request.
+    const output = (
+      behavior: StdioBehavior,
+      fileDescriptor: FileDescriptor,
+    ) => {
+      if (behavior === "ignore") {
+        return ReadableStream.from([]) as ReadableStream<R>;
+      }
+      const bytes = outputStreamCp(
+        commandRouterClient,
+        taskId,
+        execId,
+        fileDescriptor,
+        this.#deadline,
+      );
+      const stream =
+        mode === "text"
+          ? streamConsumingIter(decodeTextIter(bytes))
+          : streamConsumingIter(bytes);
+      return stream as ReadableStream<R>;
+    };
 
-    const stderrStream =
-      stderr === "ignore"
-        ? ReadableStream.from([])
-        : streamConsumingIter(
-            outputStreamCp(
-              commandRouterClient,
-              taskId,
-              execId,
-              FileDescriptor.FILE_DESCRIPTOR_STDERR,
-              this.#deadline,
-            ),
-          );
-
-    if (mode === "text") {
-      this.stdout = toModalReadStream(
-        stdoutStream.pipeThrough(new TextDecoderStream()),
-      ) as ModalReadStream<R>;
-      this.stderr = toModalReadStream(
-        stderrStream.pipeThrough(new TextDecoderStream()),
-      ) as ModalReadStream<R>;
-    } else {
-      this.stdout = toModalReadStream(stdoutStream) as ModalReadStream<R>;
-      this.stderr = toModalReadStream(stderrStream) as ModalReadStream<R>;
-    }
+    this.stdout = toModalReadStream(
+      output(stdout, FileDescriptor.FILE_DESCRIPTOR_STDOUT),
+    );
+    this.stderr = toModalReadStream(
+      output(stderr, FileDescriptor.FILE_DESCRIPTOR_STDERR),
+    );
   }
 
   /**
@@ -2596,7 +2589,7 @@ async function* outputStreamSb(
   sandboxId: string,
   fileDescriptor: FileDescriptor,
   signal?: AbortSignal,
-): AsyncIterable<Uint8Array> {
+): AsyncIterable<string> {
   let lastIndex = "0-0";
   let completed = false;
   let retriesRemaining = SB_LOGS_MAX_RETRIES;
@@ -2617,7 +2610,7 @@ async function* outputStreamSb(
         delayMs = SB_LOGS_INITIAL_DELAY_MS;
         retriesRemaining = SB_LOGS_MAX_RETRIES;
         lastIndex = batch.entryId;
-        yield* batch.items.map((item) => new TextEncoder().encode(item.data));
+        yield* batch.items.map((item) => item.data);
         if (batch.eof) {
           completed = true;
           break;

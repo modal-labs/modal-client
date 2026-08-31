@@ -22,4 +22,6 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## JS
 
+- A Sandbox's stdout/stderr, and the ditos of ContainerProcess (as returned by `sandbox.exec()`), now defer fetching output until `.stdout`/`.stderr` is first read. This makes the JS SDK consistent with the Go/Python SDKs in this regard.
+
 ## Go
