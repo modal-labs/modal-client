@@ -30,3 +30,4 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 ## Go
 
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.SnapshotFilesystem`.
+- A Sandbox's `Stdout`/`Stderr`, and those of a `ContainerProcess`, no longer read ahead of the caller: output is fetched by the read that asks for it, with no background goroutine and no buffer in between. Wrap them in a `bufio.Reader` for read-ahead.

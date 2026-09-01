@@ -3,8 +3,6 @@ module github.com/modal-labs/modal-client/go
 go 1.25.0
 
 require (
-	github.com/djherbis/buffer v1.2.0
-	github.com/djherbis/nio/v3 v3.0.1
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0

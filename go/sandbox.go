@@ -14,8 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/djherbis/buffer"
-	"github.com/djherbis/nio/v3"
 	"github.com/google/uuid"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc"
@@ -742,12 +740,12 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
 	sb.Stdout = &lazyStreamReader{
 		initFunc: func() io.ReadCloser {
-			return outputStreamSb(client.cpClient, client.logger, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+			return outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
 		},
 	}
 	sb.Stderr = &lazyStreamReader{
 		initFunc: func() io.ReadCloser {
-			return outputStreamSb(client.cpClient, client.logger, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
+			return outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
 		},
 	}
 	return sb
@@ -2338,7 +2336,7 @@ func newContainerProcess(commandRouterClient *taskCommandRouterClient, logger *s
 	} else {
 		cp.Stdout = &lazyStreamReader{
 			initFunc: func() io.ReadCloser {
-				return outputStreamCp(commandRouterClient, logger, taskID, execID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, deadline)
+				return outputStreamCp(commandRouterClient, taskID, execID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, deadline)
 			},
 		}
 	}
@@ -2347,7 +2345,7 @@ func newContainerProcess(commandRouterClient *taskCommandRouterClient, logger *s
 	} else {
 		cp.Stderr = &lazyStreamReader{
 			initFunc: func() io.ReadCloser {
-				return outputStreamCp(commandRouterClient, logger, taskID, execID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR, deadline)
+				return outputStreamCp(commandRouterClient, taskID, execID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR, deadline)
 			},
 		}
 	}
@@ -2442,17 +2440,6 @@ func (cps *cpStdin) Close() error {
 	return cps.commandRouterClient.ExecStdinWrite(context.Background(), cps.taskID, cps.execID, cps.offset, nil, true)
 }
 
-// cancelOnCloseReader is used to cancel background goroutines when the stream is closed.
-type cancelOnCloseReader struct {
-	io.ReadCloser
-	cancel context.CancelFunc
-}
-
-func (r *cancelOnCloseReader) Close() error {
-	r.cancel()
-	return r.ReadCloser.Close()
-}
-
 // lazyStreamReader defers stream initialization until the first read, preventing goroutine
 // leaks for unused streams. Without lazy initialization, output stream goroutines are created
 // eagerly and block on stream.Recv() calls.
@@ -2479,103 +2466,108 @@ func (l *lazyStreamReader) Close() error {
 	return nil
 }
 
-func outputStreamSb(cpClient pb.ModalClientClient, logger *slog.Logger, sandboxID string, fd pb.FileDescriptor) io.ReadCloser {
-	pr, pw := nio.Pipe(buffer.New(64 * 1024))
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		defer func() {
-			if err := pw.Close(); err != nil {
-				logger.DebugContext(ctx, "failed to close pipe writer", "error", err.Error())
-			}
-		}()
-		defer cancel()
-		lastIndex := "0-0"
-		completed := false
-		retries := 10
-		for !completed {
-			stream, err := cpClient.SandboxGetLogs(ctx, pb.SandboxGetLogsRequest_builder{
-				SandboxId:      sandboxID,
-				FileDescriptor: fd,
-				Timeout:        55,
-				LastEntryId:    lastIndex,
-			}.Build())
-			if err != nil {
-				if ctx.Err() != nil {
-					return
-				}
-				if isRetryableGrpc(err) && retries > 0 {
-					retries--
-					continue
-				}
-				streamErr := fmt.Errorf("error getting output stream: %w", err)
-				if closeErr := pw.CloseWithError(streamErr); closeErr != nil {
-					logger.DebugContext(ctx, "failed to close pipe writer with error", "error", closeErr.Error(), "stream_error", streamErr.Error())
-				}
-				return
-			}
-			for {
-				batch, err := stream.Recv()
-				if err != nil {
-					if ctx.Err() != nil {
-						return
-					}
-					if err != io.EOF {
-						if isRetryableGrpc(err) && retries > 0 {
-							retries--
-						} else {
-							streamErr := fmt.Errorf("error getting output stream: %w", err)
-							if closeErr := pw.CloseWithError(streamErr); closeErr != nil {
-								logger.DebugContext(ctx, "failed to close pipe writer with error", "error", closeErr.Error(), "stream_error", streamErr.Error())
-							}
-							return
-						}
-					}
-					break // we need to retry, either from an EOF or gRPC error
-				}
-				lastIndex = batch.GetEntryId()
-				for _, item := range batch.GetItems() {
-					// On error, writer has been closed. Still consume the rest of the channel.
-					if _, err := pw.Write([]byte(item.GetData())); err != nil {
-						logger.DebugContext(ctx, "failed to write to pipe", "error", err.Error())
-					}
-				}
-				if batch.GetEof() {
-					completed = true
-					break
-				}
-			}
-		}
-	}()
-	return &cancelOnCloseReader{ReadCloser: pr, cancel: cancel}
+// logStreamReader reads a Sandbox's stdout or stderr from the control plane.
+//
+// Like the exec stdio reader, nothing is pulled until Read asks: a batch of log
+// items is fetched by the read that wants it, and a caller who stops reading
+// leaves no goroutine behind them. It holds nothing beyond the batch it is
+// handing over, though what grpc-go has already received is still buffered
+// under it.
+type logStreamReader struct {
+	chunkReader
+
+	cpClient  pb.ModalClientClient
+	sandboxID string
+	fd        pb.FileDescriptor
+
+	stream grpc.ServerStreamingClient[pb.TaskLogsBatch]
+	// Where the next batch resumes, so a reopened stream carries on rather than
+	// repeating logs the caller has seen.
+	lastEntryID      string
+	retriesRemaining int
+	completed        bool
 }
 
-func outputStreamCp(commandRouterClient *taskCommandRouterClient, logger *slog.Logger, taskID, execID string, fd pb.FileDescriptor, deadline *time.Time) io.ReadCloser {
-	pr, pw := nio.Pipe(buffer.New(64 * 1024))
+func outputStreamSb(cpClient pb.ModalClientClient, sandboxID string, fd pb.FileDescriptor) io.ReadCloser {
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		defer func() {
-			if err := pw.Close(); err != nil {
-				logger.DebugContext(ctx, "failed to close pipe writer", "error", err.Error())
-			}
-		}()
-		defer cancel()
+	r := &logStreamReader{
+		cpClient:         cpClient,
+		sandboxID:        sandboxID,
+		fd:               fd,
+		lastEntryID:      "0-0",
+		retriesRemaining: sbLogsMaxRetries,
+	}
+	r.ctx, r.cancel = ctx, cancel
+	r.fetch, r.dropStream = r.fill, r.closeStream
+	return r
+}
 
-		resultCh := commandRouterClient.ExecStdioRead(ctx, taskID, execID, fd, deadline)
-		for result := range resultCh {
-			if result.Err != nil {
-				if ctx.Err() != nil {
-					return
-				}
-				streamErr := fmt.Errorf("error getting output stream: %w", result.Err)
-				if closeErr := pw.CloseWithError(streamErr); closeErr != nil {
-					logger.DebugContext(ctx, "failed to close pipe writer with error", "error", closeErr.Error(), "stream_error", streamErr.Error())
-				}
-				return
-			}
-			if _, err := pw.Write(result.Response.GetData()); err != nil {
-				logger.DebugContext(ctx, "failed to write to pipe", "error", err.Error())
-			}
+const sbLogsMaxRetries = 10
+
+func (r *logStreamReader) closeStream() {
+	r.stream = nil
+}
+
+// fill pulls the next batch of log items into pending, reopening the stream as
+// it needs to. The control plane ends a stream every 55 seconds, so reopening
+// at lastEntryID is the ordinary path rather than an error one.
+func (r *logStreamReader) fill() error {
+	for {
+		if r.completed {
+			return io.EOF
 		}
-	}()
-	return &cancelOnCloseReader{ReadCloser: pr, cancel: cancel}
+		if err := r.ctx.Err(); err != nil {
+			return err
+		}
+
+		if r.stream == nil {
+			stream, err := r.cpClient.SandboxGetLogs(r.ctx, pb.SandboxGetLogsRequest_builder{
+				SandboxId:      r.sandboxID,
+				FileDescriptor: r.fd,
+				Timeout:        55,
+				LastEntryId:    r.lastEntryID,
+			}.Build())
+			if err != nil {
+				if isRetryableGrpc(err) && r.retriesRemaining > 0 {
+					r.retriesRemaining--
+					continue
+				}
+				return fmt.Errorf("error getting output stream: %w", err)
+			}
+			r.stream = stream
+		}
+
+		batch, err := r.stream.Recv()
+		if err != nil {
+			r.closeStream()
+			if err == io.EOF {
+				// The server closed this stream; carry on from lastEntryID.
+				continue
+			}
+			if isRetryableGrpc(err) && r.retriesRemaining > 0 {
+				r.retriesRemaining--
+				continue
+			}
+			return fmt.Errorf("error getting output stream: %w", err)
+		}
+
+		r.lastEntryID = batch.GetEntryId()
+		// A batch carries several items, which concatenate into one read's
+		// worth. fill only runs with pending empty, so this starts from empty
+		// every time; the exec reader assigns instead because its stream sends
+		// one chunk per message.
+		for _, item := range batch.GetItems() {
+			r.pending = append(r.pending, item.GetData()...)
+		}
+		if batch.GetEof() {
+			r.completed = true
+		}
+		if len(r.pending) > 0 {
+			return nil
+		}
+	}
+}
+
+func outputStreamCp(commandRouterClient *taskCommandRouterClient, taskID, execID string, fd pb.FileDescriptor, deadline *time.Time) io.ReadCloser {
+	return commandRouterClient.ExecStdioRead(context.Background(), taskID, execID, fd, deadline)
 }

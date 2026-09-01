@@ -1333,3 +1333,93 @@ func TestInitTaskCommandRouterClientUsesSeededAccess(t *testing.T) {
 	g.Expect(*client.jwt.Load()).To(gomega.Equal(mockJWT))
 	g.Expect(*client.jwtExp.Load()).To(gomega.Equal(int64(9999999999)))
 }
+
+// blockingLogsStub embeds pb.ModalClientClient so unused methods inherit nil
+// stubs. SandboxGetLogs opens a stream that never delivers a batch, standing in
+// for a Sandbox that has printed nothing yet.
+type blockingLogsStub struct {
+	pb.ModalClientClient
+	opened chan struct{}
+}
+
+func (m *blockingLogsStub) SandboxGetLogs(
+	ctx context.Context,
+	in *pb.SandboxGetLogsRequest,
+	opts ...grpc.CallOption,
+) (grpc.ServerStreamingClient[pb.TaskLogsBatch], error) {
+	select {
+	case m.opened <- struct{}{}:
+	default:
+	}
+	return &blockingLogsStream{ctx: ctx}, nil
+}
+
+// blockingLogsStream blocks in Recv until its context ends, as a real stream
+// does while waiting for the next batch.
+type blockingLogsStream struct {
+	grpc.ServerStreamingClient[pb.TaskLogsBatch]
+	ctx context.Context
+}
+
+func (s *blockingLogsStream) Recv() (*pb.TaskLogsBatch, error) {
+	<-s.ctx.Done()
+	return nil, s.ctx.Err()
+}
+
+func (s *blockingLogsStream) Context() context.Context { return s.ctx }
+
+// Close has to reach a Read that is already blocked on the stream, since that
+// is how a caller stops one: SandboxFilesystem.Watch closes stdout from a
+// context.AfterFunc precisely to unblock a read.
+func TestClosingALogStreamUnblocksAWaitingRead(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &blockingLogsStub{opened: make(chan struct{}, 1)}
+	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+
+	readErr := make(chan error, 1)
+	go func() {
+		_, err := reader.Read(make([]byte, 1))
+		readErr <- err
+	}()
+
+	// Close must land while the read is blocked, not before it starts.
+	g.Eventually(stub.opened, 5*time.Second).Should(gomega.Receive())
+
+	closeErr := make(chan error, 1)
+	go func() { closeErr <- reader.Close() }()
+
+	g.Eventually(closeErr, 5*time.Second).Should(gomega.Receive(gomega.BeNil()),
+		"Close must not wait for the read it is cancelling")
+	g.Eventually(readErr, 5*time.Second).Should(gomega.Receive(gomega.HaveOccurred()),
+		"the blocked read should end once the stream is cancelled")
+}
+
+// A zero-length read asks for nothing, so it must not go looking for output.
+func TestZeroLengthReadDoesNotWaitForOutput(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &blockingLogsStub{opened: make(chan struct{}, 1)}
+	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	type result struct {
+		n   int
+		err error
+	}
+	res := make(chan result, 1)
+	go func() {
+		n, err := reader.Read([]byte{})
+		res <- result{n: n, err: err}
+	}()
+
+	var got result
+	g.Eventually(res, 5*time.Second).Should(gomega.Receive(&got),
+		"a zero-length read should return without waiting for output")
+	g.Expect(got.n).To(gomega.Equal(0))
+	g.Expect(got.err).ToNot(gomega.HaveOccurred())
+	g.Expect(stub.opened).ToNot(gomega.Receive(),
+		"and it should not have opened the stream")
+}

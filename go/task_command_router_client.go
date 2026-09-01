@@ -807,170 +807,190 @@ func (c *taskCommandRouterClient) ExecWait(ctx context.Context, taskID, execID s
 	return resp, err
 }
 
-// stdioReadResult represents a result from the stdio read stream.
-type stdioReadResult struct {
-	Response *pb.TaskExecStdioReadResponse
-	Err      error
+const (
+	stdioRetryInitialDelay = 10 * time.Millisecond
+	stdioRetryDelayFactor  = 2.0
+	stdioMaxRetries        = 10
+)
+
+// execStdioReader reads one exec's stdout or stderr.
+//
+// Nothing is pulled from the wire until Read asks for it: the stream is opened
+// by the first read and each chunk is fetched by the read that wants it. There
+// is no goroutine behind this, and it holds nothing beyond the chunk it is
+// handing over, so a caller who reads part of the output and stops leaves
+// nothing running. What grpc-go has already received is still buffered under
+// it. Wrap it in a bufio.Reader for read-ahead.
+type execStdioReader struct {
+	chunkReader
+
+	client *taskCommandRouterClient
+	taskID string
+	execID string
+	fd     pb.TaskExecStdioFileDescriptor
+
+	// Set only when the exec has a deadline, in which case running past it is a
+	// timeout rather than an ordinary cancellation.
+	deadline    time.Time
+	hasDeadline bool
+
+	stream       grpc.ServerStreamingClient[pb.TaskExecStdioReadResponse]
+	streamCancel context.CancelFunc
+	// Where the next read resumes, so a reopened stream picks up where the last
+	// one left off rather than repeating output the caller has seen.
+	offset int64
+
+	delay            time.Duration
+	retriesRemaining int
+	didAuthRetry     bool
 }
 
-// ExecStdioRead reads stdout or stderr from an exec.
-// The returned channel will be closed when the stream ends or an error occurs.
+// ExecStdioRead returns a reader over an exec's stdout or stderr.
 func (c *taskCommandRouterClient) ExecStdioRead(
 	ctx context.Context,
 	taskID, execID string,
 	fd pb.FileDescriptor,
 	deadline *time.Time,
-) <-chan stdioReadResult {
-	resultCh := make(chan stdioReadResult)
+) io.ReadCloser {
+	ctx, cancel := context.WithCancel(ctx)
+	r := &execStdioReader{
+		client:           c,
+		taskID:           taskID,
+		execID:           execID,
+		delay:            stdioRetryInitialDelay,
+		retriesRemaining: stdioMaxRetries,
+	}
+	r.ctx, r.cancel = ctx, cancel
+	r.fetch, r.dropStream = r.fill, r.closeStream
 
-	go func() {
-		defer close(resultCh)
+	switch fd {
+	case pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT:
+		r.fd = pb.TaskExecStdioFileDescriptor_TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT
+	case pb.FileDescriptor_FILE_DESCRIPTOR_STDERR:
+		r.fd = pb.TaskExecStdioFileDescriptor_TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR
+	case pb.FileDescriptor_FILE_DESCRIPTOR_INFO, pb.FileDescriptor_FILE_DESCRIPTOR_UNSPECIFIED:
+		r.err = fmt.Errorf("unsupported file descriptor: %v", fd)
+	default:
+		r.err = fmt.Errorf("invalid file descriptor: %v", fd)
+	}
 
-		var srFd pb.TaskExecStdioFileDescriptor
-		switch fd {
-		case pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT:
-			srFd = pb.TaskExecStdioFileDescriptor_TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT
-		case pb.FileDescriptor_FILE_DESCRIPTOR_STDERR:
-			srFd = pb.TaskExecStdioFileDescriptor_TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR
-		case pb.FileDescriptor_FILE_DESCRIPTOR_INFO, pb.FileDescriptor_FILE_DESCRIPTOR_UNSPECIFIED:
-			resultCh <- stdioReadResult{Err: fmt.Errorf("unsupported file descriptor: %v", fd)}
-			return
-		default:
-			resultCh <- stdioReadResult{Err: fmt.Errorf("invalid file descriptor: %v", fd)}
-			return
-		}
-
-		if deadline != nil {
-			var deadlineCancel context.CancelFunc
-			ctx, deadlineCancel = context.WithDeadline(ctx, *deadline)
-			defer deadlineCancel()
-		}
-		c.streamStdio(ctx, resultCh, taskID, execID, srFd)
-	}()
-
-	return resultCh
+	if deadline != nil {
+		r.deadline, r.hasDeadline = *deadline, true
+		r.ctx, r.cancel = context.WithDeadline(ctx, *deadline)
+	}
+	return r
 }
 
-func (c *taskCommandRouterClient) streamStdio(
-	ctx context.Context,
-	resultCh chan<- stdioReadResult,
-	taskID, execID string,
-	fd pb.TaskExecStdioFileDescriptor,
-) {
-	deadline, hasDeadline := ctx.Deadline()
+func (r *execStdioReader) closeStream() {
+	if r.streamCancel != nil {
+		r.streamCancel()
+		r.streamCancel = nil
+	}
+	r.stream = nil
+}
 
-	var offset int64
-	delayOriginal := 10 * time.Millisecond
-	numRetriesRemainingOriginal := 10
-
-	delayFactor := 2.0
-	delay := delayOriginal
-	numRetriesRemaining := numRetriesRemainingOriginal
-	didAuthRetry := false
-
+// fill pulls the next chunk into pending, opening or reopening the stream as it
+// needs to. It returns io.EOF once the output is finished.
+func (r *execStdioReader) fill() error {
 	for {
-		if ctx.Err() != nil {
-			if hasDeadline && ctx.Err() == context.DeadlineExceeded {
-				resultCh <- stdioReadResult{Err: ExecTimeoutError{Exception: fmt.Sprintf("deadline exceeded while streaming stdio for exec %s", execID)}}
-			} else {
-				resultCh <- stdioReadResult{Err: ctx.Err()}
-			}
-			return
+		if err := r.ctx.Err(); err != nil {
+			return r.contextErr(err)
 		}
 
-		callCtx := c.authContext(ctx)
+		if r.stream == nil {
+			if err := r.openStream(); err != nil {
+				if retry, fatal := r.recoverFrom(err); !retry {
+					return fatal
+				}
+				continue
+			}
+		}
 
-		request := pb.TaskExecStdioReadRequest_builder{
-			TaskId:         taskID,
-			ExecId:         execID,
-			Offset:         uint64(offset),
-			FileDescriptor: fd,
-		}.Build()
-
-		stream, err := c.stub.TaskExecStdioRead(callCtx, request)
+		item, err := r.stream.Recv()
+		if err == io.EOF {
+			return io.EOF
+		}
 		if err != nil {
-			errStatus := status.Code(err)
-			if errStatus == codes.Unauthenticated && !didAuthRetry {
-				if refreshErr := c.refreshJwt(ctx); refreshErr != nil {
-					resultCh <- stdioReadResult{Err: refreshErr}
-					return
-				}
-				didAuthRetry = true
-				continue
+			r.closeStream()
+			if retry, fatal := r.recoverFrom(err); !retry {
+				return fatal
 			}
-			if c.closed.Load() && errStatus == codes.Canceled {
-				closedErr := ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
-				resultCh <- stdioReadResult{Err: closedErr}
-				return
-			}
-			if _, retryable := commandRouterRetryableCodes[status.Code(err)]; retryable && numRetriesRemaining > 0 {
-				if hasDeadline && time.Until(deadline) <= delay {
-					resultCh <- stdioReadResult{Err: ExecTimeoutError{Exception: fmt.Sprintf("deadline exceeded while streaming stdio for exec %s", execID)}}
-					return
-				}
-				c.logger.DebugContext(ctx, "Retrying stdio read with delay", "delay", delay, "error", err)
-				select {
-				case <-ctx.Done():
-					resultCh <- stdioReadResult{Err: ctx.Err()}
-					return
-				case <-time.After(delay):
-				}
-				delay = time.Duration(float64(delay) * delayFactor)
-				numRetriesRemaining--
-				continue
-			}
-			resultCh <- stdioReadResult{Err: err}
-			return
+			continue
 		}
 
-		for {
-			item, err := stream.Recv()
-			if err == io.EOF {
-				return
-			}
-			if err != nil {
-				errStatus := status.Code(err)
-				if errStatus == codes.Unauthenticated && !didAuthRetry {
-					if refreshErr := c.refreshJwt(ctx); refreshErr != nil {
-						resultCh <- stdioReadResult{Err: refreshErr}
-						return
-					}
-					didAuthRetry = true
-					break
-				}
-				if c.closed.Load() && errStatus == codes.Canceled {
-					closedErr := ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
-					resultCh <- stdioReadResult{Err: closedErr}
-					return
-				}
-				if _, retryable := commandRouterRetryableCodes[errStatus]; retryable && numRetriesRemaining > 0 {
-					if hasDeadline && time.Until(deadline) <= delay {
-						resultCh <- stdioReadResult{Err: ExecTimeoutError{Exception: fmt.Sprintf("deadline exceeded while streaming stdio for exec %s", execID)}}
-						return
-					}
-					c.logger.DebugContext(ctx, "Retrying stdio read with delay", "delay", delay, "error", err)
-					select {
-					case <-ctx.Done():
-						resultCh <- stdioReadResult{Err: ctx.Err()}
-						return
-					case <-time.After(delay):
-					}
-					delay = time.Duration(float64(delay) * delayFactor)
-					numRetriesRemaining--
-					break
-				}
-				resultCh <- stdioReadResult{Err: err}
-				return
-			}
+		r.didAuthRetry = false
+		r.delay = stdioRetryInitialDelay
+		r.retriesRemaining = stdioMaxRetries
+		r.offset += int64(len(item.GetData()))
+		// One chunk per message, and fill only runs with pending empty, so the
+		// chunk replaces it. The log reader concatenates instead because a
+		// batch there carries several items.
+		r.pending = item.GetData()
+		return nil
+	}
+}
 
-			if didAuthRetry {
-				didAuthRetry = false
-			}
-			delay = delayOriginal
-			numRetriesRemaining = numRetriesRemainingOriginal
-			offset += int64(len(item.GetData()))
+func (r *execStdioReader) openStream() error {
+	streamCtx, cancel := context.WithCancel(r.ctx)
+	stream, err := r.client.stub.TaskExecStdioRead(
+		r.client.authContext(streamCtx),
+		pb.TaskExecStdioReadRequest_builder{
+			TaskId:         r.taskID,
+			ExecId:         r.execID,
+			Offset:         uint64(r.offset),
+			FileDescriptor: r.fd,
+		}.Build(),
+	)
+	if err != nil {
+		cancel()
+		return err
+	}
+	r.stream, r.streamCancel = stream, cancel
+	return nil
+}
 
-			resultCh <- stdioReadResult{Response: item}
+// recoverFrom says whether a failed open or read is worth another go, and with
+// what error if it is not. It waits out the backoff itself.
+func (r *execStdioReader) recoverFrom(err error) (retry bool, fatal error) {
+	errStatus := status.Code(err)
+
+	if errStatus == codes.Unauthenticated && !r.didAuthRetry {
+		if refreshErr := r.client.refreshJwt(r.ctx); refreshErr != nil {
+			return false, refreshErr
 		}
+		r.didAuthRetry = true
+		return true, nil
+	}
+	if r.client.closed.Load() && errStatus == codes.Canceled {
+		return false, ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
+	}
+	if _, retryable := commandRouterRetryableCodes[errStatus]; !retryable || r.retriesRemaining <= 0 {
+		return false, err
+	}
+	if r.hasDeadline && time.Until(r.deadline) <= r.delay {
+		return false, r.timeoutErr()
+	}
+
+	r.client.logger.DebugContext(r.ctx, "Retrying stdio read with delay", "delay", r.delay, "error", err)
+	select {
+	case <-r.ctx.Done():
+		return false, r.contextErr(r.ctx.Err())
+	case <-time.After(r.delay):
+	}
+	r.delay = time.Duration(float64(r.delay) * stdioRetryDelayFactor)
+	r.retriesRemaining--
+	return true, nil
+}
+
+func (r *execStdioReader) contextErr(err error) error {
+	if r.hasDeadline && errors.Is(err, context.DeadlineExceeded) {
+		return r.timeoutErr()
+	}
+	return err
+}
+
+func (r *execStdioReader) timeoutErr() error {
+	return ExecTimeoutError{
+		Exception: fmt.Sprintf("deadline exceeded while streaming stdio for exec %s", r.execID),
 	}
 }
