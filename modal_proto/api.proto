@@ -3554,6 +3554,23 @@ message Sandbox {
   StringMap environment_variables = 40;
 }
 
+message SandboxContainerCreateV2Request {
+  // Sandbox the container joins; it runs inside that sandbox's task.
+  string sandbox_id = 1;
+  // Logical container name, unique within the sandbox.
+  string container_name = 2;
+  // Same definition type as SandboxCreateV2. Fields a container cannot honor
+  // (resources, timeouts, scheduling constraints, ...) are rejected.
+  Sandbox definition = 3;
+  StringMap ephemeral_secrets = 4;
+  map<string, StringMap> cloud_bucket_mount_credentials = 5;
+}
+
+message SandboxContainerCreateV2Response {
+  string container_id = 1;
+  string container_name = 2;
+}
+
 message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
   string user_metadata = 2;
@@ -4936,6 +4953,7 @@ service ModalClient {
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
 
   // Sandboxes
+  rpc SandboxContainerCreateV2(SandboxContainerCreateV2Request) returns (SandboxContainerCreateV2Response);
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
   rpc SandboxCreateConnectTokenV2(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
