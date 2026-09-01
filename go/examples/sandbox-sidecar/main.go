@@ -66,6 +66,25 @@ func main() {
 	}
 	fmt.Printf("Sidecar said: %s", string(output))
 
+	if err := container.Filesystem.WriteText(ctx, "snapshot state", "/tmp/state", nil); err != nil {
+		log.Fatalf("Failed to write sidecar state: %v", err)
+	}
+	snapshot, err := container.SnapshotFilesystem(ctx, nil)
+	if err != nil {
+		log.Fatalf("Failed to snapshot sidecar: %v", err)
+	}
+	restored, err := sb.ExperimentalSidecars.Create(ctx, "restored", snapshot, &modal.SidecarCreateParams{
+		Command: []string{"sleep", "100"},
+	})
+	if err != nil {
+		log.Fatalf("Failed to restore sidecar: %v", err)
+	}
+	state, err := restored.Filesystem.ReadText(ctx, "/tmp/state", nil)
+	if err != nil {
+		log.Fatalf("Failed to read restored state: %v", err)
+	}
+	fmt.Printf("Restored state: %s\n", state)
+
 	exitCode, err := container.Terminate(ctx, &modal.SidecarTerminateParams{Wait: true})
 	if err != nil {
 		log.Fatalf("Failed to terminate sidecar: %v", err)

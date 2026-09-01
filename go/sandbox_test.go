@@ -317,6 +317,28 @@ func TestSandboxWaitUntilReady(t *testing.T) {
 	}
 }
 
+func TestSidecarSnapshotFilesystemTargetsContainer(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var captured *pb.TaskSnapshotFilesystemRequest
+	stub := &mockSnapshotFsStub{
+		fn: func(_ context.Context, request *pb.TaskSnapshotFilesystemRequest, _ ...grpc.CallOption) (*pb.TaskSnapshotFilesystemResponse, error) {
+			captured = request
+			return pb.TaskSnapshotFilesystemResponse_builder{ImageId: "im-sidecar-snapshot"}.Build(), nil
+		},
+	}
+	sb := newReadinessSandbox(sandboxVersionV2, stub)
+	sidecar := newSidecarContainer(sb, "sb-test-ctr-SIDECAR123", "worker", nil)
+
+	image, err := sidecar.SnapshotFilesystem(t.Context(), &SidecarSnapshotFilesystemParams{TTL: NoExpiryTTL})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(image.ImageID).To(gomega.Equal("im-sidecar-snapshot"))
+	g.Expect(captured.GetTaskId()).To(gomega.Equal("ta-wait-123"))
+	g.Expect(captured.GetContainerId()).To(gomega.Equal(sidecar.ContainerID))
+	g.Expect(captured.GetTtlSeconds()).To(gomega.Equal(int64(-1)))
+}
+
 func TestSandboxWaitUntilReadyTimesOut(t *testing.T) {
 	t.Parallel()
 

@@ -69,6 +69,10 @@ type SandboxSidecarAccess = {
     containerId: string,
     params: SidecarReloadVolumesParams | undefined,
   ): Promise<void>;
+  snapshotFilesystem(
+    containerId: string,
+    params: SidecarSnapshotFilesystemParams | undefined,
+  ): Promise<Image>;
 };
 
 /** Options for {@link SidecarService#create SidecarService.create()}. */
@@ -115,6 +119,14 @@ export type SidecarExecParams = SandboxExecParams;
 export type SidecarTerminateParams = {
   /** If true, wait for the sidecar container to terminate. */
   wait?: boolean;
+};
+
+/** Optional parameters for {@link SidecarContainer#snapshotFilesystem SidecarContainer.snapshotFilesystem()}. */
+export type SidecarSnapshotFilesystemParams = {
+  /** Overall budget for the snapshot call, in milliseconds. Defaults to 55000. */
+  timeoutMs?: number;
+  /** Lifetime of the resulting image in milliseconds. Defaults to 30 days. Pass `null` for no expiry. */
+  ttlMs?: number | null;
 };
 
 /** Optional parameters for {@link SidecarContainer#reloadVolumes SidecarContainer.reloadVolumes()}. */
@@ -420,6 +432,13 @@ export class SidecarContainer {
     if (params?.wait) {
       return this.wait();
     }
+  }
+
+  /** Snapshot this Sidecar container's filesystem into an Image. */
+  async snapshotFilesystem(
+    params?: SidecarSnapshotFilesystemParams,
+  ): Promise<Image> {
+    return this.#access.snapshotFilesystem(this.containerId, params);
   }
 
   /**

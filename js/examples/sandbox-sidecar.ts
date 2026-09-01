@@ -27,6 +27,16 @@ try {
   await proc.wait();
   console.log("Sidecar said:", output.trim());
 
+  await container.filesystem.writeText("snapshot state", "/tmp/state");
+  const snapshot = await container.snapshotFilesystem();
+  const restored = await sb.experimentalSidecars.create("restored", snapshot, {
+    command: ["sleep", "100"],
+  });
+  console.log(
+    "Restored state:",
+    await restored.filesystem.readText("/tmp/state"),
+  );
+
   const exitCode = await container.terminate({ wait: true });
   console.log("Sidecar terminated with exit code:", exitCode);
 } finally {

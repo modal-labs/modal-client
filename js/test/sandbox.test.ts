@@ -33,12 +33,14 @@ import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
 import { SandboxSnapshot } from "../src/sandbox_snapshot";
 import {
   TaskSetNetworkAccessRequest,
+  TaskSnapshotFilesystemRequest,
   TaskSnapshotMemoryRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
   AlreadyExistsError,
   ConflictError,
   ExecutionError,
+  Image,
   InvalidError,
   NotFoundError,
   SnapshotCreationError,
@@ -2676,6 +2678,43 @@ test("updateNetworkPolicy sends correct request via mocked command router", asyn
   );
   expect(request.networkAccess?.allowedCidrs).toEqual(["10.0.0.0/8"]);
   expect(request.networkAccess?.allowedDomains).toEqual(["example.com"]);
+});
+
+test("sidecar snapshotFilesystem targets its container", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const containerCreate = vi.fn().mockResolvedValue({
+    containerId: "sb-test-ctr-SIDECAR123",
+    containerName: "worker",
+  });
+  const snapshotFilesystem = vi
+    .fn()
+    .mockResolvedValue({ imageId: "im-sidecar-snapshot" });
+  const tryInit = vi
+    .spyOn(TaskCommandRouterClientImpl, "tryInit")
+    .mockResolvedValue({
+      containerCreate,
+      snapshotFilesystem,
+      close: vi.fn(),
+    } as unknown as TaskCommandRouterClientImpl);
+  onTestFinished(() => tryInit.mockRestore());
+
+  const sidecar = await sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    { command: ["sleep", "infinity"] },
+  );
+  const image = await sidecar.snapshotFilesystem({ ttlMs: null });
+
+  expect(image.imageId).toBe("im-sidecar-snapshot");
+  expect(snapshotFilesystem).toHaveBeenCalledTimes(1);
+  const request = snapshotFilesystem.mock
+    .calls[0][0] as TaskSnapshotFilesystemRequest;
+  expect(request.taskId).toBe("ta-v2-123");
+  expect(request.containerId).toBe(sidecar.containerId);
+  expect(request.ttlSeconds).toBe(-1);
+  expect(request.snapshotId).toBeTruthy();
 });
 
 test("updateNetworkPolicy rejects when a dimension is missing", async () => {

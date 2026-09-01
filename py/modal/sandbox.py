@@ -1577,6 +1577,15 @@ class _Sandbox(_Object, type_prefix="sb"):
                 raise InvalidError("ttl is not supported with MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT")
             return await self._legacy_snapshot_filesystem(timeout)
 
+        return await self._snapshot_filesystem(timeout, ttl=ttl)
+
+    async def _snapshot_filesystem(
+        self,
+        timeout: int,
+        *,
+        ttl: int | None,
+        container_id: str = "",
+    ) -> _Image:
         wire_ttl_seconds = _ttl_to_wire_ttl(ttl)
 
         task_id = await self._get_task_id()
@@ -1586,6 +1595,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             task_id=task_id,
             snapshot_id=str(uuid.uuid4()),
             ttl_seconds=wire_ttl_seconds,
+            container_id=container_id,
         )
         res = await command_router_client.snapshot_filesystem(req, timeout=float(timeout))
         return _Image._new_hydrated(res.image_id, self._client, None)
@@ -2754,6 +2764,31 @@ class _SidecarContainer:
         task_id = await self._sandbox._get_task_id()
         command_router_client = await self._sandbox._get_command_router_client(task_id)
         return task_id, command_router_client
+
+    async def snapshot_filesystem(
+        self,
+        timeout: int = 55,
+        *,
+        ttl: int | None = 30 * 24 * 3600,
+    ) -> _Image:
+        """Snapshot this Sidecar container's filesystem.
+
+        Args:
+            timeout:
+                Maximum time in seconds to wait for the snapshot operation.
+            ttl:
+                The resulting Image is retained for `ttl` seconds (default: 30 days). Pass `ttl=None` to retain
+                the image indefinitely.
+
+        Returns:
+            An [`Image`](https://modal.com/docs/sdk/py/latest/Image) containing a snapshot of this Sidecar's
+            filesystem.
+        """
+        return await self._sandbox._snapshot_filesystem(
+            timeout,
+            ttl=ttl,
+            container_id=self._container_id,
+        )
 
     @typing.overload
     async def exec(

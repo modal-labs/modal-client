@@ -1616,6 +1616,8 @@ export class Sandbox {
         commandRouter: () => this.#getCommandRouter(),
         reloadVolumes: (containerId, params) =>
           this.#reloadVolumes(containerId, params),
+        snapshotFilesystem: (containerId, params) =>
+          this.#snapshotFilesystem(containerId, params),
       });
     }
     return this.#sidecars;
@@ -2095,6 +2097,13 @@ export class Sandbox {
     params?: SandboxSnapshotFilesystemParams,
   ): Promise<Image> {
     this.#ensureAttached();
+    return this.#snapshotFilesystem("", params);
+  }
+
+  async #snapshotFilesystem(
+    containerId: string,
+    params?: SandboxSnapshotFilesystemParams,
+  ): Promise<Image> {
     const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
     // Treat both undefined and 0 as "use default", matching the Go
     // `Timeout time.Duration` zero-value convention on SandboxSnapshotFilesystemParams.
@@ -2105,6 +2114,7 @@ export class Sandbox {
       taskId,
       snapshotId: uuidv4(),
       ttlSeconds: wireTtlSeconds,
+      containerId,
     });
 
     const response = await commandRouterClient.snapshotFilesystem(request, {

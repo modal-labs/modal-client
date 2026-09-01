@@ -101,6 +101,7 @@ export type {
   SidecarListParams,
   SidecarExecParams,
   SidecarTerminateParams,
+  SidecarSnapshotFilesystemParams,
 } from "./sandbox_sidecar";
 export type { ModalReadStream, ModalWriteStream } from "./streams";
 export {

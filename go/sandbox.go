@@ -1568,8 +1568,9 @@ func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration, params *S
 }
 
 // NoExpiryTTL is the sentinel [time.Duration] value for
-// [SandboxSnapshotFilesystemParams.TTL] / [SandboxSnapshotDirectoryParams.TTL] that
-// disables expiry on the resulting Image, retaining it indefinitely.
+// [SandboxSnapshotFilesystemParams.TTL], [SidecarSnapshotFilesystemParams.TTL], or
+// [SandboxSnapshotDirectoryParams.TTL] that disables expiry on the resulting Image,
+// retaining it indefinitely.
 const NoExpiryTTL time.Duration = -1
 
 // SandboxSnapshotFilesystemParams configures a [Sandbox.SnapshotFilesystem] call.
@@ -1691,6 +1692,10 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 			timeout = params.Timeout
 		}
 	}
+	return sb.snapshotFilesystem(ctx, timeout, ttl, "")
+}
+
+func (sb *Sandbox) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {
 	wireTTL, err := resolveTTL(ttl)
 	if err != nil {
 		return nil, err
@@ -1702,9 +1707,10 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 	}
 
 	request := pb.TaskSnapshotFilesystemRequest_builder{
-		TaskId:     taskID,
-		SnapshotId: uuid.NewString(),
-		TtlSeconds: &wireTTL,
+		TaskId:      taskID,
+		SnapshotId:  uuid.NewString(),
+		TtlSeconds:  &wireTTL,
+		ContainerId: containerID,
 	}.Build()
 
 	response, err := crClient.SnapshotFilesystem(ctx, request, timeout)

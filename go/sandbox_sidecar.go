@@ -79,6 +79,15 @@ type SidecarTerminateParams struct {
 	Wait bool
 }
 
+// SidecarSnapshotFilesystemParams configures a [SidecarContainer.SnapshotFilesystem] call.
+type SidecarSnapshotFilesystemParams struct {
+	// Timeout is the overall budget for the snapshot call. Zero means the default (55 seconds).
+	Timeout time.Duration
+	// TTL is the lifetime of the resulting image. Zero means 30 days; pass [NoExpiryTTL] to
+	// retain the image indefinitely.
+	TTL time.Duration
+}
+
 // SidecarReloadVolumesParams are options for [SidecarContainer.ReloadVolumes].
 type SidecarReloadVolumesParams struct {
 	// Timeout bounds how long the call waits. Defaults to 55 seconds.
@@ -388,6 +397,19 @@ func (c *SidecarContainer) Terminate(ctx context.Context, params *SidecarTermina
 		return 0, nil
 	}
 	return c.Wait(ctx, nil)
+}
+
+// SnapshotFilesystem snapshots this Sidecar container's filesystem into an Image.
+func (c *SidecarContainer) SnapshotFilesystem(ctx context.Context, params *SidecarSnapshotFilesystemParams) (*Image, error) {
+	var ttl time.Duration
+	timeout := 55 * time.Second
+	if params != nil {
+		ttl = params.TTL
+		if params.Timeout != 0 {
+			timeout = params.Timeout
+		}
+	}
+	return c.sandbox.snapshotFilesystem(ctx, timeout, ttl, c.ContainerID)
 }
 
 // ReloadVolumes reloads all Volumes mounted in this sidecar container.

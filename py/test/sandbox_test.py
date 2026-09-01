@@ -1351,6 +1351,22 @@ def test_sandbox_snapshot_fs(app, servicer):
     sb.terminate()
 
 
+def test_sidecar_snapshot_fs(app, servicer):
+    sb = Sandbox.create(app=app)
+    sidecar = SidecarContainer(sb, "sb-test-ctr-SIDECAR123", "worker")
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        image = sidecar.snapshot_filesystem(timeout=17, ttl=None)
+
+    assert image.object_id == "im-snapshot-fs-123"
+    (req,) = tcr_ctx.get_requests("TaskSnapshotFilesystem")
+    assert req.container_id == sidecar.object_id
+    assert req.ttl_seconds == -1
+    uuid.UUID(req.snapshot_id)
+
+    sb.terminate()
+
+
 @pytest.mark.parametrize("legacy_env_var", [False, True])
 def test_sandbox_snapshot_fs_v2(app, servicer, monkeypatch, legacy_env_var):
     if legacy_env_var:
