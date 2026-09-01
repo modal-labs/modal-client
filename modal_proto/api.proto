@@ -2285,6 +2285,13 @@ message FunctionFinishInputsRequest {
   uint32 num_inputs = 3;
 }
 
+message FunctionGetByIdRequest {
+  string function_id = 1;
+}
+
+message FunctionGetByIdResponse {
+  FunctionData function = 1;
+}
 
 message FunctionGetCallGraphRequest {
   string function_call_id = 2;
@@ -4892,6 +4899,7 @@ service ModalClient {
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionFinishInputs(FunctionFinishInputsRequest) returns (google.protobuf.Empty); // For map RPCs, to signal that all inputs have been sent
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
+  rpc FunctionGetById(FunctionGetByIdRequest) returns (FunctionGetByIdResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
   rpc FunctionGetDynamicConcurrency(FunctionGetDynamicConcurrencyRequest) returns (FunctionGetDynamicConcurrencyResponse);

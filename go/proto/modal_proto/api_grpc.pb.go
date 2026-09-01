@@ -124,6 +124,7 @@ const (
 	ModalClient_FunctionCreate_FullMethodName                   = "/modal.client.ModalClient/FunctionCreate"
 	ModalClient_FunctionFinishInputs_FullMethodName             = "/modal.client.ModalClient/FunctionFinishInputs"
 	ModalClient_FunctionGet_FullMethodName                      = "/modal.client.ModalClient/FunctionGet"
+	ModalClient_FunctionGetById_FullMethodName                  = "/modal.client.ModalClient/FunctionGetById"
 	ModalClient_FunctionGetCallGraph_FullMethodName             = "/modal.client.ModalClient/FunctionGetCallGraph"
 	ModalClient_FunctionGetCurrentStats_FullMethodName          = "/modal.client.ModalClient/FunctionGetCurrentStats"
 	ModalClient_FunctionGetDynamicConcurrency_FullMethodName    = "/modal.client.ModalClient/FunctionGetDynamicConcurrency"
@@ -388,6 +389,7 @@ type ModalClientClient interface {
 	FunctionCreate(ctx context.Context, in *FunctionCreateRequest, opts ...grpc.CallOption) (*FunctionCreateResponse, error)
 	FunctionFinishInputs(ctx context.Context, in *FunctionFinishInputsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	FunctionGet(ctx context.Context, in *FunctionGetRequest, opts ...grpc.CallOption) (*FunctionGetResponse, error)
+	FunctionGetById(ctx context.Context, in *FunctionGetByIdRequest, opts ...grpc.CallOption) (*FunctionGetByIdResponse, error)
 	FunctionGetCallGraph(ctx context.Context, in *FunctionGetCallGraphRequest, opts ...grpc.CallOption) (*FunctionGetCallGraphResponse, error)
 	FunctionGetCurrentStats(ctx context.Context, in *FunctionGetCurrentStatsRequest, opts ...grpc.CallOption) (*FunctionStats, error)
 	FunctionGetDynamicConcurrency(ctx context.Context, in *FunctionGetDynamicConcurrencyRequest, opts ...grpc.CallOption) (*FunctionGetDynamicConcurrencyResponse, error)
@@ -1589,6 +1591,16 @@ func (c *modalClientClient) FunctionGet(ctx context.Context, in *FunctionGetRequ
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FunctionGetResponse)
 	err := c.cc.Invoke(ctx, ModalClient_FunctionGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) FunctionGetById(ctx context.Context, in *FunctionGetByIdRequest, opts ...grpc.CallOption) (*FunctionGetByIdResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FunctionGetByIdResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionGetById_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3216,6 +3228,7 @@ type ModalClientServer interface {
 	FunctionCreate(context.Context, *FunctionCreateRequest) (*FunctionCreateResponse, error)
 	FunctionFinishInputs(context.Context, *FunctionFinishInputsRequest) (*emptypb.Empty, error)
 	FunctionGet(context.Context, *FunctionGetRequest) (*FunctionGetResponse, error)
+	FunctionGetById(context.Context, *FunctionGetByIdRequest) (*FunctionGetByIdResponse, error)
 	FunctionGetCallGraph(context.Context, *FunctionGetCallGraphRequest) (*FunctionGetCallGraphResponse, error)
 	FunctionGetCurrentStats(context.Context, *FunctionGetCurrentStatsRequest) (*FunctionStats, error)
 	FunctionGetDynamicConcurrency(context.Context, *FunctionGetDynamicConcurrencyRequest) (*FunctionGetDynamicConcurrencyResponse, error)
@@ -3682,6 +3695,9 @@ func (UnimplementedModalClientServer) FunctionFinishInputs(context.Context, *Fun
 }
 func (UnimplementedModalClientServer) FunctionGet(context.Context, *FunctionGetRequest) (*FunctionGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGet not implemented")
+}
+func (UnimplementedModalClientServer) FunctionGetById(context.Context, *FunctionGetByIdRequest) (*FunctionGetByIdResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionGetById not implemented")
 }
 func (UnimplementedModalClientServer) FunctionGetCallGraph(context.Context, *FunctionGetCallGraphRequest) (*FunctionGetCallGraphResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetCallGraph not implemented")
@@ -5857,6 +5873,24 @@ func _ModalClient_FunctionGet_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).FunctionGet(ctx, req.(*FunctionGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_FunctionGetById_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FunctionGetByIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionGetById(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionGetById_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionGetById(ctx, req.(*FunctionGetByIdRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8803,6 +8837,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FunctionGet",
 			Handler:    _ModalClient_FunctionGet_Handler,
+		},
+		{
+			MethodName: "FunctionGetById",
+			Handler:    _ModalClient_FunctionGetById_Handler,
 		},
 		{
 			MethodName: "FunctionGetCallGraph",
