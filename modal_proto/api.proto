@@ -69,6 +69,13 @@ enum AppStopSource {
   APP_STOP_SOURCE_WEB = 3;
 }
 
+// CPU architecture an image is built for and must run on.
+enum Arch {
+  ARCH_UNSPECIFIED = 0;
+  ARCH_X86_64 = 1;
+  ARCH_AARCH64 = 2;
+}
+
 enum CertificateStatus {
   CERTIFICATE_STATUS_PENDING = 0;
   CERTIFICATE_STATUS_ISSUED = 1;
@@ -2734,6 +2741,10 @@ message Image {
 
   // Volume mount for RUN commands
   repeated VolumeMount volume_mounts = 23;
+
+  // CPU architecture the image is built for. Images with an unspecified
+  // arch predate this field and are treated as x86_64.
+  Arch arch = 24;
 }
 
 message ImageBuildChainGetRequest {
