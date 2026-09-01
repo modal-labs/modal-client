@@ -189,6 +189,9 @@ type taskCommandRouterClient struct {
 	jwtExp       atomic.Pointer[int64]
 	logger       *slog.Logger
 	closed       atomic.Bool
+	// How long a caller may go without reading an exec's output before the
+	// stream is given up so the connection can go idle.
+	stdioIdleTimeout time.Duration
 
 	refreshJwtGroup singleflight.Group
 }
@@ -260,20 +263,25 @@ func initTaskCommandRouterClient(
 			Timeout:             10 * time.Second,
 			PermitWithoutStream: true,
 		}),
+		// With no RPC running, grpc-go drops the transport and reconnects on the
+		// next call, so a Sandbox nobody is using costs no connection. Zero
+		// leaves the connection up until the client closes.
+		grpc.WithIdleTimeout(profile.SandboxChannelIdleTimeout),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task command router connection: %w", err)
 	}
 
 	client := &taskCommandRouterClient{
-		stub:         pb.NewTaskCommandRouterClient(conn),
-		conn:         conn,
-		serverClient: serverClient,
-		taskID:       taskID,
-		sandboxID:    sandboxID,
-		isV2:         isV2,
-		serverURL:    access.url,
-		logger:       logger,
+		stub:             pb.NewTaskCommandRouterClient(conn),
+		conn:             conn,
+		serverClient:     serverClient,
+		taskID:           taskID,
+		sandboxID:        sandboxID,
+		isV2:             isV2,
+		serverURL:        access.url,
+		logger:           logger,
+		stdioIdleTimeout: profile.SandboxStreamIdleTimeout,
 	}
 	client.jwt.Store(&jwt)
 	client.jwtExp.Store(jwtExp)
@@ -834,6 +842,14 @@ type execStdioReader struct {
 	deadline    time.Time
 	hasDeadline bool
 
+	// How long the caller may go without reading before the stream is given up
+	// so the connection can go idle. Zero waits for them however long they take.
+	idleTimeout time.Duration
+	idleTimer   *time.Timer
+	// Set when the timer, rather than a fault, ended the stream, so the next
+	// read reopens instead of surfacing a cancellation.
+	releasedWhileIdle atomic.Bool
+
 	stream       grpc.ServerStreamingClient[pb.TaskExecStdioReadResponse]
 	streamCancel context.CancelFunc
 	// Where the next read resumes, so a reopened stream picks up where the last
@@ -859,9 +875,11 @@ func (c *taskCommandRouterClient) ExecStdioRead(
 		execID:           execID,
 		delay:            stdioRetryInitialDelay,
 		retriesRemaining: stdioMaxRetries,
+		idleTimeout:      c.stdioIdleTimeout,
 	}
 	r.ctx, r.cancel = ctx, cancel
 	r.fetch, r.dropStream = r.fill, r.closeStream
+	r.inUse, r.idle = r.stopIdleTimer, r.armIdleTimer
 
 	switch fd {
 	case pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT:
@@ -882,11 +900,42 @@ func (c *taskCommandRouterClient) ExecStdioRead(
 }
 
 func (r *execStdioReader) closeStream() {
+	// The timer exists to end this stream, so it has nothing left to do.
+	r.stopIdleTimer()
 	if r.streamCancel != nil {
 		r.streamCancel()
 		r.streamCancel = nil
 	}
 	r.stream = nil
+}
+
+// armIdleTimer gives the connection up if the caller does not come back for
+// another read. Nothing is in flight between reads, so the only thing holding
+// the connection is the open stream, and ending it lets grpc-go idle the
+// connection out. The next read reopens at the offset reached so far.
+func (r *execStdioReader) armIdleTimer() {
+	// A reader only ever has one idle timer, and arming replaces it: a read that
+	// arrives before the last one expired has refreshed it, so the old one must
+	// not go on to cancel a stream that is back in use.
+	r.stopIdleTimer()
+	if r.idleTimeout <= 0 || r.streamCancel == nil {
+		return
+	}
+	cancel, ctx := r.streamCancel, r.ctx
+	r.idleTimer = time.AfterFunc(r.idleTimeout, func() {
+		// Deliberately touches nothing but the flag and the stream's own
+		// cancel, so it cannot deadlock against a Read holding the mutex.
+		r.releasedWhileIdle.Store(true)
+		r.client.logger.DebugContext(ctx, "Releasing command router connection to an idle stdio reader", "task_id", r.client.taskID)
+		cancel()
+	})
+}
+
+func (r *execStdioReader) stopIdleTimer() {
+	if r.idleTimer != nil {
+		r.idleTimer.Stop()
+		r.idleTimer = nil
+	}
 }
 
 // fill pulls the next chunk into pending, opening or reopening the stream as it
@@ -912,6 +961,11 @@ func (r *execStdioReader) fill() error {
 		}
 		if err != nil {
 			r.closeStream()
+			if r.releasedWhileIdle.Swap(false) {
+				// We ended this stream ourselves because nobody was reading.
+				// Nothing went wrong, so reopen without spending a retry.
+				continue
+			}
 			if retry, fatal := r.recoverFrom(err); !retry {
 				return fatal
 			}
@@ -921,6 +975,9 @@ func (r *execStdioReader) fill() error {
 		r.didAuthRetry = false
 		r.delay = stdioRetryInitialDelay
 		r.retriesRemaining = stdioMaxRetries
+		// A chunk still buffered from a stream we ended ourselves is fine to
+		// hand over, but the flag must not outlive it and excuse a later fault.
+		r.releasedWhileIdle.Store(false)
 		r.offset += int64(len(item.GetData()))
 		// One chunk per message, and fill only runs with pending empty, so the
 		// chunk replaces it. The log reader concatenates instead because a

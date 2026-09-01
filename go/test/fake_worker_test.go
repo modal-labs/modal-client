@@ -35,9 +35,13 @@ type fakeWorkerRouter struct {
 	pb.UnimplementedTaskCommandRouterServer
 	// What the exec prints, in full. Once it has all been sent the stream stays
 	// open with nothing more on it, as it does for an exec still running.
-	output  []byte
-	mu      sync.Mutex
-	offsets []uint64
+	output []byte
+	// When set, how many chunks one stream will serve before it stops sending
+	// and simply holds open. A reader wanting more has to reopen, which is what
+	// makes resuming at an offset observable.
+	chunksPerStream int
+	mu              sync.Mutex
+	offsets         []uint64
 }
 
 func (s *fakeWorkerRouter) TaskExecStart(
@@ -56,7 +60,12 @@ func (s *fakeWorkerRouter) TaskExecStdioRead(
 	s.offsets = append(s.offsets, offset)
 	s.mu.Unlock()
 
+	sent := 0
 	for offset < uint64(len(s.output)) {
+		if s.chunksPerStream > 0 && sent == s.chunksPerStream {
+			break
+		}
+		sent++
 		end := min(offset+7, uint64(len(s.output)))
 		if err := stream.Send(pb.TaskExecStdioReadResponse_builder{
 			Data: s.output[offset:end],
@@ -126,20 +135,50 @@ func mockRouterJWT() string {
 // plane at it, returning a Sandbox reached the way a caller reaches one.
 func startFakeWorker(t *testing.T) (*fakeWorkerRouter, *countingListener, *modal.Sandbox) {
 	t.Helper()
-	return startFakeWorkerPrinting(t, fakeWorkerOutput)
+	return startFakeWorkerWith(t, fakeWorkerOpts{})
 }
 
 // startFakeWorkerPrinting is startFakeWorker for a test that needs to say what
 // the exec prints - notably how many chunks it arrives in.
 func startFakeWorkerPrinting(t *testing.T, output []byte) (*fakeWorkerRouter, *countingListener, *modal.Sandbox) {
 	t.Helper()
+	return startFakeWorkerWith(t, fakeWorkerOpts{output: output})
+}
+
+// fakeWorkerOpts is what a test wants to vary about the worker it talks to.
+// A zero field takes the default: fakeWorkerOutput, and whatever timeouts the
+// SDK ships with.
+type fakeWorkerOpts struct {
+	output []byte
+	// Written to the environment as the SDK reads them, so "0" is meaningfully
+	// different from unset.
+	channelIdleTimeout string
+	streamIdleTimeout  string
+	// Chunks one stream will serve before it holds open without sending more.
+	chunksPerStream int
+}
+
+func startFakeWorkerWith(t *testing.T, opts fakeWorkerOpts) (*fakeWorkerRouter, *countingListener, *modal.Sandbox) {
+	t.Helper()
 	g := gomega.NewWithT(t)
+
+	output := opts.output
+	if output == nil {
+		output = fakeWorkerOutput
+	}
+
+	if opts.channelIdleTimeout != "" {
+		t.Setenv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", opts.channelIdleTimeout)
+	}
+	if opts.streamIdleTimeout != "" {
+		t.Setenv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", opts.streamIdleTimeout)
+	}
 
 	// Read when the client builds its profile, so both must be set first. A
 	// localhost server URL is what makes the SDK dial the router without TLS.
 	t.Setenv("MODAL_SERVER_URL", "http://127.0.0.1:1")
 
-	router := &fakeWorkerRouter{output: output}
+	router := &fakeWorkerRouter{output: output, chunksPerStream: opts.chunksPerStream}
 	raw, err := net.Listen("tcp", "127.0.0.1:0")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	listener := &countingListener{Listener: raw}

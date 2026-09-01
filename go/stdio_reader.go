@@ -25,6 +25,11 @@ type chunkReader struct {
 	// dropStream forgets whatever fetch opened, so the next fetch reopens it.
 	// Called under mu.
 	dropStream func()
+	// inUse and idle, when set, bracket the part of Read where the caller is
+	// here wanting output. Both are called under mu, so a reader that keeps
+	// state about being read from can touch it there.
+	inUse func()
+	idle  func()
 }
 
 func (r *chunkReader) Read(p []byte) (int, error) {
@@ -36,6 +41,11 @@ func (r *chunkReader) Read(p []byte) (int, error) {
 	// error already known, which the contract allows.
 	if len(p) == 0 {
 		return 0, r.err
+	}
+
+	if r.inUse != nil {
+		r.inUse()
+		defer r.idle()
 	}
 
 	for len(r.pending) == 0 {

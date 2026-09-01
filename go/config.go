@@ -6,6 +6,7 @@ package modal
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -26,6 +27,50 @@ type Profile struct {
 	// MaxThrottleWait controls server-driven (throttle) retries.
 	// nil = no limit; 0 = disable server-driven retries entirely; >0 = cap total wait to this many seconds.
 	MaxThrottleWait *time.Duration
+	// SandboxChannelIdleTimeout is how long a Sandbox connection may sit idle
+	// before the client gives it up. The Sandbox stays usable: the next
+	// operation reconnects. Zero keeps connections open until the client closes.
+	SandboxChannelIdleTimeout time.Duration
+	// SandboxStreamIdleTimeout is how long a caller may sit on a chunk of a
+	// Sandbox's output before the stream stops counting as in use. Only once a
+	// reader has gone quiet for this long does the idle timeout above start
+	// running, so a Sandbox read once and then forgotten gives its connection up
+	// after the two together. Zero stops counting as soon as a caller stops
+	// reading.
+	SandboxStreamIdleTimeout time.Duration
+}
+
+const (
+	// How long a Sandbox connection may sit idle before it is released, unless
+	// MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT says otherwise.
+	defaultSandboxChannelIdleTimeout = 30 * time.Second
+	// How long a caller may sit on a chunk before their stream stops counting as
+	// in use, unless MODAL_SANDBOX_STREAM_IDLE_TIMEOUT says otherwise.
+	defaultSandboxStreamIdleTimeout = 5 * time.Second
+)
+
+// maxIdleTimeoutSeconds is as long as an idle timeout can be said in seconds
+// and still convert to a time.Duration. Dividing as integers keeps the bound
+// under the point where the conversion goes out of range, which Go leaves to
+// the platform: some saturate, others hand back a negative.
+const maxIdleTimeoutSeconds = float64(math.MaxInt64 / int64(time.Second))
+
+// parseIdleTimeoutSeconds reads a non-negative number of seconds, reporting
+// whether it was one. Infinity and NaN parse as floats but are not durations,
+// and neither is a number too large to hold, so all three are refused rather
+// than turned into a nonsense deadline.
+func parseIdleTimeoutSeconds(s string) (time.Duration, bool) {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || !(v >= 0) || v > maxIdleTimeoutSeconds {
+		return 0, false
+	}
+	d := time.Duration(v * float64(time.Second))
+	if v > 0 && d == 0 {
+		// Zero is how a caller turns the release off, so a timeout too short to
+		// measure becomes the shortest one there is rather than none at all.
+		return 1, true
+	}
+	return d, true
 }
 
 func (p Profile) isLocalhost() bool {
@@ -119,6 +164,20 @@ func getProfile(name string, cfg config) Profile {
 		}
 	}
 
+	sandboxChannelIdleTimeout := defaultSandboxChannelIdleTimeout
+	if s := os.Getenv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT"); s != "" {
+		if v, ok := parseIdleTimeoutSeconds(s); ok {
+			sandboxChannelIdleTimeout = v
+		}
+	}
+
+	sandboxStreamIdleTimeout := defaultSandboxStreamIdleTimeout
+	if s := os.Getenv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT"); s != "" {
+		if v, ok := parseIdleTimeoutSeconds(s); ok {
+			sandboxStreamIdleTimeout = v
+		}
+	}
+
 	return Profile{
 		ServerURL:           serverURL,
 		TokenID:             tokenID,
@@ -127,6 +186,9 @@ func getProfile(name string, cfg config) Profile {
 		ImageBuilderVersion: imageBuilderVersion,
 		LogLevel:            logLevel,
 		MaxThrottleWait:     maxThrottleWait,
+
+		SandboxChannelIdleTimeout: sandboxChannelIdleTimeout,
+		SandboxStreamIdleTimeout:  sandboxStreamIdleTimeout,
 	}
 }
 

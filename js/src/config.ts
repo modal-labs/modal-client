@@ -27,7 +27,40 @@ export interface Profile {
   logLevel?: string;
   /** Parsed from MODAL_MAX_THROTTLE_WAIT. null means unlimited. */
   maxThrottleWaitSecs?: number;
+  /**
+   * How long a Sandbox connection may sit idle before the client gives it up.
+   * The Sandbox stays usable: the next operation reconnects. Zero keeps
+   * connections open until the client closes.
+   */
+  sandboxChannelIdleTimeoutMs: number;
+  /**
+   * How long a caller may sit on a chunk of a Sandbox's output before the stream
+   * stops counting as in use. Only once a reader has gone quiet for this long
+   * does the idle timeout above start running, so a Sandbox read once and then
+   * forgotten gives its connection up after the two together. Zero stops
+   * counting as soon as a caller stops reading.
+   */
+  sandboxStreamIdleTimeoutMs: number;
 }
+
+/**
+ * How long a Sandbox connection may sit idle before it is released, unless
+ * MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT says otherwise.
+ */
+export const DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS = 30_000;
+
+/**
+ * How long a caller may sit on a chunk before their stream stops counting as in
+ * use, unless MODAL_SANDBOX_STREAM_IDLE_TIMEOUT says otherwise.
+ */
+export const DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS = 5_000;
+
+/**
+ * The largest delay setTimeout honours. Past this it wraps to zero and the
+ * timer fires immediately, so a timeout this long is refused rather than
+ * silently inverted.
+ */
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 export function isLocalhost(profile: Profile): boolean {
   const url = new URL(profile.serverUrl);
@@ -110,6 +143,52 @@ export function getProfile(profileName?: string): Profile {
         return undefined;
       }
       return parsed;
+    })(),
+    sandboxChannelIdleTimeoutMs: (() => {
+      const val = process.env["MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT"];
+      if (!val) return DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS;
+      const parsed = Number(val);
+      // Infinity parses as a number but is not a timeout, and setTimeout treats
+      // anything past MAX_TIMEOUT_MS as zero - firing at once rather than never.
+      if (
+        !Number.isFinite(parsed) ||
+        parsed < 0 ||
+        parsed * 1000 > MAX_TIMEOUT_MS
+      ) {
+        // We use `warn` here because Modal's logger is constructed after the profile is constructed
+        warn(
+          `MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT="${val}" is not a valid non-negative number of seconds; ignoring.`,
+        );
+        return DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS;
+      }
+      const ms = Math.round(parsed * 1000);
+      // Zero is how a caller turns the release off, so a timeout too short to
+      // round to a millisecond becomes the shortest one there is rather than
+      // none at all.
+      return parsed > 0 && ms === 0 ? 1 : ms;
+    })(),
+    sandboxStreamIdleTimeoutMs: (() => {
+      const val = process.env["MODAL_SANDBOX_STREAM_IDLE_TIMEOUT"];
+      if (!val) return DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS;
+      const parsed = Number(val);
+      // Infinity parses as a number but is not a timeout, and setTimeout treats
+      // anything past MAX_TIMEOUT_MS as zero - firing at once rather than never.
+      if (
+        !Number.isFinite(parsed) ||
+        parsed < 0 ||
+        parsed * 1000 > MAX_TIMEOUT_MS
+      ) {
+        // We use `warn` here because Modal's logger is constructed after the profile is constructed
+        warn(
+          `MODAL_SANDBOX_STREAM_IDLE_TIMEOUT="${val}" is not a valid non-negative number of seconds; ignoring.`,
+        );
+        return DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS;
+      }
+      const ms = Math.round(parsed * 1000);
+      // Zero is how a caller turns the release off, so a timeout too short to
+      // round to a millisecond becomes the shortest one there is rather than
+      // none at all.
+      return parsed > 0 && ms === 0 ? 1 : ms;
     })(),
   };
   return profile as Profile; // safe to null-cast because of check above

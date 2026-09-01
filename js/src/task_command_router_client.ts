@@ -56,7 +56,7 @@ import type { ModalGrpcClient } from "./client";
 import { timeoutMiddleware, type TimeoutOptions } from "./client";
 import type { Logger } from "./logger";
 import type { Profile } from "./config";
-import { isLocalhost } from "./config";
+import { DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS, isLocalhost } from "./config";
 import { ClientClosedError, TimeoutError } from "./errors";
 
 type TaskCommandRouterClient = Client<typeof TaskCommandRouterDefinition>;
@@ -222,6 +222,12 @@ export class TaskCommandRouterClientImpl {
   private jwtRefreshLock: Promise<void> = Promise.resolve();
   private logger: Logger;
   private closed: boolean = false;
+  /**
+   * How long a caller may sit on a chunk before their stream stops counting as
+   * in use, at which point it is ended so the connection can go idle. Zero keeps
+   * the stream open however long they take. Overridable per instance in tests.
+   */
+  stdioHandoffTimeoutMs: number = DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS;
 
   /**
    * `access` is the router access returned by SandboxCreateV2, which lets a
@@ -287,6 +293,14 @@ export class TaskCommandRouterClientImpl {
       "grpc.keepalive_time_ms": 30000,
       "grpc.keepalive_timeout_ms": 10000,
       "grpc.keepalive_permit_without_calls": 1,
+      // With no RPC running, grpc-js drops the transport and reconnects on the
+      // next call, so a Sandbox nobody is using costs no connection. Zero leaves
+      // the connection up until the client closes.
+      ...(profile.sandboxChannelIdleTimeoutMs > 0
+        ? {
+            "grpc.client_idle_timeout_ms": profile.sandboxChannelIdleTimeoutMs,
+          }
+        : {}),
     };
 
     let channel;
@@ -316,6 +330,7 @@ export class TaskCommandRouterClientImpl {
       resp.jwt,
       channel,
       logger,
+      profile.sandboxStreamIdleTimeoutMs,
     );
 
     logger.debug(
@@ -336,7 +351,9 @@ export class TaskCommandRouterClientImpl {
     jwt: string,
     channel: ReturnType<typeof createChannel>,
     logger: Logger,
+    stdioHandoffTimeoutMs: number,
   ) {
+    this.stdioHandoffTimeoutMs = stdioHandoffTimeoutMs;
     this.serverClient = serverClient;
     this.taskId = taskId;
     this.sandboxId = sandboxId;
@@ -927,6 +944,14 @@ export class TaskCommandRouterClientImpl {
     let didAuthRetry = false;
 
     while (true) {
+      // A read stream counts as an in-flight RPC while it is open, which stops
+      // grpc-js idling the connection underneath it. So a caller that reads part
+      // of a Sandbox's output and stops would pin a socket for as long as they
+      // held on to the iterator. Aborting once the consumer has stalled drops
+      // that hold; the loop below reopens at the same offset when they return.
+      const handoff = new AbortController();
+      let releasedToStalledConsumer = false;
+
       try {
         const timeoutMs =
           deadline !== null ? Math.max(0, deadline - Date.now()) : undefined;
@@ -940,6 +965,7 @@ export class TaskCommandRouterClientImpl {
 
         const stream = this.stub.taskExecStdioRead(request, {
           timeoutMs,
+          signal: handoff.signal,
         } as CallOptions & TimeoutOptions);
 
         try {
@@ -950,10 +976,42 @@ export class TaskCommandRouterClientImpl {
             }
             delayMs = 10;
             offset += item.data.length;
-            yield item;
+
+            // The timer runs while this generator is suspended at the yield, so
+            // a consumer that never comes back releases the connection anyway.
+            const stallTimer =
+              this.stdioHandoffTimeoutMs > 0
+                ? globalThis.setTimeout(() => {
+                    releasedToStalledConsumer = true;
+                    this.logger.debug(
+                      "Releasing command router connection to a stalled stdio consumer",
+                      "task_id",
+                      this.taskId,
+                    );
+                    handoff.abort();
+                  }, this.stdioHandoffTimeoutMs)
+                : undefined;
+            try {
+              yield item;
+            } finally {
+              if (stallTimer !== undefined) {
+                globalThis.clearTimeout(stallTimer);
+              }
+            }
+            if (releasedToStalledConsumer) {
+              break;
+            }
+          }
+          if (releasedToStalledConsumer) {
+            // Reopen at the offset the consumer has caught up to. Nothing went
+            // wrong, so this leaves the retry budget alone.
+            continue;
           }
           return;
         } catch (err) {
+          if (releasedToStalledConsumer) {
+            continue;
+          }
           if (
             err instanceof ClientError &&
             err.code === Status.UNAUTHENTICATED &&
@@ -968,6 +1026,9 @@ export class TaskCommandRouterClientImpl {
           throw err;
         }
       } catch (err) {
+        if (releasedToStalledConsumer) {
+          continue;
+        }
         if (
           err instanceof ClientError &&
           err.code === Status.CANCELLED &&

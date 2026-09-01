@@ -113,8 +113,9 @@ func TestClosingExecStdioUnblocksAWaitingRead(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	// An exec that has printed nothing: the stream opens and stays open, so the
-	// read below has nothing to return until something ends it.
-	router, _, sandbox := startFakeWorkerPrinting(t, nil)
+	// read below has nothing to return until something ends it. Empty rather
+	// than nil, which the harness reads as "whatever the default output is".
+	router, _, sandbox := startFakeWorkerPrinting(t, []byte{})
 
 	process, err := sandbox.Exec(t.Context(), []string{"sleep", "60"}, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
