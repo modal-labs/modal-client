@@ -30,6 +30,13 @@ Certain implementation classes expose type-guarded versions of private attribute
 as `@property` decorated accessors which are the attribute name suffixed with an `_`.
 These should be used instead of the raw underlying attribute.
 
+## Comments
+
+Comments and docstrings must not refer to backend internals. This code is
+public and is read by people with no view into backend/runtime implementation.
+Where details are required to understand client behavior, describe the behavior
+the client can observe instead.
+
 ## Changelog updates
 
 The SDK source includes changelog files. These document public API or behavioral changes that are relevant to how end users interface with Modal. Examples where a changelog update is needed:

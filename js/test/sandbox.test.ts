@@ -57,8 +57,14 @@ test("CreateOneSandbox", async () => {
   });
   const image = tc.images.fromRegistry("alpine:3.21");
 
-  const sb = await tc.sandboxes.create(app, image);
+  // The readiness probe gives the test something to wait on, so that
+  // terminating the Sandbox does not race with its startup.
+  const sb = await tc.sandboxes.create(app, image, {
+    readinessProbe: Probe.withExec(["true"]),
+  });
   expect(sb.sandboxId).toBeTruthy();
+  await sb.waitUntilReady();
+
   expect(await sb.terminate({ wait: true })).toBe(137);
 }, 30000); // fixme(ayush): this probably shouldn't take > 20s
 
@@ -68,8 +74,14 @@ test("CreateOneSandboxTerminateWaitWorks", async () => {
   });
   const image = tc.images.fromRegistry("alpine:3.21");
 
-  const sb = await tc.sandboxes.create(app, image);
+  // The readiness probe gives the test something to wait on, so that
+  // terminating the Sandbox does not race with its startup.
+  const sb = await tc.sandboxes.create(app, image, {
+    readinessProbe: Probe.withExec(["true"]),
+  });
   expect(sb.sandboxId).toBeTruthy();
+  await sb.waitUntilReady();
+
   await sb.terminate();
   expect(await sb.wait()).toBe(137);
 }, 30000); // fixme(ayush): this probably shouldn't take > 20s

@@ -33,9 +33,15 @@ func TestCreateOneSandbox(t *testing.T) {
 
 	image := tc.Images.FromRegistry("alpine:3.21", nil)
 
-	sb, err := tc.Sandboxes.Create(ctx, app, image, nil)
+	// The readiness probe gives the test something to wait on, so that
+	// terminating the Sandbox does not race with its startup.
+	probe, err := modal.NewExecProbe([]string{"true"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{ReadinessProbe: probe})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(sb.SandboxID).ShouldNot(gomega.BeEmpty())
+	g.Expect(sb.WaitUntilReady(ctx, time.Minute, nil)).Should(gomega.Succeed())
 
 	exitcode, err := sb.Terminate(ctx, &modal.SandboxTerminateParams{Wait: true})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -53,9 +59,15 @@ func TestCreateOneSandboxTerminateWaitWorks(t *testing.T) {
 
 	image := tc.Images.FromRegistry("alpine:3.21", nil)
 
-	sb, err := tc.Sandboxes.Create(ctx, app, image, nil)
+	// The readiness probe gives the test something to wait on, so that
+	// terminating the Sandbox does not race with its startup.
+	probe, err := modal.NewExecProbe([]string{"true"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{ReadinessProbe: probe})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(sb.SandboxID).ShouldNot(gomega.BeEmpty())
+	g.Expect(sb.WaitUntilReady(ctx, time.Minute, nil)).Should(gomega.Succeed())
 
 	_, err = sb.Terminate(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
