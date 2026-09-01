@@ -25,6 +25,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.snapshotFilesystem`.
 - A Sandbox's stdout/stderr, and the same streams on `ContainerProcess` (as returned by `sandbox.exec()`), now defer fetching output until `.stdout`/`.stderr` is first read. This makes the JS SDK consistent with the Go/Python SDKs in this regard.
+- Fixed an issue where `readText()` called on a binary-mode Sandbox stream could sometimes return incorrect output data.
 
 ## Go
 
