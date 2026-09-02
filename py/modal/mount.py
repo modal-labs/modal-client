@@ -851,7 +851,7 @@ async def _create_single_client_dependency_mount(
         print(f"📦 Building {mount_name}.")  # noqa: T201
         requirements = os.path.join(os.path.dirname(__file__), f"builder/{builder_version}.txt")
         cmd = [
-            "uv",
+            os.environ.get("MODAL_UV_PATH", "uv"),
             "pip",
             "install",
             "--strict",
@@ -867,6 +867,11 @@ async def _create_single_client_dependency_mount(
             "--python",
             python_version,
         ]
+        # A directory holding wheels for every pin in the requirements file, for
+        # building mounts where no package index is reachable.
+        find_links = os.environ.get("MODAL_BUILDER_WHEEL_DIR")
+        if find_links:
+            cmd += ["--no-index", "--find-links", find_links]
         # Retry uv pip install on transient failures (e.g. network blips,
         # resource contention).  uv exits with non-zero on recoverable errors
         # like rate limits or connection resets.
