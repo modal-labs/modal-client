@@ -199,16 +199,23 @@ class ConnectionManager:
         self._client = client
         # This metadata is injected into all requests on all channels created by this manager.
         self._metadata = metadata
-        self._channels: dict[str, grpclib.client.Channel] = {}
+        self._channels: dict[str, asyncio.Future[grpclib.client.Channel]] = {}
 
     async def get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
-        if server_url not in self._channels:
-            self._channels[server_url] = await create_channel_with_fallbacks(server_url, self._metadata)
-        return self._channels[server_url]
+        fut = self._channels.get(server_url)
+        if fut is None or (fut.done() and (fut.cancelled() or fut.exception() is not None)):
+            # Cache the attempt rather than the channel, so callers racing to connect share one.
+            fut = asyncio.ensure_future(create_channel_with_fallbacks(server_url, self._metadata))
+            self._channels[server_url] = fut
+        # Shielded so one caller giving up doesn't cancel the connection for the others.
+        return await asyncio.shield(fut)
 
     def close(self):
-        for channel in self._channels.values():
-            channel.close()
+        for fut in self._channels.values():
+            if fut.done() and not fut.cancelled() and fut.exception() is None:
+                fut.result().close()
+            else:
+                fut.cancel()
         self._channels.clear()
 
 

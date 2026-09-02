@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import pytest
 import time
 import urllib.parse
@@ -11,6 +12,7 @@ import modal
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
+    ConnectionManager,
     CustomProtoStatusDetailsCodec,
     ModalChannel,
     Retry,
@@ -19,7 +21,7 @@ from modal._utils.grpc_utils import (
     create_channel_with_fallbacks,
     get_server_retry_policy,
 )
-from modal.exception import ClientClosed, InvalidError
+from modal.exception import ClientClosed, ConnectionError, InvalidError
 from modal_proto import api_grpc, api_pb2, task_command_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -472,3 +474,54 @@ async def test_create_channel_with_fallbacks_all_unreachable(monkeypatch):
     monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     with pytest.raises(ModalConnectionError):
         await create_channel_with_fallbacks("https://xyz.invalid,https://abc.invalid", stagger_delay=0)
+
+
+@pytest.mark.asyncio
+async def test_connection_manager_concurrent_callers_share_one_channel(servicer):
+    manager = ConnectionManager(client=mock.Mock(), metadata={})
+    connects = 0
+
+    original = modal._utils.grpc_utils.create_channel_with_fallbacks
+
+    async def counting_create(*args, **kwargs):
+        nonlocal connects
+        connects += 1
+        return await original(*args, **kwargs)
+
+    with mock.patch.object(modal._utils.grpc_utils, "create_channel_with_fallbacks", counting_create):
+        channels = await asyncio.gather(*[manager.get_or_create_channel(servicer.client_addr) for _ in range(8)])
+
+    try:
+        assert connects == 1
+        assert len({id(channel) for channel in channels}) == 1
+    finally:
+        manager.close()
+
+    # Every channel handed out is reachable by close(), so none are left connected.
+    assert all(channel._protocol is None for channel in channels)
+
+
+@pytest.mark.asyncio
+async def test_connection_manager_failed_connect_is_not_reused(servicer):
+    manager = ConnectionManager(client=mock.Mock(), metadata={})
+    calls = 0
+
+    original = modal._utils.grpc_utils.create_channel_with_fallbacks
+
+    async def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ConnectionError("Could not connect to the Modal server.")
+        return await original(*args, **kwargs)
+
+    with mock.patch.object(modal._utils.grpc_utils, "create_channel_with_fallbacks", fail_once):
+        with pytest.raises(ConnectionError):
+            await manager.get_or_create_channel(servicer.client_addr)
+        channel = await manager.get_or_create_channel(servicer.client_addr)
+
+    try:
+        assert calls == 2
+        assert channel is not None
+    finally:
+        manager.close()
