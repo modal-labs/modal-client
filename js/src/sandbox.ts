@@ -2267,7 +2267,7 @@ export class Sandbox {
       const [taskId, commandRouterClient] = await this.#getCommandRouter();
       const resp = await commandRouterClient.snapshotMemory(
         TaskSnapshotMemoryRequest.create({ taskId, idempotencyKey: uuidv4() }),
-        { timeoutMs: 55000 },
+        { timeoutMs: 165000 },
       );
       snapshotId = resp.snapshotId;
     } else {
