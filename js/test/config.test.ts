@@ -2,10 +2,7 @@ import { expect, test, vi } from "vitest";
 import { homedir } from "node:os";
 import path from "node:path";
 import { configFilePath, getProfile } from "../src/config";
-import {
-  DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS,
-  DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS,
-} from "../src/config";
+import { DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS } from "../src/config";
 
 const maxThrottleWaitCases = [
   { envVal: "10", expected: 10 },
@@ -63,25 +60,14 @@ for (const value of notATimeout) {
     );
     vi.unstubAllEnvs();
   });
-
-  test(`GetProfile_StreamIdleTimeoutRejects/${value}`, () => {
-    vi.stubEnv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", value);
-    const profile = getProfile();
-    expect(profile.sandboxStreamIdleTimeoutMs).toBe(
-      DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS,
-    );
-    vi.unstubAllEnvs();
-  });
 }
 
 // Values that are timeouts still get through, zero included: it turns the
 // release off rather than releasing at once.
 test("GetProfile_IdleTimeoutAcceptsSeconds", () => {
   vi.stubEnv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", "0");
-  vi.stubEnv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", "2.5");
   const profile = getProfile();
   expect(profile.sandboxChannelIdleTimeoutMs).toBe(0);
-  expect(profile.sandboxStreamIdleTimeoutMs).toBe(2500);
   vi.unstubAllEnvs();
 });
 
@@ -89,9 +75,7 @@ test("GetProfile_IdleTimeoutAcceptsSeconds", () => {
 // which is how the release is turned off - that would invert what was asked for.
 test("GetProfile_IdleTimeoutKeepsAShortTimeoutPositive", () => {
   vi.stubEnv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", "0.0004");
-  vi.stubEnv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", "0.0004");
   const profile = getProfile();
   expect(profile.sandboxChannelIdleTimeoutMs).toBeGreaterThan(0);
-  expect(profile.sandboxStreamIdleTimeoutMs).toBeGreaterThan(0);
   vi.unstubAllEnvs();
 });

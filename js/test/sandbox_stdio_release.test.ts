@@ -29,7 +29,6 @@ const CHUNK_SIZE = 7;
 /** Short enough to keep tests quick, above grpc-js's 1s floor on the idle timeout. */
 const IDLE_TIMEOUT_MS = 1500;
 /** A caller's grace before their stream stops counting as in use. */
-const STREAM_IDLE_TIMEOUT_MS = 150;
 /**
  * grpc-js hands an idled channel's subchannel back to a pool that only sweeps
  * every REF_CHECK_INTERVAL (10s), so a socket outlives the channel going idle by
@@ -99,7 +98,11 @@ function countingProxy(targetPort: number): Promise<{
 }
 
 /** Serves exec stdio from a byte offset, the way a worker seeks its stdio file. */
-function fakeWorker(requestedOffsets: number[]) {
+function fakeWorker(
+  requestedOffsets: number[],
+  chunksPerStream: number,
+  active: { count: number },
+) {
   const unimplemented: Record<string, unknown> = {};
   for (const methodName of Object.keys(TaskCommandRouterDefinition.methods)) {
     unimplemented[methodName] = () => {
@@ -117,28 +120,45 @@ function fakeWorker(requestedOffsets: number[]) {
     ) {
       let offset = Number(request.offset);
       requestedOffsets.push(offset);
-      while (offset < OUTPUT.length) {
-        const end = Math.min(offset + CHUNK_SIZE, OUTPUT.length);
-        yield TaskExecStdioReadResponse.create({
-          data: OUTPUT.subarray(offset, end),
+      active.count++;
+      try {
+        let sent = 0;
+        while (offset < OUTPUT.length) {
+          // A chunk limit stops the whole output arriving in one stream, where
+          // the transport would hand it over from its buffer and a reader would
+          // never need to reopen.
+          if (chunksPerStream > 0 && sent === chunksPerStream) break;
+          sent++;
+          const end = Math.min(offset + CHUNK_SIZE, OUTPUT.length);
+          yield TaskExecStdioReadResponse.create({
+            data: OUTPUT.subarray(offset, end),
+          });
+          offset = end;
+        }
+        // Hold the stream open, as a worker does for an exec still running.
+        await new Promise<void>((resolve) => {
+          if (context.signal.aborted) return resolve();
+          context.signal.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
         });
-        offset = end;
+      } finally {
+        active.count--;
       }
-      // Hold the stream open, as a worker does for an exec still running.
-      await new Promise<void>((resolve) => {
-        if (context.signal.aborted) return resolve();
-        context.signal.addEventListener("abort", () => resolve(), {
-          once: true,
-        });
-      });
     },
   };
 }
 
-async function startFakeWorker() {
+async function startFakeWorker(chunksPerStream = 0) {
   const requestedOffsets: number[] = [];
+  // How many stdio handlers are running: a stream the client abandoned without
+  // ending would show up here as one that never returns.
+  const active = { count: 0 };
   const server = createServer();
-  server.add(TaskCommandRouterDefinition, fakeWorker(requestedOffsets) as any);
+  server.add(
+    TaskCommandRouterDefinition,
+    fakeWorker(requestedOffsets, chunksPerStream, active) as any,
+  );
   const workerPort = await server.listen("127.0.0.1:0");
   const proxy = await countingProxy(workerPort);
 
@@ -146,7 +166,6 @@ async function startFakeWorker() {
   // A localhost server URL is what makes the SDK dial the worker without TLS.
   mockClient.profile.serverUrl = "http://127.0.0.1:1";
   mockClient.profile.sandboxChannelIdleTimeoutMs = IDLE_TIMEOUT_MS;
-  mockClient.profile.sandboxStreamIdleTimeoutMs = STREAM_IDLE_TIMEOUT_MS;
   mockCpClient.handleUnary("SandboxGetTaskIdV2", () => ({ taskId: TASK_ID }));
   mockCpClient.handleUnary("SandboxGetCommandRouterAccess", () => ({
     url: `https://127.0.0.1:${proxy.port}`,
@@ -156,6 +175,7 @@ async function startFakeWorker() {
   return {
     mockClient,
     requestedOffsets,
+    activeStreams: () => active.count,
     live: proxy.live,
     shutdown: async () => {
       await proxy.close();
@@ -196,27 +216,117 @@ test("a partial read of exec output releases the connection", async () => {
 });
 
 test("exec output resumes at the same offset after a release", async () => {
-  const w = await startFakeWorker();
+  // One chunk per stream, so the read after a release has to reopen rather than
+  // being served from what the transport already buffered.
+  const w = await startFakeWorker(1);
   try {
     const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
     const process = await sandbox.exec(["echo", "hi"]);
     const reader = process.stdout.getReader();
 
-    let received = (await reader.read()).value as string;
-    expect(await waitFor(() => w.live() === 0, 6 * IDLE_TIMEOUT_MS)).toBe(true);
+    // Read a chunk, let the connection go, read the next. Waiting for the
+    // release between reads matters: a read in flight holds the client, so a
+    // reader blocked on a stream the worker is holding open would never see one.
+    let received = "";
+    for (let round = 0; round < 3; round++) {
+      const next = await reader.read();
+      expect(next.done).toBe(false);
+      received += next.value as string;
+      expect(await waitFor(() => w.live() === 0, 6 * IDLE_TIMEOUT_MS)).toBe(
+        true,
+      );
+    }
 
+    // Byte-for-byte equality is the real check on the resume offset: reopening
+    // anywhere but the exact next byte would duplicate or drop output.
+    const expected = new TextDecoder().decode(
+      OUTPUT.subarray(0, received.length),
+    );
+    expect(received).toEqual(expected);
+    expect(w.requestedOffsets).toEqual([0, CHUNK_SIZE, 2 * CHUNK_SIZE]);
+  } finally {
+    await w.shutdown();
+  }
+});
+
+// The complement: a consumer that keeps up is never interrupted, so a whole
+// read costs exactly one stream.
+test("a prompt consumer keeps one stream throughout", async () => {
+  const w = await startFakeWorker();
+  try {
+    const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
+    const process = await sandbox.exec(["echo", "hi"]);
+
+    let received = "";
     const expected = new TextDecoder().decode(OUTPUT);
+    const reader = process.stdout.getReader();
     while (received.length < expected.length) {
       const next = await reader.read();
       if (next.done) break;
       received += next.value as string;
     }
 
-    // Byte-for-byte equality is the real check on the resume offset: reopening
-    // anywhere but the exact next byte would duplicate or drop output.
     expect(received).toEqual(expected);
-    expect(w.requestedOffsets.length).toBeGreaterThan(1);
-    expect(w.requestedOffsets[0]).toBe(0);
+    expect(w.requestedOffsets).toEqual([0]);
+  } finally {
+    await w.shutdown();
+  }
+});
+
+// Detaching ends a Sandbox for good: unlike an idle release, nothing picks it
+// up again.
+test("a detached Sandbox does not come back", async () => {
+  const w = await startFakeWorker();
+  try {
+    const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
+    const process = await sandbox.exec(["echo", "hi"]);
+    const reader = process.stdout.getReader();
+    expect((await reader.read()).done).toBe(false);
+
+    sandbox.detach();
+    expect(await waitFor(() => w.live() === 0, 4 * IDLE_TIMEOUT_MS)).toBe(true);
+
+    // Unlike an idle release, nothing reconnects afterwards.
+    await expect(sandbox.exec(["echo", "again"])).rejects.toThrow();
+  } finally {
+    await w.shutdown();
+  }
+});
+
+// A stream held from before the detach is dead too, and says so rather than
+// hanging or quietly ending.
+test("a stream held across a detach reports the detach", async () => {
+  const w = await startFakeWorker(1);
+  try {
+    const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
+    const process = await sandbox.exec(["echo", "hi"]);
+    const reader = process.stdout.getReader();
+    expect((await reader.read()).done).toBe(false);
+
+    sandbox.detach();
+
+    await expect(reader.read()).rejects.toThrow(
+      "Unable to perform operation on a detached sandbox",
+    );
+  } finally {
+    await w.shutdown();
+  }
+});
+
+// A consumer can walk away from a stream by cancelling rather than by going
+// quiet, and that path has to end the stream too.
+test("cancelling a read ends the stream behind it", async () => {
+  const w = await startFakeWorker(1);
+  try {
+    const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
+    const process = await sandbox.exec(["echo", "hi"]);
+    const reader = process.stdout.getReader();
+    expect((await reader.read()).done).toBe(false);
+    expect(w.activeStreams()).toBe(1);
+
+    await reader.cancel();
+
+    expect(await waitFor(() => w.activeStreams() === 0, 2000)).toBe(true);
   } finally {
     await w.shutdown();
   }

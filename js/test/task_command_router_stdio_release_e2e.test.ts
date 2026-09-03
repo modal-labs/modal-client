@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { createChannel, createClientFactory, createServer } from "nice-grpc";
+import { createChannel, createServer } from "nice-grpc";
 import {
   TaskCommandRouterDefinition,
   TaskExecStdioReadResponse,
@@ -32,12 +32,7 @@ const OUTPUT = new TextEncoder().encode(
   Array.from({ length: 10 }, (_, i) => `line-${i}\n`).join(""),
 );
 const CHUNK_SIZE = 7;
-/**
- * grpc-js's ConnectivityState.IDLE. Spelled out rather than imported, because
- * grpc-js reaches us through nice-grpc rather than as a direct dependency.
- */
-const CONNECTIVITY_STATE_IDLE = 0;
-/** Small enough to keep tests quick, above grpc-js's 1s floor on the idle stage. */
+/** Small enough to keep tests quick. */
 const IDLE_BUDGET_MS = 1500;
 
 function mockJwt(exp: number): string {
@@ -46,7 +41,7 @@ function mockJwt(exp: number): string {
 }
 
 /** Serves exec stdio from a byte offset, the way the worker seeks its stdio file. */
-function stdioServiceImpl(requestedOffsets: number[]) {
+function stdioServiceImpl(requestedOffsets: number[], chunksPerStream: number) {
   // The server wants an implementation for every method on the definition, so
   // fill the rest in with stubs that fail loudly if a test reaches them.
   const unimplemented: Record<string, unknown> = {};
@@ -64,7 +59,13 @@ function stdioServiceImpl(requestedOffsets: number[]) {
     ) {
       let offset = Number(request.offset);
       requestedOffsets.push(offset);
+      let sent = 0;
       while (offset < OUTPUT.length) {
+        // A chunk limit stops the whole output arriving on one stream, where the
+        // transport would hand it over from its buffer and a reader would never
+        // need to reopen.
+        if (chunksPerStream > 0 && sent === chunksPerStream) break;
+        sent++;
         const end = Math.min(offset + CHUNK_SIZE, OUTPUT.length);
         yield TaskExecStdioReadResponse.create({
           data: OUTPUT.subarray(offset, end),
@@ -87,45 +88,40 @@ function stdioServiceImpl(requestedOffsets: number[]) {
 
 type Harness = {
   client: any;
-  channel: ReturnType<typeof createChannel>;
   requestedOffsets: number[];
   shutdown: () => Promise<void>;
 };
 
-async function startHarness(idleBudgetMs: number): Promise<Harness> {
+async function startHarness(
+  idleBudgetMs: number,
+  chunksPerStream = 0,
+): Promise<Harness> {
   const requestedOffsets: number[] = [];
   const server = createServer();
   server.add(
     TaskCommandRouterDefinition,
-    stdioServiceImpl(requestedOffsets) as any,
+    stdioServiceImpl(requestedOffsets, chunksPerStream) as any,
   );
   const port = await server.listen("127.0.0.1:0");
 
-  // The stream timeout is a fraction of the connection one, so a test can stall
-  // past the first without waiting out the second.
-  const handoffMs = Math.floor(idleBudgetMs / 10);
-  const channel = createChannel(
-    `127.0.0.1:${port}`,
-    undefined,
-    idleBudgetMs > 0 ? { "grpc.client_idle_timeout_ms": idleBudgetMs } : {},
+  // Built the way the real one is, so it dials, releases and redials on its own.
+  const client: any = new TaskCommandRouterClientImpl(
+    undefined as any, // serverClient, unused: nothing here refreshes a JWT
+    "ta-1",
+    "sb-1",
+    true,
+    `https://127.0.0.1:${port}`,
+    mockJwt(Math.floor(Date.now() / 1000) + 3600),
+    () => createChannel(`127.0.0.1:${port}`, undefined, {}),
+    mockLogger as any,
+    idleBudgetMs,
   );
-
-  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
-  client.stub = createClientFactory().create(
-    TaskCommandRouterDefinition,
-    channel,
-  );
-  client.logger = mockLogger;
-  client.closed = false;
-  client.jwt = mockJwt(Math.floor(Date.now() / 1000) + 3600);
-  client.stdioHandoffTimeoutMs = handoffMs;
 
   return {
     client,
-    channel,
     requestedOffsets,
     shutdown: async () => {
-      channel.close();
+      client.channel?.close();
       // Forced, not graceful: these tests deliberately leave a read open on the
       // server, which a graceful shutdown would wait on for ever.
       server.forceShutdown();
@@ -154,8 +150,12 @@ async function waitFor(
   return predicate();
 }
 
-function isIdle(channel: ReturnType<typeof createChannel>): boolean {
-  return channel.getConnectivityState(false) === CONNECTIVITY_STATE_IDLE;
+/**
+ * Whether the client has given its connection back. Releasing closes and
+ * discards the channel, so its absence is the signal.
+ */
+function hasReleased(client: any): boolean {
+  return client.channel === undefined;
 }
 
 test("a partial read of a then-forgotten Sandbox takes its channel idle", async () => {
@@ -164,11 +164,14 @@ test("a partial read of a then-forgotten Sandbox takes its channel idle", async 
     const stream = readStdio(h.client);
     const first = await stream.next();
     expect(first.done).toBe(false);
-    expect(isIdle(h.channel)).toBe(false);
+    expect(hasReleased(h.client)).toBe(false);
 
     // Never ask for another chunk, and keep the iterator referenced throughout,
     // so nothing here can be attributed to it being collected.
-    const released = await waitFor(() => isIdle(h.channel), 4 * IDLE_BUDGET_MS);
+    const released = await waitFor(
+      () => hasReleased(h.client),
+      4 * IDLE_BUDGET_MS,
+    );
     expect(stream).toBeDefined();
     expect(released).toBe(true);
   } finally {
@@ -183,12 +186,15 @@ test("the channel goes idle one timeout after a partial read", async () => {
     await stream.next();
 
     const start = Date.now();
-    const released = await waitFor(() => isIdle(h.channel), 4 * IDLE_BUDGET_MS);
+    const released = await waitFor(
+      () => hasReleased(h.client),
+      4 * IDLE_BUDGET_MS,
+    );
     const elapsed = Date.now() - start;
 
     expect(released).toBe(true);
-    // Giving up on the consumer and dropping the transport happen one after the
-    // other, so they share the configured budget rather than each taking it.
+    // One timeout governs the whole client, so the release lands a little after
+    // it.
     expect(elapsed).toBeGreaterThanOrEqual(IDLE_BUDGET_MS / 2);
     expect(elapsed).toBeLessThan(2 * IDLE_BUDGET_MS);
   } finally {
@@ -197,28 +203,26 @@ test("the channel goes idle one timeout after a partial read", async () => {
 });
 
 test("a partial read resumed later continues at the same offset", async () => {
-  const h = await startHarness(IDLE_BUDGET_MS);
+  // One chunk per stream, so each read after a release has to reopen rather
+  // than being served from what the transport already buffered.
+  const h = await startHarness(IDLE_BUDGET_MS, 1);
   try {
     const stream = readStdio(h.client);
     const chunks: Uint8Array[] = [];
-    chunks.push((await stream.next()).value.data);
 
-    // Stall until the connection has actually gone, so the resume below is
-    // reopening from nothing rather than riding a stream that stayed open.
-    // Waiting on the reopen itself would deadlock: it cannot happen until this
-    // consumer asks for the next chunk.
-    expect(await waitFor(() => isIdle(h.channel), 4 * IDLE_BUDGET_MS)).toBe(
-      true,
-    );
-
-    let total = chunks.reduce((n, c) => n + c.length, 0);
-    while (total < OUTPUT.length) {
+    // Read a chunk, let the connection go, read the next. Waiting for the
+    // release between reads matters: a read in flight holds the client, so a
+    // reader blocked on a stream the server holds open would never see one.
+    for (let round = 0; round < 3; round++) {
       const next = await stream.next();
-      if (next.done) break;
+      expect(next.done).toBe(false);
       chunks.push(next.value.data);
-      total += next.value.data.length;
+      expect(
+        await waitFor(() => hasReleased(h.client), 4 * IDLE_BUDGET_MS),
+      ).toBe(true);
     }
 
+    const total = chunks.reduce((n, c) => n + c.length, 0);
     const received = new Uint8Array(total);
     let at = 0;
     for (const c of chunks) {
@@ -227,9 +231,8 @@ test("a partial read resumed later continues at the same offset", async () => {
     }
     // Byte-for-byte equality is the real check on the resume offset: reopening
     // anywhere but the exact next byte would duplicate or drop output.
-    expect(received).toEqual(OUTPUT);
-    expect(h.requestedOffsets.length).toBeGreaterThan(1);
-    expect(h.requestedOffsets[0]).toBe(0);
+    expect(received).toEqual(OUTPUT.subarray(0, total));
+    expect(h.requestedOffsets).toEqual([0, CHUNK_SIZE, 2 * CHUNK_SIZE]);
   } finally {
     await h.shutdown();
   }
@@ -246,10 +249,10 @@ test("many partly read Sandboxes all take their channels idle", async () => {
     for (const stream of streams) {
       expect((await stream.next()).done).toBe(false);
     }
-    expect(harnesses.every((h) => !isIdle(h.channel))).toBe(true);
+    expect(harnesses.every((h) => !hasReleased(h.client))).toBe(true);
 
     const allReleased = await waitFor(
-      () => harnesses.every((h) => isIdle(h.channel)),
+      () => harnesses.every((h) => hasReleased(h.client)),
       4 * IDLE_BUDGET_MS,
     );
     expect(streams).toHaveLength(harnesses.length);
@@ -278,10 +281,13 @@ test("a partial read of the stdout stream takes the channel idle", async () => {
     const reader = readStdioStream(h.client).getReader();
     const first = await reader.read();
     expect(first.done).toBe(false);
-    expect(isIdle(h.channel)).toBe(false);
+    expect(hasReleased(h.client)).toBe(false);
 
     // Read once, then walk away while keeping the reader referenced.
-    const released = await waitFor(() => isIdle(h.channel), 4 * IDLE_BUDGET_MS);
+    const released = await waitFor(
+      () => hasReleased(h.client),
+      4 * IDLE_BUDGET_MS,
+    );
     expect(reader).toBeDefined();
     expect(released).toBe(true);
   } finally {
@@ -290,32 +296,36 @@ test("a partial read of the stdout stream takes the channel idle", async () => {
 });
 
 test("the stdout stream resumes at the same offset after a release", async () => {
-  const h = await startHarness(IDLE_BUDGET_MS);
+  // One chunk per stream, so each read after a release has to reopen rather
+  // than being served from what the transport already buffered.
+  const h = await startHarness(IDLE_BUDGET_MS, 1);
   try {
     const reader = readStdioStream(h.client).getReader();
     const chunks: Uint8Array[] = [];
-    chunks.push((await reader.read()).value!);
 
-    expect(await waitFor(() => isIdle(h.channel), 4 * IDLE_BUDGET_MS)).toBe(
-      true,
-    );
-
-    let total = chunks.reduce((n, c) => n + c.length, 0);
-    while (total < OUTPUT.length) {
+    // Read a chunk, let the connection go, read the next. Waiting for the
+    // release between reads matters: a read in flight holds the client, so a
+    // reader blocked on a stream the server holds open would never see one.
+    for (let round = 0; round < 3; round++) {
       const next = await reader.read();
-      if (next.done) break;
-      chunks.push(next.value);
-      total += next.value.length;
+      expect(next.done).toBe(false);
+      chunks.push(next.value!);
+      expect(
+        await waitFor(() => hasReleased(h.client), 4 * IDLE_BUDGET_MS),
+      ).toBe(true);
     }
 
+    const total = chunks.reduce((n, c) => n + c.length, 0);
     const received = new Uint8Array(total);
     let at = 0;
     for (const c of chunks) {
       received.set(c, at);
       at += c.length;
     }
-    expect(received).toEqual(OUTPUT);
-    expect(h.requestedOffsets.length).toBeGreaterThan(1);
+    // Byte-for-byte equality is the real check on the resume offset: reopening
+    // anywhere but the exact next byte would duplicate or drop output.
+    expect(received).toEqual(OUTPUT.subarray(0, total));
+    expect(h.requestedOffsets).toEqual([0, CHUNK_SIZE, 2 * CHUNK_SIZE]);
   } finally {
     await h.shutdown();
   }
@@ -333,9 +343,12 @@ test("a partial read of ContainerProcess.stdout takes the channel idle", async (
     const first = await reader.read();
     expect(first.done).toBe(false);
     expect(typeof first.value).toBe("string");
-    expect(isIdle(h.channel)).toBe(false);
+    expect(hasReleased(h.client)).toBe(false);
 
-    const released = await waitFor(() => isIdle(h.channel), 4 * IDLE_BUDGET_MS);
+    const released = await waitFor(
+      () => hasReleased(h.client),
+      4 * IDLE_BUDGET_MS,
+    );
     expect(reader).toBeDefined();
     expect(released).toBe(true);
   } finally {
@@ -344,25 +357,32 @@ test("a partial read of ContainerProcess.stdout takes the channel idle", async (
 });
 
 test("ContainerProcess.stdout resumes at the same offset after a release", async () => {
-  const h = await startHarness(IDLE_BUDGET_MS);
+  // One chunk per stream, so each read after a release has to reopen rather
+  // than being served from what the transport already buffered.
+  const h = await startHarness(IDLE_BUDGET_MS, 1);
   try {
     const process = new ContainerProcess("ta-1", "ex-1", h.client, {}, null);
     const reader = process.stdout.getReader();
-    let received = (await reader.read()).value as string;
 
-    expect(await waitFor(() => isIdle(h.channel), 4 * IDLE_BUDGET_MS)).toBe(
-      true,
-    );
-
-    const expected = new TextDecoder().decode(OUTPUT);
-    while (received.length < expected.length) {
+    // Read a chunk, let the connection go, read the next. Waiting for the
+    // release between reads matters: a read in flight holds the client, so a
+    // reader blocked on a stream the server holds open would never see one.
+    let received = "";
+    for (let round = 0; round < 3; round++) {
       const next = await reader.read();
-      if (next.done) break;
+      expect(next.done).toBe(false);
       received += next.value as string;
+      expect(
+        await waitFor(() => hasReleased(h.client), 4 * IDLE_BUDGET_MS),
+      ).toBe(true);
     }
 
-    expect(received).toEqual(expected);
-    expect(h.requestedOffsets.length).toBeGreaterThan(1);
+    // Byte-for-byte equality is the real check on the resume offset: reopening
+    // anywhere but the exact next byte would duplicate or drop output.
+    expect(received).toEqual(
+      new TextDecoder().decode(OUTPUT.subarray(0, received.length)),
+    );
+    expect(h.requestedOffsets).toEqual([0, CHUNK_SIZE, 2 * CHUNK_SIZE]);
   } finally {
     await h.shutdown();
   }

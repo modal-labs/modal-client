@@ -20,6 +20,29 @@ const mockLogger = {
   error: vi.fn(),
 };
 
+/**
+ * A client built the way the real one is, with its stub swapped for a fake.
+ *
+ * Constructing rather than assembling matters: the field initialisers only run
+ * as part of construction, and a client missing one fails in ways that do not
+ * look like a missing field.
+ */
+function makeTestClient(stub: unknown): any {
+  const client: any = new TaskCommandRouterClientImpl(
+    undefined as any, // serverClient, set by the tests that need it
+    "ta-1",
+    "sb-1",
+    true,
+    "https://example.com",
+    "fake-jwt",
+    () => ({ close() {} }) as any, // never dialled: the stub below replaces it
+    mockLogger as any,
+    0, // idle release off; these tests are about the calls, not the connection
+  );
+  client.stub = stub;
+  return client;
+}
+
 function mockJwt(exp: number | string | null): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload =
@@ -164,10 +187,7 @@ test("snapshotFilesystem preemptive deadline returns TimeoutError", async () => 
       ),
   };
 
-  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
-  client.stub = mockStub;
-  client.jwt = "fake-jwt";
-  client.closed = false;
+  const client = makeTestClient(mockStub);
 
   // With baseDelay=10ms doubling each retry, a 100ms timeout will reach
   // a point where Date.now()+nextDelay >= deadline before Date.now()
@@ -262,11 +282,7 @@ class FakeStdinStreamServer {
 }
 
 function makeStdinStreamClient(server: FakeStdinStreamServer): any {
-  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
-  client.stub = server.stub();
-  client.logger = mockLogger;
-  client.closed = false;
-  return client;
+  return makeTestClient(server.stub());
 }
 
 function bytesSource(bytes: Uint8Array): StdinSource {
@@ -446,8 +462,10 @@ test("refreshJwt recovers after transient failure", async () => {
     }),
   };
 
-  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
+  const client = makeTestClient(undefined);
   client.serverClient = mockServerClient;
+  // The V1 access path, which is what this mock implements.
+  client.isV2 = false;
   client.taskId = "test-task";
   client.serverUrl = "https://example.com";
   client.jwt = mockJwt(0); // Expired JWT

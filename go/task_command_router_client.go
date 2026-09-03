@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -178,21 +179,43 @@ func callWithRetriesOnTransientErrors[T any](
 
 // taskCommandRouterClient provides a client for the TaskCommandRouter gRPC service.
 type taskCommandRouterClient struct {
-	stub         pb.TaskCommandRouterClient
-	conn         *grpc.ClientConn
-	serverClient pb.ModalClientClient
-	taskID       string
-	sandboxID    string
-	isV2         bool
-	serverURL    string
-	jwt          atomic.Pointer[string]
-	jwtExp       atomic.Pointer[int64]
-	logger       *slog.Logger
-	closed       atomic.Bool
-	// How long a caller may go without reading an exec's output before the
-	// stream is given up so the connection can go idle.
-	stdioIdleTimeout time.Duration
+	// connMu guards the fields below, not the connection itself: it is held
+	// while the bookkeeping is read or written and released before anything
+	// goes on the wire, so operations still run concurrently and inFlight
+	// counts how many. Dialling happens under it, which is only cheap because
+	// grpc.NewClient connects lazily.
+	//
+	// The connection is dropped when nothing has used it for idleTimeout and
+	// dialled again by the next operation, so nothing may hold stubValue across
+	// one.
+	connMu    sync.RWMutex
+	stubValue pb.TaskCommandRouterClient
+	conn      *grpc.ClientConn
+	inFlight  int
+	idleTimer *time.Timer
+	// Which timer the pending callback belongs to. A callback that finds a
+	// different one has been superseded: it was already running when a new
+	// operation replaced its timer, so it speaks for a connection that has
+	// since been used.
+	idleTimerSeq uint64
+	target       string
+	creds        credentials.TransportCredentials
+	// How long the client may go unused before its connection is given up. Zero
+	// keeps it up until the client is closed.
+	idleTimeout time.Duration
+	// Bumped every time a connection is dialled. A stream opened on an earlier
+	// one is stale: the connection under it has since been given up.
+	generation atomic.Uint64
 
+	serverClient    pb.ModalClientClient
+	taskID          string
+	sandboxID       string
+	isV2            bool
+	serverURL       string
+	jwt             atomic.Pointer[string]
+	jwtExp          atomic.Pointer[int64]
+	logger          *slog.Logger
+	closed          atomic.Bool
 	refreshJwtGroup singleflight.Group
 }
 
@@ -249,6 +272,78 @@ func initTaskCommandRouterClient(
 
 	}
 
+	client, err := newTaskCommandRouterClient(commandRouterParams{
+		serverClient: serverClient,
+		taskID:       taskID,
+		sandboxID:    sandboxID,
+		isV2:         isV2,
+		serverURL:    access.url,
+		jwt:          jwt,
+		jwtExp:       jwtExp,
+		target:       target,
+		creds:        creds,
+		idleTimeout:  profile.SandboxChannelIdleTimeout,
+		logger:       logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	logger.DebugContext(ctx, "Successfully initialized command router client", "task_id", taskID)
+	return client, nil
+}
+
+// commandRouterParams is everything a client needs to reach the command router,
+// and to reach it again after giving its connection up.
+type commandRouterParams struct {
+	serverClient pb.ModalClientClient
+	taskID       string
+	sandboxID    string
+	isV2         bool
+	serverURL    string
+	jwt          string
+	jwtExp       *int64
+	// Held so the connection can be rebuilt, not only opened.
+	target      string
+	creds       credentials.TransportCredentials
+	idleTimeout time.Duration
+	logger      *slog.Logger
+}
+
+// newTaskCommandRouterClient dials the command router and returns a client for
+// it. A client gives its connection up once nothing has used it and dials again
+// on the next operation, so it needs the means to do that from the start.
+func newTaskCommandRouterClient(p commandRouterParams) (*taskCommandRouterClient, error) {
+	if p.target == "" {
+		return nil, fmt.Errorf("command router client for task %s needs a dial target", p.taskID)
+	}
+
+	conn, err := dialCommandRouter(p.target, p.creds)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &taskCommandRouterClient{
+		stubValue:    pb.NewTaskCommandRouterClient(conn),
+		conn:         conn,
+		target:       p.target,
+		creds:        p.creds,
+		idleTimeout:  p.idleTimeout,
+		serverClient: p.serverClient,
+		taskID:       p.taskID,
+		sandboxID:    p.sandboxID,
+		isV2:         p.isV2,
+		serverURL:    p.serverURL,
+		logger:       p.logger,
+	}
+	client.jwt.Store(&p.jwt)
+	client.jwtExp.Store(p.jwtExp)
+	return client, nil
+}
+
+// dialCommandRouter opens a connection to the command router. It is called
+// again when an idle connection has been given up and a new one is needed.
+func dialCommandRouter(target string, creds credentials.TransportCredentials) (*grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(
 		target,
 		grpc.WithTransportCredentials(creds),
@@ -263,31 +358,11 @@ func initTaskCommandRouterClient(
 			Timeout:             10 * time.Second,
 			PermitWithoutStream: true,
 		}),
-		// With no RPC running, grpc-go drops the transport and reconnects on the
-		// next call, so a Sandbox nobody is using costs no connection. Zero
-		// leaves the connection up until the client closes.
-		grpc.WithIdleTimeout(profile.SandboxChannelIdleTimeout),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task command router connection: %w", err)
 	}
-
-	client := &taskCommandRouterClient{
-		stub:             pb.NewTaskCommandRouterClient(conn),
-		conn:             conn,
-		serverClient:     serverClient,
-		taskID:           taskID,
-		sandboxID:        sandboxID,
-		isV2:             isV2,
-		serverURL:        access.url,
-		logger:           logger,
-		stdioIdleTimeout: profile.SandboxStreamIdleTimeout,
-	}
-	client.jwt.Store(&jwt)
-	client.jwtExp.Store(jwtExp)
-
-	logger.DebugContext(ctx, "Successfully initialized command router client", "task_id", taskID)
-	return client, nil
+	return conn, nil
 }
 
 type commandRouterAccess struct {
@@ -326,10 +401,104 @@ func (c *taskCommandRouterClient) Close() error {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+	c.stopIdleTimerLocked()
 	if c.conn != nil {
-		return c.conn.Close()
+		conn := c.conn
+		// The stub is left in place. Close does not wait for operations already
+		// under way - that is the point of it - so one of them may still read
+		// the stub, and a call on a closed connection is an error where a call
+		// on a nil stub is a panic.
+		c.conn = nil
+		return conn.Close()
 	}
 	return nil
+}
+
+// stub is the RPC stub to use right now. It changes when an idle connection is
+// rebuilt, so it must be read per use rather than held across one.
+//
+// The lock only makes the field readable intact: an interface value is two
+// words, so a read racing a rebuild could see one of each. Staying off a
+// released connection is the lease's job, not this lock's.
+func (c *taskCommandRouterClient) stub() pb.TaskCommandRouterClient {
+	c.connMu.RLock()
+	defer c.connMu.RUnlock()
+	return c.stubValue
+}
+
+// beginOp says the client is about to be used: it holds off the idle timer and
+// dials again if the connection was already given up. Every call must be paired
+// with endOp.
+func (c *taskCommandRouterClient) beginOp() error {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	if c.closed.Load() {
+		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
+	}
+	c.stopIdleTimerLocked()
+	if c.conn == nil {
+		conn, err := dialCommandRouter(c.target, c.creds)
+		if err != nil {
+			return err
+		}
+		c.conn, c.stubValue = conn, pb.NewTaskCommandRouterClient(conn)
+		c.generation.Add(1)
+		c.logger.DebugContext(context.Background(), "Reconnected to the command router after an idle release", "task_id", c.taskID)
+	}
+	c.inFlight++
+	return nil
+}
+
+// endOp says the caller is done. The last one out starts the clock on giving
+// the connection back.
+func (c *taskCommandRouterClient) endOp() {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	c.inFlight--
+	if c.inFlight > 0 || c.idleTimeout <= 0 || c.conn == nil {
+		return
+	}
+	c.stopIdleTimerLocked()
+	c.idleTimerSeq++
+	seq := c.idleTimerSeq
+	c.idleTimer = time.AfterFunc(c.idleTimeout, func() { c.closeIfStillIdle(seq) })
+}
+
+// closeIfStillIdle gives the connection back, so a Sandbox nobody is using
+// costs nothing at all - no socket, and none of the goroutines behind it. The
+// next operation dials again.
+func (c *taskCommandRouterClient) closeIfStillIdle(seq uint64) {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	if seq != c.idleTimerSeq {
+		return
+	}
+	c.idleTimer = nil
+	if c.inFlight > 0 || c.conn == nil {
+		return
+	}
+	c.logger.DebugContext(context.Background(), "Releasing the command router connection to an idle Sandbox", "task_id", c.taskID)
+	conn := c.conn
+	// Left in place for the same reason as in Close.
+	c.conn = nil
+	if err := conn.Close(); err != nil {
+		c.logger.DebugContext(context.Background(), "Failed to close an idle command router connection", "error", err)
+	}
+}
+
+func (c *taskCommandRouterClient) stopIdleTimerLocked() {
+	// Bumped whether or not a timer is set, so a callback already past its own
+	// Stop finds a sequence it does not match and stands down.
+	c.idleTimerSeq++
+	if c.idleTimer != nil {
+		c.idleTimer.Stop()
+		c.idleTimer = nil
+	}
 }
 
 func (c *taskCommandRouterClient) authContext(ctx context.Context) context.Context {
@@ -379,9 +548,19 @@ func (c *taskCommandRouterClient) refreshJwt(ctx context.Context) error {
 type retryableClient interface {
 	authContext(ctx context.Context) context.Context
 	refreshJwt(ctx context.Context) error
+	// beginOp and endOp bracket a use of the connection. Every unary call
+	// reaches this interface, so taking the lease here is what stops a method
+	// reaching a connection that has been given up.
+	beginOp() error
+	endOp()
 }
 
 func callWithAuthRetry[T any](ctx context.Context, c retryableClient, fn func(context.Context) (*T, error)) (*T, error) {
+	if err := c.beginOp(); err != nil {
+		return nil, err
+	}
+	defer c.endOp()
+
 	resp, err := fn(c.authContext(ctx))
 	if err != nil {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
@@ -403,7 +582,7 @@ func callCommandRouterUnary[T any](ctx context.Context, c *taskCommandRouterClie
 // SetNetworkAccess replaces the task's outbound network allowlist (domains + CIDRs).
 func (c *taskCommandRouterClient) SetNetworkAccess(ctx context.Context, request *pb.TaskSetNetworkAccessRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskSetNetworkAccessResponse, error) {
-		return c.stub.TaskSetNetworkAccess(authCtx, request)
+		return c.stub().TaskSetNetworkAccess(authCtx, request)
 	})
 	return err
 }
@@ -411,7 +590,7 @@ func (c *taskCommandRouterClient) SetNetworkAccess(ctx context.Context, request 
 // MountDirectory mounts an image at a directory in the container.
 func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *pb.TaskMountDirectoryRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
-		return c.stub.TaskMountDirectory(authCtx, request)
+		return c.stub().TaskMountDirectory(authCtx, request)
 	})
 	return err
 }
@@ -419,7 +598,7 @@ func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *p
 // UnmountDirectory unmounts a directory in the container.
 func (c *taskCommandRouterClient) UnmountDirectory(ctx context.Context, request *pb.TaskUnmountDirectoryRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
-		return c.stub.TaskUnmountDirectory(authCtx, request)
+		return c.stub().TaskUnmountDirectory(authCtx, request)
 	})
 	return err
 }
@@ -438,7 +617,7 @@ func (c *taskCommandRouterClient) ReloadVolumes(ctx context.Context, request *pb
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskReloadVolumesResponse, error) {
-			return c.stub.TaskReloadVolumes(authCtx, request)
+			return c.stub().TaskReloadVolumes(authCtx, request)
 		})
 	}, opts, &c.closed)
 	if err != nil && time.Now().After(overallDeadline) {
@@ -465,7 +644,7 @@ func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotDirectoryResponse, error) {
-			return c.stub.TaskSnapshotDirectory(authCtx, request)
+			return c.stub().TaskSnapshotDirectory(authCtx, request)
 		})
 	}, opts, &c.closed)
 	if err != nil && time.Now().After(overallDeadline) {
@@ -501,7 +680,7 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotFilesystemResponse, error) {
-			return c.stub.TaskSnapshotFilesystem(authCtx, request)
+			return c.stub().TaskSnapshotFilesystem(authCtx, request)
 		})
 	}, opts, &c.closed)
 	if err != nil && time.Now().After(overallDeadline) {
@@ -521,7 +700,7 @@ func (c *taskCommandRouterClient) SnapshotMemory(ctx context.Context, request *p
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotMemoryResponse, error) {
-			return c.stub.TaskSnapshotMemory(authCtx, request)
+			return c.stub().TaskSnapshotMemory(authCtx, request)
 		})
 	}, opts, &c.closed)
 	if err != nil && time.Now().After(overallDeadline) {
@@ -545,7 +724,7 @@ func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, tas
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
-			return c.stub.SandboxWaitUntilReady(authCtx, request)
+			return c.stub().SandboxWaitUntilReady(authCtx, request)
 		})
 	}, opts, &c.closed)
 	if err != nil {
@@ -560,28 +739,28 @@ func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, tas
 // ContainerCreate creates an additional container in the task.
 func (c *taskCommandRouterClient) ContainerCreate(ctx context.Context, request *pb.TaskContainerCreateRequest) (*pb.TaskContainerCreateResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerCreateResponse, error) {
-		return c.stub.TaskContainerCreate(authCtx, request)
+		return c.stub().TaskContainerCreate(authCtx, request)
 	})
 }
 
 // ContainerGet returns the latest container associated with a logical name.
 func (c *taskCommandRouterClient) ContainerGet(ctx context.Context, request *pb.TaskContainerGetRequest) (*pb.TaskContainerGetResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerGetResponse, error) {
-		return c.stub.TaskContainerGet(authCtx, request)
+		return c.stub().TaskContainerGet(authCtx, request)
 	})
 }
 
 // ContainerList lists containers associated with the task.
 func (c *taskCommandRouterClient) ContainerList(ctx context.Context, request *pb.TaskContainerListRequest) (*pb.TaskContainerListResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerListResponse, error) {
-		return c.stub.TaskContainerList(authCtx, request)
+		return c.stub().TaskContainerList(authCtx, request)
 	})
 }
 
 // ContainerTerminate terminates a tracked container.
 func (c *taskCommandRouterClient) ContainerTerminate(ctx context.Context, request *pb.TaskContainerTerminateRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerTerminateResponse, error) {
-		return c.stub.TaskContainerTerminate(authCtx, request)
+		return c.stub().TaskContainerTerminate(authCtx, request)
 	})
 	return err
 }
@@ -589,14 +768,14 @@ func (c *taskCommandRouterClient) ContainerTerminate(ctx context.Context, reques
 // ContainerWait waits for a tracked container to reach a terminal result.
 func (c *taskCommandRouterClient) ContainerWait(ctx context.Context, request *pb.TaskContainerWaitRequest) (*pb.TaskContainerWaitResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerWaitResponse, error) {
-		return c.stub.TaskContainerWait(authCtx, request)
+		return c.stub().TaskContainerWait(authCtx, request)
 	})
 }
 
 // ExecStart starts a command execution.
 func (c *taskCommandRouterClient) ExecStart(ctx context.Context, request *pb.TaskExecStartRequest) (*pb.TaskExecStartResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStartResponse, error) {
-		return c.stub.TaskExecStart(authCtx, request)
+		return c.stub().TaskExecStart(authCtx, request)
 	})
 }
 
@@ -611,7 +790,7 @@ func (c *taskCommandRouterClient) ExecStdinWrite(ctx context.Context, taskID, ex
 	}.Build()
 
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinWriteResponse, error) {
-		return c.stub.TaskExecStdinWrite(authCtx, request)
+		return c.stub().TaskExecStdinWrite(authCtx, request)
 	})
 	return err
 }
@@ -627,7 +806,7 @@ func (c *taskCommandRouterClient) ExecStdinStatus(ctx context.Context, taskID, e
 	}.Build()
 
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinStatusResponse, error) {
-		return c.stub.TaskExecStdinStatus(authCtx, request)
+		return c.stub().TaskExecStdinStatus(authCtx, request)
 	})
 }
 
@@ -716,13 +895,18 @@ func (c *taskCommandRouterClient) ExecStdinWriteStream(ctx context.Context, task
 // Start, Data chunks, then End (EOF). It does not retry; ExecStdinWriteStream
 // owns resume.
 func (c *taskCommandRouterClient) execStdinWriteStreamAttempt(ctx context.Context, taskID, execID string, offset uint64, source io.Reader) error {
+	if err := c.beginOp(); err != nil {
+		return err
+	}
+	defer c.endOp()
+
 	// Cancel the stream when bailing out before CloseAndRecv completes so an
 	// abandoned attempt doesn't leak. A canceled stream ends without End,
 	// which leaves stdin open server-side for resume.
 	attemptCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	stream, err := c.stub.TaskExecStdinWriteStream(c.authContext(attemptCtx))
+	stream, err := c.stub().TaskExecStdinWriteStream(c.authContext(attemptCtx))
 	if err != nil {
 		return err
 	}
@@ -802,7 +986,7 @@ func (c *taskCommandRouterClient) ExecWait(ctx context.Context, taskID, execID s
 			// Set a per-call timeout of 60 seconds
 			callCtx, cancel := context.WithTimeout(authCtx, 60*time.Second)
 			defer cancel()
-			return c.stub.TaskExecWait(callCtx, request)
+			return c.stub().TaskExecWait(callCtx, request)
 		})
 	}, opts, &c.closed)
 
@@ -842,16 +1026,11 @@ type execStdioReader struct {
 	deadline    time.Time
 	hasDeadline bool
 
-	// How long the caller may go without reading before the stream is given up
-	// so the connection can go idle. Zero waits for them however long they take.
-	idleTimeout time.Duration
-	idleTimer   *time.Timer
-	// Set when the timer, rather than a fault, ended the stream, so the next
-	// read reopens instead of surfacing a cancellation.
-	releasedWhileIdle atomic.Bool
-
 	stream       grpc.ServerStreamingClient[pb.TaskExecStdioReadResponse]
 	streamCancel context.CancelFunc
+	// The connection this stream was opened on. If the client has since dialled
+	// again the stream is stale, and reopening it is not a fault.
+	streamGeneration uint64
 	// Where the next read resumes, so a reopened stream picks up where the last
 	// one left off rather than repeating output the caller has seen.
 	offset int64
@@ -875,11 +1054,9 @@ func (c *taskCommandRouterClient) ExecStdioRead(
 		execID:           execID,
 		delay:            stdioRetryInitialDelay,
 		retriesRemaining: stdioMaxRetries,
-		idleTimeout:      c.stdioIdleTimeout,
 	}
 	r.ctx, r.cancel = ctx, cancel
 	r.fetch, r.dropStream = r.fill, r.closeStream
-	r.inUse, r.idle = r.stopIdleTimer, r.armIdleTimer
 
 	switch fd {
 	case pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT:
@@ -900,8 +1077,6 @@ func (c *taskCommandRouterClient) ExecStdioRead(
 }
 
 func (r *execStdioReader) closeStream() {
-	// The timer exists to end this stream, so it has nothing left to do.
-	r.stopIdleTimer()
 	if r.streamCancel != nil {
 		r.streamCancel()
 		r.streamCancel = nil
@@ -909,38 +1084,17 @@ func (r *execStdioReader) closeStream() {
 	r.stream = nil
 }
 
-// armIdleTimer gives the connection up if the caller does not come back for
-// another read. Nothing is in flight between reads, so the only thing holding
-// the connection is the open stream, and ending it lets grpc-go idle the
-// connection out. The next read reopens at the offset reached so far.
-func (r *execStdioReader) armIdleTimer() {
-	// A reader only ever has one idle timer, and arming replaces it: a read that
-	// arrives before the last one expired has refreshed it, so the old one must
-	// not go on to cancel a stream that is back in use.
-	r.stopIdleTimer()
-	if r.idleTimeout <= 0 || r.streamCancel == nil {
-		return
-	}
-	cancel, ctx := r.streamCancel, r.ctx
-	r.idleTimer = time.AfterFunc(r.idleTimeout, func() {
-		// Deliberately touches nothing but the flag and the stream's own
-		// cancel, so it cannot deadlock against a Read holding the mutex.
-		r.releasedWhileIdle.Store(true)
-		r.client.logger.DebugContext(ctx, "Releasing command router connection to an idle stdio reader", "task_id", r.client.taskID)
-		cancel()
-	})
-}
-
-func (r *execStdioReader) stopIdleTimer() {
-	if r.idleTimer != nil {
-		r.idleTimer.Stop()
-		r.idleTimer = nil
-	}
-}
-
 // fill pulls the next chunk into pending, opening or reopening the stream as it
 // needs to. It returns io.EOF once the output is finished.
 func (r *execStdioReader) fill() error {
+	// A read in progress is what keeps the client in use. Between reads it may
+	// go idle and give its connection back, taking this stream with it; the
+	// next read dials again and reopens where it left off.
+	if err := r.client.beginOp(); err != nil {
+		return err
+	}
+	defer r.client.endOp()
+
 	for {
 		if err := r.ctx.Err(); err != nil {
 			return r.contextErr(err)
@@ -960,9 +1114,10 @@ func (r *execStdioReader) fill() error {
 			return io.EOF
 		}
 		if err != nil {
+			stale := r.streamGeneration != r.client.generation.Load()
 			r.closeStream()
-			if r.releasedWhileIdle.Swap(false) {
-				// We ended this stream ourselves because nobody was reading.
+			if stale {
+				// The connection this stream was on was given up for idleness.
 				// Nothing went wrong, so reopen without spending a retry.
 				continue
 			}
@@ -975,9 +1130,6 @@ func (r *execStdioReader) fill() error {
 		r.didAuthRetry = false
 		r.delay = stdioRetryInitialDelay
 		r.retriesRemaining = stdioMaxRetries
-		// A chunk still buffered from a stream we ended ourselves is fine to
-		// hand over, but the flag must not outlive it and excuse a later fault.
-		r.releasedWhileIdle.Store(false)
 		r.offset += int64(len(item.GetData()))
 		// One chunk per message, and fill only runs with pending empty, so the
 		// chunk replaces it. The log reader concatenates instead because a
@@ -988,8 +1140,9 @@ func (r *execStdioReader) fill() error {
 }
 
 func (r *execStdioReader) openStream() error {
+	generation := r.client.generation.Load()
 	streamCtx, cancel := context.WithCancel(r.ctx)
-	stream, err := r.client.stub.TaskExecStdioRead(
+	stream, err := r.client.stub().TaskExecStdioRead(
 		r.client.authContext(streamCtx),
 		pb.TaskExecStdioReadRequest_builder{
 			TaskId:         r.taskID,
@@ -1003,6 +1156,7 @@ func (r *execStdioReader) openStream() error {
 		return err
 	}
 	r.stream, r.streamCancel = stream, cancel
+	r.streamGeneration = generation
 	return nil
 }
 

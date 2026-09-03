@@ -40,7 +40,6 @@ export interface Profile {
    * forgotten gives its connection up after the two together. Zero stops
    * counting as soon as a caller stops reading.
    */
-  sandboxStreamIdleTimeoutMs: number;
 }
 
 /**
@@ -48,12 +47,6 @@ export interface Profile {
  * MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT says otherwise.
  */
 export const DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS = 30_000;
-
-/**
- * How long a caller may sit on a chunk before their stream stops counting as in
- * use, unless MODAL_SANDBOX_STREAM_IDLE_TIMEOUT says otherwise.
- */
-export const DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS = 5_000;
 
 /**
  * The largest delay setTimeout honours. Past this it wraps to zero and the
@@ -160,29 +153,6 @@ export function getProfile(profileName?: string): Profile {
           `MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT="${val}" is not a valid non-negative number of seconds; ignoring.`,
         );
         return DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS;
-      }
-      const ms = Math.round(parsed * 1000);
-      // Zero is how a caller turns the release off, so a timeout too short to
-      // round to a millisecond becomes the shortest one there is rather than
-      // none at all.
-      return parsed > 0 && ms === 0 ? 1 : ms;
-    })(),
-    sandboxStreamIdleTimeoutMs: (() => {
-      const val = process.env["MODAL_SANDBOX_STREAM_IDLE_TIMEOUT"];
-      if (!val) return DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS;
-      const parsed = Number(val);
-      // Infinity parses as a number but is not a timeout, and setTimeout treats
-      // anything past MAX_TIMEOUT_MS as zero - firing at once rather than never.
-      if (
-        !Number.isFinite(parsed) ||
-        parsed < 0 ||
-        parsed * 1000 > MAX_TIMEOUT_MS
-      ) {
-        // We use `warn` here because Modal's logger is constructed after the profile is constructed
-        warn(
-          `MODAL_SANDBOX_STREAM_IDLE_TIMEOUT="${val}" is not a valid non-negative number of seconds; ignoring.`,
-        );
-        return DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS;
       }
       const ms = Math.round(parsed * 1000);
       // Zero is how a caller turns the release off, so a timeout too short to

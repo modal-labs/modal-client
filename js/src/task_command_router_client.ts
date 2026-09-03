@@ -56,7 +56,7 @@ import type { ModalGrpcClient } from "./client";
 import { timeoutMiddleware, type TimeoutOptions } from "./client";
 import type { Logger } from "./logger";
 import type { Profile } from "./config";
-import { DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS, isLocalhost } from "./config";
+import { DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS, isLocalhost } from "./config";
 import { ClientClosedError, TimeoutError } from "./errors";
 
 type TaskCommandRouterClient = Client<typeof TaskCommandRouterDefinition>;
@@ -211,7 +211,43 @@ export async function callWithRetriesOnTransientErrors<T>(
 /** @ignore */
 export class TaskCommandRouterClientImpl {
   private stub: TaskCommandRouterClient;
-  private channel: ReturnType<typeof createChannel>;
+  /**
+   * The connection, absent while it is released. It is dialled again by the
+   * next operation, so nothing may hold `stub` across one.
+   */
+  private channel: ReturnType<typeof createChannel> | undefined;
+  private dial: () => ReturnType<typeof createChannel>;
+  private factory!: ReturnType<typeof createClientFactory>;
+  /**
+   * How many operations are using the connection. A count rather than a flag
+   * because operations overlap: only the last one out starts the idle clock.
+   */
+  private inFlight = 0;
+  private idleTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+  /**
+   * Which timer the pending callback belongs to. A callback that finds a
+   * different one has been superseded and stands down.
+   */
+  private idleTimerSeq = 0;
+  /**
+   * Bumped every time a connection is released. A stream opened before the last
+   * bump is stale: the connection under it has since been given up, so its
+   * failure is expected rather than a fault.
+   */
+  private generation = 0;
+  /**
+   * Streams open right now, tracked so they can be ended on release.
+   *
+   * grpc-js does not cancel a call in flight when its channel is closed, and a
+   * subchannel with a live call on it is never collected - so closing alone
+   * leaves the socket up. Aborting the calls first is what actually frees it.
+   */
+  private liveStreams = new Set<AbortController>();
+  /**
+   * How long the client may go unused before its connection is given up. Zero
+   * keeps it up until the client is closed. Overridable in tests.
+   */
+  idleTimeoutMs: number = DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS;
   private serverClient: ModalGrpcClient;
   private taskId: string;
   private sandboxId: string;
@@ -222,12 +258,6 @@ export class TaskCommandRouterClientImpl {
   private jwtRefreshLock: Promise<void> = Promise.resolve();
   private logger: Logger;
   private closed: boolean = false;
-  /**
-   * How long a caller may sit on a chunk before their stream stops counting as
-   * in use, at which point it is ended so the connection can go idle. Zero keeps
-   * the stream open however long they take. Overridable per instance in tests.
-   */
-  stdioHandoffTimeoutMs: number = DEFAULT_SANDBOX_STREAM_IDLE_TIMEOUT_MS;
 
   /**
    * `access` is the router access returned by SandboxCreateV2, which lets a
@@ -293,33 +323,22 @@ export class TaskCommandRouterClientImpl {
       "grpc.keepalive_time_ms": 30000,
       "grpc.keepalive_timeout_ms": 10000,
       "grpc.keepalive_permit_without_calls": 1,
-      // With no RPC running, grpc-js drops the transport and reconnects on the
-      // next call, so a Sandbox nobody is using costs no connection. Zero leaves
-      // the connection up until the client closes.
-      ...(profile.sandboxChannelIdleTimeoutMs > 0
-        ? {
-            "grpc.client_idle_timeout_ms": profile.sandboxChannelIdleTimeoutMs,
-          }
-        : {}),
     };
 
-    let channel;
-    if (isLocalhost(profile)) {
+    const insecure = isLocalhost(profile);
+    if (insecure) {
       logger.warn(
         "Using insecure TLS (skip certificate verification) for task command router",
       );
-      channel = createChannel(
-        serverUrl,
-        ChannelCredentials.createInsecure(),
-        channelConfig,
-      );
-    } else {
-      channel = createChannel(
-        serverUrl,
-        ChannelCredentials.createSsl(),
-        channelConfig,
-      );
     }
+    const dial = () =>
+      createChannel(
+        serverUrl,
+        insecure
+          ? ChannelCredentials.createInsecure()
+          : ChannelCredentials.createSsl(),
+        channelConfig,
+      );
 
     const client = new TaskCommandRouterClientImpl(
       serverClient,
@@ -328,9 +347,9 @@ export class TaskCommandRouterClientImpl {
       isV2,
       resp.url,
       resp.jwt,
-      channel,
+      dial,
       logger,
-      profile.sandboxStreamIdleTimeoutMs,
+      profile.sandboxChannelIdleTimeoutMs,
     );
 
     logger.debug(
@@ -342,18 +361,24 @@ export class TaskCommandRouterClientImpl {
     return client;
   }
 
-  private constructor(
+  /**
+   * Builds a client around an already-resolved connection. Public so a test can
+   * construct one without the control-plane round trip `tryInit` makes; the
+   * class is not exported from the package, so this is not API surface.
+   */
+  constructor(
     serverClient: ModalGrpcClient,
     taskId: string,
     sandboxId: string,
     isV2: boolean,
     serverUrl: string,
     jwt: string,
-    channel: ReturnType<typeof createChannel>,
+    dial: () => ReturnType<typeof createChannel>,
     logger: Logger,
-    stdioHandoffTimeoutMs: number,
+    idleTimeoutMs: number,
   ) {
-    this.stdioHandoffTimeoutMs = stdioHandoffTimeoutMs;
+    this.dial = dial;
+    this.idleTimeoutMs = idleTimeoutMs;
     this.serverClient = serverClient;
     this.taskId = taskId;
     this.sandboxId = sandboxId;
@@ -362,7 +387,7 @@ export class TaskCommandRouterClientImpl {
     this.jwt = jwt;
     this.jwtExp = parseJwtExpiration(jwt, logger);
     this.logger = logger;
-    this.channel = channel;
+    this.channel = dial();
 
     // Capture 'this' so the auth middleware can access the current JWT after refreshes.
     // We need to alias 'this' because generator functions cannot be arrow functions.
@@ -377,7 +402,71 @@ export class TaskCommandRouterClientImpl {
         return yield* call.next(call.request, options);
       });
 
-    this.stub = factory.create(TaskCommandRouterDefinition, channel);
+    this.factory = factory;
+    this.stub = factory.create(TaskCommandRouterDefinition, this.channel);
+  }
+
+  /**
+   * Says the client is about to be used: holds off the idle timer, and dials
+   * again if the connection was already given up. Pair every call with endOp.
+   */
+  private beginOp(): void {
+    if (this.closed) {
+      throw new ClientClosedError();
+    }
+    this.idleTimerSeq++;
+    if (this.idleTimer !== undefined) {
+      globalThis.clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+    if (this.channel === undefined) {
+      this.channel = this.dial();
+      this.stub = this.factory.create(
+        TaskCommandRouterDefinition,
+        this.channel,
+      );
+      this.logger.debug(
+        "Reconnected to the command router after an idle release",
+        "task_id",
+        this.taskId,
+      );
+    }
+    this.inFlight = (this.inFlight ?? 0) + 1;
+  }
+
+  /** Says the caller is done. The last one out starts the clock. */
+  private endOp(): void {
+    this.inFlight--;
+    if (this.inFlight > 0 || this.idleTimeoutMs <= 0 || this.closed) {
+      return;
+    }
+    this.idleTimerSeq++;
+    const seq = this.idleTimerSeq;
+    this.idleTimer = globalThis.setTimeout(() => {
+      if (seq !== this.idleTimerSeq) {
+        return;
+      }
+      this.idleTimer = undefined;
+      if (this.inFlight > 0 || this.channel === undefined) {
+        return;
+      }
+      this.logger.debug(
+        "Releasing the command router connection to an idle Sandbox",
+        "task_id",
+        this.taskId,
+      );
+      // Bumped before the streams are ended, so a reader that wakes to a
+      // failure already sees that the stamp it took has moved on.
+      this.generation++;
+      for (const stream of this.liveStreams) {
+        stream.abort();
+      }
+      this.liveStreams.clear();
+      this.channel.close();
+      this.channel = undefined;
+    }, this.idleTimeoutMs);
+    // A pending release must not hold the process open on its own.
+    this.idleTimer.unref?.();
   }
 
   close(): void {
@@ -386,7 +475,19 @@ export class TaskCommandRouterClientImpl {
     }
 
     this.closed = true;
-    this.channel.close();
+    this.idleTimerSeq++;
+    if (this.idleTimer !== undefined) {
+      globalThis.clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+    // Closing the channel does not end a call in flight, so a reader still
+    // holding a stream would keep the socket up after a detach.
+    for (const stream of this.liveStreams) {
+      stream.abort();
+    }
+    this.liveStreams.clear();
+    this.channel?.close();
+    this.channel = undefined;
   }
 
   /** Run a unary RPC against the command router with the default retry policy. */
@@ -542,8 +643,15 @@ export class TaskCommandRouterClientImpl {
           yield TaskExecStdinWriteStreamRequest.create({ end: {} });
         };
 
+      // Registered so a release or a detach can end the upload; without it the
+      // call would keep the connection alive after either.
+      const abort = new AbortController();
+      this.beginOp();
+      this.liveStreams.add(abort);
       try {
-        await this.stub.taskExecStdinWriteStream(requests());
+        await this.stub.taskExecStdinWriteStream(requests(), {
+          signal: abort.signal,
+        } as CallOptions);
         return bytesRead;
       } catch (err) {
         if (sourceError !== undefined) {
@@ -591,6 +699,11 @@ export class TaskCommandRouterClientImpl {
           "error",
           err,
         );
+      } finally {
+        this.endOp();
+        if (this.liveStreams.delete(abort)) {
+          abort.abort();
+        }
       }
     }
   }
@@ -917,7 +1030,15 @@ export class TaskCommandRouterClientImpl {
     }
   }
 
+  /**
+   * Runs one attempt, refreshing the JWT and retrying once if it was rejected.
+   *
+   * Every unary call reaches this, so the lease is taken here: a method that
+   * takes its own route to the stub cannot then reach a connection that has
+   * been given up.
+   */
   private async callWithAuthRetry<T>(func: () => Promise<T>): Promise<T> {
+    this.beginOp();
     try {
       return await func();
     } catch (err) {
@@ -926,6 +1047,8 @@ export class TaskCommandRouterClientImpl {
         return await func();
       }
       throw err;
+    } finally {
+      this.endOp();
     }
   }
 
@@ -944,13 +1067,14 @@ export class TaskCommandRouterClientImpl {
     let didAuthRetry = false;
 
     while (true) {
-      // A read stream counts as an in-flight RPC while it is open, which stops
-      // grpc-js idling the connection underneath it. So a caller that reads part
-      // of a Sandbox's output and stops would pin a socket for as long as they
-      // held on to the iterator. Aborting once the consumer has stalled drops
-      // that hold; the loop below reopens at the same offset when they return.
-      const handoff = new AbortController();
-      let releasedToStalledConsumer = false;
+      // Pulling from the stream is what keeps the client in use; while this
+      // generator is suspended at a yield it is not, so the connection may be
+      // given up under it. The stream then goes with it, and the loop below
+      // reopens at the offset the consumer reached.
+      let stale = false;
+      // Registered so a release can end this stream; a suspended generator
+      // holds no lease, so the release may land while it is open.
+      const abort = new AbortController();
 
       try {
         const timeoutMs =
@@ -963,13 +1087,36 @@ export class TaskCommandRouterClientImpl {
           fileDescriptor,
         });
 
-        const stream = this.stub.taskExecStdioRead(request, {
-          timeoutMs,
-          signal: handoff.signal,
-        } as CallOptions & TimeoutOptions);
+        const generation = this.generation;
+        this.beginOp();
+        this.liveStreams.add(abort);
+        let stream;
+        try {
+          stream = this.stub.taskExecStdioRead(request, {
+            timeoutMs,
+            signal: abort.signal,
+          } as CallOptions & TimeoutOptions);
+        } finally {
+          this.endOp();
+        }
 
         try {
-          for await (const item of stream) {
+          const items = stream[Symbol.asyncIterator]();
+          while (true) {
+            // Held only while waiting on the wire, not while the consumer has
+            // the chunk.
+            this.beginOp();
+            let next;
+            try {
+              next = await items.next();
+            } finally {
+              this.endOp();
+            }
+            if (next.done) {
+              return;
+            }
+            const item = next.value;
+
             // We successfully authenticated after a JWT refresh, reset the auth retry flag.
             if (didAuthRetry) {
               didAuthRetry = false;
@@ -977,39 +1124,13 @@ export class TaskCommandRouterClientImpl {
             delayMs = 10;
             offset += item.data.length;
 
-            // The timer runs while this generator is suspended at the yield, so
-            // a consumer that never comes back releases the connection anyway.
-            const stallTimer =
-              this.stdioHandoffTimeoutMs > 0
-                ? globalThis.setTimeout(() => {
-                    releasedToStalledConsumer = true;
-                    this.logger.debug(
-                      "Releasing command router connection to a stalled stdio consumer",
-                      "task_id",
-                      this.taskId,
-                    );
-                    handoff.abort();
-                  }, this.stdioHandoffTimeoutMs)
-                : undefined;
-            try {
-              yield item;
-            } finally {
-              if (stallTimer !== undefined) {
-                globalThis.clearTimeout(stallTimer);
-              }
-            }
-            if (releasedToStalledConsumer) {
-              break;
-            }
+            yield item;
           }
-          if (releasedToStalledConsumer) {
-            // Reopen at the offset the consumer has caught up to. Nothing went
-            // wrong, so this leaves the retry budget alone.
-            continue;
-          }
-          return;
         } catch (err) {
-          if (releasedToStalledConsumer) {
+          if (this.generation !== generation) {
+            // The connection this stream was on was given up for idleness.
+            // Nothing went wrong, so reopen without spending a retry.
+            stale = true;
             continue;
           }
           if (
@@ -1026,7 +1147,7 @@ export class TaskCommandRouterClientImpl {
           throw err;
         }
       } catch (err) {
-        if (releasedToStalledConsumer) {
+        if (stale) {
           continue;
         }
         if (
@@ -1059,6 +1180,13 @@ export class TaskCommandRouterClientImpl {
           numRetriesRemaining--;
         } else {
           throw err;
+        }
+      } finally {
+        // A consumer can abandon this generator while it is suspended at a
+        // yield, which reaches here and nowhere else. Ending the stream is what
+        // frees the socket under it.
+        if (this.liveStreams.delete(abort)) {
+          abort.abort();
         }
       }
     }

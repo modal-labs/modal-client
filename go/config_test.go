@@ -83,7 +83,6 @@ func TestGetProfile_IdleTimeoutRejectsValuesThatAreNotDurations(t *testing.T) {
 		want   time.Duration
 	}{
 		{"MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", defaults.SandboxChannelIdleTimeout},
-		{"MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", defaults.SandboxStreamIdleTimeout},
 	}
 	bad := []string{"Inf", "+Inf", "Infinity", "-Inf", "NaN", "1e30", "-1", "nonsense"}
 
@@ -95,9 +94,6 @@ func TestGetProfile_IdleTimeoutRejectsValuesThatAreNotDurations(t *testing.T) {
 
 				profile := getProfile("", config{})
 				got := profile.SandboxChannelIdleTimeout
-				if tc.envVar == "MODAL_SANDBOX_STREAM_IDLE_TIMEOUT" {
-					got = profile.SandboxStreamIdleTimeout
-				}
 				g.Expect(got).To(gomega.Equal(tc.want), "should have fallen back to the default")
 			})
 		}
@@ -110,11 +106,9 @@ func TestGetProfile_IdleTimeoutKeepsAShortTimeoutPositive(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	t.Setenv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", "0.0000000001")
-	t.Setenv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", "0.0000000001")
 
 	profile := getProfile("", config{})
 	g.Expect(profile.SandboxChannelIdleTimeout).To(gomega.BeNumerically(">", 0))
-	g.Expect(profile.SandboxStreamIdleTimeout).To(gomega.BeNumerically(">", 0))
 }
 
 // The largest accepted value still converts to a positive duration. Go leaves
@@ -135,9 +129,7 @@ func TestGetProfile_IdleTimeoutAcceptsSeconds(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	t.Setenv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", "0")
-	t.Setenv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", "2.5")
 
 	profile := getProfile("", config{})
 	g.Expect(profile.SandboxChannelIdleTimeout).To(gomega.Equal(time.Duration(0)))
-	g.Expect(profile.SandboxStreamIdleTimeout).To(gomega.Equal(2500 * time.Millisecond))
 }

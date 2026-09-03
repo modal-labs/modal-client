@@ -267,7 +267,7 @@ func (m *mockWaitUntilReadyStub) SandboxWaitUntilReady(
 	return m.fn(ctx, in, opts...)
 }
 
-func newReadinessSandbox(version sandboxVersion, stub pb.TaskCommandRouterClient) *Sandbox {
+func newReadinessSandbox(t *testing.T, version sandboxVersion, stub pb.TaskCommandRouterClient) *Sandbox {
 	client := &Client{}
 	sandboxID := testV1SandboxID
 	if version == sandboxVersionV2 {
@@ -275,10 +275,7 @@ func newReadinessSandbox(version sandboxVersion, stub pb.TaskCommandRouterClient
 	}
 	sb := newSandbox(client, sandboxID)
 	sb.taskID = "ta-wait-123"
-	crClient := &taskCommandRouterClient{stub: stub}
-	jwt := "fake-jwt"
-	crClient.jwt.Store(&jwt)
-	sb.commandRouterClient = crClient
+	sb.commandRouterClient = newStubClient(t, stub)
 	return sb
 }
 
@@ -305,7 +302,7 @@ func TestSandboxWaitUntilReady(t *testing.T) {
 					return pb.SandboxWaitUntilReadyTcrResponse_builder{ReadyAt: 123.456}.Build(), nil
 				},
 			}
-			sb := newReadinessSandbox(tc.version, stub)
+			sb := newReadinessSandbox(t, tc.version, stub)
 
 			err := sb.WaitUntilReady(ctx, 5*time.Second, nil)
 			g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -328,7 +325,7 @@ func TestSidecarSnapshotFilesystemTargetsContainer(t *testing.T) {
 			return pb.TaskSnapshotFilesystemResponse_builder{ImageId: "im-sidecar-snapshot"}.Build(), nil
 		},
 	}
-	sb := newReadinessSandbox(sandboxVersionV2, stub)
+	sb := newReadinessSandbox(t, sandboxVersionV2, stub)
 	sidecar := newSidecarContainer(sb, "sb-test-ctr-SIDECAR123", "worker", nil)
 
 	image, err := sidecar.SnapshotFilesystem(t.Context(), &SidecarSnapshotFilesystemParams{TTL: NoExpiryTTL})
@@ -363,7 +360,7 @@ func TestSandboxWaitUntilReadyTimesOut(t *testing.T) {
 					return nil, status.Error(codes.DeadlineExceeded, "deadline exceeded")
 				},
 			}
-			sb := newReadinessSandbox(tc.version, stub)
+			sb := newReadinessSandbox(t, tc.version, stub)
 
 			err := sb.WaitUntilReady(ctx, 100*time.Millisecond, nil)
 			var timeoutErr TimeoutError
@@ -994,11 +991,8 @@ func (m *mockSetNetworkAccessStub) TaskSetNetworkAccess(
 	return m.fn(ctx, in, opts...)
 }
 
-func newSetNetworkAccessClient(stub *mockSetNetworkAccessStub) *taskCommandRouterClient {
-	client := &taskCommandRouterClient{stub: stub}
-	jwt := "fake-jwt"
-	client.jwt.Store(&jwt)
-	return client
+func newSetNetworkAccessClient(t *testing.T, stub *mockSetNetworkAccessStub) *taskCommandRouterClient {
+	return newStubClient(t, stub)
 }
 
 func TestUpdateNetworkPolicyMockedCommandRouter(t *testing.T) {
@@ -1014,7 +1008,7 @@ func TestUpdateNetworkPolicyMockedCommandRouter(t *testing.T) {
 	sb := &Sandbox{
 		SandboxID:           "sb-123",
 		taskID:              "ta-123",
-		commandRouterClient: newSetNetworkAccessClient(stub),
+		commandRouterClient: newSetNetworkAccessClient(t, stub),
 	}
 	sb.attached.Store(true)
 

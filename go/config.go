@@ -31,22 +31,12 @@ type Profile struct {
 	// before the client gives it up. The Sandbox stays usable: the next
 	// operation reconnects. Zero keeps connections open until the client closes.
 	SandboxChannelIdleTimeout time.Duration
-	// SandboxStreamIdleTimeout is how long a caller may sit on a chunk of a
-	// Sandbox's output before the stream stops counting as in use. Only once a
-	// reader has gone quiet for this long does the idle timeout above start
-	// running, so a Sandbox read once and then forgotten gives its connection up
-	// after the two together. Zero stops counting as soon as a caller stops
-	// reading.
-	SandboxStreamIdleTimeout time.Duration
 }
 
 const (
 	// How long a Sandbox connection may sit idle before it is released, unless
 	// MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT says otherwise.
 	defaultSandboxChannelIdleTimeout = 30 * time.Second
-	// How long a caller may sit on a chunk before their stream stops counting as
-	// in use, unless MODAL_SANDBOX_STREAM_IDLE_TIMEOUT says otherwise.
-	defaultSandboxStreamIdleTimeout = 5 * time.Second
 )
 
 // maxIdleTimeoutSeconds is as long as an idle timeout can be said in seconds
@@ -171,13 +161,6 @@ func getProfile(name string, cfg config) Profile {
 		}
 	}
 
-	sandboxStreamIdleTimeout := defaultSandboxStreamIdleTimeout
-	if s := os.Getenv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT"); s != "" {
-		if v, ok := parseIdleTimeoutSeconds(s); ok {
-			sandboxStreamIdleTimeout = v
-		}
-	}
-
 	return Profile{
 		ServerURL:           serverURL,
 		TokenID:             tokenID,
@@ -188,7 +171,6 @@ func getProfile(name string, cfg config) Profile {
 		MaxThrottleWait:     maxThrottleWait,
 
 		SandboxChannelIdleTimeout: sandboxChannelIdleTimeout,
-		SandboxStreamIdleTimeout:  sandboxStreamIdleTimeout,
 	}
 }
 

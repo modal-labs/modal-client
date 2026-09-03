@@ -22,6 +22,27 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// newStubClient builds a client through the constructor and swaps its stub for
+// a fake, so a fixture carries whatever fields a client needs without listing
+// them.
+func newStubClient(t *testing.T, stub pb.TaskCommandRouterClient) *taskCommandRouterClient {
+	t.Helper()
+	client, err := newTaskCommandRouterClient(commandRouterParams{
+		taskID: "ta-1",
+		jwt:    mockJWT(time.Now().Unix() + 3600),
+		// Never reached: the stub below stands in for the connection.
+		target: "passthrough:///unused",
+		creds:  insecure.NewCredentials(),
+		logger: slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	client.stubValue = stub
+	return client
+}
+
 func mockJWT(exp any) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	var payloadJSON []byte
@@ -265,6 +286,10 @@ func (m *mockRetryableClient) authContext(ctx context.Context) context.Context {
 	return ctx
 }
 
+func (m *mockRetryableClient) beginOp() error { return nil }
+
+func (m *mockRetryableClient) endOp() {}
+
 func (m *mockRetryableClient) refreshJwt(ctx context.Context) error {
 	m.refreshJwtCallCount += 1
 	return nil
@@ -381,7 +406,7 @@ func TestSnapshotFilesystemPreemptiveDeadlineReturnsTimeoutError(t *testing.T) {
 		},
 	}
 
-	client := &taskCommandRouterClient{stub: stub}
+	client := newStubClient(t, stub)
 	jwt := "fake-jwt"
 	client.jwt.Store(&jwt)
 
@@ -427,7 +452,7 @@ func TestSandboxWaitUntilReadyReturnsTimeoutErrorOnDeadline(t *testing.T) {
 		},
 	}
 
-	client := &taskCommandRouterClient{stub: stub}
+	client := newStubClient(t, stub)
 	jwt := "fake-jwt"
 	client.jwt.Store(&jwt)
 
@@ -579,17 +604,15 @@ func newStreamingStdinTestClient(t *testing.T, fake *fakeStdinRouterServer) *tas
 	}()
 	t.Cleanup(grpcServer.Stop)
 
-	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	g.Expect(err).ToNot(gomega.HaveOccurred())
-	t.Cleanup(func() { _ = conn.Close() })
-
-	client := &taskCommandRouterClient{
-		stub:   pb.NewTaskCommandRouterClient(conn),
-		conn:   conn,
+	client, err := newTaskCommandRouterClient(commandRouterParams{
+		taskID: "ta-1",
+		jwt:    mockJWT(time.Now().Unix() + 3600),
+		target: lis.Addr().String(),
+		creds:  insecure.NewCredentials(),
 		logger: slog.New(slog.DiscardHandler),
-	}
-	jwt := mockJWT(time.Now().Unix() + 3600)
-	client.jwt.Store(&jwt)
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
 

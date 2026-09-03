@@ -2,6 +2,7 @@ package test
 
 import (
 	"io"
+	"runtime"
 	"testing"
 	"time"
 
@@ -12,18 +13,14 @@ import (
 // enter. These count connections at the worker rather than reading the client's
 // own state, so they say what an operator would see.
 
-const (
-	// Short enough to keep tests quick. A release waits out the reader's grace
-	// and then the channel timeout, so it lands a little after the two together.
-	releaseIdleTimeout = time.Second
-	releaseStreamIdle  = 100 * time.Millisecond
-)
+// Short enough to keep tests quick. One timeout governs the whole client, so a
+// release lands a little after it.
+const releaseIdleTimeout = time.Second
 
 func releasingWorkerOpts(output []byte) fakeWorkerOpts {
 	return fakeWorkerOpts{
 		output:             output,
 		channelIdleTimeout: "1",
-		streamIdleTimeout:  "0.1",
 	}
 }
 
@@ -48,8 +45,8 @@ func TestSandboxExecPartialReadReleasesConnection(t *testing.T) {
 	g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
 		gomega.Equal(0), "an exec nobody is reading should not hold a connection",
 	)
-	g.Expect(time.Since(start)).To(gomega.BeNumerically(">=", releaseStreamIdle),
-		"released before the reader's grace was up")
+	g.Expect(time.Since(start)).To(gomega.BeNumerically(">=", releaseIdleTimeout/2),
+		"released well before the idle timeout was up")
 }
 
 // An exec that prints once and then goes quiet while still running - a server
@@ -113,14 +110,13 @@ func TestSandboxExecResumesAfterConnectionReleased(t *testing.T) {
 	g.Expect(offsets).To(gomega.Equal([]uint64{0, 7, 14}))
 }
 
-// Zero turns the reader grace off, as the config documents: the stream stays
-// open however long the caller takes.
-func TestSandboxExecKeepsStreamWhenStreamIdleIsZero(t *testing.T) {
+// Zero turns the release off, as the config documents: the connection stays up
+// however long the caller takes.
+func TestSandboxExecKeepsConnectionWhenIdleTimeoutIsZero(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	router, listener, sandbox := startFakeWorkerWith(t, fakeWorkerOpts{
-		channelIdleTimeout: "1",
-		streamIdleTimeout:  "0",
+		channelIdleTimeout: "0",
 	})
 
 	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
@@ -132,28 +128,27 @@ func TestSandboxExecKeepsStreamWhenStreamIdleIsZero(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	g.Consistently(listener.Live, 3*releaseIdleTimeout, 50*time.Millisecond).Should(
-		gomega.Equal(1), "zero should keep the connection while the stream is open",
+		gomega.Equal(1), "zero should keep the connection up",
 	)
 	g.Expect(router.requestedOffsets()).To(gomega.Equal([]uint64{0}),
 		"the stream should not have reopened")
 }
 
-// A reader that keeps coming back keeps the stream: each read refreshes the
-// grace, so gaps shorter than it never add up to a release however long the
+// A reader that keeps coming back keeps the connection: each read refreshes the
+// timer, so gaps shorter than it never add up to a release however long the
 // whole read takes.
-func TestSandboxExecSteadyReaderRefreshesTheStreamGrace(t *testing.T) {
+func TestSandboxExecSteadyReaderRefreshesTheIdleTimer(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	router, listener, sandbox := startFakeWorkerWith(t, fakeWorkerOpts{
 		channelIdleTimeout: "1",
-		streamIdleTimeout:  "1",
 	})
 
 	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer func() { _ = process.Stdout.Close() }()
 
-	// Five 7-byte chunks read 400ms apart: every gap is inside the grace, but
+	// Five 7-byte chunks read 400ms apart: every gap is inside the timeout, but
 	// the read as a whole runs to about twice it.
 	got := make([]byte, 0, len(fakeWorkerOutput))
 	buf := make([]byte, 7)
@@ -166,6 +161,113 @@ func TestSandboxExecSteadyReaderRefreshesTheStreamGrace(t *testing.T) {
 
 	g.Expect(got).To(gomega.Equal(fakeWorkerOutput))
 	g.Expect(router.requestedOffsets()).To(gomega.Equal([]uint64{0}),
-		"every read refreshes the grace, so the stream should never have reopened")
+		"every read refreshes the timer, so the stream should never have reopened")
+	g.Expect(listener.Live()).To(gomega.Equal(1))
+}
+
+// The point of releasing on idle is that forgetting to Detach costs nothing.
+// Not just the socket: the connection object and the goroutines behind it go
+// too, which is what a leak check would otherwise catch much later.
+func TestIdleSandboxLeavesNoGoroutinesBehind(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	_, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
+	// Taken with the worker already serving, so its own Accept loop is counted
+	// as part of the baseline rather than as a leak.
+	settled := func() int {
+		for range 8 {
+			runtime.Gosched()
+			time.Sleep(50 * time.Millisecond)
+		}
+		return runtime.NumGoroutine()
+	}
+	before := settled()
+
+	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	_, err = process.Stdout.Read(make([]byte, 7))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(listener.Live()).To(gomega.Equal(1))
+
+	// Walk away: no Detach, no Close.
+	g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
+		gomega.Equal(0), "the socket should have gone")
+	g.Expect(settled()).To(gomega.Equal(before),
+		"an idle Sandbox should leave no goroutines behind either")
+}
+
+// And it must still be usable afterwards: the next read dials again and picks
+// up where it left off, without spending the reader's retry budget.
+func TestIdleSandboxReconnectsWhenReadAgain(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	opts := releasingWorkerOpts(nil)
+	// A chunk per stream, so the read after the release has to reopen.
+	opts.chunksPerStream = 1
+	router, listener, sandbox := startFakeWorkerWith(t, opts)
+
+	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	got := make([]byte, 0, len(fakeWorkerOutput))
+	for round := range 3 {
+		chunk := make([]byte, 7)
+		_, err := io.ReadFull(process.Stdout, chunk)
+		g.Expect(err).ToNot(gomega.HaveOccurred(), "round %d", round)
+		got = append(got, chunk...)
+
+		g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
+			gomega.Equal(0), "round %d: the connection should have been given up", round)
+	}
+
+	g.Expect(got).To(gomega.Equal(fakeWorkerOutput[:len(got)]),
+		"output across reconnects must be continuous - no repeats and no gaps")
+	g.Expect(router.requestedOffsets()).To(gomega.Equal([]uint64{0, 7, 14}))
+}
+
+// Detaching ends a Sandbox for good: unlike an idle release, nothing picks it
+// up again.
+func TestDetachStillEndsTheSandboxForGood(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	_, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
+
+	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	_, err = process.Stdout.Read(make([]byte, 7))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	g.Expect(sandbox.Detach()).To(gomega.Succeed())
+	g.Eventually(listener.Live, 4*releaseIdleTimeout, 20*time.Millisecond).Should(
+		gomega.Equal(0), "detaching should give the connection back at once")
+
+	// Unlike an idle release, nothing reconnects afterwards.
+	_, err = process.Stdout.Read(make([]byte, 7))
+	g.Expect(err).To(gomega.HaveOccurred(), "reading a detached Sandbox must fail")
+	_, err = sandbox.Exec(t.Context(), []string{"echo", "again"}, nil)
+	g.Expect(err).To(gomega.HaveOccurred(), "using a detached Sandbox must fail")
+}
+
+// Not every operation goes through the same helper, so the lease is taken where
+// they all meet. One that takes a different route must still find a connection.
+func TestReleasedConnectionIsRebuiltByAnyOperation(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	_, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
+
+	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	_, err = process.Stdout.Read(make([]byte, 7))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
+		gomega.Equal(0), "the connection should have been given up")
+
+	// ReloadVolumes reaches the worker by a different path than exec does. The
+	// fake does not implement it, so an answer from the worker - any answer -
+	// is what says the connection was rebuilt rather than left absent.
+	err = sandbox.ReloadVolumes(t.Context(), nil)
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("Unimplemented")),
+		"the call should have reached the worker")
 	g.Expect(listener.Live()).To(gomega.Equal(1))
 }

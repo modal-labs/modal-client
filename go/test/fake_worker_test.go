@@ -150,10 +150,9 @@ func startFakeWorkerPrinting(t *testing.T, output []byte) (*fakeWorkerRouter, *c
 // SDK ships with.
 type fakeWorkerOpts struct {
 	output []byte
-	// Written to the environment as the SDK reads them, so "0" is meaningfully
+	// Written to the environment as the SDK reads it, so "0" is meaningfully
 	// different from unset.
 	channelIdleTimeout string
-	streamIdleTimeout  string
 	// Chunks one stream will serve before it holds open without sending more.
 	chunksPerStream int
 }
@@ -169,9 +168,6 @@ func startFakeWorkerWith(t *testing.T, opts fakeWorkerOpts) (*fakeWorkerRouter, 
 
 	if opts.channelIdleTimeout != "" {
 		t.Setenv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", opts.channelIdleTimeout)
-	}
-	if opts.streamIdleTimeout != "" {
-		t.Setenv("MODAL_SANDBOX_STREAM_IDLE_TIMEOUT", opts.streamIdleTimeout)
 	}
 
 	// Read when the client builds its profile, so both must be set first. A
