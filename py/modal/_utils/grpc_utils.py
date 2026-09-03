@@ -272,18 +272,34 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
 custom_detail_codec = CustomProtoStatusDetailsCodec()
 
 
-def create_channel_config() -> grpclib.config.Configuration:
+def create_channel_config(*, sustained_keepalive: bool = False) -> grpclib.config.Configuration:
     """Shared grpclib channel settings for Modal client connections.
 
     HTTP/2 keepalive probes keep idle transports warm through stateful
     middleboxes and surface dead connections before retries reuse them.
+
+    `sustained_keepalive` clears the two grpclib defaults such that a probe
+    actually goes out every `_keepalive_time`, for as long as the connection is
+    open.
     """
+    ping_throttle_overrides: dict[str, Any] = {}
+    if sustained_keepalive:
+        ping_throttle_overrides = {
+            # Default 2: probing stops after two probes with no request sent in
+            # between. Requests reset the count, acks don't. 0 = no cap.
+            "_http2_max_pings_without_data": 0,
+            # Default 300s floor between probes, applied regardless of data
+            # despite the name, so it has to stay under `_keepalive_time`.
+            "_http2_min_sent_ping_interval_without_data": GRPC_KEEPALIVE_TIME_SECS / 2,
+        }
+
     return grpclib.config.Configuration(
         _keepalive_time=GRPC_KEEPALIVE_TIME_SECS,
         _keepalive_timeout=GRPC_KEEPALIVE_TIMEOUT_SECS,
         _keepalive_permit_without_calls=True,
         http2_connection_window_size=GRPC_WINDOW_SIZE,
         http2_stream_window_size=GRPC_WINDOW_SIZE,
+        **ping_throttle_overrides,
     )
 
 

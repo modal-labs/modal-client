@@ -251,7 +251,7 @@ class TaskCommandRouterClient:
             host,
             port,
             ssl=ssl_context,
-            config=create_channel_config(),
+            config=create_channel_config(sustained_keepalive=True),
             closed_error_message="Unable to perform operation on a detached sandbox",
         )
 

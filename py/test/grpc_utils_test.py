@@ -5,6 +5,7 @@ import time
 import urllib.parse
 from unittest import mock
 
+import grpclib.protocol
 from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
 
@@ -308,6 +309,37 @@ def test_channel_config():
     assert config._keepalive_permit_without_calls is True
     assert config.http2_connection_window_size == 64 * 1024 * 1024
     assert config.http2_stream_window_size == 64 * 1024 * 1024
+
+
+def _keepalive_probes_sent(config, num_probe_intervals: int, monkeypatch) -> int:
+    """Count the probes grpclib sends on a connection that only awaits a response.
+
+    Replays its probe schedule against `_is_need_send_ping`, one tick per probe
+    interval.
+    """
+    now = config._keepalive_time
+    monkeypatch.setattr(grpclib.protocol.time, "monotonic", lambda: now)
+
+    connection = grpclib.protocol.Connection(mock.MagicMock(), mock.MagicMock(), config=config)
+    probes = 0
+    for _ in range(num_probe_intervals):
+        if connection._is_need_send_ping():
+            connection.last_ping_sent = now
+            connection.ping_count_in_sequence += 1
+            probes += 1
+        now += config._keepalive_time
+    return probes
+
+
+def test_channel_config_keepalive_probing_stops_without_data(monkeypatch):
+    assert _keepalive_probes_sent(create_channel_config(), 20, monkeypatch) == 2
+
+
+def test_channel_config_sustained_keepalive_probes_for_connection_lifetime(monkeypatch):
+    config = create_channel_config(sustained_keepalive=True)
+
+    assert _keepalive_probes_sent(config, 20, monkeypatch) == 20
+    assert config._http2_min_sent_ping_interval_without_data < config._keepalive_time
 
 
 @synchronize_api
