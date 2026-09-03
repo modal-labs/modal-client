@@ -16,6 +16,7 @@ import {
 } from "../src/sandbox";
 import { expect, test, onTestFinished, vi } from "vitest";
 import {
+  FileDescriptor,
   GPUConfig,
   PTYInfo_PTYType,
   NetworkAccess_NetworkAccessType,
@@ -32,6 +33,7 @@ import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
 import { SandboxSnapshot } from "../src/sandbox_snapshot";
 import {
+  SandboxStdioReadV2Response,
   TaskSetNetworkAccessRequest,
   TaskSnapshotFilesystemRequest,
   TaskSnapshotMemoryRequest,
@@ -50,6 +52,16 @@ import { ClientError, Status } from "nice-grpc";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
+
+function mockCommandRouter(methods: Record<string, unknown>): void {
+  const tryInit = vi
+    .spyOn(TaskCommandRouterClientImpl, "tryInit")
+    .mockResolvedValue({
+      close: vi.fn(),
+      ...methods,
+    } as unknown as TaskCommandRouterClientImpl);
+  onTestFinished(() => tryInit.mockRestore());
+}
 
 test("CreateOneSandbox", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
@@ -1925,8 +1937,6 @@ test("ExperimentalList yields V2 Sandboxes and paginates", async () => {
   const ids: string[] = [];
   for await (const sb of mc.sandboxes.experimentalList({ appId: "ap-1234" })) {
     expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
-    // Listed Sandboxes are marked V2, so V1-only stdio getters reject.
-    expect(() => sb.stdin).toThrow("not supported for V2 sandboxes");
     ids.push(sb.sandboxId);
   }
 
@@ -2000,7 +2010,6 @@ test("ExperimentalFromName routes to V2 RPCs", async () => {
     "my-sandbox",
   );
   expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
-  expect(() => sb.stdin).toThrow("not supported for V2 sandboxes");
 
   await sb.terminate();
 
@@ -2073,16 +2082,128 @@ test.each([
   },
 );
 
-test("V2 Sandbox rejects V1-only runtime methods", async () => {
-  const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
-  const expectedError = "not supported for V2 sandboxes";
+test("V2 Sandbox reads stdio of a Sandbox that has already finished", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  // No cached task ID, so the read has to resolve one for a Sandbox that ran
+  // and then exited. The response carries both a task ID and a result, and the
+  // task ID is what makes the buffered output reachable.
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {});
+  mock.handleUnary("/SandboxGetTaskIdV2", () => ({
+    taskId: "ta-finished",
+    taskResult: {
+      status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+      exitcode: 0,
+    },
+  }));
 
-  expect(() => sb.stdin).toThrow(expectedError);
-  expect(() => sb.stdout).toThrow(expectedError);
-  expect(() => sb.stderr).toThrow(expectedError);
+  const sandboxStdioReadV2 = vi.fn(() =>
+    (async function* () {
+      yield SandboxStdioReadV2Response.create({
+        data: new TextEncoder().encode("after exit\n"),
+      });
+    })(),
+  );
+  mockCommandRouter({ sandboxStdioReadV2 });
+
+  expect(await sb.stdout.readText()).toBe("after exit\n");
+  expect(sandboxStdioReadV2).toHaveBeenCalledWith(
+    "ta-finished",
+    FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+  );
+  mock.assertExhausted();
+});
+
+test("V2 Sandbox cancelling stdout aborts a pending task lookup", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {});
+
+  for (let i = 0; i < 40; i++) {
+    mock.handleUnary("/SandboxGetTaskIdV2", () => ({}));
+  }
+  mockCommandRouter({});
+
+  const reader = sb.stdout.getReader();
+  const read = reader.read().catch(() => undefined);
+  // Let the first lookup land before giving up on it.
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+
+  const outcome = await Promise.race([
+    reader.cancel().then(() => "cancelled"),
+    new Promise((resolve) =>
+      globalThis.setTimeout(() => resolve("still waiting"), 2000),
+    ),
+  ]);
+  expect(outcome).toBe("cancelled");
+  await read;
+});
+
+test("V2 Sandbox streams stdout and stderr through the command router", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const sandboxStdioReadV2 = vi.fn((_taskId: string, fd: FileDescriptor) =>
+    (async function* () {
+      const text =
+        fd === FileDescriptor.FILE_DESCRIPTOR_STDOUT
+          ? "hello stdout\n"
+          : "oops stderr\n";
+      yield SandboxStdioReadV2Response.create({
+        data: new TextEncoder().encode(text),
+      });
+    })(),
+  );
+  mockCommandRouter({ sandboxStdioReadV2 });
+
+  expect(await sb.stdout.readText()).toBe("hello stdout\n");
+  expect(await sb.stderr.readText()).toBe("oops stderr\n");
+  expect(sandboxStdioReadV2.mock.calls).toEqual([
+    ["ta-v2-123", FileDescriptor.FILE_DESCRIPTOR_STDOUT],
+    ["ta-v2-123", FileDescriptor.FILE_DESCRIPTOR_STDERR],
+  ]);
+});
+
+test("V2 Sandbox warns when the worker dropped buffered output", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const warn = vi.spyOn(mc.logger, "warn").mockImplementation(() => {});
+  onTestFinished(() => warn.mockRestore());
+
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  mockCommandRouter({
+    sandboxStdioReadV2: () =>
+      (async function* () {
+        yield SandboxStdioReadV2Response.create({
+          data: new TextEncoder().encode("tail\n"),
+          startingOffset: 1500,
+        });
+      })(),
+  });
+
+  expect(await sb.stdout.readText()).toBe("tail\n");
+  expect(warn).toHaveBeenCalledWith(
+    expect.stringContaining("dropped bytes"),
+    "sandbox_id",
+    V2_SANDBOX_ID,
+    "dropped_bytes",
+    1500,
+  );
+});
+
+test("V2 Sandbox stdin writes at increasing offsets and closes with EOF", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const sandboxStdinWriteV2 = vi.fn().mockResolvedValue({});
+  mockCommandRouter({ sandboxStdinWriteV2 });
+
+  await sb.stdin.writeText("hello ");
+  await sb.stdin.writeText("world");
+  await sb.stdin.close();
+
+  expect(sandboxStdinWriteV2.mock.calls).toEqual([
+    ["ta-v2-123", 0, new TextEncoder().encode("hello "), false],
+    ["ta-v2-123", 6, new TextEncoder().encode("world"), false],
+    ["ta-v2-123", 11, new Uint8Array(0), true],
+  ]);
 });
 
 test("V2 Sandbox setTags/getTags route to V2 RPCs", async () => {

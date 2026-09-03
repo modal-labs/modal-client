@@ -7,10 +7,15 @@ import {
 } from "../src/task_command_router_client";
 import { ClientError, Status } from "nice-grpc";
 import {
+  SandboxStdinWriteV2Request,
+  SandboxStdioFileDescriptor,
+  SandboxStdioReadV2Request,
+  SandboxStdioReadV2Response,
   TaskExecStdinStatusResponse,
   TaskExecStdinWriteStreamRequest,
   TaskSnapshotFilesystemRequest,
 } from "../proto/modal_proto/task_command_router";
+import { FileDescriptor } from "../proto/modal_proto/api";
 import { TimeoutError } from "../src/errors";
 
 const mockLogger = {
@@ -445,6 +450,180 @@ test("execStdinWriteStream does not resume on FAILED_PRECONDITION", async () => 
 
   expect(server.writeStreamCalls).toBe(1);
   expect(server.statusCalls).toBe(0);
+});
+
+class FakeSandboxStdioServer {
+  readOffsets: number[] = [];
+  readFds: SandboxStdioFileDescriptor[] = [];
+  stdinBuffer: number[] = [];
+  stdinClosed = false;
+
+  constructor(
+    private readonly output: Partial<
+      Record<SandboxStdioFileDescriptor, Uint8Array>
+    > = {},
+    private readonly opts: {
+      chunkSize?: number;
+      droppedPrefix?: number;
+      failures?: number;
+    } = {},
+  ) {}
+
+  stub() {
+    let failuresRemaining = this.opts.failures ?? 0;
+    return {
+      sandboxStdioReadV2: (req: SandboxStdioReadV2Request) => {
+        this.readOffsets.push(req.offset);
+        this.readFds.push(req.fileDescriptor);
+        const fail = failuresRemaining > 0;
+        if (fail) failuresRemaining--;
+        const full = this.output[req.fileDescriptor] ?? new Uint8Array(0);
+        const chunkSize = this.opts.chunkSize || full.length;
+        let offset = Math.max(req.offset, this.opts.droppedPrefix ?? 0);
+        return (async function* () {
+          while (offset < full.length) {
+            const end = Math.min(offset + chunkSize, full.length);
+            yield SandboxStdioReadV2Response.create({
+              data: full.subarray(offset, end),
+              startingOffset: offset,
+            });
+            offset = end;
+            if (fail) throw unavailable();
+          }
+        })();
+      },
+      sandboxStdinWriteV2: async (req: SandboxStdinWriteV2Request) => {
+        this.stdinBuffer = this.stdinBuffer.slice(0, req.offset);
+        this.stdinBuffer.push(...req.data);
+        if (req.eof) this.stdinClosed = true;
+        return {};
+      },
+    };
+  }
+}
+
+function makeSandboxStdioClient(server: FakeSandboxStdioServer): any {
+  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
+  client.stub = server.stub();
+  client.logger = mockLogger;
+  client.closed = false;
+  // The stdio streams take part in the idle-release bookkeeping. A channel that
+  // is already there keeps beginOp from dialling, and a zero timeout keeps
+  // endOp from scheduling a release.
+  client.channel = {};
+  client.liveStreams = new Set();
+  client.generation = 0;
+  client.inFlight = 0;
+  client.idleTimerSeq = 0;
+  client.idleTimeoutMs = 0;
+  return client;
+}
+
+function deterministicBytes(n: number): Uint8Array {
+  return new Uint8Array(n).map((_, i) => i % 251);
+}
+
+async function collectStdio(
+  stream: AsyncIterable<SandboxStdioReadV2Response>,
+): Promise<Uint8Array> {
+  const chunks: number[] = [];
+  for await (const item of stream) {
+    chunks.push(...item.data);
+  }
+  return new Uint8Array(chunks);
+}
+
+test("sandboxStdioReadV2 streams the whole buffer in one call", async () => {
+  const stdout = deterministicBytes(5000);
+  const server = new FakeSandboxStdioServer(
+    {
+      [SandboxStdioFileDescriptor.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT]: stdout,
+    },
+    { chunkSize: 1000 },
+  );
+  const client = makeSandboxStdioClient(server);
+
+  const got = await collectStdio(
+    client.sandboxStdioReadV2("ta-1", FileDescriptor.FILE_DESCRIPTOR_STDOUT),
+  );
+
+  expect(got).toEqual(stdout);
+  expect(server.readOffsets).toEqual([0]);
+});
+
+test("sandboxStdioReadV2 resumes from the next byte after a transient error", async () => {
+  const stdout = deterministicBytes(5000);
+  const server = new FakeSandboxStdioServer(
+    {
+      [SandboxStdioFileDescriptor.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT]: stdout,
+    },
+    { chunkSize: 1000, failures: 1 },
+  );
+  const client = makeSandboxStdioClient(server);
+
+  const got = await collectStdio(
+    client.sandboxStdioReadV2("ta-1", FileDescriptor.FILE_DESCRIPTOR_STDOUT),
+  );
+
+  expect(got).toEqual(stdout);
+  expect(server.readOffsets).toEqual([0, 1000]);
+});
+
+test("sandboxStdioReadV2 rebases the resume offset onto the worker's starting offset", async () => {
+  const stdout = deterministicBytes(5000);
+  const server = new FakeSandboxStdioServer(
+    {
+      [SandboxStdioFileDescriptor.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT]: stdout,
+    },
+    { chunkSize: 1000, droppedPrefix: 1500, failures: 1 },
+  );
+  const client = makeSandboxStdioClient(server);
+
+  const got = await collectStdio(
+    client.sandboxStdioReadV2("ta-1", FileDescriptor.FILE_DESCRIPTOR_STDOUT),
+  );
+
+  expect(got).toEqual(stdout.subarray(1500));
+  expect(server.readOffsets).toEqual([0, 2500]);
+});
+
+test("sandboxStdioReadV2 maps stderr onto the Sandbox stdio descriptor", async () => {
+  const stderr = deterministicBytes(64);
+  const server = new FakeSandboxStdioServer({
+    [SandboxStdioFileDescriptor.SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR]: stderr,
+  });
+  const client = makeSandboxStdioClient(server);
+
+  const got = await collectStdio(
+    client.sandboxStdioReadV2("ta-1", FileDescriptor.FILE_DESCRIPTOR_STDERR),
+  );
+
+  expect(got).toEqual(stderr);
+  expect(server.readFds).toEqual([
+    SandboxStdioFileDescriptor.SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR,
+  ]);
+});
+
+test("sandboxStdioReadV2 rejects descriptors without a Sandbox stdio equivalent", async () => {
+  const server = new FakeSandboxStdioServer();
+  const client = makeSandboxStdioClient(server);
+
+  await expect(
+    collectStdio(
+      client.sandboxStdioReadV2("ta-1", FileDescriptor.FILE_DESCRIPTOR_INFO),
+    ),
+  ).rejects.toThrow("Unsupported file descriptor");
+});
+
+test("sandboxStdinWriteV2 writes at the given offset and closes on eof", async () => {
+  const server = new FakeSandboxStdioServer();
+  const client = makeSandboxStdioClient(server);
+
+  await client.sandboxStdinWriteV2("ta-1", 0, new Uint8Array([1, 2, 3]), false);
+  await client.sandboxStdinWriteV2("ta-1", 3, new Uint8Array(0), true);
+
+  expect(new Uint8Array(server.stdinBuffer)).toEqual(new Uint8Array([1, 2, 3]));
+  expect(server.stdinClosed).toBe(true);
 });
 
 test("refreshJwt recovers after transient failure", async () => {

@@ -44,6 +44,11 @@ import {
   TaskSnapshotMemoryResponse,
   TaskUnmountDirectoryRequest,
   TaskSetNetworkAccessRequest,
+  SandboxStdinWriteV2Request,
+  SandboxStdinWriteV2Response,
+  SandboxStdioFileDescriptor,
+  SandboxStdioReadV2Request,
+  SandboxStdioReadV2Response,
   SandboxWaitUntilReadyTcrRequest,
   SandboxWaitUntilReadyTcrResponse,
 } from "../proto/modal_proto/task_command_router";
@@ -123,6 +128,24 @@ export interface StdinSource {
    */
   readFrom(offset: number): AsyncIterable<Uint8Array>;
 }
+
+/**
+ * What one stdio stream supplies beyond what they share: which RPC to open, and
+ * how a message maps onto bytes.
+ *
+ * @internal
+ * @hidden
+ */
+type StdioStreamSpec<T> = {
+  open: (offset: number, signal: AbortSignal) => AsyncIterable<T>;
+  /** Where the next read resumes, so a reopened stream picks up where the last
+   * one left off rather than repeating output the caller has seen. */
+  nextOffset: (item: T, offset: number, firstOfAttempt: boolean) => number;
+  /** Set only when the exec has a deadline, in which case running past it is a
+   * timeout rather than an ordinary cancellation. */
+  deadline: number | null;
+  label: string;
+};
 
 /** gRPC status codes eligible for transient-error retries. */
 const RETRYABLE_GRPC_STATUS_CODES = new Set([
@@ -558,7 +581,7 @@ export class TaskCommandRouterClientImpl {
       throw new Error(`Invalid file descriptor: ${fileDescriptor}`);
     }
 
-    yield* this.streamStdio(taskId, execId, srFd, deadline);
+    yield* this.streamExecStdio(taskId, execId, srFd, deadline);
   }
 
   async execStdinWrite(
@@ -949,6 +972,42 @@ export class TaskCommandRouterClientImpl {
     }
   }
 
+  async *sandboxStdioReadV2(
+    taskId: string,
+    fileDescriptor: FileDescriptor,
+  ): AsyncGenerator<SandboxStdioReadV2Response> {
+    let srFd: SandboxStdioFileDescriptor;
+    if (fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_STDOUT) {
+      srFd = SandboxStdioFileDescriptor.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT;
+    } else if (fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_STDERR) {
+      srFd = SandboxStdioFileDescriptor.SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR;
+    } else if (
+      fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_INFO ||
+      fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_UNSPECIFIED
+    ) {
+      throw new Error(`Unsupported file descriptor: ${fileDescriptor}`);
+    } else {
+      throw new Error(`Invalid file descriptor: ${fileDescriptor}`);
+    }
+
+    yield* this.streamSandboxStdio(taskId, srFd);
+  }
+
+  async sandboxStdinWriteV2(
+    taskId: string,
+    offset: number,
+    data: Uint8Array,
+    eof: boolean,
+  ): Promise<SandboxStdinWriteV2Response> {
+    const request = SandboxStdinWriteV2Request.create({
+      taskId,
+      offset,
+      data,
+      eof,
+    });
+    return await this.callUnary(() => this.stub.sandboxStdinWriteV2(request));
+  }
+
   async sandboxWaitUntilReady(
     taskId: string,
     timeoutMs: number,
@@ -1052,18 +1111,21 @@ export class TaskCommandRouterClientImpl {
     }
   }
 
-  private async *streamStdio(
-    taskId: string,
-    execId: string,
-    fileDescriptor: TaskExecStdioFileDescriptor,
-    deadline: number | null,
-  ): AsyncGenerator<TaskExecStdioReadResponse> {
-    let offset = 0;
-    let delayMs = 10;
+  /**
+   * Yields the next chunk of stdio, opening or reopening the stream as it needs
+   * to, and determining whether or not to retry a failed open or read. It waits
+   * out the backoff itself.
+   */
+  private async *streamStdioWithRetries<T>(
+    spec: StdioStreamSpec<T>,
+  ): AsyncGenerator<T> {
+    const baseDelayMs = 10;
     const delayFactor = 2;
-    let numRetriesRemaining = 10;
-    // Flag to prevent infinite auth retries in the event that the JWT
-    // refresh yields an invalid JWT somehow or that the JWT is otherwise invalid.
+    const maxRetries = 10;
+
+    let offset = 0;
+    let delayMs = baseDelayMs;
+    let numRetriesRemaining = maxRetries;
     let didAuthRetry = false;
 
     while (true) {
@@ -1077,31 +1139,19 @@ export class TaskCommandRouterClientImpl {
       const abort = new AbortController();
 
       try {
-        const timeoutMs =
-          deadline !== null ? Math.max(0, deadline - Date.now()) : undefined;
-
-        const request = TaskExecStdioReadRequest.create({
-          taskId,
-          execId,
-          offset,
-          fileDescriptor,
-        });
-
         const generation = this.generation;
         this.beginOp();
         this.liveStreams.add(abort);
         let stream;
         try {
-          stream = this.stub.taskExecStdioRead(request, {
-            timeoutMs,
-            signal: abort.signal,
-          } as CallOptions & TimeoutOptions);
+          stream = spec.open(offset, abort.signal);
         } finally {
           this.endOp();
         }
 
         try {
           const items = stream[Symbol.asyncIterator]();
+          let firstOfAttempt = true;
           while (true) {
             // Held only while waiting on the wire, not while the consumer has
             // the chunk.
@@ -1121,8 +1171,10 @@ export class TaskCommandRouterClientImpl {
             if (didAuthRetry) {
               didAuthRetry = false;
             }
-            delayMs = 10;
-            offset += item.data.length;
+            delayMs = baseDelayMs;
+            numRetriesRemaining = maxRetries;
+            offset = spec.nextOffset(item, offset, firstOfAttempt);
+            firstOfAttempt = false;
 
             yield item;
           }
@@ -1162,9 +1214,9 @@ export class TaskCommandRouterClientImpl {
           RETRYABLE_GRPC_STATUS_CODES.has(err.code) &&
           numRetriesRemaining > 0
         ) {
-          if (deadline && deadline - Date.now() <= delayMs) {
+          if (spec.deadline && spec.deadline - Date.now() <= delayMs) {
             throw new Error(
-              `Deadline exceeded while streaming stdio for exec ${execId}`,
+              `Deadline exceeded while streaming stdio for ${spec.label}`,
             );
           }
 
@@ -1190,6 +1242,52 @@ export class TaskCommandRouterClientImpl {
         }
       }
     }
+  }
+
+  private streamExecStdio(
+    taskId: string,
+    execId: string,
+    fileDescriptor: TaskExecStdioFileDescriptor,
+    deadline: number | null,
+  ): AsyncGenerator<TaskExecStdioReadResponse> {
+    return this.streamStdioWithRetries({
+      open: (offset, signal) =>
+        this.stub.taskExecStdioRead(
+          TaskExecStdioReadRequest.create({
+            taskId,
+            execId,
+            offset,
+            fileDescriptor,
+          }),
+          {
+            timeoutMs:
+              deadline !== null
+                ? Math.max(0, deadline - Date.now())
+                : undefined,
+            signal,
+          } as CallOptions & TimeoutOptions,
+        ),
+      nextOffset: (item, offset) => offset + item.data.length,
+      deadline,
+      label: `exec ${execId}`,
+    });
+  }
+
+  private streamSandboxStdio(
+    taskId: string,
+    fileDescriptor: SandboxStdioFileDescriptor,
+  ): AsyncGenerator<SandboxStdioReadV2Response> {
+    return this.streamStdioWithRetries({
+      open: (offset, signal) =>
+        this.stub.sandboxStdioReadV2(
+          SandboxStdioReadV2Request.create({ taskId, offset, fileDescriptor }),
+          { signal } as CallOptions,
+        ),
+      nextOffset: (item, offset, firstOfAttempt) =>
+        (firstOfAttempt ? item.startingOffset : offset) + item.data.length,
+      deadline: null,
+      label: `Sandbox task ${taskId}`,
+    });
   }
 }
 

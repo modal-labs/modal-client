@@ -49,6 +49,7 @@ import {
   isRetryableGrpc,
   ModalGrpcClient,
 } from "./client";
+import type { Logger } from "./logger";
 import { SandboxFilesystem } from "./sandbox_fs";
 import { SidecarService } from "./sandbox_sidecar";
 import {
@@ -1506,8 +1507,6 @@ export class Sandbox {
   #stdin?: ModalWriteStream<string>;
   #stdout?: ModalReadStream<string>;
   #stderr?: ModalReadStream<string>;
-  #stdoutAbort?: AbortController;
-  #stderrAbort?: AbortController;
 
   #taskId: string | undefined;
   #tunnels: Record<number, Tunnel> | undefined;
@@ -1543,51 +1542,59 @@ export class Sandbox {
   }
 
   get stdin(): ModalWriteStream<string> {
-    this.#ensureV1("stdin");
     if (!this.#stdin) {
       this.#stdin = toModalWriteStream(
-        inputStreamSb(this.#client.cpClient, this.sandboxId),
+        this.#isV2
+          ? inputStreamSbV2(() => this.#getCommandRouter())
+          : inputStreamSb(this.#client.cpClient, this.sandboxId),
       );
     }
     return this.#stdin;
   }
 
   get stdout(): ModalReadStream<string> {
-    this.#ensureV1("stdout");
     if (!this.#stdout) {
-      this.#stdoutAbort = new AbortController();
-      this.#stdout = toModalReadStream(
-        streamConsumingIter(
-          outputStreamSb(
-            this.#client.cpClient,
-            this.sandboxId,
-            FileDescriptor.FILE_DESCRIPTOR_STDOUT,
-            this.#stdoutAbort.signal,
-          ),
-          () => this.#stdoutAbort?.abort(),
-        ),
-      );
+      this.#stdout = this.#outputStream(FileDescriptor.FILE_DESCRIPTOR_STDOUT);
     }
     return this.#stdout;
   }
 
   get stderr(): ModalReadStream<string> {
-    this.#ensureV1("stderr");
     if (!this.#stderr) {
-      this.#stderrAbort = new AbortController();
-      this.#stderr = toModalReadStream(
+      this.#stderr = this.#outputStream(FileDescriptor.FILE_DESCRIPTOR_STDERR);
+    }
+    return this.#stderr;
+  }
+
+  #outputStream(fileDescriptor: FileDescriptor): ModalReadStream<string> {
+    if (this.#isV2) {
+      const v2Abort = new AbortController();
+      return toModalReadStream(
         streamConsumingIter(
-          outputStreamSb(
-            this.#client.cpClient,
-            this.sandboxId,
-            FileDescriptor.FILE_DESCRIPTOR_STDERR,
-            this.#stderrAbort.signal,
+          decodeTextIter(
+            outputStreamSbV2(
+              () => this.#getCommandRouter(v2Abort.signal),
+              this.sandboxId,
+              fileDescriptor,
+              this.#client.logger,
+            ),
           ),
-          () => this.#stderrAbort?.abort(),
+          () => v2Abort.abort(),
         ),
       );
     }
-    return this.#stderr;
+    const abort = new AbortController();
+    return toModalReadStream(
+      streamConsumingIter(
+        outputStreamSb(
+          this.#client.cpClient,
+          this.sandboxId,
+          fileDescriptor,
+          abort.signal,
+        ),
+        () => abort.abort(),
+      ),
+    );
   }
 
   get filesystem(): SandboxFilesystem {
@@ -1801,9 +1808,11 @@ export class Sandbox {
     );
   }
 
-  async #getCommandRouter(): Promise<[string, TaskCommandRouterClientImpl]> {
+  async #getCommandRouter(
+    signal?: AbortSignal,
+  ): Promise<[string, TaskCommandRouterClientImpl]> {
     this.#ensureAttached();
-    const taskId = await this.#getTaskId();
+    const taskId = await this.#getTaskId(signal);
     const client = await this.#getOrCreateCommandRouterClient(taskId);
     return [taskId, client];
   }
@@ -1811,14 +1820,6 @@ export class Sandbox {
   #ensureAttached(): void {
     if (!this.#attached) {
       throw new ClientClosedError();
-    }
-  }
-
-  #ensureV1(methodName: string): void {
-    if (this.#isV2) {
-      throw new InvalidError(
-        `Sandbox.${methodName} is not supported for V2 sandboxes`,
-      );
     }
   }
 
@@ -1838,12 +1839,12 @@ export class Sandbox {
     return this.#client.cpClient.sandboxWait(req);
   }
 
-  #sandboxGetTaskId() {
+  #sandboxGetTaskId(signal?: AbortSignal) {
     const req = { sandboxId: this.sandboxId };
     if (this.#isV2) {
-      return this.#client.cpClient.sandboxGetTaskIdV2(req);
+      return this.#client.cpClient.sandboxGetTaskIdV2(req, { signal });
     }
-    return this.#client.cpClient.sandboxGetTaskId(req);
+    return this.#client.cpClient.sandboxGetTaskId(req, { signal });
   }
 
   #sandboxGetTunnels(timeoutMs: number) {
@@ -1876,12 +1877,16 @@ export class Sandbox {
 
   static readonly #maxGetTaskIdAttempts = 600; // 5 minutes at 500ms intervals
 
-  async #getTaskId(): Promise<string> {
+  async #getTaskId(signal?: AbortSignal): Promise<string> {
     if (this.#taskId !== undefined) {
       return this.#taskId;
     }
     for (let i = 0; i < Sandbox.#maxGetTaskIdAttempts; i++) {
-      const resp = await this.#sandboxGetTaskId();
+      const resp = await this.#sandboxGetTaskId(signal);
+      if (resp.taskId) {
+        this.#taskId = resp.taskId;
+        return this.#taskId;
+      }
       if (resp.taskResult) {
         if (
           resp.taskResult.status ===
@@ -1894,11 +1899,7 @@ export class Sandbox {
           `Sandbox ${this.sandboxId} has already completed with result: exception:"${resp.taskResult.exception}"`,
         );
       }
-      if (resp.taskId) {
-        this.#taskId = resp.taskId;
-        return this.#taskId;
-      }
-      await setTimeout(500);
+      await setTimeout(500, undefined, { signal });
     }
     throw new Error(
       `Timed out waiting for task ID for Sandbox ${this.sandboxId}`,
@@ -2652,6 +2653,41 @@ async function* outputStreamSb(
   }
 }
 
+// outputStreamSbV2 reads a V2 Sandbox's stdout or stderr. The first read is
+// what resolves the task and opens the stream.
+async function* outputStreamSbV2(
+  getCommandRouter: () => Promise<[string, TaskCommandRouterClientImpl]>,
+  sandboxId: string,
+  fileDescriptor: FileDescriptor,
+  logger: Logger,
+): AsyncIterable<Uint8Array> {
+  const [taskId, commandRouterClient] = await getCommandRouter();
+  let firstChunk = true;
+  for await (const item of commandRouterClient.sandboxStdioReadV2(
+    taskId,
+    fileDescriptor,
+  )) {
+    if (item.data.length === 0) {
+      throw new Error(
+        `Received empty message streaming stdio from Sandbox ${sandboxId}`,
+      );
+    }
+    if (firstChunk) {
+      firstChunk = false;
+      if (item.startingOffset > 0) {
+        logger.warn(
+          "V2 Sandbox stdio: dropped bytes. Only the most recent portion of output is retained",
+          "sandbox_id",
+          sandboxId,
+          "dropped_bytes",
+          item.startingOffset,
+        );
+      }
+    }
+    yield item.data;
+  }
+}
+
 function inputStreamSb(
   cpClient: ModalGrpcClient,
   sandboxId: string,
@@ -2672,6 +2708,34 @@ function inputStreamSb(
         index,
         eof: true,
       });
+    },
+  });
+}
+
+function inputStreamSbV2(
+  getCommandRouter: () => Promise<[string, TaskCommandRouterClientImpl]>,
+): WritableStream<string> {
+  let offset = 0;
+  return new WritableStream<string>({
+    async write(chunk) {
+      const [taskId, commandRouterClient] = await getCommandRouter();
+      const data = encodeIfString(chunk);
+      await commandRouterClient.sandboxStdinWriteV2(
+        taskId,
+        offset,
+        data,
+        false, // eof
+      );
+      offset += data.length;
+    },
+    async close() {
+      const [taskId, commandRouterClient] = await getCommandRouter();
+      await commandRouterClient.sandboxStdinWriteV2(
+        taskId,
+        offset,
+        new Uint8Array(0),
+        true, // eof
+      );
     },
   });
 }
