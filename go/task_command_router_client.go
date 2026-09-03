@@ -1005,6 +1005,72 @@ const (
 	stdioMaxRetries        = 10
 )
 
+type stdioRetry struct {
+	client *taskCommandRouterClient
+
+	delay            time.Duration
+	retriesRemaining int
+	didAuthRetry     bool
+}
+
+func newStdioRetry(c *taskCommandRouterClient) stdioRetry {
+	return stdioRetry{
+		client:           c,
+		delay:            stdioRetryInitialDelay,
+		retriesRemaining: stdioMaxRetries,
+	}
+}
+
+func (s *stdioRetry) reset() {
+	s.didAuthRetry = false
+	s.delay = stdioRetryInitialDelay
+	s.retriesRemaining = stdioMaxRetries
+}
+
+// recoverFrom determines whether or not to retry a failed open or read, and
+// with what error if not. It waits out the backoff itself.
+func (s *stdioRetry) recoverFrom(
+	ctx context.Context,
+	err error,
+	beforeBackoff func(delay time.Duration) error,
+	wrapCtxErr func(error) error,
+) (retry bool, fatal error) {
+	errStatus := status.Code(err)
+
+	if errStatus == codes.Unauthenticated && !s.didAuthRetry {
+		if refreshErr := s.client.refreshJwt(ctx); refreshErr != nil {
+			return false, refreshErr
+		}
+		s.didAuthRetry = true
+		return true, nil
+	}
+	if s.client.closed.Load() && errStatus == codes.Canceled {
+		return false, ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
+	}
+	if _, retryable := commandRouterRetryableCodes[errStatus]; !retryable || s.retriesRemaining <= 0 {
+		return false, err
+	}
+	if beforeBackoff != nil {
+		if giveUp := beforeBackoff(s.delay); giveUp != nil {
+			return false, giveUp
+		}
+	}
+
+	s.client.logger.DebugContext(ctx, "Retrying stdio read with delay", "delay", s.delay, "error", err)
+	select {
+	case <-ctx.Done():
+		ctxErr := ctx.Err()
+		if wrapCtxErr != nil {
+			ctxErr = wrapCtxErr(ctxErr)
+		}
+		return false, ctxErr
+	case <-time.After(s.delay):
+	}
+	s.delay = time.Duration(float64(s.delay) * stdioRetryDelayFactor)
+	s.retriesRemaining--
+	return true, nil
+}
+
 // execStdioReader reads one exec's stdout or stderr.
 //
 // Nothing is pulled from the wire until Read asks for it: the stream is opened
@@ -1015,8 +1081,8 @@ const (
 // it. Wrap it in a bufio.Reader for read-ahead.
 type execStdioReader struct {
 	chunkReader
+	stdioRetry
 
-	client *taskCommandRouterClient
 	taskID string
 	execID string
 	fd     pb.TaskExecStdioFileDescriptor
@@ -1034,10 +1100,6 @@ type execStdioReader struct {
 	// Where the next read resumes, so a reopened stream picks up where the last
 	// one left off rather than repeating output the caller has seen.
 	offset int64
-
-	delay            time.Duration
-	retriesRemaining int
-	didAuthRetry     bool
 }
 
 // ExecStdioRead returns a reader over an exec's stdout or stderr.
@@ -1049,11 +1111,9 @@ func (c *taskCommandRouterClient) ExecStdioRead(
 ) io.ReadCloser {
 	ctx, cancel := context.WithCancel(ctx)
 	r := &execStdioReader{
-		client:           c,
-		taskID:           taskID,
-		execID:           execID,
-		delay:            stdioRetryInitialDelay,
-		retriesRemaining: stdioMaxRetries,
+		stdioRetry: newStdioRetry(c),
+		taskID:     taskID,
+		execID:     execID,
 	}
 	r.ctx, r.cancel = ctx, cancel
 	r.fetch, r.dropStream = r.fill, r.closeStream
@@ -1127,9 +1187,7 @@ func (r *execStdioReader) fill() error {
 			continue
 		}
 
-		r.didAuthRetry = false
-		r.delay = stdioRetryInitialDelay
-		r.retriesRemaining = stdioMaxRetries
+		r.reset()
 		r.offset += int64(len(item.GetData()))
 		// One chunk per message, and fill only runs with pending empty, so the
 		// chunk replaces it. The log reader concatenates instead because a
@@ -1163,34 +1221,13 @@ func (r *execStdioReader) openStream() error {
 // recoverFrom says whether a failed open or read is worth another go, and with
 // what error if it is not. It waits out the backoff itself.
 func (r *execStdioReader) recoverFrom(err error) (retry bool, fatal error) {
-	errStatus := status.Code(err)
-
-	if errStatus == codes.Unauthenticated && !r.didAuthRetry {
-		if refreshErr := r.client.refreshJwt(r.ctx); refreshErr != nil {
-			return false, refreshErr
+	return r.stdioRetry.recoverFrom(r.ctx, err, func(delay time.Duration) error {
+		// Sleeping past the exec's deadline is a timeout, not a retry.
+		if r.hasDeadline && time.Until(r.deadline) <= delay {
+			return r.timeoutErr()
 		}
-		r.didAuthRetry = true
-		return true, nil
-	}
-	if r.client.closed.Load() && errStatus == codes.Canceled {
-		return false, ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
-	}
-	if _, retryable := commandRouterRetryableCodes[errStatus]; !retryable || r.retriesRemaining <= 0 {
-		return false, err
-	}
-	if r.hasDeadline && time.Until(r.deadline) <= r.delay {
-		return false, r.timeoutErr()
-	}
-
-	r.client.logger.DebugContext(r.ctx, "Retrying stdio read with delay", "delay", r.delay, "error", err)
-	select {
-	case <-r.ctx.Done():
-		return false, r.contextErr(r.ctx.Err())
-	case <-time.After(r.delay):
-	}
-	r.delay = time.Duration(float64(r.delay) * stdioRetryDelayFactor)
-	r.retriesRemaining--
-	return true, nil
+		return nil
+	}, r.contextErr)
 }
 
 func (r *execStdioReader) contextErr(err error) error {
@@ -1204,4 +1241,157 @@ func (r *execStdioReader) timeoutErr() error {
 	return ExecTimeoutError{
 		Exception: fmt.Sprintf("deadline exceeded while streaming stdio for exec %s", r.execID),
 	}
+}
+
+// sandboxStdioReader reads a V2 Sandbox's stdout or stderr.
+type sandboxStdioReader struct {
+	chunkReader
+	stdioRetry
+
+	taskID string
+	fd     pb.SandboxStdioFileDescriptor
+
+	stream       grpc.ServerStreamingClient[pb.SandboxStdioReadV2Response]
+	streamCancel context.CancelFunc
+	// The connection this stream was opened on.
+	streamGeneration uint64
+	// Where the next read resumes, so a reopened stream picks up where the last
+	// one left off rather than repeating output the caller has seen.
+	offset int64
+}
+
+// SandboxStdioReadV2 returns a reader over a V2 Sandbox's stdout or stderr.
+func (c *taskCommandRouterClient) SandboxStdioReadV2(
+	ctx context.Context,
+	taskID string,
+	fd pb.FileDescriptor,
+) io.ReadCloser {
+	ctx, cancel := context.WithCancel(ctx)
+	r := &sandboxStdioReader{
+		stdioRetry: newStdioRetry(c),
+		taskID:     taskID,
+	}
+	r.ctx, r.cancel = ctx, cancel
+	r.fetch, r.dropStream = r.fill, r.closeStream
+
+	switch fd {
+	case pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT:
+		r.fd = pb.SandboxStdioFileDescriptor_SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT
+	case pb.FileDescriptor_FILE_DESCRIPTOR_STDERR:
+		r.fd = pb.SandboxStdioFileDescriptor_SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR
+	case pb.FileDescriptor_FILE_DESCRIPTOR_INFO, pb.FileDescriptor_FILE_DESCRIPTOR_UNSPECIFIED:
+		r.err = fmt.Errorf("unsupported file descriptor: %v", fd)
+	default:
+		r.err = fmt.Errorf("invalid file descriptor: %v", fd)
+	}
+	return r
+}
+
+func (r *sandboxStdioReader) closeStream() {
+	if r.streamCancel != nil {
+		r.streamCancel()
+		r.streamCancel = nil
+	}
+	r.stream = nil
+}
+
+// fill pulls the next chunk into pending, opening or reopening the stream as it
+// needs to. It returns io.EOF once the output is finished.
+func (r *sandboxStdioReader) fill() error {
+	if err := r.client.beginOp(); err != nil {
+		return err
+	}
+	defer r.client.endOp()
+
+	for {
+		if err := r.ctx.Err(); err != nil {
+			return err
+		}
+
+		opened := false
+		if r.stream == nil {
+			if err := r.openStream(); err != nil {
+				if retry, fatal := r.recoverFrom(err); !retry {
+					return fatal
+				}
+				continue
+			}
+			opened = true
+		}
+
+		item, err := r.stream.Recv()
+		if err == io.EOF {
+			return io.EOF
+		}
+		if err != nil {
+			stale := r.streamGeneration != r.client.generation.Load()
+			r.closeStream()
+			if stale {
+				// The connection this stream was on was given up for idleness.
+				// Reopen without spending a retry.
+				continue
+			}
+			if retry, fatal := r.recoverFrom(err); !retry {
+				return fatal
+			}
+			continue
+		}
+
+		data := item.GetData()
+		if len(data) == 0 {
+			return fmt.Errorf("received empty message streaming stdio from Sandbox %s", r.client.sandboxID)
+		}
+		if opened {
+			if dropped := int64(item.GetStartingOffset()) - r.offset; dropped > 0 {
+				r.client.logger.WarnContext(r.ctx,
+					"V2 Sandbox stdio: dropped bytes. Only the most recent portion of output is retained",
+					"sandbox_id", r.client.sandboxID, "dropped_bytes", dropped)
+			}
+			r.offset = int64(item.GetStartingOffset())
+		}
+
+		r.reset()
+		r.offset += int64(len(data))
+		r.pending = data
+		return nil
+	}
+}
+
+func (r *sandboxStdioReader) openStream() error {
+	generation := r.client.generation.Load()
+	streamCtx, cancel := context.WithCancel(r.ctx)
+	stream, err := r.client.stub().SandboxStdioReadV2(
+		r.client.authContext(streamCtx),
+		pb.SandboxStdioReadV2Request_builder{
+			TaskId:         r.taskID,
+			Offset:         uint64(r.offset),
+			FileDescriptor: r.fd,
+		}.Build(),
+	)
+	if err != nil {
+		cancel()
+		return err
+	}
+	r.stream, r.streamCancel = stream, cancel
+	r.streamGeneration = generation
+	return nil
+}
+
+func (r *sandboxStdioReader) recoverFrom(err error) (retry bool, fatal error) {
+	return r.stdioRetry.recoverFrom(r.ctx, err, nil, nil)
+}
+
+// SandboxStdinWriteV2 writes data to stdin of a V2 Sandbox's entrypoint process.
+func (c *taskCommandRouterClient) SandboxStdinWriteV2(ctx context.Context, taskID string, offset uint64, data []byte, eof bool) error {
+	request := pb.SandboxStdinWriteV2Request_builder{
+		TaskId: taskID,
+		Offset: offset,
+		Data:   data,
+		Eof:    eof,
+	}.Build()
+
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.SandboxStdinWriteV2Response, error) {
+		return c.stub().SandboxStdinWriteV2(authCtx, request)
+	})
+	return err
 }

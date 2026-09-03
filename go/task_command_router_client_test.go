@@ -812,3 +812,202 @@ func TestExecStdinWriteStreamLocalReadErrorIsNotResumed(t *testing.T) {
 	g.Expect(closed).To(gomega.BeFalse())
 	g.Expect(statusCalls).To(gomega.Equal(0))
 }
+
+type fakeStdioRouterServer struct {
+	pb.UnimplementedTaskCommandRouterServer
+
+	mu         sync.Mutex
+	stdoutData []byte
+	stderrData []byte
+
+	chunkSize         int
+	droppedPrefix     int
+	failuresRemaining int
+	failCode          codes.Code
+
+	readCalls     int
+	stdinReceived []byte
+	stdinClosed   bool
+	stdinCalls    int
+}
+
+func (s *fakeStdioRouterServer) SandboxStdioReadV2(
+	req *pb.SandboxStdioReadV2Request,
+	stream grpc.ServerStreamingServer[pb.SandboxStdioReadV2Response],
+) error {
+	s.mu.Lock()
+	s.readCalls++
+	var full []byte
+	switch req.GetFileDescriptor() {
+	case pb.SandboxStdioFileDescriptor_SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT:
+		full = s.stdoutData
+	case pb.SandboxStdioFileDescriptor_SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR:
+		full = s.stderrData
+	default:
+		s.mu.Unlock()
+		return status.Errorf(codes.InvalidArgument, "unexpected file descriptor %v", req.GetFileDescriptor())
+	}
+	fail := s.failuresRemaining > 0
+	if fail {
+		s.failuresRemaining--
+	}
+	chunkSize := s.chunkSize
+	dropped := s.droppedPrefix
+	failCode := s.failCode
+	s.mu.Unlock()
+
+	if failCode == codes.OK {
+		failCode = codes.Unavailable
+	}
+	if chunkSize <= 0 {
+		chunkSize = len(full)
+	}
+
+	off := int(req.GetOffset())
+	if off < dropped {
+		off = dropped
+	}
+	for off < len(full) {
+		end := off + chunkSize
+		if end > len(full) {
+			end = len(full)
+		}
+		resp := pb.SandboxStdioReadV2Response_builder{
+			Data:           append([]byte(nil), full[off:end]...),
+			StartingOffset: uint64(off),
+		}.Build()
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+		off = end
+		if fail {
+			return status.Error(failCode, "injected read failure")
+		}
+	}
+	return nil
+}
+
+func (s *fakeStdioRouterServer) SandboxStdinWriteV2(
+	_ context.Context,
+	req *pb.SandboxStdinWriteV2Request,
+) (*pb.SandboxStdinWriteV2Response, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stdinCalls++
+	if req.GetOffset() > uint64(len(s.stdinReceived)) {
+		return nil, status.Error(codes.InvalidArgument, "offset beyond received bytes")
+	}
+	s.stdinReceived = append(s.stdinReceived[:req.GetOffset()], req.GetData()...)
+	if req.GetEof() {
+		s.stdinClosed = true
+	}
+	return &pb.SandboxStdinWriteV2Response{}, nil
+}
+
+func (s *fakeStdioRouterServer) readCallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readCalls
+}
+
+func (s *fakeStdioRouterServer) stdinSnapshot() (received []byte, closed bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.stdinReceived...), s.stdinClosed
+}
+
+func newStdioTestClient(t *testing.T, fake *fakeStdioRouterServer) *taskCommandRouterClient {
+	t.Helper()
+	g := gomega.NewWithT(t)
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterTaskCommandRouterServer(grpcServer, fake)
+	go func() {
+		_ = grpcServer.Serve(lis)
+	}()
+	t.Cleanup(grpcServer.Stop)
+
+	client, err := newTaskCommandRouterClient(commandRouterParams{
+		taskID:    "ta-1",
+		sandboxID: testV2SandboxID,
+		jwt:       mockJWT(time.Now().Unix() + 3600),
+		target:    lis.Addr().String(),
+		creds:     insecure.NewCredentials(),
+		logger:    slog.New(slog.DiscardHandler),
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
+
+func TestSandboxStdioReadV2HappyPath(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdioRouterServer{stdoutData: deterministicBytes(5000), chunkSize: 1000}
+	client := newStdioTestClient(t, fake)
+
+	reader := client.SandboxStdioReadV2(t.Context(), "ta-1", pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	defer func() { _ = reader.Close() }()
+
+	g.Expect(fake.readCallCount()).To(gomega.Equal(0),
+		"no read has happened, so the worker should not have been asked for output")
+
+	got, err := io.ReadAll(reader)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(got).To(gomega.Equal(fake.stdoutData))
+	g.Expect(fake.readCallCount()).To(gomega.Equal(1))
+}
+
+func TestSandboxStdioReadV2ResumesAfterTransientError(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// Abort after the first chunk, then resume on reconnect from the client's offset.
+	fake := &fakeStdioRouterServer{stdoutData: deterministicBytes(5000), chunkSize: 1000, failuresRemaining: 1}
+	client := newStdioTestClient(t, fake)
+
+	reader := client.SandboxStdioReadV2(t.Context(), "ta-1", pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	defer func() { _ = reader.Close() }()
+
+	got, err := io.ReadAll(reader)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(got).To(gomega.Equal(fake.stdoutData))
+	g.Expect(fake.readCallCount()).To(gomega.Equal(2))
+}
+
+func TestSandboxStdioReadV2DropsEvictedPrefix(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// The worker evicted the first 1500 bytes, so only the retained tail is delivered.
+	fake := &fakeStdioRouterServer{stdoutData: deterministicBytes(5000), chunkSize: 1000, droppedPrefix: 1500}
+	client := newStdioTestClient(t, fake)
+
+	reader := client.SandboxStdioReadV2(t.Context(), "ta-1", pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	defer func() { _ = reader.Close() }()
+
+	got, err := io.ReadAll(reader)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(got).To(gomega.Equal(fake.stdoutData[1500:]))
+}
+
+func TestSandboxStdinWriteV2(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdioRouterServer{}
+	client := newStdioTestClient(t, fake)
+
+	err := client.SandboxStdinWriteV2(t.Context(), "ta-1", 0, []byte("hello"), false)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	err = client.SandboxStdinWriteV2(t.Context(), "ta-1", 5, nil, true)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	received, closed := fake.stdinSnapshot()
+	g.Expect(received).To(gomega.Equal([]byte("hello")))
+	g.Expect(closed).To(gomega.BeTrue())
+}

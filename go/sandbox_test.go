@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -230,9 +232,6 @@ func TestNewSandboxDeducesVersionFromIDShape(t *testing.T) {
 
 	v2 := newSandbox(&Client{}, testV2SandboxID)
 	g.Expect(v2.isV2).To(gomega.BeTrue())
-	_, err := v2.Stdout.Read(nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("not supported for V2 sandboxes"))
 }
 
 func TestSandboxV2FilesystemSupported(t *testing.T) {
@@ -370,45 +369,144 @@ func TestSandboxWaitUntilReadyTimesOut(t *testing.T) {
 	}
 }
 
-func TestSandboxV2StdioUnsupported(t *testing.T) {
+func TestSandboxV2StdioStreamsViaCommandRouter(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
-	sb := newSandbox(&Client{}, testV2SandboxID)
-	wantErr := "not supported for V2 sandboxes"
+	fake := &fakeStdioRouterServer{
+		stdoutData: []byte("hello stdout\n"),
+		stderrData: []byte("oops stderr\n"),
+	}
+	crClient := newStdioTestClient(t, fake)
 
-	_, err := sb.Stdin.Write([]byte("hello"))
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdin"))
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-	var invalidErr InvalidError
-	g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue())
+	sb := newSandbox(&Client{logger: slog.New(slog.DiscardHandler)}, testV2SandboxID)
+	sb.taskID = "ta-v2-stdio"
+	sb.commandRouterClient = crClient
 
+	stdout, err := io.ReadAll(sb.Stdout)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(string(stdout)).To(gomega.Equal("hello stdout\n"))
+
+	stderr, err := io.ReadAll(sb.Stderr)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(string(stderr)).To(gomega.Equal("oops stderr\n"))
+
+	_, err = sb.Stdin.Write([]byte("some input"))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	err = sb.Stdin.Close()
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdin"))
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 
-	buf := make([]byte, 1)
-	_, err = sb.Stdout.Read(buf)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdout"))
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+	received, closed := fake.stdinSnapshot()
+	g.Expect(string(received)).To(gomega.Equal("some input"))
+	g.Expect(closed).To(gomega.BeTrue())
+}
 
-	err = sb.Stdout.Close()
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdout"))
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+type mockGetTaskIDStub struct {
+	pb.ModalClientClient
+	fn func(ctx context.Context, in *pb.SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*pb.SandboxGetTaskIdResponse, error)
+}
 
-	_, err = sb.Stderr.Read(buf)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stderr"))
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+//nolint:staticcheck // name must match the generated ModalClientClient interface method.
+func (m *mockGetTaskIDStub) SandboxGetTaskIdV2(
+	ctx context.Context,
+	in *pb.SandboxGetTaskIdRequest,
+	opts ...grpc.CallOption,
+) (*pb.SandboxGetTaskIdResponse, error) {
+	return m.fn(ctx, in, opts...)
+}
 
-	err = sb.Stderr.Close()
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stderr"))
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+func TestClosingV2StdioUnblocksAPendingTaskLookup(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	asked := make(chan struct{}, 1)
+	stub := &mockGetTaskIDStub{
+		fn: func(ctx context.Context, _ *pb.SandboxGetTaskIdRequest, _ ...grpc.CallOption) (*pb.SandboxGetTaskIdResponse, error) {
+			select {
+			case asked <- struct{}{}:
+			default:
+			}
+			return pb.SandboxGetTaskIdResponse_builder{}.Build(), nil
+		},
+	}
+	sb := newSandbox(&Client{
+		logger:   slog.New(slog.DiscardHandler),
+		cpClient: &clientWithConn{ModalClientClient: stub},
+	}, testV2SandboxID)
+
+	readErr := make(chan error, 1)
+	go func() {
+		_, err := sb.Stdout.Read(make([]byte, 1))
+		readErr <- err
+	}()
+
+	g.Eventually(asked, 5*time.Second).Should(gomega.Receive())
+
+	closeErr := make(chan error, 1)
+	go func() { closeErr <- sb.Stdout.Close() }()
+
+	g.Eventually(closeErr, 5*time.Second).Should(gomega.Receive(gomega.BeNil()),
+		"Close must not wait out the task lookup it is cancelling")
+	g.Eventually(readErr, 5*time.Second).Should(gomega.Receive(gomega.HaveOccurred()),
+		"the waiting read should end once the lookup is cancelled")
+}
+
+func TestEnsureTaskIDReturnsTaskIDForFinishedSandbox(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	taskID := "ta-finished"
+	stub := &mockGetTaskIDStub{
+		fn: func(_ context.Context, _ *pb.SandboxGetTaskIdRequest, _ ...grpc.CallOption) (*pb.SandboxGetTaskIdResponse, error) {
+			return pb.SandboxGetTaskIdResponse_builder{
+				TaskId: &taskID,
+				TaskResult: pb.GenericResult_builder{
+					Status: pb.GenericResult_GENERIC_STATUS_SUCCESS,
+				}.Build(),
+			}.Build(), nil
+		},
+	}
+	sb := newSandbox(&Client{cpClient: &clientWithConn{ModalClientClient: stub}}, testV2SandboxID)
+
+	gotTaskID, err := sb.ensureTaskID(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(gotTaskID).To(gomega.Equal("ta-finished"))
+	g.Expect(sb.taskID).To(gomega.Equal("ta-finished"))
+}
+
+func TestSandboxV2StdioConcurrentReadsResolveTaskID(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	fake := &fakeStdioRouterServer{
+		stdoutData: []byte("hello stdout\n"),
+		stderrData: []byte("oops stderr\n"),
+	}
+	crClient := newStdioTestClient(t, fake)
+
+	taskID := "ta-v2-stdio"
+	stub := &mockGetTaskIDStub{
+		fn: func(_ context.Context, _ *pb.SandboxGetTaskIdRequest, _ ...grpc.CallOption) (*pb.SandboxGetTaskIdResponse, error) {
+			time.Sleep(5 * time.Millisecond)
+			return pb.SandboxGetTaskIdResponse_builder{TaskId: &taskID}.Build(), nil
+		},
+	}
+	sb := newSandbox(&Client{
+		logger:   slog.New(slog.DiscardHandler),
+		cpClient: &clientWithConn{ModalClientClient: stub},
+	}, testV2SandboxID)
+	sb.commandRouterClient = crClient
+
+	var wg sync.WaitGroup
+	var stdout, stderr []byte
+	wg.Add(2)
+	go func() { defer wg.Done(); stdout, _ = io.ReadAll(sb.Stdout) }()
+	go func() { defer wg.Done(); stderr, _ = io.ReadAll(sb.Stderr) }()
+	wg.Wait()
+
+	g.Expect(string(stdout)).To(gomega.Equal("hello stdout\n"))
+	g.Expect(string(stderr)).To(gomega.Equal("oops stderr\n"))
 }
 
 func TestSandboxCreateRequestProto_WithPTY(t *testing.T) {

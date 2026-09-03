@@ -699,9 +699,10 @@ type Sandbox struct {
 	// EXPERIMENTAL: the API is subject to change.
 	ExperimentalSidecars SidecarService
 
-	taskID  string
-	tunnels map[int]*Tunnel
-	isV2    bool
+	taskID   string
+	taskIDMu sync.Mutex
+	tunnels  map[int]*Tunnel
+	isV2     bool
 
 	client *Client
 
@@ -732,9 +733,21 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 	sb.attached.Store(true)
 	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
 		sb.isV2 = true
-		sb.Stdin = unsupportedSandboxWriteCloser{name: "Stdin"}
-		sb.Stdout = unsupportedSandboxReadCloser{name: "Stdout"}
-		sb.Stderr = unsupportedSandboxReadCloser{name: "Stderr"}
+		sb.Stdin = &sbStdinV2{sb: sb}
+		stdoutCtx, stdoutCancel := context.WithCancel(context.Background())
+		sb.Stdout = &lazyStreamReader{
+			cancel: stdoutCancel,
+			initFunc: func() io.ReadCloser {
+				return outputStreamSbV2(stdoutCtx, sb, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+			},
+		}
+		stderrCtx, stderrCancel := context.WithCancel(context.Background())
+		sb.Stderr = &lazyStreamReader{
+			cancel: stderrCancel,
+			initFunc: func() io.ReadCloser {
+				return outputStreamSbV2(stderrCtx, sb, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
+			},
+		}
 		return sb
 	}
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
@@ -749,34 +762,6 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 		},
 	}
 	return sb
-}
-
-type unsupportedSandboxWriteCloser struct {
-	name string
-}
-
-func (u unsupportedSandboxWriteCloser) Write(_ []byte) (int, error) {
-	return 0, unsupportedSandboxStdioError(u.name)
-}
-
-func (u unsupportedSandboxWriteCloser) Close() error {
-	return unsupportedSandboxStdioError(u.name)
-}
-
-type unsupportedSandboxReadCloser struct {
-	name string
-}
-
-func (u unsupportedSandboxReadCloser) Read(_ []byte) (int, error) {
-	return 0, unsupportedSandboxStdioError(u.name)
-}
-
-func (u unsupportedSandboxReadCloser) Close() error {
-	return unsupportedSandboxStdioError(u.name)
-}
-
-func unsupportedSandboxStdioError(name string) error {
-	return InvalidError{Exception: fmt.Sprintf("Sandbox.%s is not supported for V2 sandboxes; use Sandbox.Exec(...) to access process streams", name)}
 }
 
 func (sb *Sandbox) sandboxWait(ctx context.Context, timeout float32) (*pb.SandboxWaitResponse, error) {
@@ -1344,43 +1329,49 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 
 const maxGetTaskIDAttempts = 600 // 5 minutes at 500ms intervals
 
-func (sb *Sandbox) ensureTaskID(ctx context.Context) error {
-	if sb.taskID != "" {
-		return nil
+func (sb *Sandbox) ensureTaskID(ctx context.Context) (string, error) {
+	sb.taskIDMu.Lock()
+	taskID := sb.taskID
+	sb.taskIDMu.Unlock()
+	if taskID != "" {
+		return taskID, nil
 	}
 	for range maxGetTaskIDAttempts {
 		resp, err := sb.sandboxGetTaskID(ctx)
 		if err != nil {
-			return err
-		}
-		if resp.GetTaskResult() != nil {
-			return fmt.Errorf("Sandbox %s has already completed with result: %v", sb.SandboxID, resp.GetTaskResult())
+			return "", err
 		}
 		if resp.GetTaskId() != "" {
+			sb.taskIDMu.Lock()
 			sb.taskID = resp.GetTaskId()
-			return nil
+			sb.taskIDMu.Unlock()
+			return resp.GetTaskId(), nil
+		}
+		if resp.GetTaskResult() != nil {
+			return "", fmt.Errorf("Sandbox %s has already completed with result: %v", sb.SandboxID, resp.GetTaskResult())
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return "", ctx.Err()
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	return fmt.Errorf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)
+	return "", fmt.Errorf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)
 }
 
 func (sb *Sandbox) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return "", nil, err
 	}
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return "", nil, err
-	}
-	client, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	taskID, err := sb.ensureTaskID(ctx)
 	if err != nil {
 		return "", nil, err
 	}
-	return sb.taskID, client, nil
+	client, err := sb.getOrCreateCommandRouterClient(ctx, taskID)
+	if err != nil {
+		return "", nil, err
+	}
+	return taskID, client, nil
 }
 
 func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
@@ -1468,7 +1459,9 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 	if err != nil {
 		return 0, err
 	}
+	sb.taskIDMu.Lock()
 	sb.taskID = ""
+	sb.taskIDMu.Unlock()
 	returnCode := 0
 
 	if params.Wait {
@@ -1892,7 +1885,7 @@ func (sb *Sandbox) ExperimentalSnapshot(ctx context.Context, params *SandboxExpe
 		}
 		snapshotID = resp.GetSnapshotId()
 	} else {
-		if err := sb.ensureTaskID(ctx); err != nil {
+		if _, err := sb.ensureTaskID(ctx); err != nil {
 			return nil, err
 		}
 		snapResp, err := sb.client.cpClient.SandboxSnapshot(ctx, pb.SandboxSnapshotRequest_builder{
@@ -2416,6 +2409,37 @@ func (sbs *sbStdin) Close() error {
 	return err
 }
 
+type sbStdinV2 struct {
+	sb *Sandbox
+
+	mu     sync.Mutex
+	offset uint64
+}
+
+func (s *sbStdinV2) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	taskID, client, err := s.sb.getCommandRouter(context.Background())
+	if err != nil {
+		return 0, err
+	}
+	if err := client.SandboxStdinWriteV2(context.Background(), taskID, s.offset, p, false); err != nil {
+		return 0, err
+	}
+	s.offset += uint64(len(p))
+	return len(p), nil
+}
+
+func (s *sbStdinV2) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	taskID, client, err := s.sb.getCommandRouter(context.Background())
+	if err != nil {
+		return err
+	}
+	return client.SandboxStdinWriteV2(context.Background(), taskID, s.offset, nil, true)
+}
+
 func inputStreamCp(commandRouterClient *taskCommandRouterClient, taskID, execID string) io.WriteCloser {
 	return &cpStdin{taskID: taskID, execID: execID, offset: 0, commandRouterClient: commandRouterClient}
 }
@@ -2447,6 +2471,7 @@ type lazyStreamReader struct {
 	once     sync.Once
 	reader   io.ReadCloser
 	initFunc func() io.ReadCloser
+	cancel   context.CancelFunc
 }
 
 func (l *lazyStreamReader) Read(p []byte) (int, error) {
@@ -2457,6 +2482,9 @@ func (l *lazyStreamReader) Read(p []byte) (int, error) {
 }
 
 func (l *lazyStreamReader) Close() error {
+	if l.cancel != nil {
+		l.cancel()
+	}
 	l.once.Do(func() {
 		l.reader = io.NopCloser(bytes.NewReader(nil))
 	})
@@ -2570,4 +2598,20 @@ func (r *logStreamReader) fill() error {
 
 func outputStreamCp(commandRouterClient *taskCommandRouterClient, taskID, execID string, fd pb.FileDescriptor, deadline *time.Time) io.ReadCloser {
 	return commandRouterClient.ExecStdioRead(context.Background(), taskID, execID, fd, deadline)
+}
+
+// failedReader reports the error that kept a stream from opening.
+type failedReader struct{ err error }
+
+func (r failedReader) Read([]byte) (int, error) { return 0, r.err }
+func (r failedReader) Close() error             { return nil }
+
+// outputStreamSbV2 reads a V2 Sandbox's stdout or stderr. lazyStreamReader
+// calls this on the first read.
+func outputStreamSbV2(ctx context.Context, sb *Sandbox, fd pb.FileDescriptor) io.ReadCloser {
+	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
+	if err != nil {
+		return failedReader{err: fmt.Errorf("error getting output stream: %w", err)}
+	}
+	return commandRouterClient.SandboxStdioReadV2(ctx, taskID, fd)
 }
