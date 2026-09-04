@@ -1011,3 +1011,28 @@ func TestSandboxStdinWriteV2(t *testing.T) {
 	g.Expect(received).To(gomega.Equal([]byte("hello")))
 	g.Expect(closed).To(gomega.BeTrue())
 }
+
+// A connection nobody ever uses still has to go back: the countdown starts when
+// the client is built, not when its first operation finishes.
+func TestUnusedCommandRouterClientReleasesItsConnection(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	client, err := newTaskCommandRouterClient(commandRouterParams{
+		taskID:      "ta-1",
+		jwt:         mockJWT(time.Now().Unix() + 3600),
+		target:      "passthrough:///unused",
+		creds:       insecure.NewCredentials(),
+		idleTimeout: 50 * time.Millisecond,
+		logger:      slog.New(slog.DiscardHandler),
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(func() { _ = client.Close() })
+
+	released := func() bool {
+		client.connMu.RLock()
+		defer client.connMu.RUnlock()
+		return client.conn == nil
+	}
+	g.Eventually(released, time.Second, 10*time.Millisecond).Should(gomega.BeTrue(),
+		"a client nothing ever used should have given its connection back")
+}

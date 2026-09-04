@@ -2514,7 +2514,7 @@ func TestSandboxExecOutputTimeout(t *testing.T) {
 	}
 }
 
-func TestSandboxDoubleTerminateIsNotAllowed(t *testing.T) {
+func TestSandboxDoubleTerminateIsIdempotent(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -2531,11 +2531,12 @@ func TestSandboxDoubleTerminateIsNotAllowed(t *testing.T) {
 	_, err = sb.Terminate(ctx, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
+	// Terminating twice is not an error: the Sandbox is simply already stopped.
 	_, err = sb.Terminate(ctx, nil)
-	g.Expect(err.Error()).To(gomega.ContainSubstring("ClientClosedError: Unable to perform operation on a detached sandbox"))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 }
 
-func TestSandboxExecAfterTerminateReturnsClientClosedError(t *testing.T) {
+func TestSandboxExecAfterTerminateFails(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -2552,12 +2553,111 @@ func TestSandboxExecAfterTerminateReturnsClientClosedError(t *testing.T) {
 	_, err = sb.Terminate(ctx, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
+	// Terminate leaves the Sandbox attached, so the rejection comes from Modal
+	// rather than from the client refusing to use a detached Sandbox.
 	_, err = sb.Exec(ctx, []string{"echo", "hello"}, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("ClientClosedError: Unable to perform operation on a detached sandbox"))
+	g.Expect(err.Error()).ToNot(gomega.ContainSubstring("Unable to perform operation on a detached sandbox"))
 }
 
-func TestContainerProcessReadStdoutAfterSandboxTerminateReturnsClientClosedError(t *testing.T) {
+func TestSandboxStdoutStaysReadableAfterTerminate(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command: []string{"sh", "-c", "echo line-one; echo line-two; sleep 60"},
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	// Reading the first line blocks until the Sandbox is up, and the second line
+	// is written right behind it, so both exist before the Sandbox is stopped.
+	firstLine := make([]byte, len("line-one\n"))
+	_, err = io.ReadFull(sb.Stdout, firstLine)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(string(firstLine)).To(gomega.Equal("line-one\n"))
+
+	_, err = sb.Terminate(ctx, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	// Terminate leaves the Sandbox attached, so what it wrote is still readable.
+	rest, err := io.ReadAll(sb.Stdout)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(string(rest)).To(gomega.ContainSubstring("line-two"))
+}
+
+func TestSandboxFirstStdoutReadAfterTerminate(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	// The readiness probe gives the test something to wait on, so that
+	// terminating the Sandbox does not race with its startup.
+	probe, err := modal.NewExecProbe([]string{"true"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command:        []string{"sh", "-c", "echo only-line; sleep 60"},
+		ReadinessProbe: probe,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(sb.WaitUntilReady(ctx, time.Minute, nil)).To(gomega.Succeed())
+
+	_, err = sb.Terminate(ctx, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	// Nothing read this Sandbox's output before it was stopped, so the first
+	// read has to open the stream against a Sandbox that has already finished.
+	out, err := io.ReadAll(sb.Stdout)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(string(out)).To(gomega.ContainSubstring("only-line"))
+}
+
+// The same for a Sandbox created with ExperimentalCreate.
+func TestSandboxFirstStdoutReadAfterTerminateV2(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	// The readiness probe gives the test something to wait on, so that
+	// terminating the Sandbox does not race with its startup.
+	probe, err := modal.NewExecProbe([]string{"true"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	sb, err := tc.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+		Command:        []string{"sh", "-c", "echo only-line; sleep 60"},
+		ReadinessProbe: probe,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(sb.WaitUntilReady(ctx, time.Minute, nil)).To(gomega.Succeed())
+
+	_, err = sb.Terminate(ctx, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	out, err := io.ReadAll(sb.Stdout)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(string(out)).To(gomega.ContainSubstring("only-line"))
+}
+
+func TestContainerProcessReadStdoutAfterSandboxTerminate(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -2581,13 +2681,19 @@ func TestContainerProcessReadStdoutAfterSandboxTerminateReturnsClientClosedError
 	_, err = sb.Terminate(ctx, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
+	// The client no longer refuses these reads. Whether the output survives is
+	// up to Modal, which may already have dropped what a terminated Sandbox's
+	// exec'd processes wrote, so accept output or an error from Modal here --
+	// but never a client-side refusal.
 	_, err = io.ReadAll(p.Stdout)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("ClientClosedError: Unable to perform operation on a detached sandbox"))
+	if err != nil {
+		g.Expect(err.Error()).ToNot(gomega.ContainSubstring("Unable to perform operation on a detached sandbox"))
+	}
 
 	_, err = io.ReadAll(p.Stderr)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("ClientClosedError: Unable to perform operation on a detached sandbox"))
+	if err != nil {
+		g.Expect(err.Error()).ToNot(gomega.ContainSubstring("Unable to perform operation on a detached sandbox"))
+	}
 }
 
 func TestContainerProcessWriteStinAfterDetach(t *testing.T) {

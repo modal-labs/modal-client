@@ -100,6 +100,7 @@ function countingProxy(targetPort: number): Promise<{
 /** Serves exec stdio from a byte offset, the way a worker seeks its stdio file. */
 function fakeWorker(
   requestedOffsets: number[],
+  sandboxRequestedOffsets: number[],
   chunksPerStream: number,
   active: { count: number },
 ) {
@@ -113,6 +114,36 @@ function fakeWorker(
     ...unimplemented,
     async taskExecStart() {
       return TaskExecStartResponse.create({});
+    },
+    async *sandboxStdioReadV2(
+      request: { offset: number | string },
+      context: { signal: AbortSignal },
+    ) {
+      let offset = Number(request.offset);
+      sandboxRequestedOffsets.push(offset);
+      active.count++;
+      try {
+        let sent = 0;
+        while (offset < OUTPUT.length) {
+          if (chunksPerStream > 0 && sent === chunksPerStream) break;
+          sent++;
+          const end = Math.min(offset + CHUNK_SIZE, OUTPUT.length);
+          yield { data: OUTPUT.subarray(offset, end), startingOffset: offset };
+          offset = end;
+        }
+        // Hold the stream open until the caller gives up on it.
+        await new Promise<void>((resolve) => {
+          if (context.signal.aborted) {
+            resolve();
+            return;
+          }
+          context.signal.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+      } finally {
+        active.count--;
+      }
     },
     async *taskExecStdioRead(
       request: TaskExecStdioReadRequest,
@@ -151,13 +182,19 @@ function fakeWorker(
 
 async function startFakeWorker(chunksPerStream = 0) {
   const requestedOffsets: number[] = [];
+  const sandboxRequestedOffsets: number[] = [];
   // How many stdio handlers are running: a stream the client abandoned without
   // ending would show up here as one that never returns.
   const active = { count: 0 };
   const server = createServer();
   server.add(
     TaskCommandRouterDefinition,
-    fakeWorker(requestedOffsets, chunksPerStream, active) as any,
+    fakeWorker(
+      requestedOffsets,
+      sandboxRequestedOffsets,
+      chunksPerStream,
+      active,
+    ) as any,
   );
   const workerPort = await server.listen("127.0.0.1:0");
   const proxy = await countingProxy(workerPort);
@@ -167,6 +204,7 @@ async function startFakeWorker(chunksPerStream = 0) {
   mockClient.profile.serverUrl = "http://127.0.0.1:1";
   mockClient.profile.sandboxChannelIdleTimeoutMs = IDLE_TIMEOUT_MS;
   mockCpClient.handleUnary("SandboxGetTaskIdV2", () => ({ taskId: TASK_ID }));
+  mockCpClient.handleUnary("SandboxTerminateV2", () => ({}));
   mockCpClient.handleUnary("SandboxGetCommandRouterAccess", () => ({
     url: `https://127.0.0.1:${proxy.port}`,
     jwt: mockJwt(),
@@ -175,6 +213,7 @@ async function startFakeWorker(chunksPerStream = 0) {
   return {
     mockClient,
     requestedOffsets,
+    sandboxRequestedOffsets,
     activeStreams: () => active.count,
     live: proxy.live,
     shutdown: async () => {
@@ -273,6 +312,35 @@ test("a prompt consumer keeps one stream throughout", async () => {
   }
 });
 
+// Every gap between reads is inside the idle timeout while the read as a whole
+// runs well past it, so each read has to push the release out.
+test("a steady reader refreshes the idle timer", async () => {
+  const w = await startFakeWorker();
+  try {
+    const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
+    const process = await sandbox.exec(["echo", "hi"]);
+
+    const gap = Math.floor((IDLE_TIMEOUT_MS * 2) / 3);
+    let received = "";
+    const expected = new TextDecoder().decode(OUTPUT);
+    const reader = process.stdout.getReader();
+    while (received.length < expected.length) {
+      if (received.length > 0) {
+        await new Promise((resolve) => globalThis.setTimeout(resolve, gap));
+      }
+      const next = await reader.read();
+      if (next.done) break;
+      received += next.value as string;
+    }
+
+    expect(received).toEqual(expected);
+    expect(w.requestedOffsets).toEqual([0]);
+    expect(w.live()).toBe(1);
+  } finally {
+    await w.shutdown();
+  }
+});
+
 // Detaching ends a Sandbox for good: unlike an idle release, nothing picks it
 // up again.
 test("a detached Sandbox does not come back", async () => {
@@ -327,6 +395,44 @@ test("cancelling a read ends the stream behind it", async () => {
     await reader.cancel();
 
     expect(await waitFor(() => w.activeStreams() === 0, 2000)).toBe(true);
+  } finally {
+    await w.shutdown();
+  }
+});
+
+// A V2 Sandbox's own output comes from the command router, so it holds a
+// connection the same way an exec's does.
+test("a partial read of Sandbox output releases the connection", async () => {
+  const w = await startFakeWorker();
+  try {
+    const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
+    const reader = sandbox.stdout.getReader();
+
+    expect((await reader.read()).done).toBe(false);
+    expect(w.sandboxRequestedOffsets).toEqual([0]);
+    expect(w.live()).toBe(1);
+
+    const released = await waitFor(() => w.live() === 0, 6 * IDLE_TIMEOUT_MS);
+    expect(reader).toBeDefined();
+    expect(released).toBe(true);
+  } finally {
+    await w.shutdown();
+  }
+});
+
+// Terminating leaves the caller attached, so the output is still readable, and
+// the connection still goes back once nothing is using it.
+test("a terminated Sandbox stays readable and then releases", async () => {
+  const w = await startFakeWorker();
+  try {
+    const sandbox = await w.mockClient.sandboxes.fromId(SANDBOX_ID);
+    await sandbox.terminate();
+
+    const reader = sandbox.stdout.getReader();
+    expect((await reader.read()).done).toBe(false);
+    expect(w.live()).toBe(1);
+
+    expect(await waitFor(() => w.live() === 0, 6 * IDLE_TIMEOUT_MS)).toBe(true);
   } finally {
     await w.shutdown();
   }

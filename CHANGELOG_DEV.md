@@ -26,7 +26,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 ## JS
 
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.snapshotFilesystem`.
-- A client now releases the connection it holds to a Sandbox once that Sandbox has been idle for 30 seconds, freeing the socket and everything behind it. A subsequent sandbox operation reconnects so the Sandbox stays usable, so forgetting to `detach` a Sandbox is no longer an indefinite resource leak. `detach()` also gives the connection back straight away when one of the Sandbox's output streams is still held; reading that stream afterwards reports the detach.
+- A client now releases its connection to a Sandbox once that Sandbox has been idle for 30 seconds, freeing associated resources similar to an explicit `.detach()` call. A subsequent sandbox operation reconnects so the Sandbox stays usable. `Sandbox.terminate()` no longer detaches from the Sandbox and instead relies on the new idle timeout or an explicit `.detach()` call to release resources.
 - A Sandbox's stdout/stderr, and the same streams on `ContainerProcess` (as returned by `sandbox.exec()`), now defer fetching output until `.stdout`/`.stderr` is first read. This makes the JS SDK consistent with the Go/Python SDKs in this regard.
 - A Sandbox's `stdout`/`stderr`, and those of a `ContainerProcess`, no longer read ahead of the caller: output is fetched by the read that asks for it, with no background prefetching/buffering. Pipe them through a `TransformStream` or similar to add your own read-ahead if needed.
 - Fixed an issue where `readText()` called on a binary-mode Sandbox stream could sometimes return incorrect output data.
@@ -34,5 +34,5 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 ## Go
 
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.SnapshotFilesystem`.
-- A client now releases the connection it holds to a Sandbox once that Sandbox has been idle for 30 seconds, freeing the socket and everything behind it. A subsequent sandbox operation reconnects so the Sandbox stays usable, so forgetting to `Detach` a Sandbox is no longer an indefinite resource leak. `Detach()` also gives the connection back straight away when one of the Sandbox's output streams is still held; reading that stream afterwards reports the detach.
+- A client now releases its connection to a Sandbox once that Sandbox has been idle for 30 seconds, freeing associated resources similar to an explicit `Detach()` call. A subsequent sandbox operation reconnects so the Sandbox stays usable. `Sandbox.Terminate()` no longer detaches from the Sandbox and instead relies on the new idle timeout or an explicit `Detach()` call to release resources.
 - A Sandbox's `Stdout`/`Stderr`, and those of a `ContainerProcess`, no longer read ahead of the caller: output is fetched by the read that asks for it, with no background goroutine and no buffer in between. Wrap them in a `bufio.Reader` for read-ahead.

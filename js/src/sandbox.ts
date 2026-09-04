@@ -1994,8 +1994,8 @@ export class Sandbox {
       exitCode = await this.wait();
     }
 
-    this.#taskId = undefined;
-    this.detach();
+    // The Sandbox stays attached, in case further interactions like reading
+    // stdout/stderr are needed.
     return exitCode;
   }
 

@@ -431,6 +431,11 @@ export class TaskCommandRouterClientImpl {
 
     this.factory = factory;
     this.stub = factory.create(TaskCommandRouterDefinition, this.channel);
+
+    // The connection is live from here on, so start the countdown now rather
+    // than when the first operation finishes: an operation may never come, and
+    // nothing else would give the connection back.
+    this.armIdleTimer();
   }
 
   /**
@@ -464,7 +469,18 @@ export class TaskCommandRouterClientImpl {
   /** Says the caller is done. The last one out starts the clock. */
   private endOp(): void {
     this.inFlight--;
-    if (this.inFlight > 0 || this.idleTimeoutMs <= 0 || this.closed) {
+    if (this.inFlight > 0) {
+      return;
+    }
+    this.armIdleTimer();
+  }
+
+  /**
+   * Starts the countdown to giving the connection back. Call it with nothing
+   * in flight.
+   */
+  private armIdleTimer(): void {
+    if (this.idleTimeoutMs <= 0 || this.closed) {
       return;
     }
     this.idleTimerSeq++;

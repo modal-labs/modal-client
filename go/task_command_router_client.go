@@ -338,6 +338,12 @@ func newTaskCommandRouterClient(p commandRouterParams) (*taskCommandRouterClient
 	}
 	client.jwt.Store(&p.jwt)
 	client.jwtExp.Store(p.jwtExp)
+	// The connection is live from here on, so start the countdown now rather
+	// than when the first operation finishes: an operation may never come, and
+	// nothing else would give the connection back.
+	client.connMu.Lock()
+	client.armIdleTimerLocked()
+	client.connMu.Unlock()
 	return client, nil
 }
 
@@ -459,7 +465,16 @@ func (c *taskCommandRouterClient) endOp() {
 	defer c.connMu.Unlock()
 
 	c.inFlight--
-	if c.inFlight > 0 || c.idleTimeout <= 0 || c.conn == nil {
+	if c.inFlight > 0 {
+		return
+	}
+	c.armIdleTimerLocked()
+}
+
+// armIdleTimerLocked starts the countdown to giving the connection back. The
+// caller must hold connMu and must have nothing in flight.
+func (c *taskCommandRouterClient) armIdleTimerLocked() {
+	if c.idleTimeout <= 0 || c.conn == nil {
 		return
 	}
 	c.stopIdleTimerLocked()

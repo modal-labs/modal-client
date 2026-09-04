@@ -116,6 +116,72 @@ test("PassCatToStdin", async () => {
   );
 });
 
+test("SandboxStdoutStaysReadableAfterTerminate", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["sh", "-c", "echo line-one; echo line-two; sleep 60"],
+  });
+  onTestFinished(async () => await sb.terminate());
+
+  // Reading a first chunk blocks until the Sandbox is up and has written, so
+  // both lines exist before the Sandbox is stopped.
+  const reader = sb.stdout.getReader();
+  const first = await reader.read();
+  expect(first.done).toBe(false);
+  reader.releaseLock();
+
+  await sb.terminate();
+
+  // terminate() leaves the Sandbox attached, so the stream keeps working and
+  // none of the output is lost.
+  const output = (first.value ?? "") + (await sb.stdout.readText());
+  expect(output).toContain("line-one");
+  expect(output).toContain("line-two");
+});
+
+test("SandboxFirstStdoutReadAfterTerminate", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  // The readiness probe gives the test something to wait on, so that
+  // terminating the Sandbox does not race with its startup.
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["sh", "-c", "echo only-line; sleep 60"],
+    readinessProbe: Probe.withExec(["true"]),
+  });
+  await sb.waitUntilReady();
+
+  await sb.terminate();
+
+  // Nothing read this Sandbox's output before it was stopped, so the first read
+  // has to open the stream against a Sandbox that has already finished.
+  expect(await sb.stdout.readText()).toContain("only-line");
+});
+
+// The same for a Sandbox created with experimentalCreate.
+test("SandboxFirstStdoutReadAfterTerminateV2", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  const sb = await tc.sandboxes.experimentalCreate(app, image, {
+    command: ["sh", "-c", "echo only-line; sleep 60"],
+    readinessProbe: Probe.withExec(["true"]),
+  });
+  await sb.waitUntilReady();
+
+  await sb.terminate();
+
+  expect(await sb.stdout.readText()).toContain("only-line");
+});
+
 test("IgnoreLargeStdout", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,

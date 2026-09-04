@@ -1454,29 +1454,21 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 		params = &SandboxTerminateParams{}
 	}
 
-	// Terminate the sandbox even if detach fails.
 	_, err := sb.sandboxTerminate(ctx)
 	if err != nil {
 		return 0, err
 	}
-	sb.taskIDMu.Lock()
-	sb.taskID = ""
-	sb.taskIDMu.Unlock()
 	returnCode := 0
 
 	if params.Wait {
 		returnCode, err = sb.Wait(ctx, nil)
-		// If Wait fails, we do not detach yet
 		if err != nil {
 			return returnCode, err
 		}
 	}
 
-	err = sb.Detach()
-	if err != nil {
-		return returnCode, err
-	}
-
+	// The Sandbox stays attached: its output is worth reading after it stops,
+	// and the connection goes back on its own once nothing is using it.
 	return returnCode, nil
 }
 

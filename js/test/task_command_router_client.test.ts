@@ -756,3 +756,32 @@ test("refreshJwt recovers after transient failure", async () => {
   await expect(refreshJwt()).resolves.not.toThrow();
   expect(callCount).toBe(2);
 });
+
+// A connection nobody ever uses still has to go back: the countdown starts when
+// the client is built, not when its first operation finishes.
+test("an unused command router client releases its connection", async () => {
+  let closed = false;
+  const client: any = new TaskCommandRouterClientImpl(
+    undefined as any, // serverClient: never reached, nothing is called
+    "ta-1",
+    "sb-1",
+    true,
+    "https://example.com",
+    "fake-jwt",
+    () =>
+      ({
+        close() {
+          closed = true;
+        },
+      }) as any,
+    mockLogger as any,
+    20, // give the connection back 20ms after it goes idle
+  );
+  expect(client).toBeDefined();
+
+  const deadline = Date.now() + 2000;
+  while (!closed && Date.now() < deadline) {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 10));
+  }
+  expect(closed).toBe(true);
+});

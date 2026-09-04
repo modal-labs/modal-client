@@ -2,11 +2,11 @@ package test
 
 import (
 	"io"
-	"runtime"
 	"testing"
 	"time"
 
 	"github.com/onsi/gomega"
+	"go.uber.org/goleak"
 )
 
 // Giving the connection back when nobody is reading, entered where callers
@@ -118,6 +118,9 @@ func TestSandboxExecKeepsConnectionWhenIdleTimeoutIsZero(t *testing.T) {
 	router, listener, sandbox := startFakeWorkerWith(t, fakeWorkerOpts{
 		channelIdleTimeout: "0",
 	})
+	// Opting out of the release means owning the cleanup: nothing else will
+	// give this connection back.
+	t.Cleanup(func() { _ = sandbox.Detach() })
 
 	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
@@ -172,16 +175,9 @@ func TestIdleSandboxLeavesNoGoroutinesBehind(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	_, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
-	// Taken with the worker already serving, so its own Accept loop is counted
-	// as part of the baseline rather than as a leak.
-	settled := func() int {
-		for range 8 {
-			runtime.Gosched()
-			time.Sleep(50 * time.Millisecond)
-		}
-		return runtime.NumGoroutine()
-	}
-	before := settled()
+	// Only goroutines this test starts count: others are still giving their
+	// connections back while it runs.
+	existing := goleak.IgnoreCurrent()
 
 	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
@@ -192,8 +188,8 @@ func TestIdleSandboxLeavesNoGoroutinesBehind(t *testing.T) {
 	// Walk away: no Detach, no Close.
 	g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
 		gomega.Equal(0), "the socket should have gone")
-	g.Expect(settled()).To(gomega.Equal(before),
-		"an idle Sandbox should leave no goroutines behind either")
+	g.Eventually(func() error { return goleak.Find(existing) }, 5*time.Second, 50*time.Millisecond).
+		Should(gomega.Succeed(), "an idle Sandbox should leave no goroutines behind either")
 }
 
 // And it must still be usable afterwards: the next read dials again and picks
@@ -248,6 +244,53 @@ func TestDetachStillEndsTheSandboxForGood(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred(), "using a detached Sandbox must fail")
 }
 
+// Detaching after the connection has already gone back is not an error, and
+// still ends the Sandbox. A release leaves the client able to dial again, so
+// only being closed keeps the next operation from quietly reconnecting.
+func TestDetachAfterAnIdleReleaseStillEndsTheSandbox(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	_, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
+
+	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	_, err = process.Stdout.Read(make([]byte, 7))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
+		gomega.Equal(0), "the connection should have been given up")
+
+	g.Expect(sandbox.Detach()).To(gomega.Succeed(),
+		"detaching a Sandbox whose connection already went back is not an error")
+
+	_, err = sandbox.Exec(t.Context(), []string{"echo", "again"}, nil)
+	g.Expect(err).To(gomega.HaveOccurred(), "using a detached Sandbox must fail")
+	g.Expect(listener.Live()).To(gomega.Equal(0), "and must not have dialled again")
+}
+
+// A release already scheduled when the Sandbox is detached has to come to
+// nothing. The callback runs on its own goroutine, so a panic there
+// takes the process down rather than failing an assertion.
+func TestIdleReleaseScheduledBeforeADetachIsHarmless(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	_, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
+
+	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	// Arms the timer, then detaches well inside it.
+	_, err = process.Stdout.Read(make([]byte, 7))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(sandbox.Detach()).To(gomega.Succeed())
+
+	// Sit through the release the read had scheduled.
+	time.Sleep(3 * releaseIdleTimeout)
+
+	g.Expect(listener.Live()).To(gomega.Equal(0))
+	_, err = sandbox.Exec(t.Context(), []string{"echo", "again"}, nil)
+	g.Expect(err).To(gomega.HaveOccurred(), "the Sandbox should still be detached")
+}
+
 // Not every operation goes through the same helper, so the lease is taken where
 // they all meet. One that takes a different route must still find a connection.
 func TestReleasedConnectionIsRebuiltByAnyOperation(t *testing.T) {
@@ -270,4 +313,73 @@ func TestReleasedConnectionIsRebuiltByAnyOperation(t *testing.T) {
 	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("Unimplemented")),
 		"the call should have reached the worker")
 	g.Expect(listener.Live()).To(gomega.Equal(1))
+}
+
+// A V2 Sandbox's own output comes from the command router, so it holds a
+// connection the same way an exec's does.
+func TestSandboxStdoutReleasesConnection(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	router, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
+
+	buf := make([]byte, 7)
+	n, err := sandbox.Stdout.Read(buf)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(n).To(gomega.BeNumerically(">", 0))
+	g.Expect(router.sandboxRequestedOffsets()).To(gomega.Equal([]uint64{0}),
+		"the read should have opened a Sandbox stdio stream")
+	g.Expect(listener.Live()).To(gomega.Equal(1))
+
+	g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
+		gomega.Equal(0), "a Sandbox nobody is reading should not hold a connection")
+}
+
+// And reading it again picks up where it left off.
+func TestSandboxStdoutResumesAfterConnectionReleased(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	opts := releasingWorkerOpts(nil)
+	// A chunk per stream, so each read after a release has to reopen.
+	opts.chunksPerStream = 1
+	router, listener, sandbox := startFakeWorkerWith(t, opts)
+
+	var got []byte
+	for round := range 3 {
+		chunk := make([]byte, 7)
+		_, err := io.ReadFull(sandbox.Stdout, chunk)
+		g.Expect(err).ToNot(gomega.HaveOccurred(), "round %d", round)
+		got = append(got, chunk...)
+
+		g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
+			gomega.Equal(0), "round %d: the connection should have been given up", round)
+	}
+
+	g.Expect(got).To(gomega.Equal(fakeWorkerOutput[:len(got)]),
+		"output across reconnects must be continuous - no repeats and no gaps")
+	g.Expect(router.sandboxRequestedOffsets()).To(gomega.Equal([]uint64{0, 7, 14}))
+}
+
+// Terminating a Sandbox leaves the caller attached, so its output is still
+// readable - and the connection still goes back once nothing is using it.
+func TestTerminatedSandboxStaysReadableThenReleases(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	_, listener, sandbox := startFakeWorkerWith(t, releasingWorkerOpts(nil))
+	// Only goroutines this test starts count.
+	existing := goleak.IgnoreCurrent()
+
+	_, err := sandbox.Terminate(t.Context(), nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	// Still attached, so the output a terminated Sandbox produced is readable.
+	buf := make([]byte, 7)
+	n, err := sandbox.Stdout.Read(buf)
+	g.Expect(err).ToNot(gomega.HaveOccurred(), "a terminated Sandbox should still be readable")
+	g.Expect(n).To(gomega.BeNumerically(">", 0))
+
+	// And nothing is held once the caller stops reading.
+	g.Eventually(listener.Live, 8*releaseIdleTimeout, 20*time.Millisecond).Should(
+		gomega.Equal(0), "a terminated Sandbox nobody is reading should not hold a connection")
+	g.Eventually(func() error { return goleak.Find(existing) }, 5*time.Second, 50*time.Millisecond).
+		Should(gomega.Succeed(), "and should leave no goroutines behind either")
 }

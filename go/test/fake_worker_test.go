@@ -42,6 +42,7 @@ type fakeWorkerRouter struct {
 	chunksPerStream int
 	mu              sync.Mutex
 	offsets         []uint64
+	sandboxOffsets  []uint64
 }
 
 func (s *fakeWorkerRouter) TaskExecStart(
@@ -77,6 +78,43 @@ func (s *fakeWorkerRouter) TaskExecStdioRead(
 	// Hold the stream open, as a worker does for an exec still running.
 	<-stream.Context().Done()
 	return stream.Context().Err()
+}
+
+// SandboxStdioReadV2 serves a V2 Sandbox's own stdio, which comes from the
+// command router rather than the control plane.
+func (s *fakeWorkerRouter) SandboxStdioReadV2(
+	req *pb.SandboxStdioReadV2Request,
+	stream grpc.ServerStreamingServer[pb.SandboxStdioReadV2Response],
+) error {
+	offset := req.GetOffset()
+	s.mu.Lock()
+	s.sandboxOffsets = append(s.sandboxOffsets, offset)
+	s.mu.Unlock()
+
+	sent := 0
+	for offset < uint64(len(s.output)) {
+		if s.chunksPerStream > 0 && sent == s.chunksPerStream {
+			break
+		}
+		sent++
+		end := min(offset+7, uint64(len(s.output)))
+		if err := stream.Send(pb.SandboxStdioReadV2Response_builder{
+			Data:           s.output[offset:end],
+			StartingOffset: offset,
+		}.Build()); err != nil {
+			return err
+		}
+		offset = end
+	}
+	// Hold the stream open, as it stays open for a Sandbox still running.
+	<-stream.Context().Done()
+	return stream.Context().Err()
+}
+
+func (s *fakeWorkerRouter) sandboxRequestedOffsets() []uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]uint64(nil), s.sandboxOffsets...)
 }
 
 func (s *fakeWorkerRouter) requestedOffsets() []uint64 {
@@ -190,6 +228,10 @@ func startFakeWorkerWith(t *testing.T, opts fakeWorkerOpts) (*fakeWorkerRouter, 
 		func(req *pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
 			return pb.SandboxGetTaskIdResponse_builder{TaskId: proto.String(fakeWorkerTaskID)}.Build(), nil
 		})
+	grpcmock.HandleUnary(mock, "SandboxTerminateV2",
+		func(req *pb.SandboxTerminateRequest) (*pb.SandboxTerminateResponse, error) {
+			return pb.SandboxTerminateResponse_builder{}.Build(), nil
+		})
 	grpcmock.HandleUnary(mock, "SandboxGetCommandRouterAccess",
 		func(req *pb.SandboxGetCommandRouterAccessRequest) (*pb.SandboxGetCommandRouterAccessResponse, error) {
 			return pb.SandboxGetCommandRouterAccessResponse_builder{
@@ -200,8 +242,8 @@ func startFakeWorkerWith(t *testing.T, opts fakeWorkerOpts) (*fakeWorkerRouter, 
 
 	sandbox, err := mock.Sandboxes.FromID(t.Context(), fakeWorkerSandboxID, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
-	// Detaching closes the worker connection the Sandbox opened, which the
+	// Closing the client gives back the connection the Sandbox opened, which the
 	// package's goroutine-leak check would otherwise flag.
-	t.Cleanup(func() { _ = sandbox.Detach() })
+	t.Cleanup(mock.Close)
 	return router, listener, sandbox
 }
