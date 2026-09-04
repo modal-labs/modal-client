@@ -1577,6 +1577,7 @@ export class Sandbox {
               this.sandboxId,
               fileDescriptor,
               this.#client.logger,
+              v2Abort.signal,
             ),
           ),
           () => v2Abort.abort(),
@@ -2506,17 +2507,19 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
       if (behavior === "ignore") {
         return ReadableStream.from([]) as ReadableStream<R>;
       }
+      const abort = new AbortController();
       const bytes = outputStreamCp(
         commandRouterClient,
         taskId,
         execId,
         fileDescriptor,
         this.#deadline,
+        abort.signal,
       );
       const stream =
         mode === "text"
-          ? streamConsumingIter(decodeTextIter(bytes))
-          : streamConsumingIter(bytes);
+          ? streamConsumingIter(decodeTextIter(bytes), () => abort.abort())
+          : streamConsumingIter(bytes, () => abort.abort());
       return stream as ReadableStream<R>;
     };
 
@@ -2660,12 +2663,14 @@ async function* outputStreamSbV2(
   sandboxId: string,
   fileDescriptor: FileDescriptor,
   logger: Logger,
+  signal: AbortSignal,
 ): AsyncIterable<Uint8Array> {
   const [taskId, commandRouterClient] = await getCommandRouter();
   let firstChunk = true;
   for await (const item of commandRouterClient.sandboxStdioReadV2(
     taskId,
     fileDescriptor,
+    signal,
   )) {
     if (item.data.length === 0) {
       throw new Error(
@@ -2746,12 +2751,14 @@ async function* outputStreamCp(
   execId: string,
   fileDescriptor: FileDescriptor,
   deadline: number | null,
+  signal: AbortSignal,
 ): AsyncIterable<Uint8Array> {
   for await (const batch of commandRouterClient.execStdioRead(
     taskId,
     execId,
     fileDescriptor,
     deadline,
+    signal,
   )) {
     yield batch.data;
   }

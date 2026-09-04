@@ -13,6 +13,7 @@ import {
   validateExecArgs,
   Probe,
   Sandbox,
+  ContainerProcess,
 } from "../src/sandbox";
 import { expect, test, onTestFinished, vi } from "vitest";
 import {
@@ -34,6 +35,7 @@ import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
 import { SandboxSnapshot } from "../src/sandbox_snapshot";
 import {
   SandboxStdioReadV2Response,
+  TaskExecStdioReadResponse,
   TaskSetNetworkAccessRequest,
   TaskSnapshotFilesystemRequest,
   TaskSnapshotMemoryRequest,
@@ -2109,8 +2111,42 @@ test("V2 Sandbox reads stdio of a Sandbox that has already finished", async () =
   expect(sandboxStdioReadV2).toHaveBeenCalledWith(
     "ta-finished",
     FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+    expect.any(AbortSignal),
   );
   mock.assertExhausted();
+});
+
+test("V2 Sandbox cancelling stdout ends a pending read", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const sandboxStdioReadV2 = vi.fn((_taskId, _fd, signal?: AbortSignal) =>
+    (async function* () {
+      await new Promise((_resolve, reject) => {
+        signal?.addEventListener(
+          "abort",
+          () => reject(new ClientError("/test", Status.CANCELLED, "cancelled")),
+          { once: true },
+        );
+      });
+      yield SandboxStdioReadV2Response.create({});
+    })(),
+  );
+  mockCommandRouter({ sandboxStdioReadV2 });
+
+  const reader = sb.stdout.getReader();
+  const read = reader.read().catch(() => undefined);
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+  expect(sandboxStdioReadV2).toHaveBeenCalled();
+
+  const outcome = await Promise.race([
+    reader.cancel().then(() => "cancelled"),
+    new Promise((resolve) =>
+      globalThis.setTimeout(() => resolve("still waiting"), 2000),
+    ),
+  ]);
+  expect(outcome).toBe("cancelled");
+  await read;
 });
 
 test("V2 Sandbox cancelling stdout aborts a pending task lookup", async () => {
@@ -2157,8 +2193,16 @@ test("V2 Sandbox streams stdout and stderr through the command router", async ()
   expect(await sb.stdout.readText()).toBe("hello stdout\n");
   expect(await sb.stderr.readText()).toBe("oops stderr\n");
   expect(sandboxStdioReadV2.mock.calls).toEqual([
-    ["ta-v2-123", FileDescriptor.FILE_DESCRIPTOR_STDOUT],
-    ["ta-v2-123", FileDescriptor.FILE_DESCRIPTOR_STDERR],
+    [
+      "ta-v2-123",
+      FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+      expect.any(AbortSignal),
+    ],
+    [
+      "ta-v2-123",
+      FileDescriptor.FILE_DESCRIPTOR_STDERR,
+      expect.any(AbortSignal),
+    ],
   ]);
 });
 
@@ -2608,6 +2652,41 @@ test("SandboxExecWaitSignal", async () => {
   // The shell kills itself with SIGKILL (9); wait() should return 128 + 9 = 137.
   const p = await sb.exec(["sh", "-c", "kill -9 $$"]);
   expect(await p.wait()).toBe(128 + 9);
+});
+
+test("ContainerProcess cancelling stdout ends a pending read", async () => {
+  const execStdioRead = vi.fn(
+    (_taskId, _execId, _fd, _deadline, signal?: AbortSignal) =>
+      (async function* () {
+        await new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () =>
+              reject(new ClientError("/test", Status.CANCELLED, "cancelled")),
+            { once: true },
+          );
+        });
+        yield TaskExecStdioReadResponse.create({});
+      })(),
+  );
+  const p = new ContainerProcess("ta-1", "ex-1", {
+    execStdioRead,
+    execStdinWrite: vi.fn(),
+  } as unknown as TaskCommandRouterClientImpl);
+
+  const reader = p.stdout.getReader();
+  const read = reader.read().catch(() => undefined);
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+  expect(execStdioRead).toHaveBeenCalled();
+
+  const outcome = await Promise.race([
+    reader.cancel().then(() => "cancelled"),
+    new Promise((resolve) =>
+      globalThis.setTimeout(() => resolve("still waiting"), 2000),
+    ),
+  ]);
+  expect(outcome).toBe("cancelled");
+  await read;
 });
 
 test("SandboxExecDoubleRead", async () => {

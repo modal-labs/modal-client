@@ -533,6 +533,101 @@ async function collectStdio(
   return new Uint8Array(chunks);
 }
 
+test("sandboxStdioReadV2 does not reopen when the caller aborts mid-backoff", async () => {
+  let opens = 0;
+  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
+  client.logger = mockLogger;
+  client.closed = false;
+  client.channel = {};
+  client.liveStreams = new Set();
+  client.generation = 0;
+  client.inFlight = 0;
+  client.idleTimerSeq = 0;
+  client.idleTimeoutMs = 0;
+  client.stub = {
+    sandboxStdioReadV2: () => {
+      opens++;
+      return (async function* () {
+        throw new ClientError("/test", Status.UNAVAILABLE, "unavailable");
+        yield SandboxStdioReadV2Response.create({});
+      })();
+    },
+  };
+
+  const caller = new AbortController();
+  const stream = client.sandboxStdioReadV2(
+    "ta-1",
+    FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+    caller.signal,
+  );
+  let chunks = 0;
+  const drained = (async () => {
+    for await (const _ of stream) {
+      chunks++;
+    }
+  })().catch(() => undefined);
+
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+  caller.abort();
+
+  const started = Date.now();
+  await drained;
+  expect(chunks).toBe(0);
+  expect(Date.now() - started).toBeLessThan(1000);
+  expect(opens).toBe(1);
+});
+
+test("sandboxStdioReadV2 does not retry a call the caller aborted", async () => {
+  let opens = 0;
+  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
+  client.logger = mockLogger;
+  client.closed = false;
+  client.channel = {};
+  client.liveStreams = new Set();
+  client.generation = 0;
+  client.inFlight = 0;
+  client.idleTimerSeq = 0;
+  client.idleTimeoutMs = 0;
+  client.stub = {
+    sandboxStdioReadV2: (_req: unknown, opts: { signal?: AbortSignal }) => {
+      opens++;
+      return (async function* () {
+        await new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener(
+            "abort",
+            () => reject(new ClientError("/test", Status.CANCELLED, "cancel")),
+            { once: true },
+          );
+        });
+        yield SandboxStdioReadV2Response.create({});
+      })();
+    },
+  };
+
+  const caller = new AbortController();
+  const stream = client.sandboxStdioReadV2(
+    "ta-1",
+    FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+    caller.signal,
+  );
+  let chunks = 0;
+  const drained = (async () => {
+    for await (const _ of stream) {
+      chunks++;
+    }
+  })().catch(() => undefined);
+
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+  expect(opens).toBe(1);
+
+  const started = Date.now();
+  caller.abort();
+  await drained;
+  expect(chunks).toBe(0);
+  expect(Date.now() - started).toBeLessThan(1000);
+  expect(opens).toBe(1);
+});
+
 test("sandboxStdioReadV2 streams the whole buffer in one call", async () => {
   const stdout = deterministicBytes(5000);
   const server = new FakeSandboxStdioServer(

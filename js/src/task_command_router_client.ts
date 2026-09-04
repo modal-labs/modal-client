@@ -145,6 +145,10 @@ type StdioStreamSpec<T> = {
    * timeout rather than an ordinary cancellation. */
   deadline: number | null;
   label: string;
+  /**
+   * Ends the call in flight when the caller stops reading.
+   */
+  signal?: AbortSignal;
 };
 
 /** gRPC status codes eligible for transient-error retries. */
@@ -566,6 +570,7 @@ export class TaskCommandRouterClientImpl {
     execId: string,
     fileDescriptor: FileDescriptor,
     deadline: number | null = null,
+    signal?: AbortSignal,
   ): AsyncGenerator<TaskExecStdioReadResponse> {
     let srFd: TaskExecStdioFileDescriptor;
     if (fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_STDOUT) {
@@ -581,7 +586,7 @@ export class TaskCommandRouterClientImpl {
       throw new Error(`Invalid file descriptor: ${fileDescriptor}`);
     }
 
-    yield* this.streamExecStdio(taskId, execId, srFd, deadline);
+    yield* this.streamExecStdio(taskId, execId, srFd, deadline, signal);
   }
 
   async execStdinWrite(
@@ -975,6 +980,7 @@ export class TaskCommandRouterClientImpl {
   async *sandboxStdioReadV2(
     taskId: string,
     fileDescriptor: FileDescriptor,
+    signal?: AbortSignal,
   ): AsyncGenerator<SandboxStdioReadV2Response> {
     let srFd: SandboxStdioFileDescriptor;
     if (fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_STDOUT) {
@@ -990,7 +996,7 @@ export class TaskCommandRouterClientImpl {
       throw new Error(`Invalid file descriptor: ${fileDescriptor}`);
     }
 
-    yield* this.streamSandboxStdio(taskId, srFd);
+    yield* this.streamSandboxStdio(taskId, srFd, signal);
   }
 
   async sandboxStdinWriteV2(
@@ -1133,10 +1139,14 @@ export class TaskCommandRouterClientImpl {
       // generator is suspended at a yield it is not, so the connection may be
       // given up under it. The stream then goes with it, and the loop below
       // reopens at the offset the consumer reached.
+      spec.signal?.throwIfAborted();
+
       let stale = false;
       // Registered so a release can end this stream; a suspended generator
       // holds no lease, so the release may land while it is open.
       const abort = new AbortController();
+      const abortWithCaller = () => abort.abort();
+      spec.signal?.addEventListener("abort", abortWithCaller, { once: true });
 
       try {
         const generation = this.generation;
@@ -1202,6 +1212,9 @@ export class TaskCommandRouterClientImpl {
         if (stale) {
           continue;
         }
+        if (spec.signal?.aborted) {
+          throw err;
+        }
         if (
           err instanceof ClientError &&
           err.code === Status.CANCELLED &&
@@ -1227,13 +1240,14 @@ export class TaskCommandRouterClientImpl {
             "error",
             err,
           );
-          await setTimeout(delayMs);
+          await setTimeout(delayMs, undefined, { signal: spec.signal });
           delayMs *= delayFactor;
           numRetriesRemaining--;
         } else {
           throw err;
         }
       } finally {
+        spec.signal?.removeEventListener("abort", abortWithCaller);
         // A consumer can abandon this generator while it is suspended at a
         // yield, which reaches here and nowhere else. Ending the stream is what
         // frees the socket under it.
@@ -1249,6 +1263,7 @@ export class TaskCommandRouterClientImpl {
     execId: string,
     fileDescriptor: TaskExecStdioFileDescriptor,
     deadline: number | null,
+    signal?: AbortSignal,
   ): AsyncGenerator<TaskExecStdioReadResponse> {
     return this.streamStdioWithRetries({
       open: (offset, signal) =>
@@ -1270,12 +1285,14 @@ export class TaskCommandRouterClientImpl {
       nextOffset: (item, offset) => offset + item.data.length,
       deadline,
       label: `exec ${execId}`,
+      signal,
     });
   }
 
   private streamSandboxStdio(
     taskId: string,
     fileDescriptor: SandboxStdioFileDescriptor,
+    signal?: AbortSignal,
   ): AsyncGenerator<SandboxStdioReadV2Response> {
     return this.streamStdioWithRetries({
       open: (offset, signal) =>
@@ -1287,6 +1304,7 @@ export class TaskCommandRouterClientImpl {
         (firstOfAttempt ? item.startingOffset : offset) + item.data.length,
       deadline: null,
       label: `Sandbox task ${taskId}`,
+      signal,
     });
   }
 }
