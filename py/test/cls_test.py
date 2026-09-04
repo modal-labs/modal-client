@@ -12,7 +12,7 @@ from typing_extensions import assert_type
 
 import modal.experimental
 import modal.partial_function
-from modal import App, Cls, Function, Image, Volume, enter, exit, method
+from modal import App, Cls, Function, Image, Secret, Volume, enter, exit, method
 from modal._function_variants import _FunctionOptions
 from modal._partial_function import (
     _find_partial_methods_for_user_cls,
@@ -31,6 +31,7 @@ from modal.partial_function import (
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
+from modal.types import FunctionInfo
 from modal_proto import api_pb2
 
 from .supports.base_class import BaseCls2
@@ -321,6 +322,9 @@ def test_with_options_from_name(servicer, client):
             "FunctionGet",
             api_pb2.FunctionGetResponse(
                 function_id="fu-123",
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
                 handle_metadata=api_pb2.FunctionHandleMetadata(
                     method_handle_metadata={
                         "some_method": api_pb2.FunctionHandleMetadata(
@@ -1335,6 +1339,9 @@ def test_class_can_use_073_schema_definition(servicer, client):
                     ),
                     method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
                 ),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
             ),
         )
         with pytest.raises(TypeError, match="Expected str, got int"):
@@ -1365,6 +1372,9 @@ def test_class_can_use_future_full_type_only_schema(servicer, client):
                         ],
                     ),
                     method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
+                ),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
                 ),
             ),
         )
@@ -1619,6 +1629,9 @@ def test_cls_with_options_creates_new_options_instance(client, servicer):
             api_pb2.FunctionGetResponse(
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
             ),
         )
         ChildClass.hydrate()
@@ -1653,6 +1666,9 @@ def test_cls_duplicate_volume_mounts_with_options(client, servicer):
                             function_name="SomeClass.some_method",
                         )
                     }
+                ),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
                 ),
             ),
         )
@@ -1693,6 +1709,9 @@ def test_cls_with_concurrency_creates_new_options_instance(client, servicer):
             api_pb2.FunctionGetResponse(
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
             ),
         )
         ChildClass.hydrate()
@@ -1732,6 +1751,9 @@ def test_cls_with_batching_creates_new_options_instance(client, servicer):
             api_pb2.FunctionGetResponse(
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
             ),
         )
         ChildClass.hydrate()
@@ -1752,9 +1774,47 @@ def test_cls_version(client, servicer):
             api_pb2.FunctionGetResponse(
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
             ),
         )
         C.hydrate()
 
     request: api_pb2.FunctionGetRequest = ctx.pop_request("FunctionGet")
     assert request.app_version == 1
+
+
+cls_info_app = App()
+
+
+@cls_info_app.cls(
+    nonpreemptible=True,
+    region=["eu", "us-west-2"],
+    secrets=[Secret.from_dict({"hola": "mundo"})],
+)
+class FnInfoCls:
+    @method()
+    def g(self, x: int):
+        return x + x
+
+
+def test_function_info_cls(client):
+    instance = FnInfoCls()
+
+    info: FunctionInfo = instance.g.info()
+    assert info.regions == ["eu", "us-west-2"]
+    assert info.nonpreemptible
+    assert info.secrets == ["Secret.from_dict([hola])"]
+
+    assert not instance.g._is_hydrated
+
+
+def test_function_info_cls_remote(client, servicer):
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    instance = cls()
+    info = instance.baz.info()
+
+    assert instance.baz._is_hydrated
+    assert info.cpu == 42

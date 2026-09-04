@@ -122,7 +122,9 @@ class _CloudBucketMount:
 
 
 def cloud_bucket_mounts_to_proto(
-    mounts: Sequence[tuple[str, _CloudBucketMount]], split_ephemeral_credentials: bool = False
+    mounts: Sequence[tuple[str, _CloudBucketMount]],
+    split_ephemeral_credentials: bool = False,
+    include_secrets: bool = True,
 ) -> tuple[list[api_pb2.CloudBucketMount], dict[str, api_pb2.StringMap]]:
     """mdmd:hidden
     Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server.
@@ -158,11 +160,11 @@ def cloud_bucket_mounts_to_proto(
             key_prefix = mount.key_prefix
 
         credentials_secret_id = ""
-        if secret := mount.secret:
+        if include_secrets and (secret := mount.secret):
             if split_ephemeral_credentials and secret._load_env_dict:
                 env_dict = secret._load_env_dict()
-                credientials = api_pb2.StringMap(contents=env_dict)
-                cloud_bucket_credentials[path] = credientials
+                credentials = api_pb2.StringMap(contents=env_dict)
+                cloud_bucket_credentials[path] = credentials
             else:
                 credentials_secret_id = secret.object_id
 

@@ -668,3 +668,32 @@ def parse_gpu_config(value: str | None) -> api_pb2.GPUConfig:
         return api_pb2.GPUConfig(gpu_type=gpu_type, count=count)
     else:
         raise InvalidError(f"Invalid GPU config: {value!r}. Value must be a string or `None`")
+
+
+def get_schedule_str(schedule: api_pb2.Schedule) -> str | None:
+    if schedule.WhichOneof("schedule_oneof") is None:
+        return None
+
+    if schedule.WhichOneof("schedule_oneof") == "cron":
+        cron = schedule.cron
+        return f"Cron({cron.cron_string!r}, {cron.timezone})"
+
+    period = schedule.period
+
+    period_args = []
+    if period.years > 0:
+        period_args.append(f"years={period.years}")
+    if period.months > 0:
+        period_args.append(f"months={period.months}")
+    if period.weeks > 0:
+        period_args.append(f"weeks={period.weeks}")
+    if period.days > 0:
+        period_args.append(f"days={period.days}")
+    if period.hours > 0:
+        period_args.append(f"hours={period.hours}")
+    if period.minutes > 0:
+        period_args.append(f"minutes={period.minutes}")
+    if period.seconds > 0:
+        period_args.append(f"seconds={period.seconds}")
+
+    return f"Period({', '.join(period_args)})"

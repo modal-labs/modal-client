@@ -86,10 +86,13 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         assert service_function._is_hydrated
         assert cls._is_hydrated
 
+        assert service_function._method_handle_metadata
         method_metadata = service_function._method_handle_metadata[method_name]
         new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
         if not new_function._app_id:
             new_function._app_id = service_function._app_id
+        if service_function._function_info is not None:
+            new_function._function_info = service_function._function_info._get_copy()
 
     async def _load(fun: "_Function", resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
         # there is currently no actual loading logic executed to create each method on
@@ -138,6 +141,9 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
     fun._is_method = True
     fun._app = service_function._app
     fun._spec = service_function._spec
+    if service_function._function_info is not None:
+        fun._function_info = service_function._function_info._get_copy()
+
     return fun
 
 
@@ -233,7 +239,12 @@ class _Obj:
                 ):
                     if not parent._is_hydrated:
                         await parent.hydrate(load_context.client)
+
+                    assert parent._is_hydrated
+
                     function._hydrate_from_other(parent)
+                    if parent._function_info is not None:
+                        function._function_info = parent._function_info
 
                 fun = _Function._from_loader(
                     _load,
@@ -244,6 +255,8 @@ class _Obj:
                 fun._obj = self
                 fun._source_info = parent._source_info
                 fun._spec = parent._spec
+                if parent._function_info is not None:
+                    fun._function_info = parent._function_info._get_copy()
 
             self._instance_service_function = fun
 
@@ -436,6 +449,8 @@ class _Obj:
             await resolver.load(method_function, load_context)  # get the appropriate method handle (lazy)
             fun._hydrate_from_other(method_function)
             fun._app_id = method_function._app_id
+            if method_function._function_info is not None:
+                fun._function_info = method_function._function_info._get_copy()
 
         # The reason we don't *always* use this lazy loader is because it precludes attribute access
         # on local classes.

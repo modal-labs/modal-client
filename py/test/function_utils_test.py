@@ -15,6 +15,7 @@ from modal._utils.function_utils import (
     _stream_function_call_data,
     callable_has_non_self_non_default_params,
     callable_has_non_self_params,
+    get_schedule_str,
     normalize_fractional_target_concurrency,
     validate_target_concurrency,
 )
@@ -229,3 +230,23 @@ def test_normalize_fractional_target_concurrency(value, expected):
 def test_validate_target_concurrency_rejects_invalid_values(value, allow_fractional, match):
     with pytest.raises(InvalidError, match=match):
         validate_target_concurrency(value, "target_concurrency", allow_fractional=allow_fractional)
+
+
+@pytest.mark.parametrize(
+    ("schedule", "expected"),
+    [
+        (api_pb2.Schedule(), None),
+        (
+            api_pb2.Schedule(
+                period=api_pb2.Schedule.Period(years=1, months=2, weeks=3, days=4, hours=5, minutes=6, seconds=7)
+            ),
+            "Period(years=1, months=2, weeks=3, days=4, hours=5, minutes=6, seconds=7.0)",
+        ),
+        (
+            api_pb2.Schedule(cron=api_pb2.Schedule.Cron(cron_string="* * * * *", timezone="America/Los_Angeles")),
+            "Cron('* * * * *', America/Los_Angeles)",
+        ),
+    ],
+)
+def test_get_schedule_str(schedule: api_pb2.Schedule, expected: str | None):
+    assert get_schedule_str(schedule) == expected

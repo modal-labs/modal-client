@@ -32,6 +32,7 @@ from modal.exception import (
 )
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
+from modal.types import CloudBucketMountInfo, FunctionInfo, VolumeMountInfo
 from modal_proto import api_pb2
 from test.conftest import GrpcErrorAndCount, MockClientServicer
 from test.helpers import deploy_app_externally
@@ -1817,7 +1818,11 @@ def test_from_name_web_url(servicer, client):
         ctx.add_response(
             "FunctionGet",
             api_pb2.FunctionGetResponse(
-                function_id="fu-1", handle_metadata=api_pb2.FunctionHandleMetadata(web_url="test.internal")
+                function_id="fu-1",
+                handle_metadata=api_pb2.FunctionHandleMetadata(web_url="test.internal"),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
             ),
         )
         assert f.get_web_url() == "test.internal"
@@ -2232,6 +2237,9 @@ def test_cbor_input_only_function_uses_cbor_input(client, servicer):
                     supported_input_formats=[api_pb2.DATA_FORMAT_CBOR],
                     supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
                 ),
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
             ),
         )
 
@@ -2551,7 +2559,15 @@ def test_function_get_current_stats(client, servicer):
 
     with servicer.intercept() as ctx:
         ctx.set_responder("FunctionGetCurrentStats", get_current_stats)
-        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id=function_id))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id=function_id,
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
+            ),
+        )
 
         function_stats = f.get_current_stats()
 
@@ -2585,8 +2601,163 @@ def test_function_from_name_version(client, servicer):
     function_id = "fu-1"
 
     with servicer.intercept() as ctx:
-        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id=function_id))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id=function_id,
+                function=api_pb2.FunctionData(
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                ),
+            ),
+        )
         f.hydrate()
 
     req: api_pb2.FunctionGetRequest = ctx.pop_request("FunctionGet")
     assert req.app_version == 1
+
+
+fn_info_app = App(name="fn-info-app")
+
+
+@fn_info_app.function(cpu=(1, 2), memory=3, gpu=["L40S:2", "H100"], ephemeral_disk=4, cloud="aws")
+def fn_info_fn(x: int):
+    return x * x
+
+
+def test_function_info_local():
+    info: FunctionInfo = fn_info_fn.info()
+    assert info.cpu == (1, 2)
+    assert info.memory_mib == 3
+    assert info.gpus == [(2, "L40S"), (1, "H100")]
+    assert info.ephemeral_disk_mib == 4
+    assert info.cloud == "aws"
+
+    assert not fn_info_fn._is_hydrated
+
+
+def test_function_info_remote(client, servicer):
+    f = Function.from_name("dummy-app", "func", client=client)
+    function_id = "fu-1"
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id=function_id,
+                function=api_pb2.FunctionData(
+                    ranked_functions=[
+                        api_pb2.FunctionData.RankedFunction(
+                            rank=1,
+                            function=api_pb2.Function(
+                                function_name="func",
+                                volume_mounts=[
+                                    api_pb2.VolumeMount(volume_id="vo-123", mount_path="/tmp"),
+                                    api_pb2.VolumeMount(volume_id="vo-456", mount_path="/mnt", read_only=True),
+                                ],
+                                cloud_bucket_mounts=[
+                                    api_pb2.CloudBucketMount(
+                                        bucket_name="bucket-name",
+                                        mount_path="/dev",
+                                        bucket_type=api_pb2.CloudBucketMount.BucketType.S3,
+                                    )
+                                ],
+                            ),
+                        )
+                    ]
+                ),
+            ),
+        )
+
+        info = f.info()
+        assert f._is_hydrated
+
+        assert info.volumes == {
+            "/tmp": VolumeMountInfo(
+                name=None,
+                volume_id="vo-123",
+                read_only=False,
+                sub_path=None,
+            ),
+            "/mnt": VolumeMountInfo(
+                name=None,
+                volume_id="vo-456",
+                read_only=True,
+                sub_path=None,
+            ),
+        }
+
+        assert info.cloud_bucket_mounts == {
+            "/dev": CloudBucketMountInfo(
+                bucket_name="bucket-name",
+                bucket_type="s3",
+                read_only=False,
+                key_prefix=None,
+            )
+        }
+
+
+def test_function_info_refresh(client):
+    app = App()
+
+    @app.function(cpu=2, serialized=True)
+    def f(x: int):
+        return x + 1
+
+    deploy_app(app, "test_function_info_redeploy", client=client)
+
+    handle = f
+
+    info: FunctionInfo = handle.info()
+    assert info.cpu == 2
+
+    f = app.function(cpu=3, serialized=True)(f._raw_f_)
+
+    deploy_app(app, "test_function_info_redeploy", client=client)
+
+    new_info = handle.info(refresh=True)
+    assert new_info.cpu == 3
+
+
+@fn_info_app.function(cpu=(1, 2), memory=3, ephemeral_disk=4, cloud="aws")
+def fn_info_with_options_fn(x: int):
+    return x * x * x
+
+
+def test_function_info_with_options():
+    info: FunctionInfo = fn_info_with_options_fn.info()
+
+    assert info.cpu == (1, 2)
+    assert info.memory_mib == 3
+    assert info.ephemeral_disk_mib == 4
+    assert info.cloud == "aws"
+
+    variant = fn_info_with_options_fn.with_options(cpu=(5, 6), memory=(7, 8), region=["eu", "us-west-2"])
+    new_info: FunctionInfo = variant.info()
+
+    assert new_info.cpu == (5, 6)
+    assert new_info.memory_mib == (7, 8)
+    assert new_info.regions == ["eu", "us-west-2"]
+
+
+with_options_info_app = App()
+
+
+@with_options_info_app.function(cpu=2, serialized=True)
+def h(x: int):
+    return x + 1
+
+
+def test_remote_function_info_with_options(client):
+    deploy_app(with_options_info_app, "test_function_info_with_options_deployed", client=client)
+
+    handle = Function.from_name(
+        "test_function_info_with_options_deployed",
+        "h",
+        client=client,
+    )
+    variant = handle.with_options(cpu=3)
+    assert not variant._is_hydrated
+
+    info = variant.info()
+    assert variant._is_hydrated
+    assert info.cpu == 3

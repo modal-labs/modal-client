@@ -415,6 +415,212 @@ class ServerAutoscalerSettings:
         )
 
 
+@dataclass
+class VolumeMountInfo:
+    name: str | None
+    volume_id: str | None  # None if the object has not yet been hydrated
+    read_only: bool
+    sub_path: str | None
+
+    def __post_init__(self):
+        assert (self.name is not None) or (self.volume_id is not None)
+
+    def _get_copy(self) -> "VolumeMountInfo":
+        return VolumeMountInfo(
+            name=self.name,
+            volume_id=self.volume_id,
+            read_only=self.read_only,
+            sub_path=self.sub_path,
+        )
+
+
+@dataclass
+class CloudBucketMountInfo:
+    bucket_name: str
+    bucket_type: Literal["s3", "r2", "gcp"]
+    read_only: bool
+    key_prefix: str | None
+
+    def _get_copy(self) -> "CloudBucketMountInfo":
+        return CloudBucketMountInfo(
+            bucket_name=self.bucket_name,
+            bucket_type=self.bucket_type,
+            read_only=self.read_only,
+            key_prefix=self.key_prefix,
+        )
+
+    @classmethod
+    def _from_proto(cls, cbm: api_pb2.CloudBucketMount) -> "CloudBucketMountInfo":
+        return cls(
+            cbm.bucket_name,
+            "r2"
+            if cbm.bucket_type == api_pb2.CloudBucketMount.BucketType.R2
+            else "gcp"
+            if cbm.bucket_type == api_pb2.CloudBucketMount.BucketType.GCP
+            else "s3",
+            cbm.read_only,
+            cbm.key_prefix or None,
+        )
+
+
+@dataclass
+class HttpInfo:
+    port: int
+    unauthenticated: bool
+    h2_enabled: bool
+    proxy_regions: list[str]
+
+    def _get_copy(self) -> "HttpInfo":
+        return HttpInfo(
+            port=self.port,
+            unauthenticated=self.unauthenticated,
+            h2_enabled=self.h2_enabled,
+            proxy_regions=[pr for pr in self.proxy_regions],
+        )
+
+    @classmethod
+    def _from_proto(cls, http_config: api_pb2.HTTPConfig) -> "HttpInfo":
+        return cls(
+            port=http_config.port,
+            unauthenticated=http_config.unauthenticated,
+            h2_enabled=http_config.h2_enabled,
+            proxy_regions=list(http_config.proxy_regions),
+        )
+
+
+@dataclass
+class FunctionInfo:
+    """A simple data structure containing static info about a Function handle."""
+
+    cpu: float | tuple[float, float] | None
+    memory_mib: int | tuple[int, int] | None
+    gpus: list[tuple[int, str]]
+    ephemeral_disk_mib: int | None
+    nonpreemptible: bool
+    regions: list[str] | None
+    routing_region: str | None
+    cloud: str | None
+    schedule: str | None
+    volumes: dict[str, VolumeMountInfo]
+    cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
+    secrets: list[str]
+    http_info: HttpInfo | None
+
+    def _get_copy(self) -> "FunctionInfo":
+        return FunctionInfo(
+            cpu=self.cpu,
+            memory_mib=self.memory_mib,
+            gpus=[g for g in self.gpus],
+            ephemeral_disk_mib=self.ephemeral_disk_mib,
+            nonpreemptible=self.nonpreemptible,
+            regions=[r for r in self.regions] if self.regions else None,
+            routing_region=self.routing_region,
+            cloud=self.cloud,
+            schedule=self.schedule,
+            volumes={k: v._get_copy() for k, v in self.volumes.items()},
+            cloud_bucket_mounts={k: v._get_copy() for k, v in self.cloud_bucket_mounts.items()},
+            secrets=[s for s in self.secrets],
+            http_info=self.http_info._get_copy() if self.http_info else None,
+        )
+
+    @classmethod
+    def _from_function_proto(cls, function_data: api_pb2.FunctionData) -> "FunctionInfo":
+        functions = function_data.ranked_functions
+
+        if len(functions) == 0:
+            raise ValueError("Could not parse FunctionData proto - no functions provided")
+
+        # note: the only thing that isn't shared across all function copies in the FunctionData struct
+        # is GPU information. Everything else can be extracted from the first Function struct in the
+        # response.
+        first_function = functions[0].function
+        resources = first_function.resources
+
+        cpu: float | tuple[float, float] | None
+        if resources.milli_cpu_max > 0:
+            cpu = (resources.milli_cpu / 1000, resources.milli_cpu_max / 1000)
+        elif resources.milli_cpu > 0:
+            cpu = resources.milli_cpu / 1000
+        else:
+            cpu = None
+
+        memory_mib: int | tuple[int, int] | None
+        if resources.memory_mb_max > 0:
+            memory_mib = (resources.memory_mb, resources.memory_mb_max)
+        elif resources.memory_mb > 0:
+            memory_mib = resources.memory_mb
+        else:
+            memory_mib = None
+
+        if resources.ephemeral_disk_mb > 0:
+            ephemeral_disk_mib = resources.ephemeral_disk_mb
+        else:
+            ephemeral_disk_mib = None
+
+        gpus = []
+        for fn in functions:
+            # note: we can't do `.HasField("gpu_config")` because in some places, non-GPU functions
+            # set an empty GPUConfig instead of not setting a config, meaning that `HasField` returns
+            # true despite the function not actually requesting a GPU.
+            if fn.function.resources.gpu_config.count == 0:
+                continue
+
+            gpus.append(
+                (
+                    fn.function.resources.gpu_config.count,
+                    fn.function.resources.gpu_config.gpu_type,
+                )
+            )
+
+        scheduler_placement = first_function.scheduler_placement
+        nonpreemptible = scheduler_placement.nonpreemptible
+        if scheduler_placement.regions:
+            regions = list(scheduler_placement.regions)
+        else:
+            regions = None
+
+        if first_function.cloud_provider_str:
+            cloud = first_function.cloud_provider_str
+        else:
+            cloud = None
+
+        if not function_data.HasField("schedule"):
+            schedule = None
+        else:
+            from modal._utils.function_utils import get_schedule_str
+
+            schedule = get_schedule_str(function_data.schedule)
+
+        volumes = {
+            vm.mount_path: VolumeMountInfo(None, vm.volume_id, vm.read_only, vm.sub_path or None)
+            for vm in first_function.volume_mounts
+        }
+
+        cloud_bucket_mounts = {}
+        for cbm in first_function.cloud_bucket_mounts:
+            cloud_bucket_mounts[cbm.mount_path] = CloudBucketMountInfo._from_proto(cbm)
+
+        http_info: HttpInfo | None = None
+        if function_data.HasField("http_config"):
+            http_info = HttpInfo._from_proto(function_data.http_config)
+
+        return cls(
+            cpu=cpu,
+            memory_mib=memory_mib,
+            gpus=gpus,
+            ephemeral_disk_mib=ephemeral_disk_mib,
+            nonpreemptible=nonpreemptible,
+            regions=regions,
+            routing_region=function_data.routing_region,
+            cloud=cloud,
+            schedule=schedule,
+            volumes=volumes,
+            cloud_bucket_mounts=cloud_bucket_mounts,
+            secrets=list(first_function.secret_ids),
+            http_info=http_info,
+        )
+
+
 class AppState(enum.Enum):
     APP_STATE_UNSPECIFIED = 0
     APP_STATE_EPHEMERAL = 1

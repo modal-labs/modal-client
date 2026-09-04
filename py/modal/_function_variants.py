@@ -4,6 +4,7 @@ from collections.abc import Collection, Sequence, Sized
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from modal.types import CloudBucketMountInfo, FunctionInfo, VolumeMountInfo
 from modal_proto import api_pb2
 
 from ._resources import convert_fn_config_to_resources_config
@@ -248,6 +249,7 @@ def _make_function_variant(
     ):
         if not base_function._is_hydrated:
             await base_function.hydrate(load_context.client)
+
         assert base_function._client and base_function._client.stub
 
         if parameter_schema is None:
@@ -278,6 +280,12 @@ def _make_function_variant(
         response = await _function_bind_params_cached(base_function, req)
         function_variant._hydrate(response.bound_function_id, base_function._client, response.handle_metadata)
 
+        if base_function._function_info is not None:
+            if options is not None:
+                function_variant._function_info = _get_function_info_with_options(base_function._function_info, options)
+            else:
+                function_variant._function_info = base_function._function_info._get_copy()
+
     def _deps():
         if options:
             return options._unhydrated_object_deps()
@@ -292,4 +300,73 @@ def _make_function_variant(
     )
     fun._source_info = base_function._source_info
     fun._spec = base_function._spec  # TODO (elias): fix - this is incorrect when using with_options
+
+    # If we already have a ._function_info for the base function, we can pass it down - otherwise this
+    # will be filled in during hydration
+    if base_function._function_info is not None:
+        if options is not None:
+            fun._function_info = _get_function_info_with_options(base_function._function_info, options)
+        else:
+            fun._function_info = base_function._function_info._get_copy()
+
     return fun
+
+
+def _get_function_info_with_options(info: FunctionInfo, options: _FunctionOptions):
+    new_info = info._get_copy()
+
+    if options.resources is not None:
+        res = options.resources
+        if res.milli_cpu_max > 0:
+            new_info.cpu = (res.milli_cpu / 1000, res.milli_cpu_max / 1000)
+        elif res.milli_cpu > 0:
+            new_info.cpu = res.milli_cpu / 1000
+
+        if res.memory_mb_max > 0:
+            new_info.memory_mib = (res.memory_mb, res.memory_mb_max)
+        elif res.memory_mb > 0:
+            new_info.memory_mib = res.memory_mb
+
+        if res.HasField("gpu_config") and res.gpu_config.count > 0:
+            new_info.gpus = [(res.gpu_config.count, res.gpu_config.gpu_type)]
+
+        if res.ephemeral_disk_mb > 0:
+            new_info.ephemeral_disk_mib = res.ephemeral_disk_mb
+
+    if options.scheduler_placement is not None:
+        sp = options.scheduler_placement
+        # Note: not putting `nonpreemptible` here as that is not currently possible to set via
+        # `.with_options(...)`
+        if len(sp.regions) > 0:
+            new_info.regions = list(sp.regions)
+
+    if options.cloud is not None:
+        new_info.cloud = options.cloud
+
+    if len(options.validated_volumes) > 0:
+        new_info.volumes = {
+            mount_path: VolumeMountInfo(vol._name, vol._object_id, False, None)
+            if vol._mount_options is None
+            else VolumeMountInfo(
+                vol._name,
+                vol._object_id,
+                vol._mount_options.read_only,
+                vol._mount_options.sub_path,
+            )
+            for mount_path, vol in options.validated_volumes
+        }
+
+    if len(options.cloud_bucket_mounts) > 0:
+        new_info.cloud_bucket_mounts = {}
+        protos, _ = cloud_bucket_mounts_to_proto(options.cloud_bucket_mounts, include_secrets=False)
+
+        for proto in protos:
+            new_info.cloud_bucket_mounts[proto.mount_path] = CloudBucketMountInfo._from_proto(proto)
+
+    if len(options.secrets) > 0:
+        new_info.secrets = [repr(s) for s in options.secrets]
+
+    if options.routing_region:
+        new_info.routing_region = options.routing_region
+
+    return new_info

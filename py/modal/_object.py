@@ -358,6 +358,7 @@ class _Object:
 
         *Added in v0.72.39*: This method replaces the deprecated `.resolve()` method.
         """
+
         # TODO: add deprecation for the client argument here - should be added in constructors instead
         if self._is_hydrated:
             if self.client._snapshotted and not self._is_rehydrated:
@@ -388,4 +389,5 @@ class _Object:
                 root_load_context = LoadContext(client=client, task_context=tc)
                 with suppress_tb_frame():  # skip this frame by default
                     await resolver.load(self, root_load_context)
+
         return self

@@ -2316,12 +2316,61 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if int(function_defn.experimental_options.get("warn_me", "0")):
             warnings.append(api_pb2.Warning(message="You have been warned!"))
 
+        if function_data is None:
+            assert function is not None
+            function_data = api_pb2.FunctionData(
+                function_name=function.function_name,
+                module_name=function.module_name,
+                function_type=function.function_type,
+                warm_pool_size=function.warm_pool_size,
+                concurrency_limit=function.concurrency_limit,
+                task_idle_timeout_secs=function.task_idle_timeout_secs,
+                _experimental_group_size=function._experimental_group_size,
+                _experimental_fabric_size=function._experimental_fabric_size,
+                _experimental_buffer_containers=function._experimental_buffer_containers,
+                _experimental_custom_scaling=function._experimental_custom_scaling,
+                _experimental_enable_gpu_snapshot=function._experimental_enable_gpu_snapshot,
+                worker_id=function.worker_id,
+                timeout_secs=function.timeout_secs,
+                web_url=function.web_url,
+                web_url_info=function.web_url_info,
+                webhook_config=function.webhook_config,
+                custom_domain_info=function.custom_domain_info,
+                _experimental_proxy_ip=function._experimental_proxy_ip,
+                method_definitions=function.method_definitions,
+                method_definitions_set=function.method_definitions_set,
+                is_class=function.is_class,
+                class_parameter_info=function.class_parameter_info,
+                is_method=function.is_method,
+                use_function_id=function.use_function_id,
+                use_method_name=function.use_method_name,
+                ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function)],
+                schedule=function.schedule,
+                untrusted=function.untrusted,
+                snapshot_debug=function.snapshot_debug,
+                runtime_perf_record=function.runtime_perf_record,
+                autoscaler_settings=function.autoscaler_settings,
+                function_schema=function.function_schema,
+                experimental_options=function.experimental_options,
+                flash_service_urls=function.flash_service_urls,
+                flash_service_label=function.flash_service_label,
+                startup_timeout_secs=function.startup_timeout_secs,
+                supported_input_formats=function.supported_input_formats,
+                supported_output_formats=function.supported_output_formats,
+                http_config=function.http_config,
+                implementation_name=function.implementation_name,
+                is_server=function.is_server,
+                routing_region=function.routing_region,
+                is_sessioned=function.is_sessioned,
+            )
+
         await stream.send_message(
             api_pb2.FunctionCreateResponse(
                 function_id=function_id,
                 function=function,
                 handle_metadata=self.get_function_metadata(function_id),
                 server_warnings=warnings,
+                function_data=function_data,
             )
         )
 
@@ -2336,13 +2385,121 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if object_id is None:
             raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
         function_metadata = self.get_function_metadata(object_id)
+        function_proto: api_pb2.FunctionData | api_pb2.Function = self.app_functions[object_id]
+
+        if isinstance(function_proto, api_pb2.FunctionData):
+            function_data = function_proto
+        else:
+            function_data = api_pb2.FunctionData(
+                function_name=function_proto.function_name,
+                module_name=function_proto.module_name,
+                function_type=function_proto.function_type,
+                warm_pool_size=function_proto.warm_pool_size,
+                concurrency_limit=function_proto.concurrency_limit,
+                task_idle_timeout_secs=function_proto.task_idle_timeout_secs,
+                _experimental_group_size=function_proto._experimental_group_size,
+                _experimental_fabric_size=function_proto._experimental_fabric_size,
+                _experimental_buffer_containers=function_proto._experimental_buffer_containers,
+                _experimental_custom_scaling=function_proto._experimental_custom_scaling,
+                _experimental_enable_gpu_snapshot=function_proto._experimental_enable_gpu_snapshot,
+                worker_id=function_proto.worker_id,
+                timeout_secs=function_proto.timeout_secs,
+                web_url=function_proto.web_url,
+                web_url_info=function_proto.web_url_info,
+                webhook_config=function_proto.webhook_config,
+                custom_domain_info=function_proto.custom_domain_info,
+                _experimental_proxy_ip=function_proto._experimental_proxy_ip,
+                method_definitions=function_proto.method_definitions,
+                method_definitions_set=function_proto.method_definitions_set,
+                is_class=function_proto.is_class,
+                class_parameter_info=function_proto.class_parameter_info,
+                is_method=function_proto.is_method,
+                use_function_id=function_proto.use_function_id,
+                use_method_name=function_proto.use_method_name,
+                ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function_proto)],
+                schedule=function_proto.schedule,
+                untrusted=function_proto.untrusted,
+                snapshot_debug=function_proto.snapshot_debug,
+                runtime_perf_record=function_proto.runtime_perf_record,
+                autoscaler_settings=function_proto.autoscaler_settings,
+                function_schema=function_proto.function_schema,
+                experimental_options=function_proto.experimental_options,
+                flash_service_urls=function_proto.flash_service_urls,
+                flash_service_label=function_proto.flash_service_label,
+                startup_timeout_secs=function_proto.startup_timeout_secs,
+                supported_input_formats=function_proto.supported_input_formats,
+                supported_output_formats=function_proto.supported_output_formats,
+                http_config=function_proto.http_config,
+                implementation_name=function_proto.implementation_name,
+                is_server=function_proto.is_server,
+                routing_region=function_proto.routing_region,
+                is_sessioned=function_proto.is_sessioned,
+            )
+
         await stream.send_message(
             api_pb2.FunctionGetResponse(
                 function_id=object_id,
                 handle_metadata=function_metadata,
                 server_warnings=self.function_get_server_warnings,
+                function=function_data,
             )
         )
+
+    async def FunctionGetById(self, stream):
+        request: api_pb2.FunctionGetByIdRequest = await stream.recv_message()
+        try:
+            function: api_pb2.FunctionData | api_pb2.Function = self.app_functions[request.function_id]
+        except KeyError:
+            raise GRPCError(Status.NOT_FOUND, "Function not found")
+
+        if isinstance(function, api_pb2.Function):
+            function = api_pb2.FunctionData(
+                function_name=function.function_name,
+                module_name=function.module_name,
+                function_type=function.function_type,
+                warm_pool_size=function.warm_pool_size,
+                concurrency_limit=function.concurrency_limit,
+                task_idle_timeout_secs=function.task_idle_timeout_secs,
+                _experimental_group_size=function._experimental_group_size,
+                _experimental_fabric_size=function._experimental_fabric_size,
+                _experimental_buffer_containers=function._experimental_buffer_containers,
+                _experimental_custom_scaling=function._experimental_custom_scaling,
+                _experimental_enable_gpu_snapshot=function._experimental_enable_gpu_snapshot,
+                worker_id=function.worker_id,
+                timeout_secs=function.timeout_secs,
+                web_url=function.web_url,
+                web_url_info=function.web_url_info,
+                webhook_config=function.webhook_config,
+                custom_domain_info=function.custom_domain_info,
+                _experimental_proxy_ip=function._experimental_proxy_ip,
+                method_definitions=function.method_definitions,
+                method_definitions_set=function.method_definitions_set,
+                is_class=function.is_class,
+                class_parameter_info=function.class_parameter_info,
+                is_method=function.is_method,
+                use_function_id=function.use_function_id,
+                use_method_name=function.use_method_name,
+                ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function)],
+                schedule=function.schedule,
+                untrusted=function.untrusted,
+                snapshot_debug=function.snapshot_debug,
+                runtime_perf_record=function.runtime_perf_record,
+                autoscaler_settings=function.autoscaler_settings,
+                function_schema=function.function_schema,
+                experimental_options=function.experimental_options,
+                flash_service_urls=function.flash_service_urls,
+                flash_service_label=function.flash_service_label,
+                startup_timeout_secs=function.startup_timeout_secs,
+                supported_input_formats=function.supported_input_formats,
+                supported_output_formats=function.supported_output_formats,
+                http_config=function.http_config,
+                implementation_name=function.implementation_name,
+                is_server=function.is_server,
+                routing_region=function.routing_region,
+                is_sessioned=function.is_sessioned,
+            )
+
+        await stream.send_message(api_pb2.FunctionGetByIdResponse(function=function))
 
     async def FunctionMap(self, stream):
         self.fcidx += 1

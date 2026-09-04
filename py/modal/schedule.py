@@ -5,7 +5,7 @@ from modal_proto import api_pb2
 class Schedule:
     """Schedules represent a time frame to repeatedly run a Modal function."""
 
-    def __init__(self, proto_message):
+    def __init__(self, proto_message: api_pb2.Schedule):
         self.proto_message = proto_message
 
 

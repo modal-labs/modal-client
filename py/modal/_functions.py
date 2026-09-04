@@ -16,6 +16,7 @@ from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal.types import CloudBucketMountInfo, FunctionInfo, HttpInfo, VolumeMountInfo
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -56,6 +57,7 @@ from ._utils.function_utils import (
     _process_result,
     _stream_function_call_data,
     get_function_type,
+    get_schedule_str,
     is_async,
     normalize_fractional_target_concurrency,
     parse_gpu_config,
@@ -636,6 +638,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _options: _FunctionOptions
     _base_function: "_Function | None" = None
     _app_id: str | None = None
+    _function_info: FunctionInfo | None = None
 
     async def _get_log_query_data(self) -> _LogQueryData:
         await self.hydrate()
@@ -1158,6 +1161,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             serve_mounts = {m for m in all_mounts if m.is_local()}
             serve_mounts |= image._serve_mounts
             obj._serve_mounts = frozenset(serve_mounts)
+            obj._function_info = FunctionInfo._from_function_proto(response.function_data)
+
             self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         rep = f"Function({tag})"
@@ -1192,6 +1197,36 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if cloud or scheduler_placement:
             obj._build_args["cloud"] = repr(cloud)
             obj._build_args["scheduler_placement"] = repr(scheduler_placement)
+
+        obj._function_info = FunctionInfo(
+            cpu=cpu,
+            memory_mib=memory,
+            gpus=[(parsed.count, parsed.gpu_type) for parsed in (parse_gpu_config(g) for g in gpus)],
+            ephemeral_disk_mib=ephemeral_disk,
+            nonpreemptible=nonpreemptible,
+            regions=None if region is None else [region] if isinstance(region, str) else list(region),
+            routing_region=routing_region,
+            cloud=cloud,
+            schedule=None if schedule is None else get_schedule_str(schedule.proto_message),
+            volumes={
+                mount_path: VolumeMountInfo(vol._name, vol._object_id, False, None)
+                if vol._mount_options is None
+                else VolumeMountInfo(
+                    vol._name,
+                    vol._object_id,
+                    vol._mount_options.read_only,
+                    vol._mount_options.sub_path,
+                )
+                for mount_path, vol in validated_volumes_no_cloud_buckets
+            },
+            cloud_bucket_mounts={
+                cbm.mount_path: CloudBucketMountInfo._from_proto(cbm)
+                for cbm in cloud_bucket_mounts_to_proto(cloud_bucket_mounts, include_secrets=False)[0]
+            },
+            # We don't have any secret IDs yet as we are dehydrated, so we return the reprs instead
+            secrets=[repr(s) for s in secrets],
+            http_info=HttpInfo._from_proto(http_config) if http_config else None,
+        )
 
         return obj
 
@@ -1332,6 +1367,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             print_server_warnings(response.server_warnings)
 
             self._hydrate(response.function_id, load_context.client, response.handle_metadata)
+            self._function_info = FunctionInfo._from_function_proto(response.function)
 
         environment_rep = (
             f", environment_name={load_context_overrides.environment_name!r}"
@@ -1424,14 +1460,44 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Deprecated soon, only for backwards compatibility
         return self.app
 
-    @property
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.info` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    def info(self) -> FunctionSourceInfo:
-        """mdmd:hidden"""
-        return self._source_info_
+    async def info(self, *, refresh: bool = False) -> FunctionInfo:
+        """Get an overview of a Function's resource requests, associated mounts, etc.
+
+        This method performs a network request to populate this information if the Function handle is
+        a remote lookup whose information has not yet been fetched (e.g. from `Function.from_name(...)`),
+        or if `refresh=True`.
+
+        Args:
+            refresh: Always perform a network request. Pass `refresh=True` to ensure that this method
+                returns the most up to date information.
+
+        Returns:
+            This returns a [`modal.types.FunctionInfo`](https://modal.com/docs/sdk/py/latest/types#FunctionInfo)
+            dataclass.
+        """
+
+        if self._function_info is not None and not refresh:
+            return self._function_info
+
+        # For some constructors, e.g. Function.from_name(), hydration will set self._function_info
+        if not self._is_hydrated:
+            await self.hydrate()
+
+        # Other constructors, such as `Function._new_hydrated()`, don't set self._function_info on
+        # hydration, so we have to do an RPC to get that information
+        if refresh or self._function_info is None:
+            # Accessing `.client` or `.object_id` here can't throw since we only get to this branch on a
+            # hydrated handle
+            response = await self.client.stub.FunctionGetById(
+                api_pb2.FunctionGetByIdRequest(
+                    function_id=self.object_id,
+                )
+            )
+
+            self._function_info = FunctionInfo._from_function_proto(response.function)
+
+        assert self._function_info is not None
+        return self._function_info._get_copy()
 
     @property
     def _source_info_(self) -> FunctionSourceInfo:
