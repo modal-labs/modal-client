@@ -761,6 +761,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
+        self.app_servers: dict[str, dict[str, str]] = {}
         self.app_tags: dict[str, dict[str, str]] = {}
         self.app_unindexed_objects = {}
         self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
@@ -1444,6 +1445,39 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.NOT_FOUND, f"App '{request.app_id}' not found")
         lifecycle = api_pb2.AppLifecycle(app_state=self.app_state_history[request.app_id][-1])
         await stream.send_message(api_pb2.AppGetLifecycleResponse(lifecycle=lifecycle))
+
+    async def AppGetInfo(self, stream):
+        request: api_pb2.AppGetInfoRequest = await stream.recv_message()
+        app_id = request.app_id
+        if app_id not in self.app_state_history:
+            raise GRPCError(Status.NOT_FOUND, f"App '{app_id}' not found")
+
+        name = next((app_name for (_, app_name), id_ in self.deployed_apps.items() if id_ == app_id), "")
+        history = self.app_deployment_history.get(app_id) or []
+        lifecycle = api_pb2.AppLifecycle(
+            app_state=self.app_state_history[app_id][-1],
+            created_at=history[0]["deployed_at"] if history else 0.0,
+            created_by=self.default_username,
+            deployed_at=history[-1]["deployed_at"] if history else 0.0,
+            deployed_by=history[-1]["deployed_by"] if history else "",
+            version=history[-1]["version"] if history else 0,
+        )
+        # `app_objects` also holds class ids. The mock servicer cannot classify servers itself, so
+        # tests that need them populate `app_servers` and everything else lands in `functions`.
+        servers = self.app_servers.get(app_id, {})
+        functions = {
+            tag: object_id
+            for tag, object_id in self.app_objects.get(app_id, {}).items()
+            if object_id.startswith("fu-") and tag not in servers
+        }
+        info = api_pb2.AppHandleMetadata(
+            description=name,
+            app_id=app_id,
+            lifecycle=lifecycle,
+            functions=functions,
+            servers=servers,
+        )
+        await stream.send_message(api_pb2.AppGetInfoResponse(info=info))
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()

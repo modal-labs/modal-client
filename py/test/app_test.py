@@ -15,6 +15,7 @@ from modal._utils.async_utils import synchronizer
 from modal.cls import _Cls
 from modal.exception import ExecutionError, InternalError, InvalidError, NotFoundError
 from modal.runner import deploy_app, run_app
+from modal.types import AppState
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -157,6 +158,109 @@ def test_detach_state(client, servicer):
     app = App()
     with app.run(client=client, detach=True):
         assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
+
+
+def test_ephemeral_app_info(client, servicer):
+    app = App(include_source=False)
+    app.function()(square)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppGetInfo",
+            api_pb2.AppGetInfoResponse(
+                info=api_pb2.AppHandleMetadata(
+                    lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_EPHEMERAL),
+                    functions={"square": "fu-1"},
+                )
+            ),
+        )
+        with app.run(client=client):
+            info = app.info()
+
+    assert info.lifecycle.state == AppState.APP_STATE_EPHEMERAL
+    assert info.lifecycle.deployed_at is None
+    assert info.lifecycle.stopped_at is None
+    assert info.functions == {"square": "fu-1"}
+
+
+def test_app_info_second_call_uses_cache(client, servicer):
+    app = App(include_source=False)
+    metadata = api_pb2.AppHandleMetadata(
+        description="cached-info",
+        lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_EPHEMERAL),
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetInfo", api_pb2.AppGetInfoResponse(info=metadata))
+        with app.run(client=client):
+            first_info = app.info()
+            second_info = app.info()
+
+    assert second_info == first_info
+    assert len(ctx.get_requests("AppGetInfo")) == 1
+
+
+def test_app_info_from_lookup(client, servicer):
+    metadata = api_pb2.AppHandleMetadata(
+        description="my-app",
+        lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_DEPLOYED),
+        functions={"square": "fu-123"},
+        servers={"server": "fu-456"},
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppGetOrCreate",
+            api_pb2.AppGetOrCreateResponse(app_id="ap-123", handle_metadata=metadata),
+        )
+        app = App.lookup("my-app", client=client)
+        info = app.info()
+
+    assert info.description == "my-app"
+    assert info.app_id == "ap-123"
+    assert info.lifecycle.state == AppState.APP_STATE_DEPLOYED
+    assert info.functions == {"square": "fu-123"}
+    assert info.servers == {"server": "fu-456"}
+
+
+def test_app_info_from_lookup_does_not_make_extra_rpc(client, servicer):
+    metadata = api_pb2.AppHandleMetadata(
+        description="my-app",
+        lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_DEPLOYED),
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppGetOrCreate",
+            api_pb2.AppGetOrCreateResponse(app_id="ap-123", handle_metadata=metadata),
+        )
+        app = App.lookup("my-app", client=client)
+        app.info()
+
+    assert ctx.get_requests("AppGetInfo") == []
+
+
+def test_app_info_refresh_makes_rpc(client, servicer):
+    lookup_metadata = api_pb2.AppHandleMetadata(
+        description="before-refresh",
+        lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_DEPLOYED),
+    )
+    refreshed_metadata = api_pb2.AppHandleMetadata(
+        description="after-refresh",
+        lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_STOPPED),
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppGetOrCreate",
+            api_pb2.AppGetOrCreateResponse(app_id="ap-123", handle_metadata=lookup_metadata),
+        )
+        ctx.add_response("AppGetInfo", api_pb2.AppGetInfoResponse(info=refreshed_metadata))
+        app = App.lookup("my-app", client=client)
+        assert app.info().description == "before-refresh"
+        info = app.info(refresh=True)
+
+    requests = ctx.get_requests("AppGetInfo")
+    assert len(requests) == 1
+    assert requests[0].app_id == "ap-123"
+    assert info.description == "after-refresh"
 
 
 @pytest.mark.asyncio

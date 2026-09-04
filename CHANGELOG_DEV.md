@@ -20,6 +20,8 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
   - `_Function.from_local`, `_Function.get_build_def`, `_Function.get_raw_f`, `_Function.info`, `_Function.is_generator`, `_Function.spec`, `_Function.stub`, `_Function.tag`
   - `_App.image`, `_App.is_interactive`, `_App.registered_classes`, `_App.registered_entrypoints`, `_App.registered_functions`, `_App.registered_web_endpoints`, `_App.set_description`
   - `_Cls.validate_construction_mechanism`, `_Cls.from_local`
+- Added `modal app info` CLI command that displays the constituent functions and servers of an app as well as its deployment lifecycle information.
+- Added `App.info` method that displays the constituent functions and servers of an app as well as its deployment lifecycle information.
 
 ## JS
 

@@ -413,3 +413,67 @@ class ServerAutoscalerSettings:
             scaledown_window=pb_item.scaledown_window if pb_item.HasField("scaledown_window") else None,
             target_concurrency=target_concurrency,
         )
+
+
+class AppState(enum.Enum):
+    APP_STATE_UNSPECIFIED = 0
+    APP_STATE_EPHEMERAL = 1
+    APP_STATE_DETACHED = 2
+    APP_STATE_DEPLOYED = 3
+    APP_STATE_STOPPING = 4
+    APP_STATE_STOPPED = 5
+    APP_STATE_INITIALIZING = 6
+    APP_STATE_DISABLED = 7
+    APP_STATE_DETACHED_DISCONNECTED = 8
+
+
+@dataclass
+class AppLifecycle:
+    """Timestamps and attributions for events in an App's lifecycle.
+
+    Timestamps or attributions may be None when they do not apply to this App
+    (e.g., App is not deployed, App was not explicitly stopped).
+    """
+
+    state: AppState
+    version: int | None
+    created_at: datetime
+    created_by: str
+    deployed_at: datetime | None
+    deployed_by: str | None
+    stopped_at: datetime | None
+    stopped_by: str | None
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.AppLifecycle) -> "AppLifecycle":
+        return cls(
+            state=AppState(proto.app_state),
+            version=proto.version if proto.version else None,
+            deployed_by=proto.deployed_by if proto.deployed_by else None,
+            stopped_at=datetime.fromtimestamp(proto.stopped_at, tz=timezone.utc) if proto.stopped_at > 0 else None,
+            stopped_by=proto.stopped_by if proto.stopped_by else None,
+            created_by=proto.created_by,
+            deployed_at=datetime.fromtimestamp(proto.deployed_at, tz=timezone.utc) if proto.deployed_at > 0 else None,
+            created_at=datetime.fromtimestamp(proto.created_at, tz=timezone.utc),
+        )
+
+
+@dataclass(frozen=True)
+class AppInfo:
+    """Information about a modal App, including its lifecycle and member functions and servers."""
+
+    app_id: str
+    description: str
+    lifecycle: AppLifecycle
+    functions: dict[str, str]  # function name -> id
+    servers: dict[str, str]  # server name -> id
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.AppHandleMetadata, app_id: str) -> "AppInfo":
+        return cls(
+            description=proto.description,
+            lifecycle=AppLifecycle._from_proto(proto.lifecycle),
+            functions=dict(proto.functions),
+            servers=dict(proto.servers),
+            app_id=app_id,
+        )

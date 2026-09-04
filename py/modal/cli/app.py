@@ -4,6 +4,7 @@ import sys
 import time
 import warnings
 from datetime import datetime, timedelta, timezone
+from json import dumps
 from typing import Literal, get_args
 
 import click
@@ -709,3 +710,79 @@ async def dashboard(
     app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
     url = f"https://modal.com/id/{app_id}"
     open_url_and_display(url, "App dashboard")
+
+
+@app_cli.command("info", no_args_is_help=True)
+@click.argument("app_identifier")
+@env_option
+@click.option("--json", is_flag=True, default=False)
+@synchronizer.create_blocking
+async def info(app_identifier: str, *, env: str | None = None, json: bool = False):
+    """Show an App's lifecycle, Functions, and Servers.
+
+    Examples:
+
+    Get info based on an App ID:
+
+    ```
+    modal app info ap-123456
+    ```
+
+    Get info for a currently deployed App based on its name:
+
+    ```
+    modal app info my-app
+    ```
+
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
+    request = api_pb2.AppGetInfoRequest(app_id=app_id)
+    resp: api_pb2.AppGetInfoResponse = await client.stub.AppGetInfo(request)
+    app_info = resp.info
+    lifecycle = app_info.lifecycle
+    output = OutputManager.get()
+    state = APP_STATE_TO_MESSAGE.get(lifecycle.app_state, Text("unknown", style="gray"))
+
+    if json:
+        output.print_json(
+            dumps(
+                {
+                    "description": app_info.description,
+                    "app_id": app_info.app_id,
+                    "lifecycle": {
+                        "state": state.plain,
+                        "created_at": timestamp_to_localized_str(lifecycle.created_at, json),
+                        "created_by": lifecycle.created_by or None,
+                        "deployed_at": timestamp_to_localized_str(lifecycle.deployed_at, json),
+                        "deployed_by": lifecycle.deployed_by or None,
+                        "version": lifecycle.version or None,
+                        "stopped_at": timestamp_to_localized_str(lifecycle.stopped_at, json),
+                        "stopped_by": lifecycle.stopped_by or None,
+                    },
+                    "functions": dict(sorted(app_info.functions.items())),
+                    "servers": dict(sorted(app_info.servers.items())),
+                }
+            )
+        )
+        return
+
+    output.print(
+        Text.assemble("App: ", (app_info.app_id, "bold"), " - ", (app_info.description, "bold"), " (", state, ")")
+    )
+
+    if app_info.functions:
+        display_table(["Name", "Function ID"], sorted(app_info.functions.items()), title="Functions")
+    if app_info.servers:
+        display_table(["Name", "Function ID"], sorted(app_info.servers.items()), title="Servers")
+
+    events: list[list[Text | str | None]] = [
+        ["Created", timestamp_to_localized_str(lifecycle.created_at, json), lifecycle.created_by]
+    ]
+    if lifecycle.deployed_at:
+        label = f"Deployed (v{lifecycle.version})" if lifecycle.version else "Deployed"
+        events.append([label, timestamp_to_localized_str(lifecycle.deployed_at, json), lifecycle.deployed_by])
+    if lifecycle.stopped_at:
+        events.append(["Stopped", timestamp_to_localized_str(lifecycle.stopped_at, json), lifecycle.stopped_by])
+    display_table(["Event", "Time", "By"], events, title="Lifecycle")

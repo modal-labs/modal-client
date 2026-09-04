@@ -56,6 +56,7 @@ from .retries import Retries
 from .running_app import RunningApp
 from .schedule import Schedule
 from .secret import _Secret
+from .types import AppInfo
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -182,6 +183,7 @@ class _App:
     # Metadata for loading objects within this app
     # passed by reference to functions and classes so it can be updated by run()/deploy()
     _root_load_context: LoadContext
+    _info: AppInfo | None
 
     @property
     def _local_state(self) -> _LocalAppState:
@@ -366,6 +368,7 @@ class _App:
         app._client = client
         app._root_load_context = LoadContext(client=client, environment_name=environment_name, app_id=response.app_id)
         app._running_app = RunningApp(response.app_id, interactive=False)
+        app._info = AppInfo._from_proto(response.handle_metadata, response.app_id)
         return app
 
     async def get_dashboard_url(self) -> str:
@@ -1654,6 +1657,38 @@ class _App:
             raise InvalidError("`app.logs` requires a running/stopped app.")
 
         return _AppLogsManager(self)
+
+    async def info(self, refresh: bool = False) -> AppInfo:
+        """Return information for a modal `App`.
+
+        The information returned includes the App's ID, member functions and servers,
+        as well as basic lifecycle information, e.g. who created the app and when.
+
+        Args:
+            refresh: Whether to fetch the latest info. By default, false, so
+                the info corresponds the App state at the time of the previous lookup.
+
+        See also:
+            - [`AppInfo`](https://modal.com/docs/sdk/py/latest/types#appinfo)
+
+        Returns:
+            `AppInfo` object.
+        """
+        if hasattr(self, "_info") and self._info and not refresh:
+            return AppInfo(
+                app_id=self._info.app_id,
+                description=self._info.description,
+                functions=self._info.functions,
+                servers=self._info.servers,
+                lifecycle=self._info.lifecycle,
+            )
+        if not self._app_id:
+            raise InvalidError("`app.info` requires a running or stopped app.")
+        request = api_pb2.AppGetInfoRequest(app_id=self._app_id)
+        client = self._client or await _Client.from_env()
+        resp = await client.stub.AppGetInfo(request)
+        self._info = AppInfo._from_proto(resp.info, self._app_id)
+        return self._info
 
 
 App = synchronize_api(_App)

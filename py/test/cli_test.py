@@ -2558,6 +2558,78 @@ def test_app_history(servicer, mock_dir, set_env_client):
     res = run_cli_command(["app", "history", "my_app_foo", "--json"], expected_exit_code=1)
 
 
+app_file_with_function = """
+import modal
+
+app = modal.App("my_app", include_source=False)
+
+@app.function()
+def square(x):
+    return x ** 2
+"""
+
+
+def test_app_info(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": app_file_with_function}):
+        run_cli_command(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    app_id = servicer.deployed_apps.get(("main", "my_app_foo"))
+
+    # Look up by name
+    with servicer.intercept() as ctx:
+        res = run_cli_command(["app", "info", "my_app_foo"])
+    request = ctx.pop_request("AppGetInfo")
+    assert request.app_id == app_id
+    assert "my_app_foo" in res.stdout
+    assert app_id in res.stdout
+    assert "deployed" in res.stdout
+    assert "Lifecycle" in res.stdout
+    assert "Created" in res.stdout
+    assert "Deployed (v1)" in res.stdout
+    assert "Functions" in res.stdout
+    assert "square" in res.stdout, res.stdout
+    assert "Servers" not in res.stdout  # omitted when the App has none
+
+    # JSON output is a single object covering every section, so that it can be piped
+    res = run_cli_command(["app", "info", "my_app_foo", "--json"])
+    data = json.loads(res.stdout)
+    assert data["description"] == "my_app_foo"
+    assert data["app_id"] == app_id
+    assert data["lifecycle"]["state"] == "deployed"
+    assert data["lifecycle"]["version"] == 1
+    assert data["lifecycle"]["created_at"] is not None
+    assert data["lifecycle"]["stopped_at"] is None
+    assert data["functions"] == {"square": "fu-1"}
+    assert data["servers"] == {}
+
+    res = run_cli_command(["app", "info", "does-not-exist"], expected_exit_code=1)
+
+    # App IDs are validated through the shared identifier resolver before fetching their info.
+    with servicer.intercept() as ctx:
+        run_cli_command(["app", "info", "ap-abcdefghABCDEFGH012345"], expected_exit_code=1)
+    request = ctx.pop_request("AppGetLifecycle")
+    assert request.app_id == "ap-abcdefghABCDEFGH012345"
+
+
+def test_app_info_with_servers(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": app_file_with_function}):
+        run_cli_command(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    app_id = servicer.deployed_apps.get(("main", "my_app_foo"))
+    # The mock servicer can't classify servers from a definition, so say so directly.
+    servicer.app_servers[app_id] = {"square": "fu-1"}
+
+    res = run_cli_command(["app", "info", "my_app_foo"])
+    assert "Servers" in res.stdout
+    assert "square" in res.stdout
+    assert "Functions" not in res.stdout  # omitted when every Function is a server
+
+    res = run_cli_command(["app", "info", "my_app_foo", "--json"])
+    data = json.loads(res.stdout)
+    assert data["functions"] == {}
+    assert data["servers"] == {"square": "fu-1"}
+
+
 def test_app_rollback(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         # Deploy multiple times
