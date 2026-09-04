@@ -2298,6 +2298,7 @@ message FunctionGetByIdRequest {
 
 message FunctionGetByIdResponse {
   FunctionData function = 1;
+  FunctionHandleMetadata handle_metadata = 2;
 }
 
 message FunctionGetCallGraphRequest {
