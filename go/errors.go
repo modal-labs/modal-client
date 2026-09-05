@@ -151,7 +151,8 @@ func (e SandboxFilesystemFileTooLargeError) Error() string {
 	return "SandboxFilesystemFileTooLargeError: " + e.Exception
 }
 
-// SnapshotCreationError is returned when no snapshot image will be produced for a Sandbox.
+// SnapshotCreationError is returned when a snapshot operation is done and failed.
+// Polling again will not produce an Image; filesystem state is gone.
 type SnapshotCreationError struct {
 	Exception string
 }

@@ -158,7 +158,7 @@ export class SandboxTimeoutError extends Error {
   }
 }
 
-/** No snapshot image will be produced for a Sandbox. */
+/** Snapshot operation is done and failed. Polling again will not produce an Image; filesystem state is gone. */
 export class SnapshotCreationError extends Error {
   constructor(message: string) {
     super(message);

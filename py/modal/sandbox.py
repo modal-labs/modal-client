@@ -1462,6 +1462,11 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _experimental_get_exit_snapshot(self, timeout: float | None = None) -> _Image:
         """Get the exit filesystem snapshot image.
 
+        An exit snapshot captures the Sandbox filesystem when the Sandbox exits,
+        whether its entrypoint finishes gracefully, abruptly, or it is stopped with
+        `terminate()`. Exit snapshots are opt-in: the Sandbox must have been
+        created with `experimental_options={"enable_exit_snapshot": True}`.
+
         Args:
             timeout: Total time to wait in seconds, spread across repeated long
                 polls of at most `_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT` seconds each.
@@ -1477,7 +1482,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             TimeoutError: If `timeout` elapses before the snapshot reaches a
                 terminal state. This includes `timeout=0` when the snapshot is
                 still pending.
-            SnapshotCreationError: If no exit snapshot image will be produced.
+            SnapshotCreationError: Snapshot operation is done and failed.
+                Polling again will not produce an Image; filesystem state is gone.
             NotFoundError: If the sandbox does not exist.
             PermissionDeniedError: If the caller cannot access the sandbox.
         """

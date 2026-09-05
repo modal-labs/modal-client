@@ -195,7 +195,7 @@ class SandboxTimeoutError(TimeoutError):
 
 
 class SnapshotCreationError(Error):
-    """Raised when a Sandbox fails to create an exit snapshot."""
+    """Snapshot operation is done and failed. Polling again will not produce an Image; filesystem state is gone."""
 
 
 class ExecTimeoutError(TimeoutError):

@@ -400,7 +400,9 @@ export type SandboxCreateParams = {
   /** Tags to attach to the Sandbox. Filterable via {@link SandboxService#list client.sandboxes.list}. */
   tags?: Record<string, string>;
 
-  /** Optional experimental options. */
+  /**
+   * Optional experimental options. Values must be booleans or strings.
+   */
   experimentalOptions?: Record<string, any>;
 
   /** If set, connections to this Sandbox will be subdomains of this domain rather than the default.
@@ -2133,13 +2135,39 @@ export class Sandbox {
   /**
    * Get the exit filesystem snapshot image.
    *
+   * An exit snapshot captures the Sandbox filesystem when the Sandbox exits,
+   * whether its entrypoint finishes gracefully, abruptly, or it is stopped with
+   * {@link Sandbox#terminate}. The resulting {@link Image} can be passed to
+   * {@link SandboxService#create client.sandboxes.create()} to start a new
+   * Sandbox from the saved filesystem.
+   *
+   * Exit snapshots are opt-in: the Sandbox must have been created with
+   * `experimentalOptions: { enable_exit_snapshot: true }`. Calling this on a
+   * Sandbox created without that option throws an {@link InvalidError}.
+   *
+   * @example
+   * ```ts
+   * const sb = await modal.sandboxes.create(app, image, {
+   *   experimentalOptions: { enable_exit_snapshot: true },
+   * });
+   * // ... use the Sandbox ...
+   * await sb.terminate();
+   * const image = await sb.experimentalGetExitSnapshot();
+   * const sb2 = await modal.sandboxes.create(app, image);
+   * ```
+   *
    * EXPERIMENTAL: the API is subject to change.
    *
    * @param params - Optional parameters; see SandboxExperimentalGetExitSnapshotParams.
    * @returns The exit snapshot Image.
+   * @throws {InvalidError} If `timeoutMs` is negative, or if exit snapshots
+   *   were not enabled when the Sandbox was created.
    * @throws {TimeoutError} If `timeoutMs` elapses before the snapshot
    *   reaches a terminal state. This includes `timeoutMs = 0` when the
    *   snapshot is still pending.
+   * @throws {SnapshotCreationError} Snapshot operation is done and failed.
+   *   Polling again will not produce an Image; filesystem state is gone.
+   * @throws {NotFoundError} If the Sandbox does not exist.
    */
   async experimentalGetExitSnapshot(
     params?: SandboxExperimentalGetExitSnapshotParams,
