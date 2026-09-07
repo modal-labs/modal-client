@@ -49,6 +49,7 @@ We also provide a number of examples:
 - [Create a Sandbox with GPU](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-gpu.ts)
 - [Create a Sandbox using a private image from AWS ECR](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-private-image.ts)
 - [Run a Sidecar and snapshot its filesystem](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-sidecar.ts)
+- [Persist a workspace across Sidecars](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-sidecar-directory-snapshot.ts)
 - [Take a snapshot of the filesystem of a Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-filesystem-snapshot.ts)
 - [Snapshot the filesystem of a Sandbox when it exits](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-exit-snapshot.ts)
 - [Snapshot a directory, and mount it in a running Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-directory-snapshot.ts)

@@ -71,6 +71,7 @@ We also provide a number of examples:
 - [Create a Sandbox with GPU](./examples/sandbox-gpu/main.go)
 - [Create a Sandbox using a private image from AWS ECR](./examples/sandbox-private-image/main.go)
 - [Run a Sidecar and snapshot its filesystem](./examples/sandbox-sidecar/main.go)
+- [Persist a workspace across Sidecars](./examples/sandbox-sidecar-directory-snapshot/main.go)
 - [Take a snapshot of the filesystem of a Sandbox](./examples/sandbox-filesystem-snapshot/main.go)
 - [Snapshot the filesystem of a Sandbox when it exits](./examples/sandbox-exit-snapshot/main.go)
 - [Snapshot a directory, and mount it in a running Sandbox](./examples/sandbox-directory-snapshot/main.go)

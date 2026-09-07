@@ -781,12 +781,31 @@ func TestValidateExperimentalEncryptionKey(t *testing.T) {
 	}
 }
 
+func TestResolveMountImageID(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	imageID, err := resolveMountImageID(nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(imageID).To(gomega.BeEmpty())
+
+	imageID, err = resolveMountImageID(&Image{ImageID: "im-123"})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(imageID).To(gomega.Equal("im-123"))
+
+	_, err = resolveMountImageID(&Image{})
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Image must be built before mounting"))
+	var invalidErr InvalidError
+	g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue())
+}
+
 func TestTaskMountDirectoryRequestProtoWithExperimentalEncryptionKey(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	key := bytes.Repeat([]byte{1}, 16)
 
-	req, err := buildTaskMountDirectoryRequestProto("ta-123", "/mnt/data", "im-123", &SandboxMountImageParams{
+	req, err := buildTaskMountDirectoryRequestProto("ta-123", "/mnt/data", "im-123", "sb-test-ctr-SIDECAR123", &SandboxMountImageParams{
 		ExperimentalEncryptionKey: key,
 	})
 	g.Expect(err).ToNot(gomega.HaveOccurred())
@@ -795,10 +814,12 @@ func TestTaskMountDirectoryRequestProtoWithExperimentalEncryptionKey(t *testing.
 	g.Expect(req.GetImageId()).To(gomega.Equal("im-123"))
 	g.Expect(req.GetCustomerSuppliedEncryptionKey()).To(gomega.Equal(key))
 	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeTrue())
+	g.Expect(req.GetContainerId()).To(gomega.Equal("sb-test-ctr-SIDECAR123"))
 
-	req, err = buildTaskMountDirectoryRequestProto("ta-123", "/mnt/data", "im-123", nil)
+	req, err = buildTaskMountDirectoryRequestProto("ta-123", "/mnt/data", "im-123", "", nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeFalse())
+	g.Expect(req.GetContainerId()).To(gomega.BeEmpty())
 }
 
 func TestTaskSnapshotDirectoryRequestProtoWithExperimentalEncryptionKey(t *testing.T) {
@@ -806,7 +827,7 @@ func TestTaskSnapshotDirectoryRequestProtoWithExperimentalEncryptionKey(t *testi
 	g := gomega.NewWithT(t)
 	key := bytes.Repeat([]byte{2}, 32)
 
-	req, err := buildTaskSnapshotDirectoryRequestProto("ta-123", "/mnt/data", "snapshot-123", 3600, &SandboxSnapshotDirectoryParams{
+	req, err := buildTaskSnapshotDirectoryRequestProto("ta-123", "/mnt/data", "snapshot-123", "sb-test-ctr-SIDECAR123", 3600, &SandboxSnapshotDirectoryParams{
 		ExperimentalEncryptionKey: key,
 	})
 	g.Expect(err).ToNot(gomega.HaveOccurred())
@@ -816,10 +837,12 @@ func TestTaskSnapshotDirectoryRequestProtoWithExperimentalEncryptionKey(t *testi
 	g.Expect(req.GetTtlSeconds()).To(gomega.Equal(int64(3600)))
 	g.Expect(req.GetCustomerSuppliedEncryptionKey()).To(gomega.Equal(key))
 	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeTrue())
+	g.Expect(req.GetContainerId()).To(gomega.Equal("sb-test-ctr-SIDECAR123"))
 
-	req, err = buildTaskSnapshotDirectoryRequestProto("ta-123", "/mnt/data", "snapshot-123", 3600, nil)
+	req, err = buildTaskSnapshotDirectoryRequestProto("ta-123", "/mnt/data", "snapshot-123", "", 3600, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeFalse())
+	g.Expect(req.GetContainerId()).To(gomega.BeEmpty())
 }
 
 func TestSandboxCreateRequestProto_WithCPUAndCPULimit(t *testing.T) {

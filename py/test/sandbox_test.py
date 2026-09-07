@@ -3071,6 +3071,41 @@ def test_sandbox_container_terminate_wait(app, servicer):
 
 
 @skip_non_subprocess
+def test_sidecar_directory_operations_target_container(app, servicer):
+    image = Image.debian_slim().build(app)
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    container = sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+    unbuilt_image = Image.debian_slim()
+    with pytest.raises(InvalidError, match="currently only supports Images that are either"):
+        container.mount_image("/unbuilt", unbuilt_image)
+    with pytest.raises(TypeError, match="expects an Image"):
+        container.mount_image("/not-an-image", "not-an-image")  # type: ignore[arg-type]
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        container.mount_image("/mounted", image)
+        container.unmount_image("/mounted")
+        snapshot = container.snapshot_directory("/workspace", ttl=None)
+
+    mount_request = tcr_ctx.get_requests("TaskMountDirectory")[0]
+    assert mount_request.path == b"/mounted"
+    assert mount_request.container_id == container.object_id
+
+    unmount_request = tcr_ctx.get_requests("TaskUnmountDirectory")[0]
+    assert unmount_request.path == b"/mounted"
+    assert unmount_request.container_id == container.object_id
+
+    snapshot_request = tcr_ctx.get_requests("TaskSnapshotDirectory")[0]
+    assert snapshot_request.path == b"/workspace"
+    assert snapshot_request.container_id == container.object_id
+    assert snapshot_request.snapshot_id
+    assert snapshot_request.ttl_seconds == -1
+    assert snapshot.object_id == "im-snapshot-123"
+
+    sb.terminate()
+
+
+@skip_non_subprocess
 def test_sandbox_container_wait_after_natural_exit(app, servicer):
     image = mock.Mock()
     image.object_id = "im-test-1"

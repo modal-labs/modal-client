@@ -1609,7 +1609,7 @@ func validateExperimentalEncryptionKey(key []byte) ([]byte, error) {
 	return key, nil
 }
 
-func buildTaskMountDirectoryRequestProto(taskID, path, imageID string, params *SandboxMountImageParams) (*pb.TaskMountDirectoryRequest, error) {
+func buildTaskMountDirectoryRequestProto(taskID, path, imageID, containerID string, params *SandboxMountImageParams) (*pb.TaskMountDirectoryRequest, error) {
 	if params == nil {
 		params = &SandboxMountImageParams{}
 	}
@@ -1622,10 +1622,21 @@ func buildTaskMountDirectoryRequestProto(taskID, path, imageID string, params *S
 		Path:                          []byte(path),
 		ImageId:                       imageID,
 		CustomerSuppliedEncryptionKey: encryptionKey,
+		ContainerId:                   containerID,
 	}.Build(), nil
 }
 
-func buildTaskSnapshotDirectoryRequestProto(taskID, path, snapshotID string, ttlSeconds int64, params *SandboxSnapshotDirectoryParams) (*pb.TaskSnapshotDirectoryRequest, error) {
+func resolveMountImageID(image *Image) (string, error) {
+	if image == nil {
+		return "", nil
+	}
+	if image.ImageID == "" {
+		return "", InvalidError{Exception: "Image must be built before mounting. Call `image.Build(app)` first."}
+	}
+	return image.ImageID, nil
+}
+
+func buildTaskSnapshotDirectoryRequestProto(taskID, path, snapshotID, containerID string, ttlSeconds int64, params *SandboxSnapshotDirectoryParams) (*pb.TaskSnapshotDirectoryRequest, error) {
 	if params == nil {
 		params = &SandboxSnapshotDirectoryParams{}
 	}
@@ -1639,6 +1650,7 @@ func buildTaskSnapshotDirectoryRequestProto(taskID, path, snapshotID string, ttl
 		SnapshotId:                    snapshotID,
 		TtlSeconds:                    &ttlSeconds,
 		CustomerSuppliedEncryptionKey: encryptionKey,
+		ContainerId:                   containerID,
 	}.Build(), nil
 }
 
@@ -1927,15 +1939,12 @@ func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, pa
 		return err
 	}
 
-	imageID := ""
-	if image != nil {
-		if image.ImageID == "" {
-			return InvalidError{Exception: "Image must be built before mounting. Call `image.Build(app)` first."}
-		}
-		imageID = image.ImageID
+	imageID, err := resolveMountImageID(image)
+	if err != nil {
+		return err
 	}
 
-	request, err := buildTaskMountDirectoryRequestProto(taskID, path, imageID, params)
+	request, err := buildTaskMountDirectoryRequestProto(taskID, path, imageID, "", params)
 	if err != nil {
 		return err
 	}
@@ -1951,8 +1960,9 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *Sandbo
 	}
 
 	request := pb.TaskUnmountDirectoryRequest_builder{
-		TaskId: taskID,
-		Path:   []byte(path),
+		TaskId:      taskID,
+		Path:        []byte(path),
+		ContainerId: "",
 	}.Build()
 
 	return crClient.UnmountDirectory(ctx, request)
@@ -2043,7 +2053,7 @@ func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *S
 	}
 
 	// SnapshotId guarantees idempotency under retries.
-	request, err := buildTaskSnapshotDirectoryRequestProto(taskID, path, uuid.NewString(), wireTTL, params)
+	request, err := buildTaskSnapshotDirectoryRequestProto(taskID, path, uuid.NewString(), "", wireTTL, params)
 	if err != nil {
 		return nil, err
 	}

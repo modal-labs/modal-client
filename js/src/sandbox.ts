@@ -122,7 +122,8 @@ const EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF = 1;
  * or non-whole-second values are rejected since the wire format would
  * silently strip the sub-second precision.
  */
-function resolveTtlSeconds(ttlMs: number | null | undefined): number {
+/** @internal @hidden */
+export function resolveTtlSeconds(ttlMs: number | null | undefined): number {
   if (ttlMs === undefined) {
     return 30 * 24 * 3600;
   }
@@ -1471,6 +1472,7 @@ export function buildTaskMountDirectoryRequestProto(
   path: string,
   imageId: string,
   params?: SandboxMountImageParams,
+  containerId = "",
 ): TaskMountDirectoryRequest {
   return TaskMountDirectoryRequest.create({
     taskId,
@@ -1479,7 +1481,18 @@ export function buildTaskMountDirectoryRequestProto(
     customerSuppliedEncryptionKey: validateExperimentalEncryptionKey(
       params?.experimentalEncryptionKey,
     ),
+    containerId,
   });
+}
+
+/** @ignore */
+export function resolveMountImageId(image?: Image): string {
+  if (image && !image.imageId) {
+    throw new Error(
+      "Image must be built before mounting. Call `image.build(app)` first.",
+    );
+  }
+  return image?.imageId ?? "";
 }
 
 /** @ignore */
@@ -1489,6 +1502,7 @@ export function buildTaskSnapshotDirectoryRequestProto(
   snapshotId: string,
   ttlSeconds: number,
   params?: SandboxSnapshotDirectoryParams,
+  containerId = "",
 ): TaskSnapshotDirectoryRequest {
   return TaskSnapshotDirectoryRequest.create({
     taskId,
@@ -1498,6 +1512,7 @@ export function buildTaskSnapshotDirectoryRequestProto(
     customerSuppliedEncryptionKey: validateExperimentalEncryptionKey(
       params?.experimentalEncryptionKey,
     ),
+    containerId,
   });
 }
 
@@ -2339,13 +2354,7 @@ export class Sandbox {
     this.#ensureAttached();
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
-    if (image && !image.imageId) {
-      throw new Error(
-        "Image must be built before mounting. Call `image.build(app)` first.",
-      );
-    }
-
-    const imageId = image?.imageId ?? "";
+    const imageId = resolveMountImageId(image);
     const request = buildTaskMountDirectoryRequestProto(
       taskId,
       path,

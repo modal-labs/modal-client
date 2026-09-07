@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -93,6 +94,15 @@ type SidecarReloadVolumesParams struct {
 	// Timeout bounds how long the call waits. Defaults to 55 seconds.
 	Timeout time.Duration
 }
+
+// SidecarMountImageParams holds options for [SidecarContainer.MountImage].
+type SidecarMountImageParams SandboxMountImageParams
+
+// SidecarUnmountImageParams holds options for [SidecarContainer.UnmountImage].
+type SidecarUnmountImageParams struct{}
+
+// SidecarSnapshotDirectoryParams holds options for [SidecarContainer.SnapshotDirectory].
+type SidecarSnapshotDirectoryParams SandboxSnapshotDirectoryParams
 
 func validateSidecarName(name string) error {
 	if name == "" {
@@ -422,4 +432,90 @@ func (c *SidecarContainer) ReloadVolumes(ctx context.Context, params *SidecarRel
 		timeout = params.Timeout
 	}
 	return c.sandbox.reloadVolumes(ctx, c.ContainerID, timeout)
+}
+
+// MountImage mounts an Image at a path in this Sidecar container's filesystem.
+//
+// If image is nil, mounts an empty directory.
+func (c *SidecarContainer) MountImage(ctx context.Context, path string, image *Image, params *SidecarMountImageParams) error {
+	imageID, err := resolveMountImageID(image)
+	if err != nil {
+		return err
+	}
+
+	taskID, client, err := c.sandbox.getCommandRouter(ctx)
+	if err != nil {
+		return err
+	}
+	request, err := buildTaskMountDirectoryRequestProto(
+		taskID,
+		path,
+		imageID,
+		c.ContainerID,
+		(*SandboxMountImageParams)(params),
+	)
+	if err != nil {
+		return err
+	}
+	return client.MountDirectory(ctx, request)
+}
+
+// UnmountImage removes an Image mount from a path in this Sidecar container's filesystem.
+func (c *SidecarContainer) UnmountImage(ctx context.Context, path string, _ *SidecarUnmountImageParams) error {
+	taskID, client, err := c.sandbox.getCommandRouter(ctx)
+	if err != nil {
+		return err
+	}
+	return client.UnmountDirectory(ctx, pb.TaskUnmountDirectoryRequest_builder{
+		TaskId:      taskID,
+		Path:        []byte(path),
+		ContainerId: c.ContainerID,
+	}.Build())
+}
+
+// SnapshotDirectory snapshots and creates a new Image from a directory in the running Sidecar container.
+//
+// The Image can be used anywhere an Image is accepted, including as a mount or
+// as the base filesystem for another container.
+//
+// If params is nil, the resulting Image is retained for 30 days as a hard
+// cutoff measured from creation, and the call has a 55-second timeout.
+// See [SidecarSnapshotDirectoryParams] for control over both.
+func (c *SidecarContainer) SnapshotDirectory(ctx context.Context, path string, params *SidecarSnapshotDirectoryParams) (*Image, error) {
+	timeout := 55 * time.Second
+	var ttl time.Duration
+	if params != nil {
+		typedParams := (*SandboxSnapshotDirectoryParams)(params)
+		ttl = typedParams.TTL
+		if typedParams.Timeout != 0 {
+			timeout = typedParams.Timeout
+		}
+	}
+	wireTTL, err := resolveTTL(ttl)
+	if err != nil {
+		return nil, err
+	}
+	taskID, client, err := c.sandbox.getCommandRouter(ctx)
+	if err != nil {
+		return nil, err
+	}
+	request, err := buildTaskSnapshotDirectoryRequestProto(
+		taskID,
+		path,
+		uuid.NewString(),
+		c.ContainerID,
+		wireTTL,
+		(*SandboxSnapshotDirectoryParams)(params),
+	)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.SnapshotDirectory(ctx, request, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if response.GetImageId() == "" {
+		return nil, ExecutionError{Exception: "Sidecar snapshot directory response missing image ID"}
+	}
+	return &Image{ImageID: response.GetImageId(), client: c.sandbox.client}, nil
 }

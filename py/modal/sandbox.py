@@ -196,6 +196,30 @@ def _validate_experimental_encryption_key(key: bytes | None) -> bytes | None:
     return key
 
 
+def _image_id_for_mount(image: _Image, method_name: str) -> str:
+    if not isinstance(image, _Image):
+        raise TypeError(f"{method_name}(image=...) expects an Image object, got {image!r}")
+
+    if image._mount_layers:
+        raise InvalidError(
+            f"{method_name}() only supports pre-built images. When using `add_local*` methods, "
+            "specify `copy=True` and call `.build()` before passing the image to `mount_image()`:\n\nE.g.\n"
+            'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build(app)\n'
+            f"{method_name}(path, img)"
+        )
+    if image._is_empty:
+        return ""
+    if image._object_id:
+        return image._object_id
+    raise InvalidError(
+        f"{method_name}() currently only supports Images that are either:\n"
+        "- prebuilt using `image.build()`\n"
+        "- referenced by id, e.g. `Image.from_id()`\n"
+        "- filesystem/directory snapshots e.g. created by `.snapshot_directory()` "
+        "or `.snapshot_filesystem()`\n"
+    )
+
+
 if TYPE_CHECKING:
     import modal.app
 
@@ -1651,28 +1675,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_session_2.filesystem.list_files("/user_project")
             ```
         """
-        if not isinstance(image, _Image):
-            raise TypeError(f"Sandbox.mount_image(image=...) expects an Image object, got {image!r}")
-
-        if image._mount_layers:
-            raise InvalidError(
-                "Sandbox.mount_image() only supports pre-built images. When using `add_local*` methods, "
-                "specify `copy=True` and call `.build()` before passing the image to `mount_image()`:\n\nE.g.\n"
-                'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build(app)\n'
-                "sandbox.mount_image(path, img)"
-            )
-        if image._is_empty:
-            image_id = ""
-        elif image._object_id:
-            image_id = image._object_id
-        else:
-            raise InvalidError(
-                "Sandbox.mount_image() currently only supports Images that are either:\n"
-                "- prebuilt using `image.build()`\n"
-                "- referenced by id, e.g. `Image.from_id()`\n"
-                "- filesystem/directory snapshots e.g. created by `.snapshot_directory()` "
-                "or `.snapshot_filesystem()`\n"
-            )
+        image_id = _image_id_for_mount(image, "Sandbox.mount_image")
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
@@ -2866,6 +2869,133 @@ class _SidecarContainer:
         if self._filesystem is None:
             self._filesystem = _SandboxFilesystem(self)
         return self._filesystem
+
+    async def mount_image(
+        self,
+        path: PurePosixPath | str,
+        image: _Image,
+        *,
+        _experimental_encryption_key: bytes | None = None,
+    ) -> None:
+        """Mount an Image at a specified path in this Sidecar container.
+
+        `path` should be a directory that is **not** the root path (`/`). If the path doesn't exist,
+        it will be created. If it exists and contains data, the previous directory will be replaced
+        by the mount.
+
+        The `image` argument supports any Image that has an object ID, including:
+        - Images built using `image.build()`
+        - Images referenced by ID, e.g. `Image.from_id(...)`
+        - Filesystem/directory snapshots, e.g. created by `.snapshot_directory()` or `.snapshot_filesystem()`
+        - Empty images created with `Image.from_scratch()`
+
+        Args:
+            path: Absolute mount point directory inside the Sidecar container (not `/`).
+            image: Image to mount at `path` (must be built, referenced by ID, or snapshot-based as described above).
+
+        Examples:
+            ```py notest
+            sidecar_1.mount_image("/workspace", modal.Image.from_scratch())
+            workspace_snapshot = sidecar_1.snapshot_directory("/workspace")
+
+            # You can later mount this snapshot in another Sidecar:
+            sidecar_2.mount_image("/workspace", workspace_snapshot)
+            sidecar_2.filesystem.list_files("/workspace")
+            ```
+        """
+        image_id = _image_id_for_mount(image, "SidecarContainer.mount_image")
+
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Mount path must be absolute; got: {posix_path}")
+
+        task_id, command_router_client = await self._get_command_router()
+        await command_router_client.mount_image(
+            sr_pb2.TaskMountDirectoryRequest(
+                task_id=task_id,
+                path=posix_path.as_posix().encode("utf8"),
+                image_id=image_id,
+                customer_supplied_encryption_key=_validate_experimental_encryption_key(_experimental_encryption_key),
+                container_id=self._container_id,
+            )
+        )
+
+    async def unmount_image(self, path: PurePosixPath | str) -> None:
+        """Unmount a previously mounted Image from this Sidecar container.
+
+        `path` must be the exact mount point that was passed to `.mount_image()`.
+        After unmounting, the underlying Sidecar filesystem at that path becomes
+        visible again.
+
+        Args:
+            path: Absolute mount point directory to unmount.
+
+        """
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Unmount path must be absolute; got: {posix_path}")
+
+        task_id, command_router_client = await self._get_command_router()
+        await command_router_client.unmount_image(
+            sr_pb2.TaskUnmountDirectoryRequest(
+                task_id=task_id,
+                path=posix_path.as_posix().encode("utf8"),
+                container_id=self._container_id,
+            )
+        )
+
+    async def snapshot_directory(
+        self,
+        path: PurePosixPath | str,
+        *,
+        timeout: int = 55,
+        ttl: int | None = 30 * 24 * 3600,
+        _experimental_encryption_key: bytes | None = None,
+    ) -> _Image:
+        """Snapshot a directory in this Sidecar container, creating a new Image with its content.
+
+        `timeout` If the snapshot does not return within that window, the call is cancelled
+        and `modal.exception.TimeoutError` is raised.
+
+        `ttl` The resulting Image is retained for `ttl` seconds (default: 30 days).
+        Pass `ttl=None` to retain the Image indefinitely.
+
+        The returned Image can be used anywhere an Image is accepted, including
+        as a mount or as the base filesystem for another container.
+
+        Args:
+            path: Absolute path of the directory inside the Sidecar container to snapshot.
+
+        Returns:
+            An `Image` containing the directory contents.
+
+        Examples:
+            ```py notest
+            workspace_snapshot = sidecar_1.snapshot_directory("/workspace")
+
+            # You can later mount this snapshot in another Sidecar:
+            sidecar_2.mount_image("/workspace", workspace_snapshot)
+            sidecar_2.filesystem.list_files("/workspace")
+            ```
+        """
+        wire_ttl_seconds = _ttl_to_wire_ttl(ttl)
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Snapshot path must be absolute; got: {posix_path}")
+
+        task_id, command_router_client = await self._get_command_router()
+        response = await command_router_client.snapshot_directory(
+            sr_pb2.TaskSnapshotDirectoryRequest(
+                task_id=task_id,
+                path=posix_path.as_posix().encode("utf8"),
+                snapshot_id=str(uuid.uuid4()),
+                ttl_seconds=wire_ttl_seconds,
+                customer_supplied_encryption_key=_validate_experimental_encryption_key(_experimental_encryption_key),
+                container_id=self._container_id,
+            ),
+            timeout=float(timeout),
+        )
+        return _Image._new_hydrated(response.image_id, self._sandbox._client, None)
 
     async def wait(self, raise_on_termination: bool = True) -> None:
         if self._result is not None and self._result.status != api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:

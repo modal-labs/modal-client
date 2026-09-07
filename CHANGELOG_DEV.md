@@ -7,6 +7,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 ## Python
 
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `sidecar.snapshot_filesystem()`.
+- Added `mount_image()`, `unmount_image()`, and `snapshot_directory()` to experimental Sandbox Sidecar containers. Directory snapshot Images can be used anywhere an Image is accepted, including as mounts and as container filesystems.
 - Added the [`Sandbox.logs`](/docs/sdk/py/latest/Sandbox#logs) namespace to retrieve Sandbox entrypoint logs directly from the SDK. The namespace has two different methods, allowing you to `fetch()` logs from a specific date/time range, or `tail()` the most recent logs.
 - Added support for setting the default member Role when creating Restricted Environments through the Python SDK and CLI.
 - The `modal` CLI now accepts a global `--profile` option for simpler ad hoc profile selection.
@@ -26,6 +27,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 ## JS
 
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.snapshotFilesystem`.
+- Added `mountImage()`, `unmountImage()`, and `snapshotDirectory()` to experimental Sandbox Sidecar containers. Directory snapshot Images can be used anywhere an Image is accepted, including as mounts and as container filesystems.
 - A client now releases its connection to a Sandbox once that Sandbox has been idle for 30 seconds, freeing associated resources similar to an explicit `.detach()` call. A subsequent sandbox operation reconnects so the Sandbox stays usable. `Sandbox.terminate()` no longer detaches from the Sandbox and instead relies on the new idle timeout or an explicit `.detach()` call to release resources.
 - A Sandbox's stdout/stderr, and the same streams on `ContainerProcess` (as returned by `sandbox.exec()`), now defer fetching output until `.stdout`/`.stderr` is first read. This makes the JS SDK consistent with the Go/Python SDKs in this regard.
 - A Sandbox's `stdout`/`stderr`, and those of a `ContainerProcess`, no longer read ahead of the caller: output is fetched by the read that asks for it, with no background prefetching/buffering. Pipe them through a `TransformStream` or similar to add your own read-ahead if needed.
@@ -34,5 +36,6 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 ## Go
 
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.SnapshotFilesystem`.
+- Added `MountImage`, `UnmountImage`, and `SnapshotDirectory` to experimental Sandbox Sidecar containers. Directory snapshot Images can be used anywhere an Image is accepted, including as mounts and as container filesystems.
 - A client now releases its connection to a Sandbox once that Sandbox has been idle for 30 seconds, freeing associated resources similar to an explicit `Detach()` call. A subsequent sandbox operation reconnects so the Sandbox stays usable. `Sandbox.Terminate()` no longer detaches from the Sandbox and instead relies on the new idle timeout or an explicit `Detach()` call to release resources.
 - A Sandbox's `Stdout`/`Stderr`, and those of a `ContainerProcess`, no longer read ahead of the caller: output is fetched by the read that asks for it, with no background goroutine and no buffer in between. Wrap them in a `bufio.Reader` for read-ahead.

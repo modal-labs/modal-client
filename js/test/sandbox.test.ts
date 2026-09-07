@@ -2531,11 +2531,13 @@ test("TaskMountDirectoryRequest carries experimental encryption key", () => {
     {
       experimentalEncryptionKey: key,
     },
+    "sb-test-ctr-SIDECAR123",
   );
   expect(req.taskId).toBe("ta-123");
   expect(req.path).toEqual(new TextEncoder().encode("/mnt/data"));
   expect(req.imageId).toBe("im-123");
   expect(req.customerSuppliedEncryptionKey).toEqual(key);
+  expect(req.containerId).toBe("sb-test-ctr-SIDECAR123");
 
   const reqWithoutKey = buildTaskMountDirectoryRequestProto(
     "ta-123",
@@ -2543,6 +2545,7 @@ test("TaskMountDirectoryRequest carries experimental encryption key", () => {
     "im-123",
   );
   expect(reqWithoutKey.customerSuppliedEncryptionKey).toBeUndefined();
+  expect(reqWithoutKey.containerId).toBe("");
 });
 
 test("TaskSnapshotDirectoryRequest carries experimental encryption key", () => {
@@ -2554,12 +2557,14 @@ test("TaskSnapshotDirectoryRequest carries experimental encryption key", () => {
     "snapshot-123",
     3600,
     { experimentalEncryptionKey: key },
+    "sb-test-ctr-SIDECAR123",
   );
   expect(req.taskId).toBe("ta-123");
   expect(req.path).toEqual(new TextEncoder().encode("/mnt/data"));
   expect(req.snapshotId).toBe("snapshot-123");
   expect(req.ttlSeconds).toBe(3600);
   expect(req.customerSuppliedEncryptionKey).toEqual(key);
+  expect(req.containerId).toBe("sb-test-ctr-SIDECAR123");
 
   const reqWithoutKey = buildTaskSnapshotDirectoryRequestProto(
     "ta-123",
@@ -2568,6 +2573,7 @@ test("TaskSnapshotDirectoryRequest carries experimental encryption key", () => {
     3600,
   );
   expect(reqWithoutKey.customerSuppliedEncryptionKey).toBeUndefined();
+  expect(reqWithoutKey.containerId).toBe("");
 });
 
 test("buildTaskExecStartRequestProto defaults", () => {
@@ -2983,6 +2989,9 @@ test("sidecar snapshotFilesystem targets its container", async () => {
     new Image(mc, "im-built", ""),
     { command: ["sleep", "infinity"] },
   );
+  await expect(
+    sidecar.mountImage("/unbuilt", new Image(mc, "", "")),
+  ).rejects.toThrow("Image must be built before mounting");
   const image = await sidecar.snapshotFilesystem({ ttlMs: null });
 
   expect(image.imageId).toBe("im-sidecar-snapshot");

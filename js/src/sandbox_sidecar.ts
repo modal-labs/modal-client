@@ -1,4 +1,5 @@
 import { ClientError, Status } from "nice-grpc";
+import { v4 as uuidv4 } from "uuid";
 
 import {
   GenericResult,
@@ -11,15 +12,22 @@ import {
   TaskContainerListRequest,
   TaskContainerTerminateRequest,
   TaskContainerWaitRequest,
+  TaskUnmountDirectoryRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
   buildOutboundNetworkAccess,
+  buildTaskMountDirectoryRequestProto,
+  buildTaskSnapshotDirectoryRequestProto,
   ContainerProcess,
   defaultSandboxPTYInfo,
   getReturnCode,
+  resolveMountImageId,
+  resolveTtlSeconds,
   validateExecArgs,
   validateWorkdir,
   type SandboxExecParams,
+  type SandboxMountImageParams,
+  type SandboxSnapshotDirectoryParams,
 } from "./sandbox";
 import { SandboxFilesystem } from "./sandbox_fs";
 import type { TaskCommandRouterClientImpl } from "./task_command_router_client";
@@ -29,7 +37,7 @@ import {
   InvalidError,
   NotFoundError,
 } from "./errors";
-import type { Image } from "./image";
+import { Image } from "./image";
 import type { ModalClient } from "./client";
 import {
   collectSecretIds,
@@ -55,6 +63,9 @@ type SandboxSidecarCommandRouter = Pick<
   | "containerList"
   | "containerTerminate"
   | "containerWait"
+  | "mountDirectory"
+  | "snapshotDirectory"
+  | "unmountDirectory"
 >;
 
 type SandboxSidecarAccess = {
@@ -134,6 +145,15 @@ export type SidecarReloadVolumesParams = {
   /** Overall budget in milliseconds. Defaults to 55000. */
   timeoutMs?: number;
 };
+
+/** Optional parameters for {@link SidecarContainer#mountImage SidecarContainer.mountImage()}. */
+export type SidecarMountImageParams = SandboxMountImageParams;
+
+/** Optional parameters for {@link SidecarContainer#unmountImage SidecarContainer.unmountImage()}. */
+export type SidecarUnmountImageParams = Record<string, never>;
+
+/** Optional parameters for {@link SidecarContainer#snapshotDirectory SidecarContainer.snapshotDirectory()}. */
+export type SidecarSnapshotDirectoryParams = SandboxSnapshotDirectoryParams;
 
 function validateSidecarName(name: string): void {
   if (name === "") {
@@ -449,5 +469,92 @@ export class SidecarContainer {
    */
   async reloadVolumes(params?: SidecarReloadVolumesParams): Promise<void> {
     await this.#access.reloadVolumes(this.containerId, params);
+  }
+
+  /**
+   * Mount an {@link Image} at a path in this Sidecar container's filesystem.
+   *
+   * @param path - The path where the directory should be mounted
+   * @param image - Optional {@link Image} to mount. If undefined, mounts an empty directory.
+   * @param params - Optional parameters; see {@link SidecarMountImageParams}.
+   */
+  async mountImage(
+    path: string,
+    image?: Image,
+    params?: SidecarMountImageParams,
+  ): Promise<void> {
+    const imageId = resolveMountImageId(image);
+    const [taskId, client] = await this.#access.commandRouter();
+    await client.mountDirectory(
+      buildTaskMountDirectoryRequestProto(
+        taskId,
+        path,
+        imageId,
+        params,
+        this.containerId,
+      ),
+    );
+  }
+
+  /**
+   * Unmounts an {@link Image} previously mounted at a path in this Sidecar container's filesystem.
+   *
+   * @param path - The mount path to unmount
+   */
+  async unmountImage(
+    path: string,
+    _params?: SidecarUnmountImageParams,
+  ): Promise<void> {
+    const [taskId, client] = await this.#access.commandRouter();
+    await client.unmountDirectory(
+      TaskUnmountDirectoryRequest.create({
+        taskId,
+        path: new TextEncoder().encode(path),
+        containerId: this.containerId,
+      }),
+    );
+  }
+
+  /**
+   * Snapshots and creates a new {@link Image} from a directory in the running Sidecar container.
+   *
+   * The resulting Image is retained for `ttlMs` (default: 30 days),
+   * as a hard cutoff measured from creation — usage does not extend
+   * the lifetime. Pass `ttlMs: null` to retain indefinitely.
+   *
+   * The call has an overall `timeoutMs` budget (default: 55000). If it
+   * elapses before a snapshot completes, the call is cancelled and an
+   * error is thrown.
+   *
+   * The Image can be used anywhere an Image is accepted, including as a mount
+   * or as the base filesystem for another container.
+   *
+   * @param path - The path of the directory to snapshot
+   * @param params - Optional parameters; see {@link SidecarSnapshotDirectoryParams}.
+   * @returns Promise that resolves to an {@link Image}
+   */
+  async snapshotDirectory(
+    path: string,
+    params?: SidecarSnapshotDirectoryParams,
+  ): Promise<Image> {
+    const timeoutMs = params?.timeoutMs || 55000;
+    const [taskId, client] = await this.#access.commandRouter();
+    const response = await client.snapshotDirectory(
+      buildTaskSnapshotDirectoryRequestProto(
+        taskId,
+        path,
+        uuidv4(),
+        resolveTtlSeconds(params?.ttlMs),
+        params,
+        this.containerId,
+      ),
+      { timeoutMs },
+    );
+    if (!response.imageId) {
+      throw new InternalFailure(
+        "Sidecar snapshot directory response missing `imageId`",
+      );
+    }
+    return new Image(this.#access.client, response.imageId, "");
   }
 }
