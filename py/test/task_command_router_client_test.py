@@ -324,6 +324,66 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
 
 
 @pytest.mark.asyncio
+async def test_exec_stdio_read_retry_budget_refills_after_progress(make_router_client):
+    # Every attempt delivers exactly one chunk and then fails with a transient
+    # error. The number of disconnects exceeds the retry budget, but each one is
+    # separated by progress, so the stream must still complete: the budget
+    # bounds consecutive failures, not failures over the stream's lifetime.
+    pieces = [b"one", b"two", b"three", b"four", b"five", b"six"]
+
+    client = make_router_client(
+        stream_stdio_retry_delay_secs=0.001,
+        stream_stdio_retry_delay_factor=1.0,
+        stream_stdio_max_retries=2,
+    )
+
+    num_attempts_made = 0
+
+    class _Stream:
+        def __init__(self, timeout: float | None):
+            self._timeout = timeout
+            self._emitted = 0
+            self._last_req: sr_pb2.TaskExecStdioReadRequest | None = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
+            return False
+
+        async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            self._last_req = req
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            assert self._last_req is not None
+            start_idx = _start_index_for_offset(pieces, int(self._last_req.offset))
+            if start_idx >= len(pieces):
+                raise StopAsyncIteration
+            if self._emitted >= 1:
+                raise GRPCError(Status.UNAVAILABLE, "unavailable")
+            self._emitted += 1
+            return sr_pb2.TaskExecStdioReadResponse(data=pieces[start_idx])
+
+    def _open(timeout: float | None = None):
+        nonlocal num_attempts_made
+        num_attempts_made += 1
+        return _Stream(timeout)
+
+    client._stub = _Stub(_open)  # type: ignore[assignment]
+
+    out: list[bytes] = []
+    async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
+        out.append(item.data)
+
+    assert out == pieces
+    # One attempt per chunk plus the final attempt that observes end of stream.
+    assert num_attempts_made == len(pieces) + 1
+
+
+@pytest.mark.asyncio
 async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(make_router_client):
     pieces = [b"x", b"y"]
 
@@ -1083,6 +1143,71 @@ async def test_sandbox_stdio_read_rebases_offset_on_transient_retry(make_router_
 
     assert out == [b"abc", b"def"]
     assert second_request_offset == 1003
+
+
+@pytest.mark.asyncio
+async def test_sandbox_stdio_read_retry_budget_refills_after_progress(make_router_client):
+    # V2 sandbox counterpart of the exec test above: every attempt delivers one
+    # chunk and then fails with a transient error, for more disconnects than the
+    # retry budget allows. Each reopen must also request the byte after the last
+    # chunk, since the offset is rebased off ``starting_offset`` per attempt.
+    pieces = [b"one", b"two", b"three", b"four", b"five", b"six"]
+    piece_offsets = [sum(len(p) for p in pieces[:i]) for i in range(len(pieces) + 1)]
+
+    client = make_router_client(
+        stream_stdio_retry_delay_secs=0.001,
+        stream_stdio_retry_delay_factor=1.0,
+        stream_stdio_max_retries=2,
+    )
+
+    num_attempts_made = 0
+    requested_offsets: list[int] = []
+
+    class _Stream:
+        def __init__(self, timeout: float | None):
+            self._timeout = timeout
+            self._emitted = 0
+            self._last_req: sr_pb2.SandboxStdioReadV2Request | None = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001 - test helper
+            return False
+
+        async def send_message(self, req: sr_pb2.SandboxStdioReadV2Request, end: bool = True):  # noqa: ARG002
+            self._last_req = req
+            requested_offsets.append(int(req.offset))
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            assert self._last_req is not None
+            offset = int(self._last_req.offset)
+            start_idx = _start_index_for_offset(pieces, offset)
+            if start_idx >= len(pieces):
+                raise StopAsyncIteration
+            if self._emitted >= 1:
+                raise GRPCError(Status.UNAVAILABLE, "unavailable")
+            self._emitted += 1
+            return sr_pb2.SandboxStdioReadV2Response(data=pieces[start_idx], starting_offset=offset)
+
+    def _open(timeout: float | None = None):
+        nonlocal num_attempts_made
+        num_attempts_made += 1
+        return _Stream(timeout)
+
+    client._stub = _SandboxStdioReadV2Stub(_open)  # type: ignore[assignment]
+
+    out: list[bytes] = []
+    async for item in client.sandbox_stdio_read("task-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
+        out.append(item.data)
+
+    assert out == pieces
+    # One attempt per chunk plus the final attempt that observes end of stream.
+    assert num_attempts_made == len(pieces) + 1
+    assert requested_offsets == piece_offsets
 
 
 @pytest.mark.asyncio

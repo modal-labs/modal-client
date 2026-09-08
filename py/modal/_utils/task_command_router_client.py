@@ -840,8 +840,11 @@ class TaskCommandRouterClient:
                             # We successfully authenticated after a JWT refresh, reset the auth retry flag.
                             if did_auth_retry:
                                 did_auth_retry = False
-                            # Reset retry backoff after any successful chunk.
+                            # Any received chunk is progress: reset the backoff and refill the
+                            # retry budget so it bounds consecutive failures, not failures over
+                            # the stream's lifetime.
                             delay_secs = self.stream_stdio_retry_delay_secs
+                            num_retries_remaining = self.stream_stdio_max_retries
                             # Track it so transient reconnects request the
                             # correct next byte.
                             if is_first_chunk_of_attempt and isinstance(item, sr_pb2.SandboxStdioReadV2Response):
