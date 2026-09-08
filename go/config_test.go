@@ -96,6 +96,30 @@ func TestGetProfile_OAuthCredentialsFromConfig(t *testing.T) {
 	g.Expect(profile.OAuthClientSecret).To(gomega.Equal("ov-client-secret"))
 }
 
+func TestGetProfile_SandboxV2Parsing(t *testing.T) {
+	cases := []struct {
+		envVal   string
+		expected bool
+	}{
+		{"", false},
+		{"0", false},
+		{"false", false},
+		{"False", false},
+		{"1", true},
+		{"true", true},
+		{"yes", true},
+	}
+
+	for _, tc := range cases {
+		t.Run("MODAL_SANDBOX_V2="+tc.envVal, func(t *testing.T) {
+			g := gomega.NewWithT(t)
+			t.Setenv("MODAL_SANDBOX_V2", tc.envVal)
+			profile := getProfile("", config{})
+			g.Expect(profile.SandboxV2).To(gomega.Equal(tc.expected))
+		})
+	}
+}
+
 func TestProfileIsLocalhost(t *testing.T) {
 	g := gomega.NewWithT(t)
 	p := Profile{ServerURL: "http://localhost:8889"}

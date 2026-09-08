@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"iter"
 	"log/slog"
 	"sync"
 	"testing"
@@ -1537,4 +1538,202 @@ func TestZeroLengthReadDoesNotWaitForOutput(t *testing.T) {
 	g.Expect(got.err).ToNot(gomega.HaveOccurred())
 	g.Expect(stub.opened).ToNot(gomega.Receive(),
 		"and it should not have opened the stream")
+}
+
+type sandboxV2RoutingStub struct {
+	pb.ModalClientClient
+	v1Creates, v2Creates int
+	v1Lookups, v2Lookups int
+	v1Lists, v2Lists     int
+	fromNameV2Err        error // returned by SandboxGetFromNameV2 when set
+	listV2Req            *pb.SandboxListRequest
+}
+
+func (m *sandboxV2RoutingStub) SandboxCreate(
+	_ context.Context, _ *pb.SandboxCreateRequest, _ ...grpc.CallOption,
+) (*pb.SandboxCreateResponse, error) {
+	m.v1Creates++
+	return pb.SandboxCreateResponse_builder{SandboxId: testV1SandboxID}.Build(), nil
+}
+
+func (m *sandboxV2RoutingStub) SandboxCreateV2(
+	_ context.Context, _ *pb.SandboxCreateV2Request, _ ...grpc.CallOption,
+) (*pb.SandboxCreateV2Response, error) {
+	m.v2Creates++
+	return pb.SandboxCreateV2Response_builder{SandboxId: testV2SandboxID}.Build(), nil
+}
+
+func (m *sandboxV2RoutingStub) SandboxGetFromName(
+	_ context.Context, _ *pb.SandboxGetFromNameRequest, _ ...grpc.CallOption,
+) (*pb.SandboxGetFromNameResponse, error) {
+	m.v1Lookups++
+	return pb.SandboxGetFromNameResponse_builder{SandboxId: testV1SandboxID}.Build(), nil
+}
+
+func (m *sandboxV2RoutingStub) SandboxGetFromNameV2(
+	_ context.Context, _ *pb.SandboxGetFromNameRequest, _ ...grpc.CallOption,
+) (*pb.SandboxGetFromNameResponse, error) {
+	m.v2Lookups++
+	if m.fromNameV2Err != nil {
+		return nil, m.fromNameV2Err
+	}
+	return pb.SandboxGetFromNameResponse_builder{SandboxId: testV2SandboxID}.Build(), nil
+}
+
+func (m *sandboxV2RoutingStub) SandboxList(
+	_ context.Context, _ *pb.SandboxListRequest, _ ...grpc.CallOption,
+) (*pb.SandboxListResponse, error) {
+	m.v1Lists++
+	return pb.SandboxListResponse_builder{}.Build(), nil
+}
+
+func (m *sandboxV2RoutingStub) SandboxListV2(
+	_ context.Context, req *pb.SandboxListRequest, _ ...grpc.CallOption,
+) (*pb.SandboxListResponse, error) {
+	m.v2Lists++
+	m.listV2Req = req
+	return pb.SandboxListResponse_builder{}.Build(), nil
+}
+
+func newSandboxV2RoutingService(stub *sandboxV2RoutingStub, sandboxV2 bool) *sandboxServiceImpl {
+	return &sandboxServiceImpl{client: &Client{
+		cpClient: &clientWithConn{ModalClientClient: stub},
+		profile:  Profile{SandboxV2: sandboxV2},
+		logger:   slog.New(slog.DiscardHandler),
+	}}
+}
+
+func TestSandboxV2FlagRoutesCreate(t *testing.T) {
+	t.Parallel()
+
+	app := &App{AppID: "ap-1234"}
+	image := &Image{ImageID: "im-123"}
+
+	t.Run("routes to the V2 backend when the flag is set", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		sb, err := newSandboxV2RoutingService(stub, true).Create(t.Context(), app, image, nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.SandboxID).To(gomega.Equal(testV2SandboxID))
+		g.Expect(stub.v2Creates).To(gomega.Equal(1))
+		g.Expect(stub.v1Creates).To(gomega.Equal(0))
+	})
+
+	t.Run("stays on V1 when a GPU is requested", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		sb, err := newSandboxV2RoutingService(stub, true).Create(
+			t.Context(), app, image, &SandboxCreateParams{GPU: "T4"})
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.SandboxID).To(gomega.Equal(testV1SandboxID))
+		g.Expect(stub.v1Creates).To(gomega.Equal(1))
+		g.Expect(stub.v2Creates).To(gomega.Equal(0))
+	})
+
+	t.Run("stays on V1 without the flag", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		sb, err := newSandboxV2RoutingService(stub, false).Create(t.Context(), app, image, nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.SandboxID).To(gomega.Equal(testV1SandboxID))
+		g.Expect(stub.v1Creates).To(gomega.Equal(1))
+		g.Expect(stub.v2Creates).To(gomega.Equal(0))
+	})
+}
+
+func TestSandboxV2FlagRoutesFromName(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns the V2 Sandbox when one matches", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		sb, err := newSandboxV2RoutingService(stub, true).FromName(t.Context(), "my-app", "my-sandbox", nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.SandboxID).To(gomega.Equal(testV2SandboxID))
+		g.Expect(stub.v2Lookups).To(gomega.Equal(1))
+		g.Expect(stub.v1Lookups).To(gomega.Equal(0))
+	})
+
+	t.Run("falls back to V1 when V2 has no match", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{fromNameV2Err: status.Error(codes.NotFound, "no such sandbox")}
+		sb, err := newSandboxV2RoutingService(stub, true).FromName(t.Context(), "my-app", "my-sandbox", nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.SandboxID).To(gomega.Equal(testV1SandboxID))
+		g.Expect(stub.v2Lookups).To(gomega.Equal(1))
+		g.Expect(stub.v1Lookups).To(gomega.Equal(1))
+	})
+
+	t.Run("propagates V2 errors other than not-found", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{fromNameV2Err: status.Error(codes.Internal, "boom")}
+		_, err := newSandboxV2RoutingService(stub, true).FromName(t.Context(), "my-app", "my-sandbox", nil)
+		g.Expect(err).Should(gomega.HaveOccurred())
+		g.Expect(stub.v1Lookups).To(gomega.Equal(0))
+	})
+
+	t.Run("stays on V1 without the flag", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		sb, err := newSandboxV2RoutingService(stub, false).FromName(t.Context(), "my-app", "my-sandbox", nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(sb.SandboxID).To(gomega.Equal(testV1SandboxID))
+		g.Expect(stub.v1Lookups).To(gomega.Equal(1))
+		g.Expect(stub.v2Lookups).To(gomega.Equal(0))
+	})
+}
+
+func TestSandboxV2FlagRoutesList(t *testing.T) {
+	t.Parallel()
+
+	drain := func(g gomega.Gomega, seq iter.Seq2[*Sandbox, error]) {
+		for _, err := range seq {
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		}
+	}
+
+	t.Run("lists through the V2 backend when the flag is set", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		seq, err := newSandboxV2RoutingService(stub, true).List(t.Context(), &SandboxListParams{
+			AppID: "ap-1234",
+			Tags:  map[string]string{"env": "prod"},
+		})
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		drain(g, seq)
+
+		g.Expect(stub.v2Lists).To(gomega.Equal(1))
+		g.Expect(stub.v1Lists).To(gomega.Equal(0))
+		g.Expect(stub.listV2Req.GetAppId()).To(gomega.Equal("ap-1234"), "params must be forwarded")
+		g.Expect(stub.listV2Req.GetTags()).To(gomega.HaveLen(1))
+	})
+
+	t.Run("stays on V1 without the flag", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		seq, err := newSandboxV2RoutingService(stub, false).List(t.Context(), nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		drain(g, seq)
+
+		g.Expect(stub.v1Lists).To(gomega.Equal(1))
+		g.Expect(stub.v2Lists).To(gomega.Equal(0))
+	})
 }

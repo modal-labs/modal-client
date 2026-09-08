@@ -519,6 +519,12 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 		params = &SandboxCreateParams{}
 	}
 
+	// Opt-in to the V2 backend. GPUs are not supported on V2, so those calls
+	// stay on V1 even when the flag is set.
+	if s.client.profile.SandboxV2 && params.GPU == "" {
+		return s.ExperimentalCreate(ctx, app, image, params)
+	}
+
 	image, err := image.Build(ctx, app, nil)
 	if err != nil {
 		return nil, err
@@ -887,6 +893,18 @@ type ContainerProcessWaitParams struct{}
 func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error) {
 	if params == nil {
 		params = &SandboxFromNameParams{}
+	}
+
+	if s.client.profile.SandboxV2 {
+		sb, err := s.ExperimentalFromName(ctx, appName, name, &SandboxExperimentalFromNameParams{
+			Environment: params.Environment,
+		})
+		var notFound NotFoundError
+		if err == nil {
+			return sb, nil
+		} else if !errors.As(err, &notFound) {
+			return nil, err
+		}
 	}
 
 	resp, err := s.client.cpClient.SandboxGetFromName(ctx, pb.SandboxGetFromNameRequest_builder{
@@ -2183,6 +2201,14 @@ type SandboxListParams struct {
 func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error) {
 	if params == nil {
 		params = &SandboxListParams{}
+	}
+
+	if s.client.profile.SandboxV2 {
+		return s.ExperimentalList(ctx, &SandboxExperimentalListParams{
+			AppID:       params.AppID,
+			Tags:        params.Tags,
+			Environment: params.Environment,
+		})
 	}
 
 	tagsList := make([]*pb.SandboxTag, 0, len(params.Tags))

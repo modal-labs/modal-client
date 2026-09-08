@@ -39,6 +39,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Go
 
+- It's now possible to opt into a [more performant Sandbox backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds) by setting the `MODAL_SANDBOX_V2=1` environment variable: `Sandboxes.Create`, `Sandboxes.FromName`, and `Sandboxes.List` then use the new backend without any code changes. This will become the default behavior in an upcoming release. Setting the variable lets you opt in early.
 - Added support for authenticating with OAuth refresh tokens and client credentials.
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.SnapshotFilesystem`.
 - Added `MountImage`, `UnmountImage`, and `SnapshotDirectory` to experimental Sandbox Sidecar containers. Directory snapshot Images can be used anywhere an Image is accepted, including as mounts and as container filesystems.

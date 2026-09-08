@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -34,6 +35,8 @@ type Profile struct {
 	// before the client gives it up. The Sandbox stays usable: the next
 	// operation reconnects. Zero keeps connections open until the client closes.
 	SandboxChannelIdleTimeout time.Duration
+	// SandboxV2 is set by the MODAL_SANDBOX_V2 environment variable.
+	SandboxV2 bool
 }
 
 const (
@@ -183,6 +186,16 @@ func getProfile(name string, cfg config) Profile {
 		MaxThrottleWait:     maxThrottleWait,
 
 		SandboxChannelIdleTimeout: sandboxChannelIdleTimeout,
+		SandboxV2:                 parseBooleanFlag(os.Getenv("MODAL_SANDBOX_V2")),
+	}
+}
+
+func parseBooleanFlag(s string) bool {
+	switch strings.ToLower(s) {
+	case "", "0", "false":
+		return false
+	default:
+		return true
 	}
 }
 
