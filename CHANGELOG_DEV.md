@@ -11,7 +11,6 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added the [`Sandbox.logs`](/docs/sdk/py/latest/Sandbox#logs) namespace to retrieve Sandbox entrypoint logs directly from the SDK. The namespace has two different methods, allowing you to `fetch()` logs from a specific date/time range, or `tail()` the most recent logs.
 - Added support for setting the default member Role when creating Restricted Environments through the Python SDK and CLI.
 - The `modal` CLI now accepts a global `--profile` option for simpler ad hoc profile selection.
-- Fixed gRPC channels attempting to reuse connections whose underlying transport is closing.
 - On the V2 Sandbox backend, the stdout/stderr streams of a Sandbox and of a `ContainerProcess` (as returned by `sandbox.exec()`) now refill their transient-error retry budget whenever output is received, so the budget bounds consecutive failures rather than failures over the stream's lifetime. This matches the JS and Go SDKs.
 - `modal environment roles list --exclude-default` and
   `Environment.roles.list(exclude_default=True)` list only users and service users who have been

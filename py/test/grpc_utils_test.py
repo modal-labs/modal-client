@@ -429,7 +429,7 @@ async def test_ModalChannel(servicer):
 
 
 @pytest.mark.asyncio
-def test_modal_channel_connected_checks_transport():
+async def test_modal_channel_connected_checks_transport():
     channel = ModalChannel()
     assert not channel._connected
 
