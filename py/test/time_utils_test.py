@@ -11,12 +11,33 @@ from modal._utils.time_utils import (
     parse_billing_cycle,
     parse_date,
     parse_date_range,
+    parse_duration,
     relative_timestamp,
     resolve_timezone,
 )
 
 FIXED_NOW = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 END_OF_MONTH = datetime(2025, 1, 31, 12, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("0s", timedelta(0)),
+        ("01s", timedelta(seconds=1)),
+        ("30m", timedelta(minutes=30)),
+        ("2h", timedelta(hours=2)),
+        ("1d", timedelta(days=1)),
+    ],
+)
+def test_parse_duration(value, expected):
+    assert parse_duration(value) == expected
+
+
+@pytest.mark.parametrize("value", ["", "1", "1.5h", "-1h", "2w", "two hours"])
+def test_parse_duration_invalid(value):
+    with pytest.raises(ValueError, match="Invalid duration"):
+        parse_duration(value)
 
 
 @pytest.fixture

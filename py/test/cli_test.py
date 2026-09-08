@@ -10,7 +10,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
 from pickle import dumps
@@ -3667,3 +3667,228 @@ def test_commands_with_required_arguments_show_help_with_no_args():
 
     check(entrypoint_cli, "modal")
     assert not offenders, "commands with required arguments need no_args_is_help=True:\n" + "\n".join(offenders)
+
+
+def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb2.StatsPercentileDistribution:
+    return api_pb2.StatsPercentileDistribution(
+        unit=unit,
+        percentiles=[
+            api_pb2.StatsPercentile(percentile_basis_points=5000, value=p50),
+            api_pb2.StatsPercentile(percentile_basis_points=9000, value=p90),
+            api_pb2.StatsPercentile(percentile_basis_points=9900, value=p99),
+        ],
+    )
+
+
+def test_function_stats_cli(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.FunctionGetTimeRangeStatsResponse(
+        input_success_count=1284,
+        input_failure_count=17,
+        input_timeout_count=3,
+        input_running_at_end_count=4,
+        input_percentile_stats={
+            "Execution time (s)": _stats_distribution("seconds", 0.0003, 0.0008, 0.0016),
+            "End-to-end latency (s)": _stats_distribution("seconds", 4.881, 19.816, 28.403),
+        },
+        container_started_count=23,
+        container_error_count=1,
+        container_creating_at_end_count=1,
+        container_percentile_stats={
+            "Startup time (s)": _stats_distribution("seconds", 2.060, 2.338, 2.701),
+            "CPU Usage (cores)": _stats_distribution("cores", 0.014, 0.023, 0.041),
+            "Memory Usage (GiB)": _stats_distribution("GiB", 0.046, 0.047, 0.049),
+        },
+        variant_count=4,
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-test"))
+        ctx.add_response("FunctionGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "function",
+                "stats",
+                "my-app/my-function",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+                "--all-variants",
+            ]
+        )
+
+    request = ctx.pop_request("FunctionGetTimeRangeStats")
+    assert request.function_id == "fu-test"
+    assert request.rollup
+    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
+    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert "Function stats for fu-test · all variants (4 variants)" in result.stdout
+    assert "Function stats for my-app/my-function" not in result.stdout
+    assert "Inputs" in result.stdout
+    assert "1,308 total (4 running)" in result.stdout
+    assert ctx.get_requests("FunctionGetCurrentStats") == []
+    assert "1,284 succeeded (98.5%)" in result.stdout
+    assert "17 failed (1.3%)" in result.stdout
+    assert "3 timed out (0.2%)" in result.stdout
+    assert "Containers" in result.stdout
+    assert "24 total (1 creating)" in result.stdout
+    assert "23 started (95.8%)" in result.stdout
+    assert "1 errored (4.2%)" in result.stdout
+    assert "Execution time (s)" in result.stdout
+    assert "0.00" in result.stdout
+    assert "End-to-end latency (s)" in result.stdout
+    assert "28.40" in result.stdout
+    assert "Startup time (s)" in result.stdout
+    assert "CPU Usage (cores)" in result.stdout
+    assert "0.01" in result.stdout
+    assert "Memory Usage (GiB)" in result.stdout
+    assert "0.05" in result.stdout
+    assert "GPU utilization" not in result.stdout
+    assert result.stdout.index("Execution time (s)") < result.stdout.index("End-to-end latency (s)")
+    assert result.stdout.index("Startup time (s)") < result.stdout.index("CPU Usage (cores)")
+    assert result.stdout.index("CPU Usage (cores)") < result.stdout.index("Memory Usage (GiB)")
+
+
+def test_function_stats_cli_resolves_fu_prefixed_app_name(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.FunctionGetTimeRangeStatsResponse()
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-resolved"))
+        ctx.add_response("FunctionGetTimeRangeStats", response)
+        run_cli_command(
+            [
+                "function",
+                "stats",
+                "fu-prefixed-app/my-function",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+            ]
+        )
+
+    request = ctx.pop_request("FunctionGet")
+    assert request.app_name == "fu-prefixed-app"
+    assert request.object_tag == "my-function"
+    assert ctx.pop_request("FunctionGetTimeRangeStats").function_id == "fu-resolved"
+
+
+def test_function_stats_cli_filters_by_container(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.FunctionGetTimeRangeStatsResponse()
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGetTimeRangeStats", response)
+        run_cli_command(
+            [
+                "function",
+                "stats",
+                "fu-test",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+                "--container",
+                "ta-01M1CY4EK24B8MM10ZD2H7VE2R",
+            ]
+        )
+
+    request = ctx.pop_request("FunctionGetTimeRangeStats")
+    assert request.HasField("container_id")
+    assert request.container_id == "ta-01M1CY4EK24B8MM10ZD2H7VE2R"
+
+
+def test_function_stats_cli_renders_server_defined_percentile_metrics(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.FunctionGetTimeRangeStatsResponse(
+        input_percentile_stats={
+            "Queue time (s)": _stats_distribution("seconds", 1.234, 2.345, 3.456),
+        },
+        container_percentile_stats={
+            "Disk Usage (GiB)": _stats_distribution("GiB", 4.567, 5.678, 6.789),
+            "GPU Utilization (%)": _stats_distribution("percent", 12.34, 56.78, 91.23),
+        },
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "function",
+                "stats",
+                "fu-test",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+            ]
+        )
+
+    assert "Queue time (s)" in result.stdout
+    assert "Queue time (s) (seconds)" not in result.stdout
+    assert "1.23" in result.stdout
+    assert "2.35" in result.stdout
+    assert "3.46" in result.stdout
+    assert "Disk Usage (GiB)" in result.stdout
+    assert "4.57" in result.stdout
+    assert "5.68" in result.stdout
+    assert "6.79" in result.stdout
+    assert "GPU Utilization (%)" in result.stdout
+    assert "12.34" in result.stdout
+    assert "56.78" in result.stdout
+    assert "91.23" in result.stdout
+    assert result.stdout.index("GPU Utilization (%)") < result.stdout.index("Disk Usage (GiB)")
+
+
+def test_function_stats_cli_relative_since(servicer, set_env_client):
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = until - timedelta(minutes=30)
+    response = api_pb2.FunctionGetTimeRangeStatsResponse()
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    before = datetime.now(timezone.utc)
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "function",
+                "stats",
+                "fu-test",
+                "--since",
+                "30m",
+            ]
+        )
+    after = datetime.now(timezone.utc)
+
+    request = ctx.pop_request("FunctionGetTimeRangeStats")
+    requested_since = request.since.ToDatetime(tzinfo=timezone.utc)
+    requested_until = request.until.ToDatetime(tzinfo=timezone.utc)
+    assert before - timedelta(minutes=30) <= requested_since <= after - timedelta(minutes=30)
+    assert before <= requested_until <= after
+    assert not request.rollup
+    assert ctx.get_requests("FunctionGetCurrentStats") == []
+    assert "Duration 0:30:00 · 2026-08-18 12:30:00 to 2026-08-18 13:00:00 UTC" in result.stdout
+
+
+@pytest.mark.parametrize("option", ["--since", "--until"])
+def test_function_stats_cli_rejects_invalid_time_options(option):
+    run_cli_command(
+        ["function", "stats", "fu-test", option, "tomorrow-ish"],
+        expected_exit_code=2,
+        expected_stderr="Use a relative duration",
+    )

@@ -3,6 +3,17 @@ import re
 from datetime import datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo
 
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+_DURATION_EXPR = re.compile(r"^(?P<n>\d+)(?P<unit>s|m|h|d)$")
+
+
+def parse_duration(value: str) -> timedelta:
+    """Parse a compact duration such as ``30m``, ``2h``, or ``1d``."""
+    match = _DURATION_EXPR.match(value)
+    if not match:
+        raise ValueError(f"Invalid duration: '{value}'")
+    return timedelta(seconds=int(match.group("n")) * _DURATION_UNITS[match.group("unit")])
+
 
 def is_leap(year: int):
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)

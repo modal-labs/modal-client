@@ -3,7 +3,7 @@ import re
 import sys
 import time
 import warnings
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from json import dumps
 from typing import Literal, get_args
 
@@ -25,7 +25,7 @@ from modal.runner import DEPLOYMENT_STRATEGY_TYPE, _stop_and_wait_for_containers
 from modal_proto import api_pb2
 
 from .._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
-from .._utils.time_utils import locale_tz, timestamp_to_localized_str
+from .._utils.time_utils import locale_tz, parse_duration, timestamp_to_localized_str
 from ._help import ModalGroup
 from .utils import (
     _fetch_app_logs,
@@ -136,9 +136,6 @@ async def list_(env: str | None = None, json: bool = False):
     display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
-_RELATIVE_TIME_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-
-
 def _parse_time_arg(value: str | None, default: datetime) -> datetime:
     """Parse a time argument that can be a relative duration (e.g. '2h', '30m') or ISO 8601 datetime.
 
@@ -148,10 +145,12 @@ def _parse_time_arg(value: str | None, default: datetime) -> datetime:
     if value is None:
         return default
 
-    # Try relative duration: digits followed by a unit letter
-    if len(value) >= 2 and value[-1] in _RELATIVE_TIME_UNITS and value[:-1].isdigit():
-        seconds = int(value[:-1]) * _RELATIVE_TIME_UNITS[value[-1]]
-        return datetime.now(timezone.utc) - timedelta(seconds=seconds)
+    try:
+        duration = parse_duration(value)
+    except ValueError:
+        pass
+    else:
+        return datetime.now(timezone.utc) - duration
 
     # Try ISO 8601 datetime
     try:
