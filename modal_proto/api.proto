@@ -2415,6 +2415,8 @@ message FunctionGetTimeRangeStatsRequest {
   google.protobuf.Timestamp until = 3;  // Exclusive.
   // Aggregate the root Function pool and its non-version-pinned variant pools.
   bool rollup = 4;
+  // Filter stats for a specific container
+  optional string container_id = 5; // ta-*
 }
 
 
@@ -2422,33 +2424,33 @@ message FunctionGetTimeRangeStatsResponse {
   google.protobuf.Timestamp since = 1;  // Inclusive.
   google.protobuf.Timestamp until = 2;  // Exclusive.
 
-  // Per-input latency distributions.
-  // Execution time derived from inputs that finish in the window
-  FunctionStatsPercentiles execution_time_seconds = 3;
-  // Purposely omitted for now since it can't be computed
-  // from the desired tables without caveats that are confusing
-  // to explain to users
-  FunctionStatsPercentiles queue_time_seconds = 4;
-  FunctionStatsPercentiles end_to_end_latency_seconds = 5;
-
-  // Container startup is measured from enqueue to start.
-  FunctionStatsPercentiles container_startup_time_seconds = 6;
-
   // Counts of inputs that finish in the requested time range.
-  uint64 input_success_count = 7;
-  uint64 input_failure_count = 8;
-  uint64 input_timeout_count = 9;
+  uint64 input_success_count = 3;
+  uint64 input_failure_count = 4;
+  uint64 input_timeout_count = 5;
 
-  // Resource distributions are computed from normalized container heartbeat
-  // observations and expressed as fractions, where 1.0 represents 100% utilization.
-  // A missing message indicates that no observations were available.
-  FunctionStatsPercentiles cpu_utilization = 10;
-  FunctionStatsPercentiles memory_utilization = 11;
-  FunctionStatsPercentiles gpu_utilization = 12;
+  // Number of inputs assigned but not finished at the exclusive end of the time range.
+  uint64 input_running_at_end_count = 6;
+
+  // Metrics include execution_time, end_to_end_latency, subject to change
+  // as requirements evolve
+  map<string, StatsPercentileDistribution> input_percentile_stats = 7;
+
+  // Container lifecycle counts. Started and errored containers are counted when
+  // the corresponding event occurs in the requested time range. Creating containers
+  // were enqueued but had not started or finished at the exclusive end of the range.
+  uint64 container_started_count = 8;
+  uint64 container_error_count = 9;
+  uint64 container_creating_at_end_count = 10;
+
+  // Metrics include cpu_usage, memory_usage, gpu_utilization subject to change
+  // as requirements evolve
+  map<string, StatsPercentileDistribution> container_percentile_stats = 11;
+
 
   // Number of direct non-version-pinned variants included in the roll-up.
   // Zero when roll-up is disabled or the base Function has no variants.
-  uint32 variant_count = 13;
+  uint32 variant_count = 12;
 }
 
 
@@ -2637,11 +2639,6 @@ message FunctionStats {
   uint32 num_total_tasks = 3;
   uint32 num_running_inputs = 4;
   uint32 input_headroom = 5;
-}
-
-message FunctionStatsPercentiles {
-  double p50 = 1;
-  double p90 = 2;
 }
 
 message FunctionUpdateSchedulingParamsRequest {
@@ -4117,6 +4114,18 @@ message SharedVolumeRemoveFileRequest {
   string shared_volume_id = 1;
   string path = 2;
   bool recursive = 3;
+}
+
+message StatsPercentile {
+  // The percentile expressed in basis points: 5000 is p50 and 9990 is p99.9.
+  uint32 percentile_basis_points = 1;
+  double value = 2;
+}
+
+message StatsPercentileDistribution {
+  // Unit identifier such as "seconds", "cores", "gibibytes", or "fraction".
+  string unit = 1;
+  repeated StatsPercentile percentiles = 2;
 }
 
 message StringMap {
