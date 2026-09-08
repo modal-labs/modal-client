@@ -48,6 +48,87 @@ for (const { envVal, expected } of sandboxV2Cases) {
   });
 }
 
+test("GetProfile_SandboxV2FromConfig", async () => {
+  const configDir = mkdtempSync(path.join(tmpdir(), "modal-js-config-"));
+  const configPath = path.join(configDir, ".modal.toml");
+  writeFileSync(
+    configPath,
+    `
+[v2-profile]
+sandbox_v2 = true
+image_builder_version = "2024.10"
+`,
+  );
+  vi.stubEnv("MODAL_CONFIG_PATH", configPath);
+  vi.stubEnv("MODAL_SANDBOX_V2", undefined);
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", undefined);
+  vi.resetModules();
+
+  try {
+    const { getProfile: getProfileFromConfig } = await import("../src/config");
+    const profile = getProfileFromConfig("v2-profile");
+    expect(profile.sandboxV2).toBe(true);
+    expect(profile.imageBuilderVersion).toBe("2024.10");
+  } finally {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    rmSync(configDir, { recursive: true });
+  }
+});
+
+test("GetProfile_SandboxV2QuotedValuesInConfig", async () => {
+  const configDir = mkdtempSync(path.join(tmpdir(), "modal-js-config-"));
+  const configPath = path.join(configDir, ".modal.toml");
+  writeFileSync(
+    configPath,
+    `
+[quoted-false]
+sandbox_v2 = "false"
+
+[quoted-true]
+sandbox_v2 = "true"
+`,
+  );
+  vi.stubEnv("MODAL_CONFIG_PATH", configPath);
+  vi.stubEnv("MODAL_SANDBOX_V2", undefined);
+  vi.resetModules();
+
+  try {
+    const { getProfile: getProfileFromConfig } = await import("../src/config");
+    expect(getProfileFromConfig("quoted-false").sandboxV2).toBe(false);
+    expect(getProfileFromConfig("quoted-true").sandboxV2).toBe(true);
+  } finally {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    rmSync(configDir, { recursive: true });
+  }
+});
+
+test("GetProfile_SandboxV2EnvOverridesConfig", async () => {
+  const configDir = mkdtempSync(path.join(tmpdir(), "modal-js-config-"));
+  const configPath = path.join(configDir, ".modal.toml");
+  writeFileSync(
+    configPath,
+    `
+[v2-profile]
+sandbox_v2 = true
+`,
+  );
+  vi.stubEnv("MODAL_CONFIG_PATH", configPath);
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  vi.resetModules();
+
+  try {
+    const { getProfile: getProfileFromConfig } = await import("../src/config");
+    const profile = getProfileFromConfig("v2-profile");
+    expect(profile.sandboxV2).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    rmSync(configDir, { recursive: true });
+  }
+});
+
 test("GetProfile_OAuthCredentials", () => {
   vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token");
   vi.stubEnv("MODAL_OAUTH_CLIENT_ID", "oc-client-id");

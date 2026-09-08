@@ -120,6 +120,22 @@ func TestGetProfile_SandboxV2Parsing(t *testing.T) {
 	}
 }
 
+func TestGetProfile_SandboxV2FromConfigFile(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_SANDBOX_V2", "")
+
+	profile := getProfile("v2-profile", config{"v2-profile": rawProfile{SandboxV2: true}})
+	g.Expect(profile.SandboxV2).To(gomega.BeTrue())
+}
+
+func TestGetProfile_SandboxV2EnvOverridesConfigFile(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_SANDBOX_V2", "0")
+
+	profile := getProfile("v2-profile", config{"v2-profile": rawProfile{SandboxV2: true}})
+	g.Expect(profile.SandboxV2).To(gomega.BeFalse())
+}
+
 func TestProfileIsLocalhost(t *testing.T) {
 	g := gomega.NewWithT(t)
 	p := Profile{ServerURL: "http://localhost:8889"}

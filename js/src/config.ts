@@ -14,8 +14,9 @@ interface Config {
     oauth_client_id?: string;
     oauth_client_secret?: string;
     environment?: string;
-    imageBuilderVersion?: string;
+    image_builder_version?: string;
     loglevel?: string;
+    sandbox_v2?: boolean | string;
     active?: boolean;
   };
 }
@@ -39,7 +40,10 @@ export interface Profile {
    * connections open until the client closes.
    */
   sandboxChannelIdleTimeoutMs: number;
-  /** Set by the MODAL_SANDBOX_V2 environment variable. */
+  /**
+   * Set by the MODAL_SANDBOX_V2 environment variable or the sandbox_v2
+   * profile key in .modal.toml.
+   */
   sandboxV2: boolean;
   /**
    * How long a caller may sit on a chunk of a Sandbox's output before the stream
@@ -138,7 +142,7 @@ export function getProfile(profileName?: string): Profile {
     environment: process.env["MODAL_ENVIRONMENT"] || profileData.environment,
     imageBuilderVersion:
       process.env["MODAL_IMAGE_BUILDER_VERSION"] ||
-      profileData.imageBuilderVersion,
+      profileData.image_builder_version,
     logLevel: process.env["MODAL_LOGLEVEL"] || profileData.loglevel,
     maxThrottleWaitSecs: (() => {
       const val = process.env["MODAL_MAX_THROTTLE_WAIT"];
@@ -176,12 +180,14 @@ export function getProfile(profileName?: string): Profile {
       // none at all.
       return parsed > 0 && ms === 0 ? 1 : ms;
     })(),
-    sandboxV2: parseBooleanFlag(process.env["MODAL_SANDBOX_V2"]),
+    sandboxV2: process.env["MODAL_SANDBOX_V2"]
+      ? parseBooleanFlag(process.env["MODAL_SANDBOX_V2"])
+      : parseBooleanFlag(profileData.sandbox_v2),
   };
   return profile as Profile; // safe to null-cast because of check above
 }
 
-function parseBooleanFlag(value: string | undefined): boolean {
+function parseBooleanFlag(value: string | boolean | undefined): boolean {
   if (!value) return false;
-  return !["0", "false"].includes(value.toLowerCase());
+  return !["0", "false"].includes(String(value).toLowerCase());
 }

@@ -35,7 +35,8 @@ type Profile struct {
 	// before the client gives it up. The Sandbox stays usable: the next
 	// operation reconnects. Zero keeps connections open until the client closes.
 	SandboxChannelIdleTimeout time.Duration
-	// SandboxV2 is set by the MODAL_SANDBOX_V2 environment variable.
+	// SandboxV2 is set by the MODAL_SANDBOX_V2 environment variable or the
+	// sandbox_v2 profile key in .modal.toml.
 	SandboxV2 bool
 }
 
@@ -89,6 +90,7 @@ type rawProfile struct {
 	Environment         string `toml:"environment"`
 	ImageBuilderVersion string `toml:"image_builder_version"`
 	LogLevel            string `toml:"loglevel"`
+	SandboxV2           bool   `toml:"sandbox_v2"`
 	Active              bool   `toml:"active"`
 }
 
@@ -173,6 +175,11 @@ func getProfile(name string, cfg config) Profile {
 		}
 	}
 
+	sandboxV2 := raw.SandboxV2
+	if s := os.Getenv("MODAL_SANDBOX_V2"); s != "" {
+		sandboxV2 = parseBooleanFlag(s)
+	}
+
 	return Profile{
 		ServerURL:           serverURL,
 		TokenID:             tokenID,
@@ -186,7 +193,7 @@ func getProfile(name string, cfg config) Profile {
 		MaxThrottleWait:     maxThrottleWait,
 
 		SandboxChannelIdleTimeout: sandboxChannelIdleTimeout,
-		SandboxV2:                 parseBooleanFlag(os.Getenv("MODAL_SANDBOX_V2")),
+		SandboxV2:                 sandboxV2,
 	}
 }
 
