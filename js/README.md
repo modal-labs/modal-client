@@ -69,6 +69,7 @@ We also provide a number of examples:
 - [Eagerly build an Image for a Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-prewarm.ts)
 - [Building custom Images](https://github.com/modal-labs/modal-client/blob/main/js/examples/image-building.ts)
 - [Add telemetry and tracing with custom middleware](https://github.com/modal-labs/modal-client/blob/main/js/examples/telemetry.ts)
+- [Configure a client with OAuth credentials](https://github.com/modal-labs/modal-client/blob/main/js/examples/custom-client.ts)
 
 ### Configuration
 
@@ -87,6 +88,11 @@ environments set these environment variables:
 export MODAL_TOKEN_ID=ak-NOTAREALTOKENSTRINGXYZ
 export MODAL_TOKEN_SECRET=as-FAKESECRETSTRINGABCDEF
 ```
+
+OAuth integrations can instead set `MODAL_OAUTH_REFRESH_TOKEN`,
+`MODAL_OAUTH_CLIENT_ID`, and `MODAL_OAUTH_CLIENT_SECRET`. See the
+[custom client example](https://github.com/modal-labs/modal-client/blob/main/js/examples/custom-client.ts)
+for explicit client configuration.
 
 ### Telemetry and Observability
 

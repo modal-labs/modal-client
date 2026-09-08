@@ -31,10 +31,17 @@ import { getSDKVersion } from "./version";
 import { checkForRenamedParams } from "./validation";
 import { createLogger, type Logger, type LogLevel } from "./logger";
 import { EnvironmentManager } from "./environment";
+import { InvalidError } from "./errors";
 
 export interface ModalClientParams {
   tokenId?: string;
   tokenSecret?: string;
+  /** OAuth refresh token returned by Modal's token endpoint. */
+  oauthRefreshToken?: string;
+  /** Modal-issued OAuth client ID, with an `oc-` prefix. */
+  oauthClientId?: string;
+  /** Modal-issued OAuth client secret, with an `ov-` prefix. */
+  oauthClientSecret?: string;
   environment?: string;
   endpoint?: string;
   timeoutMs?: number;
@@ -107,15 +114,37 @@ export class ModalClient {
     checkForRenamedParams(params, { timeout: "timeoutMs" });
 
     const baseProfile = getProfile(process.env["MODAL_PROFILE"]);
+    const hasTokenParams =
+      params?.tokenId !== undefined || params?.tokenSecret !== undefined;
+    const hasOAuthParams =
+      params?.oauthRefreshToken !== undefined ||
+      params?.oauthClientId !== undefined ||
+      params?.oauthClientSecret !== undefined;
     this.profile = {
       ...baseProfile,
-      ...(params?.tokenId && { tokenId: params.tokenId }),
-      ...(params?.tokenSecret && { tokenSecret: params.tokenSecret }),
       ...(params?.environment && { environment: params.environment }),
       ...(params?.maxThrottleWaitSecs !== undefined && {
         maxThrottleWaitSecs: params.maxThrottleWaitSecs,
       }),
     };
+    if (hasTokenParams) {
+      if (params?.tokenId !== undefined) {
+        this.profile.tokenId = params.tokenId;
+      }
+      if (params?.tokenSecret !== undefined) {
+        this.profile.tokenSecret = params.tokenSecret;
+      }
+      this.profile.oauthRefreshToken = undefined;
+      this.profile.oauthClientId = undefined;
+      this.profile.oauthClientSecret = undefined;
+    } else if (hasOAuthParams) {
+      this.profile.tokenId = undefined;
+      this.profile.tokenSecret = undefined;
+      this.profile.oauthRefreshToken = params?.oauthRefreshToken;
+      this.profile.oauthClientId = params?.oauthClientId;
+      this.profile.oauthClientSecret = params?.oauthClientSecret;
+    }
+    this.validateProfileCredentials(hasOAuthParams);
 
     const logLevelValue = params?.logLevel || this.profile.logLevel || "";
     this.logger = createLogger(params?.logger, logLevelValue);
@@ -153,6 +182,36 @@ export class ModalClient {
 
   environmentName(environment?: string): string {
     return environment || this.profile.environment || "";
+  }
+
+  private validateProfileCredentials(
+    hasExplicitOAuthCredentials: boolean,
+  ): void {
+    const hasTokenCredentials = Boolean(
+      this.profile.tokenId || this.profile.tokenSecret,
+    );
+    const hasOAuthCredentials =
+      hasExplicitOAuthCredentials ||
+      Boolean(
+        this.profile.oauthRefreshToken ||
+          this.profile.oauthClientId ||
+          this.profile.oauthClientSecret,
+      );
+    if (hasTokenCredentials && hasOAuthCredentials) {
+      throw new InvalidError(
+        "Modal token credentials and OAuth credentials cannot both be configured.",
+      );
+    }
+    if (
+      hasOAuthCredentials &&
+      (!this.profile.oauthRefreshToken ||
+        !this.profile.oauthClientId ||
+        !this.profile.oauthClientSecret)
+    ) {
+      throw new InvalidError(
+        "OAuth refresh token, client ID, and client secret must all be configured.",
+      );
+    }
   }
 
   /**
@@ -440,12 +499,16 @@ export class ModalClient {
       call: ClientMiddlewareCall<Request, Response>,
       options: CallOptions,
     ) {
-      if (!profile.tokenId || !profile.tokenSecret) {
+      const hasOAuthCredentials = Boolean(
+        profile.oauthRefreshToken &&
+          profile.oauthClientId &&
+          profile.oauthClientSecret,
+      );
+      if (!hasOAuthCredentials && (!profile.tokenId || !profile.tokenSecret)) {
         throw new Error(
-          `Profile is missing token_id or token_secret. Please set them in .modal.toml, or as environment variables, or via ModalClient constructor.`,
+          `Profile is missing credentials. Please set them in .modal.toml, as environment variables, or via the ModalClient constructor.`,
         );
       }
-      const { tokenId, tokenSecret } = profile;
 
       options.metadata ??= new Metadata();
       options.metadata.set(
@@ -457,8 +520,20 @@ export class ModalClient {
         "x-modal-libmodal-version",
         `modal-js/${getSDKVersion()}`,
       );
-      options.metadata.set("x-modal-token-id", tokenId);
-      options.metadata.set("x-modal-token-secret", tokenSecret);
+      if (hasOAuthCredentials) {
+        options.metadata.set(
+          "x-modal-refresh-token",
+          profile.oauthRefreshToken!,
+        );
+        options.metadata.set("x-modal-oauth-client-id", profile.oauthClientId!);
+        options.metadata.set(
+          "x-modal-oauth-client-secret",
+          profile.oauthClientSecret!,
+        );
+      } else {
+        options.metadata.set("x-modal-token-id", profile.tokenId!);
+        options.metadata.set("x-modal-token-secret", profile.tokenSecret!);
+      }
 
       // Skip auth token for AuthTokenGet requests to prevent it from getting stuck
       if (call.method.path !== "/modal.client.ModalClient/AuthTokenGet") {

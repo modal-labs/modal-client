@@ -1,5 +1,7 @@
 import { expect, test, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { configFilePath, getProfile } from "../src/config";
 import { DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS } from "../src/config";
@@ -24,6 +26,49 @@ test("GetProfile_MaxThrottleWaitInvalidValue", () => {
   const profile = getProfile();
   expect(profile.maxThrottleWaitSecs).toBeUndefined();
   vi.unstubAllEnvs();
+});
+
+test("GetProfile_OAuthCredentials", () => {
+  vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token");
+  vi.stubEnv("MODAL_OAUTH_CLIENT_ID", "oc-client-id");
+  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", "ov-client-secret");
+
+  const profile = getProfile();
+  expect(profile.oauthRefreshToken).toBe("refresh-token");
+  expect(profile.oauthClientId).toBe("oc-client-id");
+  expect(profile.oauthClientSecret).toBe("ov-client-secret");
+  vi.unstubAllEnvs();
+});
+
+test("GetProfile_OAuthCredentialsFromConfig", async () => {
+  const configDir = mkdtempSync(path.join(tmpdir(), "modal-js-config-"));
+  const configPath = path.join(configDir, ".modal.toml");
+  writeFileSync(
+    configPath,
+    `
+[oauth-profile]
+oauth_refresh_token = "refresh-token"
+oauth_client_id = "oc-client-id"
+oauth_client_secret = "ov-client-secret"
+`,
+  );
+  vi.stubEnv("MODAL_CONFIG_PATH", configPath);
+  vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", undefined);
+  vi.stubEnv("MODAL_OAUTH_CLIENT_ID", undefined);
+  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", undefined);
+  vi.resetModules();
+
+  try {
+    const { getProfile: getProfileFromConfig } = await import("../src/config");
+    const profile = getProfileFromConfig("oauth-profile");
+    expect(profile.oauthRefreshToken).toBe("refresh-token");
+    expect(profile.oauthClientId).toBe("oc-client-id");
+    expect(profile.oauthClientSecret).toBe("ov-client-secret");
+  } finally {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    rmSync(configDir, { recursive: true });
+  }
 });
 
 test("GetConfigPath_WithEnvVar", () => {

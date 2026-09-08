@@ -66,6 +66,36 @@ func TestGetProfile_MaxThrottleWaitInvalidValue(t *testing.T) {
 	g.Expect(profile.MaxThrottleWait).To(gomega.BeNil())
 }
 
+func TestGetProfile_OAuthCredentials(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token")
+	t.Setenv("MODAL_OAUTH_CLIENT_ID", "oc-client-id")
+	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "ov-client-secret")
+
+	profile := getProfile("", config{})
+	g.Expect(profile.OAuthRefreshToken).To(gomega.Equal("refresh-token"))
+	g.Expect(profile.OAuthClientID).To(gomega.Equal("oc-client-id"))
+	g.Expect(profile.OAuthClientSecret).To(gomega.Equal("ov-client-secret"))
+}
+
+func TestGetProfile_OAuthCredentialsFromConfig(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_OAUTH_REFRESH_TOKEN", "")
+	t.Setenv("MODAL_OAUTH_CLIENT_ID", "")
+	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "")
+
+	profile := getProfile("oauth-profile", config{
+		"oauth-profile": rawProfile{
+			OAuthRefreshToken: "refresh-token",
+			OAuthClientID:     "oc-client-id",
+			OAuthClientSecret: "ov-client-secret",
+		},
+	})
+	g.Expect(profile.OAuthRefreshToken).To(gomega.Equal("refresh-token"))
+	g.Expect(profile.OAuthClientID).To(gomega.Equal("oc-client-id"))
+	g.Expect(profile.OAuthClientSecret).To(gomega.Equal("ov-client-secret"))
+}
+
 func TestProfileIsLocalhost(t *testing.T) {
 	g := gomega.NewWithT(t)
 	p := Profile{ServerURL: "http://localhost:8889"}

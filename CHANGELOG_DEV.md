@@ -28,6 +28,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## JS
 
+- Added support for authenticating with OAuth refresh tokens and client credentials.
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.snapshotFilesystem`.
 - Added `mountImage()`, `unmountImage()`, and `snapshotDirectory()` to experimental Sandbox Sidecar containers. Directory snapshot Images can be used anywhere an Image is accepted, including as mounts and as container filesystems.
 - A client now releases its connection to a Sandbox once that Sandbox has been idle for 30 seconds, freeing associated resources similar to an explicit `.detach()` call. A subsequent sandbox operation reconnects so the Sandbox stays usable. `Sandbox.terminate()` no longer detaches from the Sandbox and instead relies on the new idle timeout or an explicit `.detach()` call to release resources.
@@ -37,6 +38,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Go
 
+- Added support for authenticating with OAuth refresh tokens and client credentials.
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `SidecarContainer.SnapshotFilesystem`.
 - Added `MountImage`, `UnmountImage`, and `SnapshotDirectory` to experimental Sandbox Sidecar containers. Directory snapshot Images can be used anywhere an Image is accepted, including as mounts and as container filesystems.
 - A client now releases its connection to a Sandbox once that Sandbox has been idle for 30 seconds, freeing associated resources similar to an explicit `Detach()` call. A subsequent sandbox operation reconnects so the Sandbox stays usable. `Sandbox.Terminate()` no longer detaches from the Sandbox and instead relies on the new idle timeout or an explicit `Detach()` call to release resources.

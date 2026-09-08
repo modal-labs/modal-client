@@ -45,6 +45,117 @@ func TestClientWithLogger(t *testing.T) {
 	g.Expect(output).To(gomega.ContainSubstring("Modal client initialized successfully"))
 }
 
+func TestInjectRequiredHeadersWithOAuthCredentials(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	profile := Profile{
+		OAuthRefreshToken: "refresh-token",
+		OAuthClientID:     "oc-client-id",
+		OAuthClientSecret: "ov-client-secret",
+	}
+
+	ctx, err := injectRequiredHeaders(context.Background(), profile, "test-version")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	md, ok := metadata.FromOutgoingContext(ctx)
+	g.Expect(ok).To(gomega.BeTrue())
+	g.Expect(md.Get("x-modal-refresh-token")).To(gomega.Equal([]string{"refresh-token"}))
+	g.Expect(md.Get("x-modal-oauth-client-id")).To(gomega.Equal([]string{"oc-client-id"}))
+	g.Expect(md.Get("x-modal-oauth-client-secret")).To(gomega.Equal([]string{"ov-client-secret"}))
+	g.Expect(md.Get("x-modal-token-id")).To(gomega.BeEmpty())
+	g.Expect(md.Get("x-modal-token-secret")).To(gomega.BeEmpty())
+}
+
+func TestValidateProfileCredentials(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                        string
+		profile                     Profile
+		hasExplicitOAuthCredentials bool
+		message                     string
+	}{
+		{
+			name: "complete OAuth credentials",
+			profile: Profile{
+				OAuthRefreshToken: "refresh-token",
+				OAuthClientID:     "oc-client-id",
+				OAuthClientSecret: "ov-client-secret",
+			},
+		},
+		{
+			name:    "incomplete OAuth credentials",
+			profile: Profile{OAuthRefreshToken: "refresh-token"},
+			message: "must all be configured",
+		},
+		{
+			name: "empty OAuth refresh token",
+			profile: Profile{
+				OAuthClientID:     "oc-client-id",
+				OAuthClientSecret: "ov-client-secret",
+			},
+			message: "must all be configured",
+		},
+		{
+			name: "mixed credentials",
+			profile: Profile{
+				TokenID:           "ak-token-id",
+				TokenSecret:       "as-token-secret",
+				OAuthRefreshToken: "refresh-token",
+				OAuthClientID:     "oc-client-id",
+				OAuthClientSecret: "ov-client-secret",
+			},
+			message: "cannot both be configured",
+		},
+		{
+			name: "explicit empty OAuth credentials with token profile",
+			profile: Profile{
+				TokenID:     "ak-token-id",
+				TokenSecret: "as-token-secret",
+			},
+			hasExplicitOAuthCredentials: true,
+			message:                     "cannot both be configured",
+		},
+		{
+			name:                        "explicit empty OAuth credentials",
+			hasExplicitOAuthCredentials: true,
+			message:                     "must all be configured",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			err := validateProfileCredentials(test.profile, test.hasExplicitOAuthCredentials)
+			if test.message == "" {
+				g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			} else {
+				g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring(test.message)))
+			}
+		})
+	}
+}
+
+func TestExplicitOAuthCredentialsDoNotBackfillFromProfile(t *testing.T) {
+	t.Setenv("MODAL_OAUTH_REFRESH_TOKEN", "profile-refresh-token")
+	t.Setenv("MODAL_OAUTH_CLIENT_ID", "profile-client-id")
+	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "profile-client-secret")
+
+	for _, test := range []struct {
+		name        string
+		credentials *OAuthCredentialsParams
+	}{
+		{name: "all empty", credentials: &OAuthCredentialsParams{}},
+		{name: "partial", credentials: &OAuthCredentialsParams{RefreshToken: "explicit-refresh-token"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			g := gomega.NewWithT(t)
+			_, err := NewClientWithOptions(&ClientParams{OAuthCredentials: test.credentials})
+			g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("must all be configured")))
+		})
+	}
+}
+
 func TestClientWithCustomInterceptors(t *testing.T) {
 	g := gomega.NewWithT(t)
 

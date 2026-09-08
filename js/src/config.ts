@@ -10,6 +10,9 @@ interface Config {
     server_url?: string;
     token_id?: string;
     token_secret?: string;
+    oauth_refresh_token?: string;
+    oauth_client_id?: string;
+    oauth_client_secret?: string;
     environment?: string;
     imageBuilderVersion?: string;
     loglevel?: string;
@@ -22,6 +25,9 @@ export interface Profile {
   serverUrl: string;
   tokenId?: string;
   tokenSecret?: string;
+  oauthRefreshToken?: string;
+  oauthClientId?: string;
+  oauthClientSecret?: string;
   environment?: string;
   imageBuilderVersion?: string;
   logLevel?: string;
@@ -119,6 +125,14 @@ export function getProfile(profileName?: string): Profile {
       "https://api.modal.com:443",
     tokenId: process.env["MODAL_TOKEN_ID"] || profileData.token_id,
     tokenSecret: process.env["MODAL_TOKEN_SECRET"] || profileData.token_secret,
+    oauthRefreshToken:
+      process.env["MODAL_OAUTH_REFRESH_TOKEN"] ||
+      profileData.oauth_refresh_token,
+    oauthClientId:
+      process.env["MODAL_OAUTH_CLIENT_ID"] || profileData.oauth_client_id,
+    oauthClientSecret:
+      process.env["MODAL_OAUTH_CLIENT_SECRET"] ||
+      profileData.oauth_client_secret,
     environment: process.env["MODAL_ENVIRONMENT"] || profileData.environment,
     imageBuilderVersion:
       process.env["MODAL_IMAGE_BUILDER_VERSION"] ||

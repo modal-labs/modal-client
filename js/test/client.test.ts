@@ -19,6 +19,85 @@ const noopLogger: Logger = {
   error: () => {},
 };
 
+test("authMiddleware sends OAuth credentials without token credentials", async () => {
+  const client = new ModalClient({
+    oauthRefreshToken: "refresh-token",
+    oauthClientId: "oc-client-id",
+    oauthClientSecret: "ov-client-secret",
+    logger: noopLogger,
+    cpClient: {} as any,
+  });
+  const middleware = (client as any).authMiddleware(client.profile);
+  let metadata: Metadata | undefined;
+  const call = makeMockCall(async function* (
+    _request: unknown,
+    options: CallOptions,
+  ) {
+    metadata = options.metadata as Metadata;
+    yield {};
+  });
+  call.method.path = "/modal.client.ModalClient/AuthTokenGet";
+
+  for await (const _ of middleware(call, {})) {
+    // Drain the unary response.
+  }
+
+  expect(metadata?.get("x-modal-refresh-token")).toBe("refresh-token");
+  expect(metadata?.get("x-modal-oauth-client-id")).toBe("oc-client-id");
+  expect(metadata?.get("x-modal-oauth-client-secret")).toBe("ov-client-secret");
+  expect(metadata?.get("x-modal-token-id")).toBeUndefined();
+  expect(metadata?.get("x-modal-token-secret")).toBeUndefined();
+});
+
+test.each([
+  [{ oauthRefreshToken: "refresh-token" }, "must all be configured"],
+  [
+    {
+      oauthRefreshToken: "",
+      oauthClientId: "oc-client-id",
+      oauthClientSecret: "ov-client-secret",
+    },
+    "must all be configured",
+  ],
+  [
+    {
+      tokenId: "ak-token-id",
+      tokenSecret: "as-token-secret",
+      oauthRefreshToken: "refresh-token",
+      oauthClientId: "oc-client-id",
+      oauthClientSecret: "ov-client-secret",
+    },
+    "cannot both be configured",
+  ],
+])(
+  "ModalClient rejects invalid credential configuration",
+  (params, message) => {
+    expect(
+      () =>
+        new ModalClient({ ...params, logger: noopLogger, cpClient: {} as any }),
+    ).toThrow(message);
+  },
+);
+
+test("explicit OAuth credentials do not backfill from the profile", () => {
+  vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", "profile-refresh-token");
+  vi.stubEnv("MODAL_OAUTH_CLIENT_ID", "profile-client-id");
+  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", "profile-client-secret");
+
+  try {
+    expect(
+      () =>
+        new ModalClient({
+          oauthRefreshToken: "explicit-refresh-token",
+          logger: noopLogger,
+          cpClient: {} as any,
+        }),
+    ).toThrow("must all be configured");
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
 /** Encode a grpc-status-details-bin trailer carrying an RPCRetryPolicy. */
 function buildThrottleTrailer(retryAfterSecs: number): Buffer {
   const retryPolicyBytes = RPCRetryPolicy.encode(

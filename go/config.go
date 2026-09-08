@@ -21,6 +21,9 @@ type Profile struct {
 	ServerURL           string
 	TokenID             string
 	TokenSecret         string
+	OAuthRefreshToken   string
+	OAuthClientID       string
+	OAuthClientSecret   string
 	Environment         string
 	ImageBuilderVersion string
 	LogLevel            string
@@ -77,6 +80,9 @@ type rawProfile struct {
 	ServerURL           string `toml:"server_url"`
 	TokenID             string `toml:"token_id"`
 	TokenSecret         string `toml:"token_secret"`
+	OAuthRefreshToken   string `toml:"oauth_refresh_token"`
+	OAuthClientID       string `toml:"oauth_client_id"`
+	OAuthClientSecret   string `toml:"oauth_client_secret"`
 	Environment         string `toml:"environment"`
 	ImageBuilderVersion string `toml:"image_builder_version"`
 	LogLevel            string `toml:"loglevel"`
@@ -142,6 +148,9 @@ func getProfile(name string, cfg config) Profile {
 	serverURL := firstNonEmpty(os.Getenv("MODAL_SERVER_URL"), raw.ServerURL, "https://api.modal.com:443")
 	tokenID := firstNonEmpty(os.Getenv("MODAL_TOKEN_ID"), raw.TokenID)
 	tokenSecret := firstNonEmpty(os.Getenv("MODAL_TOKEN_SECRET"), raw.TokenSecret)
+	oauthRefreshToken := firstNonEmpty(os.Getenv("MODAL_OAUTH_REFRESH_TOKEN"), raw.OAuthRefreshToken)
+	oauthClientID := firstNonEmpty(os.Getenv("MODAL_OAUTH_CLIENT_ID"), raw.OAuthClientID)
+	oauthClientSecret := firstNonEmpty(os.Getenv("MODAL_OAUTH_CLIENT_SECRET"), raw.OAuthClientSecret)
 	environment := firstNonEmpty(os.Getenv("MODAL_ENVIRONMENT"), raw.Environment)
 	imageBuilderVersion := firstNonEmpty(os.Getenv("MODAL_IMAGE_BUILDER_VERSION"), raw.ImageBuilderVersion)
 	logLevel := firstNonEmpty(os.Getenv("MODAL_LOGLEVEL"), raw.LogLevel)
@@ -165,6 +174,9 @@ func getProfile(name string, cfg config) Profile {
 		ServerURL:           serverURL,
 		TokenID:             tokenID,
 		TokenSecret:         tokenSecret,
+		OAuthRefreshToken:   oauthRefreshToken,
+		OAuthClientID:       oauthClientID,
+		OAuthClientSecret:   oauthClientSecret,
 		Environment:         environment,
 		ImageBuilderVersion: imageBuilderVersion,
 		LogLevel:            logLevel,

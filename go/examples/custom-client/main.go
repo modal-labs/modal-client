@@ -1,4 +1,4 @@
-// This example configures a client using a `CUSTOM_MODAL_ID` and `CUSTOM_MODAL_SECRET` environment variable.
+// This example configures a client using credentials from custom environment variables.
 
 package main
 
@@ -14,19 +14,33 @@ import (
 func main() {
 	ctx := context.Background()
 
-	modalID := os.Getenv("CUSTOM_MODAL_ID")
-	if modalID == "" {
-		log.Fatal("CUSTOM_MODAL_ID environment variable not set")
-	}
-	modalSecret := os.Getenv("CUSTOM_MODAL_SECRET")
-	if modalSecret == "" {
-		log.Fatal("CUSTOM_MODAL_SECRET environment variable not set")
+	params := &modal.ClientParams{}
+	if refreshToken := os.Getenv("CUSTOM_MODAL_OAUTH_REFRESH_TOKEN"); refreshToken != "" {
+		clientID := os.Getenv("CUSTOM_MODAL_OAUTH_CLIENT_ID")
+		if clientID == "" {
+			log.Fatal("CUSTOM_MODAL_OAUTH_CLIENT_ID environment variable not set")
+		}
+		clientSecret := os.Getenv("CUSTOM_MODAL_OAUTH_CLIENT_SECRET")
+		if clientSecret == "" {
+			log.Fatal("CUSTOM_MODAL_OAUTH_CLIENT_SECRET environment variable not set")
+		}
+		params.OAuthCredentials = &modal.OAuthCredentialsParams{
+			RefreshToken: refreshToken,
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+		}
+	} else {
+		params.TokenID = os.Getenv("CUSTOM_MODAL_ID")
+		if params.TokenID == "" {
+			log.Fatal("CUSTOM_MODAL_ID environment variable not set")
+		}
+		params.TokenSecret = os.Getenv("CUSTOM_MODAL_SECRET")
+		if params.TokenSecret == "" {
+			log.Fatal("CUSTOM_MODAL_SECRET environment variable not set")
+		}
 	}
 
-	mc, err := modal.NewClientWithOptions(&modal.ClientParams{
-		TokenID:     modalID,
-		TokenSecret: modalSecret,
-	})
+	mc, err := modal.NewClientWithOptions(params)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}

@@ -74,14 +74,26 @@ func NewClient() (*Client, error) {
 	return NewClientWithOptions(nil)
 }
 
+// OAuthCredentialsParams defines credentials for authenticating through a Modal OAuth integration.
+type OAuthCredentialsParams struct {
+	// RefreshToken is returned by Modal's token endpoint.
+	RefreshToken string
+	// ClientID is a Modal-issued OAuth client ID, with an "oc-" prefix.
+	ClientID string
+	// ClientSecret is a Modal-issued OAuth client secret, with an "ov-" prefix.
+	ClientSecret string
+}
+
 // ClientParams defines credentials and options for initializing the Modal client.
 type ClientParams struct {
-	TokenID         string
-	TokenSecret     string
-	Environment     string
-	Config          *config
-	Logger          *slog.Logger
-	MaxThrottleWait *time.Duration
+	TokenID     string
+	TokenSecret string
+	// OAuthCredentials overrides profile credentials when non-nil and must contain all three values.
+	OAuthCredentials *OAuthCredentialsParams
+	Environment      string
+	Config           *config
+	Logger           *slog.Logger
+	MaxThrottleWait  *time.Duration
 	// ControlPlaneClient is a custom gRPC client for testing.
 	// If provided, the client will use this instead of creating its own connection.
 	// Typically used with mock clients in tests.
@@ -120,11 +132,27 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 
 	profile := getProfile(os.Getenv("MODAL_PROFILE"), cfg)
 
-	if params.TokenID != "" {
-		profile.TokenID = params.TokenID
+	hasTokenParams := params.TokenID != "" || params.TokenSecret != ""
+	hasOAuthParams := params.OAuthCredentials != nil
+	if hasTokenParams {
+		if params.TokenID != "" {
+			profile.TokenID = params.TokenID
+		}
+		if params.TokenSecret != "" {
+			profile.TokenSecret = params.TokenSecret
+		}
+		profile.OAuthRefreshToken = ""
+		profile.OAuthClientID = ""
+		profile.OAuthClientSecret = ""
+	} else if hasOAuthParams {
+		profile.TokenID = ""
+		profile.TokenSecret = ""
+		profile.OAuthRefreshToken = params.OAuthCredentials.RefreshToken
+		profile.OAuthClientID = params.OAuthCredentials.ClientID
+		profile.OAuthClientSecret = params.OAuthCredentials.ClientSecret
 	}
-	if params.TokenSecret != "" {
-		profile.TokenSecret = params.TokenSecret
+	if err := validateProfileCredentials(profile, hasOAuthParams); err != nil {
+		return nil, err
 	}
 	if params.Environment != "" {
 		profile.Environment = params.Environment
@@ -189,6 +217,18 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 	c.Volumes = &volumeServiceImpl{client: c}
 
 	return c, nil
+}
+
+func validateProfileCredentials(profile Profile, hasExplicitOAuthCredentials bool) error {
+	hasTokenCredentials := profile.TokenID != "" || profile.TokenSecret != ""
+	hasOAuthCredentials := hasExplicitOAuthCredentials || profile.OAuthRefreshToken != "" || profile.OAuthClientID != "" || profile.OAuthClientSecret != ""
+	if hasTokenCredentials && hasOAuthCredentials {
+		return InvalidError{Exception: "Modal token credentials and OAuth credentials cannot both be configured"}
+	}
+	if hasOAuthCredentials && (profile.OAuthRefreshToken == "" || profile.OAuthClientID == "" || profile.OAuthClientSecret == "") {
+		return InvalidError{Exception: "OAuth refresh token, client ID, and client secret must all be configured"}
+	}
+	return nil
 }
 
 // ipClient returns the input plane client for the given server URL.
@@ -358,18 +398,30 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 
 // injectRequiredHeaders adds required headers to the context.
 func injectRequiredHeaders(ctx context.Context, profile Profile, sdkVersion string) (context.Context, error) {
-	if profile.TokenID == "" || profile.TokenSecret == "" {
-		return nil, fmt.Errorf("missing token_id or token_secret, please set in .modal.toml, environment variables, or via NewClientWithOptions()")
-	}
-
 	clientType := strconv.Itoa(int(pb.ClientType_CLIENT_TYPE_LIBMODAL_GO))
-	return metadata.AppendToOutgoingContext(
-		ctx,
+	headerPairs := []string{
 		"x-modal-client-type", clientType,
 		"x-modal-client-version", "1.0.0", // CLIENT VERSION: Behaves like this Python SDK version
-		"x-modal-libmodal-version", "modal-go/"+sdkVersion,
-		"x-modal-token-id", profile.TokenID,
-		"x-modal-token-secret", profile.TokenSecret,
+		"x-modal-libmodal-version", "modal-go/" + sdkVersion,
+	}
+	if profile.OAuthRefreshToken != "" {
+		headerPairs = append(headerPairs,
+			"x-modal-refresh-token", profile.OAuthRefreshToken,
+			"x-modal-oauth-client-id", profile.OAuthClientID,
+			"x-modal-oauth-client-secret", profile.OAuthClientSecret,
+		)
+	} else if profile.TokenID != "" && profile.TokenSecret != "" {
+		headerPairs = append(headerPairs,
+			"x-modal-token-id", profile.TokenID,
+			"x-modal-token-secret", profile.TokenSecret,
+		)
+	} else {
+		return nil, fmt.Errorf("missing credentials, please set them in .modal.toml, environment variables, or via NewClientWithOptions()")
+	}
+
+	return metadata.AppendToOutgoingContext(
+		ctx,
+		headerPairs...,
 	), nil
 }
 

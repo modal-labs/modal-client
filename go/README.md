@@ -40,6 +40,11 @@ export MODAL_TOKEN_ID=ak-NOTAREALTOKENSTRINGXYZ
 export MODAL_TOKEN_SECRET=as-FAKESECRETSTRINGABCDEF
 ```
 
+OAuth integrations can instead set `MODAL_OAUTH_REFRESH_TOKEN`,
+`MODAL_OAUTH_CLIENT_ID`, and `MODAL_OAUTH_CLIENT_SECRET`. See the
+[custom client example](./examples/custom-client/main.go) for explicit client
+configuration.
+
 ### Telemetry and Observability
 
 The Modal Go SDK supports custom gRPC interceptors for telemetry, tracing, and
@@ -90,6 +95,7 @@ We also provide a number of examples:
 - [Eagerly build an Image for a Sandbox](./examples/sandbox-prewarm/main.go)
 - [Building custom Images](./examples/image-building/main.go)
 - [Add telemetry and tracing with custom interceptors](./examples/telemetry/main.go)
+- [Configure a client with OAuth credentials](./examples/custom-client/main.go)
 
 ## Support
 
