@@ -19542,6 +19542,7 @@ type EndpointListItem struct {
 	xxx_hidden_ProvisioningStatus EndpointProvisioningStatus `protobuf:"varint,10,opt,name=provisioning_status,json=provisioningStatus,proto3,enum=modal.client.EndpointProvisioningStatus"`
 	xxx_hidden_Status             string                     `protobuf:"bytes,11,opt,name=status,proto3"`
 	xxx_hidden_ServingMode        EndpointServingMode        `protobuf:"varint,12,opt,name=serving_mode,json=servingMode,proto3,enum=modal.client.EndpointServingMode"`
+	xxx_hidden_Unauthenticated    bool                       `protobuf:"varint,13,opt,name=unauthenticated,proto3"`
 	unknownFields                 protoimpl.UnknownFields
 	sizeCache                     protoimpl.SizeCache
 }
@@ -19655,6 +19656,13 @@ func (x *EndpointListItem) GetServingMode() EndpointServingMode {
 	return EndpointServingMode_ENDPOINT_SERVING_MODE_UNSPECIFIED
 }
 
+func (x *EndpointListItem) GetUnauthenticated() bool {
+	if x != nil {
+		return x.xxx_hidden_Unauthenticated
+	}
+	return false
+}
+
 func (x *EndpointListItem) SetEndpointId(v string) {
 	x.xxx_hidden_EndpointId = v
 }
@@ -19703,6 +19711,10 @@ func (x *EndpointListItem) SetServingMode(v EndpointServingMode) {
 	x.xxx_hidden_ServingMode = v
 }
 
+func (x *EndpointListItem) SetUnauthenticated(v bool) {
+	x.xxx_hidden_Unauthenticated = v
+}
+
 func (x *EndpointListItem) HasMetadata() bool {
 	if x == nil {
 		return false
@@ -19729,6 +19741,7 @@ type EndpointListItem_builder struct {
 	ProvisioningStatus EndpointProvisioningStatus
 	Status             string
 	ServingMode        EndpointServingMode
+	Unauthenticated    bool
 }
 
 func (b0 EndpointListItem_builder) Build() *EndpointListItem {
@@ -19747,6 +19760,7 @@ func (b0 EndpointListItem_builder) Build() *EndpointListItem {
 	x.xxx_hidden_ProvisioningStatus = b.ProvisioningStatus
 	x.xxx_hidden_Status = b.Status
 	x.xxx_hidden_ServingMode = b.ServingMode
+	x.xxx_hidden_Unauthenticated = b.Unauthenticated
 	return m0
 }
 
@@ -65858,7 +65872,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"stopped_at\x18\x04 \x01(\x01R\tstoppedAt\x12\x1d\n" +
 	"\n" +
 	"stopped_by\x18\x05 \x01(\tR\tstoppedBy\x12)\n" +
-	"\x10environment_name\x18\x06 \x01(\tR\x0fenvironmentName\"\xb8\x04\n" +
+	"\x10environment_name\x18\x06 \x01(\tR\x0fenvironmentName\"\xe2\x04\n" +
 	"\x10EndpointListItem\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
 	"endpointId\x12\x12\n" +
@@ -65875,7 +65889,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13provisioning_status\x18\n" +
 	" \x01(\x0e2(.modal.client.EndpointProvisioningStatusR\x12provisioningStatus\x12\x16\n" +
 	"\x06status\x18\v \x01(\tR\x06status\x12D\n" +
-	"\fserving_mode\x18\f \x01(\x0e2!.modal.client.EndpointServingModeR\vservingMode\"~\n" +
+	"\fserving_mode\x18\f \x01(\x0e2!.modal.client.EndpointServingModeR\vservingMode\x12(\n" +
+	"\x0funauthenticated\x18\r \x01(\bR\x0funauthenticated\"~\n" +
 	"\x13EndpointListRequest\x12)\n" +
 	"\x10environment_name\x18\x01 \x01(\tR\x0fenvironmentName\x12<\n" +
 	"\n" +

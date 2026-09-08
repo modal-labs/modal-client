@@ -1606,6 +1606,7 @@ message EndpointListItem {
   EndpointProvisioningStatus provisioning_status = 10;
   string status = 11;
   EndpointServingMode serving_mode = 12;
+  bool unauthenticated = 13;
 }
 
 message EndpointListRequest {
