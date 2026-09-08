@@ -621,6 +621,57 @@ class FunctionInfo:
         )
 
 
+@dataclass
+class ServerInfo:
+    """A simple data structure containing static info about a Server handle."""
+
+    cpu: float | tuple[float, float] | None
+    memory_mib: int | tuple[int, int] | None
+    gpus: list[tuple[int, str]]
+    ephemeral_disk_mib: int | None
+    nonpreemptible: bool
+    compute_regions: list[str] | None
+    cloud: str | None
+    volumes: dict[str, VolumeMountInfo]
+    cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
+    secrets: list[str]
+
+    http_info: HttpInfo
+
+    def _get_copy(self) -> "ServerInfo":
+        return ServerInfo(
+            cpu=self.cpu,
+            memory_mib=self.memory_mib,
+            gpus=[g for g in self.gpus],
+            ephemeral_disk_mib=self.ephemeral_disk_mib,
+            nonpreemptible=self.nonpreemptible,
+            compute_regions=[r for r in self.compute_regions] if self.compute_regions is not None else None,
+            cloud=self.cloud,
+            volumes={k: v._get_copy() for k, v in self.volumes.items()},
+            cloud_bucket_mounts={k: v._get_copy() for k, v in self.cloud_bucket_mounts.items()},
+            secrets=[s for s in self.secrets],
+            http_info=self.http_info._get_copy(),
+        )
+
+    @classmethod
+    def _from_function_info(cls, info: FunctionInfo) -> "ServerInfo":
+        assert info.http_info is not None
+
+        return cls(
+            cpu=info.cpu,
+            memory_mib=info.memory_mib,
+            gpus=[g for g in info.gpus],
+            ephemeral_disk_mib=info.ephemeral_disk_mib,
+            nonpreemptible=info.nonpreemptible,
+            compute_regions=[r for r in info.regions] if info.regions is not None else None,
+            cloud=info.cloud,
+            volumes={k: v._get_copy() for k, v in info.volumes.items()},
+            cloud_bucket_mounts={k: cbm._get_copy() for k, cbm in info.cloud_bucket_mounts.items()},
+            secrets=[s for s in info.secrets],
+            http_info=info.http_info._get_copy(),
+        )
+
+
 class AppState(enum.Enum):
     APP_STATE_UNSPECIFIED = 0
     APP_STATE_EPHEMERAL = 1

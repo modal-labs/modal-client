@@ -15,7 +15,7 @@ from ._supports_logs import _LogQueryData
 from .client import _Client
 from .cls import is_parameter
 from .exception import InvalidError
-from .types import ServerAutoscalerSettings
+from .types import ServerAutoscalerSettings, ServerInfo
 
 if typing.TYPE_CHECKING:
     import modal.app
@@ -100,6 +100,24 @@ class _Server:
             CLI access to logs for an App.
         """
         return _ServerLogsManager(self)
+
+    async def info(self, *, refresh: bool = False) -> ServerInfo:
+        """Get an overview of a Server's resource requests, associated mounts, http config, etc.
+
+        This method performs a network request to populate this information if the Server handle is
+        a remote lookup whose information has not yet been fetched (e.g. from `Server.from_name(...)`),
+        or if `refresh=True`.
+
+        Args:
+            refresh: Always perform a network request. Pass `refresh=True` to ensure that this method
+                returns the most up to date information.
+
+        Returns:
+            This returns a [`modal.types.ServerInfo`](https://modal.com/docs/sdk/py/latest/types#ServerInfo)
+            dataclass.
+        """
+
+        return ServerInfo._from_function_info(await self._get_service_function().info(refresh=refresh))
 
     @staticmethod
     def _extract_user_cls(wrapped_user_cls: "type | _PartialFunction") -> type:

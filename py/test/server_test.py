@@ -12,7 +12,9 @@ from modal._serialization import deserialize
 from modal._server import _Server
 from modal._utils.async_utils import synchronizer
 from modal.exception import InvalidError, NotFoundError
+from modal.runner import deploy_app
 from modal.server import Server
+from modal.types import CloudBucketMountInfo, ServerInfo, VolumeMountInfo
 from modal_proto import api_pb2
 from test import conftest as client_test_conftest
 
@@ -1154,3 +1156,115 @@ def test_server_user_class_instantiation():
 
     # It's an instance of the original class
     assert type(instance).__name__ == "SimpleServer"
+
+
+server_info_app = modal.App()
+
+
+@server_info_app.server(port=8000, routing_region="us-east", serialized=True)
+class InfoServer:
+    @modal.enter()
+    def start(self):
+        pass
+
+
+def test_server_info_local():
+    info: modal.types.ServerInfo = InfoServer.info()  # type: ignore[attr-defined]
+    assert info.http_info.proxy_regions == ["us-east"]
+    assert info.http_info.port == 8000
+    assert info.http_info.unauthenticated == False
+    assert info.http_info.h2_enabled == False
+
+    assert not InfoServer._get_service_function()._is_hydrated  # type: ignore[attr-defined]
+
+
+def test_server_info_remote(client, servicer):
+    server = Server.from_name("dummy-app", "func", client=client)
+    function_id = "fu-1"
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id=function_id,
+                function=api_pb2.FunctionData(
+                    ranked_functions=[
+                        api_pb2.FunctionData.RankedFunction(
+                            rank=1,
+                            function=api_pb2.Function(
+                                function_name="func",
+                                volume_mounts=[
+                                    api_pb2.VolumeMount(volume_id="vo-123", mount_path="/tmp"),
+                                    api_pb2.VolumeMount(volume_id="vo-456", mount_path="/mnt", read_only=True),
+                                ],
+                                cloud_bucket_mounts=[
+                                    api_pb2.CloudBucketMount(
+                                        bucket_name="bucket-name",
+                                        mount_path="/dev",
+                                        bucket_type=api_pb2.CloudBucketMount.BucketType.S3,
+                                    )
+                                ],
+                            ),
+                        )
+                    ],
+                    http_config=api_pb2.HTTPConfig(
+                        port=1, proxy_regions=["us-west-2"], unauthenticated=True, h2_enabled=True
+                    ),
+                ),
+            ),
+        )
+
+        info = server.info()
+
+        assert info.volumes == {
+            "/tmp": VolumeMountInfo(
+                name=None,
+                volume_id="vo-123",
+                read_only=False,
+                sub_path=None,
+            ),
+            "/mnt": VolumeMountInfo(
+                name=None,
+                volume_id="vo-456",
+                read_only=True,
+                sub_path=None,
+            ),
+        }
+
+        assert info.cloud_bucket_mounts == {
+            "/dev": CloudBucketMountInfo(
+                bucket_name="bucket-name",
+                bucket_type="s3",
+                read_only=False,
+                key_prefix=None,
+            )
+        }
+
+        assert info.http_info.h2_enabled
+        assert info.http_info.unauthenticated
+        assert info.http_info.proxy_regions == ["us-west-2"]
+        assert info.http_info.port == 1
+
+
+def test_server_info_refresh(client):
+    app = modal.App()
+
+    @app.server(routing_region="us-east", serialized=True)
+    class InfoServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    deploy_app(app, "test_function_info_redeploy", client=client)
+
+    handle = InfoServer
+
+    info: ServerInfo = handle.info()  # type: ignore[attr-defined]
+    assert info.http_info.proxy_regions == ["us-east"]
+
+    _ = app.server(routing_region="us-west", serialized=True)(InfoServer._get_user_cls())  # type: ignore[attr-defined]
+
+    deploy_app(app, "test_function_info_redeploy", client=client)
+
+    new_info = handle.info(refresh=True)  # type: ignore[attr-defined]
+    assert new_info.http_info.proxy_regions == ["us-west"]

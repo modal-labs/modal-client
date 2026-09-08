@@ -23,6 +23,8 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
   - `_Cls.validate_construction_mechanism`, `_Cls.from_local`
 - Added `modal app info` CLI command that displays the constituent functions and servers of an app as well as its deployment lifecycle information.
 - Added `App.info` method that displays the constituent functions and servers of an app as well as its deployment lifecycle information.
+- Added `Function.info` method that displays static information about a particular Function
+- Added `Server.info` method that displays static information about a particular Server
 
 ## JS
 
