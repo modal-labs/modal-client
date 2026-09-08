@@ -2309,6 +2309,8 @@ message FunctionGetCallGraphRequest {
 message FunctionGetCallGraphResponse {
   repeated InputCallGraphInfo inputs = 1;
   repeated FunctionCallCallGraphInfo function_calls = 2;
+  // Set by the server when the graph has more nodes than it will return, so `inputs` is a prefix of the graph.
+  bool truncated = 3;
 }
 
 message FunctionGetCurrentStatsRequest {

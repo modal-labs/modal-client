@@ -28038,6 +28038,7 @@ type FunctionGetCallGraphResponse struct {
 	state                    protoimpl.MessageState        `protogen:"opaque.v1"`
 	xxx_hidden_Inputs        *[]*InputCallGraphInfo        `protobuf:"bytes,1,rep,name=inputs,proto3"`
 	xxx_hidden_FunctionCalls *[]*FunctionCallCallGraphInfo `protobuf:"bytes,2,rep,name=function_calls,json=functionCalls,proto3"`
+	xxx_hidden_Truncated     bool                          `protobuf:"varint,3,opt,name=truncated,proto3"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -28085,6 +28086,13 @@ func (x *FunctionGetCallGraphResponse) GetFunctionCalls() []*FunctionCallCallGra
 	return nil
 }
 
+func (x *FunctionGetCallGraphResponse) GetTruncated() bool {
+	if x != nil {
+		return x.xxx_hidden_Truncated
+	}
+	return false
+}
+
 func (x *FunctionGetCallGraphResponse) SetInputs(v []*InputCallGraphInfo) {
 	x.xxx_hidden_Inputs = &v
 }
@@ -28093,11 +28101,17 @@ func (x *FunctionGetCallGraphResponse) SetFunctionCalls(v []*FunctionCallCallGra
 	x.xxx_hidden_FunctionCalls = &v
 }
 
+func (x *FunctionGetCallGraphResponse) SetTruncated(v bool) {
+	x.xxx_hidden_Truncated = v
+}
+
 type FunctionGetCallGraphResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Inputs        []*InputCallGraphInfo
 	FunctionCalls []*FunctionCallCallGraphInfo
+	// Set by the server when the graph has more nodes than it will return, so `inputs` is a prefix of the graph.
+	Truncated bool
 }
 
 func (b0 FunctionGetCallGraphResponse_builder) Build() *FunctionGetCallGraphResponse {
@@ -28106,6 +28120,7 @@ func (b0 FunctionGetCallGraphResponse_builder) Build() *FunctionGetCallGraphResp
 	_, _ = b, x
 	x.xxx_hidden_Inputs = &b.Inputs
 	x.xxx_hidden_FunctionCalls = &b.FunctionCalls
+	x.xxx_hidden_Truncated = b.Truncated
 	return m0
 }
 
@@ -66393,10 +66408,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bfunction\x18\x01 \x01(\v2\x1a.modal.client.FunctionDataR\bfunction\x12M\n" +
 	"\x0fhandle_metadata\x18\x02 \x01(\v2$.modal.client.FunctionHandleMetadataR\x0ehandleMetadata\"G\n" +
 	"\x1bFunctionGetCallGraphRequest\x12(\n" +
-	"\x10function_call_id\x18\x02 \x01(\tR\x0efunctionCallId\"\xa8\x01\n" +
+	"\x10function_call_id\x18\x02 \x01(\tR\x0efunctionCallId\"\xc6\x01\n" +
 	"\x1cFunctionGetCallGraphResponse\x128\n" +
 	"\x06inputs\x18\x01 \x03(\v2 .modal.client.InputCallGraphInfoR\x06inputs\x12N\n" +
-	"\x0efunction_calls\x18\x02 \x03(\v2'.modal.client.FunctionCallCallGraphInfoR\rfunctionCalls\"A\n" +
+	"\x0efunction_calls\x18\x02 \x03(\v2'.modal.client.FunctionCallCallGraphInfoR\rfunctionCalls\x12\x1c\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"A\n" +
 	"\x1eFunctionGetCurrentStatsRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\"\x9f\x01\n" +
