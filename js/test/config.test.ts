@@ -28,6 +28,26 @@ test("GetProfile_MaxThrottleWaitInvalidValue", () => {
   vi.unstubAllEnvs();
 });
 
+const sandboxV2Cases = [
+  { envVal: undefined, expected: false },
+  { envVal: "", expected: false },
+  { envVal: "0", expected: false },
+  { envVal: "false", expected: false },
+  { envVal: "False", expected: false },
+  { envVal: "1", expected: true },
+  { envVal: "true", expected: true },
+  { envVal: "yes", expected: true },
+];
+
+for (const { envVal, expected } of sandboxV2Cases) {
+  test(`GetProfile_SandboxV2Parsing/${JSON.stringify(envVal)}`, () => {
+    vi.stubEnv("MODAL_SANDBOX_V2", envVal);
+    const profile = getProfile();
+    expect(profile.sandboxV2).toBe(expected);
+    vi.unstubAllEnvs();
+  });
+}
+
 test("GetProfile_OAuthCredentials", () => {
   vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token");
   vi.stubEnv("MODAL_OAUTH_CLIENT_ID", "oc-client-id");

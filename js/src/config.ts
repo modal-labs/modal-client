@@ -39,6 +39,8 @@ export interface Profile {
    * connections open until the client closes.
    */
   sandboxChannelIdleTimeoutMs: number;
+  /** Set by the MODAL_SANDBOX_V2 environment variable. */
+  sandboxV2: boolean;
   /**
    * How long a caller may sit on a chunk of a Sandbox's output before the stream
    * stops counting as in use. Only once a reader has gone quiet for this long
@@ -174,6 +176,12 @@ export function getProfile(profileName?: string): Profile {
       // none at all.
       return parsed > 0 && ms === 0 ? 1 : ms;
     })(),
+    sandboxV2: parseBooleanFlag(process.env["MODAL_SANDBOX_V2"]),
   };
   return profile as Profile; // safe to null-cast because of check above
+}
+
+function parseBooleanFlag(value: string | undefined): boolean {
+  if (!value) return false;
+  return !["0", "false"].includes(value.toLowerCase());
 }

@@ -739,6 +739,12 @@ export class SandboxService {
     image: Image,
     params: SandboxCreateParams = {},
   ): Promise<Sandbox> {
+    // Opt-in to the V2 backend. GPUs are not supported on V2, so those calls
+    // stay on V1 even when the flag is set.
+    if (this.#client.profile.sandboxV2 && !params.gpu) {
+      return await this.experimentalCreate(app, image, params);
+    }
+
     await image.build(app);
 
     const mergedSecrets = await mergeEnvIntoSecrets(
@@ -903,6 +909,14 @@ export class SandboxService {
     name: string,
     params?: SandboxFromNameParams,
   ): Promise<Sandbox> {
+    if (this.#client.profile.sandboxV2) {
+      try {
+        return await this.experimentalFromName(appName, name, params);
+      } catch (err) {
+        if (!(err instanceof NotFoundError)) throw err;
+      }
+    }
+
     try {
       const resp = await this.#client.cpClient.sandboxGetFromName({
         sandboxName: name,
@@ -1031,6 +1045,11 @@ export class SandboxService {
   async *list(
     params: SandboxListParams = {},
   ): AsyncGenerator<Sandbox, void, unknown> {
+    if (this.#client.profile.sandboxV2) {
+      yield* this.experimentalList(params);
+      return;
+    }
+
     const env = this.#client.environmentName(params.environment);
     const tagsList = params.tags
       ? Object.entries(params.tags).map(([tagName, tagValue]) => ({
@@ -1100,24 +1119,31 @@ export class SandboxService {
 
     let beforeTimestamp: number | undefined = undefined;
     while (true) {
-      // Fetches a batch of Sandboxes. SandboxListV2 authenticates via the
-      // auth-token metadata (attached automatically by the client), like the
-      // other V2 Sandbox RPCs.
-      const resp = await this.#client.cpClient.sandboxListV2({
-        appId: params.appId,
-        beforeTimestamp,
-        environmentName,
-        includeFinished: false,
-        tags: tagsList,
-      });
-      if (!resp.sandboxes || resp.sandboxes.length === 0) {
-        return;
+      try {
+        const resp = await this.#client.cpClient.sandboxListV2({
+          appId: params.appId,
+          beforeTimestamp,
+          environmentName,
+          includeFinished: false,
+          tags: tagsList,
+        });
+        if (!resp.sandboxes || resp.sandboxes.length === 0) {
+          return;
+        }
+        for (const info of resp.sandboxes) {
+          yield new Sandbox(this.#client, info.id);
+        }
+        // Fetch the next batch starting from the end of the current one.
+        beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
+      } catch (err) {
+        if (
+          err instanceof ClientError &&
+          err.code === Status.INVALID_ARGUMENT
+        ) {
+          throw new InvalidError(err.details || err.message);
+        }
+        throw err;
       }
-      for (const info of resp.sandboxes) {
-        yield new Sandbox(this.#client, info.id);
-      }
-      // Fetch the next batch starting from the end of the current one.
-      beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
     }
   }
 }
