@@ -105,7 +105,7 @@ async def _raise_on_block_response_error(response) -> None:
 # understood: `sha-256` covers the whole body, and `modal-sha-256-prefix` covers
 # the leading `len` bytes with every byte after them required to be zero. Other
 # keys are ignored, as the RFC prescribes.
-_REPR_DIGEST_MEMBER_RE = re.compile(r"^(sha-256|modal-sha-256-prefix)=:([A-Za-z0-9+/]+={0,2}):(;len=(\d+))?$")
+_REPR_DIGEST_MEMBER_RE = re.compile(r"^(sha-256|modal-sha-256-prefix)=:([A-Za-z0-9+/]+={0,2}):(;len=(\d{1,15}))?$")
 
 
 @dataclass(frozen=True)
