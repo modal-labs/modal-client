@@ -56416,13 +56416,14 @@ func (b0 VolumeGetByIdResponse_builder) Build() *VolumeGetByIdResponse {
 }
 
 type VolumeGetFile2Request struct {
-	state               protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_VolumeId string                 `protobuf:"bytes,1,opt,name=volume_id,json=volumeId,proto3"`
-	xxx_hidden_Path     string                 `protobuf:"bytes,2,opt,name=path,proto3"`
-	xxx_hidden_Start    uint64                 `protobuf:"varint,3,opt,name=start,proto3"`
-	xxx_hidden_Len      uint64                 `protobuf:"varint,4,opt,name=len,proto3"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                       protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_VolumeId         string                 `protobuf:"bytes,1,opt,name=volume_id,json=volumeId,proto3"`
+	xxx_hidden_Path             string                 `protobuf:"bytes,2,opt,name=path,proto3"`
+	xxx_hidden_Start            uint64                 `protobuf:"varint,3,opt,name=start,proto3"`
+	xxx_hidden_Len              uint64                 `protobuf:"varint,4,opt,name=len,proto3"`
+	xxx_hidden_ClientPadsBlocks bool                   `protobuf:"varint,5,opt,name=client_pads_blocks,json=clientPadsBlocks,proto3"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *VolumeGetFile2Request) Reset() {
@@ -56478,6 +56479,13 @@ func (x *VolumeGetFile2Request) GetLen() uint64 {
 	return 0
 }
 
+func (x *VolumeGetFile2Request) GetClientPadsBlocks() bool {
+	if x != nil {
+		return x.xxx_hidden_ClientPadsBlocks
+	}
+	return false
+}
+
 func (x *VolumeGetFile2Request) SetVolumeId(v string) {
 	x.xxx_hidden_VolumeId = v
 }
@@ -56494,6 +56502,10 @@ func (x *VolumeGetFile2Request) SetLen(v uint64) {
 	x.xxx_hidden_Len = v
 }
 
+func (x *VolumeGetFile2Request) SetClientPadsBlocks(v bool) {
+	x.xxx_hidden_ClientPadsBlocks = v
+}
+
 type VolumeGetFile2Request_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -56501,6 +56513,9 @@ type VolumeGetFile2Request_builder struct {
 	Path     string
 	Start    uint64
 	Len      uint64
+	// The client extends each block body it downloads with zero bytes up to the
+	// block's expected length, so responses may omit trailing zero bytes.
+	ClientPadsBlocks bool
 }
 
 func (b0 VolumeGetFile2Request_builder) Build() *VolumeGetFile2Request {
@@ -56511,6 +56526,7 @@ func (b0 VolumeGetFile2Request_builder) Build() *VolumeGetFile2Request {
 	x.xxx_hidden_Path = b.Path
 	x.xxx_hidden_Start = b.Start
 	x.xxx_hidden_Len = b.Len
+	x.xxx_hidden_ClientPadsBlocks = b.ClientPadsBlocks
 	return m0
 }
 
@@ -68199,12 +68215,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"n\n" +
 	"\x15VolumeGetByIdResponse\x12\x1b\n" +
 	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\x128\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x1c.modal.client.VolumeMetadataR\bmetadata\"p\n" +
+	"\bmetadata\x18\x02 \x01(\v2\x1c.modal.client.VolumeMetadataR\bmetadata\"\x9e\x01\n" +
 	"\x15VolumeGetFile2Request\x12\x1b\n" +
 	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x14\n" +
 	"\x05start\x18\x03 \x01(\x04R\x05start\x12\x10\n" +
-	"\x03len\x18\x04 \x01(\x04R\x03len\"o\n" +
+	"\x03len\x18\x04 \x01(\x04R\x03len\x12,\n" +
+	"\x12client_pads_blocks\x18\x05 \x01(\bR\x10clientPadsBlocks\"o\n" +
 	"\x16VolumeGetFile2Response\x12\x19\n" +
 	"\bget_urls\x18\x01 \x03(\tR\agetUrls\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x04R\x04size\x12\x14\n" +

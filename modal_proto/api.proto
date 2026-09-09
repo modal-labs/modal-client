@@ -4458,6 +4458,9 @@ message VolumeGetFile2Request {
   string path = 2;
   uint64 start = 3;
   uint64 len = 4; // 0 is interpreted as 'read to end'
+  // The client extends each block body it downloads with zero bytes up to the
+  // block's expected length, so responses may omit trailing zero bytes.
+  bool client_pads_blocks = 5;
 }
 
 message VolumeGetFile2Response {
