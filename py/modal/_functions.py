@@ -16,6 +16,7 @@ from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._utils.logger import logger
 from modal.types import CloudBucketMountInfo, FunctionInfo, HttpInfo, VolumeMountInfo
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
@@ -2306,7 +2307,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """Fetch information about the graph of Inputs this FunctionCall is part of.
 
         Note: the call graph data is not populated in real-time, and its capture is best-effort.
-        We do not recommend relying on this method for critical use cases.
+        Large call graphs may be truncated. We do not recommend relying on this method
+        for critical use cases.
 
         See the [`modal.types`](/docs/sdk/py/latest/types) reference for information
         on the return values.
@@ -2317,6 +2319,11 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         assert self._client and self._client.stub
         request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
         response = await self._client.stub.FunctionGetCallGraph(request)
+        if response.truncated:
+            logger.warning(
+                f"Call graph for {self.object_id} was truncated; "
+                f"returning the first {len(response.inputs)} inputs. The graph may be incomplete."
+            )
         return _reconstruct_call_graph(response)
 
     @live_method
