@@ -377,12 +377,16 @@ async def _run_app(
     deployment_strategy: str = "rolling",
 ) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
+    if modal._runtime.execution_context._in_import_context():
+        raise InvalidError(
+            "`App.run()` cannot be called in global scope. "
+            'Use `if __name__ == "__main__"` to run Apps in a script, '
+            "or convert the block to a local entrypoint and use the `modal run` CLI."
+        )
+
     load_context = await app._root_load_context.reset().in_place_upgrade(
         client=client, environment_name=environment_name
     )
-
-    if modal._runtime.execution_context._in_import_context():
-        raise InvalidError("Can not run an app in global scope within a container")
 
     if app._running_app:
         raise InvalidError(
@@ -601,6 +605,12 @@ async def _deploy_app(
 
     Users should prefer the `modal deploy` CLI or the `App.deploy` method.
     """
+    if modal._runtime.execution_context._in_import_context():
+        raise InvalidError(
+            "`App.deploy()` should not be called in global scope. "
+            'Use `if __name__ == "__main__"` to deploy Apps in a script, '
+            "or use the `modal deploy` CLI."
+        )
 
     name = name or app.name or ""
     if not name:

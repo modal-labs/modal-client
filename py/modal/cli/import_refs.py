@@ -27,6 +27,7 @@ from modal.exception import InvalidError, _CliUserExecutionError
 from modal.functions import Function
 from modal.output import OutputManager
 
+from .._runtime import execution_context
 from .._utils.async_utils import synchronizer
 
 
@@ -74,7 +75,8 @@ def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
                 f"Use `{base_cmd} -m {import_ref.file_or_module}` instead.",
             )
         try:
-            module = importlib.import_module(import_ref.file_or_module)
+            with execution_context._import_context():
+                module = importlib.import_module(import_ref.file_or_module)
         except Exception as exc:
             raise _CliUserExecutionError(import_ref.file_or_module) from exc
     else:
@@ -97,7 +99,8 @@ def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
         sys.modules[module_name] = module
         try:
             assert spec.loader
-            spec.loader.exec_module(module)
+            with execution_context._import_context():
+                spec.loader.exec_module(module)
         except Exception as exc:
             if isinstance(exc, ImportError) and "attempted relative import with no known parent package" in str(exc):
                 if import_ref.file_or_module and import_ref.command and not import_ref.use_module_mode:

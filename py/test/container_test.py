@@ -297,7 +297,7 @@ def test_grpc_failure(servicer, deployed_support_function_definitions):
 def test_run_from_global_scope(servicer, capsys):
     _run_container(servicer, "test.supports.missing_main_conditional", "square")
     output = capsys.readouterr()
-    assert "Can not run an app in global scope within a container" in output.err
+    assert "`App.run()` cannot be called in global scope" in output.err
     assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     exc = deserialize(servicer.task_result.data, None)
     assert isinstance(exc, InvalidError)
@@ -469,7 +469,7 @@ def test_serialized_loading_rejects_app_run(servicer, is_class, function_name, s
     assert ret.items == []
     exc = deserialize(ret.task_result.data, None)
     assert isinstance(exc, DeserializationError)
-    assert "Can not run an app in global scope within a container" in str(exc)
+    assert "`App.run()` cannot be called in global scope" in str(exc)
 
 
 @skip_github_non_linux

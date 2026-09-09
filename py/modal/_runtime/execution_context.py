@@ -109,7 +109,7 @@ _current_input_id: ContextVar = ContextVar("_current_input_id")
 _current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
 _current_attempt_token: ContextVar = ContextVar("_current_attempt_token")
 
-_is_currently_importing = False  # we set this to True while a container is importing user code
+_is_currently_importing = False
 
 
 @contextmanager

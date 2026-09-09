@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 from typing import cast
+from unittest.mock import AsyncMock
 
 import modal
 from modal._utils.async_utils import synchronizer
@@ -89,6 +90,22 @@ def my_func():
 python_helper_src = """
 def helper_func():
     return 42
+"""
+
+global_app_run_src = """
+import modal
+
+app = modal.App()
+
+with app.run():
+    pass
+"""
+
+global_app_deploy_src = """
+import modal
+
+app = modal.App("app-bomb")
+app.deploy()
 """
 
 dir_with_relative_import_package = {
@@ -209,6 +226,46 @@ def test_import_package_and_module_names(monkeypatch, supports_dir):
 def test_invalid_source_file_exception():
     with pytest.raises(InvalidError, match="Invalid Modal source filename: 'foo.bar.py'"):
         import_file_or_module(ImportRef("path/to/foo.bar.py", use_module_mode=False))
+
+
+@pytest.mark.parametrize(
+    ("file_or_module", "use_module_mode"),
+    [("app_bomb_file.py", False), ("app_bomb_module", True)],
+)
+def test_import_rejects_global_app_run_without_initializing_client(
+    mock_dir, monkeypatch, file_or_module, use_module_mode
+):
+    from_env = AsyncMock(side_effect=AssertionError("client should not be initialized"))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+
+    source_file = file_or_module.removesuffix(".py") + ".py"
+    with mock_dir({source_file: global_app_run_src}):
+        with pytest.raises(_CliUserExecutionError) as exc_info:
+            import_file_or_module(ImportRef(file_or_module, use_module_mode=use_module_mode))
+
+    assert isinstance(exc_info.value.__cause__, InvalidError)
+    assert "`App.run()` cannot be called in global scope" in str(exc_info.value.__cause__)
+    from_env.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("file_or_module", "use_module_mode"),
+    [("deploy_bomb_file.py", False), ("deploy_bomb_module", True)],
+)
+def test_import_rejects_global_app_deploy_without_initializing_client(
+    mock_dir, monkeypatch, file_or_module, use_module_mode
+):
+    from_env = AsyncMock(side_effect=AssertionError("client should not be initialized"))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+
+    source_file = file_or_module.removesuffix(".py") + ".py"
+    with mock_dir({source_file: global_app_deploy_src}):
+        with pytest.raises(_CliUserExecutionError) as exc_info:
+            import_file_or_module(ImportRef(file_or_module, use_module_mode=use_module_mode))
+
+    assert isinstance(exc_info.value.__cause__, InvalidError)
+    assert "should not be called in global scope" in str(exc_info.value.__cause__)
+    from_env.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
