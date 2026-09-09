@@ -635,6 +635,13 @@ def test_token_env_var_warning(servicer, set_env_client, server_url_env, modal_c
         res = run_cli_command(["token", "new"])
         assert "MODAL_TOKEN_ID / MODAL_TOKEN_SECRET environment variables are" in res.stdout
 
+    monkeypatch.delenv("MODAL_TOKEN_ID")
+    monkeypatch.delenv("MODAL_TOKEN_SECRET")
+    monkeypatch.setenv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token")
+    with modal_config():
+        res = run_cli_command(["token", "new"])
+        assert "MODAL_OAUTH_REFRESH_TOKEN environment variable is" in res.stdout
+
 
 def test_token_info(servicer, set_env_client):
     res = run_cli_command(["token", "info"])
@@ -1251,6 +1258,21 @@ def test_token_identity_from_env(servicer, set_env_client, monkeypatch):
     assert "Using" in res.stdout
     assert "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET" in res.stdout
     assert "environment" in res.stdout
+
+
+def test_token_identity_from_oauth_env(servicer, set_env_client, monkeypatch):
+    monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
+    monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
+    monkeypatch.setenv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token")
+    monkeypatch.setenv("MODAL_OAUTH_CLIENT_ID", "oc-client-id")
+    monkeypatch.setenv("MODAL_OAUTH_CLIENT_SECRET", "ov-client-secret")
+
+    res = run_cli_command(["token", "info"])
+    normalized_output = " ".join(res.stdout.split())
+    assert (
+        "Using MODAL_OAUTH_REFRESH_TOKEN and MODAL_OAUTH_CLIENT_ID and MODAL_OAUTH_CLIENT_SECRET environment variables"
+        in normalized_output
+    )
 
 
 def test_packaged_skill_has_well_formed_frontmatter():
@@ -2410,6 +2432,88 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 os.environ["MODAL_TOKEN_SECRET"] = orig_env_token_secret
             else:
                 del os.environ["MODAL_TOKEN_SECRET"]
+
+
+def test_profile_list_uses_oauth_env(servicer, server_url_env, modal_config, monkeypatch, credentials):
+    token_id, token_secret = credentials
+    monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
+    monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
+    monkeypatch.setenv("MODAL_OAUTH_REFRESH_TOKEN", f"{token_id}.{token_secret}")
+    monkeypatch.setenv("MODAL_OAUTH_CLIENT_ID", "oc-client-id")
+    monkeypatch.setenv("MODAL_OAUTH_CLIENT_SECRET", "ov-client-secret")
+
+    with modal_config(""):
+        servicer.required_creds = {token_id: token_secret}
+        res = run_cli_command(["profile", "list"])
+
+    normalized_output = " ".join(res.stdout.split())
+    assert "Using test-username workspace based on environment variables" in normalized_output
+
+
+def test_profile_list_uses_oauth_profile(servicer, server_url_env, modal_config, monkeypatch, credentials):
+    token_id, token_secret = credentials
+    for env_var in (
+        "MODAL_TOKEN_ID",
+        "MODAL_TOKEN_SECRET",
+        "MODAL_OAUTH_REFRESH_TOKEN",
+        "MODAL_OAUTH_CLIENT_ID",
+        "MODAL_OAUTH_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
+    config = f"""
+    [oauth-profile]
+    oauth_refresh_token = "{token_id}.{token_secret}"
+    oauth_client_id = "oc-client-id"
+    oauth_client_secret = "ov-client-secret"
+    active = true
+    """
+    with modal_config(config):
+        servicer.required_creds = {token_id: token_secret}
+        res = run_cli_command(["profile", "list"])
+
+    assert "test-username" in res.stdout
+
+
+@pytest.mark.parametrize(
+    "credential_env",
+    [
+        {"MODAL_OAUTH_REFRESH_TOKEN": "refresh-token"},
+        {
+            "MODAL_TOKEN_ID": "ak-token",
+            "MODAL_TOKEN_SECRET": "as-secret",
+            "MODAL_OAUTH_REFRESH_TOKEN": "refresh-token",
+            "MODAL_OAUTH_CLIENT_ID": "oc-client-id",
+            "MODAL_OAUTH_CLIENT_SECRET": "ov-client-secret",
+        },
+    ],
+)
+def test_profile_list_handles_invalid_oauth_env(servicer, server_url_env, modal_config, monkeypatch, credential_env):
+    for env_var in (
+        "MODAL_TOKEN_ID",
+        "MODAL_TOKEN_SECRET",
+        "MODAL_OAUTH_REFRESH_TOKEN",
+        "MODAL_OAUTH_CLIENT_ID",
+        "MODAL_OAUTH_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+    for env_var, value in credential_env.items():
+        monkeypatch.setenv(env_var, value)
+
+    config = """
+    [test-profile]
+    token_id = "ak-abc"
+    token_secret = "as-xyz"
+    active = true
+    """
+    with modal_config(config):
+        servicer.required_creds = {"ak-abc": "as-xyz"}
+        res = run_cli_command(["profile", "list"])
+
+    normalized_output = " ".join(res.stdout.split())
+    assert (
+        "Using Unknown (invalid credential configuration) workspace based on environment variables" in normalized_output
+    )
 
 
 def test_global_profile_option(servicer, set_env_client, modal_config, test_dir):

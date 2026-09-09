@@ -17,7 +17,7 @@ from modal.config import (
     config_set_active_profile,
 )
 from modal.environments import Environment
-from modal.exception import AuthError
+from modal.exception import AuthError, InvalidError
 from modal.output import OutputManager
 
 from ._help import ModalGroup
@@ -53,8 +53,11 @@ async def list_(json: bool | None = False):
     lookup_coros = [
         _lookup_workspace(
             config.get("server_url", profile=profile),
-            config.get("token_id", profile=profile, use_env=False),
-            config.get("token_secret", profile=profile, use_env=False),
+            token_id=config.get("token_id", profile=profile, use_env=False),
+            token_secret=config.get("token_secret", profile=profile, use_env=False),
+            oauth_refresh_token=config.get("oauth_refresh_token", profile=profile, use_env=False),
+            oauth_client_id=config.get("oauth_client_id", profile=profile, use_env=False),
+            oauth_client_secret=config.get("oauth_client_secret", profile=profile, use_env=False),
         )
         for profile in profiles
     ]
@@ -77,16 +80,28 @@ async def list_(json: bool | None = False):
         rows.append((active, content))
 
     env_based_workspace: str | None = None
-    if "MODAL_TOKEN_ID" in os.environ:
+    credential_env_vars = (
+        "MODAL_TOKEN_ID",
+        "MODAL_TOKEN_SECRET",
+        "MODAL_OAUTH_REFRESH_TOKEN",
+        "MODAL_OAUTH_CLIENT_ID",
+        "MODAL_OAUTH_CLIENT_SECRET",
+    )
+    if any(env_var in os.environ for env_var in credential_env_vars):
         try:
             env_based_resp = await _lookup_workspace(
                 config.get("server_url", profile=config_module._profile),
-                os.environ["MODAL_TOKEN_ID"],
-                os.environ.get("MODAL_TOKEN_SECRET", ""),
+                token_id=config.get("token_id", profile=config_module._profile),
+                token_secret=config.get("token_secret", profile=config_module._profile),
+                oauth_refresh_token=config.get("oauth_refresh_token", profile=config_module._profile),
+                oauth_client_id=config.get("oauth_client_id", profile=config_module._profile),
+                oauth_client_secret=config.get("oauth_client_secret", profile=config_module._profile),
             )
             env_based_workspace = env_based_resp.username
         except AuthError:
             env_based_workspace = "Unknown (authentication failure)"
+        except InvalidError:
+            env_based_workspace = "Unknown (invalid credential configuration)"
 
     output = OutputManager.get()
     highlight = "bold green" if env_based_workspace is None else "yellow"

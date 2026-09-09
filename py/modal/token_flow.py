@@ -166,7 +166,14 @@ async def _set_token(
     )
 
     # Warn the user if their token will be ignored
-    env_vars = [var if os.environ.get(var) else None for var in ["MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"]]
+    credential_env_vars = [
+        "MODAL_TOKEN_ID",
+        "MODAL_TOKEN_SECRET",
+        "MODAL_OAUTH_REFRESH_TOKEN",
+        "MODAL_OAUTH_CLIENT_ID",
+        "MODAL_OAUTH_CLIENT_SECRET",
+    ]
+    env_vars = [var if os.environ.get(var) else None for var in credential_env_vars]
     env_vars_used = [var for var in env_vars if var is not None]
     env_vars_str = " / ".join(env_vars_used)
     if env_vars_used:

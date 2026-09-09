@@ -156,6 +156,44 @@ async def test_workspace_lookup(servicer, server_url_env):
     assert resp.username == "test-username"
 
 
+@pytest.mark.asyncio
+async def test_workspace_lookup_oauth(servicer, credentials):
+    token_id, token_secret = credentials
+    servicer.required_creds = {token_id: token_secret}
+    resp = await synchronize_api(_lookup_workspace).aio(
+        servicer.client_addr,
+        oauth_refresh_token=f"{token_id}.{token_secret}",
+        oauth_client_id="oc-client-id",
+        oauth_client_secret="ov-client-secret",
+    )
+    assert resp.username == "test-username"
+    assert servicer.last_metadata["x-modal-refresh-token"] == f"{token_id}.{token_secret}"
+    assert "x-modal-token-id" not in servicer.last_metadata
+    assert "x-modal-token-secret" not in servicer.last_metadata
+    assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
+    assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("oauth_credentials", "missing_credentials"),
+    [
+        ({"oauth_refresh_token": "refresh-token"}, "client ID, client secret"),
+        (
+            {"oauth_client_id": "oc-client-id", "oauth_client_secret": "ov-client-secret"},
+            "refresh token",
+        ),
+        (
+            {"oauth_refresh_token": "refresh-token", "oauth_client_secret": "ov-client-secret"},
+            "client ID",
+        ),
+    ],
+)
+async def test_workspace_lookup_incomplete_oauth(oauth_credentials, missing_credentials):
+    with pytest.raises(InvalidError, match=f"OAuth credentials are incomplete; missing {missing_credentials}."):
+        await synchronize_api(_lookup_workspace).aio("http://unused", **oauth_credentials)
+
+
 @pytest.mark.parametrize("arg", ["false", "'false'", "'False'", "'0'", 0, "''"])
 def test_config_boolean(modal_config, arg):
     modal_toml = f"""

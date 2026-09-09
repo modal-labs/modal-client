@@ -109,7 +109,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 
 from ._utils.logger import configure_logger
-from .exception import InvalidError, NotFoundError
+from .exception import AuthError, InvalidError, NotFoundError
 
 # By default, try api.modal.com and fail over to api.modal2.com
 DEFAULT_SERVER_URL = "https://api.modal.com,https://api.modal2.com"
@@ -184,11 +184,51 @@ def _read_user_config():
 _user_config = _read_user_config()
 
 
-async def _lookup_workspace(server_url: str, token_id: str, token_secret: str) -> api_pb2.WorkspaceNameLookupResponse:
-    from .client import _Client
+async def _lookup_workspace(
+    server_url: str,
+    token_id: str | None = None,
+    token_secret: str | None = None,
+    *,
+    oauth_refresh_token: str | None = None,
+    oauth_client_id: str | None = None,
+    oauth_client_secret: str | None = None,
+) -> api_pb2.WorkspaceNameLookupResponse:
+    from .client import _Client, _OAuthCredentials
 
-    credentials = (token_id, token_secret)
-    async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+    has_token_config = bool(token_id or token_secret)
+    has_oauth_config = bool(oauth_refresh_token or oauth_client_id or oauth_client_secret)
+    if has_token_config and has_oauth_config:
+        raise InvalidError("Modal token credentials and OAuth credentials cannot both be configured.")
+    if has_oauth_config:
+        missing_oauth_credentials = [
+            name
+            for name, value in (
+                ("refresh token", oauth_refresh_token),
+                ("client ID", oauth_client_id),
+                ("client secret", oauth_client_secret),
+            )
+            if not value
+        ]
+        if missing_oauth_credentials:
+            raise InvalidError(f"OAuth credentials are incomplete; missing {', '.join(missing_oauth_credentials)}.")
+        assert oauth_refresh_token and oauth_client_id and oauth_client_secret
+        credentials = None
+        oauth_credentials = _OAuthCredentials(
+            refresh_token=oauth_refresh_token,
+            client_id=oauth_client_id,
+            client_secret=oauth_client_secret,
+        )
+    else:
+        if not token_id or not token_secret:
+            raise AuthError("Token ID and secret must both be configured.")
+        credentials = (token_id, token_secret)
+        oauth_credentials = None
+    async with _Client(
+        server_url,
+        api_pb2.CLIENT_TYPE_CLIENT,
+        credentials,
+        oauth_credentials=oauth_credentials,
+    ) as client:
         return await client.stub.WorkspaceNameLookup(Empty(), retry=None, timeout=3)
 
 

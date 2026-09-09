@@ -62,10 +62,15 @@ async def info():
 
     output = OutputManager.get()
     env_vars = []
-    if os.environ.get("MODAL_TOKEN_ID"):
-        env_vars.append("MODAL_TOKEN_ID")
-    if os.environ.get("MODAL_TOKEN_SECRET"):
-        env_vars.append("MODAL_TOKEN_SECRET")
+    for env_var in (
+        "MODAL_TOKEN_ID",
+        "MODAL_TOKEN_SECRET",
+        "MODAL_OAUTH_REFRESH_TOKEN",
+        "MODAL_OAUTH_CLIENT_ID",
+        "MODAL_OAUTH_CLIENT_SECRET",
+    ):
+        if os.environ.get(env_var):
+            env_vars.append(env_var)
 
     if env_vars:
         env_vars_str = " and ".join(env_vars)
