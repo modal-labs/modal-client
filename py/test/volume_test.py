@@ -1075,7 +1075,8 @@ async def test_volume_read_file_into_fileobj_wrong_length(monkeypatch, servicer,
     monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
 
     with servicer.intercept() as ctx:
-        # Block 0 is short, block 1 is long; neither may be written outside its own slice.
+        # Block 1 is longer than its slice; it may not be written outside it. Block 0
+        # is shorter than its slice, which is what a zero-trimmed block looks like.
         short_url = f"{servicer.blob_host}/block/test-get-request:raw:1:{BLOCK_SIZE - 1}"
         long_url = f"{servicer.blob_host}/block/test-get-request:raw:2:{BLOCK_SIZE + 1}"
         response = api_pb2.VolumeGetFile2Response(
@@ -1092,7 +1093,7 @@ async def test_volume_read_file_into_fileobj_wrong_length(monkeypatch, servicer,
 
 
 def test_parse_repr_digest():
-    from modal.volume import _BlockDigest, _BlockDigestVerifier, _parse_repr_digest
+    from modal.volume import _BlockDigestVerifier, _parse_repr_digest
 
     data = b"hello world"
     digest = hashlib.sha256(data).digest()
@@ -1100,36 +1101,36 @@ def test_parse_repr_digest():
 
     assert _parse_repr_digest(None) is None
     assert _parse_repr_digest("") is None
-    assert _parse_repr_digest(f"sha-256=:{encoded}:") == _BlockDigest(sha256=digest, content_len=None)
-    assert _parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11") == _BlockDigest(sha256=digest, content_len=11)
+    assert _parse_repr_digest(f"sha-256=:{encoded}:") == digest
     # Unknown or malformed members are skipped, per RFC 9530.
     assert _parse_repr_digest("sha-512=:AAAA:") is None
-    assert _parse_repr_digest(f"sha-512=:AAAA:, sha-256=:{encoded}:") == _BlockDigest(sha256=digest, content_len=None)
-    assert _parse_repr_digest(f"sha-256=:{encoded}:;len=11") is None
-    assert _parse_repr_digest("modal-sha-256-prefix=:{encoded}:") is None
+    assert _parse_repr_digest(f"sha-512=:AAAA:, sha-256=:{encoded}:") == digest
+    # Parameters carry no meaning and are dropped; a repeated key takes its last value.
+    assert _parse_repr_digest(f"sha-256=:{encoded}:;len=11") == digest
+    other = base64.b64encode(hashlib.sha256(b"other").digest()).decode()
+    assert _parse_repr_digest(f"sha-256=:{other}:, sha-256=:{encoded}:") == digest
+    assert _parse_repr_digest(f"sha-256=:{encoded}:, sha-256=:AAAA:") == digest
+    # A comma inside a quoted parameter string does not start a new member.
+    assert _parse_repr_digest(f'sha-256=:{encoded}:;p="a, sha-256=:{other}:;q"') == digest
+    assert _parse_repr_digest(f'sha-256=:{encoded}:;p="a\\", sha-256=:{other}:;q"') == digest
+    assert _parse_repr_digest(f'sha-512=:AAAA:;p="x,y", sha-256=:{encoded}:') == digest
+    # A private algorithm key whose hash covers only a prefix of the body is
+    # skipped like any other unknown key, leaving the body unverified.
+    assert _parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11") is None
 
     verifier = _BlockDigestVerifier(_parse_repr_digest(f"sha-256=:{encoded}:"))
     verifier.update(data[:5])
     verifier.update(data[5:])
     verifier.finish()
 
-    verifier = _BlockDigestVerifier(_parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11"))
-    verifier.update(data[:5])
-    verifier.update(data[5:] + b"\0" * 3)
-    verifier.update(b"\0" * 4)
-    verifier.finish()
-
-    verifier = _BlockDigestVerifier(_parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11"))
-    with pytest.raises(ExecutionError, match="non-zero"):
-        verifier.update(data + b"\0\1")
-
-    verifier = _BlockDigestVerifier(_parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11"))
-    verifier.update(data[:5])
-    with pytest.raises(ExecutionError, match="truncated"):
-        verifier.finish()
-
     verifier = _BlockDigestVerifier(_parse_repr_digest(f"sha-256=:{encoded}:"))
     verifier.update(b"hello worle")
+    with pytest.raises(ExecutionError, match="corrupted"):
+        verifier.finish()
+
+    # A body that stops early hashes to something else.
+    verifier = _BlockDigestVerifier(_parse_repr_digest(f"sha-256=:{encoded}:"))
+    verifier.update(data[:5])
     with pytest.raises(ExecutionError, match="corrupted"):
         verifier.finish()
 

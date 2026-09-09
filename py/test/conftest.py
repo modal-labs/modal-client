@@ -4537,14 +4537,10 @@ def blob_server_factory():
             content = stored[start : start + length]
             # A client that pads blocks itself gets those stored bytes only.
             body = content if "unpadded" in flags else content.ljust(length, b"\0")
-            if start == 0 and len(content) == len(stored):
-                # The whole stored block is in the body: advertise its digest, under
-                # the standard key when unpadded and the prefix key when padded.
+            if body == stored:
+                # The body is the whole stored block and nothing else: advertise its digest.
                 encoded = base64.b64encode(hashlib.sha256(stored).digest()).decode()
-                if len(body) == len(stored):
-                    headers["Repr-Digest"] = f"sha-256=:{encoded}:"
-                else:
-                    headers["Repr-Digest"] = f"modal-sha-256-prefix=:{encoded}:;len={len(stored)}"
+                headers["Repr-Digest"] = f"sha-256=:{encoded}:"
         else:
             return aiohttp.web.Response(status=404)
 

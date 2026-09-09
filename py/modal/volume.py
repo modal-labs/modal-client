@@ -116,39 +116,57 @@ async def _raise_on_block_response_error(response) -> None:
     raise ExecutionError(f"Request failed with status {response.status} {response.reason}: {body}")
 
 
-# A block download may carry an RFC 9530 `Repr-Digest`. Two algorithm keys are
-# understood: `sha-256` covers the whole body, and `modal-sha-256-prefix` covers
-# the leading `len` bytes with every byte after them required to be zero. Other
-# keys are ignored, as the RFC prescribes.
-_REPR_DIGEST_MEMBER_RE = re.compile(r"^(sha-256|modal-sha-256-prefix)=:([A-Za-z0-9+/]+={0,2}):(;len=(\d{1,15}))?$")
+# A block download may carry an RFC 9530 `Repr-Digest`. Only the `sha-256`
+# member is understood, and it covers the whole body; every other algorithm
+# key is ignored, as the RFC prescribes, and a body carrying only unknown keys
+# is left unverified. The field is a Structured Fields Dictionary (RFC 8941):
+# parameters on a member carry no meaning here and are dropped, and when a key
+# repeats the last occurrence wins.
+_REPR_DIGEST_MEMBER_RE = re.compile(r"^sha-256=:([A-Za-z0-9+/]+={0,2}):(;.*)?$")
 
 
-@dataclass(frozen=True)
-class _BlockDigest:
-    sha256: bytes
-    # Number of leading body bytes the digest covers; None means the whole body.
-    content_len: int | None
+def _split_sf_members(header: str) -> list[str]:
+    # Splits a Structured Fields List/Dictionary on commas, except commas inside
+    # quoted (possibly backslash-escaped) parameter strings.
+    members: list[str] = []
+    start = 0
+    in_quote = False
+    escaped = False
+    for i, ch in enumerate(header):
+        if escaped:
+            escaped = False
+        elif in_quote:
+            if ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_quote = False
+        elif ch == '"':
+            in_quote = True
+        elif ch == ",":
+            members.append(header[start:i])
+            start = i + 1
+    members.append(header[start:])
+    return members
 
 
-def _parse_repr_digest(header: str | None) -> _BlockDigest | None:
+def _parse_repr_digest(header: str | None) -> bytes | None:
     if not header:
         return None
-    for member in header.split(","):
+    sha256: bytes | None = None
+    for member in _split_sf_members(header):
         match = _REPR_DIGEST_MEMBER_RE.match(member.strip())
         if match is None:
             continue
-        key, encoded, len_param, content_len = match.groups()
-        if (key == "modal-sha-256-prefix") != (len_param is not None):
-            continue
         try:
-            sha256 = base64.b64decode(encoded, validate=True)
+            decoded = base64.b64decode(match.group(1), validate=True)
         except ValueError:
             continue
-        if len(sha256) != 32:
+        if len(decoded) != 32:
             continue
-        return _BlockDigest(sha256=sha256, content_len=None if content_len is None else int(content_len))
-    logger.debug(f"ignoring unrecognized Repr-Digest: {header!r}")
-    return None
+        sha256 = decoded
+    if sha256 is None:
+        logger.debug(f"ignoring unrecognized Repr-Digest: {header!r}")
+    return sha256
 
 
 class _BlockDigestVerifier:
@@ -158,39 +176,20 @@ class _BlockDigestVerifier:
     digest both are no-ops, so callers can use one unconditionally.
     """
 
-    def __init__(self, digest: _BlockDigest | None):
-        self._digest = digest
-        self._hasher = hashlib.sha256() if digest is not None else None
-        self._pos = 0
+    def __init__(self, sha256: bytes | None):
+        self._sha256 = sha256
+        self._hasher = hashlib.sha256() if sha256 is not None else None
 
     def update(self, chunk: bytes) -> None:
-        if self._digest is None or self._hasher is None:
-            return
-        content_len = self._digest.content_len
-        if content_len is None:
+        if self._hasher is not None:
             self._hasher.update(chunk)
-        else:
-            hashed = max(0, min(len(chunk), content_len - self._pos))
-            self._hasher.update(chunk[:hashed])
-            if any(chunk[hashed:]):
-                raise ExecutionError(
-                    f"Block download corrupted: non-zero byte after the {content_len} bytes covered by its digest"
-                )
-        self._pos += len(chunk)
 
     def finish(self) -> None:
-        if self._digest is None or self._hasher is None:
+        if self._sha256 is None or self._hasher is None:
             return
-        content_len = self._digest.content_len
-        if content_len is not None and content_len > self._pos:
-            raise ExecutionError(
-                f"Block download truncated: digest covers {content_len} bytes but only {self._pos} were received"
-            )
         actual = self._hasher.digest()
-        if actual != self._digest.sha256:
-            raise ExecutionError(
-                f"Block download corrupted: expected sha256 {self._digest.sha256.hex()}, got {actual.hex()}"
-            )
+        if actual != self._sha256:
+            raise ExecutionError(f"Block download corrupted: expected sha256 {self._sha256.hex()}, got {actual.hex()}")
 
 
 async def _read_block_body(response) -> bytes:
