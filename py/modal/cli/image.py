@@ -58,7 +58,7 @@ async def logs(image_id: str, layers: int | None, all_layers: bool) -> None:
     effective_layers = None if all_layers else layers or 1
     image = Image.from_id(image_id)
     output_mgr = OutputManager.get()
-    last_message = ""
+    last_message: str | None = None
     async for entry in image.logs.fetch.aio(layers=effective_layers):
         last_message = entry.message
         await output_mgr.put_fetched_log(
@@ -69,7 +69,9 @@ async def logs(image_id: str, layers: int | None, all_layers: bool) -> None:
             )
         )
     output_mgr.flush_lines()
-    if last_message and not last_message.endswith("\n"):
+    if last_message is None:
+        output_mgr.print(f"No build logs found for Image {image_id}.")
+    elif not last_message.endswith("\n"):
         output_mgr.print("")
 
 

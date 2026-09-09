@@ -303,6 +303,19 @@ def test_image_cli_logs(set_env_client, monkeypatch):
     assert "--layers" in result.stderr
 
 
+def test_image_cli_logs_empty(set_env_client, monkeypatch):
+    async def fake_fetch(*, layers=1):
+        entries: list[LogEntry] = []
+        for entry in entries:
+            yield entry
+
+    image_api = mock.Mock()
+    image_api.from_id.return_value.logs.fetch.aio.side_effect = fake_fetch
+    monkeypatch.setattr("modal.cli.image.Image", image_api)
+
+    assert run_cli_command(["image", "logs", "im-123"]).stdout == "No build logs found for Image im-123.\n"
+
+
 def test_image_cli_history(servicer, set_env_client, monkeypatch):
     sleep_calls: list[float] = []
 
