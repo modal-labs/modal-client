@@ -279,6 +279,13 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         self._set_network_access_requests.append(request)
         await stream.send_message(sr_pb2.TaskSetNetworkAccessResponse())
 
+    async def TaskSetOutboundPolicy(self, stream) -> None:
+        request: sr_pb2.TaskSetOutboundPolicyRequest = await stream.recv_message()
+        if not hasattr(self, "_set_outbound_policy_requests"):
+            self._set_outbound_policy_requests = []
+        self._set_outbound_policy_requests.append(request)
+        await stream.send_message(sr_pb2.TaskSetOutboundPolicyResponse())
+
     async def TaskSnapshotDirectory(self, stream) -> None:
         request: sr_pb2.TaskSnapshotDirectoryRequest = await stream.recv_message()
         if not hasattr(self, "_snapshot_requests"):

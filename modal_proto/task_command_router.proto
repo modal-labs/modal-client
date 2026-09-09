@@ -311,6 +311,14 @@ message TaskSetNetworkAccessRequest {
 
 message TaskSetNetworkAccessResponse {}
 
+message TaskSetOutboundPolicyRequest {
+  string task_id = 1;
+  // Replaces the task's outbound policy.
+  modal.client.OutboundPolicy outbound_policy = 2;
+}
+
+message TaskSetOutboundPolicyResponse {}
+
 message TaskSnapshotDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
@@ -416,6 +424,8 @@ service TaskCommandRouter {
   rpc TaskReloadVolumes(TaskReloadVolumesRequest) returns (TaskReloadVolumesResponse);
   // Replace the task's outbound network allowlist (domains + CIDRs).
   rpc TaskSetNetworkAccess(TaskSetNetworkAccessRequest) returns (TaskSetNetworkAccessResponse);
+  // Replace the task's outbound policy.
+  rpc TaskSetOutboundPolicy(TaskSetOutboundPolicyRequest) returns (TaskSetOutboundPolicyResponse);
   // Snapshot a directory with a mounted image, including any local changes, into a new image.
   rpc TaskSnapshotDirectory(TaskSnapshotDirectoryRequest) returns (TaskSnapshotDirectoryResponse);
   // Snapshot the full task filesystem into a new image.

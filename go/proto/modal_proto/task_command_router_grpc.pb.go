@@ -38,6 +38,7 @@ const (
 	TaskCommandRouter_TaskMountDirectory_FullMethodName       = "/modal.task_command_router.TaskCommandRouter/TaskMountDirectory"
 	TaskCommandRouter_TaskReloadVolumes_FullMethodName        = "/modal.task_command_router.TaskCommandRouter/TaskReloadVolumes"
 	TaskCommandRouter_TaskSetNetworkAccess_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskSetNetworkAccess"
+	TaskCommandRouter_TaskSetOutboundPolicy_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskSetOutboundPolicy"
 	TaskCommandRouter_TaskSnapshotDirectory_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotDirectory"
 	TaskCommandRouter_TaskSnapshotFilesystem_FullMethodName   = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotFilesystem"
 	TaskCommandRouter_TaskSnapshotMemory_FullMethodName       = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotMemory"
@@ -85,6 +86,8 @@ type TaskCommandRouterClient interface {
 	TaskReloadVolumes(ctx context.Context, in *TaskReloadVolumesRequest, opts ...grpc.CallOption) (*TaskReloadVolumesResponse, error)
 	// Replace the task's outbound network allowlist (domains + CIDRs).
 	TaskSetNetworkAccess(ctx context.Context, in *TaskSetNetworkAccessRequest, opts ...grpc.CallOption) (*TaskSetNetworkAccessResponse, error)
+	// Replace the task's outbound policy.
+	TaskSetOutboundPolicy(ctx context.Context, in *TaskSetOutboundPolicyRequest, opts ...grpc.CallOption) (*TaskSetOutboundPolicyResponse, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
 	TaskSnapshotDirectory(ctx context.Context, in *TaskSnapshotDirectoryRequest, opts ...grpc.CallOption) (*TaskSnapshotDirectoryResponse, error)
 	// Snapshot the full task filesystem into a new image.
@@ -307,6 +310,16 @@ func (c *taskCommandRouterClient) TaskSetNetworkAccess(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *taskCommandRouterClient) TaskSetOutboundPolicy(ctx context.Context, in *TaskSetOutboundPolicyRequest, opts ...grpc.CallOption) (*TaskSetOutboundPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskSetOutboundPolicyResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskSetOutboundPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *taskCommandRouterClient) TaskSnapshotDirectory(ctx context.Context, in *TaskSnapshotDirectoryRequest, opts ...grpc.CallOption) (*TaskSnapshotDirectoryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TaskSnapshotDirectoryResponse)
@@ -388,6 +401,8 @@ type TaskCommandRouterServer interface {
 	TaskReloadVolumes(context.Context, *TaskReloadVolumesRequest) (*TaskReloadVolumesResponse, error)
 	// Replace the task's outbound network allowlist (domains + CIDRs).
 	TaskSetNetworkAccess(context.Context, *TaskSetNetworkAccessRequest) (*TaskSetNetworkAccessResponse, error)
+	// Replace the task's outbound policy.
+	TaskSetOutboundPolicy(context.Context, *TaskSetOutboundPolicyRequest) (*TaskSetOutboundPolicyResponse, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
 	TaskSnapshotDirectory(context.Context, *TaskSnapshotDirectoryRequest) (*TaskSnapshotDirectoryResponse, error)
 	// Snapshot the full task filesystem into a new image.
@@ -462,6 +477,9 @@ func (UnimplementedTaskCommandRouterServer) TaskReloadVolumes(context.Context, *
 }
 func (UnimplementedTaskCommandRouterServer) TaskSetNetworkAccess(context.Context, *TaskSetNetworkAccessRequest) (*TaskSetNetworkAccessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskSetNetworkAccess not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskSetOutboundPolicy(context.Context, *TaskSetOutboundPolicyRequest) (*TaskSetOutboundPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskSetOutboundPolicy not implemented")
 }
 func (UnimplementedTaskCommandRouterServer) TaskSnapshotDirectory(context.Context, *TaskSnapshotDirectoryRequest) (*TaskSnapshotDirectoryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskSnapshotDirectory not implemented")
@@ -795,6 +813,24 @@ func _TaskCommandRouter_TaskSetNetworkAccess_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TaskCommandRouter_TaskSetOutboundPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskSetOutboundPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskSetOutboundPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskSetOutboundPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskSetOutboundPolicy(ctx, req.(*TaskSetOutboundPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _TaskCommandRouter_TaskSnapshotDirectory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TaskSnapshotDirectoryRequest)
 	if err := dec(in); err != nil {
@@ -933,6 +969,10 @@ var TaskCommandRouter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TaskSetNetworkAccess",
 			Handler:    _TaskCommandRouter_TaskSetNetworkAccess_Handler,
+		},
+		{
+			MethodName: "TaskSetOutboundPolicy",
+			Handler:    _TaskCommandRouter_TaskSetOutboundPolicy_Handler,
 		},
 		{
 			MethodName: "TaskSnapshotDirectory",
