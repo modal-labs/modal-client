@@ -54,9 +54,7 @@ test("SecretFromName", async () => {
   expect(secret.name).toBe("libmodal-test-secret");
 
   const promise = tc.secrets.fromName("missing-secret");
-  await expect(promise).rejects.toThrowError(
-    /Secret 'missing-secret' not found/,
-  );
+  await expect(promise).rejects.toThrow(/Secret 'missing-secret' not found/);
 });
 
 test("SecretFromNameWithRequiredKeys", async () => {
@@ -68,7 +66,7 @@ test("SecretFromNameWithRequiredKeys", async () => {
   const promise = tc.secrets.fromName("libmodal-test-secret", {
     requiredKeys: ["a", "b", "c", "missing-key"],
   });
-  await expect(promise).rejects.toThrowError(
+  await expect(promise).rejects.toThrow(
     /Secret is missing key\(s\): missing-key/,
   );
 });
@@ -100,7 +98,7 @@ test("SecretFromObjectInvalid", async () => {
   await expect(
     // @ts-expect-error testing runtime validation
     tc.secrets.fromObject({ key: 123 }),
-  ).rejects.toThrowError(
+  ).rejects.toThrow(
     /entries must be an object mapping string keys to string values/,
   );
 });
@@ -108,9 +106,9 @@ test("SecretFromObjectInvalid", async () => {
 test("SecretFromObjectInvalidKey", async () => {
   // Keys that aren't valid environment variable names are rejected up front.
   for (const badKey of ["1KEY", "with-dash", "with space", "with.dot", ""]) {
-    await expect(
-      tc.secrets.fromObject({ [badKey]: "value" }),
-    ).rejects.toThrowError(/is invalid for environment variables/);
+    await expect(tc.secrets.fromObject({ [badKey]: "value" })).rejects.toThrow(
+      /is invalid for environment variables/,
+    );
   }
 
   // Valid keys (letters, numbers, underscores, not starting with a number).
@@ -230,7 +228,7 @@ test("hydrateSecrets rejects null secrets", async () => {
   await expect(
     // @ts-expect-error testing runtime validation
     hydrateSecrets(tc, [new Secret("st-1"), null]),
-  ).rejects.toThrowError(/secret at index 1 must not be null/);
+  ).rejects.toThrow(/secret at index 1 must not be null/);
 });
 
 test("hydrateSecrets skips already-hydrated secrets", () => {
@@ -320,7 +318,7 @@ test("ExperimentalCreate rejects invalid env var keys", async () => {
     mc.sandboxes.experimentalCreate(app, image, {
       env: { "bad-key": "value" },
     }),
-  ).rejects.toThrowError(/is invalid for environment variables/);
+  ).rejects.toThrow(/is invalid for environment variables/);
 });
 
 test("ExperimentalCreate passes a fromObject Secret as ephemeral secrets", async () => {

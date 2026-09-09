@@ -78,7 +78,7 @@ test("FunctionNotFound", async () => {
     "libmodal-test-support",
     "not_a_real_function",
   );
-  await expect(promise).rejects.toThrowError(NotFoundError);
+  await expect(promise).rejects.toThrow(NotFoundError);
 });
 
 test("FunctionCallInputPlane", async () => {
@@ -246,7 +246,7 @@ test("FunctionFromNameWithDotNotation", async () => {
     "libmodal-test-support",
     "MyClass.myMethod",
   );
-  await expect(promise).rejects.toThrowError(
+  await expect(promise).rejects.toThrow(
     `Cannot retrieve Cls methods using 'functions.fromName()'. Use:\n  const cls = await client.cls.fromName("libmodal-test-support", "MyClass");\n  const instance = await cls.instance();\n  const m = instance.method("myMethod");`,
   );
 });
@@ -260,7 +260,7 @@ test("FunctionCallPreCborVersionError", async () => {
 
   // Represent Python kwargs.
   const promise = function_.remote([], { s: "hello" });
-  await expect(promise).rejects.toThrowError(
+  await expect(promise).rejects.toThrow(
     /Redeploy with Modal Python SDK >= 1.2/,
   );
 });
@@ -272,8 +272,8 @@ test("WebEndpointRemoteCallError", async () => {
   );
 
   const promise = function_.remote(["hello"]);
-  await expect(promise).rejects.toThrowError(InvalidError);
-  await expect(promise).rejects.toThrowError(
+  await expect(promise).rejects.toThrow(InvalidError);
+  await expect(promise).rejects.toThrow(
     /A webhook Function cannot be invoked for remote execution with '\.remote'/,
   );
 });
@@ -285,8 +285,8 @@ test("WebEndpointSpawnCallError", async () => {
   );
 
   const promise = function_.spawn(["hello"]);
-  await expect(promise).rejects.toThrowError(InvalidError);
-  await expect(promise).rejects.toThrowError(
+  await expect(promise).rejects.toThrow(InvalidError);
+  await expect(promise).rejects.toThrow(
     /A webhook Function cannot be invoked for remote execution with '\.spawn'/,
   );
 });

@@ -9,7 +9,7 @@ test("ClsCall", async () => {
   const instance = await cls.instance();
 
   // Try accessing a non-existent method
-  expect(() => instance.method("nonexistent")).toThrowError(NotFoundError);
+  expect(() => instance.method("nonexistent")).toThrow(NotFoundError);
 
   const function_ = instance.method("echo_string");
   const result = await function_.remote([], { s: "hello" });
@@ -28,7 +28,7 @@ test("ClsCall", async () => {
 
 test("ClsNotFound", async () => {
   const cls = tc.cls.fromName("libmodal-test-support", "NotRealClassName");
-  await expect(cls).rejects.toThrowError(NotFoundError);
+  await expect(cls).rejects.toThrow(NotFoundError);
 });
 
 test("ClsFromNameWithVersion", async () => {

@@ -63,7 +63,7 @@ test("SidecarWaitAfterNaturalExit", async () => {
   expect(await container.wait()).toBe(42);
   expect(await container.wait()).toBe(42);
 
-  await expect(sb.experimentalSidecars.get("oneshot")).rejects.toThrowError(
+  await expect(sb.experimentalSidecars.get("oneshot")).rejects.toThrow(
     NotFoundError,
   );
 
@@ -93,13 +93,13 @@ test("SidecarCreateRejectsMainName", async () => {
     sb.experimentalSidecars.create("main", image, {
       command: ["sleep", "100"],
     }),
-  ).rejects.toThrowError(InvalidError);
+  ).rejects.toThrow(InvalidError);
 
   await expect(
     sb.experimentalSidecars.create("", image, { command: ["sleep", "100"] }),
-  ).rejects.toThrowError(InvalidError);
+  ).rejects.toThrow(InvalidError);
 
-  await expect(sb.experimentalSidecars.get("main")).rejects.toThrowError(
+  await expect(sb.experimentalSidecars.get("main")).rejects.toThrow(
     InvalidError,
   );
 });
@@ -114,7 +114,7 @@ test("SidecarCreateImageMustBeBuilt", async () => {
     sb.experimentalSidecars.create("worker", unbuilt, {
       command: ["sleep", "100"],
     }),
-  ).rejects.toThrowError(InvalidError);
+  ).rejects.toThrow(InvalidError);
 });
 
 test("SidecarCreateForwardsSecretsAndEnv", async () => {
@@ -166,7 +166,7 @@ test("SidecarFilesystem", async () => {
   );
 
   // The main container should not see the file in the sidecar's filesystem.
-  await expect(sb.filesystem.stat("/tmp/sidecar-hello")).rejects.toThrowError(
+  await expect(sb.filesystem.stat("/tmp/sidecar-hello")).rejects.toThrow(
     SandboxFilesystemNotFoundError,
   );
 });

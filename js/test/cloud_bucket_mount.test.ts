@@ -79,7 +79,7 @@ test("CloudBucketMountService.create() bucket type detection from endpoint URLs"
     tc.cloudBucketMounts.create("my-bucket", {
       bucketEndpointUrl: "://invalid-url",
     });
-  }).toThrowError("Invalid URL");
+  }).toThrow("Invalid URL");
 });
 
 test("CloudBucketMountService.create() validation: requesterPays without secret", () => {
@@ -87,7 +87,7 @@ test("CloudBucketMountService.create() validation: requesterPays without secret"
     tc.cloudBucketMounts.create("my-bucket", {
       requesterPays: true,
     });
-  }).toThrowError("Credentials required in order to use Requester Pays.");
+  }).toThrow("Credentials required in order to use Requester Pays.");
 });
 
 test("CloudBucketMountService.create() validation: keyPrefix without trailing slash", () => {
@@ -95,7 +95,7 @@ test("CloudBucketMountService.create() validation: keyPrefix without trailing sl
     tc.cloudBucketMounts.create("my-bucket", {
       keyPrefix: "prefix",
     });
-  }).toThrowError(
+  }).toThrow(
     "keyPrefix will be prefixed to all object paths, so it must end in a '/'",
   );
 });

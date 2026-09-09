@@ -13,9 +13,7 @@ test("client.volumes.fromName", async () => {
   expect(volume.name).toBe("libmodal-test-volume");
 
   const promise = tc.volumes.fromName("missing-volume");
-  await expect(promise).rejects.toThrowError(
-    /Volume 'missing-volume' not found/,
-  );
+  await expect(promise).rejects.toThrow(/Volume 'missing-volume' not found/);
 });
 
 test("Volume.withMountOptions", async () => {

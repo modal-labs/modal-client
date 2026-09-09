@@ -22,7 +22,7 @@ test("FunctionSpawn", async () => {
   expect(functionCall.functionCallId).toMatch(/^fc-/);
 
   const promise = functionCall.get({ timeoutMs: 1000 }); // 1000ms
-  await expect(promise).rejects.toThrowError(FunctionTimeoutError);
+  await expect(promise).rejects.toThrow(FunctionTimeoutError);
 });
 
 test("FunctionCallGet0", async () => {
@@ -31,7 +31,7 @@ test("FunctionCallGet0", async () => {
   const call = await sleep.spawn([0.5]);
   // Polling for output with timeout 0 should raise an error, since the
   // function call has not finished yet.
-  await expect(call.get({ timeoutMs: 0 })).rejects.toThrowError(
+  await expect(call.get({ timeoutMs: 0 })).rejects.toThrow(
     FunctionTimeoutError,
   );
 
