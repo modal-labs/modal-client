@@ -81,6 +81,21 @@ from .types import FileEntry, FileEntryType as FileEntryType, VolumeCreateOption
 VOLUME_PUT_FILE_CLIENT_TIMEOUT = 60 * 60
 
 
+def _expected_block_lengths(start: int, length: int, num_blocks: int) -> list[int]:
+    """Number of bytes of a byte range that fall into each of its `BLOCK_SIZE`-aligned blocks.
+
+    A downloaded block may be shorter than this (trailing zero bytes are left out),
+    so the caller extends it with zeros to the expected length.
+    """
+    lengths = []
+    pos = start
+    for idx in range(num_blocks):
+        block_end = min(start + length, (start // BLOCK_SIZE + idx + 1) * BLOCK_SIZE)
+        lengths.append(max(0, block_end - pos))
+        pos = block_end
+    return lengths
+
+
 async def _raise_on_block_response_error(response) -> None:
     """Raise a picklable Modal exception on error.
 
@@ -942,7 +957,7 @@ class _Volume(_Object, type_prefix="vo"):
             print(len(data))  # == 1024 * 1024
             ```
         """
-        req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
+        req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path, client_pads_blocks=True)
 
         try:
             response = await self.client.stub.VolumeGetFile2(req)
@@ -950,14 +965,20 @@ class _Volume(_Object, type_prefix="vo"):
             raise FileNotFoundError(exc.args[0])
 
         @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
-        async def read_block(block_url: str) -> bytes:
+        async def read_block(block: tuple[str, int]) -> bytes:
+            block_url, expected_len = block
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
                 await _raise_on_block_response_error(get_response)
-                return await _read_block_body(get_response)
+                body = await _read_block_body(get_response)
+            if len(body) > expected_len:
+                raise ExecutionError(f"Block body is {len(body)} bytes, expected at most {expected_len}")
+            return body.ljust(expected_len, b"\0")
 
-        async def iter_urls() -> AsyncGenerator[str]:
-            for url in response.get_urls:
-                yield url
+        block_lengths = _expected_block_lengths(response.start, response.len, len(response.get_urls))
+
+        async def iter_urls() -> AsyncGenerator[tuple[str, int]]:
+            for url, expected_len in zip(response.get_urls, block_lengths):
+                yield url, expected_len
 
         # TODO(dflemstr): Reasonable default? Make configurable?
         prefetch_num_blocks = multiprocessing.cpu_count()
@@ -998,7 +1019,7 @@ class _Volume(_Object, type_prefix="vo"):
         if concurrency is None:
             concurrency = multiprocessing.cpu_count()
 
-        req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
+        req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path, client_pads_blocks=True)
 
         # Acquire RPC semaphore if provided to limit concurrent VolumeGetFile2 RPCs.
         # This is used by CLI downloads to prevent overwhelming the server.
@@ -1017,12 +1038,14 @@ class _Volume(_Object, type_prefix="vo"):
         write_lock = asyncio.Lock()
         start_pos = fileobj.tell()
 
+        block_lengths = _expected_block_lengths(response.start, response.len, len(response.get_urls))
+
         @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
         async def download_block(idx, url) -> int:
             block_start_pos = start_pos + idx * BLOCK_SIZE
             # Every attempt writes into exactly this slice, so a retry after a rejected
             # response overwrites everything the rejected attempt wrote.
-            expected_len = min(BLOCK_SIZE, response.len - idx * BLOCK_SIZE)
+            expected_len = block_lengths[idx]
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
@@ -1048,8 +1071,15 @@ class _Volume(_Object, type_prefix="vo"):
 
                     num_bytes_written += len(chunk)
 
-                if num_bytes_written != expected_len:
-                    raise ExecutionError(f"Block {idx} response has {num_bytes_written} bytes, expected {expected_len}")
+                # Trailing zero bytes may be omitted from the body; restore them.
+                while num_bytes_written < expected_len:
+                    padding = b"\0" * min(expected_len - num_bytes_written, 1024 * 1024)
+                    async with write_lock:
+                        fileobj.seek(block_start_pos + num_bytes_written)
+                        n = fileobj.write(padding)
+                    num_bytes_written += n
+                    progress_cb(advance=n)
+
                 verifier.finish()
 
             return num_bytes_written

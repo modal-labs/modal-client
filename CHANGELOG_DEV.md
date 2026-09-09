@@ -8,6 +8,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 - [`FunctionCall.get_call_graph()`](/docs/sdk/py/latest/FunctionCall#get_call_graph) now returns up to 5000
   nodes instead of 100.
+- Volume file downloads no longer transfer the trailing zero bytes of sparse file blocks, which the client now fills in locally.
 - Sandbox Sidecars can now snapshot their filesystems into reusable Images with `sidecar.snapshot_filesystem()`.
 - Added `mount_image()`, `unmount_image()`, and `snapshot_directory()` to experimental Sandbox Sidecar containers. Directory snapshot Images can be used anywhere an Image is accepted, including as mounts and as container filesystems.
 - Added the [`Sandbox.logs`](/docs/sdk/py/latest/Sandbox#logs) namespace to retrieve Sandbox entrypoint logs directly from the SDK. The namespace has two different methods, allowing you to `fetch()` logs from a specific date/time range, or `tail()` the most recent logs.

@@ -4033,7 +4033,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             for idx, block_hash in enumerate(vol_file.block_hashes[block_start:block_end]):
                 start, end = slice_block(idx)
                 length = end - start
-                get_urls.append(f"{self.blob_host}/block/test-get-request:v2:{block_hash.hex()}:{start}:{length}")
+                url = f"{self.blob_host}/block/test-get-request:v2:{block_hash.hex()}:{start}:{length}"
+                if req.client_pads_blocks:
+                    url += ":unpadded"
+                get_urls.append(url)
 
         response = api_pb2.VolumeGetFile2Response(
             get_urls=get_urls, size=len(vol_file.data), start=total_start, len=total_end - total_start
@@ -4526,17 +4529,19 @@ def blob_server_factory():
             else:
                 body = file_data["data"][start : start + length]
         elif version == "v2":
-            block_id, start, length = rest
+            block_id, start, length, *flags = rest
             start = int(start)
             length = int(length)
-            stored = blocks[block_id]
-            block = stored[start : start + length]
-            body = block.ljust(length, b"\0")
-            if start == 0 and len(block) == len(stored):
+            # Blocks are stored with their trailing zeros trimmed.
+            stored = blocks[block_id].rstrip(b"\0")
+            content = stored[start : start + length]
+            # A client that pads blocks itself gets those stored bytes only.
+            body = content if "unpadded" in flags else content.ljust(length, b"\0")
+            if start == 0 and len(content) == len(stored):
                 # The whole stored block is in the body: advertise its digest, under
                 # the standard key when unpadded and the prefix key when padded.
                 encoded = base64.b64encode(hashlib.sha256(stored).digest()).decode()
-                if len(stored) == length:
+                if len(body) == len(stored):
                     headers["Repr-Digest"] = f"sha-256=:{encoded}:"
                 else:
                     headers["Repr-Digest"] = f"modal-sha-256-prefix=:{encoded}:;len={len(stored)}"

@@ -401,6 +401,41 @@ async def test_volume2_get_block_aligned_trailing_zero_regression(client, tmp_pa
     assert data == file_contents
 
 
+def test_expected_block_lengths():
+    from modal.volume import _expected_block_lengths
+
+    assert _expected_block_lengths(0, 0, 0) == []
+    assert _expected_block_lengths(0, 10, 1) == [10]
+    assert _expected_block_lengths(0, BLOCK_SIZE + 10, 2) == [BLOCK_SIZE, 10]
+    # A range starting mid-block: the first body only covers the rest of that block.
+    assert _expected_block_lengths(BLOCK_SIZE - 5, 2 * BLOCK_SIZE, 3) == [5, BLOCK_SIZE, BLOCK_SIZE - 5]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trailing_zeros", [1, BLOCK_SIZE // 2, BLOCK_SIZE - 1])
+async def test_volume2_get_pads_zero_trimmed_blocks(client, tmp_path, trailing_zeros):
+    await modal.Volume.objects.create.aio("my-vol", client=client, version=api_pb2.VOLUME_FS_VERSION_V2)
+    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
+
+    # Every block ends in zeros, so the server omits them from each body.
+    file_contents = (random.randbytes(BLOCK_SIZE - trailing_zeros).replace(b"\0", b"x") + b"\0" * trailing_zeros) * 2
+    file_path = "foo.bin"
+    local_file_path = tmp_path / file_path
+    local_file_path.write_bytes(file_contents)
+
+    async with vol.batch_upload() as batch:
+        batch.put_file(local_file_path, file_path)
+
+    data = b""
+    async for chunk in vol.read_file.aio(file_path):
+        data += chunk
+    assert data == file_contents
+
+    output = io.BytesIO()
+    assert await vol.read_file_into_fileobj.aio(file_path, output) == len(file_contents)
+    assert output.getvalue() == file_contents
+
+
 def test_volume_reload(client, servicer):
     with modal.Volume.ephemeral(client=client) as vol:
         # Note that in practice this will not work unless run in a task.
