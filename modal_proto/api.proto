@@ -3174,6 +3174,29 @@ message ObjectDependency {
   string object_id = 1;
 }
 
+// Policy for outbound traffic from a sandbox.
+message OutboundPolicy {
+  // Replace headers in outbound HTTPS requests, potentially with secret values.
+  repeated HeaderReplacement header_replacements = 1;
+
+  message HeaderReplacement {
+    // Domain that the header replacement is scoped to. Supports wildcards in
+    // subdomain positions.
+    string domain = 1;
+    // Header name to replace.
+    string header_name = 2;
+    // Header value to replace.
+    //
+    // Supports templating with keys in a given secret_id: a $-prefixed key
+    // name in the secret will be replaced with the secret value. Literal $
+    // characters can be represented by two dollars: `$$`.
+    string header_value = 3;
+    // Reference to a secret to use in the header_value template. Can be empty
+    // if no secret value is used in header_value.
+    string secret_id = 4;
+  }
+}
+
 message PTYInfo {
   bool enabled = 1;  // Soon deprecated
   uint32 winsz_rows = 2;
@@ -3571,6 +3594,8 @@ message Sandbox {
   repeated string inbound_cidr_allowlist = 39;
 
   StringMap environment_variables = 40;
+
+  optional OutboundPolicy outbound_policy = 42;
 }
 
 message SandboxContainerCreateV2Request {
