@@ -1039,7 +1039,9 @@ class _Volume(_Object, type_prefix="vo"):
                             fileobj.seek(block_start_pos + num_bytes_written + num_chunk_bytes_written)
                             # TODO(dflemstr): this is a small write, but nonetheless might block the event loop for some
                             #  time:
-                            n = fileobj.write(chunk)
+                            n = fileobj.write(chunk[num_chunk_bytes_written:])
+                            if not n:
+                                raise OSError("File object write made no progress")
 
                         num_chunk_bytes_written += n
                         progress_cb(advance=n)

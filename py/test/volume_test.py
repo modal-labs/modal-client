@@ -355,6 +355,30 @@ async def test_volume_get(client, tmp_path, version, file_contents_size):
             ...
 
 
+class _ShortWriteBytesIO(io.BytesIO):
+    """A file object that only ever accepts part of each write."""
+
+    def write(self, b) -> int:
+        return super().write(bytes(b)[: max(1, len(b) // 3)])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_into_fileobj_short_writes(client, tmp_path, version):
+    await modal.Volume.objects.create.aio("my-vol", client=client, version=version)
+    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
+
+    file_contents = random.randbytes(1000)
+    local_file_path = tmp_path / "foo.bin"
+    local_file_path.write_bytes(file_contents)
+    async with vol.batch_upload() as batch:
+        batch.put_file(local_file_path, "foo.bin")
+
+    output = _ShortWriteBytesIO()
+    await vol.read_file_into_fileobj.aio("foo.bin", output)
+    assert output.getvalue() == file_contents
+
+
 @pytest.mark.asyncio
 async def test_volume2_get_block_aligned_trailing_zero_regression(client, tmp_path):
     await modal.Volume.objects.create.aio("my-vol", client=client, version=api_pb2.VOLUME_FS_VERSION_V2)
