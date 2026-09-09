@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import builtins
 import contextlib
 import dataclasses
@@ -4493,6 +4494,20 @@ def blob_server_factory():
         if version == "error-503":
             return aiohttp.web.Response(status=503, text="service unavailable")
 
+        headers = {}
+        if version == "bad-digest":
+            # A body whose advertised digest does not match its content.
+            (length,) = rest
+            body = b"x" * int(length)
+            wrong = base64.b64encode(hashlib.sha256(b"something else").digest()).decode()
+            return aiohttp.web.Response(body=body, headers={"Repr-Digest": f"sha-256=:{wrong}:"})
+        if version == "raw":
+            # A body of `length` copies of `byte`, with a matching digest, regardless of what was asked for.
+            byte, length = rest
+            body = bytes([int(byte)]) * int(length)
+            digest = base64.b64encode(hashlib.sha256(body).digest()).decode()
+            return aiohttp.web.Response(body=body, headers={"Repr-Digest": f"sha-256=:{digest}:"})
+
         if version == "v1":
             file_sha256_hex, block_idx, start, length = rest
             start = BLOCK_SIZE * int(block_idx) + int(start)
@@ -4507,12 +4522,21 @@ def blob_server_factory():
             block_id, start, length = rest
             start = int(start)
             length = int(length)
-            block = blocks[block_id][start : start + length]
+            stored = blocks[block_id]
+            block = stored[start : start + length]
             body = block.ljust(length, b"\0")
+            if start == 0 and len(block) == len(stored):
+                # The whole stored block is in the body: advertise its digest, under
+                # the standard key when unpadded and the prefix key when padded.
+                encoded = base64.b64encode(hashlib.sha256(stored).digest()).decode()
+                if len(stored) == length:
+                    headers["Repr-Digest"] = f"sha-256=:{encoded}:"
+                else:
+                    headers["Repr-Digest"] = f"modal-sha-256-prefix=:{encoded}:;len={len(stored)}"
         else:
             return aiohttp.web.Response(status=404)
 
-        return aiohttp.web.Response(body=body)
+        return aiohttp.web.Response(body=body, headers=headers)
 
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])

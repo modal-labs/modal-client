@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
+import base64
+import hashlib
 import io
 import os
 import platform
@@ -983,3 +985,95 @@ async def test_volume_read_file_into_fileobj_http_404_error(monkeypatch, service
                 await vol.read_file_into_fileobj.aio("foo.bin", output)
 
             assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_digest_mismatch(monkeypatch, servicer, client, version):
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+
+    with servicer.intercept() as ctx:
+        url = f"{servicer.blob_host}/block/test-get-request:bad-digest:100"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            with pytest.raises(ExecutionError) as exc_info:
+                async for _ in vol.read_file.aio("foo.bin"):
+                    ...
+            assert "corrupted" in str(exc_info.value)
+
+            ctx.add_response("VolumeGetFile2", response)
+            output = io.BytesIO()
+            with pytest.raises(ExecutionError) as exc_info:
+                await vol.read_file_into_fileobj.aio("foo.bin", output)
+            assert "corrupted" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_into_fileobj_wrong_length(monkeypatch, servicer, client, version):
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+
+    with servicer.intercept() as ctx:
+        # Block 0 is short, block 1 is long; neither may be written outside its own slice.
+        short_url = f"{servicer.blob_host}/block/test-get-request:raw:1:{BLOCK_SIZE - 1}"
+        long_url = f"{servicer.blob_host}/block/test-get-request:raw:2:{BLOCK_SIZE + 1}"
+        response = api_pb2.VolumeGetFile2Response(
+            get_urls=[short_url, long_url], size=2 * BLOCK_SIZE, start=0, len=2 * BLOCK_SIZE
+        )
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            output = io.BytesIO()
+            with pytest.raises(ExecutionError, match="expected"):
+                await vol.read_file_into_fileobj.aio("foo.bin", output)
+            # Nothing was written past the end of the second block.
+            assert len(output.getvalue()) <= 2 * BLOCK_SIZE
+
+
+def test_parse_repr_digest():
+    from modal.volume import _BlockDigest, _BlockDigestVerifier, _parse_repr_digest
+
+    data = b"hello world"
+    digest = hashlib.sha256(data).digest()
+    encoded = base64.b64encode(digest).decode()
+
+    assert _parse_repr_digest(None) is None
+    assert _parse_repr_digest("") is None
+    assert _parse_repr_digest(f"sha-256=:{encoded}:") == _BlockDigest(sha256=digest, content_len=None)
+    assert _parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11") == _BlockDigest(sha256=digest, content_len=11)
+    # Unknown or malformed members are skipped, per RFC 9530.
+    assert _parse_repr_digest("sha-512=:AAAA:") is None
+    assert _parse_repr_digest(f"sha-512=:AAAA:, sha-256=:{encoded}:") == _BlockDigest(sha256=digest, content_len=None)
+    assert _parse_repr_digest(f"sha-256=:{encoded}:;len=11") is None
+    assert _parse_repr_digest("modal-sha-256-prefix=:{encoded}:") is None
+
+    verifier = _BlockDigestVerifier(_parse_repr_digest(f"sha-256=:{encoded}:"))
+    verifier.update(data[:5])
+    verifier.update(data[5:])
+    verifier.finish()
+
+    verifier = _BlockDigestVerifier(_parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11"))
+    verifier.update(data[:5])
+    verifier.update(data[5:] + b"\0" * 3)
+    verifier.update(b"\0" * 4)
+    verifier.finish()
+
+    verifier = _BlockDigestVerifier(_parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11"))
+    with pytest.raises(ExecutionError, match="non-zero"):
+        verifier.update(data + b"\0\1")
+
+    verifier = _BlockDigestVerifier(_parse_repr_digest(f"modal-sha-256-prefix=:{encoded}:;len=11"))
+    verifier.update(data[:5])
+    with pytest.raises(ExecutionError, match="truncated"):
+        verifier.finish()
+
+    verifier = _BlockDigestVerifier(_parse_repr_digest(f"sha-256=:{encoded}:"))
+    verifier.update(b"hello worle")
+    with pytest.raises(ExecutionError, match="corrupted"):
+        verifier.finish()
+
+    verifier = _BlockDigestVerifier(None)
+    verifier.update(b"anything")
+    verifier.finish()

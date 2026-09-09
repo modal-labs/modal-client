@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2023
 import asyncio
+import base64
 import builtins
 import concurrent.futures
 import functools
+import hashlib
 import multiprocessing
 import os
 import platform
@@ -97,6 +99,92 @@ async def _raise_on_block_response_error(response) -> None:
     if response.status == 503:
         raise ServiceError(f"Service temporarily unavailable: {body}")
     raise ExecutionError(f"Request failed with status {response.status} {response.reason}: {body}")
+
+
+# A block download may carry an RFC 9530 `Repr-Digest`. Two algorithm keys are
+# understood: `sha-256` covers the whole body, and `modal-sha-256-prefix` covers
+# the leading `len` bytes with every byte after them required to be zero. Other
+# keys are ignored, as the RFC prescribes.
+_REPR_DIGEST_MEMBER_RE = re.compile(r"^(sha-256|modal-sha-256-prefix)=:([A-Za-z0-9+/]+={0,2}):(;len=(\d+))?$")
+
+
+@dataclass(frozen=True)
+class _BlockDigest:
+    sha256: bytes
+    # Number of leading body bytes the digest covers; None means the whole body.
+    content_len: int | None
+
+
+def _parse_repr_digest(header: str | None) -> _BlockDigest | None:
+    if not header:
+        return None
+    for member in header.split(","):
+        match = _REPR_DIGEST_MEMBER_RE.match(member.strip())
+        if match is None:
+            continue
+        key, encoded, len_param, content_len = match.groups()
+        if (key == "modal-sha-256-prefix") != (len_param is not None):
+            continue
+        try:
+            sha256 = base64.b64decode(encoded, validate=True)
+        except ValueError:
+            continue
+        if len(sha256) != 32:
+            continue
+        return _BlockDigest(sha256=sha256, content_len=None if content_len is None else int(content_len))
+    logger.debug(f"ignoring unrecognized Repr-Digest: {header!r}")
+    return None
+
+
+class _BlockDigestVerifier:
+    """Checks a streamed block body against the digest its response advertised.
+
+    Feed the body through `update` in order, then call `finish`. Without a
+    digest both are no-ops, so callers can use one unconditionally.
+    """
+
+    def __init__(self, digest: _BlockDigest | None):
+        self._digest = digest
+        self._hasher = hashlib.sha256() if digest is not None else None
+        self._pos = 0
+
+    def update(self, chunk: bytes) -> None:
+        if self._digest is None or self._hasher is None:
+            return
+        content_len = self._digest.content_len
+        if content_len is None:
+            self._hasher.update(chunk)
+        else:
+            hashed = max(0, min(len(chunk), content_len - self._pos))
+            self._hasher.update(chunk[:hashed])
+            if any(chunk[hashed:]):
+                raise ExecutionError(
+                    f"Block download corrupted: non-zero byte after the {content_len} bytes covered by its digest"
+                )
+        self._pos += len(chunk)
+
+    def finish(self) -> None:
+        if self._digest is None or self._hasher is None:
+            return
+        content_len = self._digest.content_len
+        if content_len is not None and content_len > self._pos:
+            raise ExecutionError(
+                f"Block download truncated: digest covers {content_len} bytes but only {self._pos} were received"
+            )
+        actual = self._hasher.digest()
+        if actual != self._digest.sha256:
+            raise ExecutionError(
+                f"Block download corrupted: expected sha256 {self._digest.sha256.hex()}, got {actual.hex()}"
+            )
+
+
+async def _read_block_body(response) -> bytes:
+    """Read a block response body in full, verifying any digest it advertises."""
+    verifier = _BlockDigestVerifier(_parse_repr_digest(response.headers.get("Repr-Digest")))
+    body = await response.content.read()
+    verifier.update(body)
+    verifier.finish()
+    return body
 
 
 def _validate_volume_version(
@@ -865,7 +953,7 @@ class _Volume(_Object, type_prefix="vo"):
         async def read_block(block_url: str) -> bytes:
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
                 await _raise_on_block_response_error(get_response)
-                return await get_response.content.read()
+                return await _read_block_body(get_response)
 
         async def iter_urls() -> AsyncGenerator[str]:
             for url in response.get_urls:
@@ -932,11 +1020,18 @@ class _Volume(_Object, type_prefix="vo"):
         @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
         async def download_block(idx, url) -> int:
             block_start_pos = start_pos + idx * BLOCK_SIZE
+            # Every attempt writes into exactly this slice, so a retry after a rejected
+            # response overwrites everything the rejected attempt wrote.
+            expected_len = min(BLOCK_SIZE, response.len - idx * BLOCK_SIZE)
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
                 await _raise_on_block_response_error(get_response)
+                verifier = _BlockDigestVerifier(_parse_repr_digest(get_response.headers.get("Repr-Digest")))
                 async for chunk in get_response.content.iter_any():
+                    if num_bytes_written + len(chunk) > expected_len:
+                        raise ExecutionError(f"Block {idx} response is longer than the expected {expected_len} bytes")
+                    verifier.update(chunk)
                     num_chunk_bytes_written = 0
 
                     while num_chunk_bytes_written < len(chunk):
@@ -950,6 +1045,10 @@ class _Volume(_Object, type_prefix="vo"):
                         progress_cb(advance=n)
 
                     num_bytes_written += len(chunk)
+
+                if num_bytes_written != expected_len:
+                    raise ExecutionError(f"Block {idx} response has {num_bytes_written} bytes, expected {expected_len}")
+                verifier.finish()
 
             return num_bytes_written
 
