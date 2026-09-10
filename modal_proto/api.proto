@@ -4842,6 +4842,16 @@ message WorkspaceSetDefaultEnvironmentRequest {
   string environment_name = 1;
 }
 
+message WorkspaceSetDefaultEnvironmentSettingsRequest {
+  // Omitted = no-op. INHERIT clears the workspace default so environments
+  // with no override have no block. Rejects UNSPECIFIED.
+  optional EnvironmentBlockUnauthenticatedResources block_unauthenticated_resources = 1;
+}
+
+message WorkspaceSetDefaultEnvironmentSettingsResponse {
+  EnvironmentSettings default_environment_settings = 1;
+}
+
 message WorkspaceSetImageBuilderVersionRequest {
   string new_image_builder_version = 1;
 }
@@ -5165,6 +5175,7 @@ service ModalClient {
   rpc WorkspaceMembersList(google.protobuf.Empty) returns (WorkspaceMembersListResponse);
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
   rpc WorkspaceSetDefaultEnvironment(WorkspaceSetDefaultEnvironmentRequest) returns (google.protobuf.Empty);
+  rpc WorkspaceSetDefaultEnvironmentSettings(WorkspaceSetDefaultEnvironmentSettingsRequest) returns (WorkspaceSetDefaultEnvironmentSettingsResponse);
   rpc WorkspaceSetImageBuilderVersion(WorkspaceSetImageBuilderVersionRequest) returns (WorkspaceSetImageBuilderVersionResponse);
   rpc WorkspaceSettings(google.protobuf.Empty) returns (WorkspaceSettingsResponse);
 }
