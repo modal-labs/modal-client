@@ -2519,6 +2519,16 @@ message FunctionInput {
   optional string method_name = 11; // specifies which method to call when calling a class/object function
 }
 
+// Structured error detail attached to a failed FunctionGet lookup.
+message FunctionLookupError {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    REASON_CLASS_NAME_USED = 1;
+  }
+
+  Reason reason = 1;
+}
+
 message FunctionMapRequest {
   string function_id = 1;
   string parent_input_id = 2;
