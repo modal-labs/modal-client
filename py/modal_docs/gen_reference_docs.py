@@ -76,7 +76,6 @@ def run(output_dir: str | None = None):
         "config",
         "container_process",
         "exception",
-        "file_io",
         "io_streams",
         "types",
     ]

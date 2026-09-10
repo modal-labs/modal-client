@@ -106,17 +106,6 @@ async def async_sandbox_block() -> None:
     assert_type(async_containers, list[SidecarContainer])
 
 
-# check file_io
-file_io = sandbox.open("foo", "w")
-assert_type(file_io.read(), str)
-assert_type(file_io.readline(), str)
-assert_type(file_io.readlines(), typing.Sequence[str])
-
-file_io2 = sandbox.open("foo", "rb")
-assert_type(file_io2.read(), bytes)
-assert_type(file_io2.readline(), bytes)
-assert_type(file_io2.readlines(), typing.Sequence[bytes])
-
 # check secrets
 secret = modal.Secret.from_name("foo")
 assert_type(secret, modal.Secret)

@@ -10,32 +10,26 @@ import time
 import typing
 import uuid
 import weakref
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Collection, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Literal, Union, overload
-
-from modal._logs_manager import _SandboxLogsManager
-from modal._supports_logs import LogsFilters, _LogQueryData
-from modal.secret import _split_env_dict_and_resolvable_secrets
-
-from ._output.pty import get_pty_info
-from .config import config, logger
-
-if TYPE_CHECKING:
-    import _typeshed
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from google.protobuf.message import Message
 
+from modal._logs_manager import _SandboxLogsManager
+from modal._supports_logs import LogsFilters, _LogQueryData
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.mount import _Mount
+from modal.secret import _split_env_dict_and_resolvable_secrets
 from modal.volume import _Volume, _volume_to_mount_proto
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from ._image import _Image
 from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
+from ._output.pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api, synchronizer
@@ -50,6 +44,7 @@ from ._utils.mount_utils import (
 from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient, _is_v2_task_id
 from .client import _Client
+from .config import config, logger
 from .container_process import _ContainerProcess
 from .exception import (
     ClientClosed,
@@ -66,7 +61,6 @@ from .exception import (
     SnapshotCreationError,
     TimeoutError,
 )
-from .file_io import _FileIO, ls, mkdir, rm, watch
 from .io_streams import (
     StreamReader,
     StreamWriter,
@@ -83,7 +77,7 @@ from .sandbox_fs import _SandboxFilesystem
 from .secret import _Secret
 from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
-from .types import FileWatchEvent, FileWatchEventType, SandboxConnectCredentials
+from .types import SandboxConnectCredentials
 
 _default_image: _Image = _Image.debian_slim()
 _EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset((api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,))
@@ -2451,136 +2445,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         if self._filesystem is None:
             self._filesystem = _SandboxFilesystem(self)
         return self._filesystem
-
-    @overload
-    async def open(
-        self,
-        path: str,
-    ) -> _FileIO[str]: ...
-
-    @overload
-    async def open(
-        self,
-        path: str,
-        mode: "_typeshed.OpenTextMode",
-    ) -> _FileIO[str]: ...
-
-    @overload
-    async def open(
-        self,
-        path: str,
-        mode: "_typeshed.OpenBinaryMode",
-    ) -> _FileIO[bytes]: ...
-
-    async def open(
-        self,
-        path: str,
-        mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
-    ):
-        """[Alpha] Open a file in the Sandbox and return a FileIO handle.
-
-        **Deprecated (2026-03-09):** Use the `Sandbox.filesystem` APIs instead for improved reliability.
-
-        See the [`FileIO`](https://modal.com/docs/sdk/py/latest/file_io#fileio)
-        docs for more information.
-
-        Args:
-            path: Absolute path of the file inside the sandbox.
-            mode: File open mode (text or binary), following built-in ``open`` conventions.
-
-        Returns:
-            A `FileIO` handle for reading or writing the remote file.
-
-        Examples:
-            ```python notest
-            sb = modal.Sandbox.create(app=sb_app)
-            f = sb.open("/test.txt", "w")
-            f.write("hello")
-            f.close()
-            ```
-        """
-        self._ensure_v1("open")
-        deprecation_warning(
-            (2026, 3, 9),
-            "`Sandbox.open()` is deprecated. Use the `Sandbox.filesystem` APIs instead for improved reliability.",
-        )
-        task_id = await self._get_task_id()
-        return await _FileIO.create(path, mode, self._client, task_id)
-
-    async def ls(self, path: str) -> builtins.list[str]:
-        """[Alpha] List the contents of a directory in the Sandbox.
-
-        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.list_files()` instead for improved reliability.
-
-        Args:
-            path: Absolute directory path inside the sandbox.
-
-        Returns:
-            Entry names in the directory as a list of strings.
-        """
-        self._ensure_v1("ls")
-        deprecation_warning(
-            (2026, 4, 15),
-            "`Sandbox.ls()` is deprecated. Use `Sandbox.filesystem.list_files()` instead for improved reliability.",
-        )
-        task_id = await self._get_task_id()
-        return await ls(path, self._client, task_id)
-
-    async def mkdir(self, path: str, parents: bool = False) -> None:
-        """[Alpha] Create a new directory in the Sandbox.
-
-        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.make_directory()` instead for improved reliability.
-        """
-        self._ensure_v1("mkdir")
-        deprecation_warning(
-            (2026, 4, 15),
-            "`Sandbox.mkdir()` is deprecated. Use `Sandbox.filesystem.make_directory()` instead for improved "
-            "reliability.",
-        )
-        task_id = await self._get_task_id()
-        return await mkdir(path, self._client, task_id, parents)
-
-    async def rm(self, path: str, recursive: bool = False) -> None:
-        """[Alpha] Remove a file or directory in the Sandbox.
-
-        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.remove()` instead for improved reliability.
-        """
-        self._ensure_v1("rm")
-        deprecation_warning(
-            (2026, 4, 15),
-            "`Sandbox.rm()` is deprecated. Use `Sandbox.filesystem.remove()` instead for improved reliability.",
-        )
-        task_id = await self._get_task_id()
-        return await rm(path, self._client, task_id, recursive)
-
-    async def watch(
-        self,
-        path: str,
-        filter: builtins.list[FileWatchEventType] | None = None,
-        recursive: bool | None = None,
-        timeout: int | None = None,
-    ) -> AsyncIterator[FileWatchEvent]:
-        """[Alpha] Watch a file or directory in the Sandbox for changes.
-
-        **Deprecated (2026-05-08):** Use `Sandbox.filesystem.watch()` instead for improved reliability.
-
-        Args:
-            path: Absolute path to watch.
-            filter: Optional list of event types to include.
-            recursive: Whether to watch subdirectories; None uses server defaults.
-            timeout: Optional timeout for the watch stream.
-
-        Returns:
-            An async iterator of `FileWatchEvent` values.
-        """
-        self._ensure_v1("watch")
-        deprecation_warning(
-            (2026, 5, 8),
-            "`Sandbox.watch()` is deprecated. Use `Sandbox.filesystem.watch()` instead for improved reliability.",
-        )
-        task_id = await self._get_task_id()
-        async for event in watch(path, self._client, task_id, filter, recursive, timeout):
-            yield event
 
     @property
     def stdout(self) -> _StreamReader[str]:

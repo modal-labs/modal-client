@@ -343,10 +343,6 @@ class ClientClosed(Error):
     pass
 
 
-class FilesystemExecutionError(Error):
-    """Raised when an unknown error is thrown during a container filesystem operation."""
-
-
 class SandboxFilesystemError(Error):
     """Base class for sandbox filesystem errors."""
 

@@ -6,6 +6,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Python
 
+- Removed the deprecated legacy Sandbox filesystem API: `Sandbox.open()`, `Sandbox.ls()`, `Sandbox.mkdir()`, `Sandbox.rm()`, `Sandbox.watch()`, the `modal.file_io.FileIO` type, and `modal.exception.FilesystemExecutionError`. Use the [`Sandbox.filesystem`](/docs/sdk/py/latest/Sandbox#filesystem) APIs instead.
 - [`FunctionCall.get_call_graph()`](/docs/sdk/py/latest/FunctionCall#get_call_graph) now returns up to 5000
   nodes instead of 100.
 - Volume file downloads no longer transfer the trailing zero bytes of sparse file blocks, which the client now fills in locally.

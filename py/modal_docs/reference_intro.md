@@ -75,7 +75,6 @@ Python SDK, which allows you to programmatically interact with Modal.
 | --- | --- |
 | [`Sandbox`](/docs/sdk/py/latest/Sandbox) | An interface for restricted code execution |
 | [`ContainerProcess`](/docs/sdk/py/latest/container_process#containerprocess) | An object representing a sandboxed process |
-| [`FileIO`](/docs/sdk/py/latest/file_io#fileio) | A handle for a file in the Sandbox filesystem |
 
 ## Container configuration
 
