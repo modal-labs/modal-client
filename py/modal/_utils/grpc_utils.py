@@ -25,7 +25,7 @@ from grpclib.encoding.base import CodecBase, StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
-from modal.exception import ClientClosed, ConnectionError
+from modal.exception import ClientClosed, ConnectionError, NotFoundError
 from modal_proto import api_pb2
 from modal_version import __version__
 
@@ -453,6 +453,15 @@ async def retry_transient_errors(
     Used by modal server.
     """
     return await _retry_transient_errors(fn, req, retry=Retry(max_retries=max_retries))
+
+
+def is_class_function_lookup_error(exc: NotFoundError) -> bool:
+    """Whether a function lookup failed because the requested name identifies a class."""
+    return any(
+        isinstance(detail, api_pb2.FunctionLookupError)
+        and detail.reason == api_pb2.FunctionLookupError.REASON_CLASS_NAME_USED
+        for detail in (getattr(exc, "_grpc_details", None) or [])
+    )
 
 
 def get_server_retry_policy(exc: Exception) -> api_pb2.RPCRetryPolicy | None:

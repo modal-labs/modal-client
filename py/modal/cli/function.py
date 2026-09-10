@@ -13,8 +13,10 @@ from rich.text import Text
 from modal._environments import ensure_env
 from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import is_class_function_lookup_error
 from modal._utils.time_utils import parse_duration
 from modal.client import _Client
+from modal.exception import NotFoundError
 from modal.functions import Function
 from modal.output import OutputManager
 from modal_proto import api_pb2
@@ -59,13 +61,20 @@ async def _resolve_function_id(client: _Client, function_identifier: str, enviro
                 "FUNCTION must be a Function ID (fu-…) or a deployed Function name (APP_NAME/FUNCTION_NAME)."
             )
 
-        response = await client.stub.FunctionGet(
-            api_pb2.FunctionGetRequest(
-                app_name=app_name,
-                object_tag=function_name,
-                environment_name=environment_name,
+        try:
+            response = await client.stub.FunctionGet(
+                api_pb2.FunctionGetRequest(
+                    app_name=app_name,
+                    object_tag=function_name,
+                    environment_name=environment_name,
+                )
             )
-        )
+        except NotFoundError as exc:
+            if is_class_function_lookup_error(exc):
+                raise NotFoundError(
+                    f"'{function_identifier}' is a modal.Cls. Use\n modal function stats '{function_identifier}.*'"
+                ) from None
+            raise
         return response.function_id
 
     if function_identifier.startswith("fu-"):

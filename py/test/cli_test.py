@@ -19,11 +19,12 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 import toml
+from grpclib import GRPCError, Status
 
 import modal
 from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
-from modal.exception import DeprecationError, InvalidError, _CliUserExecutionError
+from modal.exception import DeprecationError, InvalidError, NotFoundError, _CliUserExecutionError
 from modal.types import LogEntry
 from modal_proto import api_pb2
 
@@ -4112,6 +4113,27 @@ def test_function_stats_cli(servicer, set_env_client):
     assert result.stdout.index("Execution time (s)") < result.stdout.index("End-to-end latency (s)")
     assert result.stdout.index("Startup time (s)") < result.stdout.index("CPU Usage (cores)")
     assert result.stdout.index("CPU Usage (cores)") < result.stdout.index("Memory Usage (GiB)")
+
+
+@pytest.mark.parametrize("reason", [None, 0, api_pb2.FunctionLookupError.REASON_CLASS_NAME_USED])
+def test_function_stats_cli_class_lookup_error_details(servicer, set_env_client, reason):
+    message = "Lookup failed" if reason == 1 else "Object 'MyClass' is a Class, not a Function."
+
+    async def fail_lookup(servicer, stream):
+        await stream.recv_message()
+        details = [] if reason is None else [api_pb2.FunctionLookupError(reason=reason)]
+        raise GRPCError(Status.NOT_FOUND, message, details=details)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGet", fail_lookup)
+        result = run_cli_command(["function", "stats", "app/MyClass"], expected_exit_code=1)
+
+    assert isinstance(result.exception, NotFoundError)
+    if reason == api_pb2.FunctionLookupError.REASON_CLASS_NAME_USED:
+        assert "modal function stats 'app/MyClass.*'" in str(result.exception)
+    else:
+        assert str(result.exception) == message
+        assert "app/MyClass.*" not in str(result.exception)
 
 
 def test_function_stats_cli_resolves_fu_prefixed_app_name(servicer, set_env_client):

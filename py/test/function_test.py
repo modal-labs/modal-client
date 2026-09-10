@@ -11,7 +11,7 @@ import warnings
 from contextlib import nullcontext
 from unittest.mock import MagicMock
 
-from grpclib import Status
+from grpclib import GRPCError, Status
 
 import modal
 import modal.experimental
@@ -2314,6 +2314,27 @@ def test_class_schema_recording(client, servicer):
     assert modal.cls._get_method_schemas(lazy_cls) == method_schemas
     (looked_up_construct_arg,) = modal.cls._get_constructor_args(lazy_cls)
     assert looked_up_construct_arg == constructor_arg
+
+
+@pytest.mark.parametrize("reason", [None, 0, api_pb2.FunctionLookupError.REASON_CLASS_NAME_USED])
+def test_class_lookup_error_details(client, servicer, reason):
+    message = "Lookup failed" if reason == 1 else "Object 'MyClass' is a Class, not a Function."
+
+    async def fail_lookup(servicer, stream):
+        await stream.recv_message()
+        details = [] if reason is None else [api_pb2.FunctionLookupError(reason=reason)]
+        raise GRPCError(Status.NOT_FOUND, message, details=details)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGet", fail_lookup)
+        with pytest.raises(NotFoundError) as exc:
+            Function.from_name("app", "MyClass").hydrate(client=client)
+
+    if reason == api_pb2.FunctionLookupError.REASON_CLASS_NAME_USED:
+        assert "modal.Cls.from_name" in str(exc.value)
+    else:
+        assert message in str(exc.value)
+        assert "modal.Cls.from_name" not in str(exc.value)
 
 
 def test_failed_lookup_error(client, servicer):

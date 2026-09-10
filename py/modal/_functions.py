@@ -64,7 +64,7 @@ from ._utils.function_utils import (
     parse_gpu_config,
     validate_target_concurrency,
 )
-from ._utils.grpc_utils import Retry, RetryWarningMessage
+from ._utils.grpc_utils import Retry, RetryWarningMessage, is_class_function_lookup_error
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
@@ -1361,9 +1361,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 env_context = (
                     f" (in the '{load_context.environment_name}' environment)" if load_context.environment_name else ""
                 )
-                raise NotFoundError(
-                    f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc}."
-                ) from None
+                msg = f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc}."
+                if is_class_function_lookup_error(exc):
+                    msg = (
+                        f"Function '{name}' from the '{app_name}' app{env_context} is a modal.Cls. "
+                        f"Use `modal.Cls.from_name` instead."
+                    )
+                raise NotFoundError(msg) from None
 
             print_server_warnings(response.server_warnings)
 
