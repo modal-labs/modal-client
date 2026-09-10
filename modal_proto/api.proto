@@ -190,6 +190,15 @@ enum EndpointTaskType {
   ENDPOINT_TASK_TYPE_EMBEDDING = 2;
 }
 
+// Partial-update signal for EnvironmentUpdateRequest. Omitted means no-op.
+// INHERIT clears the environment override so the workspace default applies.
+enum EnvironmentBlockUnauthenticatedResources {
+  ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_UNSPECIFIED = 0;
+  ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_INHERIT = 1;
+  ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_BLOCK = 2;
+  ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_ALLOW = 3;
+}
+
 enum EnvironmentRole {
   ENVIRONMENT_ROLE_UNSPECIFIED = 0;
   ENVIRONMENT_ROLE_VIEWER = 1;
@@ -1761,6 +1770,7 @@ message EnvironmentListItem {
   bool spend_limit_reached = 14;
   EnvironmentType environment_type = 15;
   optional EnvironmentRole default_member_role = 16;
+  optional bool block_unauthenticated_resources = 17;
 }
 
 message EnvironmentListResponse {
@@ -1806,6 +1816,10 @@ message EnvironmentSettings {
   string webhook_suffix = 2;
   optional int32 max_concurrent_gpus = 3;
   optional int32 max_concurrent_tasks = 4;
+  // When true, new unauthenticated web functions, Servers, tunnels, and
+  // Endpoints in this environment are rejected. Unset inherits the workspace
+  // default.
+  optional bool block_unauthenticated_resources = 5;
 }
 
 message EnvironmentUpdateRequest {
@@ -1814,6 +1828,7 @@ message EnvironmentUpdateRequest {
   google.protobuf.StringValue web_suffix = 3;
   optional int32 max_concurrent_tasks = 4;
   optional int32 max_concurrent_gpus = 5;
+  optional EnvironmentBlockUnauthenticatedResources block_unauthenticated_resources = 6;
 }
 
 // A file entry when listing files in a volume or network file system.
