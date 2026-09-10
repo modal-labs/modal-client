@@ -193,7 +193,6 @@ class _Client:
             await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._connection_manager:
             self._connection_manager.close()
-
         if prep_for_restore:
             self._snapshotted = True
 

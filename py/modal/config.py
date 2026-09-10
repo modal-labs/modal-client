@@ -392,6 +392,10 @@ _SETTINGS = {
     "async_warnings": _Setting(True, transform=_to_boolean),  # Activate synchronicity usage warnings
     "disable_api_proxy": _Setting(False, transform=_to_boolean),
     "override_headers": _Setting(None, transform=_transform_headers),
+    # How long a Sandbox connection may sit idle before the client releases it.
+    # The Sandbox stays usable: the next operation reconnects. Seconds; set to 0
+    # to keep Sandbox connections open until the client closes.
+    "sandbox_channel_idle_timeout": _Setting(30, transform=float),
 }
 
 

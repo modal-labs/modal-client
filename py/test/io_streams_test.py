@@ -5,6 +5,9 @@ import typing
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
+from grpclib.exceptions import StreamTerminatedError
+
+import modal.io_streams as io_streams
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter, synchronizer
 from modal._utils.task_command_router_client import TaskCommandRouterClient
@@ -20,6 +23,34 @@ from modal.io_streams import (
     _StreamWriterThroughCommandRouterSandboxParams,
 )
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("makes_progress", [False, True])
+@pytest.mark.parametrize("file_descriptor", [api_pb2.FILE_DESCRIPTOR_STDOUT, api_pb2.FILE_DESCRIPTOR_STDERR])
+async def test_server_log_retries_bound_consecutive_failures(monkeypatch, makes_progress, file_descriptor):
+    resumes = []
+
+    async def logs_iterator(object_id, fd, last_entry_id, client):
+        resumes.append(last_entry_id)
+        if len(resumes) > 11:
+            yield None, last_entry_id
+            return
+        if makes_progress:
+            yield b"output", str(len(resumes))
+        raise StreamTerminatedError("connection lost")
+
+    monkeypatch.setattr(io_streams, "_sandbox_logs_iterator", logs_iterator)
+    reader = io_streams._StreamReaderThroughServer[str](
+        _StreamReaderThroughServerParams(object_id="sb-test", file_descriptor=file_descriptor, client=None)
+    )
+    if makes_progress:
+        assert await reader.read() == "output" * 11
+        assert resumes == [""] + [str(i) for i in range(1, 12)]
+    else:
+        with pytest.raises(StreamTerminatedError):
+            await reader.read()
+        assert resumes == [""] * 11
 
 
 def _build_stream_reader_params(
@@ -761,6 +792,7 @@ def _sandbox_writer_params(router: "_FakeCommandRouterClient"):
 
     return _StreamWriterThroughCommandRouterSandboxParams(
         resolve_router=_resolve_router,  # type: ignore[arg-type]
+        check_open=lambda: None,
     )
 
 
@@ -842,6 +874,7 @@ async def test_sandbox_stream_writer_provider_only_called_on_drain():
     mock_resolve = AsyncMock(return_value=("task-1", router))
     params = _StreamWriterThroughCommandRouterSandboxParams(
         resolve_router=mock_resolve,  # type: ignore[arg-type]
+        check_open=lambda: None,
     )
     writer = _StreamWriter(params)
 

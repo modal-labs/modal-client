@@ -121,12 +121,12 @@ class ModalChannel(grpclib.client.Channel):
         self.__target_host = host
         self.__target_port = port
         self.__ssl_context = ssl_context
-        self.__closed = False
-        self.__closed_error_message = closed_error_message
+        self._permanently_closed = False
+        self._closed_error_message = closed_error_message
 
     async def __connect__(self):
-        if self.__closed and self.__closed_error_message is not None:
-            raise ClientClosed(self.__closed_error_message)
+        if self._permanently_closed and self._closed_error_message is not None:
+            raise ClientClosed(self._closed_error_message)
         return await super().__connect__()
 
     async def _create_connection(self) -> H2Protocol:
@@ -161,8 +161,13 @@ class ModalChannel(grpclib.client.Channel):
             and not self._protocol.connection.is_closing()
         )
 
+    def release_connection(self):
+        """Release the connection while leaving the channel reusable."""
+        return super().close()
+
     def close(self):
-        self.__closed = True
+        """Close the channel permanently."""
+        self._permanently_closed = True
         return super().close()
 
 

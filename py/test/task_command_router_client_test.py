@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock
 
 import pytest_asyncio
 from grpclib import GRPCError, Status
-from grpclib.client import Channel
 from grpclib.exceptions import StreamTerminatedError
 
+from modal._utils.grpc_utils import ModalChannel
 from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.client import _Client
-from modal.exception import AuthError, ExecTimeoutError, ServiceError, TimeoutError as ModalTimeoutError
+from modal.exception import AuthError, ClientClosed, ExecTimeoutError, ServiceError, TimeoutError as ModalTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
@@ -46,8 +46,8 @@ class _Stub:
         self.TaskExecStdioRead = _UnaryStreamMethod(open_fn)
 
 
-def create_dummy_channel() -> Channel:
-    return Channel("https://router.test", ssl=False)
+def create_dummy_channel() -> ModalChannel:
+    return ModalChannel("https://router.test", ssl=False)
 
 
 @pytest_asyncio.fixture
@@ -59,7 +59,7 @@ async def make_router_client():
         task_id: str = "sb-1",
         server_url: str = "https://router.test",
         jwt: str = "t",
-        channel: Channel | None = None,
+        channel: ModalChannel | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
         jwt_refresh_lock: asyncio.Lock | None = None,
         sandbox_id: str | None = None,
@@ -323,14 +323,111 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
     assert out == pieces
 
 
+@pytest.mark.parametrize("sandbox_stdio", [False, True])
 @pytest.mark.asyncio
-async def test_exec_stdio_read_retry_budget_refills_after_progress(make_router_client):
-    # Every attempt delivers exactly one chunk and then fails with a transient
-    # error. The number of disconnects exceeds the retry budget, but each one is
-    # separated by progress, so the stream must still complete: the budget
-    # bounds consecutive failures, not failures over the stream's lifetime.
-    pieces = [b"one", b"two", b"three", b"four", b"five", b"six"]
+async def test_stdio_retry_does_not_reopen_when_client_closes(make_router_client, sandbox_stdio):
+    client = make_router_client(stream_stdio_retry_delay_secs=0.02)
+    read_failed = asyncio.Event()
+    num_attempts_made = 0
 
+    class _Stream:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
+            return False
+
+        async def send_message(self, req, end=True):  # noqa: ANN001, ANN201, ARG002 - test helper
+            return None
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            read_failed.set()
+            raise GRPCError(Status.UNAVAILABLE, "unavailable")
+
+    def _open(timeout: float | None = None):  # noqa: ARG001
+        nonlocal num_attempts_made
+        num_attempts_made += 1
+        return _Stream()
+
+    class _RetryStub:
+        def __init__(self):
+            self.TaskExecStdioRead = _UnaryStreamMethod(_open)
+            self.SandboxStdioReadV2 = _UnaryStreamMethod(_open)
+
+    client._stub = _RetryStub()  # type: ignore[assignment]
+    if sandbox_stdio:
+        stream = client.sandbox_stdio_read("task-1", api_pb2.FILE_DESCRIPTOR_STDOUT)
+    else:
+        stream = client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT)
+    waiting = asyncio.create_task(anext(stream))
+    await read_failed.wait()
+
+    await client.close()
+
+    with pytest.raises(ClientClosed):
+        await asyncio.wait_for(waiting, timeout=0.5)
+    assert num_attempts_made == 1
+    await stream.aclose()
+
+
+@pytest.mark.asyncio
+async def test_exec_stdio_read_retry_budget_refills_after_stream_termination(make_router_client):
+    pieces = [b"one", b"two", b"three", b"four"]
+    client = make_router_client(
+        stream_stdio_retry_delay_secs=0,
+        stream_stdio_max_retries=1,
+    )
+
+    num_attempts_made = 0
+
+    class _Stream:
+        def __init__(self, timeout: float | None):
+            self._timeout = timeout
+            self._last_req: sr_pb2.TaskExecStdioReadRequest | None = None
+            self._emitted = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
+            return False
+
+        async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            self._last_req = req
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            assert self._last_req is not None
+            start_idx = _start_index_for_offset(pieces, int(self._last_req.offset))
+            if self._emitted:
+                if start_idx + 1 < len(pieces):
+                    raise StreamTerminatedError("stream closed")
+                raise StopAsyncIteration
+
+            self._emitted = True
+            return sr_pb2.TaskExecStdioReadResponse(data=pieces[start_idx])
+
+    def _open(timeout: float | None = None):
+        nonlocal num_attempts_made
+        num_attempts_made += 1
+        return _Stream(timeout)
+
+    client._stub = _Stub(_open)  # type: ignore[assignment]
+
+    out = [item.data async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT)]
+
+    assert out == pieces
+    assert num_attempts_made == len(pieces)
+
+
+@pytest.mark.asyncio
+async def test_exec_stdio_read_retry_budget_refills_after_grpc_errors(make_router_client):
+    pieces = [b"one", b"two", b"three", b"four", b"five", b"six"]
     client = make_router_client(
         stream_stdio_retry_delay_secs=0.001,
         stream_stdio_retry_delay_factor=1.0,
@@ -374,12 +471,9 @@ async def test_exec_stdio_read_retry_budget_refills_after_progress(make_router_c
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    out: list[bytes] = []
-    async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
-        out.append(item.data)
+    out = [item.data async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT)]
 
     assert out == pieces
-    # One attempt per chunk plus the final attempt that observes end of stream.
     assert num_attempts_made == len(pieces) + 1
 
 
@@ -1215,7 +1309,7 @@ async def test_task_command_router_client_closes_and_finalizes(make_router_clien
     channel = create_dummy_channel()
     closed = False
 
-    def _close():  # noqa: ANN001 - test helper
+    def _close():
         nonlocal closed
         closed = True
 

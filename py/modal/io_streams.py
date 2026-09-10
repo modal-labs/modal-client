@@ -126,6 +126,7 @@ class _StreamReaderThroughServer(Generic[T]):
                 )
 
                 async for message, entry_id in iterator:
+                    retries_remaining = 10
                     self._last_entry_id = entry_id
                     # Empty messages are sent when the process boots up. Don't yield them unless
                     # we're using the empty message to signal process liveness.
@@ -564,6 +565,7 @@ class _StreamWriterThroughCommandRouterSandboxParams:
     # writer drains. Captures the sandbox handle so we only mint a JWT and
     # open a connection to the worker when stdin is actually written.
     resolve_router: Callable[[], Awaitable[tuple[str, TaskCommandRouterClient]]]
+    check_open: Callable[[], None]
 
 
 class _StreamWriterThroughServer:
@@ -699,6 +701,13 @@ class _StreamWriterThroughCommandRouterSandbox(_StreamWriterThroughCommandRouter
 class _StreamWriter:
     """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
 
+    _impl: (
+        _StreamWriterThroughServer
+        | _StreamWriterThroughCommandRouterSandboxExec
+        | _StreamWriterThroughCommandRouterSandbox
+    )
+    _check_open: Callable[[], None] | None
+
     def __init__(
         self,
         params: _StreamWriterThroughServerParams
@@ -708,10 +717,13 @@ class _StreamWriter:
         """mdmd:hidden"""
         if isinstance(params, _StreamWriterThroughCommandRouterSandboxExecParams):
             self._impl = _StreamWriterThroughCommandRouterSandboxExec(params)
+            self._check_open = None
         elif isinstance(params, _StreamWriterThroughCommandRouterSandboxParams):
             self._impl = _StreamWriterThroughCommandRouterSandbox(params)
+            self._check_open = params.check_open
         else:
             self._impl = _StreamWriterThroughServer(params)
+            self._check_open = None
 
     def write(self, data: bytes | bytearray | memoryview | str) -> None:
         """Write data to the stream but does not send it immediately.
@@ -732,6 +744,8 @@ class _StreamWriter:
             proc.stdin.drain()
             ```
         """
+        if self._check_open is not None:
+            self._check_open()
         self._impl.write(data)
 
     def write_eof(self) -> None:
@@ -741,6 +755,8 @@ class _StreamWriter:
         `write_eof()`. This method needs to be used along with the `drain()`
         method, which flushes the EOF to the process.
         """
+        if self._check_open is not None:
+            self._check_open()
         self._impl.write_eof()
 
     async def drain(self) -> None:
@@ -762,6 +778,8 @@ class _StreamWriter:
             await writer.drain.aio()
             ```
         """
+        if self._check_open is not None:
+            self._check_open()
         await self._impl.drain()
 
 

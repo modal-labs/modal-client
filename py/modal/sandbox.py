@@ -424,6 +424,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _tunnels: dict[int, Tunnel] | None
     _enable_snapshot: bool
     _command_router_client: TaskCommandRouterClient | None
+    _command_router_lock: asyncio.Lock | None
     _init_command_router_access: api_pb2.CommandRouterAccess | None
     _attached: bool
     _filesystem: _SandboxFilesystem | None
@@ -1181,6 +1182,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._tunnels = None
         self._enable_snapshot = False
         self._command_router_client = None
+        self._command_router_lock = None
         self._init_command_router_access = None
         self._filesystem = None
         self._is_v2 = _get_sandbox_version(self.object_id) == SandboxVersion.V2
@@ -1218,7 +1220,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             ),
             by_line=True,
         )
-        self._stdin = StreamWriter(_StreamWriterThroughCommandRouterSandboxParams(resolve_router=resolve_router))
+        self._stdin = StreamWriter(
+            _StreamWriterThroughCommandRouterSandboxParams(
+                resolve_router=resolve_router,
+                check_open=self._ensure_attached,
+            )
+        )
 
     def _initialize_from_other(self, other):
         super()._initialize_from_other(other)
@@ -1233,18 +1240,27 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._app_id = None
 
     async def detach(self):
-        """Disconnects your client from the sandbox and cleans up resources assoicated with the connection.
+        """Disconnects your client from the sandbox and cleans up resources associated with the connection.
 
         Be sure to only call `detach` when you are done interacting with the sandbox. After calling `detach`,
         any operation using the Sandbox object is not guaranteed to work anymore. If you want to continue interacting
         with a running sandbox, use `Sandbox.from_id` to get a new Sandbox object.
 
+        This method does not interrupt or wait for running concurrent operations on the sandbox. Resources are
+        promptly closed once those operations complete.
+
         """
         if not self._attached:
             return
-        if self._command_router_client is not None:
-            await self._command_router_client.close()
+        # Publish the detached state before requesting release of any resources.
         self._attached = False
+        command_router_client, self._command_router_client = self._command_router_client, None
+
+        if command_router_client is not None:
+            try:
+                await command_router_client.close_when_idle()
+            except Exception as exc:
+                logger.debug(f"Failed to close sandbox command router during detach: {exc}")
 
     @property
     def _client(self) -> _Client:
@@ -2032,21 +2048,39 @@ class _Sandbox(_Object, type_prefix="sb"):
         return resp.task_id
 
     async def _get_command_router_client(self, task_id: str) -> TaskCommandRouterClient:
-        if self._command_router_client is None:
+        self._ensure_attached()
+        if self._command_router_client is not None:
+            return self._command_router_client
+
+        # Lazily create the lock on the event loop that first uses the Sandbox.
+        # It serializes initialization so concurrent operations share one client.
+        if self._command_router_lock is None:
+            self._command_router_lock = asyncio.Lock()
+        async with self._command_router_lock:
+            self._ensure_attached()
+            if self._command_router_client is not None:
+                return self._command_router_client
             try:
                 if self._is_v2:
                     # Consume the seeded access, so if connecting with it fails the
                     # retry falls back to the authoritative RPC instead of
                     # re-trying the same credentials forever.
                     access, self._init_command_router_access = self._init_command_router_access, None
-                    self._command_router_client = await TaskCommandRouterClient.init_v2_by_sandbox_id(
+                    command_router_client = await TaskCommandRouterClient.init_v2_by_sandbox_id(
                         self._client, self.object_id, task_id, access
                     )
                 else:
-                    self._command_router_client = await TaskCommandRouterClient.init(self._client, task_id)
+                    command_router_client = await TaskCommandRouterClient.init(self._client, task_id)
             except ConflictError as e:
                 raise NotFoundError(str(e)) from e
-        return self._command_router_client
+
+            # Router initialization yields control, so detach may have completed
+            # while the connection was opening. A detached Sandbox must not cache it.
+            if not self._attached:
+                await command_router_client.close()
+                self._ensure_attached()
+            self._command_router_client = command_router_client
+            return command_router_client
 
     @property
     def _experimental_sidecars(self) -> "_SidecarManager":
