@@ -955,6 +955,18 @@ message BlobGetResponse {
   string download_url = 1;
 }
 
+message BlobUploadResult {
+  enum Outcome {
+    OUTCOME_UNSPECIFIED = 0;
+    OUTCOME_SUCCESS = 1;
+    OUTCOME_FAILURE = 2;
+  }
+
+  string blob_id = 1; // The blob id (from BlobCreateResponse) that this upload attempt targeted.
+  Outcome outcome = 2;
+  uint64 throughput_bytes_s = 3;
+}
+
 message BuildFunction {
   string definition = 1;
   bytes globals = 2;
@@ -2608,6 +2620,7 @@ message FunctionPutInputsItem {
   bool r2_failed = 3;
   reserved 4; // r2_latency_ms
   uint64 r2_throughput_bytes_s = 5;
+  repeated BlobUploadResult blob_upload_results = 6;
 }
 
 message FunctionPutInputsRequest {
