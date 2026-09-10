@@ -2342,6 +2342,14 @@ message FunctionGetDynamicConcurrencyResponse {
   uint32 concurrency = 1;
 }
 
+message FunctionGetFlashAuthTokenRequest {
+  string function_id = 1;
+}
+
+message FunctionGetFlashAuthTokenResponse {
+  string token = 1;
+}
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -4970,6 +4978,7 @@ service ModalClient {
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
   rpc FunctionGetDynamicConcurrency(FunctionGetDynamicConcurrencyRequest) returns (FunctionGetDynamicConcurrencyResponse);
+  rpc FunctionGetFlashAuthToken(FunctionGetFlashAuthTokenRequest) returns (FunctionGetFlashAuthTokenResponse);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);

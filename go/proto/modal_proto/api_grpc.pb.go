@@ -128,6 +128,7 @@ const (
 	ModalClient_FunctionGetCallGraph_FullMethodName             = "/modal.client.ModalClient/FunctionGetCallGraph"
 	ModalClient_FunctionGetCurrentStats_FullMethodName          = "/modal.client.ModalClient/FunctionGetCurrentStats"
 	ModalClient_FunctionGetDynamicConcurrency_FullMethodName    = "/modal.client.ModalClient/FunctionGetDynamicConcurrency"
+	ModalClient_FunctionGetFlashAuthToken_FullMethodName        = "/modal.client.ModalClient/FunctionGetFlashAuthToken"
 	ModalClient_FunctionGetInputs_FullMethodName                = "/modal.client.ModalClient/FunctionGetInputs"
 	ModalClient_FunctionGetOutputs_FullMethodName               = "/modal.client.ModalClient/FunctionGetOutputs"
 	ModalClient_FunctionGetSerialized_FullMethodName            = "/modal.client.ModalClient/FunctionGetSerialized"
@@ -393,6 +394,7 @@ type ModalClientClient interface {
 	FunctionGetCallGraph(ctx context.Context, in *FunctionGetCallGraphRequest, opts ...grpc.CallOption) (*FunctionGetCallGraphResponse, error)
 	FunctionGetCurrentStats(ctx context.Context, in *FunctionGetCurrentStatsRequest, opts ...grpc.CallOption) (*FunctionStats, error)
 	FunctionGetDynamicConcurrency(ctx context.Context, in *FunctionGetDynamicConcurrencyRequest, opts ...grpc.CallOption) (*FunctionGetDynamicConcurrencyResponse, error)
+	FunctionGetFlashAuthToken(ctx context.Context, in *FunctionGetFlashAuthTokenRequest, opts ...grpc.CallOption) (*FunctionGetFlashAuthTokenResponse, error)
 	FunctionGetInputs(ctx context.Context, in *FunctionGetInputsRequest, opts ...grpc.CallOption) (*FunctionGetInputsResponse, error)
 	FunctionGetOutputs(ctx context.Context, in *FunctionGetOutputsRequest, opts ...grpc.CallOption) (*FunctionGetOutputsResponse, error)
 	FunctionGetSerialized(ctx context.Context, in *FunctionGetSerializedRequest, opts ...grpc.CallOption) (*FunctionGetSerializedResponse, error)
@@ -1631,6 +1633,16 @@ func (c *modalClientClient) FunctionGetDynamicConcurrency(ctx context.Context, i
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FunctionGetDynamicConcurrencyResponse)
 	err := c.cc.Invoke(ctx, ModalClient_FunctionGetDynamicConcurrency_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) FunctionGetFlashAuthToken(ctx context.Context, in *FunctionGetFlashAuthTokenRequest, opts ...grpc.CallOption) (*FunctionGetFlashAuthTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FunctionGetFlashAuthTokenResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionGetFlashAuthToken_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3232,6 +3244,7 @@ type ModalClientServer interface {
 	FunctionGetCallGraph(context.Context, *FunctionGetCallGraphRequest) (*FunctionGetCallGraphResponse, error)
 	FunctionGetCurrentStats(context.Context, *FunctionGetCurrentStatsRequest) (*FunctionStats, error)
 	FunctionGetDynamicConcurrency(context.Context, *FunctionGetDynamicConcurrencyRequest) (*FunctionGetDynamicConcurrencyResponse, error)
+	FunctionGetFlashAuthToken(context.Context, *FunctionGetFlashAuthTokenRequest) (*FunctionGetFlashAuthTokenResponse, error)
 	FunctionGetInputs(context.Context, *FunctionGetInputsRequest) (*FunctionGetInputsResponse, error)
 	FunctionGetOutputs(context.Context, *FunctionGetOutputsRequest) (*FunctionGetOutputsResponse, error)
 	FunctionGetSerialized(context.Context, *FunctionGetSerializedRequest) (*FunctionGetSerializedResponse, error)
@@ -3707,6 +3720,9 @@ func (UnimplementedModalClientServer) FunctionGetCurrentStats(context.Context, *
 }
 func (UnimplementedModalClientServer) FunctionGetDynamicConcurrency(context.Context, *FunctionGetDynamicConcurrencyRequest) (*FunctionGetDynamicConcurrencyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetDynamicConcurrency not implemented")
+}
+func (UnimplementedModalClientServer) FunctionGetFlashAuthToken(context.Context, *FunctionGetFlashAuthTokenRequest) (*FunctionGetFlashAuthTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionGetFlashAuthToken not implemented")
 }
 func (UnimplementedModalClientServer) FunctionGetInputs(context.Context, *FunctionGetInputsRequest) (*FunctionGetInputsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetInputs not implemented")
@@ -5945,6 +5961,24 @@ func _ModalClient_FunctionGetDynamicConcurrency_Handler(srv interface{}, ctx con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).FunctionGetDynamicConcurrency(ctx, req.(*FunctionGetDynamicConcurrencyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_FunctionGetFlashAuthToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FunctionGetFlashAuthTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionGetFlashAuthToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionGetFlashAuthToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionGetFlashAuthToken(ctx, req.(*FunctionGetFlashAuthTokenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8853,6 +8887,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FunctionGetDynamicConcurrency",
 			Handler:    _ModalClient_FunctionGetDynamicConcurrency_Handler,
+		},
+		{
+			MethodName: "FunctionGetFlashAuthToken",
+			Handler:    _ModalClient_FunctionGetFlashAuthToken_Handler,
 		},
 		{
 			MethodName: "FunctionGetInputs",
