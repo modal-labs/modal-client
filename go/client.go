@@ -4,6 +4,7 @@ package modal
 
 import (
 	"context"
+	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
 	"log/slog"
@@ -67,6 +68,7 @@ type Client struct {
 	additionalStreamInterceptors []grpc.StreamClientInterceptor
 	mu                           sync.RWMutex
 	environmentManager           *environmentManager
+	oauthJWTKey                  *rsa.PrivateKey
 }
 
 // NewClient generates a new client with the default profile configuration read from environment variables and ~/.modal.toml.
@@ -81,14 +83,19 @@ type OAuthCredentialsParams struct {
 	// ClientID is a Modal-issued OAuth client ID, with an "oc-" prefix.
 	ClientID string
 	// ClientSecret is a Modal-issued OAuth client secret, with an "ov-" prefix.
+	// Provide exactly one of ClientSecret or JWTKey.
 	ClientSecret string
+	// JWTKey is an unencrypted RSA private key encoded as PEM, with literal or escaped newlines.
+	// Provide exactly one of ClientSecret or JWTKey.
+	JWTKey string
 }
 
 // ClientParams defines credentials and options for initializing the Modal client.
 type ClientParams struct {
 	TokenID     string
 	TokenSecret string
-	// OAuthCredentials overrides profile credentials when non-nil and must contain all three values.
+	// OAuthCredentials overrides profile credentials when non-nil. It must contain
+	// a refresh token, client ID, and exactly one of client secret or JWT key.
 	OAuthCredentials *OAuthCredentialsParams
 	Environment      string
 	Config           *config
@@ -144,12 +151,14 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 		profile.OAuthRefreshToken = ""
 		profile.OAuthClientID = ""
 		profile.OAuthClientSecret = ""
+		profile.OAuthJWTKey = ""
 	} else if hasOAuthParams {
 		profile.TokenID = ""
 		profile.TokenSecret = ""
 		profile.OAuthRefreshToken = params.OAuthCredentials.RefreshToken
 		profile.OAuthClientID = params.OAuthCredentials.ClientID
 		profile.OAuthClientSecret = params.OAuthCredentials.ClientSecret
+		profile.OAuthJWTKey = params.OAuthCredentials.JWTKey
 	}
 	if err := validateProfileCredentials(profile, hasOAuthParams); err != nil {
 		return nil, err
@@ -173,6 +182,14 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 		}
 	}
 
+	var oauthJWTKey *rsa.PrivateKey
+	if profile.OAuthJWTKey != "" {
+		oauthJWTKey, err = parseOAuthJWTKey(profile.OAuthJWTKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	c := &Client{
 		config:                       cfg,
 		profile:                      profile,
@@ -181,6 +198,7 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 		ipClients:                    map[string]*clientWithConn{},
 		additionalUnaryInterceptors:  params.GRPCUnaryInterceptors,
 		additionalStreamInterceptors: params.GRPCStreamInterceptors,
+		oauthJWTKey:                  oauthJWTKey,
 	}
 
 	logger.DebugContext(ctx, "Initializing Modal client", "version", sdkVersion, "server_url", profile.ServerURL)
@@ -221,12 +239,12 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 
 func validateProfileCredentials(profile Profile, hasExplicitOAuthCredentials bool) error {
 	hasTokenCredentials := profile.TokenID != "" || profile.TokenSecret != ""
-	hasOAuthCredentials := hasExplicitOAuthCredentials || profile.OAuthRefreshToken != "" || profile.OAuthClientID != "" || profile.OAuthClientSecret != ""
+	hasOAuthCredentials := hasExplicitOAuthCredentials || profile.OAuthRefreshToken != "" || profile.OAuthClientID != "" || profile.OAuthClientSecret != "" || profile.OAuthJWTKey != ""
 	if hasTokenCredentials && hasOAuthCredentials {
 		return InvalidError{Exception: "Modal token credentials and OAuth credentials cannot both be configured"}
 	}
-	if hasOAuthCredentials && (profile.OAuthRefreshToken == "" || profile.OAuthClientID == "" || profile.OAuthClientSecret == "") {
-		return InvalidError{Exception: "OAuth refresh token, client ID, and client secret must all be configured"}
+	if hasOAuthCredentials && (profile.OAuthRefreshToken == "" || profile.OAuthClientID == "" || (profile.OAuthClientSecret == "") == (profile.OAuthJWTKey == "")) {
+		return InvalidError{Exception: "OAuth refresh token, client ID, and exactly one of client secret or JWT key must be configured"}
 	}
 	return nil
 }
@@ -361,7 +379,7 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 	c.logger.DebugContext(ctx, "Connecting to Modal server", "target", target, "scheme", scheme)
 
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
-		headerInjectorUnaryInterceptor(profile, c.sdkVersion),
+		headerInjectorUnaryInterceptor(c),
 		authTokenInterceptor(c),
 		retryInterceptor(c),
 		timeoutInterceptor(),
@@ -369,7 +387,7 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 	unaryInterceptors = append(unaryInterceptors, customUnaryInterceptors...)
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
-		headerInjectorStreamInterceptor(profile, c.sdkVersion),
+		headerInjectorStreamInterceptor(c),
 	}
 	streamInterceptors = append(streamInterceptors, customStreamInterceptors...)
 
@@ -397,23 +415,31 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 }
 
 // injectRequiredHeaders adds required headers to the context.
-func injectRequiredHeaders(ctx context.Context, profile Profile, sdkVersion string) (context.Context, error) {
+func injectRequiredHeaders(ctx context.Context, c *Client) (context.Context, error) {
 	clientType := strconv.Itoa(int(pb.ClientType_CLIENT_TYPE_LIBMODAL_GO))
 	headerPairs := []string{
 		"x-modal-client-type", clientType,
 		"x-modal-client-version", "1.0.0", // CLIENT VERSION: Behaves like this Python SDK version
-		"x-modal-libmodal-version", "modal-go/" + sdkVersion,
+		"x-modal-libmodal-version", "modal-go/" + c.sdkVersion,
 	}
-	if profile.OAuthRefreshToken != "" {
+	if c.profile.OAuthRefreshToken != "" {
 		headerPairs = append(headerPairs,
-			"x-modal-refresh-token", profile.OAuthRefreshToken,
-			"x-modal-oauth-client-id", profile.OAuthClientID,
-			"x-modal-oauth-client-secret", profile.OAuthClientSecret,
+			"x-modal-refresh-token", c.profile.OAuthRefreshToken,
+			"x-modal-oauth-client-id", c.profile.OAuthClientID,
 		)
-	} else if profile.TokenID != "" && profile.TokenSecret != "" {
+		if c.oauthJWTKey != nil {
+			assertion, err := mintOAuthClientAssertion(c.profile.OAuthClientID, c.oauthJWTKey)
+			if err != nil {
+				return nil, err
+			}
+			headerPairs = append(headerPairs, "x-modal-oauth-client-assertion", assertion)
+		} else {
+			headerPairs = append(headerPairs, "x-modal-oauth-client-secret", c.profile.OAuthClientSecret)
+		}
+	} else if c.profile.TokenID != "" && c.profile.TokenSecret != "" {
 		headerPairs = append(headerPairs,
-			"x-modal-token-id", profile.TokenID,
-			"x-modal-token-secret", profile.TokenSecret,
+			"x-modal-token-id", c.profile.TokenID,
+			"x-modal-token-secret", c.profile.TokenSecret,
 		)
 	} else {
 		return nil, fmt.Errorf("missing credentials, please set them in .modal.toml, environment variables, or via NewClientWithOptions()")
@@ -426,7 +452,7 @@ func injectRequiredHeaders(ctx context.Context, profile Profile, sdkVersion stri
 }
 
 // headerInjectorUnaryInterceptor adds required headers to outgoing unary RPCs.
-func headerInjectorUnaryInterceptor(profile Profile, sdkVersion string) grpc.UnaryClientInterceptor {
+func headerInjectorUnaryInterceptor(c *Client) grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
 		method string,
@@ -436,7 +462,7 @@ func headerInjectorUnaryInterceptor(profile Profile, sdkVersion string) grpc.Una
 		opts ...grpc.CallOption,
 	) error {
 		var err error
-		ctx, err = injectRequiredHeaders(ctx, profile, sdkVersion)
+		ctx, err = injectRequiredHeaders(ctx, c)
 		if err != nil {
 			return err
 		}
@@ -445,7 +471,7 @@ func headerInjectorUnaryInterceptor(profile Profile, sdkVersion string) grpc.Una
 }
 
 // headerInjectorStreamInterceptor adds required headers to outgoing streaming RPCs.
-func headerInjectorStreamInterceptor(profile Profile, sdkVersion string) grpc.StreamClientInterceptor {
+func headerInjectorStreamInterceptor(c *Client) grpc.StreamClientInterceptor {
 	return func(
 		ctx context.Context,
 		desc *grpc.StreamDesc,
@@ -455,7 +481,7 @@ func headerInjectorStreamInterceptor(profile Profile, sdkVersion string) grpc.St
 		opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
 		var err error
-		ctx, err = injectRequiredHeaders(ctx, profile, sdkVersion)
+		ctx, err = injectRequiredHeaders(ctx, c)
 		if err != nil {
 			return nil, err
 		}

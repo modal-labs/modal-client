@@ -41,7 +41,8 @@ export MODAL_TOKEN_SECRET=as-FAKESECRETSTRINGABCDEF
 ```
 
 OAuth integrations can instead set `MODAL_OAUTH_REFRESH_TOKEN`,
-`MODAL_OAUTH_CLIENT_ID`, and `MODAL_OAUTH_CLIENT_SECRET`. See the
+`MODAL_OAUTH_CLIENT_ID`, and exactly one of `MODAL_OAUTH_CLIENT_SECRET` or
+`MODAL_OAUTH_JWT_KEY` (an unencrypted RSA private key in PEM). See the
 [custom client example](./examples/custom-client/main.go) for explicit client
 configuration.
 

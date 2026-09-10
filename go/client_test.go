@@ -48,13 +48,16 @@ func TestClientWithLogger(t *testing.T) {
 func TestInjectRequiredHeadersWithOAuthCredentials(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
-	profile := Profile{
-		OAuthRefreshToken: "refresh-token",
-		OAuthClientID:     "oc-client-id",
-		OAuthClientSecret: "ov-client-secret",
+	c := &Client{
+		profile: Profile{
+			OAuthRefreshToken: "refresh-token",
+			OAuthClientID:     "oc-client-id",
+			OAuthClientSecret: "ov-client-secret",
+		},
+		sdkVersion: "test-version",
 	}
 
-	ctx, err := injectRequiredHeaders(context.Background(), profile, "test-version")
+	ctx, err := injectRequiredHeaders(context.Background(), c)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	md, ok := metadata.FromOutgoingContext(ctx)
 	g.Expect(ok).To(gomega.BeTrue())
@@ -85,7 +88,25 @@ func TestValidateProfileCredentials(t *testing.T) {
 		{
 			name:    "incomplete OAuth credentials",
 			profile: Profile{OAuthRefreshToken: "refresh-token"},
-			message: "must all be configured",
+			message: "exactly one of client secret or JWT key",
+		},
+		{
+			name: "complete OAuth JWT credentials",
+			profile: Profile{
+				OAuthRefreshToken: "refresh-token",
+				OAuthClientID:     "oc-client-id",
+				OAuthJWTKey:       "unused-here",
+			},
+		},
+		{
+			name: "OAuth secret and JWT key together",
+			profile: Profile{
+				OAuthRefreshToken: "refresh-token",
+				OAuthClientID:     "oc-client-id",
+				OAuthClientSecret: "ov-client-secret",
+				OAuthJWTKey:       "private-key",
+			},
+			message: "exactly one of client secret or JWT key",
 		},
 		{
 			name: "empty OAuth refresh token",
@@ -93,7 +114,7 @@ func TestValidateProfileCredentials(t *testing.T) {
 				OAuthClientID:     "oc-client-id",
 				OAuthClientSecret: "ov-client-secret",
 			},
-			message: "must all be configured",
+			message: "exactly one of client secret or JWT key",
 		},
 		{
 			name: "mixed credentials",
@@ -118,7 +139,7 @@ func TestValidateProfileCredentials(t *testing.T) {
 		{
 			name:                        "explicit empty OAuth credentials",
 			hasExplicitOAuthCredentials: true,
-			message:                     "must all be configured",
+			message:                     "exactly one of client secret or JWT key",
 		},
 	}
 
@@ -151,7 +172,7 @@ func TestExplicitOAuthCredentialsDoNotBackfillFromProfile(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			g := gomega.NewWithT(t)
 			_, err := NewClientWithOptions(&ClientParams{OAuthCredentials: test.credentials})
-			g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("must all be configured")))
+			g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("exactly one of client secret or JWT key")))
 		})
 	}
 }

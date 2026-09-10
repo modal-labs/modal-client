@@ -78,22 +78,86 @@ func TestGetProfile_OAuthCredentials(t *testing.T) {
 	g.Expect(profile.OAuthClientSecret).To(gomega.Equal("ov-client-secret"))
 }
 
+func TestGetProfile_OAuthJWTKey(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token")
+	t.Setenv("MODAL_OAUTH_CLIENT_ID", "oc-client-id")
+	t.Setenv("MODAL_OAUTH_JWT_KEY", "private-key")
+
+	profile := getProfile("", config{})
+	g.Expect(profile.OAuthRefreshToken).To(gomega.Equal("refresh-token"))
+	g.Expect(profile.OAuthClientID).To(gomega.Equal("oc-client-id"))
+	g.Expect(profile.OAuthJWTKey).To(gomega.Equal("private-key"))
+	g.Expect(profile.OAuthClientSecret).To(gomega.BeEmpty())
+}
+
+func TestGetProfile_OAuthJWTEnvClearsFileSecret(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_TOKEN_ID", "")
+	t.Setenv("MODAL_TOKEN_SECRET", "")
+	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "")
+	t.Setenv("MODAL_OAUTH_JWT_KEY", "env-jwt-key")
+
+	profile := getProfile("oauth-profile", config{
+		"oauth-profile": rawProfile{
+			OAuthRefreshToken: "refresh-token",
+			OAuthClientID:     "oc-client-id",
+			OAuthClientSecret: "ov-file-secret",
+		},
+	})
+	g.Expect(profile.OAuthJWTKey).To(gomega.Equal("env-jwt-key"))
+	g.Expect(profile.OAuthClientSecret).To(gomega.BeEmpty())
+	g.Expect(validateProfileCredentials(profile, false)).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestGetProfile_OAuthSecretEnvClearsFileJWT(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_TOKEN_ID", "")
+	t.Setenv("MODAL_TOKEN_SECRET", "")
+	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "ov-env-secret")
+	t.Setenv("MODAL_OAUTH_JWT_KEY", "")
+
+	profile := getProfile("oauth-profile", config{
+		"oauth-profile": rawProfile{
+			OAuthRefreshToken: "refresh-token",
+			OAuthClientID:     "oc-client-id",
+			OAuthJWTKey:       "file-jwt-key",
+		},
+	})
+	g.Expect(profile.OAuthClientSecret).To(gomega.Equal("ov-env-secret"))
+	g.Expect(profile.OAuthJWTKey).To(gomega.BeEmpty())
+	g.Expect(validateProfileCredentials(profile, false)).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestGetProfile_OAuthBothEnvMethodsKept(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "ov-env-secret")
+	t.Setenv("MODAL_OAUTH_JWT_KEY", "env-jwt-key")
+
+	profile := getProfile("", config{})
+	g.Expect(profile.OAuthClientSecret).To(gomega.Equal("ov-env-secret"))
+	g.Expect(profile.OAuthJWTKey).To(gomega.Equal("env-jwt-key"))
+}
+
 func TestGetProfile_OAuthCredentialsFromConfig(t *testing.T) {
 	g := gomega.NewWithT(t)
 	t.Setenv("MODAL_OAUTH_REFRESH_TOKEN", "")
 	t.Setenv("MODAL_OAUTH_CLIENT_ID", "")
 	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "")
+	t.Setenv("MODAL_OAUTH_JWT_KEY", "")
 
 	profile := getProfile("oauth-profile", config{
 		"oauth-profile": rawProfile{
 			OAuthRefreshToken: "refresh-token",
 			OAuthClientID:     "oc-client-id",
 			OAuthClientSecret: "ov-client-secret",
+			OAuthJWTKey:       "private-key",
 		},
 	})
 	g.Expect(profile.OAuthRefreshToken).To(gomega.Equal("refresh-token"))
 	g.Expect(profile.OAuthClientID).To(gomega.Equal("oc-client-id"))
 	g.Expect(profile.OAuthClientSecret).To(gomega.Equal("ov-client-secret"))
+	g.Expect(profile.OAuthJWTKey).To(gomega.Equal("private-key"))
 }
 
 func TestGetProfile_SandboxV2Parsing(t *testing.T) {
