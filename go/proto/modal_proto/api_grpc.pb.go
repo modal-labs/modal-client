@@ -131,6 +131,7 @@ const (
 	ModalClient_FunctionGetFlashAuthToken_FullMethodName              = "/modal.client.ModalClient/FunctionGetFlashAuthToken"
 	ModalClient_FunctionGetInputs_FullMethodName                      = "/modal.client.ModalClient/FunctionGetInputs"
 	ModalClient_FunctionGetOutputs_FullMethodName                     = "/modal.client.ModalClient/FunctionGetOutputs"
+	ModalClient_FunctionGetSchedulingParams_FullMethodName            = "/modal.client.ModalClient/FunctionGetSchedulingParams"
 	ModalClient_FunctionGetSerialized_FullMethodName                  = "/modal.client.ModalClient/FunctionGetSerialized"
 	ModalClient_FunctionGetTimeRangeStats_FullMethodName              = "/modal.client.ModalClient/FunctionGetTimeRangeStats"
 	ModalClient_FunctionMap_FullMethodName                            = "/modal.client.ModalClient/FunctionMap"
@@ -398,6 +399,7 @@ type ModalClientClient interface {
 	FunctionGetFlashAuthToken(ctx context.Context, in *FunctionGetFlashAuthTokenRequest, opts ...grpc.CallOption) (*FunctionGetFlashAuthTokenResponse, error)
 	FunctionGetInputs(ctx context.Context, in *FunctionGetInputsRequest, opts ...grpc.CallOption) (*FunctionGetInputsResponse, error)
 	FunctionGetOutputs(ctx context.Context, in *FunctionGetOutputsRequest, opts ...grpc.CallOption) (*FunctionGetOutputsResponse, error)
+	FunctionGetSchedulingParams(ctx context.Context, in *FunctionGetSchedulingParamsRequest, opts ...grpc.CallOption) (*FunctionGetSchedulingParamsResponse, error)
 	FunctionGetSerialized(ctx context.Context, in *FunctionGetSerializedRequest, opts ...grpc.CallOption) (*FunctionGetSerializedResponse, error)
 	FunctionGetTimeRangeStats(ctx context.Context, in *FunctionGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*FunctionGetTimeRangeStatsResponse, error)
 	FunctionMap(ctx context.Context, in *FunctionMapRequest, opts ...grpc.CallOption) (*FunctionMapResponse, error)
@@ -1665,6 +1667,16 @@ func (c *modalClientClient) FunctionGetOutputs(ctx context.Context, in *Function
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FunctionGetOutputsResponse)
 	err := c.cc.Invoke(ctx, ModalClient_FunctionGetOutputs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) FunctionGetSchedulingParams(ctx context.Context, in *FunctionGetSchedulingParamsRequest, opts ...grpc.CallOption) (*FunctionGetSchedulingParamsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FunctionGetSchedulingParamsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionGetSchedulingParams_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3259,6 +3271,7 @@ type ModalClientServer interface {
 	FunctionGetFlashAuthToken(context.Context, *FunctionGetFlashAuthTokenRequest) (*FunctionGetFlashAuthTokenResponse, error)
 	FunctionGetInputs(context.Context, *FunctionGetInputsRequest) (*FunctionGetInputsResponse, error)
 	FunctionGetOutputs(context.Context, *FunctionGetOutputsRequest) (*FunctionGetOutputsResponse, error)
+	FunctionGetSchedulingParams(context.Context, *FunctionGetSchedulingParamsRequest) (*FunctionGetSchedulingParamsResponse, error)
 	FunctionGetSerialized(context.Context, *FunctionGetSerializedRequest) (*FunctionGetSerializedResponse, error)
 	FunctionGetTimeRangeStats(context.Context, *FunctionGetTimeRangeStatsRequest) (*FunctionGetTimeRangeStatsResponse, error)
 	FunctionMap(context.Context, *FunctionMapRequest) (*FunctionMapResponse, error)
@@ -3742,6 +3755,9 @@ func (UnimplementedModalClientServer) FunctionGetInputs(context.Context, *Functi
 }
 func (UnimplementedModalClientServer) FunctionGetOutputs(context.Context, *FunctionGetOutputsRequest) (*FunctionGetOutputsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetOutputs not implemented")
+}
+func (UnimplementedModalClientServer) FunctionGetSchedulingParams(context.Context, *FunctionGetSchedulingParamsRequest) (*FunctionGetSchedulingParamsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionGetSchedulingParams not implemented")
 }
 func (UnimplementedModalClientServer) FunctionGetSerialized(context.Context, *FunctionGetSerializedRequest) (*FunctionGetSerializedResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetSerialized not implemented")
@@ -6031,6 +6047,24 @@ func _ModalClient_FunctionGetOutputs_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).FunctionGetOutputs(ctx, req.(*FunctionGetOutputsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_FunctionGetSchedulingParams_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FunctionGetSchedulingParamsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionGetSchedulingParams(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionGetSchedulingParams_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionGetSchedulingParams(ctx, req.(*FunctionGetSchedulingParamsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8933,6 +8967,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FunctionGetOutputs",
 			Handler:    _ModalClient_FunctionGetOutputs_Handler,
+		},
+		{
+			MethodName: "FunctionGetSchedulingParams",
+			Handler:    _ModalClient_FunctionGetSchedulingParams_Handler,
 		},
 		{
 			MethodName: "FunctionGetSerialized",

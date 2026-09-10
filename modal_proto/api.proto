@@ -2426,6 +2426,14 @@ message FunctionGetResponse {
   FunctionData function = 5;
 }
 
+message FunctionGetSchedulingParamsRequest {
+  string function_id = 1;
+}
+
+message FunctionGetSchedulingParamsResponse {
+  AutoscalerConfiguration autoscaler_configuration = 1;
+}
+
 message FunctionGetSerializedRequest {
   string function_id = 1;
 }
@@ -2593,8 +2601,6 @@ message FunctionPrecreateResponse {
   string function_id = 1;
   FunctionHandleMetadata handle_metadata = 2;
 }
-
-
 
 message FunctionPutInputsItem {
   int32 idx = 1;
@@ -5001,6 +5007,7 @@ service ModalClient {
   rpc FunctionGetFlashAuthToken(FunctionGetFlashAuthTokenRequest) returns (FunctionGetFlashAuthTokenResponse);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
+  rpc FunctionGetSchedulingParams(FunctionGetSchedulingParamsRequest) returns (FunctionGetSchedulingParamsResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
   rpc FunctionGetTimeRangeStats(FunctionGetTimeRangeStatsRequest) returns (FunctionGetTimeRangeStatsResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
