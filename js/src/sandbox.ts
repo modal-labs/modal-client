@@ -1,5 +1,6 @@
 import { ClientError, Status, type CallOptions } from "nice-grpc";
 import { setTimeout } from "timers/promises";
+import { IdleCountdown } from "./idle_countdown";
 import {
   FileDescriptor,
   GenericResult,
@@ -1611,6 +1612,7 @@ export class Sandbox {
 
   #outputStream(fileDescriptor: FileDescriptor): ModalReadStream<string> {
     if (this.#isV2) {
+      this.#ensureAttached();
       const v2Abort = new AbortController();
       return toModalReadStream(
         streamConsumingIter(
@@ -1634,6 +1636,7 @@ export class Sandbox {
           this.#client.cpClient,
           this.sandboxId,
           fileDescriptor,
+          this.#client.profile.sandboxChannelIdleTimeoutMs,
           abort.signal,
         ),
         () => abort.abort(),
@@ -2046,10 +2049,13 @@ export class Sandbox {
    * Disconnect from the Sandbox, cleaning up local resources.
    * The Sandbox continues running on Modal's infrastructure.
    * After calling detach(), most operations on this Sandbox object will throw.
+   *
+   * This does not block on or interrupt ongoing reads or calls. Connection
+   * resources are closed promptly once those operations finish.
    */
   detach(): void {
-    this.#commandRouterClient?.close();
     this.#attached = false;
+    this.#commandRouterClient?.closeWhenIdle();
     this.#commandRouterClient = undefined;
     this.#commandRouterClientPromise = undefined;
   }
@@ -2665,6 +2671,7 @@ async function* outputStreamSb(
   cpClient: ModalGrpcClient,
   sandboxId: string,
   fileDescriptor: FileDescriptor,
+  idleTimeoutMs: number,
   signal?: AbortSignal,
 ): AsyncIterable<string> {
   let lastIndex = "0-0";
@@ -2672,6 +2679,20 @@ async function* outputStreamSb(
   let retriesRemaining = SB_LOGS_MAX_RETRIES;
   let delayMs = SB_LOGS_INITIAL_DELAY_MS;
   while (!completed) {
+    if (signal?.aborted) return;
+    // Given back when nobody has read for the idle timeout. The caller is
+    // suspended at a yield for exactly as long as it is not reading, so that
+    // is where the countdown runs.
+    const idle = new IdleCountdown();
+    const idleAbort = new AbortController();
+    const releaseIfIdle = () => {
+      idle.stop();
+      idleAbort.abort();
+    };
+    const callSignal =
+      signal === undefined
+        ? idleAbort.signal
+        : AbortSignal.any([signal, idleAbort.signal]);
     try {
       const outputIterator = cpClient.sandboxGetLogs(
         {
@@ -2680,14 +2701,24 @@ async function* outputStreamSb(
           timeout: 55,
           lastEntryId: lastIndex,
         },
-        { signal },
+        { signal: callSignal },
       );
       for await (const batch of outputIterator) {
         // Successful read - reset backoff counters.
         delayMs = SB_LOGS_INITIAL_DELAY_MS;
         retriesRemaining = SB_LOGS_MAX_RETRIES;
         lastIndex = batch.entryId;
-        yield* batch.items.map((item) => item.data);
+        // Finish the buffered batch before reopening from its entry ID.
+        for (const item of batch.items) {
+          if (!idleAbort.signal.aborted) {
+            idle.arm(idleTimeoutMs, releaseIfIdle);
+          }
+          try {
+            yield item.data;
+          } finally {
+            idle.stop();
+          }
+        }
         if (batch.eof) {
           completed = true;
           break;
@@ -2695,11 +2726,27 @@ async function* outputStreamSb(
         if (signal?.aborted) {
           return;
         }
+        if (idleAbort.signal.aborted) {
+          break;
+        }
+      }
+      if (idleAbort.signal.aborted) {
+        // Given back while nobody was reading: carry on from lastEntryId,
+        // without spending the retry budget on it.
+        continue;
       }
     } catch (err) {
       // If cancelled, exit cleanly regardless of error type.
       if (signal?.aborted) {
         return;
+      }
+      if (idleAbort.signal.aborted) {
+        // Our own abort, surfacing as the call unwinds: leaving an aborted
+        // call raises it rather than ending quietly. Nothing is classified
+        // here - the abort belongs to this reader, so it can only mean the
+        // stream was given back while nobody was reading. Carry on from
+        // lastEntryId, without spending the retry budget on it.
+        continue;
       }
       if (isRetryableGrpc(err) && retriesRemaining > 0) {
         // Short exponential backoff to avoid tight retry loops.
@@ -2715,6 +2762,8 @@ async function* outputStreamSb(
       } else {
         throw err;
       }
+    } finally {
+      idle.stop();
     }
   }
 }

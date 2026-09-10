@@ -41,7 +41,11 @@ function mockJwt(exp: number): string {
 }
 
 /** Serves exec stdio from a byte offset, the way the worker seeks its stdio file. */
-function stdioServiceImpl(requestedOffsets: number[], chunksPerStream: number) {
+function stdioServiceImpl(
+  requestedOffsets: number[],
+  chunksPerStream: number,
+  outputGate?: Promise<void>,
+) {
   // The server wants an implementation for every method on the definition, so
   // fill the rest in with stubs that fail loudly if a test reaches them.
   const unimplemented: Record<string, unknown> = {};
@@ -59,6 +63,7 @@ function stdioServiceImpl(requestedOffsets: number[], chunksPerStream: number) {
     ) {
       let offset = Number(request.offset);
       requestedOffsets.push(offset);
+      await outputGate;
       let sent = 0;
       while (offset < OUTPUT.length) {
         // A chunk limit stops the whole output arriving on one stream, where the
@@ -95,12 +100,13 @@ type Harness = {
 async function startHarness(
   idleBudgetMs: number,
   chunksPerStream = 0,
+  outputGate?: Promise<void>,
 ): Promise<Harness> {
   const requestedOffsets: number[] = [];
   const server = createServer();
   server.add(
     TaskCommandRouterDefinition,
-    stdioServiceImpl(requestedOffsets, chunksPerStream) as any,
+    stdioServiceImpl(requestedOffsets, chunksPerStream, outputGate) as any,
   );
   const port = await server.listen("127.0.0.1:0");
 
@@ -157,6 +163,39 @@ async function waitFor(
 function hasReleased(client: any): boolean {
   return client.channel === undefined;
 }
+
+test("closeWhenIdle preserves a pending read and releases its channel after delivery", async () => {
+  let sendOutput!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    sendOutput = resolve;
+  });
+  const h = await startHarness(0, 1, gate);
+  try {
+    const stream = readStdio(h.client);
+    let finished = false;
+    const pending = stream.next().finally(() => {
+      finished = true;
+    });
+    expect(await waitFor(() => h.requestedOffsets.length === 1, 5000)).toBe(
+      true,
+    );
+    h.client.closeWhenIdle();
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+    expect(finished).toBe(false);
+    expect(hasReleased(h.client)).toBe(false);
+    sendOutput();
+    const first = await pending;
+    expect(first.done).toBe(false);
+    expect(new Uint8Array(first.value.data)).toEqual(
+      OUTPUT.subarray(0, CHUNK_SIZE),
+    );
+    expect(hasReleased(h.client)).toBe(true);
+    await stream.return();
+  } finally {
+    sendOutput();
+    await h.shutdown();
+  }
+});
 
 test("a partial read of a then-forgotten Sandbox takes its channel idle", async () => {
   const h = await startHarness(IDLE_BUDGET_MS);

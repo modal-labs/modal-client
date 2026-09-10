@@ -43,6 +43,116 @@ func newStubClient(t *testing.T, stub pb.TaskCommandRouterClient) *taskCommandRo
 	return client
 }
 
+type drainingRouterStub struct {
+	pb.TaskCommandRouterClient
+	start func(context.Context) (*pb.TaskExecStartResponse, error)
+	read  func(context.Context) (grpc.ServerStreamingClient[pb.SandboxStdioReadV2Response], error)
+}
+
+func (s *drainingRouterStub) TaskExecStart(ctx context.Context, _ *pb.TaskExecStartRequest, _ ...grpc.CallOption) (*pb.TaskExecStartResponse, error) {
+	return s.start(ctx)
+}
+
+func (s *drainingRouterStub) SandboxStdioReadV2(ctx context.Context, _ *pb.SandboxStdioReadV2Request, _ ...grpc.CallOption) (grpc.ServerStreamingClient[pb.SandboxStdioReadV2Response], error) {
+	return s.read(ctx)
+}
+
+type drainingStdioStream struct {
+	grpc.ServerStreamingClient[pb.SandboxStdioReadV2Response]
+	recv func() (*pb.SandboxStdioReadV2Response, error)
+}
+
+func (s *drainingStdioStream) Recv() (*pb.SandboxStdioReadV2Response, error) { return s.recv() }
+
+func TestSandboxDetachDrainsConcurrentOperations(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	started := make(chan int, 2)
+	finish := []chan struct{}{make(chan struct{}), make(chan struct{})}
+	var calls atomic.Int64
+	stub := &drainingRouterStub{start: func(ctx context.Context) (*pb.TaskExecStartResponse, error) {
+		index := int(calls.Add(1) - 1)
+		started <- index
+		select {
+		case <-finish[index]:
+			return &pb.TaskExecStartResponse{}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}}
+	client := newStubClient(t, stub)
+	sb := newSandbox(&Client{}, testV2SandboxID)
+	sb.commandRouterClient = client
+	results := make(chan error, 2)
+	for range 2 {
+		go func() { _, err := client.ExecStart(t.Context(), &pb.TaskExecStartRequest{}); results <- err }()
+	}
+	g.Eventually(started).Should(gomega.Receive())
+	g.Eventually(started).Should(gomega.Receive())
+	g.Expect(sb.Detach()).To(gomega.Succeed())
+	g.Expect(client.closed.Load()).To(gomega.BeFalse())
+	_, err := client.ExecStart(t.Context(), &pb.TaskExecStartRequest{})
+	var closed ClientClosedError
+	g.Expect(errors.As(err, &closed)).To(gomega.BeTrue())
+	close(finish[0])
+	g.Eventually(results).Should(gomega.Receive(gomega.BeNil()))
+	g.Expect(client.closed.Load()).To(gomega.BeFalse())
+	close(finish[1])
+	g.Eventually(results).Should(gomega.Receive(gomega.BeNil()))
+	g.Expect(client.closed.Load()).To(gomega.BeTrue())
+	client.connMu.Lock()
+	g.Expect(client.conn).To(gomega.BeNil())
+	client.connMu.Unlock()
+}
+
+func TestDetachKeepsUnaryLeaseAcrossRetries(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	stub := &drainingRouterStub{}
+	client := newStubClient(t, stub)
+	calls := 0
+	stub.start = func(context.Context) (*pb.TaskExecStartResponse, error) {
+		calls++
+		g.Expect(client.closed.Load()).To(gomega.BeFalse())
+		if calls == 1 {
+			client.closeWhenIdle()
+			return nil, status.Error(codes.Unavailable, "retry this attempt")
+		}
+		return &pb.TaskExecStartResponse{}, nil
+	}
+	_, err := client.ExecStart(t.Context(), &pb.TaskExecStartRequest{})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(calls).To(gomega.Equal(2))
+	g.Expect(client.closed.Load()).To(gomega.BeTrue())
+}
+
+func TestDetachKeepsStdioLeaseAcrossRetries(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	stub := &drainingRouterStub{}
+	client := newStubClient(t, stub)
+	calls := 0
+	stub.read = func(context.Context) (grpc.ServerStreamingClient[pb.SandboxStdioReadV2Response], error) {
+		calls++
+		return &drainingStdioStream{recv: func() (*pb.SandboxStdioReadV2Response, error) {
+			g.Expect(client.closed.Load()).To(gomega.BeFalse())
+			if calls == 1 {
+				client.closeWhenIdle()
+				return nil, status.Error(codes.Unavailable, "retry this read")
+			}
+			return pb.SandboxStdioReadV2Response_builder{Data: []byte("a")}.Build(), nil
+		}}, nil
+	}
+	reader := client.SandboxStdioReadV2(t.Context(), "ta-1", pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	t.Cleanup(func() { _ = reader.Close() })
+	buf := make([]byte, 1)
+	n, err := reader.Read(buf)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(string(buf[:n])).To(gomega.Equal("a"))
+	g.Expect(calls).To(gomega.Equal(2))
+	g.Expect(client.closed.Load()).To(gomega.BeTrue())
+}
+
 func mockJWT(exp any) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	var payloadJSON []byte
@@ -285,10 +395,6 @@ func (m *mockRetryableClient) authContext(ctx context.Context) context.Context {
 	m.authContextCallCount += 1
 	return ctx
 }
-
-func (m *mockRetryableClient) beginOp() error { return nil }
-
-func (m *mockRetryableClient) endOp() {}
 
 func (m *mockRetryableClient) refreshJwt(ctx context.Context) error {
 	m.refreshJwtCallCount += 1
@@ -771,6 +877,34 @@ type failingReadSeeker struct {
 	err    error
 }
 
+type detachingReadSeeker struct {
+	*bytes.Reader
+	once   sync.Once
+	client *taskCommandRouterClient
+}
+
+func (s *detachingReadSeeker) Read(p []byte) (int, error) {
+	s.once.Do(s.client.closeWhenIdle)
+	return s.Reader.Read(p)
+}
+
+func TestDetachKeepsStdinLeaseAcrossResumeAndStatusCalls(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	fake := &fakeStdinRouterServer{failuresRemaining: 1, failCode: codes.Unavailable, failAfterBytes: 1}
+	client := newStreamingStdinTestClient(t, fake)
+	data := deterministicBytes(100)
+	source := &detachingReadSeeker{Reader: bytes.NewReader(data), client: client}
+	_, err := client.ExecStdinWriteStream(t.Context(), "ta-1", "ex-1", source)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	received, closed, starts, statusCalls := fake.snapshot()
+	g.Expect(received).To(gomega.Equal(data))
+	g.Expect(closed).To(gomega.BeTrue())
+	g.Expect(starts).To(gomega.Equal(2))
+	g.Expect(statusCalls).To(gomega.Equal(1))
+	g.Expect(client.closed.Load()).To(gomega.BeTrue())
+}
+
 func (f *failingReadSeeker) Read(p []byte) (int, error) {
 	pos, seekErr := f.Seek(0, io.SeekCurrent)
 	if seekErr != nil {
@@ -829,6 +963,65 @@ type fakeStdioRouterServer struct {
 	stdinReceived []byte
 	stdinClosed   bool
 	stdinCalls    int
+}
+
+type guardedStdioStream[T any] struct {
+	grpc.ClientStream
+	response  *T
+	recvCalls int
+}
+
+func (s *guardedStdioStream[T]) Recv() (*T, error) {
+	s.recvCalls++
+	if s.response != nil {
+		response := s.response
+		s.response = nil
+		return response, nil
+	}
+	return nil, status.Error(codes.Unavailable, "stale stream was polled")
+}
+
+type eofStdioStream[T any] struct {
+	grpc.ClientStream
+	recvCalls int
+}
+
+func (s *eofStdioStream[T]) Recv() (*T, error) {
+	s.recvCalls++
+	return nil, io.EOF
+}
+
+type releasedStdioClient struct {
+	pb.TaskCommandRouterClient
+	sandboxStale       *guardedStdioStream[pb.SandboxStdioReadV2Response]
+	sandboxReplacement *eofStdioStream[pb.SandboxStdioReadV2Response]
+	execStale          *guardedStdioStream[pb.TaskExecStdioReadResponse]
+	execReplacement    *eofStdioStream[pb.TaskExecStdioReadResponse]
+	offsets            []uint64
+}
+
+func (c *releasedStdioClient) SandboxStdioReadV2(
+	_ context.Context,
+	req *pb.SandboxStdioReadV2Request,
+	_ ...grpc.CallOption,
+) (grpc.ServerStreamingClient[pb.SandboxStdioReadV2Response], error) {
+	c.offsets = append(c.offsets, req.GetOffset())
+	if req.GetOffset() == 0 {
+		return c.sandboxStale, nil
+	}
+	return c.sandboxReplacement, nil
+}
+
+func (c *releasedStdioClient) TaskExecStdioRead(
+	_ context.Context,
+	req *pb.TaskExecStdioReadRequest,
+	_ ...grpc.CallOption,
+) (grpc.ServerStreamingClient[pb.TaskExecStdioReadResponse], error) {
+	c.offsets = append(c.offsets, req.GetOffset())
+	if req.GetOffset() == 0 {
+		return c.execStale, nil
+	}
+	return c.execReplacement, nil
 }
 
 func (s *fakeStdioRouterServer) SandboxStdioReadV2(
@@ -979,6 +1172,76 @@ func TestSandboxStdioReadV2ResumesAfterTransientError(t *testing.T) {
 	g.Expect(fake.readCallCount()).To(gomega.Equal(2))
 }
 
+func assertStdioReaderReopensReleasedStreamWithoutRetry(
+	t *testing.T,
+	client *taskCommandRouterClient,
+	reader io.ReadCloser,
+	retry *stdioRetry,
+	staleRecvCalls *int,
+	replacementRecvCalls *int,
+	offsets *[]uint64,
+) {
+	t.Helper()
+	g := gomega.NewWithT(t)
+	defer func() { _ = reader.Close() }()
+
+	buf := make([]byte, 1)
+	n, err := reader.Read(buf)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(buf[:n]).To(gomega.Equal([]byte("a")))
+
+	retry.retriesRemaining = 3
+	retry.delay = 123 * time.Millisecond
+	// Model the reconnect performed after the idle countdown releases the old
+	// connection. The next read must replace its stream before touching it.
+	client.connMu.Lock()
+	client.generation++
+	client.connMu.Unlock()
+
+	n, err = reader.Read(buf)
+	g.Expect(err).To(gomega.Equal(io.EOF))
+	g.Expect(n).To(gomega.Equal(0))
+	g.Expect(*staleRecvCalls).To(gomega.Equal(1), "the released stream must not be polled again")
+	g.Expect(*replacementRecvCalls).To(gomega.Equal(1))
+	g.Expect(*offsets).To(gomega.Equal([]uint64{0, 1}))
+	g.Expect(retry.retriesRemaining).To(gomega.Equal(3))
+	g.Expect(retry.delay).To(gomega.Equal(123 * time.Millisecond))
+}
+
+func TestSandboxStdioReadV2ReopensReleasedStreamWithoutRetry(t *testing.T) {
+	t.Parallel()
+
+	stale := &guardedStdioStream[pb.SandboxStdioReadV2Response]{
+		response: pb.SandboxStdioReadV2Response_builder{Data: []byte("a")}.Build(),
+	}
+	replacement := &eofStdioStream[pb.SandboxStdioReadV2Response]{}
+	stub := &releasedStdioClient{sandboxStale: stale, sandboxReplacement: replacement}
+	client := newStubClient(t, stub)
+	reader := client.SandboxStdioReadV2(t.Context(), "ta-1", pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT).(*sandboxStdioReader)
+
+	assertStdioReaderReopensReleasedStreamWithoutRetry(
+		t, client, reader, &reader.stdioRetry, &stale.recvCalls, &replacement.recvCalls, &stub.offsets,
+	)
+}
+
+func TestExecStdioReadReopensReleasedStreamWithoutRetry(t *testing.T) {
+	t.Parallel()
+
+	stale := &guardedStdioStream[pb.TaskExecStdioReadResponse]{
+		response: pb.TaskExecStdioReadResponse_builder{Data: []byte("a")}.Build(),
+	}
+	replacement := &eofStdioStream[pb.TaskExecStdioReadResponse]{}
+	stub := &releasedStdioClient{execStale: stale, execReplacement: replacement}
+	client := newStubClient(t, stub)
+	reader := client.ExecStdioRead(
+		t.Context(), "ta-1", "ex-1", pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, nil,
+	).(*execStdioReader)
+
+	assertStdioReaderReopensReleasedStreamWithoutRetry(
+		t, client, reader, &reader.stdioRetry, &stale.recvCalls, &replacement.recvCalls, &stub.offsets,
+	)
+}
+
 func TestSandboxStdioReadV2DropsEvictedPrefix(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -1029,8 +1292,8 @@ func TestUnusedCommandRouterClientReleasesItsConnection(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	released := func() bool {
-		client.connMu.RLock()
-		defer client.connMu.RUnlock()
+		client.connMu.Lock()
+		defer client.connMu.Unlock()
 		return client.conn == nil
 	}
 	g.Eventually(released, time.Second, 10*time.Millisecond).Should(gomega.BeTrue(),

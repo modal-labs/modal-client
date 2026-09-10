@@ -8,6 +8,7 @@ import (
 	"iter"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,6 +34,59 @@ func TestSandboxCreateRequestProto_WithoutPTY(t *testing.T) {
 	definition := req.GetDefinition()
 	ptyInfo := definition.GetPtyInfo()
 	g.Expect(ptyInfo).Should(gomega.BeNil())
+}
+
+func TestV2SandboxOutputReadAfterDetach(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	sb := newSandbox(&Client{}, testV2SandboxID)
+	g.Expect(sb.Detach()).To(gomega.Succeed())
+	for _, output := range []io.ReadCloser{sb.Stdout, sb.Stderr} {
+		_, err := output.Read(make([]byte, 1))
+		var clientClosedErr ClientClosedError
+		g.Expect(errors.As(err, &clientClosedErr)).To(gomega.BeTrue())
+	}
+}
+
+type pendingRouterAccessStub struct {
+	pb.ModalClientClient
+	started chan struct{}
+	finish  chan struct{}
+}
+
+func (s *pendingRouterAccessStub) SandboxGetCommandRouterAccess(ctx context.Context, _ *pb.SandboxGetCommandRouterAccessRequest, _ ...grpc.CallOption) (*pb.SandboxGetCommandRouterAccessResponse, error) {
+	close(s.started)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.finish:
+		return pb.SandboxGetCommandRouterAccessResponse_builder{Jwt: mockJWT(time.Now().Unix() + 3600), Url: "https://unused.invalid"}.Build(), nil
+	}
+}
+
+func TestDetachDoesNotWaitForOutputInitialization(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	stub := &pendingRouterAccessStub{started: make(chan struct{}), finish: make(chan struct{})}
+	sb := newSandbox(&Client{cpClient: &clientWithConn{ModalClientClient: stub}, logger: slog.New(slog.DiscardHandler)}, testV2SandboxID)
+	sb.taskID = "ta-1"
+	result := make(chan error, 1)
+	go func() { _, err := sb.Stderr.Read(make([]byte, 1)); result <- err }()
+	g.Eventually(stub.started).Should(gomega.BeClosed())
+	defer close(stub.finish)
+	detached := make(chan error, 1)
+	go func() { detached <- sb.Detach() }()
+	g.Eventually(detached).Should(gomega.Receive(gomega.BeNil()))
+	later := make(chan error, 1)
+	go func() { _, err := sb.Stdout.Read(make([]byte, 1)); later <- err }()
+	g.Eventually(later).Should(gomega.Receive(gomega.HaveOccurred()))
+	// Finish initialization after detach; it must dispose of its new client.
+	t.Cleanup(func() {
+		g.Eventually(result).Should(gomega.Receive(gomega.HaveOccurred()))
+		sb.commandRouterClientMu.Lock()
+		g.Expect(sb.commandRouterClient).To(gomega.BeNil())
+		sb.commandRouterClientMu.Unlock()
+	})
 }
 
 func TestSandboxCreateV2RequestProto(t *testing.T) {
@@ -1455,7 +1509,9 @@ func TestInitTaskCommandRouterClientUsesSeededAccess(t *testing.T) {
 // for a Sandbox that has printed nothing yet.
 type blockingLogsStub struct {
 	pb.ModalClientClient
-	opened chan struct{}
+	opened    chan struct{}
+	batches   chan *pb.TaskLogsBatch
+	receiving chan context.Context
 }
 
 func (m *blockingLogsStub) SandboxGetLogs(
@@ -1467,19 +1523,29 @@ func (m *blockingLogsStub) SandboxGetLogs(
 	case m.opened <- struct{}{}:
 	default:
 	}
-	return &blockingLogsStream{ctx: ctx}, nil
+	return &blockingLogsStream{ctx: ctx, batches: m.batches, receiving: m.receiving}, nil
 }
 
 // blockingLogsStream blocks in Recv until its context ends, as a real stream
 // does while waiting for the next batch.
 type blockingLogsStream struct {
 	grpc.ServerStreamingClient[pb.TaskLogsBatch]
-	ctx context.Context
+	ctx       context.Context
+	batches   chan *pb.TaskLogsBatch
+	receiving chan context.Context
 }
 
 func (s *blockingLogsStream) Recv() (*pb.TaskLogsBatch, error) {
-	<-s.ctx.Done()
-	return nil, s.ctx.Err()
+	select {
+	case s.receiving <- s.ctx:
+	default:
+	}
+	select {
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
+	case batch := <-s.batches:
+		return batch, nil
+	}
 }
 
 func (s *blockingLogsStream) Context() context.Context { return s.ctx }
@@ -1492,7 +1558,7 @@ func TestClosingALogStreamUnblocksAWaitingRead(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	stub := &blockingLogsStub{opened: make(chan struct{}, 1)}
-	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, time.Hour).(*logStreamReader)
 
 	readErr := make(chan error, 1)
 	go func() {
@@ -1510,6 +1576,11 @@ func TestClosingALogStreamUnblocksAWaitingRead(t *testing.T) {
 		"Close must not wait for the read it is cancelling")
 	g.Eventually(readErr, 5*time.Second).Should(gomega.Receive(gomega.HaveOccurred()),
 		"the blocked read should end once the stream is cancelled")
+
+	reader.idleMu.Lock()
+	idleTimer := reader.idle.timer
+	reader.idleMu.Unlock()
+	g.Expect(idleTimer).To(gomega.BeNil(), "the cancelled read must not rearm the timer after Close")
 }
 
 // A zero-length read asks for nothing, so it must not go looking for output.
@@ -1518,7 +1589,7 @@ func TestZeroLengthReadDoesNotWaitForOutput(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	stub := &blockingLogsStub{opened: make(chan struct{}, 1)}
-	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, time.Hour)
 	t.Cleanup(func() { _ = reader.Close() })
 
 	type result struct {
@@ -1538,6 +1609,126 @@ func TestZeroLengthReadDoesNotWaitForOutput(t *testing.T) {
 	g.Expect(got.err).ToNot(gomega.HaveOccurred())
 	g.Expect(stub.opened).ToNot(gomega.Receive(),
 		"and it should not have opened the stream")
+}
+
+func TestOverlappingLogReadsProtectEachActiveFetch(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	stub := &blockingLogsStub{
+		opened:    make(chan struct{}, 1),
+		batches:   make(chan *pb.TaskLogsBatch),
+		receiving: make(chan context.Context, 2),
+	}
+	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, 20*time.Millisecond).(*logStreamReader)
+	t.Cleanup(func() { _ = reader.Close() })
+	results := make(chan error, 2)
+	for range 2 {
+		go func() { _, err := reader.Read(make([]byte, 1)); results <- err }()
+	}
+	g.Eventually(stub.receiving).Should(gomega.Receive())
+	stub.batches <- pb.TaskLogsBatch_builder{Items: []*pb.TaskLogs{pb.TaskLogs_builder{Data: "a"}.Build()}}.Build()
+	g.Eventually(results).Should(gomega.Receive(gomega.BeNil()))
+	var receivingCtx context.Context
+	g.Eventually(stub.receiving).Should(gomega.Receive(&receivingCtx))
+	g.Consistently(receivingCtx.Err, 80*time.Millisecond).Should(gomega.Succeed(),
+		"the next fetch must stop the preceding fetch's idle countdown")
+	g.Expect(results).ToNot(gomega.Receive())
+	stub.batches <- pb.TaskLogsBatch_builder{Items: []*pb.TaskLogs{pb.TaskLogs_builder{Data: "b"}.Build()}}.Build()
+	g.Eventually(results).Should(gomega.Receive(gomega.BeNil()))
+	g.Eventually(func() bool { reader.idleMu.Lock(); defer reader.idleMu.Unlock(); return reader.released }).Should(gomega.BeTrue())
+	g.Expect(reader.ctx.Err()).ToNot(gomega.HaveOccurred())
+}
+
+type transientLogsStub struct {
+	pb.ModalClientClient
+	calls      atomic.Int32
+	failOnOpen bool
+}
+
+func (m *transientLogsStub) SandboxGetLogs(
+	context.Context,
+	*pb.SandboxGetLogsRequest,
+	...grpc.CallOption,
+) (grpc.ServerStreamingClient[pb.TaskLogsBatch], error) {
+	if m.calls.Add(1) == 1 {
+		if m.failOnOpen {
+			return nil, status.Error(codes.Unavailable, "connection lost")
+		}
+		return &singleLogsResultStream{err: status.Error(codes.Unavailable, "connection lost")}, nil
+	}
+	return &singleLogsResultStream{batch: pb.TaskLogsBatch_builder{
+		EntryId: "1-0",
+		Items:   []*pb.TaskLogs{pb.TaskLogs_builder{Data: "reconnected"}.Build()},
+	}.Build()}, nil
+}
+
+type singleLogsResultStream struct {
+	grpc.ServerStreamingClient[pb.TaskLogsBatch]
+	batch *pb.TaskLogsBatch
+	err   error
+}
+
+func (s *singleLogsResultStream) Recv() (*pb.TaskLogsBatch, error) {
+	if s.batch != nil {
+		batch := s.batch
+		s.batch = nil
+		return batch, nil
+	}
+	if s.err != nil {
+		err := s.err
+		s.err = nil
+		return nil, err
+	}
+	return nil, io.EOF
+}
+
+func TestV1SandboxOutputReconnectsAfterTransientFailure(t *testing.T) {
+	t.Parallel()
+	for _, failOnOpen := range []bool{false, true} {
+		name := "receive"
+		if failOnOpen {
+			name = "open"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			stub := &transientLogsStub{failOnOpen: failOnOpen}
+			reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, 0).(*logStreamReader)
+			t.Cleanup(func() { _ = reader.Close() })
+			reader.retryDelay = 50 * time.Millisecond
+
+			start := time.Now()
+			buf := make([]byte, len("reconnected"))
+			n, err := reader.Read(buf)
+
+			g.Expect(err).ToNot(gomega.HaveOccurred())
+			g.Expect(string(buf[:n])).To(gomega.Equal("reconnected"))
+			g.Expect(stub.calls.Load()).To(gomega.Equal(int32(2)))
+			g.Expect(time.Since(start)).To(gomega.BeNumerically(">=", 40*time.Millisecond))
+			g.Expect(reader.retriesRemaining).To(gomega.Equal(sbLogsMaxRetries))
+			g.Expect(reader.retryDelay).To(gomega.Equal(sbLogsRetryInitialDelay))
+		})
+	}
+}
+
+func TestClosingLogStreamInterruptsRetryBackoff(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	stub := &transientLogsStub{}
+	reader := outputStreamSb(stub, testV1SandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, 0).(*logStreamReader)
+	t.Cleanup(func() { _ = reader.Close() })
+	reader.retryDelay = time.Hour
+
+	readErr := make(chan error, 1)
+	go func() { _, err := reader.Read(make([]byte, 1)); readErr <- err }()
+	g.Eventually(stub.calls.Load).Should(gomega.Equal(int32(1)))
+	g.Consistently(readErr, 50*time.Millisecond).ShouldNot(gomega.Receive())
+
+	closeErr := make(chan error, 1)
+	go func() { closeErr <- reader.Close() }()
+	g.Eventually(closeErr).Should(gomega.Receive(gomega.BeNil()))
+	g.Eventually(readErr).Should(gomega.Receive(gomega.MatchError(context.Canceled)))
+	g.Expect(stub.calls.Load()).To(gomega.Equal(int32(1)))
 }
 
 type sandboxV2RoutingStub struct {

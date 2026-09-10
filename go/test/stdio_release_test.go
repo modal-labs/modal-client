@@ -15,12 +15,48 @@ import (
 
 // Short enough to keep tests quick. One timeout governs the whole client, so a
 // release lands a little after it.
-const releaseIdleTimeout = time.Second
+const releaseIdleTimeout = testChannelIdleTimeout
+
+func TestDetachReleasesConnectionAfterActiveReadFinishes(t *testing.T) {
+	for _, exec := range []bool{false, true} {
+		name := "sandbox"
+		if exec {
+			name = "exec"
+		}
+		t.Run(name, func(t *testing.T) {
+			g := gomega.NewWithT(t)
+			gate := make(chan struct{})
+			router, listener, sandbox := startFakeWorkerWith(t, fakeWorkerOpts{
+				output: []byte("a"), outputGate: gate, channelIdleTimeout: "0",
+			})
+			reader := sandbox.Stdout
+			offsets := router.sandboxRequestedOffsets
+			if exec {
+				process, err := sandbox.Exec(t.Context(), []string{"echo", "a"}, nil)
+				g.Expect(err).ToNot(gomega.HaveOccurred())
+				reader = process.Stdout
+				offsets = router.requestedOffsets
+			}
+			t.Cleanup(func() { _ = reader.Close() })
+			result := make(chan error, 1)
+			buf := make([]byte, 1)
+			go func() { _, err := reader.Read(buf); result <- err }()
+			g.Eventually(offsets).Should(gomega.HaveLen(1))
+			g.Expect(sandbox.Detach()).To(gomega.Succeed())
+			g.Consistently(result, 50*time.Millisecond).ShouldNot(gomega.Receive())
+			g.Expect(listener.Live()).To(gomega.Equal(1))
+			close(gate)
+			g.Eventually(result).Should(gomega.Receive(gomega.BeNil()))
+			g.Expect(string(buf)).To(gomega.Equal("a"))
+			g.Eventually(listener.Live, 5*time.Second).Should(gomega.BeZero())
+		})
+	}
+}
 
 func releasingWorkerOpts(output []byte) fakeWorkerOpts {
 	return fakeWorkerOpts{
 		output:             output,
-		channelIdleTimeout: "1",
+		channelIdleTimeout: testChannelIdleTimeoutSecs,
 	}
 }
 
@@ -144,22 +180,23 @@ func TestSandboxExecSteadyReaderRefreshesTheIdleTimer(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	router, listener, sandbox := startFakeWorkerWith(t, fakeWorkerOpts{
-		channelIdleTimeout: "1",
+		channelIdleTimeout: testChannelIdleTimeoutSecs,
 	})
 
 	process, err := sandbox.Exec(t.Context(), []string{"echo", "hi"}, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer func() { _ = process.Stdout.Close() }()
 
-	// Five 7-byte chunks read 400ms apart: every gap is inside the timeout, but
-	// the read as a whole runs to about twice it.
+	// Five 7-byte chunks, each read well inside the timeout, but the read as a
+	// whole running to about twice it.
+	gap := releaseIdleTimeout * 2 / 5
 	got := make([]byte, 0, len(fakeWorkerOutput))
 	buf := make([]byte, 7)
 	for len(got) < len(fakeWorkerOutput) {
 		n, err := io.ReadFull(process.Stdout, buf)
 		g.Expect(err).ToNot(gomega.HaveOccurred())
 		got = append(got, buf[:n]...)
-		time.Sleep(400 * time.Millisecond)
+		time.Sleep(gap)
 	}
 
 	g.Expect(got).To(gomega.Equal(fakeWorkerOutput))

@@ -300,8 +300,11 @@ export class ModalClient {
       } = options;
 
       if (call.requestStream || call.responseStream || !retries) {
-        // Don't retry streaming calls, or if retries are disabled.
-        return yield* call.next(call.request, restOptions);
+        // Don't retry streaming calls, or if retries are disabled. The signal
+        // still has to go with them: it is what cancels a call whose iterator
+        // nobody is pumping, and dropping it here leaves the caller holding a
+        // signal that reaches nothing.
+        return yield* call.next(call.request, { ...restOptions, signal });
       }
 
       const retryableCodes = new Set([
@@ -545,6 +548,7 @@ export class ModalClient {
         }
       }
 
+      options.signal?.throwIfAborted();
       return yield* call.next(call.request, options);
     };
   }

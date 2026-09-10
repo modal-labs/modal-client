@@ -179,33 +179,30 @@ func callWithRetriesOnTransientErrors[T any](
 
 // taskCommandRouterClient provides a client for the TaskCommandRouter gRPC service.
 type taskCommandRouterClient struct {
-	// connMu guards the fields below, not the connection itself: it is held
-	// while the bookkeeping is read or written and released before anything
-	// goes on the wire, so operations still run concurrently and inFlight
-	// counts how many. Dialling happens under it, which is only cheap because
-	// grpc.NewClient connects lazily.
+	// connMu guards mutations to the fields below, not the connection itself: it
+	// is held while the bookkeeping is changed and released before anything goes
+	// on the wire, so operations still run concurrently and inFlight counts how
+	// many. Dialling happens under it, which is only cheap because grpc.NewClient
+	// connects lazily. Code reads stubValue only while it holds an operation
+	// lease; it cannot be replaced until inFlight returns to zero.
 	//
 	// The connection is dropped when nothing has used it for idleTimeout and
 	// dialled again by the next operation, so nothing may hold stubValue across
 	// one.
-	connMu    sync.RWMutex
+	connMu    sync.Mutex
 	stubValue pb.TaskCommandRouterClient
 	conn      *grpc.ClientConn
 	inFlight  int
-	idleTimer *time.Timer
-	// Which timer the pending callback belongs to. A callback that finds a
-	// different one has been superseded: it was already running when a new
-	// operation replaced its timer, so it speaks for a connection that has
-	// since been used.
-	idleTimerSeq uint64
-	target       string
-	creds        credentials.TransportCredentials
+	draining  bool
+	idle      idleCountdown
+	target    string
+	creds     credentials.TransportCredentials
 	// How long the client may go unused before its connection is given up. Zero
 	// keeps it up until the client is closed.
 	idleTimeout time.Duration
-	// Bumped every time a connection is dialled. A stream opened on an earlier
-	// one is stale: the connection under it has since been given up.
-	generation atomic.Uint64
+	// Incremented whenever an idle connection is rebuilt. A stream opened on an
+	// earlier generation belongs to the connection that was given up.
+	generation uint64
 
 	serverClient    pb.ModalClientClient
 	taskID          string
@@ -409,7 +406,7 @@ func (c *taskCommandRouterClient) Close() error {
 	}
 	c.connMu.Lock()
 	defer c.connMu.Unlock()
-	c.stopIdleTimerLocked()
+	c.idle.stop()
 	if c.conn != nil {
 		conn := c.conn
 		// The stub is left in place. Close does not wait for operations already
@@ -422,40 +419,52 @@ func (c *taskCommandRouterClient) Close() error {
 	return nil
 }
 
-// stub is the RPC stub to use right now. It changes when an idle connection is
-// rebuilt, so it must be read per use rather than held across one.
-//
-// The lock only makes the field readable intact: an interface value is two
-// words, so a read racing a rebuild could see one of each. Staying off a
-// released connection is the lease's job, not this lock's.
-func (c *taskCommandRouterClient) stub() pb.TaskCommandRouterClient {
-	c.connMu.RLock()
-	defer c.connMu.RUnlock()
-	return c.stubValue
+// closeWhenIdle refuses new operations and lets current operations finish.
+func (c *taskCommandRouterClient) closeWhenIdle() {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+	c.draining = true
+	c.idle.stop()
+	if c.inFlight == 0 {
+		c.releaseLocked()
+	}
+}
+
+func (c *taskCommandRouterClient) releaseLocked() {
+	if c.draining {
+		c.closed.Store(true)
+	}
+	if c.conn != nil {
+		conn := c.conn
+		c.conn = nil
+		if err := conn.Close(); err != nil {
+			c.logger.DebugContext(context.Background(), "Failed to release sandbox connection", "error", err)
+		}
+	}
 }
 
 // beginOp says the client is about to be used: it holds off the idle timer and
-// dials again if the connection was already given up. Every call must be paired
-// with endOp.
-func (c *taskCommandRouterClient) beginOp() error {
+// dials again if the connection was already given up. It returns the generation
+// being used; every call must be paired with endOp.
+func (c *taskCommandRouterClient) beginOp() (uint64, error) {
 	c.connMu.Lock()
 	defer c.connMu.Unlock()
 
-	if c.closed.Load() {
-		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
+	if c.closed.Load() || c.draining {
+		return 0, ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
 	}
-	c.stopIdleTimerLocked()
+	c.idle.stop()
 	if c.conn == nil {
 		conn, err := dialCommandRouter(c.target, c.creds)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		c.conn, c.stubValue = conn, pb.NewTaskCommandRouterClient(conn)
-		c.generation.Add(1)
+		c.generation++
 		c.logger.DebugContext(context.Background(), "Reconnected to the command router after an idle release", "task_id", c.taskID)
 	}
 	c.inFlight++
-	return nil
+	return c.generation, nil
 }
 
 // endOp says the caller is done. The last one out starts the clock on giving
@@ -468,19 +477,20 @@ func (c *taskCommandRouterClient) endOp() {
 	if c.inFlight > 0 {
 		return
 	}
+	if c.draining {
+		c.releaseLocked()
+		return
+	}
 	c.armIdleTimerLocked()
 }
 
 // armIdleTimerLocked starts the countdown to giving the connection back. The
 // caller must hold connMu and must have nothing in flight.
 func (c *taskCommandRouterClient) armIdleTimerLocked() {
-	if c.idleTimeout <= 0 || c.conn == nil {
+	if c.conn == nil {
 		return
 	}
-	c.stopIdleTimerLocked()
-	c.idleTimerSeq++
-	seq := c.idleTimerSeq
-	c.idleTimer = time.AfterFunc(c.idleTimeout, func() { c.closeIfStillIdle(seq) })
+	c.idle.arm(c.idleTimeout, c.closeIfStillIdle)
 }
 
 // closeIfStillIdle gives the connection back, so a Sandbox nobody is using
@@ -490,30 +500,14 @@ func (c *taskCommandRouterClient) closeIfStillIdle(seq uint64) {
 	c.connMu.Lock()
 	defer c.connMu.Unlock()
 
-	if seq != c.idleTimerSeq {
+	if !c.idle.fired(seq) {
 		return
 	}
-	c.idleTimer = nil
 	if c.inFlight > 0 || c.conn == nil {
 		return
 	}
 	c.logger.DebugContext(context.Background(), "Releasing the command router connection to an idle Sandbox", "task_id", c.taskID)
-	conn := c.conn
-	// Left in place for the same reason as in Close.
-	c.conn = nil
-	if err := conn.Close(); err != nil {
-		c.logger.DebugContext(context.Background(), "Failed to close an idle command router connection", "error", err)
-	}
-}
-
-func (c *taskCommandRouterClient) stopIdleTimerLocked() {
-	// Bumped whether or not a timer is set, so a callback already past its own
-	// Stop finds a sequence it does not match and stands down.
-	c.idleTimerSeq++
-	if c.idleTimer != nil {
-		c.idleTimer.Stop()
-		c.idleTimer = nil
-	}
+	c.releaseLocked()
 }
 
 func (c *taskCommandRouterClient) authContext(ctx context.Context) context.Context {
@@ -563,19 +557,10 @@ func (c *taskCommandRouterClient) refreshJwt(ctx context.Context) error {
 type retryableClient interface {
 	authContext(ctx context.Context) context.Context
 	refreshJwt(ctx context.Context) error
-	// beginOp and endOp bracket a use of the connection. Every unary call
-	// reaches this interface, so taking the lease here is what stops a method
-	// reaching a connection that has been given up.
-	beginOp() error
-	endOp()
 }
 
+// The caller holds an operation lease across authentication and all retries.
 func callWithAuthRetry[T any](ctx context.Context, c retryableClient, fn func(context.Context) (*T, error)) (*T, error) {
-	if err := c.beginOp(); err != nil {
-		return nil, err
-	}
-	defer c.endOp()
-
 	resp, err := fn(c.authContext(ctx))
 	if err != nil {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
@@ -589,15 +574,23 @@ func callWithAuthRetry[T any](ctx context.Context, c retryableClient, fn func(co
 }
 
 func callCommandRouterUnary[T any](ctx context.Context, c *taskCommandRouterClient, fn func(context.Context) (*T, error)) (*T, error) {
-	return callWithRetriesOnTransientErrors(ctx, func() (*T, error) {
+	return callCommandRouterWithRetries(ctx, c, func() (*T, error) {
 		return callWithAuthRetry(ctx, c, fn)
-	}, defaultRetryOptions(), &c.closed)
+	}, defaultRetryOptions())
+}
+
+func callCommandRouterWithRetries[T any](ctx context.Context, c *taskCommandRouterClient, fn func() (*T, error), opts retryOptions) (*T, error) {
+	if _, err := c.beginOp(); err != nil {
+		return nil, err
+	}
+	defer c.endOp()
+	return callWithRetriesOnTransientErrors(ctx, fn, opts, &c.closed)
 }
 
 // SetNetworkAccess replaces the task's outbound network allowlist (domains + CIDRs).
 func (c *taskCommandRouterClient) SetNetworkAccess(ctx context.Context, request *pb.TaskSetNetworkAccessRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskSetNetworkAccessResponse, error) {
-		return c.stub().TaskSetNetworkAccess(authCtx, request)
+		return c.stubValue.TaskSetNetworkAccess(authCtx, request)
 	})
 	return err
 }
@@ -605,7 +598,7 @@ func (c *taskCommandRouterClient) SetNetworkAccess(ctx context.Context, request 
 // MountDirectory mounts an image at a directory in the container.
 func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *pb.TaskMountDirectoryRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
-		return c.stub().TaskMountDirectory(authCtx, request)
+		return c.stubValue.TaskMountDirectory(authCtx, request)
 	})
 	return err
 }
@@ -613,7 +606,7 @@ func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *p
 // UnmountDirectory unmounts a directory in the container.
 func (c *taskCommandRouterClient) UnmountDirectory(ctx context.Context, request *pb.TaskUnmountDirectoryRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
-		return c.stub().TaskUnmountDirectory(authCtx, request)
+		return c.stubValue.TaskUnmountDirectory(authCtx, request)
 	})
 	return err
 }
@@ -627,14 +620,14 @@ func (c *taskCommandRouterClient) ReloadVolumes(ctx context.Context, request *pb
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskReloadVolumesResponse, error) {
+	_, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskReloadVolumesResponse, error) {
 		remaining := time.Until(overallDeadline)
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskReloadVolumesResponse, error) {
-			return c.stub().TaskReloadVolumes(authCtx, request)
+			return c.stubValue.TaskReloadVolumes(authCtx, request)
 		})
-	}, opts, &c.closed)
+	}, opts)
 	if err != nil && time.Now().After(overallDeadline) {
 		return TimeoutError{Exception: "Timeout expired"}
 	}
@@ -654,14 +647,14 @@ func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotDirectoryResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskSnapshotDirectoryResponse, error) {
 		remaining := time.Until(overallDeadline)
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotDirectoryResponse, error) {
-			return c.stub().TaskSnapshotDirectory(authCtx, request)
+			return c.stubValue.TaskSnapshotDirectory(authCtx, request)
 		})
-	}, opts, &c.closed)
+	}, opts)
 	if err != nil && time.Now().After(overallDeadline) {
 		return nil, TimeoutError{Exception: "Timeout expired"}
 	}
@@ -687,7 +680,7 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotFilesystemResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskSnapshotFilesystemResponse, error) {
 		// Per-call timeout = remaining budget on the overall deadline.
 		// A zero or negative remaining time would still create a usable
 		// (already-expired) context, which grpc-go reports as DeadlineExceeded.
@@ -695,9 +688,9 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotFilesystemResponse, error) {
-			return c.stub().TaskSnapshotFilesystem(authCtx, request)
+			return c.stubValue.TaskSnapshotFilesystem(authCtx, request)
 		})
-	}, opts, &c.closed)
+	}, opts)
 	if err != nil && time.Now().After(overallDeadline) {
 		return nil, TimeoutError{Exception: "Timeout expired"}
 	}
@@ -710,14 +703,14 @@ func (c *taskCommandRouterClient) SnapshotMemory(ctx context.Context, request *p
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotMemoryResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskSnapshotMemoryResponse, error) {
 		remaining := time.Until(overallDeadline)
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotMemoryResponse, error) {
-			return c.stub().TaskSnapshotMemory(authCtx, request)
+			return c.stubValue.TaskSnapshotMemory(authCtx, request)
 		})
-	}, opts, &c.closed)
+	}, opts)
 	if err != nil && time.Now().After(overallDeadline) {
 		return nil, TimeoutError{Exception: "Timeout expired"}
 	}
@@ -730,7 +723,7 @@ func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, tas
 	overallDeadline := time.Now().Add(timeout)
 	opts.Deadline = &overallDeadline
 
-	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.SandboxWaitUntilReadyTcrResponse, error) {
 		remaining := max(time.Until(overallDeadline), time.Millisecond)
 		request := pb.SandboxWaitUntilReadyTcrRequest_builder{
 			TaskId:  taskID,
@@ -739,9 +732,9 @@ func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, tas
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
 		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
-			return c.stub().SandboxWaitUntilReady(authCtx, request)
+			return c.stubValue.SandboxWaitUntilReady(authCtx, request)
 		})
-	}, opts, &c.closed)
+	}, opts)
 	if err != nil {
 		if errors.Is(err, errDeadlineExceeded) {
 			return nil, TimeoutError{Exception: "Timeout expired"}
@@ -754,28 +747,28 @@ func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, tas
 // ContainerCreate creates an additional container in the task.
 func (c *taskCommandRouterClient) ContainerCreate(ctx context.Context, request *pb.TaskContainerCreateRequest) (*pb.TaskContainerCreateResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerCreateResponse, error) {
-		return c.stub().TaskContainerCreate(authCtx, request)
+		return c.stubValue.TaskContainerCreate(authCtx, request)
 	})
 }
 
 // ContainerGet returns the latest container associated with a logical name.
 func (c *taskCommandRouterClient) ContainerGet(ctx context.Context, request *pb.TaskContainerGetRequest) (*pb.TaskContainerGetResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerGetResponse, error) {
-		return c.stub().TaskContainerGet(authCtx, request)
+		return c.stubValue.TaskContainerGet(authCtx, request)
 	})
 }
 
 // ContainerList lists containers associated with the task.
 func (c *taskCommandRouterClient) ContainerList(ctx context.Context, request *pb.TaskContainerListRequest) (*pb.TaskContainerListResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerListResponse, error) {
-		return c.stub().TaskContainerList(authCtx, request)
+		return c.stubValue.TaskContainerList(authCtx, request)
 	})
 }
 
 // ContainerTerminate terminates a tracked container.
 func (c *taskCommandRouterClient) ContainerTerminate(ctx context.Context, request *pb.TaskContainerTerminateRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerTerminateResponse, error) {
-		return c.stub().TaskContainerTerminate(authCtx, request)
+		return c.stubValue.TaskContainerTerminate(authCtx, request)
 	})
 	return err
 }
@@ -783,14 +776,14 @@ func (c *taskCommandRouterClient) ContainerTerminate(ctx context.Context, reques
 // ContainerWait waits for a tracked container to reach a terminal result.
 func (c *taskCommandRouterClient) ContainerWait(ctx context.Context, request *pb.TaskContainerWaitRequest) (*pb.TaskContainerWaitResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerWaitResponse, error) {
-		return c.stub().TaskContainerWait(authCtx, request)
+		return c.stubValue.TaskContainerWait(authCtx, request)
 	})
 }
 
 // ExecStart starts a command execution.
 func (c *taskCommandRouterClient) ExecStart(ctx context.Context, request *pb.TaskExecStartRequest) (*pb.TaskExecStartResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStartResponse, error) {
-		return c.stub().TaskExecStart(authCtx, request)
+		return c.stubValue.TaskExecStart(authCtx, request)
 	})
 }
 
@@ -805,7 +798,7 @@ func (c *taskCommandRouterClient) ExecStdinWrite(ctx context.Context, taskID, ex
 	}.Build()
 
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinWriteResponse, error) {
-		return c.stub().TaskExecStdinWrite(authCtx, request)
+		return c.stubValue.TaskExecStdinWrite(authCtx, request)
 	})
 	return err
 }
@@ -815,14 +808,24 @@ func (c *taskCommandRouterClient) ExecStdinWrite(ctx context.Context, taskID, ex
 //
 // Evicts any in-flight stdin stream for the exec.
 func (c *taskCommandRouterClient) ExecStdinStatus(ctx context.Context, taskID, execID string) (*pb.TaskExecStdinStatusResponse, error) {
+	if _, err := c.beginOp(); err != nil {
+		return nil, err
+	}
+	defer c.endOp()
+	return c.execStdinStatus(ctx, taskID, execID)
+}
+
+func (c *taskCommandRouterClient) execStdinStatus(ctx context.Context, taskID, execID string) (*pb.TaskExecStdinStatusResponse, error) {
 	request := pb.TaskExecStdinStatusRequest_builder{
 		TaskId: taskID,
 		ExecId: execID,
 	}.Build()
 
-	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinStatusResponse, error) {
-		return c.stub().TaskExecStdinStatus(authCtx, request)
-	})
+	return callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskExecStdinStatusResponse, error) {
+		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinStatusResponse, error) {
+			return c.stubValue.TaskExecStdinStatus(authCtx, request)
+		})
+	}, defaultRetryOptions(), &c.closed)
 }
 
 // isStreamingStdinResumableCode reports whether a stdin stream attempt that
@@ -845,6 +848,10 @@ func isStreamingStdinResumableCode(code codes.Code) bool {
 // stream.
 // Returns the total number of bytes streamed.
 func (c *taskCommandRouterClient) ExecStdinWriteStream(ctx context.Context, taskID, execID string, source io.ReadSeeker) (int64, error) {
+	if _, err := c.beginOp(); err != nil {
+		return 0, err
+	}
+	defer c.endOp()
 	var offset uint64
 	attempt := 0
 	for {
@@ -878,7 +885,7 @@ func (c *taskCommandRouterClient) ExecStdinWriteStream(ctx context.Context, task
 				return 0, refreshErr
 			}
 		}
-		statusResp, statusErr := c.ExecStdinStatus(ctx, taskID, execID)
+		statusResp, statusErr := c.execStdinStatus(ctx, taskID, execID)
 		if statusErr != nil {
 			return 0, statusErr
 		}
@@ -910,18 +917,13 @@ func (c *taskCommandRouterClient) ExecStdinWriteStream(ctx context.Context, task
 // Start, Data chunks, then End (EOF). It does not retry; ExecStdinWriteStream
 // owns resume.
 func (c *taskCommandRouterClient) execStdinWriteStreamAttempt(ctx context.Context, taskID, execID string, offset uint64, source io.Reader) error {
-	if err := c.beginOp(); err != nil {
-		return err
-	}
-	defer c.endOp()
-
 	// Cancel the stream when bailing out before CloseAndRecv completes so an
 	// abandoned attempt doesn't leak. A canceled stream ends without End,
 	// which leaves stdin open server-side for resume.
 	attemptCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	stream, err := c.stub().TaskExecStdinWriteStream(c.authContext(attemptCtx))
+	stream, err := c.stubValue.TaskExecStdinWriteStream(c.authContext(attemptCtx))
 	if err != nil {
 		return err
 	}
@@ -996,14 +998,14 @@ func (c *taskCommandRouterClient) ExecWait(ctx context.Context, taskID, execID s
 		Deadline:    deadline,
 	}
 
-	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskExecWaitResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskExecWaitResponse, error) {
 		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*pb.TaskExecWaitResponse, error) {
 			// Set a per-call timeout of 60 seconds
 			callCtx, cancel := context.WithTimeout(authCtx, 60*time.Second)
 			defer cancel()
-			return c.stub().TaskExecWait(callCtx, request)
+			return c.stubValue.TaskExecWait(callCtx, request)
 		})
-	}, opts, &c.closed)
+	}, opts)
 
 	if err != nil {
 		st, ok := status.FromError(err)
@@ -1165,7 +1167,8 @@ func (r *execStdioReader) fill() error {
 	// A read in progress is what keeps the client in use. Between reads it may
 	// go idle and give its connection back, taking this stream with it; the
 	// next read dials again and reopens where it left off.
-	if err := r.client.beginOp(); err != nil {
+	generation, err := r.client.beginOp()
+	if err != nil {
 		return err
 	}
 	defer r.client.endOp()
@@ -1175,8 +1178,14 @@ func (r *execStdioReader) fill() error {
 			return r.contextErr(err)
 		}
 
+		if r.stream != nil && r.streamGeneration != generation {
+			// The connection was released between reads. Reopen on the current
+			// one without touching the stream that belonged to the old one.
+			r.closeStream()
+		}
+
 		if r.stream == nil {
-			if err := r.openStream(); err != nil {
+			if err := r.openStream(generation); err != nil {
 				if retry, fatal := r.recoverFrom(err); !retry {
 					return fatal
 				}
@@ -1189,13 +1198,7 @@ func (r *execStdioReader) fill() error {
 			return io.EOF
 		}
 		if err != nil {
-			stale := r.streamGeneration != r.client.generation.Load()
 			r.closeStream()
-			if stale {
-				// The connection this stream was on was given up for idleness.
-				// Nothing went wrong, so reopen without spending a retry.
-				continue
-			}
 			if retry, fatal := r.recoverFrom(err); !retry {
 				return fatal
 			}
@@ -1212,10 +1215,9 @@ func (r *execStdioReader) fill() error {
 	}
 }
 
-func (r *execStdioReader) openStream() error {
-	generation := r.client.generation.Load()
+func (r *execStdioReader) openStream(generation uint64) error {
 	streamCtx, cancel := context.WithCancel(r.ctx)
-	stream, err := r.client.stub().TaskExecStdioRead(
+	stream, err := r.client.stubValue.TaskExecStdioRead(
 		r.client.authContext(streamCtx),
 		pb.TaskExecStdioReadRequest_builder{
 			TaskId:         r.taskID,
@@ -1313,7 +1315,8 @@ func (r *sandboxStdioReader) closeStream() {
 // fill pulls the next chunk into pending, opening or reopening the stream as it
 // needs to. It returns io.EOF once the output is finished.
 func (r *sandboxStdioReader) fill() error {
-	if err := r.client.beginOp(); err != nil {
+	generation, err := r.client.beginOp()
+	if err != nil {
 		return err
 	}
 	defer r.client.endOp()
@@ -1323,9 +1326,15 @@ func (r *sandboxStdioReader) fill() error {
 			return err
 		}
 
+		if r.stream != nil && r.streamGeneration != generation {
+			// The connection was released between reads. Reopen on the current
+			// one without touching the stream that belonged to the old one.
+			r.closeStream()
+		}
+
 		opened := false
 		if r.stream == nil {
-			if err := r.openStream(); err != nil {
+			if err := r.openStream(generation); err != nil {
 				if retry, fatal := r.recoverFrom(err); !retry {
 					return fatal
 				}
@@ -1339,13 +1348,7 @@ func (r *sandboxStdioReader) fill() error {
 			return io.EOF
 		}
 		if err != nil {
-			stale := r.streamGeneration != r.client.generation.Load()
 			r.closeStream()
-			if stale {
-				// The connection this stream was on was given up for idleness.
-				// Reopen without spending a retry.
-				continue
-			}
 			if retry, fatal := r.recoverFrom(err); !retry {
 				return fatal
 			}
@@ -1372,10 +1375,9 @@ func (r *sandboxStdioReader) fill() error {
 	}
 }
 
-func (r *sandboxStdioReader) openStream() error {
-	generation := r.client.generation.Load()
+func (r *sandboxStdioReader) openStream(generation uint64) error {
 	streamCtx, cancel := context.WithCancel(r.ctx)
-	stream, err := r.client.stub().SandboxStdioReadV2(
+	stream, err := r.client.stubValue.SandboxStdioReadV2(
 		r.client.authContext(streamCtx),
 		pb.SandboxStdioReadV2Request_builder{
 			TaskId:         r.taskID,
@@ -1406,7 +1408,7 @@ func (c *taskCommandRouterClient) SandboxStdinWriteV2(ctx context.Context, taskI
 	}.Build()
 
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.SandboxStdinWriteV2Response, error) {
-		return c.stub().SandboxStdinWriteV2(authCtx, request)
+		return c.stubValue.SandboxStdinWriteV2(authCtx, request)
 	})
 	return err
 }

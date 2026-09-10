@@ -45,13 +45,6 @@ export interface Profile {
    * profile key in .modal.toml.
    */
   sandboxV2: boolean;
-  /**
-   * How long a caller may sit on a chunk of a Sandbox's output before the stream
-   * stops counting as in use. Only once a reader has gone quiet for this long
-   * does the idle timeout above start running, so a Sandbox read once and then
-   * forgotten gives its connection up after the two together. Zero stops
-   * counting as soon as a caller stops reading.
-   */
 }
 
 /**

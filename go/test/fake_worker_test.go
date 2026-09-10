@@ -40,6 +40,7 @@ type fakeWorkerRouter struct {
 	// and simply holds open. A reader wanting more has to reopen, which is what
 	// makes resuming at an offset observable.
 	chunksPerStream int
+	outputGate      <-chan struct{}
 	mu              sync.Mutex
 	offsets         []uint64
 	sandboxOffsets  []uint64
@@ -60,6 +61,13 @@ func (s *fakeWorkerRouter) TaskExecStdioRead(
 	s.mu.Lock()
 	s.offsets = append(s.offsets, offset)
 	s.mu.Unlock()
+	if s.outputGate != nil {
+		select {
+		case <-s.outputGate:
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 
 	sent := 0
 	for offset < uint64(len(s.output)) {
@@ -90,6 +98,13 @@ func (s *fakeWorkerRouter) SandboxStdioReadV2(
 	s.mu.Lock()
 	s.sandboxOffsets = append(s.sandboxOffsets, offset)
 	s.mu.Unlock()
+	if s.outputGate != nil {
+		select {
+		case <-s.outputGate:
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 
 	sent := 0
 	for offset < uint64(len(s.output)) {
@@ -187,7 +202,8 @@ func startFakeWorkerPrinting(t *testing.T, output []byte) (*fakeWorkerRouter, *c
 // A zero field takes the default: fakeWorkerOutput, and whatever timeouts the
 // SDK ships with.
 type fakeWorkerOpts struct {
-	output []byte
+	output     []byte
+	outputGate <-chan struct{}
 	// Written to the environment as the SDK reads it, so "0" is meaningfully
 	// different from unset.
 	channelIdleTimeout string
@@ -212,7 +228,7 @@ func startFakeWorkerWith(t *testing.T, opts fakeWorkerOpts) (*fakeWorkerRouter, 
 	// localhost server URL is what makes the SDK dial the router without TLS.
 	t.Setenv("MODAL_SERVER_URL", "http://127.0.0.1:1")
 
-	router := &fakeWorkerRouter{output: output, chunksPerStream: opts.chunksPerStream}
+	router := &fakeWorkerRouter{output: output, chunksPerStream: opts.chunksPerStream, outputGate: opts.outputGate}
 	raw, err := net.Listen("tcp", "127.0.0.1:0")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	listener := &countingListener{Listener: raw}

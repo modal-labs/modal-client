@@ -3,6 +3,7 @@ package test
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -13,14 +14,21 @@ import (
 // when the client is closed, so the tests run with a short one: the default
 // leaves connections from the last few tests still open when the leak check
 // runs, which is a leak that never happens and one that does look alike.
-const testChannelIdleTimeout = "1"
+//
+// Most of the tests that cover the release spend their time waiting this out,
+// so it also sets what the suite costs. Kept well above the scheduling delay a
+// loaded machine adds, which a shorter one could mistake for a release.
+const testChannelIdleTimeout = 500 * time.Millisecond
+
+// testChannelIdleTimeoutSecs is the same timeout as the SDK reads it.
+var testChannelIdleTimeoutSecs = strconv.FormatFloat(testChannelIdleTimeout.Seconds(), 'f', -1, 64)
 
 func TestMain(m *testing.M) {
 	err := os.Setenv("MODAL_ENVIRONMENT", "libmodal")
 	if err != nil {
 		panic(err)
 	}
-	err = os.Setenv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", testChannelIdleTimeout)
+	err = os.Setenv("MODAL_SANDBOX_CHANNEL_IDLE_TIMEOUT", testChannelIdleTimeoutSecs)
 	if err != nil {
 		panic(err)
 	}
@@ -28,7 +36,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// Give the last Sandbox's idle timer room to fire before looking for leaks.
-	time.Sleep(3 * time.Second)
+	time.Sleep(4 * testChannelIdleTimeout)
 	if err := goleak.Find(); err != nil {
 		fmt.Fprintf(os.Stderr, "goleak: %v\n", err)
 		if code == 0 {

@@ -62,6 +62,7 @@ import { timeoutMiddleware, type TimeoutOptions } from "./client";
 import type { Logger } from "./logger";
 import type { Profile } from "./config";
 import { DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS, isLocalhost } from "./config";
+import { IdleCountdown } from "./idle_countdown";
 import { ClientClosedError, TimeoutError } from "./errors";
 
 type TaskCommandRouterClient = Client<typeof TaskCommandRouterDefinition>;
@@ -250,16 +251,10 @@ export class TaskCommandRouterClientImpl {
    * because operations overlap: only the last one out starts the idle clock.
    */
   private inFlight = 0;
-  private idleTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+  private idle = new IdleCountdown();
   /**
-   * Which timer the pending callback belongs to. A callback that finds a
-   * different one has been superseded and stands down.
-   */
-  private idleTimerSeq = 0;
-  /**
-   * Bumped every time a connection is released. A stream opened before the last
-   * bump is stale: the connection under it has since been given up, so its
-   * failure is expected rather than a fault.
+   * Bumped every time a connection is dialled. A stream opened on an earlier
+   * one is stale: the connection under it has since been given up.
    */
   private generation = 0;
   /**
@@ -285,6 +280,7 @@ export class TaskCommandRouterClientImpl {
   private jwtRefreshLock: Promise<void> = Promise.resolve();
   private logger: Logger;
   private closed: boolean = false;
+  private draining = false;
 
   /**
    * `access` is the router access returned by SandboxCreateV2, which lets a
@@ -440,23 +436,21 @@ export class TaskCommandRouterClientImpl {
 
   /**
    * Says the client is about to be used: holds off the idle timer, and dials
-   * again if the connection was already given up. Pair every call with endOp.
+   * again if the connection was already given up. Returns the generation being
+   * used; pair every call with endOp.
    */
-  private beginOp(): void {
-    if (this.closed) {
+  private beginOp(): number {
+    if (this.closed || this.draining) {
       throw new ClientClosedError();
     }
-    this.idleTimerSeq++;
-    if (this.idleTimer !== undefined) {
-      globalThis.clearTimeout(this.idleTimer);
-      this.idleTimer = undefined;
-    }
+    this.idle.stop();
     if (this.channel === undefined) {
       this.channel = this.dial();
       this.stub = this.factory.create(
         TaskCommandRouterDefinition,
         this.channel,
       );
+      this.generation++;
       this.logger.debug(
         "Reconnected to the command router after an idle release",
         "task_id",
@@ -464,6 +458,7 @@ export class TaskCommandRouterClientImpl {
       );
     }
     this.inFlight = (this.inFlight ?? 0) + 1;
+    return this.generation;
   }
 
   /** Says the caller is done. The last one out starts the clock. */
@@ -472,7 +467,11 @@ export class TaskCommandRouterClientImpl {
     if (this.inFlight > 0) {
       return;
     }
-    this.armIdleTimer();
+    if (this.draining) {
+      this.close();
+    } else {
+      this.armIdleTimer();
+    }
   }
 
   /**
@@ -480,16 +479,10 @@ export class TaskCommandRouterClientImpl {
    * in flight.
    */
   private armIdleTimer(): void {
-    if (this.idleTimeoutMs <= 0 || this.closed) {
+    if (this.closed) {
       return;
     }
-    this.idleTimerSeq++;
-    const seq = this.idleTimerSeq;
-    this.idleTimer = globalThis.setTimeout(() => {
-      if (seq !== this.idleTimerSeq) {
-        return;
-      }
-      this.idleTimer = undefined;
+    this.idle.arm(this.idleTimeoutMs, () => {
       if (this.inFlight > 0 || this.channel === undefined) {
         return;
       }
@@ -498,18 +491,20 @@ export class TaskCommandRouterClientImpl {
         "task_id",
         this.taskId,
       );
-      // Bumped before the streams are ended, so a reader that wakes to a
-      // failure already sees that the stamp it took has moved on.
-      this.generation++;
       for (const stream of this.liveStreams) {
         stream.abort();
       }
       this.liveStreams.clear();
       this.channel.close();
       this.channel = undefined;
-    }, this.idleTimeoutMs);
-    // A pending release must not hold the process open on its own.
-    this.idleTimer.unref?.();
+    });
+  }
+
+  /** Refuse new operations and release resources after current operations finish. */
+  closeWhenIdle(): void {
+    this.draining = true;
+    this.idle.stop();
+    if (this.inFlight === 0) this.close();
   }
 
   close(): void {
@@ -518,11 +513,7 @@ export class TaskCommandRouterClientImpl {
     }
 
     this.closed = true;
-    this.idleTimerSeq++;
-    if (this.idleTimer !== undefined) {
-      globalThis.clearTimeout(this.idleTimer);
-      this.idleTimer = undefined;
-    }
+    this.idle.stop();
     // Closing the channel does not end a call in flight, so a reader still
     // holding a stream would keep the socket up after a detach.
     for (const stream of this.liveStreams) {
@@ -533,9 +524,20 @@ export class TaskCommandRouterClientImpl {
     this.channel = undefined;
   }
 
+  private async callWithRetries<T>(
+    ...args: Parameters<typeof callWithRetriesOnTransientErrors<T>>
+  ): Promise<T> {
+    this.beginOp();
+    try {
+      return await callWithRetriesOnTransientErrors(...args);
+    } finally {
+      this.endOp();
+    }
+  }
+
   /** Run a unary RPC against the command router with the default retry policy. */
   private async callUnary<T>(fn: () => Promise<T>): Promise<T> {
-    return await callWithRetriesOnTransientErrors(
+    return await this.callWithRetries(
       () => this.callWithAuthRetry(fn),
       10, // baseDelayMs
       2, // delayFactor
@@ -652,103 +654,120 @@ export class TaskCommandRouterClientImpl {
     chunkSize: number = STREAMING_STDIN_CHUNK_SIZE,
     maxResumeAttempts: number = 9,
   ): Promise<number> {
-    let offset = 0;
-    let attempt = 0;
-    while (true) {
-      let bytesRead = offset;
-      let sourceExhausted = false;
-      // A local source error must fail the upload immediately.
-      let sourceError: unknown;
+    this.beginOp();
+    try {
+      let offset = 0;
+      let attempt = 0;
+      while (true) {
+        let bytesRead = offset;
+        let sourceExhausted = false;
+        // A local source error must fail the upload immediately.
+        let sourceError: unknown;
 
-      const requests =
-        async function* (): AsyncIterable<TaskExecStdinWriteStreamRequest> {
-          yield TaskExecStdinWriteStreamRequest.create({
-            start: { taskId, execId, offset },
-          });
-          const chunks = (async function* () {
-            try {
-              yield* source.readFrom(offset);
-            } catch (err) {
-              sourceError = err;
-              throw err;
+        const requests =
+          async function* (): AsyncIterable<TaskExecStdinWriteStreamRequest> {
+            yield TaskExecStdinWriteStreamRequest.create({
+              start: { taskId, execId, offset },
+            });
+            const chunks = (async function* () {
+              try {
+                yield* source.readFrom(offset);
+              } catch (err) {
+                sourceError = err;
+                throw err;
+              }
+            })();
+            for await (const chunk of chunks) {
+              for (let i = 0; i < chunk.length; i += chunkSize) {
+                const data = chunk.subarray(i, i + chunkSize);
+                if (data.length === 0) continue;
+                bytesRead += data.length;
+                yield TaskExecStdinWriteStreamRequest.create({ data });
+              }
             }
-          })();
-          for await (const chunk of chunks) {
-            for (let i = 0; i < chunk.length; i += chunkSize) {
-              const data = chunk.subarray(i, i + chunkSize);
-              if (data.length === 0) continue;
-              bytesRead += data.length;
-              yield TaskExecStdinWriteStreamRequest.create({ data });
-            }
-          }
-          sourceExhausted = true;
-          // The server closes stdin only on this explicit End message. A
-          // stream that breaks before it leaves stdin open for resume.
-          yield TaskExecStdinWriteStreamRequest.create({ end: {} });
-        };
+            sourceExhausted = true;
+            // The server closes stdin only on this explicit End message. A
+            // stream that breaks before it leaves stdin open for resume.
+            yield TaskExecStdinWriteStreamRequest.create({ end: {} });
+          };
 
-      // Registered so a release or a detach can end the upload; without it the
-      // call would keep the connection alive after either.
-      const abort = new AbortController();
-      this.beginOp();
-      this.liveStreams.add(abort);
-      try {
-        await this.stub.taskExecStdinWriteStream(requests(), {
-          signal: abort.signal,
-        } as CallOptions);
-        return bytesRead;
-      } catch (err) {
-        if (sourceError !== undefined) {
-          throw sourceError;
-        }
-        if (
-          err instanceof ClientError &&
-          err.code === Status.CANCELLED &&
-          this.closed
-        ) {
-          throw new ClientClosedError();
-        }
-        if (!isResumableStreamingStdinError(err)) {
-          throw err;
-        }
-        attempt++;
-        if (attempt > maxResumeAttempts) {
-          throw err;
-        }
-        if (err instanceof ClientError && err.code === Status.UNAUTHENTICATED) {
-          // One refresh per attempt; the attempt counter above bounds the
-          // total number of refreshes.
-          await this.refreshJwt();
-        }
-        const status = await this.execStdinStatus(taskId, execId);
-        if (status.closed) {
-          // stdin only closes on our explicit End message; if the server
-          // accepted everything we read and the source is exhausted, the
-          // upload completed but the response was lost.
-          if (sourceExhausted && status.numBytesWritten === bytesRead) {
-            this.logger.debug(
-              "execStdinWriteStream completed but response was lost",
-              "error",
-              err,
-            );
-            return bytesRead;
+        // Force-closing the client must abort the upload to release its socket.
+        const abort = new AbortController();
+        this.liveStreams.add(abort);
+        try {
+          await this.stub.taskExecStdinWriteStream(requests(), {
+            signal: abort.signal,
+          } as CallOptions);
+          return bytesRead;
+        } catch (err) {
+          if (sourceError !== undefined) {
+            throw sourceError;
           }
-          throw err;
-        }
-        offset = status.numBytesWritten;
-        this.logger.debug(
-          "execStdinWriteStream resuming after error",
-          "offset",
-          offset,
-          "error",
-          err,
-        );
-      } finally {
-        this.endOp();
-        if (this.liveStreams.delete(abort)) {
-          abort.abort();
+          if (
+            err instanceof ClientError &&
+            err.code === Status.CANCELLED &&
+            this.closed
+          ) {
+            throw new ClientClosedError();
+          }
+          if (!isResumableStreamingStdinError(err)) {
+            throw err;
+          }
+          attempt++;
+          if (attempt > maxResumeAttempts) {
+            throw err;
+          }
+          if (
+            err instanceof ClientError &&
+            err.code === Status.UNAUTHENTICATED
+          ) {
+            // One refresh per attempt; the attempt counter above bounds the
+            // total number of refreshes.
+            await this.refreshJwt();
+          }
+          const status = await callWithRetriesOnTransientErrors(
+            () =>
+              this.callWithAuthRetry(() =>
+                this.stub.taskExecStdinStatus(
+                  TaskExecStdinStatusRequest.create({ taskId, execId }),
+                ),
+              ),
+            10,
+            2,
+            10,
+            null,
+            () => this.closed,
+          );
+          if (status.closed) {
+            // stdin only closes on our explicit End message; if the server
+            // accepted everything we read and the source is exhausted, the
+            // upload completed but the response was lost.
+            if (sourceExhausted && status.numBytesWritten === bytesRead) {
+              this.logger.debug(
+                "execStdinWriteStream completed but response was lost",
+                "error",
+                err,
+              );
+              return bytesRead;
+            }
+            throw err;
+          }
+          offset = status.numBytesWritten;
+          this.logger.debug(
+            "execStdinWriteStream resuming after error",
+            "offset",
+            offset,
+            "error",
+            err,
+          );
+        } finally {
+          if (this.liveStreams.delete(abort)) {
+            abort.abort();
+          }
         }
       }
+    } finally {
+      this.endOp();
     }
   }
 
@@ -766,7 +785,7 @@ export class TaskCommandRouterClientImpl {
     }
 
     try {
-      return await callWithRetriesOnTransientErrors(
+      return await this.callWithRetries(
         () => this.callWithAuthRetry(() => this.stub.taskExecPoll(request)),
         10, // baseDelayMs
         2, // delayFactor
@@ -794,7 +813,7 @@ export class TaskCommandRouterClientImpl {
     }
 
     try {
-      return await callWithRetriesOnTransientErrors(
+      return await this.callWithRetries(
         () =>
           this.callWithAuthRetry(() =>
             this.stub.taskExecWait(request, {
@@ -831,7 +850,7 @@ export class TaskCommandRouterClientImpl {
     const overallDeadlineMs =
       options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
     try {
-      return await callWithRetriesOnTransientErrors(
+      return await this.callWithRetries(
         () =>
           this.callWithAuthRetry(() => {
             const remainingMs =
@@ -879,7 +898,7 @@ export class TaskCommandRouterClientImpl {
     const overallDeadlineMs =
       options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
     try {
-      return await callWithRetriesOnTransientErrors(
+      return await this.callWithRetries(
         () =>
           this.callWithAuthRetry(() => {
             // At least 1ms so the timeoutMiddleware's `!options.timeoutMs`
@@ -918,7 +937,7 @@ export class TaskCommandRouterClientImpl {
     const overallDeadlineMs =
       options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
     try {
-      return await callWithRetriesOnTransientErrors(
+      return await this.callWithRetries(
         () =>
           this.callWithAuthRetry(() => {
             const remainingMs =
@@ -966,7 +985,7 @@ export class TaskCommandRouterClientImpl {
     const overallDeadlineMs =
       options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
     try {
-      await callWithRetriesOnTransientErrors(
+      await this.callWithRetries(
         () =>
           this.callWithAuthRetry(() => {
             const remainingMs =
@@ -1036,7 +1055,7 @@ export class TaskCommandRouterClientImpl {
   ): Promise<SandboxWaitUntilReadyTcrResponse> {
     const deadlineMs = Date.now() + timeoutMs;
     try {
-      return await callWithRetriesOnTransientErrors(
+      return await this.callWithRetries(
         () =>
           this.callWithAuthRetry(() => {
             const remainingMs = Math.max(1, deadlineMs - Date.now());
@@ -1111,15 +1130,8 @@ export class TaskCommandRouterClientImpl {
     }
   }
 
-  /**
-   * Runs one attempt, refreshing the JWT and retrying once if it was rejected.
-   *
-   * Every unary call reaches this, so the lease is taken here: a method that
-   * takes its own route to the stub cannot then reach a connection that has
-   * been given up.
-   */
+  /** The caller holds an operation lease across authentication and all retries. */
   private async callWithAuthRetry<T>(func: () => Promise<T>): Promise<T> {
-    this.beginOp();
     try {
       return await func();
     } catch (err) {
@@ -1128,8 +1140,6 @@ export class TaskCommandRouterClientImpl {
         return await func();
       }
       throw err;
-    } finally {
-      this.endOp();
     }
   }
 
@@ -1150,127 +1160,116 @@ export class TaskCommandRouterClientImpl {
     let numRetriesRemaining = maxRetries;
     let didAuthRetry = false;
 
-    while (true) {
-      // Pulling from the stream is what keeps the client in use; while this
-      // generator is suspended at a yield it is not, so the connection may be
-      // given up under it. The stream then goes with it, and the loop below
-      // reopens at the offset the consumer reached.
-      spec.signal?.throwIfAborted();
+    let generation = this.beginOp();
+    let leased = true;
+    try {
+      attempts: while (true) {
+        // Pulling from the stream is what keeps the client in use; while this
+        // generator is suspended at a yield it is not, so the connection may be
+        // given up under it. The stream then goes with it, and the loop below
+        // reopens at the offset the consumer reached.
+        spec.signal?.throwIfAborted();
 
-      let stale = false;
-      // Registered so a release can end this stream; a suspended generator
-      // holds no lease, so the release may land while it is open.
-      const abort = new AbortController();
-      const abortWithCaller = () => abort.abort();
-      spec.signal?.addEventListener("abort", abortWithCaller, { once: true });
-
-      try {
-        const generation = this.generation;
-        this.beginOp();
-        this.liveStreams.add(abort);
-        let stream;
-        try {
-          stream = spec.open(offset, abort.signal);
-        } finally {
-          this.endOp();
-        }
+        // Registered so a release can end this stream; a suspended generator
+        // holds no lease, so the release may land while it is open.
+        const abort = new AbortController();
+        const abortWithCaller = () => abort.abort();
+        spec.signal?.addEventListener("abort", abortWithCaller, { once: true });
 
         try {
-          const items = stream[Symbol.asyncIterator]();
-          let firstOfAttempt = true;
-          while (true) {
-            // Held only while waiting on the wire, not while the consumer has
-            // the chunk.
-            this.beginOp();
-            let next;
-            try {
-              next = await items.next();
-            } finally {
+          const streamGeneration = generation;
+          this.liveStreams.add(abort);
+          const stream = spec.open(offset, abort.signal);
+
+          try {
+            const items = stream[Symbol.asyncIterator]();
+            let firstOfAttempt = true;
+            while (true) {
+              if (generation !== streamGeneration) {
+                continue attempts;
+              }
+              const next = await items.next();
+              if (next.done) {
+                return;
+              }
+              const item = next.value;
+
+              // We successfully authenticated after a JWT refresh, reset the auth retry flag.
+              if (didAuthRetry) {
+                didAuthRetry = false;
+              }
+              delayMs = baseDelayMs;
+              numRetriesRemaining = maxRetries;
+              offset = spec.nextOffset(item, offset, firstOfAttempt);
+              firstOfAttempt = false;
+
               this.endOp();
+              leased = false;
+              yield item;
+              generation = this.beginOp();
+              leased = true;
             }
-            if (next.done) {
-              return;
+          } catch (err) {
+            if (
+              err instanceof ClientError &&
+              err.code === Status.UNAUTHENTICATED &&
+              !didAuthRetry
+            ) {
+              await this.refreshJwt();
+              // Mark that we've retried authentication for this streaming attempt, to
+              // prevent subsequent retries.
+              didAuthRetry = true;
+              continue;
             }
-            const item = next.value;
-
-            // We successfully authenticated after a JWT refresh, reset the auth retry flag.
-            if (didAuthRetry) {
-              didAuthRetry = false;
-            }
-            delayMs = baseDelayMs;
-            numRetriesRemaining = maxRetries;
-            offset = spec.nextOffset(item, offset, firstOfAttempt);
-            firstOfAttempt = false;
-
-            yield item;
+            throw err;
           }
         } catch (err) {
-          if (this.generation !== generation) {
-            // The connection this stream was on was given up for idleness.
-            // Nothing went wrong, so reopen without spending a retry.
-            stale = true;
-            continue;
+          if (spec.signal?.aborted) {
+            throw err;
           }
           if (
             err instanceof ClientError &&
-            err.code === Status.UNAUTHENTICATED &&
-            !didAuthRetry
+            err.code === Status.CANCELLED &&
+            this.closed
           ) {
-            await this.refreshJwt();
-            // Mark that we've retried authentication for this streaming attempt, to
-            // prevent subsequent retries.
-            didAuthRetry = true;
-            continue;
+            throw new ClientClosedError();
           }
-          throw err;
-        }
-      } catch (err) {
-        if (stale) {
-          continue;
-        }
-        if (spec.signal?.aborted) {
-          throw err;
-        }
-        if (
-          err instanceof ClientError &&
-          err.code === Status.CANCELLED &&
-          this.closed
-        ) {
-          throw new ClientClosedError();
-        }
-        if (
-          err instanceof ClientError &&
-          RETRYABLE_GRPC_STATUS_CODES.has(err.code) &&
-          numRetriesRemaining > 0
-        ) {
-          if (spec.deadline && spec.deadline - Date.now() <= delayMs) {
-            throw new Error(
-              `Deadline exceeded while streaming stdio for ${spec.label}`,
-            );
-          }
+          if (
+            err instanceof ClientError &&
+            RETRYABLE_GRPC_STATUS_CODES.has(err.code) &&
+            numRetriesRemaining > 0
+          ) {
+            if (spec.deadline && spec.deadline - Date.now() <= delayMs) {
+              throw new Error(
+                `Deadline exceeded while streaming stdio for ${spec.label}`,
+              );
+            }
 
-          this.logger.debug(
-            "Retrying stdio read with delay",
-            "delay_ms",
-            delayMs,
-            "error",
-            err,
-          );
-          await setTimeout(delayMs, undefined, { signal: spec.signal });
-          delayMs *= delayFactor;
-          numRetriesRemaining--;
-        } else {
-          throw err;
-        }
-      } finally {
-        spec.signal?.removeEventListener("abort", abortWithCaller);
-        // A consumer can abandon this generator while it is suspended at a
-        // yield, which reaches here and nowhere else. Ending the stream is what
-        // frees the socket under it.
-        if (this.liveStreams.delete(abort)) {
-          abort.abort();
+            this.logger.debug(
+              "Retrying stdio read with delay",
+              "delay_ms",
+              delayMs,
+              "error",
+              err,
+            );
+            await setTimeout(delayMs, undefined, { signal: spec.signal });
+            delayMs *= delayFactor;
+            numRetriesRemaining--;
+          } else {
+            throw err;
+          }
+        } finally {
+          spec.signal?.removeEventListener("abort", abortWithCaller);
+          // A consumer can abandon this generator while it is suspended at a
+          // yield, which reaches here and nowhere else. Ending the stream is what
+          // frees the socket under it.
+          if (this.liveStreams.delete(abort)) {
+            abort.abort();
+          }
         }
       }
+    } finally {
+      if (leased) this.endOp();
     }
   }
 

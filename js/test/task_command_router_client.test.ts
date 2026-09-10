@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { IdleCountdown } from "../src/idle_countdown";
 import {
   parseJwtExpiration,
   callWithRetriesOnTransientErrors,
@@ -13,10 +14,11 @@ import {
   SandboxStdioReadV2Response,
   TaskExecStdinStatusResponse,
   TaskExecStdinWriteStreamRequest,
+  TaskExecStartRequest,
   TaskSnapshotFilesystemRequest,
 } from "../proto/modal_proto/task_command_router";
 import { FileDescriptor } from "../proto/modal_proto/api";
-import { TimeoutError } from "../src/errors";
+import { ClientClosedError, TimeoutError } from "../src/errors";
 
 const mockLogger = {
   debug: vi.fn(),
@@ -47,6 +49,94 @@ function makeTestClient(stub: unknown): any {
   client.stub = stub;
   return client;
 }
+
+test("closeWhenIdle lets concurrent operations finish and rejects new ones", async () => {
+  const resolvers: (() => void)[] = [];
+  const start = vi.fn(
+    () => new Promise<void>((resolve) => resolvers.push(resolve)),
+  );
+  const client = makeTestClient({ taskExecStart: start });
+  const close = vi.spyOn(client.channel, "close");
+  const first = client.execStart(TaskExecStartRequest.create());
+  const second = client.execStart(TaskExecStartRequest.create());
+  client.closeWhenIdle();
+  expect(close).not.toHaveBeenCalled();
+  await expect(client.execStart(TaskExecStartRequest.create())).rejects.toThrow(
+    ClientClosedError,
+  );
+  resolvers[0]();
+  await first;
+  expect(close).not.toHaveBeenCalled();
+  resolvers[1]();
+  await second;
+  expect(close).toHaveBeenCalledTimes(1);
+  expect(client.inFlight).toBe(0);
+  client.closeWhenIdle();
+  expect(close).toHaveBeenCalledTimes(1);
+});
+
+test("closeWhenIdle keeps a unary lease through backoff and auth refresh", async () => {
+  const client = makeTestClient({});
+  const close = vi.spyOn(client.channel, "close");
+  client.refreshJwt = vi.fn(async () => {
+    expect(close).not.toHaveBeenCalled();
+  });
+  const start = vi
+    .fn()
+    .mockImplementationOnce(async () => {
+      client.closeWhenIdle();
+      throw unavailable();
+    })
+    .mockRejectedValueOnce(
+      new ClientError("/test", Status.UNAUTHENTICATED, "refresh"),
+    )
+    .mockResolvedValue({ execId: "ex-1" });
+  client.stub = { taskExecStart: start };
+  await expect(
+    client.execStart(TaskExecStartRequest.create()),
+  ).resolves.toEqual({ execId: "ex-1" });
+  expect(start).toHaveBeenCalledTimes(3);
+  expect(client.refreshJwt).toHaveBeenCalledTimes(1);
+  expect(close).toHaveBeenCalledTimes(1);
+  expect(client.inFlight).toBe(0);
+});
+
+test("closeWhenIdle keeps a pending stdio pull leased across retries", async () => {
+  const client = makeTestClient({});
+  const close = vi.spyOn(client.channel, "close");
+  let calls = 0;
+  const aborted: boolean[] = [];
+  client.stub = {
+    async *sandboxStdioReadV2(
+      _request: unknown,
+      options: { signal: AbortSignal },
+    ) {
+      calls++;
+      if (calls === 1) {
+        client.closeWhenIdle();
+        aborted.push(options.signal.aborted);
+        throw unavailable();
+      }
+      aborted.push(options.signal.aborted);
+      expect(close).not.toHaveBeenCalled();
+      yield SandboxStdioReadV2Response.create({ data: new Uint8Array([42]) });
+    },
+  };
+  const iterable = client.sandboxStdioReadV2(
+    "ta-1",
+    FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+  );
+  const reader = iterable[Symbol.asyncIterator]();
+  expect(await reader.next()).toMatchObject({
+    done: false,
+    value: { data: new Uint8Array([42]) },
+  });
+  expect(calls).toBe(2);
+  expect(aborted).toEqual([false, false]);
+  expect(close).toHaveBeenCalledTimes(1);
+  await expect(reader.next()).rejects.toThrow(ClientClosedError);
+  expect(client.inFlight).toBe(0);
+});
 
 function mockJwt(exp: number | string | null): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -303,6 +393,28 @@ function bytesSource(bytes: Uint8Array): StdinSource {
 const unavailable = () =>
   new ClientError("/test", Status.UNAVAILABLE, "unavailable");
 
+test("closeWhenIdle lets a stdin upload resume and query its status", async () => {
+  const server = new FakeStdinStreamServer([
+    { acceptBytes: 4, error: unavailable() },
+  ]);
+  const client = makeStdinStreamClient(server);
+  const data = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const source: StdinSource = {
+    async *readFrom(offset) {
+      client.closeWhenIdle();
+      yield data.subarray(offset);
+    },
+  };
+  await expect(
+    client.execStdinWriteStream("ta-1", "ex-1", source, 4),
+  ).resolves.toBe(8);
+  expect(server.startOffsets).toEqual([0, 4]);
+  expect(server.statusCalls).toBe(1);
+  expect(new Uint8Array(server.buffer)).toEqual(data);
+  expect(client.inFlight).toBe(0);
+  expect(client.closed).toBe(true);
+});
+
 test("execStdinWriteStream streams start, data chunks, and end", async () => {
   const server = new FakeStdinStreamServer();
   const client = makeStdinStreamClient(server);
@@ -514,7 +626,7 @@ function makeSandboxStdioClient(server: FakeSandboxStdioServer): any {
   client.liveStreams = new Set();
   client.generation = 0;
   client.inFlight = 0;
-  client.idleTimerSeq = 0;
+  client.idle = new IdleCountdown();
   client.idleTimeoutMs = 0;
   return client;
 }
@@ -542,7 +654,7 @@ test("sandboxStdioReadV2 does not reopen when the caller aborts mid-backoff", as
   client.liveStreams = new Set();
   client.generation = 0;
   client.inFlight = 0;
-  client.idleTimerSeq = 0;
+  client.idle = new IdleCountdown();
   client.idleTimeoutMs = 0;
   client.stub = {
     sandboxStdioReadV2: () => {
@@ -586,7 +698,7 @@ test("sandboxStdioReadV2 does not retry a call the caller aborted", async () => 
   client.liveStreams = new Set();
   client.generation = 0;
   client.inFlight = 0;
-  client.idleTimerSeq = 0;
+  client.idle = new IdleCountdown();
   client.idleTimeoutMs = 0;
   client.stub = {
     sandboxStdioReadV2: (_req: unknown, opts: { signal?: AbortSignal }) => {
@@ -662,6 +774,54 @@ test("sandboxStdioReadV2 resumes from the next byte after a transient error", as
 
   expect(got).toEqual(stdout);
   expect(server.readOffsets).toEqual([0, 1000]);
+});
+
+test("sandboxStdioReadV2 reopens a released stream without retrying it", async () => {
+  const staleNext = vi
+    .fn()
+    .mockResolvedValueOnce({
+      done: false,
+      value: SandboxStdioReadV2Response.create({
+        data: new Uint8Array([1]),
+        startingOffset: 0,
+      }),
+    })
+    .mockRejectedValue(new ClientError("/test", Status.UNAVAILABLE, "stale"));
+  const replacementNext = vi.fn().mockResolvedValue({ done: true });
+  const readOffsets: number[] = [];
+  const client = makeSandboxStdioClient(new FakeSandboxStdioServer());
+  client.logger = { ...mockLogger, debug: vi.fn() };
+  client.stub = {
+    sandboxStdioReadV2: (req: SandboxStdioReadV2Request) => {
+      readOffsets.push(req.offset);
+      const next = req.offset === 0 ? staleNext : replacementNext;
+      return { [Symbol.asyncIterator]: () => ({ next }) };
+    },
+  };
+
+  const iterable = client.sandboxStdioReadV2(
+    "ta-1",
+    FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+  );
+  const stream = iterable[Symbol.asyncIterator]();
+  const first = await stream.next();
+  expect(first).toMatchObject({
+    done: false,
+    value: { data: new Uint8Array([1]) },
+  });
+
+  // Model the reconnect performed after the idle countdown releases the old
+  // channel. The next pull must replace its stream before touching it.
+  client.generation++;
+
+  await expect(stream.next()).resolves.toEqual({
+    done: true,
+    value: undefined,
+  });
+  expect(staleNext).toHaveBeenCalledTimes(1);
+  expect(replacementNext).toHaveBeenCalledTimes(1);
+  expect(readOffsets).toEqual([0, 1]);
+  expect(client.logger.debug).not.toHaveBeenCalled();
 });
 
 test("sandboxStdioReadV2 rebases the resume offset onto the worker's starting offset", async () => {

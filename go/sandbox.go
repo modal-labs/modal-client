@@ -742,14 +742,16 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 		sb.Stdin = &sbStdinV2{sb: sb}
 		stdoutCtx, stdoutCancel := context.WithCancel(context.Background())
 		sb.Stdout = &lazyStreamReader{
-			cancel: stdoutCancel,
+			readCheck: sb.ensureAttached,
+			cancel:    stdoutCancel,
 			initFunc: func() io.ReadCloser {
 				return outputStreamSbV2(stdoutCtx, sb, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
 			},
 		}
 		stderrCtx, stderrCancel := context.WithCancel(context.Background())
 		sb.Stderr = &lazyStreamReader{
-			cancel: stderrCancel,
+			readCheck: sb.ensureAttached,
+			cancel:    stderrCancel,
 			initFunc: func() io.ReadCloser {
 				return outputStreamSbV2(stderrCtx, sb, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
 			},
@@ -757,16 +759,8 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 		return sb
 	}
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
-	sb.Stdout = &lazyStreamReader{
-		initFunc: func() io.ReadCloser {
-			return outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
-		},
-	}
-	sb.Stderr = &lazyStreamReader{
-		initFunc: func() io.ReadCloser {
-			return outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
-		},
-	}
+	sb.Stdout = outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, client.profile.SandboxChannelIdleTimeout)
+	sb.Stderr = outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR, client.profile.SandboxChannelIdleTimeout)
 	return sb
 }
 
@@ -1393,8 +1387,17 @@ func (sb *Sandbox) getCommandRouter(ctx context.Context) (string, *taskCommandRo
 }
 
 func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
+	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
 	sb.commandRouterClientMu.Lock()
-	defer sb.commandRouterClientMu.Unlock()
+	defer func() {
+		if !sb.attached.Load() && sb.commandRouterClient != nil {
+			sb.commandRouterClient.closeWhenIdle()
+			sb.commandRouterClient = nil
+		}
+		sb.commandRouterClientMu.Unlock()
+	}()
 
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
@@ -1422,6 +1425,9 @@ func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID st
 		}
 		sb.commandRouterClient = client
 	}
+	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
 	return sb.commandRouterClient, nil
 }
 func (sb *Sandbox) ensureAttached() error {
@@ -1439,21 +1445,23 @@ func (sb *Sandbox) ensureV2(methodName string) error {
 }
 
 // Detach disconnects from the running Sandbox
+//
+// It does not block on or interrupt ongoing reads or calls. Connection resources
+// are closed promptly once those operations finish.
 func (sb *Sandbox) Detach() error {
-	if !sb.attached.Load() {
+	if !sb.attached.Swap(false) {
 		return nil
 	}
-	sb.commandRouterClientMu.Lock()
+	// Initialization owns cleanup if it is still holding this lock.
+	if !sb.commandRouterClientMu.TryLock() {
+		return nil
+	}
 	defer sb.commandRouterClientMu.Unlock()
 
 	if sb.commandRouterClient != nil {
-		err := sb.commandRouterClient.Close()
-		if err != nil {
-			return err
-		}
+		sb.commandRouterClient.closeWhenIdle()
 		sb.commandRouterClient = nil
 	}
-	sb.attached.CompareAndSwap(true, false)
 	return nil
 }
 
@@ -2508,13 +2516,19 @@ func (cps *cpStdin) Close() error {
 // leaks for unused streams. Without lazy initialization, output stream goroutines are created
 // eagerly and block on stream.Recv() calls.
 type lazyStreamReader struct {
-	once     sync.Once
-	reader   io.ReadCloser
-	initFunc func() io.ReadCloser
-	cancel   context.CancelFunc
+	once      sync.Once
+	reader    io.ReadCloser
+	initFunc  func() io.ReadCloser
+	readCheck func() error
+	cancel    context.CancelFunc
 }
 
 func (l *lazyStreamReader) Read(p []byte) (int, error) {
+	if l.readCheck != nil {
+		if err := l.readCheck(); err != nil {
+			return 0, err
+		}
+	}
 	l.once.Do(func() {
 		l.reader = l.initFunc()
 	})
@@ -2553,10 +2567,95 @@ type logStreamReader struct {
 	// repeating logs the caller has seen.
 	lastEntryID      string
 	retriesRemaining int
+	retryDelay       time.Duration
 	completed        bool
+
+	// How long the open stream may sit unread before it is given back, and the
+	// machinery to do it. An open stream that nobody cancels holds what is
+	// behind it — a goroutine among other things — until the process ends, so a
+	// reader who walks away releases nothing on its own.
+	idleTimeout time.Duration
+	idleMu      sync.Mutex
+	idle        idleCountdown
+	// closed prevents a fetch from rearming the idle countdown after Close.
+	closed bool
+	// Cancels the RPC behind stream, and says whether that has happened. A
+	// release can only land between fetches. Buffered bytes remain readable
+	// after release, and the next fetch reopens the stream.
+	streamCancel context.CancelFunc
+	released     bool
 }
 
-func outputStreamSb(cpClient pb.ModalClientClient, sandboxID string, fd pb.FileDescriptor) io.ReadCloser {
+// Close stops the idle release; chunkReader.Close cancels the context the
+// stream was opened under, which ends the stream with it.
+func (r *logStreamReader) Close() error {
+	r.idleMu.Lock()
+	r.closed = true
+	r.idle.stop()
+	r.idleMu.Unlock()
+	return r.chunkReader.Close()
+}
+
+// pinStream holds off idle release while fetching output, including retries.
+func (r *logStreamReader) pinStream() {
+	r.idleMu.Lock()
+	defer r.idleMu.Unlock()
+	r.idle.stop()
+}
+
+func (r *logStreamReader) armIdleRelease() {
+	r.idleMu.Lock()
+	defer r.idleMu.Unlock()
+	if !r.closed {
+		r.idle.arm(r.idleTimeout, r.releaseIfIdle)
+	}
+}
+
+// releaseIfIdle gives the stream back. Only the stream goes: the reader stays
+// usable, and the next Read reopens from lastEntryID.
+func (r *logStreamReader) releaseIfIdle(seq uint64) {
+	r.idleMu.Lock()
+	if !r.idle.fired(seq) {
+		r.idleMu.Unlock()
+		return
+	}
+	cancel := r.streamCancel
+	r.streamCancel = nil
+	if cancel != nil {
+		r.released = true
+	}
+	r.idleMu.Unlock()
+
+	// Only the stream's own context is cancelled, and never under the reader's
+	// lock: a Read blocked on the stream holds that lock, and this must not
+	// wait on one.
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// takeReleased answers, once, whether the stream was given back since the last
+// read looked.
+func (r *logStreamReader) takeReleased() bool {
+	r.idleMu.Lock()
+	defer r.idleMu.Unlock()
+	released := r.released
+	r.released = false
+	return released
+}
+
+func (r *logStreamReader) setStreamCancel(cancel context.CancelFunc) {
+	r.idleMu.Lock()
+	defer r.idleMu.Unlock()
+	r.streamCancel = cancel
+}
+
+func outputStreamSb(
+	cpClient pb.ModalClientClient,
+	sandboxID string,
+	fd pb.FileDescriptor,
+	idleTimeout time.Duration,
+) io.ReadCloser {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &logStreamReader{
 		cpClient:         cpClient,
@@ -2564,6 +2663,8 @@ func outputStreamSb(cpClient pb.ModalClientClient, sandboxID string, fd pb.FileD
 		fd:               fd,
 		lastEntryID:      "0-0",
 		retriesRemaining: sbLogsMaxRetries,
+		retryDelay:       sbLogsRetryInitialDelay,
+		idleTimeout:      idleTimeout,
 	}
 	r.ctx, r.cancel = ctx, cancel
 	r.fetch, r.dropStream = r.fill, r.closeStream
@@ -2572,14 +2673,53 @@ func outputStreamSb(cpClient pb.ModalClientClient, sandboxID string, fd pb.FileD
 
 const sbLogsMaxRetries = 10
 
+const (
+	sbLogsRetryInitialDelay = 10 * time.Millisecond
+	sbLogsRetryDelayFactor  = 2.0
+)
+
 func (r *logStreamReader) closeStream() {
+	r.idleMu.Lock()
+	cancel := r.streamCancel
+	r.streamCancel = nil
+	r.idleMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	r.stream = nil
+}
+
+func (r *logStreamReader) recoverFrom(err error) (retry bool, fatal error) {
+	if !isRetryableGrpc(err) || r.retriesRemaining <= 0 {
+		return false, err
+	}
+
+	timer := time.NewTimer(r.retryDelay)
+	defer timer.Stop()
+	select {
+	case <-r.ctx.Done():
+		return false, r.ctx.Err()
+	case <-timer.C:
+	}
+	r.retryDelay = time.Duration(float64(r.retryDelay) * sbLogsRetryDelayFactor)
+	r.retriesRemaining--
+	return true, nil
+}
+
+func (r *logStreamReader) resetRetry() {
+	r.retryDelay = sbLogsRetryInitialDelay
+	r.retriesRemaining = sbLogsMaxRetries
 }
 
 // fill pulls the next batch of log items into pending, reopening the stream as
 // it needs to. The control plane ends a stream every 55 seconds, so reopening
 // at lastEntryID is the ordinary path rather than an error one.
 func (r *logStreamReader) fill() error {
+	// chunkReader serializes fetches. Reading buffered bytes does not keep the
+	// RPC active, but a fetch holds it through receives and retries.
+	r.pinStream()
+	defer r.armIdleRelease()
+
 	for {
 		if r.completed {
 			return io.EOF
@@ -2587,22 +2727,30 @@ func (r *logStreamReader) fill() error {
 		if err := r.ctx.Err(); err != nil {
 			return err
 		}
+		if r.takeReleased() {
+			// Given back while nobody was reading: reopen from lastEntryID
+			// rather than ask a stream that is already gone.
+			r.closeStream()
+		}
 
 		if r.stream == nil {
-			stream, err := r.cpClient.SandboxGetLogs(r.ctx, pb.SandboxGetLogsRequest_builder{
+			streamCtx, streamCancel := context.WithCancel(r.ctx)
+			stream, err := r.cpClient.SandboxGetLogs(streamCtx, pb.SandboxGetLogsRequest_builder{
 				SandboxId:      r.sandboxID,
 				FileDescriptor: r.fd,
 				Timeout:        55,
 				LastEntryId:    r.lastEntryID,
 			}.Build())
 			if err != nil {
-				if isRetryableGrpc(err) && r.retriesRemaining > 0 {
-					r.retriesRemaining--
+				streamCancel()
+				retry, fatal := r.recoverFrom(err)
+				if retry {
 					continue
 				}
-				return fmt.Errorf("error getting output stream: %w", err)
+				return fmt.Errorf("error getting output stream: %w", fatal)
 			}
 			r.stream = stream
+			r.setStreamCancel(streamCancel)
 		}
 
 		batch, err := r.stream.Recv()
@@ -2612,13 +2760,14 @@ func (r *logStreamReader) fill() error {
 				// The server closed this stream; carry on from lastEntryID.
 				continue
 			}
-			if isRetryableGrpc(err) && r.retriesRemaining > 0 {
-				r.retriesRemaining--
+			retry, fatal := r.recoverFrom(err)
+			if retry {
 				continue
 			}
-			return fmt.Errorf("error getting output stream: %w", err)
+			return fmt.Errorf("error getting output stream: %w", fatal)
 		}
 
+		r.resetRetry()
 		r.lastEntryID = batch.GetEntryId()
 		// A batch carries several items, which concatenate into one read's
 		// worth. fill only runs with pending empty, so this starts from empty
