@@ -46,16 +46,17 @@ class FunctionCreationStatus:
 
         if not self.response:
             self.status_row.finish(f"Unknown error when creating function {self.tag}")
+            return
 
-        elif web_url := self.response.handle_metadata.web_url:
+        for warning in self.response.server_warnings:
+            self.status_row.warn(warning)
+
+        if web_url := self.response.handle_metadata.web_url:
             url_info = self.response.function.web_url_info
             requires_proxy_auth = self.response.function.webhook_config.requires_proxy_auth
             proxy_auth_suffix = " 🔑" if requires_proxy_auth else ""
             # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
             suffix = _get_suffix_from_web_url_info(url_info)
-            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            for warning in self.response.server_warnings:
-                self.status_row.warn(warning)
             self.status_row.finish(
                 f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]"
                 f"{proxy_auth_suffix}{suffix}"
@@ -78,8 +79,6 @@ class FunctionCreationStatus:
                 )
 
         else:
-            for warning in self.response.server_warnings:
-                self.status_row.warn(warning)
             self.status_row.finish(f"Created function {self.tag}.")
             if self.response.function.method_definitions_set:
                 for method_definition in self.response.function.method_definitions.values():
