@@ -4,6 +4,7 @@ import base64
 import json
 import random
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES, Retry
@@ -15,8 +16,15 @@ from .logger import logger
 AUTH_DENIED_EXCEPTIONS = (AuthError, PermissionDeniedError)
 
 
+TokenFetcher = Callable[[Retry], Awaitable[str]]
+
+
 class _AuthTokenManager:
-    """Handles fetching and refreshing of the input plane auth token."""
+    """Handles fetching and refreshing of a short-lived JWT.
+
+    Defaults to the input plane auth token (`AuthTokenGet`); pass `fetch` to manage a different token with the
+    same caching and refresh behavior.
+    """
 
     # Fraction of the token's lifetime to use before refreshing.
     REFRESH_FRACTION = 0.5
@@ -26,7 +34,7 @@ class _AuthTokenManager:
     # only ever delays a refresh, so the margin before expiry stays at no less than
     # 1 - REFRESH_FRACTION - REFRESH_JITTER of the lifetime.
     REFRESH_JITTER = 0.1
-    # Bound each AuthTokenGet attempt so a refresh can't hang.
+    # Bound each fetch attempt so a refresh can't hang.
     AUTH_TOKEN_TIMEOUT = 5.0
     AUTH_TOKEN_RETRY_TOTAL_TIMEOUT = 3 * AUTH_TOKEN_TIMEOUT
     # After a failed refresh, wait before hitting the server again, growing exponentially with
@@ -36,8 +44,9 @@ class _AuthTokenManager:
     # If the token doesn't have an expiry field, default to current time plus this value (not expected).
     DEFAULT_EXPIRY_OFFSET = 20 * 60
 
-    def __init__(self, stub: "modal_api_grpc.ModalClientModal"):
+    def __init__(self, stub: "modal_api_grpc.ModalClientModal", fetch: TokenFetcher | None = None):
         self._stub = stub
+        self._fetch = fetch or self._fetch_auth_token
         self._token = ""
         self._expiry = 0.0
         self._refresh_at = 0.0
@@ -105,31 +114,33 @@ class _AuthTokenManager:
             # Retrieve the exception, if any, so a failure isn't logged as unhandled when no caller is waiting.
             task.exception()
 
+    async def _fetch_auth_token(self, retry: Retry) -> str:
+        resp: api_pb2.AuthTokenGetResponse = await self._stub.AuthTokenGet(api_pb2.AuthTokenGetRequest(), retry=retry)
+        return resp.token
+
     async def _fetch_token(self):
-        """Make the AuthTokenGet request and cache its token, or arm the failure backoff."""
+        """Fetch a new token and cache it, or arm the failure backoff."""
         try:
-            resp: api_pb2.AuthTokenGetResponse = await self._stub.AuthTokenGet(
-                api_pb2.AuthTokenGetRequest(),
-                # No cached token to fall back on, so a failure is user-visible: retry transient errors.
-                # Otherwise one attempt, and _retry_after handles the cooldown.
-                retry=Retry(
-                    attempt_timeout=self.AUTH_TOKEN_TIMEOUT,
-                    total_timeout=self.AUTH_TOKEN_RETRY_TOTAL_TIMEOUT,
-                    max_retries=0 if self._token else DEFAULT_MAX_RETRIES,
-                ),
+            # No cached token to fall back on, so a failure is user-visible: retry transient errors.
+            # Otherwise one attempt, and _retry_after handles the cooldown.
+            retry = Retry(
+                attempt_timeout=self.AUTH_TOKEN_TIMEOUT,
+                total_timeout=self.AUTH_TOKEN_RETRY_TOTAL_TIMEOUT,
+                max_retries=0 if self._token else DEFAULT_MAX_RETRIES,
             )
-            if not resp.token:
+            token = await self._fetch(retry)
+            if not token:
                 # Not expected
                 raise ExecutionError(
                     "Internal error: Did not receive auth token from server. Please contact Modal support."
                 )
-            if exp := self._decode_jwt(resp.token).get("exp"):
+            if exp := self._decode_jwt(token).get("exp"):
                 expiry = float(exp)
             else:
                 # This should never happen.
-                logger.warning("x-modal-auth-token does not contain exp field")
+                logger.warning("Auth token does not contain exp field")
                 expiry = time.time() + self.DEFAULT_EXPIRY_OFFSET
-            self._token = resp.token
+            self._token = token
             self._set_expiry(expiry)
             self._retry_after = 0.0
             self._backoff = self.FAILURE_BACKOFF_BASE

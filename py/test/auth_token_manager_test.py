@@ -588,3 +588,24 @@ async def test_multiple_refresh_cycles(auth_token_manager, servicer):
 
 def exp_time(token: str):
     return jwt.decode(token, options={"verify_signature": False})["exp"]
+
+
+@pytest.mark.asyncio
+async def test_custom_fetch(client, valid_jwt_token):
+    """A custom fetcher receives the manager's retry policy and its token is cached like the default one."""
+    calls: list = []
+
+    async def fetch(retry):
+        calls.append(retry)
+        return valid_jwt_token
+
+    manager = _AuthTokenManager(client.stub, fetch=fetch)
+
+    @synchronize_api
+    async def wrapped_get_token():
+        return await manager.get_token()
+
+    assert await wrapped_get_token.aio() == valid_jwt_token
+    assert await wrapped_get_token.aio() == valid_jwt_token
+    assert len(calls) == 1
+    assert calls[0].max_retries == DEFAULT_MAX_RETRIES
