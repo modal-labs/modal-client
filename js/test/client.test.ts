@@ -8,6 +8,8 @@ import {
 import { ModalClient, type Logger } from "modal";
 import { RPCRetryPolicy, RPCStatus } from "../proto/modal_proto/api";
 import { Any } from "../proto/google/protobuf/any";
+import { generateKeyPairSync } from "node:crypto";
+import jwt from "jsonwebtoken";
 import { afterEach, expect, test, vi } from "vitest";
 
 // --- helpers for RPCRetryPolicy tests ---
@@ -18,6 +20,15 @@ const noopLogger: Logger = {
   warn: () => {},
   error: () => {},
 };
+
+const testJwtKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const testJwtKeyPem = testJwtKeyPair.privateKey
+  .export({ type: "pkcs8", format: "pem" })
+  .toString();
+const testJwtPublicKeyPem = testJwtKeyPair.publicKey.export({
+  type: "spki",
+  format: "pem",
+});
 
 test("authMiddleware sends OAuth credentials without token credentials", async () => {
   const client = new ModalClient({
@@ -49,8 +60,67 @@ test("authMiddleware sends OAuth credentials without token credentials", async (
   expect(metadata?.get("x-modal-token-secret")).toBeUndefined();
 });
 
+test("authMiddleware sends a client assertion instead of a client secret", async () => {
+  const client = new ModalClient({
+    oauthRefreshToken: "refresh-token",
+    oauthClientId: "oc-client-id",
+    oauthJwtKey: testJwtKeyPem,
+    logger: noopLogger,
+    cpClient: {} as any,
+  });
+  const middleware = (client as any).authMiddleware(client.profile);
+  let metadata: Metadata | undefined;
+  const call = makeMockCall(async function* (
+    _request: unknown,
+    options: CallOptions,
+  ) {
+    metadata = options.metadata as Metadata;
+    yield {};
+  });
+  call.method.path = "/modal.client.ModalClient/AuthTokenGet";
+
+  for await (const _ of middleware(call, {})) {
+    // Drain the unary response.
+  }
+
+  expect(metadata?.get("x-modal-refresh-token")).toBe("refresh-token");
+  expect(metadata?.get("x-modal-oauth-client-id")).toBe("oc-client-id");
+  expect(metadata?.get("x-modal-oauth-client-secret")).toBeUndefined();
+  const assertion = metadata?.get("x-modal-oauth-client-assertion");
+  expect(assertion).toBeDefined();
+  expect(
+    jwt.verify(assertion!, testJwtPublicKeyPem, {
+      algorithms: ["RS256"],
+      audience: "modal-server",
+      issuer: "oc-client-id",
+    }),
+  ).toBeTruthy();
+});
+
+test("ModalClient rejects a malformed OAuth JWT key", () => {
+  expect(
+    () =>
+      new ModalClient({
+        oauthRefreshToken: "refresh-token",
+        oauthClientId: "oc-client-id",
+        oauthJwtKey: "not-a-key",
+        logger: noopLogger,
+        cpClient: {} as any,
+      }),
+  ).toThrow("must be an unencrypted RSA private key");
+});
+
 test.each([
   [{ oauthRefreshToken: "refresh-token" }, "must all be configured"],
+  [
+    {
+      oauthRefreshToken: "refresh-token",
+      oauthClientId: "oc-client-id",
+      oauthClientSecret: "ov-client-secret",
+      oauthJwtKey: testJwtKeyPem,
+    },
+    "exactly one of client secret or JWT key",
+  ],
   [
     {
       oauthRefreshToken: "",

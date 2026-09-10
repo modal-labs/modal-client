@@ -13,6 +13,7 @@ interface Config {
     oauth_refresh_token?: string;
     oauth_client_id?: string;
     oauth_client_secret?: string;
+    oauth_jwt_key?: string;
     environment?: string;
     image_builder_version?: string;
     loglevel?: string;
@@ -29,6 +30,7 @@ export interface Profile {
   oauthRefreshToken?: string;
   oauthClientId?: string;
   oauthClientSecret?: string;
+  oauthJwtKey?: string;
   environment?: string;
   imageBuilderVersion?: string;
   logLevel?: string;
@@ -103,6 +105,23 @@ function readConfigFile(): Config {
 // synchronously, for instance.
 const config: Config = readConfigFile();
 
+/**
+ * Picks between a client secret and a private JWT key. Either one set in the
+ * environment suppresses both file values, so a JWT key can override a
+ * secret-based profile without configuring both at once.
+ */
+function resolveOAuthClientAuth(
+  secretEnv: string | undefined,
+  jwtKeyEnv: string | undefined,
+  secretFile: string | undefined,
+  jwtKeyFile: string | undefined,
+): { oauthClientSecret?: string; oauthJwtKey?: string } {
+  if (secretEnv || jwtKeyEnv) {
+    return { oauthClientSecret: secretEnv, oauthJwtKey: jwtKeyEnv };
+  }
+  return { oauthClientSecret: secretFile, oauthJwtKey: jwtKeyFile };
+}
+
 export function getProfile(profileName?: string): Profile {
   if (!profileName) {
     for (const [name, profileData] of Object.entries(config)) {
@@ -129,9 +148,12 @@ export function getProfile(profileName?: string): Profile {
       profileData.oauth_refresh_token,
     oauthClientId:
       process.env["MODAL_OAUTH_CLIENT_ID"] || profileData.oauth_client_id,
-    oauthClientSecret:
-      process.env["MODAL_OAUTH_CLIENT_SECRET"] ||
+    ...resolveOAuthClientAuth(
+      process.env["MODAL_OAUTH_CLIENT_SECRET"],
+      process.env["MODAL_OAUTH_JWT_KEY"],
       profileData.oauth_client_secret,
+      profileData.oauth_jwt_key,
+    ),
     environment: process.env["MODAL_ENVIRONMENT"] || profileData.environment,
     imageBuilderVersion:
       process.env["MODAL_IMAGE_BUILDER_VERSION"] ||

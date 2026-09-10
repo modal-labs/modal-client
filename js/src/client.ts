@@ -32,6 +32,8 @@ import { checkForRenamedParams } from "./validation";
 import { createLogger, type Logger, type LogLevel } from "./logger";
 import { EnvironmentManager } from "./environment";
 import { InvalidError } from "./errors";
+import { mintOAuthClientAssertion, parseOAuthJwtKey } from "./oauth";
+import type { KeyObject } from "node:crypto";
 
 export interface ModalClientParams {
   tokenId?: string;
@@ -42,6 +44,8 @@ export interface ModalClientParams {
   oauthClientId?: string;
   /** Modal-issued OAuth client secret, with an `ov-` prefix. */
   oauthClientSecret?: string;
+  /** Unencrypted RSA private key encoded as PEM, with literal or escaped newlines. */
+  oauthJwtKey?: string;
   environment?: string;
   endpoint?: string;
   timeoutMs?: number;
@@ -109,6 +113,7 @@ export class ModalClient {
   private authTokenManager: AuthTokenManager | null = null;
   private customMiddleware: ClientMiddleware[];
   private environmentManager: EnvironmentManager;
+  private oauthJwtKey?: KeyObject;
 
   constructor(params?: ModalClientParams) {
     checkForRenamedParams(params, { timeout: "timeoutMs" });
@@ -119,7 +124,8 @@ export class ModalClient {
     const hasOAuthParams =
       params?.oauthRefreshToken !== undefined ||
       params?.oauthClientId !== undefined ||
-      params?.oauthClientSecret !== undefined;
+      params?.oauthClientSecret !== undefined ||
+      params?.oauthJwtKey !== undefined;
     this.profile = {
       ...baseProfile,
       ...(params?.environment && { environment: params.environment }),
@@ -137,14 +143,20 @@ export class ModalClient {
       this.profile.oauthRefreshToken = undefined;
       this.profile.oauthClientId = undefined;
       this.profile.oauthClientSecret = undefined;
+      this.profile.oauthJwtKey = undefined;
     } else if (hasOAuthParams) {
       this.profile.tokenId = undefined;
       this.profile.tokenSecret = undefined;
       this.profile.oauthRefreshToken = params?.oauthRefreshToken;
       this.profile.oauthClientId = params?.oauthClientId;
       this.profile.oauthClientSecret = params?.oauthClientSecret;
+      this.profile.oauthJwtKey = params?.oauthJwtKey;
     }
     this.validateProfileCredentials(hasOAuthParams);
+
+    this.oauthJwtKey = this.profile.oauthJwtKey
+      ? parseOAuthJwtKey(this.profile.oauthJwtKey)
+      : undefined;
 
     const logLevelValue = params?.logLevel || this.profile.logLevel || "";
     this.logger = createLogger(params?.logger, logLevelValue);
@@ -195,7 +207,8 @@ export class ModalClient {
       Boolean(
         this.profile.oauthRefreshToken ||
           this.profile.oauthClientId ||
-          this.profile.oauthClientSecret,
+          this.profile.oauthClientSecret ||
+          this.profile.oauthJwtKey,
       );
     if (hasTokenCredentials && hasOAuthCredentials) {
       throw new InvalidError(
@@ -206,10 +219,11 @@ export class ModalClient {
       hasOAuthCredentials &&
       (!this.profile.oauthRefreshToken ||
         !this.profile.oauthClientId ||
-        !this.profile.oauthClientSecret)
+        Boolean(this.profile.oauthClientSecret) ===
+          Boolean(this.profile.oauthJwtKey))
     ) {
       throw new InvalidError(
-        "OAuth refresh token, client ID, and client secret must all be configured.",
+        "OAuth refresh token, client ID, and exactly one of client secret or JWT key must all be configured.",
       );
     }
   }
@@ -497,6 +511,7 @@ export class ModalClient {
       }
       return this.authTokenManager;
     };
+    const oauthJwtKey = this.oauthJwtKey;
 
     return async function* authMiddleware<Request, Response>(
       call: ClientMiddlewareCall<Request, Response>,
@@ -505,7 +520,7 @@ export class ModalClient {
       const hasOAuthCredentials = Boolean(
         profile.oauthRefreshToken &&
           profile.oauthClientId &&
-          profile.oauthClientSecret,
+          (profile.oauthClientSecret || oauthJwtKey),
       );
       if (!hasOAuthCredentials && (!profile.tokenId || !profile.tokenSecret)) {
         throw new Error(
@@ -529,10 +544,17 @@ export class ModalClient {
           profile.oauthRefreshToken!,
         );
         options.metadata.set("x-modal-oauth-client-id", profile.oauthClientId!);
-        options.metadata.set(
-          "x-modal-oauth-client-secret",
-          profile.oauthClientSecret!,
-        );
+        if (oauthJwtKey) {
+          options.metadata.set(
+            "x-modal-oauth-client-assertion",
+            mintOAuthClientAssertion(profile.oauthClientId!, oauthJwtKey),
+          );
+        } else {
+          options.metadata.set(
+            "x-modal-oauth-client-secret",
+            profile.oauthClientSecret!,
+          );
+        }
       } else {
         options.metadata.set("x-modal-token-id", profile.tokenId!);
         options.metadata.set("x-modal-token-secret", profile.tokenSecret!);

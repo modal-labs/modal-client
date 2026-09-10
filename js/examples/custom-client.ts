@@ -11,16 +11,23 @@ if (refreshToken) {
       "CUSTOM_MODAL_OAUTH_CLIENT_ID environment variable not set",
     );
   }
+  // Authenticate with either a client secret or a private-key JWT, not both.
   const oauthClientSecret = process.env.CUSTOM_MODAL_OAUTH_CLIENT_SECRET;
-  if (!oauthClientSecret) {
+  const oauthJwtKey = process.env.CUSTOM_MODAL_OAUTH_JWT_KEY;
+  if (!oauthClientSecret && !oauthJwtKey) {
     throw new Error(
-      "CUSTOM_MODAL_OAUTH_CLIENT_SECRET environment variable not set",
+      "CUSTOM_MODAL_OAUTH_CLIENT_SECRET or CUSTOM_MODAL_OAUTH_JWT_KEY environment variable not set",
+    );
+  }
+  if (oauthClientSecret && oauthJwtKey) {
+    throw new Error(
+      "Set only one of CUSTOM_MODAL_OAUTH_CLIENT_SECRET and CUSTOM_MODAL_OAUTH_JWT_KEY",
     );
   }
   credentials = {
     oauthRefreshToken: refreshToken,
     oauthClientId,
-    oauthClientSecret,
+    ...(oauthJwtKey ? { oauthJwtKey } : { oauthClientSecret }),
   };
 } else {
   const modalId = process.env.CUSTOM_MODAL_ID;
