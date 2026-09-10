@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
 from pickle import dumps
+from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -2050,6 +2051,249 @@ def test_app_descriptions_with_name(servicer, set_env_client, test_dir):
 
     serve_description = create_reqs[1].description
     assert serve_description == "named-serve-app"
+
+
+def _mock_function_logs(monkeypatch):
+    function_api = mock.Mock()
+    function_api.from_name.return_value._get_log_query_data.aio = mock.AsyncMock(
+        return_value=mock.Mock(app_id="ap-function-app", source_object_id="fu-function")
+    )
+    monkeypatch.setattr("modal.cli.function.Function", function_api)
+    return function_api
+
+
+def _mock_server_logs(monkeypatch):
+    server_api = mock.Mock()
+    server_api.from_name.return_value._get_log_query_data.aio = mock.AsyncMock(
+        return_value=SimpleNamespace(app_id="ap-server-app", source_object_id="fu-server")
+    )
+    monkeypatch.setattr("modal.cli.server.Server", server_api)
+    return server_api
+
+
+def test_server_logs_defaults_to_tail(set_env_client, monkeypatch):
+    server_api = _mock_server_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
+
+    run_cli_command(["server", "logs", "my-app/WebServer"])
+
+    server_api.from_name.assert_called_once_with("my-app", "WebServer", environment_name="")
+    run_logs.assert_awaited_once()
+    args, kwargs = run_logs.await_args
+    assert args == ("ap-server-app",)
+    assert kwargs["tail"] is None
+    assert kwargs["function_id"] == "fu-server"
+
+
+def test_server_logs_resolves_fu_prefixed_app_name(set_env_client, monkeypatch):
+    server_api = _mock_server_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
+
+    run_cli_command(["server", "logs", "fu-prefixed-app/WebServer"])
+
+    server_api.from_name.assert_called_once_with("fu-prefixed-app", "WebServer", environment_name="")
+    assert run_logs.await_args.args == ("ap-server-app",)
+
+
+def test_server_logs_fetches_time_range(set_env_client, monkeypatch):
+    server_api = _mock_server_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
+
+    run_cli_command(
+        [
+            "server",
+            "logs",
+            "my-app/WebServer",
+            "--since",
+            "2026-08-18T00:00:00+00:00",
+            "--until",
+            "2026-08-18T01:00:00+00:00",
+            "--source",
+            "stderr",
+            "--search",
+            "matching",
+            "--env",
+            "prod",
+        ]
+    )
+
+    server_api.from_name.assert_called_once_with("my-app", "WebServer", environment_name="prod")
+    run_logs.assert_awaited_once()
+    args, kwargs = run_logs.await_args
+    assert args == ("ap-server-app",)
+    assert kwargs["since"] == "2026-08-18T00:00:00+00:00"
+    assert kwargs["until"] == "2026-08-18T01:00:00+00:00"
+    assert kwargs["function_id"] == "fu-server"
+    assert kwargs["source"] == "stderr"
+    assert kwargs["search"] == "matching"
+
+
+def test_server_logs_follows_with_filters(set_env_client, monkeypatch):
+    _mock_server_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
+
+    run_cli_command(
+        [
+            "server",
+            "logs",
+            "my-app/WebServer",
+            "--follow",
+            "--container",
+            "ta-container",
+            "--source",
+            "system",
+            "--search",
+            "ready",
+        ]
+    )
+
+    run_logs.assert_awaited_once()
+    args, kwargs = run_logs.await_args
+    assert args == ("ap-server-app",)
+    assert kwargs["follow"] is True
+    assert kwargs["function_id"] == "fu-server"
+    assert kwargs["container_id"] == "ta-container"
+    assert kwargs["search"] == "ready"
+
+
+def test_server_logs_shows_server_id(set_env_client, monkeypatch):
+    _mock_server_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
+
+    run_cli_command(["server", "logs", "my-app/WebServer", "--show-server-id"])
+
+    _, kwargs = run_logs.await_args
+    assert kwargs["prefix_fields"] == ["fu"]
+
+    help_text = run_cli_command(["server", "logs", "--help"]).stdout
+    assert "--show-server-id" in help_text
+    assert "--show-function-id" not in help_text
+    assert "--function-call" not in help_text
+
+
+def test_server_logs_requires_app_and_server_names(set_env_client, monkeypatch):
+    server_api = _mock_server_logs(monkeypatch)
+
+    result = run_cli_command(["server", "logs", "WebServer"], expected_exit_code=2)
+
+    assert "Server must be specified as APP_NAME/SERVER_NAME or a Function ID" in result.stderr
+    server_api.from_name.assert_not_called()
+
+
+def test_function_logs_resolves_name_and_runs_shared_command(set_env_client, monkeypatch):
+    function_api = _mock_function_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
+
+    run_cli_command(
+        [
+            "function",
+            "logs",
+            "my-app/process",
+            "--since",
+            "2h",
+            "--tail",
+            "25",
+            "--source",
+            "stderr",
+            "--search",
+            "failed",
+            "--function-call",
+            "fc-call",
+            "--container",
+            "ta-container",
+            "--env",
+            "prod",
+        ]
+    )
+
+    function_api.from_name.assert_called_once_with("my-app", "process", environment_name="prod")
+    run_logs.assert_awaited_once()
+    args, kwargs = run_logs.await_args
+    assert args == ("ap-function-app",)
+    assert kwargs["since"] == "2h"
+    assert kwargs["tail"] == 25
+    assert kwargs["source"] == "stderr"
+    assert kwargs["search"] == "failed"
+    assert kwargs["function_id"] == "fu-function"
+    assert kwargs["function_call_id"] == "fc-call"
+    assert kwargs["container_id"] == "ta-container"
+
+
+def test_function_logs_resolves_fu_prefixed_app_name(set_env_client, monkeypatch):
+    function_api = _mock_function_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
+
+    run_cli_command(["function", "logs", "fu-prefixed-app/process"])
+
+    function_api.from_name.assert_called_once_with("fu-prefixed-app", "process", environment_name="")
+    assert run_logs.await_args.args == ("ap-function-app",)
+
+
+def test_function_logs_resolves_app_id_from_function_id(set_env_client, monkeypatch):
+    function_api = _mock_function_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
+
+    client = mock.Mock()
+    client.stub.FunctionGetById = mock.AsyncMock(
+        return_value=api_pb2.FunctionGetByIdResponse(
+            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-from-function-id")
+        )
+    )
+    monkeypatch.setattr("modal.cli._logs._Client.from_env", mock.AsyncMock(return_value=client))
+
+    run_cli_command(["function", "logs", "fu-123"])
+
+    function_api.from_name.assert_not_called()
+    request = client.stub.FunctionGetById.await_args.args[0]
+    assert request.function_id == "fu-123"
+    run_logs.assert_awaited_once()
+    args, kwargs = run_logs.await_args
+    assert args == ("ap-from-function-id",)
+    assert kwargs["function_id"] == "fu-123"
+
+
+def test_function_logs_prefixes_ids(set_env_client, monkeypatch):
+    _mock_function_logs(monkeypatch)
+    run_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
+
+    run_cli_command(
+        [
+            "function",
+            "logs",
+            "my-app/process",
+            "--show-function-id",
+            "--show-function-call-id",
+            "--show-container-id",
+        ]
+    )
+
+    _, kwargs = run_logs.await_args
+    assert kwargs["prefix_fields"] == ["fu", "fc", "ta"]
+
+
+def test_function_logs_requires_app_and_function_names(set_env_client, monkeypatch):
+    function_api = _mock_function_logs(monkeypatch)
+
+    result = run_cli_command(["function", "logs", "process"], expected_exit_code=2)
+
+    assert "Function must be specified as APP_NAME/FUNCTION_NAME or a Function ID" in result.stderr
+    function_api.from_name.assert_not_called()
+
+
+def test_function_logs_help(set_env_client):
+    help_text = run_cli_command(["function", "logs", "--help"]).stdout
+    assert "--function-call" in help_text
+    assert "--show-function-id" in help_text
+    assert "--show-function-call-id" in help_text
 
 
 def test_logs(servicer, server_url_env, set_env_client, mock_dir):

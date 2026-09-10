@@ -3,7 +3,6 @@ import re
 import sys
 import time
 import warnings
-from datetime import datetime, timezone
 from json import dumps
 from typing import Literal, get_args
 
@@ -24,13 +23,10 @@ from modal.output import OutputManager
 from modal.runner import DEPLOYMENT_STRATEGY_TYPE, _stop_and_wait_for_containers
 from modal_proto import api_pb2
 
-from .._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
-from .._utils.time_utils import locale_tz, parse_duration, timestamp_to_localized_str
+from .._utils.time_utils import timestamp_to_localized_str
 from ._help import ModalGroup
+from ._logs import _run_logs_command, _validate_logs_args
 from .utils import (
-    _fetch_app_logs,
-    _stream_app_logs,
-    _tail_app_logs,
     confirm_or_suggest_yes,
     display_table,
     env_option,
@@ -136,43 +132,6 @@ async def list_(env: str | None = None, json: bool = False):
     display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
-def _parse_time_arg(value: str | None, default: datetime) -> datetime:
-    """Parse a time argument that can be a relative duration (e.g. '2h', '30m') or ISO 8601 datetime.
-
-    Naive datetime values are interpreted in the user's local timezone.
-    Relative durations are always UTC-relative.
-    """
-    if value is None:
-        return default
-
-    try:
-        duration = parse_duration(value)
-    except ValueError:
-        pass
-    else:
-        return datetime.now(timezone.utc) - duration
-
-    # Try ISO 8601 datetime
-    try:
-        dt = datetime.fromisoformat(value)
-        if dt.tzinfo is None:
-            # Interpret naive datetimes in the user's local timezone
-            dt = dt.replace(tzinfo=locale_tz())
-        return dt
-    except ValueError:
-        raise UsageError(f"Invalid time format: '{value}'. Use a relative duration (e.g. '2h') or ISO 8601 datetime.")
-
-
-_DEFAULT_LOGS_TAIL = 100
-
-
-_SOURCE_OPTIONS = {
-    "stdout": api_pb2.FILE_DESCRIPTOR_STDOUT,
-    "stderr": api_pb2.FILE_DESCRIPTOR_STDERR,
-    "system": api_pb2.FILE_DESCRIPTOR_INFO,
-}
-
-
 @app_cli.command("logs", no_args_is_help=True)
 @click.argument("app_identifier")
 @click.option("-f", "--follow", is_flag=True, default=False, help="Stream log output until App stops")
@@ -269,24 +228,9 @@ async def logs(
 
     """
     env = ensure_env(env)
-
-    if follow and (since or until or tail):
-        raise UsageError("--follow cannot be combined with --since, --until, or --tail.")
-
-    if tail is not None and tail <= 0:
-        raise UsageError("--tail value must be positive.")
-
-    if tail is not None and tail > _FETCH_LIMIT:
-        raise UsageError(f"--tail value must not exceed {_FETCH_LIMIT}.")
+    _validate_logs_args(follow=follow, since=since, until=until, tail=tail)
 
     app_id, _, _ = await resolve_app_identifier(app_identifier, env)
-
-    if source is not None:
-        if source not in _SOURCE_OPTIONS:
-            raise UsageError(f"Invalid source: '{source}'. Must be 'stdout', 'stderr', or 'system'.")
-        source_fd = _SOURCE_OPTIONS[source]
-    else:
-        source_fd = api_pb2.FILE_DESCRIPTOR_UNSPECIFIED
 
     prefix_fields: list[str] = []
     if show_function_id:
@@ -296,59 +240,20 @@ async def logs(
     if show_container_id:
         prefix_fields.append("ta")
 
-    log_filters = LogsFilters(
-        source=source_fd,
-        function_id=function_id or "",
-        function_call_id=function_call_id or "",
-        task_id=container_id or "",
-        search_text=search or "",
+    await _run_logs_command(
+        app_id,
+        follow=follow,
+        since=since,
+        until=until,
+        tail=tail,
+        search=search,
+        function_id=function_id,
+        function_call_id=function_call_id,
+        container_id=container_id,
+        source=source,
+        timestamps=timestamps,
+        prefix_fields=prefix_fields,
     )
-
-    if follow:
-        await _stream_app_logs(
-            app_id,
-            task_id=container_id or "",
-            show_timestamps=timestamps,
-            follow=True,
-            prefix_fields=prefix_fields,
-            filters=log_filters,
-        )
-    else:
-        now = datetime.now(timezone.utc)
-        since_dt = _parse_time_arg(since, default=now) if since else None
-        until_dt = _parse_time_arg(until, default=now) if until else None
-
-        if since_dt is not None and until_dt is not None and since_dt >= until_dt:
-            raise UsageError("--since must be before --until.")
-
-        if since_dt is not None:
-            effective_until = until_dt or now
-            if effective_until - since_dt > _MAX_FETCH_RANGE:
-                raise UsageError(f"Log fetch time range cannot exceed {_MAX_FETCH_RANGE.days} days.")
-
-        if since_dt and tail is None:
-            # Range mode: --since without --tail fetches everything in the range.
-            await _fetch_app_logs(
-                app_id,
-                since_dt,
-                until_dt or now,
-                show_timestamps=timestamps,
-                prefix_fields=prefix_fields,
-                filters=log_filters,
-            )
-        else:
-            # Tail mode: single fetch with limit.
-            # --since is a hard floor, --until shifts the anchor.
-            effective_tail = tail if tail is not None else _DEFAULT_LOGS_TAIL
-            await _tail_app_logs(
-                app_id,
-                effective_tail,
-                show_timestamps=timestamps,
-                since=since_dt,
-                until=until_dt,
-                prefix_fields=prefix_fields,
-                filters=log_filters,
-            )
 
 
 @app_cli.command("promote", no_args_is_help=True, hidden=True)

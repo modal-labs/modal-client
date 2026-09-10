@@ -14,7 +14,7 @@ from modal._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
 from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.app import _DEFAULT_LOGS_TAIL, _SOURCE_OPTIONS, _parse_time_arg
+from modal.cli._logs import _DEFAULT_LOGS_TAIL, _SOURCE_OPTIONS, _parse_time_arg
 from modal.cli.utils import (
     _fetch_app_logs,
     _stream_app_logs,

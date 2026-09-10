@@ -15,10 +15,12 @@ from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import parse_duration
 from modal.client import _Client
+from modal.functions import Function
 from modal.output import OutputManager
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
+from ._logs import _get_app_id_for_function_id, _parse_time_arg, _run_logs_command, _validate_logs_args
 from ._stats import (
     STATS_HEADING_STYLE,
     STATS_METADATA_STYLE,
@@ -29,10 +31,9 @@ from ._stats import (
     stats_style,
     success_style,
 )
-from .app import _parse_time_arg
-from .utils import env_option
+from .utils import _is_function_id, _parse_function_or_server_ref, env_option
 
-function_cli = ModalGroup(name="function", help="Inspect deployed Modal Functions.")
+function_cli = ModalGroup(name="function", help="Inspect Modal Functions.")
 
 _DEFAULT_STATS_WINDOW = timedelta(hours=1)
 _DEFAULT_METRIC_PRECISION = 2
@@ -400,3 +401,132 @@ async def stats(
     if container_rows:
         output.print("")
         output.print(_percentile_table(container_rows, use_color))
+
+
+@function_cli.command("logs", no_args_is_help=True)
+@click.argument("function_ref")
+@click.option("-f", "--follow", is_flag=True, default=False, help="Stream log output until interrupted")
+@click.option(
+    "--since",
+    default=None,
+    help="Start of time range. Accepts ISO 8601 datetime or relative time, e.g. '1d' (1 day ago), '2h', '30m', etc.",
+)
+@click.option("--until", default=None, help="End of time range; accepts same argument types as --since")
+@click.option("-n", "--tail", default=None, type=int, help="Show only the last N log entries")
+@click.option("--search", default=None, help="Filter by search text")
+@click.option("--function-call", "function_call_id", default="", help="Filter by FunctionCall ID (fc-*)")
+@click.option("--container", "container_id", default="", help="Filter by Container ID (ta-*)")
+@click.option("-s", "--source", default=None, help="Filter by source: 'stdout', 'stderr', or 'system'")
+@click.option("--timestamps", is_flag=True, default=False, help="Prefix each line with its timestamp")
+@click.option("--show-function-id", is_flag=True, default=False, help="Prefix each line with its Function ID")
+@click.option("--show-function-call-id", is_flag=True, default=False, help="Prefix each line with its FunctionCall ID")
+@click.option("--show-container-id", is_flag=True, default=False, help="Prefix each line with its Container ID")
+@env_option
+@synchronizer.create_blocking
+async def logs(
+    function_ref: str,
+    follow: bool = False,
+    since: str | None = None,
+    until: str | None = None,
+    tail: int | None = None,
+    search: str | None = None,
+    function_call_id: str = "",
+    container_id: str = "",
+    source: str | None = None,
+    timestamps: bool = False,
+    show_function_id: bool = False,
+    show_function_call_id: bool = False,
+    show_container_id: bool = False,
+    *,
+    env: str | None = None,
+) -> None:
+    """Fetch or stream Function logs.
+
+    By default, this command fetches the last 100 log entries and exits. Use ``-f`` to
+    live-stream logs from a running function instead. Fetch and follow are mutually exclusive.
+
+    Examples:
+
+    Get recent logs based on a function ID:
+
+    ```
+    modal function logs fu-12345
+    ```
+
+    Get recent logs for a currently deployed Function based on its name:
+
+    ```
+    modal function logs my-app/image-gen
+    ```
+
+    Follow (stream) logs from a running Function:
+
+    ```
+    modal function logs my-app/image-gen -f
+    ```
+
+    Fetch the last 1000 entries:
+
+    ```
+    modal function logs my-app/image-gen --tail 1000
+    ```
+
+    Fetch logs from the last 2 hours:
+
+    ```
+    modal function logs my-app/image-gen --since 2h
+    ```
+
+    Fetch logs in a specific time range:
+
+    ```
+    modal function logs my-app/image-gen --since 2026-09-01T05:00:00 --until 2026-09-01T08:00:00
+    ```
+
+    Filter the logs by source:
+
+    ```
+    modal function logs my-app/image-gen --source stderr
+    ```
+
+    Include timestamps along with function and container IDs on each line:
+
+    ```
+    modal function logs my-app/image-gen --timestamps --show-function-id --show-container-id
+    ```
+    """
+    env = ensure_env(env)
+    _validate_logs_args(follow=follow, since=since, until=until, tail=tail)
+
+    if _is_function_id(function_ref):
+        function_id = function_ref
+        app_id = await _get_app_id_for_function_id(function_id)
+    else:
+        app_name, function_name = _parse_function_or_server_ref(function_ref, "Function")
+        function = Function.from_name(app_name, function_name, environment_name=env)
+        query_data = await function._get_log_query_data.aio()
+        function_id = query_data.source_object_id
+        app_id = query_data.app_id
+
+    prefix_fields: list[str] = []
+    if show_function_id:
+        prefix_fields.append("fu")
+    if show_function_call_id:
+        prefix_fields.append("fc")
+    if show_container_id:
+        prefix_fields.append("ta")
+
+    await _run_logs_command(
+        app_id,
+        follow=follow,
+        since=since,
+        until=until,
+        tail=tail,
+        search=search,
+        function_id=function_id,
+        function_call_id=function_call_id,
+        container_id=container_id,
+        source=source,
+        timestamps=timestamps,
+        prefix_fields=prefix_fields,
+    )

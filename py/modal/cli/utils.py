@@ -197,3 +197,16 @@ def confirm_or_suggest_yes(msg: str) -> None:
         click.echo(f"{msg} [y/N]: ")
         raise SystemExit("Aborted: no interactive terminal detected. Rerun with --yes (-y) to skip confirmation.")
     click.confirm(msg, default=False, abort=True)
+
+
+def _is_function_id(ref: str) -> bool:
+    return "/" not in ref and ref.startswith("fu-")
+
+
+def _parse_function_or_server_ref(ref: str, object_type: str) -> tuple[str, str]:
+    app_name, separator, object_name = ref.partition("/")
+    if not separator or not app_name or not object_name:
+        raise click.UsageError(
+            f"{object_type} must be specified as APP_NAME/{object_type.upper()}_NAME or a Function ID."
+        )
+    return app_name, object_name

@@ -20,7 +20,7 @@ from modal._logs import (
     _timestamp_to_seconds,
 )
 from modal._output.pty import _build_log_prefix
-from modal.cli.app import _parse_time_arg
+from modal.cli._logs import _parse_time_arg
 from modal.exception import LogsFetchError
 from modal_proto import api_pb2
 
@@ -1927,6 +1927,17 @@ def test_logs_invalid_source(servicer, server_url_env, set_env_client, mock_dir)
         expected_exit_code=2,
     )
     assert "Invalid source" in res.stderr
+
+
+def test_logs_rejects_future_since_without_until(servicer, server_url_env, set_env_client, mock_dir):
+    _deploy_app(mock_dir)
+
+    result = run_cli_command(
+        ["app", "logs", "my-app", "--since", "2099-01-01T00:00:00+00:00"],
+        expected_exit_code=2,
+    )
+
+    assert "--since must be before --until" in result.stderr
 
 
 def test_logs_empty_count(servicer, server_url_env, set_env_client, mock_dir):

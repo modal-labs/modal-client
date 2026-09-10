@@ -29,6 +29,7 @@ from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .queues import queue_cli
 from .secret import secret_cli
+from .server import server_cli
 from .skills import skills_cli
 from .token import _new_token, token_cli
 from .volume import volume_cli
@@ -119,6 +120,7 @@ entrypoint_cli.add_command(app_cli, panel="Deployments")
 entrypoint_cli.add_command(container_cli, panel="Deployments")
 entrypoint_cli.add_command(endpoint_cli, panel="Deployments")
 entrypoint_cli.add_command(function_cli, panel="Deployments")
+entrypoint_cli.add_command(server_cli, panel="Deployments")
 # cluster is hidden while multi-node is in beta/experimental
 entrypoint_cli.add_command(cluster_cli, panel="Deployments", hidden=True)
 
