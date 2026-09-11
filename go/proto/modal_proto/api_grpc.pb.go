@@ -215,6 +215,7 @@ const (
 	ModalClient_SecretGetOrCreate_FullMethodName                      = "/modal.client.ModalClient/SecretGetOrCreate"
 	ModalClient_SecretList_FullMethodName                             = "/modal.client.ModalClient/SecretList"
 	ModalClient_SecretUpdate_FullMethodName                           = "/modal.client.ModalClient/SecretUpdate"
+	ModalClient_ServerGetTimeRangeStats_FullMethodName                = "/modal.client.ModalClient/ServerGetTimeRangeStats"
 	ModalClient_ServiceUserList_FullMethodName                        = "/modal.client.ModalClient/ServiceUserList"
 	ModalClient_SharedVolumeDelete_FullMethodName                     = "/modal.client.ModalClient/SharedVolumeDelete"
 	ModalClient_SharedVolumeGetFile_FullMethodName                    = "/modal.client.ModalClient/SharedVolumeGetFile"
@@ -491,6 +492,8 @@ type ModalClientClient interface {
 	SecretGetOrCreate(ctx context.Context, in *SecretGetOrCreateRequest, opts ...grpc.CallOption) (*SecretGetOrCreateResponse, error)
 	SecretList(ctx context.Context, in *SecretListRequest, opts ...grpc.CallOption) (*SecretListResponse, error)
 	SecretUpdate(ctx context.Context, in *SecretUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Servers
+	ServerGetTimeRangeStats(ctx context.Context, in *ServerGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*ServerGetTimeRangeStatsResponse, error)
 	// Service users
 	ServiceUserList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceUserListResponse, error)
 	// SharedVolumes
@@ -2531,6 +2534,16 @@ func (c *modalClientClient) SecretUpdate(ctx context.Context, in *SecretUpdateRe
 	return out, nil
 }
 
+func (c *modalClientClient) ServerGetTimeRangeStats(ctx context.Context, in *ServerGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*ServerGetTimeRangeStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerGetTimeRangeStatsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ServerGetTimeRangeStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) ServiceUserList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceUserListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ServiceUserListResponse)
@@ -3363,6 +3376,8 @@ type ModalClientServer interface {
 	SecretGetOrCreate(context.Context, *SecretGetOrCreateRequest) (*SecretGetOrCreateResponse, error)
 	SecretList(context.Context, *SecretListRequest) (*SecretListResponse, error)
 	SecretUpdate(context.Context, *SecretUpdateRequest) (*emptypb.Empty, error)
+	// Servers
+	ServerGetTimeRangeStats(context.Context, *ServerGetTimeRangeStatsRequest) (*ServerGetTimeRangeStatsResponse, error)
 	// Service users
 	ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error)
 	// SharedVolumes
@@ -4007,6 +4022,9 @@ func (UnimplementedModalClientServer) SecretList(context.Context, *SecretListReq
 }
 func (UnimplementedModalClientServer) SecretUpdate(context.Context, *SecretUpdateRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SecretUpdate not implemented")
+}
+func (UnimplementedModalClientServer) ServerGetTimeRangeStats(context.Context, *ServerGetTimeRangeStatsRequest) (*ServerGetTimeRangeStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ServerGetTimeRangeStats not implemented")
 }
 func (UnimplementedModalClientServer) ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServiceUserList not implemented")
@@ -7549,6 +7567,24 @@ func _ModalClient_SecretUpdate_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_ServerGetTimeRangeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServerGetTimeRangeStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ServerGetTimeRangeStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ServerGetTimeRangeStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ServerGetTimeRangeStats(ctx, req.(*ServerGetTimeRangeStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_ServiceUserList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -9295,6 +9331,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SecretUpdate",
 			Handler:    _ModalClient_SecretUpdate_Handler,
+		},
+		{
+			MethodName: "ServerGetTimeRangeStats",
+			Handler:    _ModalClient_ServerGetTimeRangeStats_Handler,
 		},
 		{
 			MethodName: "ServiceUserList",

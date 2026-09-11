@@ -264,6 +264,12 @@ enum IdentityProviderType {
   IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH = 3;
 }
 
+enum LLMEngine {
+  LLM_ENGINE_UNSPECIFIED = 0;
+  LLM_ENGINE_SGLANG = 1;
+  LLM_ENGINE_VLLM = 2;
+}
+
 enum MemberRole {
   MEMBER_ROLE_UNSPECIFIED = 0;
   MEMBER_ROLE_USER = 1;
@@ -330,6 +336,13 @@ enum SeekWhence {
   SEEK_SET = 0;
   SEEK_CUR = 1;
   SEEK_END = 2;
+}
+
+enum ServerInferenceStatsStatus {
+  SERVER_INFERENCE_STATS_STATUS_UNSPECIFIED = 0;
+  SERVER_INFERENCE_STATS_STATUS_AVAILABLE = 1;
+  SERVER_INFERENCE_STATS_STATUS_NO_DATA = 2;
+  SERVER_INFERENCE_STATS_STATUS_UNAVAILABLE = 3;
 }
 
 enum SystemErrorCode {
@@ -4089,6 +4102,58 @@ message SecretUpdateRequest {
   repeated Update updates = 2;
 }
 
+message ServerGetTimeRangeStatsRequest {
+  string function_id = 1;
+  google.protobuf.Timestamp since = 2;  // Inclusive.
+  google.protobuf.Timestamp until = 3;  // Exclusive.
+  // Filter stats for a specific container
+  optional string container_id = 4;
+}
+
+message ServerGetTimeRangeStatsResponse {
+  message ServerInferenceStats {
+    LLMEngine engine = 1;
+    ServerInferenceStatsStatus status = 2;
+
+    // Metrics include time_to_first_token, inter_token_latency, and
+    // end_to_end_latency, subject to change as requirements evolve.
+    map<string, StatsPercentileDistribution> percentile_stats = 3;
+
+    // Metrics include input_tokens_per_second, cached_input_tokens_per_second,
+    // and output_tokens_per_second, subject to change as requirements evolve.
+    map<string, double> scalar_stats = 4;
+  }
+
+  message ServerStatusCodeCount {
+    uint32 status_code = 1;
+    uint64 count = 2;
+  }
+
+  google.protobuf.Timestamp since = 1;  // Inclusive.
+  google.protobuf.Timestamp until = 2;  // Exclusive.
+
+  uint64 request_count = 3;
+  repeated ServerStatusCodeCount request_count_by_status_code = 4;
+  double request_rate_per_second = 5;
+
+  // Metrics include request_latency, subject to change as requirements evolve.
+  map<string, StatsPercentileDistribution> request_percentile_stats = 6;
+
+  // Metrics include startup_time, cpu_usage, memory_usage, and
+  // gpu_utilization, subject to change as requirements evolve.
+  map<string, StatsPercentileDistribution> container_percentile_stats = 7;
+
+  // Absent when the image does not contain a supported inference engine.
+  ServerInferenceStats inference = 8;
+
+  // Container lifecycle counts. Started and errored containers are counted when
+  // the corresponding event occurs in the requested time range. Creating containers
+  // were enqueued but had not started or finished at the exclusive end of the range.
+  uint64 container_started_count = 9;
+  uint64 container_error_count = 10;
+  uint64 container_creating_at_end_count = 11;
+}
+
 message ServiceUser {
   string name = 1;
   string token_id = 2;
@@ -5120,6 +5185,9 @@ service ModalClient {
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
   rpc SecretUpdate(SecretUpdateRequest) returns (google.protobuf.Empty);
+
+  // Servers
+  rpc ServerGetTimeRangeStats(ServerGetTimeRangeStatsRequest) returns (ServerGetTimeRangeStatsResponse);
 
   // Service users
   rpc ServiceUserList(google.protobuf.Empty) returns (ServiceUserListResponse);
