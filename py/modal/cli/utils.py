@@ -8,16 +8,22 @@ from contextlib import nullcontext
 from csv import writer as csv_writer
 from datetime import datetime
 from json import dumps
+from typing import Literal, overload
 
 import click
+from click.exceptions import UsageError
 from rich.table import Column, Table
 from rich.text import Text
 
+from modal_proto import api_pb2
+
 from .._logs import LogsFilters, fetch_logs, tail_logs
 from .._output.pty import _build_log_prefix, get_app_logs_loop
+from .._traceback import print_server_warnings
 from .._utils.async_utils import synchronizer
+from .._utils.grpc_utils import is_class_function_lookup_error
 from ..client import _Client
-from ..exception import InvalidError
+from ..exception import InvalidError, NotFoundError
 from ..output import OutputManager
 
 
@@ -200,13 +206,82 @@ def confirm_or_suggest_yes(msg: str) -> None:
 
 
 def _is_function_id(ref: str) -> bool:
-    return "/" not in ref and ref.startswith("fu-")
+    return bool(re.match(r"^fu-[0-9a-zA-Z]+$", ref))
 
 
-def _parse_function_or_server_ref(ref: str, object_type: str) -> tuple[str, str]:
-    app_name, separator, object_name = ref.partition("/")
-    if not separator or not app_name or not object_name:
-        raise click.UsageError(
-            f"{object_type} must be specified as APP_NAME/{object_type.upper()}_NAME or a Function ID."
-        )
-    return app_name, object_name
+@overload
+async def _resolve_function_id(
+    client: _Client,
+    function_identifier: str,
+    environment_name: str,
+    *,
+    object_type: Literal["Function", "Server"] = "Function",
+    command: Literal["logs", "stats"],
+    include_app_id: Literal[True],
+) -> tuple[str, str]: ...
+
+
+@overload
+async def _resolve_function_id(
+    client: _Client,
+    function_identifier: str,
+    environment_name: str,
+    *,
+    object_type: Literal["Function", "Server"] = "Function",
+    command: Literal["logs", "stats"],
+    include_app_id: Literal[False],
+) -> str: ...
+
+
+async def _resolve_function_id(
+    client: _Client,
+    function_identifier: str,
+    environment_name: str,
+    *,
+    object_type: Literal["Function", "Server"] = "Function",
+    command: Literal["logs", "stats"],
+    include_app_id: bool,
+) -> str | tuple[str, str]:
+    identifier_label = object_type.upper()
+    usage = (
+        f"{identifier_label} must be a Function ID (fu-…) "
+        f"or a deployed {object_type} name (APP_NAME/{identifier_label}_NAME)."
+    )
+    if function_identifier == "":
+        raise UsageError(usage)
+
+    if "/" in function_identifier:
+        app_name, function_name = function_identifier.split("/", 1)
+
+        if not (app_name and function_name):
+            raise UsageError(usage)
+
+        try:
+            response = await client.stub.FunctionGet(
+                api_pb2.FunctionGetRequest(
+                    app_name=app_name,
+                    object_tag=function_name,
+                    environment_name=environment_name,
+                )
+            )
+        except NotFoundError as exc:
+            if object_type == "Function" and is_class_function_lookup_error(exc):
+                raise NotFoundError(
+                    f"'{function_identifier}' is a modal.Cls. Use\n modal function {command} '{function_identifier}.*'"
+                ) from None
+            raise
+
+        print_server_warnings(response.server_warnings)
+        if include_app_id:
+            return response.function_id, response.handle_metadata.app_id
+        return response.function_id
+
+    if _is_function_id(function_identifier):
+        if include_app_id:
+            get_by_id_response = await client.stub.FunctionGetById(
+                api_pb2.FunctionGetByIdRequest(function_id=function_identifier)
+            )
+            return function_identifier, get_by_id_response.handle_metadata.app_id
+        return function_identifier
+
+    raise UsageError(usage)

@@ -5,41 +5,37 @@ from typing import cast
 
 import click
 from click import UsageError
-from google.protobuf.timestamp_pb2 import Timestamp
-from rich.style import Style
-from rich.table import Table
 from rich.text import Text
 
 from modal._environments import ensure_env
 from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import is_class_function_lookup_error
 from modal._utils.time_utils import parse_duration
 from modal.client import _Client
-from modal.exception import NotFoundError
-from modal.functions import Function
 from modal.output import OutputManager
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
-from ._logs import _get_app_id_for_function_id, _parse_time_arg, _run_logs_command, _validate_logs_args
+from ._logs import _parse_time_arg, _run_logs_command, _validate_logs_args
 from ._stats import (
+    _DEFAULT_STATS_WINDOW,
     STATS_HEADING_STYLE,
     STATS_METADATA_STYLE,
     STATS_SECTION_STYLE,
-    percentile_style,
+    _count_with_percentage,
+    _distribution_map_json,
+    _metric_rows,
+    _percentile_table,
+    _timestamp,
     problem_style,
     progress_style,
     stats_style,
     success_style,
 )
-from .utils import _is_function_id, _parse_function_or_server_ref, env_option
+from .utils import _resolve_function_id, env_option
 
 function_cli = ModalGroup(name="function", help="Inspect Modal Functions.")
 
-_DEFAULT_STATS_WINDOW = timedelta(hours=1)
-_DEFAULT_METRIC_PRECISION = 2
-_DISPLAYED_PERCENTILES = ((5000, "p50"), (9000, "p90"), (9900, "p99"))
 _INPUT_METRIC_ORDER = ("Execution time (s)", "End-to-end latency (s)")
 _CONTAINER_METRIC_ORDER = (
     "Startup time (s)",
@@ -47,83 +43,6 @@ _CONTAINER_METRIC_ORDER = (
     "Memory Usage (GiB)",
     "GPU Utilization (%)",
 )
-
-
-async def _resolve_function_id(client: _Client, function_identifier: str, environment_name: str) -> str:
-    if function_identifier == "":
-        raise UsageError("FUNCTION must be a Function ID (fu-…) or a deployed Function name (APP_NAME/FUNCTION_NAME).")
-
-    if "/" in function_identifier:
-        app_name, function_name = function_identifier.split("/", 1)
-
-        if not (app_name and function_name):
-            raise UsageError(
-                "FUNCTION must be a Function ID (fu-…) or a deployed Function name (APP_NAME/FUNCTION_NAME)."
-            )
-
-        try:
-            response = await client.stub.FunctionGet(
-                api_pb2.FunctionGetRequest(
-                    app_name=app_name,
-                    object_tag=function_name,
-                    environment_name=environment_name,
-                )
-            )
-        except NotFoundError as exc:
-            if is_class_function_lookup_error(exc):
-                raise NotFoundError(
-                    f"'{function_identifier}' is a modal.Cls. Use\n modal function stats '{function_identifier}.*'"
-                ) from None
-            raise
-        return response.function_id
-
-    if function_identifier.startswith("fu-"):
-        return function_identifier
-
-    raise UsageError("FUNCTION must be a Function ID (fu-…) or a deployed Function name (APP_NAME/FUNCTION_NAME).")
-
-
-def _timestamp(value: datetime) -> Timestamp:
-    timestamp = Timestamp()
-    timestamp.FromDatetime(value.astimezone(timezone.utc))
-    return timestamp
-
-
-def _percentile_table(rows: list[tuple[Text, Text, Text, Text]], use_color: bool) -> Table:
-    table = Table(box=None, pad_edge=False, padding=(0, 2), header_style="")
-    table.add_column("", min_width=30)
-    percentile_header_style = stats_style(STATS_METADATA_STYLE, use_color)
-    table.add_column(Text("p50", style=percentile_header_style), justify="right", min_width=8)
-    table.add_column(Text("p90", style=percentile_header_style), justify="right", min_width=8)
-    table.add_column(Text("p99", style=percentile_header_style), justify="right", min_width=8)
-    for row in rows:
-        table.add_row(*row)
-    return table
-
-
-def _count_with_percentage(count: int, total: int, label: str) -> str:
-    percentage = count / total if total else 0
-    return f"{count:,} {label} ({percentage:.1%})"
-
-
-def _percentile_name(percentile_basis_points: int) -> str:
-    return f"p{percentile_basis_points / 100:g}"
-
-
-def _distribution_json(distribution: api_pb2.StatsPercentileDistribution) -> dict[str, object]:
-    return {
-        "unit": distribution.unit,
-        "percentiles": {
-            _percentile_name(percentile.percentile_basis_points): percentile.value
-            for percentile in distribution.percentiles
-        },
-    }
-
-
-def _distribution_map_json(
-    distributions: dict[str, api_pb2.StatsPercentileDistribution],
-) -> dict[str, object]:
-    return {name: _distribution_json(distribution) for name, distribution in distributions.items()}
 
 
 def _time_range_stats_json(response: api_pb2.FunctionGetTimeRangeStatsResponse) -> dict[str, object]:
@@ -159,53 +78,24 @@ def _stats_json(
     }
 
 
-def _metric_rows(
-    distributions: dict[str, api_pb2.StatsPercentileDistribution],
-    expected_order: tuple[str, ...],
-    use_color: bool,
-) -> list[tuple[Text, Text, Text, Text]]:
-    rows: list[tuple[Text, Text, Text, Text]] = []
-    ordered_names = [name for name in expected_order if name in distributions]
-    ordered_names.extend(sorted(set(distributions) - set(expected_order)))
-    for name in ordered_names:
-        distribution = distributions[name]
-        values_by_percentile = {
-            percentile.percentile_basis_points: percentile.value for percentile in distribution.percentiles
-        }
-        if not any(basis_points in values_by_percentile for basis_points, _ in _DISPLAYED_PERCENTILES):
-            continue
-
-        p50 = values_by_percentile.get(5000)
-        p99 = values_by_percentile.get(9900)
-        values = []
-        for basis_points, _ in _DISPLAYED_PERCENTILES:
-            value = values_by_percentile.get(basis_points)
-            value_text = "—" if value is None else f"{value:.{_DEFAULT_METRIC_PRECISION}f}"
-            style = percentile_style(p50, p99, use_color) if basis_points == 9900 else Style()
-            values.append(Text(value_text, style=style))
-        rows.append(
-            (
-                Text(f"  {name}", style=stats_style(STATS_METADATA_STYLE, use_color)),
-                values[0],
-                values[1],
-                values[2],
-            )
-        )
-    return rows
-
-
 @function_cli.command("stats", no_args_is_help=True)
 @click.argument("function_identifier", metavar="FUNCTION")
 @click.option(
     "--since",
     default=None,
-    help="Start of time range. Treated as UTC if timezone not supplied."
-    "Accepts an ISO 8601 datetime or relative time such as '2h' or '30m'.",
+    help=(
+        "Start of time range. Treated as local time "
+        "if a timezone is not supplied."
+        "Accepts an ISO 8601 datetime or relative time such as '2h' or '30m'."
+    ),
 )
 @click.option(
     "--until",
     default=None,
-    help="End of time range. Treated as UTC if timezone not supplied. Accepts the same argument types as --since.",
+    help=(
+        "End of time range. Treated as local time if a "
+        "timezone is not supplied. Accepts the same argument types as --since."
+    ),
 )
 @click.option(
     "--all-variants",
@@ -303,7 +193,9 @@ async def stats(
 
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
-    function_id = await _resolve_function_id(client, function_identifier, environment_name)
+    function_id = await _resolve_function_id(
+        client, function_identifier, environment_name, command="stats", include_app_id=False
+    )
     req = api_pb2.FunctionGetTimeRangeStatsRequest(
         function_id=function_id,
         since=_timestamp(since_dt),
@@ -507,15 +399,10 @@ async def logs(
     env = ensure_env(env)
     _validate_logs_args(follow=follow, since=since, until=until, tail=tail)
 
-    if _is_function_id(function_ref):
-        function_id = function_ref
-        app_id = await _get_app_id_for_function_id(function_id)
-    else:
-        app_name, function_name = _parse_function_or_server_ref(function_ref, "Function")
-        function = Function.from_name(app_name, function_name, environment_name=env)
-        query_data = await function._get_log_query_data.aio()
-        function_id = query_data.source_object_id
-        app_id = query_data.app_id
+    client = await _Client.from_env()
+    function_id, app_id = await _resolve_function_id(
+        client, function_ref, env, object_type="Function", command="logs", include_app_id=True
+    )
 
     prefix_fields: list[str] = []
     if show_function_id:

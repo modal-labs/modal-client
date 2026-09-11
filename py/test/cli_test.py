@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
 from pickle import dumps
-from types import SimpleNamespace
+from typing import cast
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -2055,31 +2055,50 @@ def test_app_descriptions_with_name(servicer, set_env_client, test_dir):
 
 
 def _mock_function_logs(monkeypatch):
-    function_api = mock.Mock()
-    function_api.from_name.return_value._get_log_query_data.aio = mock.AsyncMock(
-        return_value=mock.Mock(app_id="ap-function-app", source_object_id="fu-function")
+    client = mock.Mock()
+    client.stub.FunctionGet = mock.AsyncMock(
+        return_value=api_pb2.FunctionGetResponse(
+            function_id="fu-function",
+            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-function-app"),
+        )
     )
-    monkeypatch.setattr("modal.cli.function.Function", function_api)
-    return function_api
+    client.stub.FunctionGetById = mock.AsyncMock(
+        return_value=api_pb2.FunctionGetByIdResponse(
+            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-function-app")
+        )
+    )
+    monkeypatch.setattr("modal.cli.function._Client.from_env", mock.AsyncMock(return_value=client))
+    return client
 
 
 def _mock_server_logs(monkeypatch):
-    server_api = mock.Mock()
-    server_api.from_name.return_value._get_log_query_data.aio = mock.AsyncMock(
-        return_value=SimpleNamespace(app_id="ap-server-app", source_object_id="fu-server")
+    client = mock.Mock()
+    client.stub.FunctionGet = mock.AsyncMock(
+        return_value=api_pb2.FunctionGetResponse(
+            function_id="fu-server",
+            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-server-app"),
+        )
     )
-    monkeypatch.setattr("modal.cli.server.Server", server_api)
-    return server_api
+    client.stub.FunctionGetById = mock.AsyncMock(
+        return_value=api_pb2.FunctionGetByIdResponse(
+            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-server-app")
+        )
+    )
+    monkeypatch.setattr("modal.cli.server._Client.from_env", mock.AsyncMock(return_value=client))
+    return client
 
 
 def test_server_logs_defaults_to_tail(set_env_client, monkeypatch):
-    server_api = _mock_server_logs(monkeypatch)
+    client = _mock_server_logs(monkeypatch)
     run_logs = mock.AsyncMock()
     monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
 
     run_cli_command(["server", "logs", "my-app/WebServer"])
 
-    server_api.from_name.assert_called_once_with("my-app", "WebServer", environment_name="")
+    request = client.stub.FunctionGet.await_args.args[0]
+    assert request.app_name == "my-app"
+    assert request.object_tag == "WebServer"
+    assert request.environment_name == ""
     run_logs.assert_awaited_once()
     args, kwargs = run_logs.await_args
     assert args == ("ap-server-app",)
@@ -2088,18 +2107,21 @@ def test_server_logs_defaults_to_tail(set_env_client, monkeypatch):
 
 
 def test_server_logs_resolves_fu_prefixed_app_name(set_env_client, monkeypatch):
-    server_api = _mock_server_logs(monkeypatch)
+    client = _mock_server_logs(monkeypatch)
     run_logs = mock.AsyncMock()
     monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
 
     run_cli_command(["server", "logs", "fu-prefixed-app/WebServer"])
 
-    server_api.from_name.assert_called_once_with("fu-prefixed-app", "WebServer", environment_name="")
+    request = client.stub.FunctionGet.await_args.args[0]
+    assert request.app_name == "fu-prefixed-app"
+    assert request.object_tag == "WebServer"
+    assert request.environment_name == ""
     assert run_logs.await_args.args == ("ap-server-app",)
 
 
 def test_server_logs_fetches_time_range(set_env_client, monkeypatch):
-    server_api = _mock_server_logs(monkeypatch)
+    client = _mock_server_logs(monkeypatch)
     run_logs = mock.AsyncMock()
     monkeypatch.setattr("modal.cli.server._run_logs_command", run_logs)
 
@@ -2121,7 +2143,10 @@ def test_server_logs_fetches_time_range(set_env_client, monkeypatch):
         ]
     )
 
-    server_api.from_name.assert_called_once_with("my-app", "WebServer", environment_name="prod")
+    request = client.stub.FunctionGet.await_args.args[0]
+    assert request.app_name == "my-app"
+    assert request.object_tag == "WebServer"
+    assert request.environment_name == "prod"
     run_logs.assert_awaited_once()
     args, kwargs = run_logs.await_args
     assert args == ("ap-server-app",)
@@ -2178,16 +2203,17 @@ def test_server_logs_shows_server_id(set_env_client, monkeypatch):
 
 
 def test_server_logs_requires_app_and_server_names(set_env_client, monkeypatch):
-    server_api = _mock_server_logs(monkeypatch)
+    client = _mock_server_logs(monkeypatch)
 
     result = run_cli_command(["server", "logs", "WebServer"], expected_exit_code=2)
 
-    assert "Server must be specified as APP_NAME/SERVER_NAME or a Function ID" in result.stderr
-    server_api.from_name.assert_not_called()
+    assert "SERVER must be a Function ID (fu-…) or a deployed Server name (APP_NAME/SERVER_NAME)" in result.stderr
+    client.stub.FunctionGet.assert_not_awaited()
+    client.stub.FunctionGetById.assert_not_awaited()
 
 
 def test_function_logs_resolves_name_and_runs_shared_command(set_env_client, monkeypatch):
-    function_api = _mock_function_logs(monkeypatch)
+    client = _mock_function_logs(monkeypatch)
     run_logs = mock.AsyncMock()
     monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
 
@@ -2213,7 +2239,10 @@ def test_function_logs_resolves_name_and_runs_shared_command(set_env_client, mon
         ]
     )
 
-    function_api.from_name.assert_called_once_with("my-app", "process", environment_name="prod")
+    request = client.stub.FunctionGet.await_args.args[0]
+    assert request.app_name == "my-app"
+    assert request.object_tag == "process"
+    assert request.environment_name == "prod"
     run_logs.assert_awaited_once()
     args, kwargs = run_logs.await_args
     assert args == ("ap-function-app",)
@@ -2227,32 +2256,31 @@ def test_function_logs_resolves_name_and_runs_shared_command(set_env_client, mon
 
 
 def test_function_logs_resolves_fu_prefixed_app_name(set_env_client, monkeypatch):
-    function_api = _mock_function_logs(monkeypatch)
+    client = _mock_function_logs(monkeypatch)
     run_logs = mock.AsyncMock()
     monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
 
     run_cli_command(["function", "logs", "fu-prefixed-app/process"])
 
-    function_api.from_name.assert_called_once_with("fu-prefixed-app", "process", environment_name="")
+    request = client.stub.FunctionGet.await_args.args[0]
+    assert request.app_name == "fu-prefixed-app"
+    assert request.object_tag == "process"
+    assert request.environment_name == ""
     assert run_logs.await_args.args == ("ap-function-app",)
 
 
 def test_function_logs_resolves_app_id_from_function_id(set_env_client, monkeypatch):
-    function_api = _mock_function_logs(monkeypatch)
+    client = _mock_function_logs(monkeypatch)
     run_logs = mock.AsyncMock()
     monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
 
-    client = mock.Mock()
-    client.stub.FunctionGetById = mock.AsyncMock(
-        return_value=api_pb2.FunctionGetByIdResponse(
-            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-from-function-id")
-        )
+    client.stub.FunctionGetById.return_value = api_pb2.FunctionGetByIdResponse(
+        handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-from-function-id")
     )
-    monkeypatch.setattr("modal.cli._logs._Client.from_env", mock.AsyncMock(return_value=client))
 
     run_cli_command(["function", "logs", "fu-123"])
 
-    function_api.from_name.assert_not_called()
+    client.stub.FunctionGet.assert_not_awaited()
     request = client.stub.FunctionGetById.await_args.args[0]
     assert request.function_id == "fu-123"
     run_logs.assert_awaited_once()
@@ -2282,12 +2310,13 @@ def test_function_logs_prefixes_ids(set_env_client, monkeypatch):
 
 
 def test_function_logs_requires_app_and_function_names(set_env_client, monkeypatch):
-    function_api = _mock_function_logs(monkeypatch)
+    client = _mock_function_logs(monkeypatch)
 
     result = run_cli_command(["function", "logs", "process"], expected_exit_code=2)
 
-    assert "Function must be specified as APP_NAME/FUNCTION_NAME or a Function ID" in result.stderr
-    function_api.from_name.assert_not_called()
+    assert "FUNCTION must be a Function ID (fu-…) or a deployed Function name (APP_NAME/FUNCTION_NAME)" in result.stderr
+    client.stub.FunctionGet.assert_not_awaited()
+    client.stub.FunctionGetById.assert_not_awaited()
 
 
 def test_function_logs_help(set_env_client):
@@ -4235,6 +4264,272 @@ def test_function_stats_cli_renders_server_defined_percentile_metrics(servicer, 
     assert "56.78" in result.stdout
     assert "91.23" in result.stdout
     assert result.stdout.index("GPU Utilization (%)") < result.stdout.index("Disk Usage (GiB)")
+
+
+def test_server_stats_cli(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.ServerGetTimeRangeStatsResponse(
+        request_count=1284,
+        request_count_by_status_code=[
+            api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=200, count=1241),
+            api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=400, count=37),
+            api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=500, count=6),
+        ],
+        request_rate_per_second=0.3566666667,
+        container_started_count=3,
+        container_error_count=2,
+        container_creating_at_end_count=1,
+        request_percentile_stats={
+            "Request latency 2xx (s)": _stats_distribution("seconds", 1.180, 3.510, 5.020),
+            "Request latency 5xx (s)": _stats_distribution("seconds", 0.500, 1.500, 2.500),
+        },
+        container_percentile_stats={
+            "Startup time (s)": _stats_distribution("seconds", 5.484, 7.130, 8.210),
+            "CPU usage (cores)": _stats_distribution("cores", 0.350, 0.720, 0.910),
+            "Memory usage (GiB)": _stats_distribution("GiB", 0.480, 0.830, 0.940),
+            "GPU utilization (%)": _stats_distribution("percentage", 91.0, 99.0, 100.0),
+        },
+        inference=api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats(
+            engine=api_pb2.LLM_ENGINE_SGLANG,
+            status=api_pb2.SERVER_INFERENCE_STATS_STATUS_AVAILABLE,
+            percentile_stats={
+                "time_to_first_token": _stats_distribution("seconds", 0.121, 0.317, 0.421),
+                "inter_token_latency": _stats_distribution("seconds", 0.024, 0.041, 0.068),
+                "end_to_end_latency": _stats_distribution("seconds", 1.150, 3.980, 7.210),
+            },
+            scalar_stats={
+                "input_tokens_per_second": 2428.0,
+                "cached_input_tokens_per_second": 622.0,
+                "output_tokens_per_second": 585.0,
+            },
+        ),
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-server"))
+        ctx.add_response("ServerGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "server",
+                "stats",
+                "my-app/my-server",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+            ]
+        )
+
+    function_get_request = ctx.pop_request("FunctionGet")
+    assert function_get_request.app_name == "my-app"
+    assert function_get_request.object_tag == "my-server"
+    request = ctx.pop_request("ServerGetTimeRangeStats")
+    assert request.function_id == "fu-server"
+    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
+    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert "Server stats for fu-server" in result.stdout
+    assert "1,284 total (0.36 req/s)" in result.stdout
+    assert "2xx: 1,241 · 4xx: 37 · 5xx: 6" in result.stdout
+    assert "Request latency 2xx (s)" in result.stdout
+    assert "Request latency 5xx (s)" in result.stdout
+    assert "5 total (1 creating)" in result.stdout
+    assert "3 started (60.0%) · 2 errored (40.0%)" in result.stdout
+    assert "Startup time (s)" in result.stdout
+    assert "CPU usage (cores)" in result.stdout
+    assert "Memory usage (GiB)" in result.stdout
+    assert "GPU utilization (%)" in result.stdout
+    assert "Inference · SGLang" in result.stdout
+    assert "Inference · SGLang\n  Input 2,428 tok/s · Cached input 622 tok/s · Output 585 tok/s" in result.stdout
+    assert "Time to first token (ms)" in result.stdout
+    assert "121" in result.stdout
+    assert "317" in result.stdout
+    assert "Inter-token latency (ms)" in result.stdout
+    assert "24" in result.stdout
+    assert "41" in result.stdout
+    assert "End-to-end latency (s)" in result.stdout
+    assert "1.15" in result.stdout
+    assert "3.98" in result.stdout
+    assert "input_tokens_per_second" not in result.stdout
+    assert "cached_input_tokens_per_second" not in result.stdout
+    assert "output_tokens_per_second" not in result.stdout
+
+
+def test_server_stats_cli_json(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.ServerGetTimeRangeStatsResponse(
+        request_count=1,
+        request_count_by_status_code=[
+            api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=200, count=1)
+        ],
+        request_rate_per_second=1 / 3600,
+        container_started_count=4,
+        container_error_count=5,
+        container_creating_at_end_count=6,
+        request_percentile_stats={
+            "Request latency 2xx (s)": _stats_distribution("seconds", 1.0, 2.0, 3.0),
+        },
+        inference=api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats(
+            engine=api_pb2.LLM_ENGINE_VLLM,
+            status=api_pb2.SERVER_INFERENCE_STATS_STATUS_NO_DATA,
+        ),
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ServerGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "server",
+                "stats",
+                "fu-server",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+                "--json",
+            ]
+        )
+
+    payload = json.loads(result.stdout)
+    assert payload["function_id"] == "fu-server"
+    assert payload["request_count_by_status_code"] == {"2xx": 1}
+    assert payload["container_started_count"] == 4
+    assert payload["container_error_count"] == 5
+    assert payload["container_creating_at_end_count"] == 6
+    assert payload["request_percentile_stats"]["Request latency 2xx (s)"]["percentiles"] == {
+        "p50": 1.0,
+        "p90": 2.0,
+        "p99": 3.0,
+    }
+    assert payload["inference"] == {
+        "engine": "vllm",
+        "status": "no_data",
+        "percentile_stats": {},
+        "scalar_stats": {},
+    }
+
+
+def test_server_stats_cli_json_preserves_unknown_inference_enums(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.ServerGetTimeRangeStatsResponse(
+        inference=api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats(
+            engine=cast(api_pb2.LLMEngine.ValueType, 123),
+            status=cast(api_pb2.ServerInferenceStatsStatus.ValueType, 456),
+        )
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ServerGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "server",
+                "stats",
+                "fu-server",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+                "--json",
+            ]
+        )
+
+    assert json.loads(result.stdout)["inference"] == {
+        "engine": 123,
+        "status": 456,
+        "percentile_stats": {},
+        "scalar_stats": {},
+    }
+
+
+def test_server_stats_cli_filters_by_container(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.ServerGetTimeRangeStatsResponse()
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ServerGetTimeRangeStats", response)
+        run_cli_command(
+            [
+                "server",
+                "stats",
+                "fu-server",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+                "--container-id",
+                "ta-01M1CY4EK24B8MM10ZD2H7VE2R",
+            ]
+        )
+
+    request = ctx.pop_request("ServerGetTimeRangeStats")
+    assert request.HasField("container_id")
+    assert request.container_id == "ta-01M1CY4EK24B8MM10ZD2H7VE2R"
+
+
+def test_server_stats_cli_inference_status(servicer, set_env_client):
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.ServerGetTimeRangeStatsResponse(
+        inference=api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats(
+            engine=api_pb2.LLM_ENGINE_VLLM,
+            status=api_pb2.SERVER_INFERENCE_STATS_STATUS_UNAVAILABLE,
+        )
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ServerGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "server",
+                "stats",
+                "fu-server",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+            ]
+        )
+
+    assert "Inference · vLLM" in result.stdout
+    assert "Inference metrics are temporarily unavailable." in result.stdout
+
+
+def test_server_stats_cli_rejects_invalid_identifier(set_env_client):
+    run_cli_command(
+        ["server", "stats", "my-server"],
+        expected_exit_code=2,
+        expected_stderr="SERVER must be a Function ID.*deployed Server name.*APP_NAME/SERVER_NAME",
+    )
+
+
+def test_server_stats_cli_nonexistent_id(servicer, set_env_client):
+    async def server_stats_not_found(_servicer, stream):
+        from grpclib import GRPCError, Status
+
+        request = await stream.recv_message()
+        assert request.function_id == "fu-doesnotexist"
+        raise GRPCError(Status.NOT_FOUND, "Function not found")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ServerGetTimeRangeStats", server_stats_not_found)
+        run_cli_command(
+            ["server", "stats", "fu-doesnotexist"],
+            expected_exit_code=1,
+            expected_error="Function not found",
+        )
 
 
 def test_function_stats_cli_relative_since(servicer, set_env_client):

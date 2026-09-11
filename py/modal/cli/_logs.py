@@ -5,7 +5,6 @@ from click import UsageError
 
 from modal._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
 from modal._utils.time_utils import locale_tz, parse_duration
-from modal.client import _Client
 from modal_proto import api_pb2
 
 from .utils import _fetch_app_logs, _stream_app_logs, _tail_app_logs
@@ -17,12 +16,6 @@ _SOURCE_OPTIONS = {
     "stderr": api_pb2.FILE_DESCRIPTOR_STDERR,
     "system": api_pb2.FILE_DESCRIPTOR_INFO,
 }
-
-
-async def _get_app_id_for_function_id(function_id: str) -> str:
-    client = await _Client.from_env()
-    response = await client.stub.FunctionGetById(api_pb2.FunctionGetByIdRequest(function_id=function_id))
-    return response.handle_metadata.app_id
 
 
 def _parse_time_arg(value: str | None, default: datetime) -> datetime:
