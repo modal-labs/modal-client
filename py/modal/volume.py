@@ -73,7 +73,7 @@ from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .config import logger
+from .config import config, logger
 from .types import FileEntry, FileEntryType as FileEntryType, VolumeCreateOptions, VolumeInfo
 
 # Max duration for uploading to volumes files
@@ -96,6 +96,11 @@ def _expected_block_lengths(start: int, length: int, num_blocks: int) -> list[in
     return lengths
 
 
+# Error bodies are only quoted in the exception message, so at most this many bytes
+# of one are ever read; the rest of the body is discarded unread.
+_ERROR_BODY_LIMIT = 4096
+
+
 async def _raise_on_block_response_error(response) -> None:
     """Raise a picklable Modal exception on error.
 
@@ -107,7 +112,12 @@ async def _raise_on_block_response_error(response) -> None:
         return
 
     try:
-        body = await response.text()
+        raw = b""
+        while len(raw) < _ERROR_BODY_LIMIT and not response.content.at_eof():
+            raw += await response.content.read(_ERROR_BODY_LIMIT - len(raw))
+        body = raw.decode(response.get_encoding() or "utf-8", errors="replace")
+        if not response.content.at_eof():
+            body += "..."
     except Exception:
         body = "<unavailable>"
 
@@ -192,13 +202,37 @@ class _BlockDigestVerifier:
             raise ExecutionError(f"Block download corrupted: expected sha256 {self._sha256.hex()}, got {actual.hex()}")
 
 
-async def _read_block_body(response) -> bytes:
-    """Read a block response body in full, verifying any digest it advertises."""
+async def _read_block_body(response, expected_len: int) -> bytes:
+    """Read a block response body, verifying any digest it advertises.
+
+    The body may be shorter than `expected_len` (trailing zero bytes are left out),
+    but never longer: the read is abandoned as soon as it passes that budget, so a
+    response can never make the client buffer an unbounded amount of data.
+    """
     verifier = _BlockDigestVerifier(_parse_repr_digest(response.headers.get("Repr-Digest")))
-    body = await response.content.read()
-    verifier.update(body)
+    chunks: list[bytes] = []
+    num_bytes_read = 0
+    async for chunk in response.content.iter_any():
+        num_bytes_read += len(chunk)
+        if num_bytes_read > expected_len:
+            raise ExecutionError(f"Block response is longer than the expected {expected_len} bytes")
+        verifier.update(chunk)
+        chunks.append(chunk)
     verifier.finish()
-    return body
+    return b"".join(chunks)
+
+
+def _block_download_timeout():
+    """Per-request timeout for a block download.
+
+    Only inactivity is bounded: a healthy transfer may take as long as its size
+    requires, and a connection that stops delivering bytes is abandoned so that the
+    attempt can be retried.
+    """
+    from aiohttp import ClientTimeout
+
+    read_timeout = config["volume_block_read_timeout"]
+    return ClientTimeout(sock_read=read_timeout if read_timeout else None)
 
 
 def _validate_volume_version(
@@ -966,11 +1000,11 @@ class _Volume(_Object, type_prefix="vo"):
         @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
         async def read_block(block: tuple[str, int]) -> bytes:
             block_url, expected_len = block
-            async with ClientSessionRegistry.get_session().get(block_url) as get_response:
+            session = ClientSessionRegistry.get_session()
+            async with session.get(block_url, timeout=_block_download_timeout()) as get_response:
                 await _raise_on_block_response_error(get_response)
-                body = await _read_block_body(get_response)
-            if len(body) > expected_len:
-                raise ExecutionError(f"Block body is {len(body)} bytes, expected at most {expected_len}")
+                body = await _read_block_body(get_response, expected_len)
+            # Trailing zero bytes may be omitted from the body; restore them.
             return body.ljust(expected_len, b"\0")
 
         block_lengths = _expected_block_lengths(response.start, response.len, len(response.get_urls))
@@ -1039,53 +1073,72 @@ class _Volume(_Object, type_prefix="vo"):
 
         block_lengths = _expected_block_lengths(response.start, response.len, len(response.get_urls))
 
-        @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
         async def download_block(idx, url) -> int:
             block_start_pos = start_pos + idx * BLOCK_SIZE
-            # Every attempt writes into exactly this slice, so a retry after a rejected
-            # response overwrites everything the rejected attempt wrote.
             expected_len = block_lengths[idx]
-            num_bytes_written = 0
+            # Progress is reported against the furthest byte any attempt has written, so
+            # a retry that rewrites the slice does not count the same bytes twice.
+            num_bytes_reported = 0
 
-            async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
-                await _raise_on_block_response_error(get_response)
-                verifier = _BlockDigestVerifier(_parse_repr_digest(get_response.headers.get("Repr-Digest")))
-                async for chunk in get_response.content.iter_any():
-                    if num_bytes_written + len(chunk) > expected_len:
-                        raise ExecutionError(f"Block {idx} response is longer than the expected {expected_len} bytes")
-                    verifier.update(chunk)
-                    num_chunk_bytes_written = 0
+            def report_progress(num_bytes_written: int) -> None:
+                nonlocal num_bytes_reported
+                if num_bytes_written > num_bytes_reported:
+                    progress_cb(advance=num_bytes_written - num_bytes_reported)
+                    num_bytes_reported = num_bytes_written
 
-                    while num_chunk_bytes_written < len(chunk):
+            @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
+            async def attempt() -> int:
+                # Every attempt writes into exactly this slice, so a retry after a rejected
+                # response overwrites everything the rejected attempt wrote.
+                num_bytes_written = 0
+
+                session = ClientSessionRegistry.get_session()
+                async with download_semaphore, session.get(url, timeout=_block_download_timeout()) as get_response:
+                    await _raise_on_block_response_error(get_response)
+                    verifier = _BlockDigestVerifier(_parse_repr_digest(get_response.headers.get("Repr-Digest")))
+                    async for chunk in get_response.content.iter_any():
+                        if num_bytes_written + len(chunk) > expected_len:
+                            raise ExecutionError(
+                                f"Block {idx} response is longer than the expected {expected_len} bytes"
+                            )
+                        verifier.update(chunk)
+                        num_chunk_bytes_written = 0
+
+                        while num_chunk_bytes_written < len(chunk):
+                            async with write_lock:
+                                fileobj.seek(block_start_pos + num_bytes_written + num_chunk_bytes_written)
+                                # TODO(dflemstr): this is a small write, but nonetheless might block the event loop
+                                #  for some time:
+                                n = fileobj.write(chunk[num_chunk_bytes_written:])
+                                if not n:
+                                    raise OSError("File object write made no progress")
+
+                            num_chunk_bytes_written += n
+                            report_progress(num_bytes_written + num_chunk_bytes_written)
+
+                        num_bytes_written += len(chunk)
+
+                    # Trailing zero bytes may be omitted from the body; restore them.
+                    while num_bytes_written < expected_len:
+                        padding = b"\0" * min(expected_len - num_bytes_written, 1024 * 1024)
                         async with write_lock:
-                            fileobj.seek(block_start_pos + num_bytes_written + num_chunk_bytes_written)
-                            # TODO(dflemstr): this is a small write, but nonetheless might block the event loop for some
-                            #  time:
-                            n = fileobj.write(chunk[num_chunk_bytes_written:])
-                            if not n:
-                                raise OSError("File object write made no progress")
+                            fileobj.seek(block_start_pos + num_bytes_written)
+                            n = fileobj.write(padding)
+                        num_bytes_written += n
+                        report_progress(num_bytes_written)
 
-                        num_chunk_bytes_written += n
-                        progress_cb(advance=n)
+                    verifier.finish()
 
-                    num_bytes_written += len(chunk)
+                return num_bytes_written
 
-                # Trailing zero bytes may be omitted from the body; restore them.
-                while num_bytes_written < expected_len:
-                    padding = b"\0" * min(expected_len - num_bytes_written, 1024 * 1024)
-                    async with write_lock:
-                        fileobj.seek(block_start_pos + num_bytes_written)
-                        n = fileobj.write(padding)
-                    num_bytes_written += n
-                    progress_cb(advance=n)
-
-                verifier.finish()
-
-            return num_bytes_written
+            return await attempt()
 
         coros = [download_block(idx, url) for idx, url in enumerate(response.get_urls)]
 
-        total_size = sum(await asyncio.gather(*coros))
+        # `TaskContext.gather` cancels and awaits the remaining blocks when one of them
+        # fails, so that no block is still writing into `fileobj` once this method raises
+        # and the caller is free to close it.
+        total_size = sum(await TaskContext.gather(*coros))
         fileobj.seek(start_pos + total_size)
 
         return total_size

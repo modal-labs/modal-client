@@ -4437,6 +4437,7 @@ def blob_server_factory():
     blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
     blocks = {}
     files_sha2data: dict[str, dict] = {}
+    flaky_blocks_served: set[str] = set()
 
     async def upload(request):
         blob_id = request.query["blob_id"]
@@ -4496,13 +4497,61 @@ def blob_server_factory():
         if magic != "test-get-request":
             return aiohttp.web.Response(status=400, text="bad token")
 
-        # Special versions for testing HTTP error handling
-        if version == "error-404":
-            return aiohttp.web.Response(status=404, text="block not found")
-        if version == "error-500":
-            return aiohttp.web.Response(status=500, text="internal server error")
-        if version == "error-503":
-            return aiohttp.web.Response(status=503, text="service unavailable")
+        # Special versions for testing HTTP error handling. The optional trailing delay
+        # lets a test fail one block while its siblings are still mid-download.
+        error_versions = {
+            "error-404": (404, "block not found"),
+            "error-500": (500, "internal server error"),
+            "error-503": (503, "service unavailable"),
+        }
+        if version in error_versions:
+            if rest and rest[0]:
+                await asyncio.sleep(float(rest[0]))
+            status, text = error_versions[version]
+            return aiohttp.web.Response(status=status, text=text)
+
+        if version == "error-drip":
+            # An error whose body keeps arriving, 1 KiB at a time, until the client gives up.
+            (delay,) = rest
+            response = aiohttp.web.StreamResponse(status=500)
+            await response.prepare(request)
+            try:
+                while True:
+                    await response.write(b"e" * 1024)
+                    await asyncio.sleep(float(delay))
+            except (ConnectionError, aiohttp.ClientConnectionError):
+                pass
+            return response
+        if version == "flaky":
+            # The first request for `key` serves a corrupted body of `length` bytes (with a
+            # digest that does not match); every later one serves the correct body.
+            key, byte, length = rest
+            body = bytes([int(byte)]) * int(length)
+            if key not in flaky_blocks_served:
+                flaky_blocks_served.add(key)
+                wrong = base64.b64encode(hashlib.sha256(b"something else").digest()).decode()
+                return aiohttp.web.Response(body=body[: len(body) // 2], headers={"Repr-Digest": f"sha-256=:{wrong}:"})
+            digest = base64.b64encode(hashlib.sha256(body).digest()).decode()
+            return aiohttp.web.Response(body=body, headers={"Repr-Digest": f"sha-256=:{digest}:"})
+
+        if version == "stall":
+            # Accepts the request but never sends a response, until the client gives up.
+            (delay,) = rest
+            await asyncio.sleep(float(delay))
+            return aiohttp.web.Response(body=b"")
+        if version == "drip":
+            # Dribbles the body out one byte at a time, `delay` seconds apart. The body is
+            # shorter than a whole block, which is what a zero-trimmed block looks like.
+            byte, num_chunks, delay = rest
+            response = aiohttp.web.StreamResponse()
+            await response.prepare(request)
+            try:
+                for _ in range(int(num_chunks)):
+                    await response.write(bytes([int(byte)]))
+                    await asyncio.sleep(float(delay))
+            except (ConnectionError, aiohttp.ClientConnectionError):
+                pass
+            return response
 
         headers = {}
         if version == "bad-digest":

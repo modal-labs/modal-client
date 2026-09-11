@@ -3,6 +3,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import multiprocessing
 import os
 import platform
 import pytest
@@ -1090,6 +1091,193 @@ async def test_volume_read_file_into_fileobj_wrong_length(monkeypatch, servicer,
                 await vol.read_file_into_fileobj.aio("foo.bin", output)
             # Nothing was written past the end of the second block.
             assert len(output.getvalue()) <= 2 * BLOCK_SIZE
+
+
+@pytest.mark.asyncio
+async def test_read_block_body_stops_at_expected_length():
+    """A body is abandoned once it passes its budget, rather than buffered in full."""
+    from modal.volume import _read_block_body
+
+    chunks_served = 0
+
+    class FakeContent:
+        async def iter_any(self):
+            nonlocal chunks_served
+            while True:
+                chunks_served += 1
+                yield b"x" * 1024
+
+    class FakeResponse:
+        headers: dict[str, str] = {}
+        content = FakeContent()
+
+    with pytest.raises(ExecutionError, match="longer than the expected 2048 bytes"):
+        await _read_block_body(FakeResponse(), 2048)
+
+    assert chunks_served == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_oversized_block(monkeypatch, servicer, client, version):
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+
+    with servicer.intercept() as ctx:
+        # The block carries far more than the 100 bytes the file occupies in it.
+        url = f"{servicer.blob_host}/block/test-get-request:raw:1:{BLOCK_SIZE}"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            with pytest.raises(ExecutionError, match="longer than the expected 100 bytes"):
+                async for _ in vol.read_file.aio("foo.bin"):
+                    ...
+
+
+class _RecordingBytesIO(io.BytesIO):
+    """A file object that counts writes made after the download was supposed to be over."""
+
+    def __init__(self):
+        super().__init__()
+        self.accepting_writes = True
+        self.late_writes = 0
+
+    def write(self, b) -> int:
+        if not self.accepting_writes:
+            self.late_writes += 1
+        return super().write(b)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_into_fileobj_cancels_siblings(monkeypatch, servicer, client, version):
+    """When one block fails, the blocks still downloading are cancelled before the error surfaces."""
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+    # Both blocks must be in flight at once, no matter how many CPUs the test host has.
+    monkeypatch.setattr(multiprocessing, "cpu_count", lambda: 4)
+
+    with servicer.intercept() as ctx:
+        # Block 0 keeps writing for several seconds; block 1 fails while it is under way.
+        drip_url = f"{servicer.blob_host}/block/test-get-request:drip:1:100:0.05"
+        error_url = f"{servicer.blob_host}/block/test-get-request:error-500:0.5"
+        response = api_pb2.VolumeGetFile2Response(
+            get_urls=[drip_url, error_url], size=2 * BLOCK_SIZE, start=0, len=2 * BLOCK_SIZE
+        )
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            output = _RecordingBytesIO()
+            t0 = time.monotonic()
+            with pytest.raises(ExecutionError, match="500"):
+                await asyncio.wait_for(vol.read_file_into_fileobj.aio("foo.bin", output), timeout=5)
+            elapsed = time.monotonic() - t0
+
+            # The still-downloading block was cancelled rather than waited out.
+            assert elapsed < 3
+            # It was genuinely mid-download when the sibling failed.
+            assert len(output.getvalue()) > 0
+
+            # Nothing may reach the file object once the caller has been told the download failed.
+            output.accepting_writes = False
+            await asyncio.sleep(1.5)
+            assert output.late_writes == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_into_fileobj_read_timeout(monkeypatch, servicer, client, version):
+    """A block that makes no progress hits the inactivity timeout instead of hanging."""
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+    monkeypatch.setenv("MODAL_VOLUME_BLOCK_READ_TIMEOUT", "0.5")
+
+    with servicer.intercept() as ctx:
+        url = f"{servicer.blob_host}/block/test-get-request:stall:10"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            output = io.BytesIO()
+            t0 = time.monotonic()
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(vol.read_file_into_fileobj.aio("foo.bin", output), timeout=5)
+            # The client gave up on its own, well before the server would have responded.
+            assert time.monotonic() - t0 < 3
+
+
+@pytest.mark.asyncio
+async def test_raise_on_block_response_error_bounds_body():
+    """Only a bounded prefix of an error body is read, even when the body never ends."""
+    from modal.volume import _raise_on_block_response_error
+
+    bytes_served = 0
+
+    class FakeContent:
+        async def read(self, n: int) -> bytes:
+            nonlocal bytes_served
+            bytes_served += n
+            return b"e" * n
+
+        def at_eof(self) -> bool:
+            return False
+
+    class FakeResponse:
+        status = 500
+        reason = "Internal Server Error"
+        content = FakeContent()
+
+        def get_encoding(self) -> str:
+            return "utf-8"
+
+    with pytest.raises(ExecutionError, match="500") as exc_info:
+        await _raise_on_block_response_error(FakeResponse())
+
+    # A small diagnostic prefix is read and quoted; the endless remainder is left alone.
+    assert 0 < bytes_served <= 64 * 1024
+    assert str(exc_info.value).endswith("...")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_streaming_error_body(monkeypatch, servicer, client, version):
+    """An error response whose body never ends is rejected without being buffered in full."""
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+
+    with servicer.intercept() as ctx:
+        url = f"{servicer.blob_host}/block/test-get-request:error-drip:0.001"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            t0 = time.monotonic()
+            with pytest.raises(ExecutionError, match="500"):
+                async for _ in vol.read_file.aio("foo.bin"):
+                    ...
+            with pytest.raises(ExecutionError, match="500"):
+                await vol.read_file_into_fileobj.aio("foo.bin", io.BytesIO())
+            assert time.monotonic() - t0 < 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_into_fileobj_progress_after_retry(servicer, client, version):
+    """A retried block does not report the bytes of the failed attempt a second time."""
+    with servicer.intercept() as ctx:
+        url = f"{servicer.blob_host}/block/test-get-request:flaky:{time.monotonic_ns()}:1:100"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+
+        advanced = 0
+
+        def progress_cb(*_, advance: int = 0, **__):
+            nonlocal advanced
+            advanced += advance
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            output = io.BytesIO()
+            await vol.read_file_into_fileobj.aio("foo.bin", output, progress_cb=progress_cb)
+            assert output.getvalue() == b"\x01" * 100
+            assert advanced == 100
 
 
 def test_parse_repr_digest():

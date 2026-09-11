@@ -396,6 +396,10 @@ _SETTINGS = {
     # The Sandbox stays usable: the next operation reconnects. Seconds; set to 0
     # to keep Sandbox connections open until the client closes.
     "sandbox_channel_idle_timeout": _Setting(30, transform=float),
+    # How long a Volume block download may go without receiving any data before the
+    # attempt is abandoned and retried. Only inactivity is bounded; a transfer that keeps
+    # delivering data may take arbitrarily long. Seconds; set to 0 to wait indefinitely.
+    "volume_block_read_timeout": _Setting(60, transform=float),
 }
 
 
