@@ -8,6 +8,7 @@ import warnings
 from collections import OrderedDict
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Collection, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
@@ -99,7 +100,12 @@ from .proxy import _Proxy
 from .retries import Retries, RetryManager
 from .schedule import Schedule
 from .secret import _Secret
-from .types import FunctionAutoscalerSettings, FunctionStats, ServerAutoscalerSettings
+from .types import (
+    FunctionAutoscalerSettings,
+    FunctionCurrentStats,
+    FunctionStats,
+    ServerAutoscalerSettings,
+)
 from .volume import _Volume, _volume_to_mount_proto
 
 if TYPE_CHECKING:
@@ -2148,22 +2154,60 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._raw_f
 
     @live_method
-    async def get_current_stats(self) -> FunctionStats:
-        """Return a `FunctionStats` object describing the current function's queue and runner counts.
+    async def get_current_stats(self) -> FunctionCurrentStats:
+        """Return a snapshot of the Function's current input and container state.
 
         Returns:
-            Snapshot counts for backlog, runners, and running inputs.
+            A `FunctionCurrentStats` object containing live input and container counts.
         """
         resp = await self.client.stub.FunctionGetCurrentStats(
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             retry=Retry(total_timeout=10.0),
         )
-        return FunctionStats(
+        return FunctionCurrentStats(
             backlog=resp.backlog,
             num_total_runners=resp.num_total_tasks,
             num_running_inputs=resp.num_running_inputs,
             input_headroom=resp.input_headroom,
         )
+
+    @live_method
+    async def stats(
+        self, *, since: datetime | None = None, until: datetime | None = None, container: str | None = None
+    ) -> FunctionStats:
+        """Return statistics for a modal Function.
+
+        The default time range is the most recent hour. The maximum time range is 7 days.
+
+        Args:
+            since: The beginning of the time range, inclusive. If omitted, this defaults to an hour before `until`.
+               Values without a timezone are interpeted as local time.
+            until: The end of the time range, exclusive. If omitted, this defaults to current time.
+                Values without a timezone are interpeted as local time.
+            container: If passed in, the stats are computed for only this container. Default None.
+
+        Returns:
+            A `FunctionStats` object
+        """
+        until = until or datetime.now(timezone.utc)
+        if until.tzinfo is None:
+            until = until.astimezone()
+        until = until.astimezone(timezone.utc)
+
+        since = since or until - timedelta(hours=1)
+        if since.tzinfo is None:
+            since = since.astimezone()
+        since = since.astimezone(timezone.utc)
+        if since >= until:
+            raise InvalidError("`since` must be before `until`.")
+
+        historical_request = api_pb2.FunctionGetTimeRangeStatsRequest(function_id=self.object_id)
+        historical_request.since.FromDatetime(since)
+        historical_request.until.FromDatetime(until)
+        if container:
+            historical_request.container_id = container
+        stats = await self.client.stub.FunctionGetTimeRangeStats(historical_request)
+        return FunctionStats._from_proto(stats)
 
     @live_method
     async def _get_schema(self) -> api_pb2.FunctionSchema:

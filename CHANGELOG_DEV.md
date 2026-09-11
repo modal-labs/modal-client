@@ -20,7 +20,10 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `App.info` method that displays the constituent functions and servers of an app as well as its deployment lifecycle information.
 - Added `Function.info` method that displays static information about a particular Function
 - Added `Server.info` method that displays static information about a particular Server
-- Added `modal function stats` to inspect performance metrics for a deployed Function over a selected time window.
+- Added `modal function stats` to inspect performance metrics for a Function over a selected time window.
+- Added `Function.stats()` method to inspect performance metrics for a Function over a selected time window
+- Renamed the return type of `Function.get_current_stats()` to `FunctionCurrentStats`.
+  The `num_total_runners` field was renamed to `num_total_containers`.
 - Added `modal function logs` to fetch or stream logs from a modal function.
 - Added `modal server logs` to fetch or stream logs from a modal server.
 

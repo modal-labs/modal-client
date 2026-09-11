@@ -9,6 +9,7 @@ import time
 import typing
 import warnings
 from contextlib import nullcontext
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from grpclib import GRPCError, Status
@@ -2596,6 +2597,149 @@ def test_function_get_current_stats(client, servicer):
     assert function_stats.num_total_runners == function_stats_msg.num_total_tasks
     assert function_stats.num_running_inputs == function_stats_msg.num_running_inputs
     assert function_stats.input_headroom == function_stats_msg.input_headroom
+
+
+def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb2.StatsPercentileDistribution:
+    return api_pb2.StatsPercentileDistribution(
+        unit=unit,
+        percentiles=[
+            api_pb2.StatsPercentile(percentile_basis_points=5000, value=p50),
+            api_pb2.StatsPercentile(percentile_basis_points=9000, value=p90),
+            api_pb2.StatsPercentile(percentile_basis_points=9900, value=p99),
+        ],
+    )
+
+
+EXAMPLE_FUNCTION = api_pb2.FunctionData(
+    ranked_functions=[
+        api_pb2.FunctionData.RankedFunction(
+            rank=1,
+            function=api_pb2.Function(
+                function_name="func",
+                volume_mounts=[
+                    api_pb2.VolumeMount(volume_id="vo-123", mount_path="/tmp"),
+                    api_pb2.VolumeMount(volume_id="vo-456", mount_path="/mnt", read_only=True),
+                ],
+                cloud_bucket_mounts=[
+                    api_pb2.CloudBucketMount(
+                        bucket_name="bucket-name",
+                        mount_path="/dev",
+                        bucket_type=api_pb2.CloudBucketMount.BucketType.S3,
+                    )
+                ],
+            ),
+        )
+    ]
+)
+
+
+def test_function_stats(client, servicer):
+    f = Function.from_name("dummy-app", "func", client=client)
+    function_id = "fu-1"
+    since = datetime(2026, 8, 20, 12, tzinfo=timezone.utc)
+    until = since + timedelta(hours=2)
+    historical_response = api_pb2.FunctionGetTimeRangeStatsResponse(
+        input_success_count=100,
+        input_failure_count=5,
+        input_timeout_count=2,
+        input_running_at_end_count=3,
+        input_percentile_stats={
+            "execution_time": _stats_distribution("seconds", 1.0, 2.0, 4.0),
+            "end_to_end_latency": _stats_distribution("seconds", 1.5, 3.0, 6.0),
+        },
+        container_started_count=20,
+        container_error_count=4,
+        container_creating_at_end_count=2,
+        container_percentile_stats={
+            "startup_time": _stats_distribution("seconds", 0.25, 0.5, 1.0),
+            "cpu_usage": _stats_distribution("cores", 0.1, 0.4, 0.8),
+            "memory_usage": _stats_distribution("GiB", 0.2, 0.5, 1.0),
+        },
+    )
+    historical_response.since.FromDatetime(since)
+    historical_response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(function_id=function_id, function=EXAMPLE_FUNCTION),
+        )
+        ctx.add_response("FunctionGetTimeRangeStats", historical_response)
+        stats = f.stats(since=since, until=until)
+
+    historical_request = ctx.pop_request("FunctionGetTimeRangeStats")
+    assert historical_request.function_id == function_id
+    assert historical_request.since.ToDatetime(tzinfo=timezone.utc) == since
+    assert historical_request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert ctx.get_requests("FunctionGetCurrentStats") == []
+
+    assert stats.since == since
+    assert stats.until == until
+    assert stats.input_success_count == 100
+    assert stats.input_failure_count == 5
+    assert stats.input_timeout_count == 2
+    assert stats.input_running_at_end_count == 3
+    assert set(stats.input_percentile_stats) == {"execution_time", "end_to_end_latency"}
+    execution_time = stats.input_percentile_stats["execution_time"]
+    assert execution_time.unit == "seconds"
+    assert [(percentile.percentile, percentile.value) for percentile in execution_time.percentiles] == [
+        (50.0, 1.0),
+        (90.0, 2.0),
+        (99.0, 4.0),
+    ]
+    assert stats.container_started_count == 20
+    assert stats.container_error_count == 4
+    assert stats.container_creating_at_end_count == 2
+    assert set(stats.container_percentile_stats) == {"startup_time", "cpu_usage", "memory_usage"}
+    assert stats.container_percentile_stats["startup_time"].unit == "seconds"
+    assert stats.container_percentile_stats["cpu_usage"].unit == "cores"
+    assert stats.container_percentile_stats["memory_usage"].unit == "GiB"
+
+
+def test_function_stats_default_time_range(client, servicer):
+    f = Function.from_name("dummy-app", "func", client=client)
+    response_since = datetime(2026, 8, 20, 12, tzinfo=timezone.utc)
+    response_until = response_since + timedelta(hours=1)
+    response = api_pb2.FunctionGetTimeRangeStatsResponse()
+    response.since.FromDatetime(response_since)
+    response.until.FromDatetime(response_until)
+
+    before = datetime.now(timezone.utc)
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-1",
+                function=EXAMPLE_FUNCTION,
+            ),
+        )
+        ctx.add_response("FunctionGetTimeRangeStats", response)
+        f.stats()
+    after = datetime.now(timezone.utc)
+
+    request = ctx.pop_request("FunctionGetTimeRangeStats")
+    requested_since = request.since.ToDatetime(tzinfo=timezone.utc)
+    requested_until = request.until.ToDatetime(tzinfo=timezone.utc)
+    assert before <= requested_until <= after
+    assert requested_until - requested_since == timedelta(hours=1)
+    assert ctx.get_requests("FunctionGetCurrentStats") == []
+
+
+def test_function_stats_rejects_invalid_time_range(client, servicer):
+    f = Function.from_name("dummy-app", "func", client=client)
+    now = datetime.now(timezone.utc)
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-1",
+                function=EXAMPLE_FUNCTION,
+            ),
+        )
+        with pytest.raises(InvalidError, match="must be before"):
+            f.stats(since=now, until=now)
+
+    assert ctx.get_requests("FunctionGetTimeRangeStats") == []
 
 
 def test_function_duplicate_volume_mounts(client, servicer):

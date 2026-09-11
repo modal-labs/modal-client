@@ -130,15 +130,74 @@ class VolumeInfo:
     created_by: str | None
 
 
-# Wrapper type for api_pb2.FunctionStats
 @dataclass(frozen=True)
-class FunctionStats:
+class FunctionCurrentStats:
     """Simple data structure storing stats for a running function."""
 
     backlog: int
     num_total_runners: int
     num_running_inputs: int
     input_headroom: int
+
+
+@dataclass(frozen=True)
+class StatsPercentile:
+    """A percentile measurement for a metric or strat."""
+
+    percentile: float
+    value: float
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.StatsPercentile) -> "StatsPercentile":
+        return cls(proto.percentile_basis_points / 100, proto.value)
+
+
+@dataclass(frozen=True)
+class StatsPercentileDistribution:
+    unit: str
+    percentiles: list[StatsPercentile]
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.StatsPercentileDistribution) -> "StatsPercentileDistribution":
+        return cls(unit=proto.unit, percentiles=[StatsPercentile._from_proto(p) for p in proto.percentiles])
+
+
+@dataclass(frozen=True)
+class FunctionStats:
+    """Historical Function statistics for a time range."""
+
+    since: datetime
+    until: datetime
+    input_success_count: int
+    input_failure_count: int
+    input_timeout_count: int
+    input_running_at_end_count: int
+    input_percentile_stats: dict[str, StatsPercentileDistribution]
+
+    container_started_count: int
+    container_error_count: int
+    container_creating_at_end_count: int
+    container_percentile_stats: dict[str, StatsPercentileDistribution]
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.FunctionGetTimeRangeStatsResponse) -> "FunctionStats":
+        return cls(
+            since=proto.since.ToDatetime(tzinfo=timezone.utc),
+            until=proto.until.ToDatetime(tzinfo=timezone.utc),
+            input_success_count=proto.input_success_count,
+            input_failure_count=proto.input_failure_count,
+            input_timeout_count=proto.input_timeout_count,
+            input_running_at_end_count=proto.input_running_at_end_count,
+            input_percentile_stats={
+                k: StatsPercentileDistribution._from_proto(v) for k, v in proto.input_percentile_stats.items()
+            },
+            container_started_count=proto.container_started_count,
+            container_error_count=proto.container_error_count,
+            container_creating_at_end_count=proto.container_creating_at_end_count,
+            container_percentile_stats={
+                k: StatsPercentileDistribution._from_proto(v) for k, v in proto.container_percentile_stats.items()
+            },
+        )
 
 
 @dataclass
