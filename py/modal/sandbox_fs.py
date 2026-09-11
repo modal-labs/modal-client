@@ -123,22 +123,25 @@ class _SandboxFilesystem:
         Parent directories for `local_path` are created if needed.
         The local file is overwritten if it already exists.
 
-        **Raises**
+        Args:
+            remote_path: Absolute path to the file in the Sandbox.
+            local_path: Path to the file on the local machine.
 
-        - `SandboxFilesystemNotFoundError`: the remote path does not exist.
-        - `SandboxFilesystemIsADirectoryError`: the remote path points to a directory.
-        - `SandboxFilesystemPermissionError`: read permission is denied in the Sandbox.
-        - `SandboxFilesystemError`: the command fails for any other reason.
-        - `IsADirectoryError`: `local_path` points to a directory.
-        - `NotADirectoryError`: a component of the `local_path` parent is not a directory.
-        - `PermissionError`: writing `local_path` is not permitted.
+        Raises:
+            SandboxFilesystemNotFoundError: The remote path does not exist.
+            SandboxFilesystemIsADirectoryError: The remote path points to a directory.
+            SandboxFilesystemFileTooLargeError: The file exceeds the read size limit.
+            SandboxFilesystemPermissionError: Read permission is denied in the Sandbox.
+            SandboxFilesystemError: The command fails for any other reason.
+            IsADirectoryError: ``local_path`` points to a directory.
+            NotADirectoryError: A component of the ``local_path`` parent is not a directory.
+            PermissionError: Writing ``local_path`` is not permitted.
 
-        **Usage**
-
-        ```python fixture:sandbox fixture:tmpdir
-        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
-        sandbox.filesystem.copy_to_local("/tmp/hello.txt", "/tmp/local-hello.txt")
-        ```
+        Examples:
+            ```python fixture:sandbox fixture:tmpdir
+            sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
+            sandbox.filesystem.copy_to_local("/tmp/hello.txt", "/tmp/local-hello.txt")
+            ```
         """
         validate_absolute_remote_path(remote_path, "copy_to_local")
         local_path_obj = Path(local_path)
@@ -286,6 +289,7 @@ class _SandboxFilesystem:
         Raises:
             SandboxFilesystemNotFoundError: The path does not exist.
             SandboxFilesystemIsADirectoryError: The path points to a directory.
+            SandboxFilesystemFileTooLargeError: The file exceeds the read size limit.
             SandboxFilesystemPermissionError: Read permission is denied.
             SandboxFilesystemError: The command fails for any other reason.
 
@@ -328,6 +332,7 @@ class _SandboxFilesystem:
         Raises:
             SandboxFilesystemNotFoundError: The path does not exist.
             SandboxFilesystemIsADirectoryError: The path points to a directory.
+            SandboxFilesystemFileTooLargeError: The file exceeds the read size limit.
             SandboxFilesystemPermissionError: Read permission is denied.
             SandboxFilesystemError: The command fails for any other reason.
 
@@ -408,20 +413,24 @@ class _SandboxFilesystem:
         `remote_path` must be an absolute path in the Sandbox. If `remote_path` is a symlink, the returned
         `FileInfo` object describes the symlink, not the target it points to.
 
-        **Raises**
+        Args:
+            remote_path: Absolute path in the Sandbox.
 
-        - `SandboxFilesystemNotFoundError`: the path does not exist.
-        - `SandboxFilesystemNotADirectoryError`: a non-leaf component of the path is not a directory.
-        - `SandboxFilesystemPermissionError`: a component of the path is not searchable.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Returns:
+            A `FileInfo` object describing the path.
 
-        **Usage**
+        Raises:
+            SandboxFilesystemNotFoundError: The path does not exist.
+            SandboxFilesystemNotADirectoryError: A non-leaf component of the path is not a directory.
+            SandboxFilesystemPermissionError: A component of the path is not searchable.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        ```python fixture:sandbox
-        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
-        info = sandbox.filesystem.stat("/tmp/hello.txt")
-        print(info.size, info.permissions, info.modified_time)
-        ```
+        Examples:
+            ```python fixture:sandbox
+            sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
+            info = sandbox.filesystem.stat("/tmp/hello.txt")
+            print(info.size, info.permissions, info.modified_time)
+            ```
         """
         validate_absolute_remote_path(remote_path, "stat")
 
@@ -470,36 +479,35 @@ class _SandboxFilesystem:
         If `remote_path` is a symlink, it is followed and events reference
         paths under the resolved target.
 
-        Yields `FileWatchEvent` objects as changes occur, until either
-        `timeout` seconds elapse, the iterator is closed, or the Sandbox
-        is terminated.
+        Args:
+            remote_path: Absolute path in the Sandbox to watch.
+            filter: Restrict the kinds of events emitted to those included in the list.
+                The default ``None`` permits all event types.
+            recursive: When ``True``, also report events for all nested subdirectories.
+            timeout: Number of seconds to watch for. ``None`` means watch indefinitely.
 
-        Optionally restrict the kinds of events emitted to those included
-        in `filter`. The default filter `None` permits all event types.
+        Yields:
+            `FileWatchEvent` objects as changes occur, until either ``timeout`` seconds
+            elapse, the iterator is closed, or the Sandbox is terminated. When ``timeout``
+            elapses, the iterator stops without raising an exception.
 
-        `timeout` is in seconds. `None` means watch indefinitely. When
-        `timeout` elapses, the iterator stops without raising an exception.
+        Raises:
+            SandboxFilesystemNotFoundError: ``remote_path`` does not exist.
+            SandboxFilesystemPermissionError: Watch access is denied.
+            InvalidError: The filesystem at ``remote_path`` does not support watching.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        **Raises**
-
-        - `SandboxFilesystemNotFoundError`: `remote_path` does not exist.
-        - `SandboxFilesystemPermissionError`: watch access is denied.
-        - `InvalidError`: the filesystem at `remote_path` does not support
-          watching.
-        - `SandboxFilesystemError`: the command fails for any other reason.
-
-        **Usage**
-
-        ```python notest
-        for event in sandbox.filesystem.watch(
-            "/tmp/foo",
-            recursive=True,
-            filter=[FileWatchEventType.Create],
-            timeout=60,
-        ):
-            if any(p.endswith(".done") for p in event.paths):
-                break
-        ```
+        Examples:
+            ```python notest
+            for event in sandbox.filesystem.watch(
+                "/tmp/foo",
+                recursive=True,
+                filter=[FileWatchEventType.Create],
+                timeout=60,
+            ):
+                if any(p.endswith(".done") for p in event.paths):
+                    break
+            ```
         """
         validate_absolute_remote_path(remote_path, "watch")
 
