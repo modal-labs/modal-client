@@ -3245,20 +3245,21 @@ message OutboundPolicy {
   repeated HeaderReplacement header_replacements = 1;
 
   message HeaderReplacement {
-    // Domain that the header replacement is scoped to. Supports wildcards in
+    // Domain that the header replacements are scoped to. Supports wildcards in
     // subdomain positions.
     string domain = 1;
-    // Header name to replace.
-    string header_name = 2;
-    // Header value to replace.
-    //
-    // Supports templating with keys in a given secret_id: a $-prefixed key
-    // name in the secret will be replaced with the secret value. Literal $
-    // characters can be represented by two dollars: `$$`.
-    string header_value = 3;
-    // Reference to a secret to use in the header_value template. Can be empty
-    // if no secret value is used in header_value.
+    // Reference to a secret usable in the header value templates. Can be
+    // empty if no secret value is used.
     string secret_id = 4;
+    // Header name -> header value.
+    //
+    // Values support templating with keys in the stanza's secret_id: a
+    // $-prefixed key name in the secret will be replaced with the secret
+    // value. Literal $ characters can be represented by two dollars: `$$`.
+    map<string, string> headers = 5;
+
+    reserved 2, 3;
+    reserved "header_name", "header_value";
   }
 }
 
