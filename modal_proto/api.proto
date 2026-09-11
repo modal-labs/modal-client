@@ -431,6 +431,8 @@ message AppCountLogsRequest {
   google.protobuf.Timestamp until = 8;
   uint32 bucket_secs = 9;
   FileDescriptor source = 10;
+  // Restrict logs to this exact Function ID, including when it is the base Function.
+  string parametrized_function_id = 11;
 }
 
 message AppCountLogsResponse {
@@ -505,6 +507,8 @@ message AppFetchLogsRequest {
   string task_id = 8;
   string sandbox_id = 9;
   string search_text = 10;
+  // Restrict logs to this exact Function ID, including when it is the base Function.
+  string parametrized_function_id = 11;
 }
 
 message AppFetchLogsResponse {
@@ -2542,6 +2546,8 @@ message FunctionHandleMetadata {
   repeated DataFormat supported_input_formats = 50;
   repeated DataFormat supported_output_formats = 51;
   string app_id = 52;
+  // The base Function ID for a variant, or the Function's own ID otherwise.
+  string base_function_id = 54;
 }
 
 message FunctionInput {

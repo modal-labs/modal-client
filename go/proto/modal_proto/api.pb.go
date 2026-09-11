@@ -3158,19 +3158,20 @@ func (b0 AppClientDisconnectRequest_builder) Build() *AppClientDisconnectRequest
 }
 
 type AppCountLogsRequest struct {
-	state                     protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_AppId          string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3"`
-	xxx_hidden_TaskId         string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3"`
-	xxx_hidden_FunctionId     string                 `protobuf:"bytes,3,opt,name=function_id,json=functionId,proto3"`
-	xxx_hidden_FunctionCallId string                 `protobuf:"bytes,4,opt,name=function_call_id,json=functionCallId,proto3"`
-	xxx_hidden_SandboxId      string                 `protobuf:"bytes,5,opt,name=sandbox_id,json=sandboxId,proto3"`
-	xxx_hidden_SearchText     string                 `protobuf:"bytes,6,opt,name=search_text,json=searchText,proto3"`
-	xxx_hidden_Since          *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=since,proto3"`
-	xxx_hidden_Until          *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=until,proto3"`
-	xxx_hidden_BucketSecs     uint32                 `protobuf:"varint,9,opt,name=bucket_secs,json=bucketSecs,proto3"`
-	xxx_hidden_Source         FileDescriptor         `protobuf:"varint,10,opt,name=source,proto3,enum=modal.client.FileDescriptor"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	state                             protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_AppId                  string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3"`
+	xxx_hidden_TaskId                 string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_FunctionId             string                 `protobuf:"bytes,3,opt,name=function_id,json=functionId,proto3"`
+	xxx_hidden_FunctionCallId         string                 `protobuf:"bytes,4,opt,name=function_call_id,json=functionCallId,proto3"`
+	xxx_hidden_SandboxId              string                 `protobuf:"bytes,5,opt,name=sandbox_id,json=sandboxId,proto3"`
+	xxx_hidden_SearchText             string                 `protobuf:"bytes,6,opt,name=search_text,json=searchText,proto3"`
+	xxx_hidden_Since                  *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=since,proto3"`
+	xxx_hidden_Until                  *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=until,proto3"`
+	xxx_hidden_BucketSecs             uint32                 `protobuf:"varint,9,opt,name=bucket_secs,json=bucketSecs,proto3"`
+	xxx_hidden_Source                 FileDescriptor         `protobuf:"varint,10,opt,name=source,proto3,enum=modal.client.FileDescriptor"`
+	xxx_hidden_ParametrizedFunctionId string                 `protobuf:"bytes,11,opt,name=parametrized_function_id,json=parametrizedFunctionId,proto3"`
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
 }
 
 func (x *AppCountLogsRequest) Reset() {
@@ -3268,6 +3269,13 @@ func (x *AppCountLogsRequest) GetSource() FileDescriptor {
 	return FileDescriptor_FILE_DESCRIPTOR_UNSPECIFIED
 }
 
+func (x *AppCountLogsRequest) GetParametrizedFunctionId() string {
+	if x != nil {
+		return x.xxx_hidden_ParametrizedFunctionId
+	}
+	return ""
+}
+
 func (x *AppCountLogsRequest) SetAppId(v string) {
 	x.xxx_hidden_AppId = v
 }
@@ -3308,6 +3316,10 @@ func (x *AppCountLogsRequest) SetSource(v FileDescriptor) {
 	x.xxx_hidden_Source = v
 }
 
+func (x *AppCountLogsRequest) SetParametrizedFunctionId(v string) {
+	x.xxx_hidden_ParametrizedFunctionId = v
+}
+
 func (x *AppCountLogsRequest) HasSince() bool {
 	if x == nil {
 		return false
@@ -3343,6 +3355,8 @@ type AppCountLogsRequest_builder struct {
 	Until          *timestamppb.Timestamp
 	BucketSecs     uint32
 	Source         FileDescriptor
+	// Restrict logs to this exact Function ID, including when it is the base Function.
+	ParametrizedFunctionId string
 }
 
 func (b0 AppCountLogsRequest_builder) Build() *AppCountLogsRequest {
@@ -3359,6 +3373,7 @@ func (b0 AppCountLogsRequest_builder) Build() *AppCountLogsRequest {
 	x.xxx_hidden_Until = b.Until
 	x.xxx_hidden_BucketSecs = b.BucketSecs
 	x.xxx_hidden_Source = b.Source
+	x.xxx_hidden_ParametrizedFunctionId = b.ParametrizedFunctionId
 	return m0
 }
 
@@ -4142,19 +4157,20 @@ func (b0 AppDeploymentHistoryResponse_builder) Build() *AppDeploymentHistoryResp
 }
 
 type AppFetchLogsRequest struct {
-	state                     protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_AppId          string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3"`
-	xxx_hidden_Since          *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=since,proto3"`
-	xxx_hidden_Until          *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=until,proto3"`
-	xxx_hidden_Limit          uint32                 `protobuf:"varint,4,opt,name=limit,proto3"`
-	xxx_hidden_Source         FileDescriptor         `protobuf:"varint,5,opt,name=source,proto3,enum=modal.client.FileDescriptor"`
-	xxx_hidden_FunctionId     string                 `protobuf:"bytes,6,opt,name=function_id,json=functionId,proto3"`
-	xxx_hidden_FunctionCallId string                 `protobuf:"bytes,7,opt,name=function_call_id,json=functionCallId,proto3"`
-	xxx_hidden_TaskId         string                 `protobuf:"bytes,8,opt,name=task_id,json=taskId,proto3"`
-	xxx_hidden_SandboxId      string                 `protobuf:"bytes,9,opt,name=sandbox_id,json=sandboxId,proto3"`
-	xxx_hidden_SearchText     string                 `protobuf:"bytes,10,opt,name=search_text,json=searchText,proto3"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	state                             protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_AppId                  string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3"`
+	xxx_hidden_Since                  *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=since,proto3"`
+	xxx_hidden_Until                  *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=until,proto3"`
+	xxx_hidden_Limit                  uint32                 `protobuf:"varint,4,opt,name=limit,proto3"`
+	xxx_hidden_Source                 FileDescriptor         `protobuf:"varint,5,opt,name=source,proto3,enum=modal.client.FileDescriptor"`
+	xxx_hidden_FunctionId             string                 `protobuf:"bytes,6,opt,name=function_id,json=functionId,proto3"`
+	xxx_hidden_FunctionCallId         string                 `protobuf:"bytes,7,opt,name=function_call_id,json=functionCallId,proto3"`
+	xxx_hidden_TaskId                 string                 `protobuf:"bytes,8,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_SandboxId              string                 `protobuf:"bytes,9,opt,name=sandbox_id,json=sandboxId,proto3"`
+	xxx_hidden_SearchText             string                 `protobuf:"bytes,10,opt,name=search_text,json=searchText,proto3"`
+	xxx_hidden_ParametrizedFunctionId string                 `protobuf:"bytes,11,opt,name=parametrized_function_id,json=parametrizedFunctionId,proto3"`
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
 }
 
 func (x *AppFetchLogsRequest) Reset() {
@@ -4252,6 +4268,13 @@ func (x *AppFetchLogsRequest) GetSearchText() string {
 	return ""
 }
 
+func (x *AppFetchLogsRequest) GetParametrizedFunctionId() string {
+	if x != nil {
+		return x.xxx_hidden_ParametrizedFunctionId
+	}
+	return ""
+}
+
 func (x *AppFetchLogsRequest) SetAppId(v string) {
 	x.xxx_hidden_AppId = v
 }
@@ -4292,6 +4315,10 @@ func (x *AppFetchLogsRequest) SetSearchText(v string) {
 	x.xxx_hidden_SearchText = v
 }
 
+func (x *AppFetchLogsRequest) SetParametrizedFunctionId(v string) {
+	x.xxx_hidden_ParametrizedFunctionId = v
+}
+
 func (x *AppFetchLogsRequest) HasSince() bool {
 	if x == nil {
 		return false
@@ -4327,6 +4354,8 @@ type AppFetchLogsRequest_builder struct {
 	TaskId         string
 	SandboxId      string
 	SearchText     string
+	// Restrict logs to this exact Function ID, including when it is the base Function.
+	ParametrizedFunctionId string
 }
 
 func (b0 AppFetchLogsRequest_builder) Build() *AppFetchLogsRequest {
@@ -4343,6 +4372,7 @@ func (b0 AppFetchLogsRequest_builder) Build() *AppFetchLogsRequest {
 	x.xxx_hidden_TaskId = b.TaskId
 	x.xxx_hidden_SandboxId = b.SandboxId
 	x.xxx_hidden_SearchText = b.SearchText
+	x.xxx_hidden_ParametrizedFunctionId = b.ParametrizedFunctionId
 	return m0
 }
 
@@ -30604,6 +30634,7 @@ type FunctionHandleMetadata struct {
 	xxx_hidden_SupportedInputFormats   []DataFormat                       `protobuf:"varint,50,rep,packed,name=supported_input_formats,json=supportedInputFormats,proto3,enum=modal.client.DataFormat"`
 	xxx_hidden_SupportedOutputFormats  []DataFormat                       `protobuf:"varint,51,rep,packed,name=supported_output_formats,json=supportedOutputFormats,proto3,enum=modal.client.DataFormat"`
 	xxx_hidden_AppId                   string                             `protobuf:"bytes,52,opt,name=app_id,json=appId,proto3"`
+	xxx_hidden_BaseFunctionId          string                             `protobuf:"bytes,54,opt,name=base_function_id,json=baseFunctionId,proto3"`
 	XXX_raceDetectHookData             protoimpl.RaceDetectHookData
 	XXX_presence                       [1]uint32
 	unknownFields                      protoimpl.UnknownFields
@@ -30767,6 +30798,13 @@ func (x *FunctionHandleMetadata) GetAppId() string {
 	return ""
 }
 
+func (x *FunctionHandleMetadata) GetBaseFunctionId() string {
+	if x != nil {
+		return x.xxx_hidden_BaseFunctionId
+	}
+	return ""
+}
+
 func (x *FunctionHandleMetadata) SetFunctionName(v string) {
 	x.xxx_hidden_FunctionName = v
 }
@@ -30809,22 +30847,22 @@ func (x *FunctionHandleMetadata) SetFunctionSchema(v *FunctionSchema) {
 
 func (x *FunctionHandleMetadata) SetInputPlaneUrl(v string) {
 	x.xxx_hidden_InputPlaneUrl = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 19)
 }
 
 func (x *FunctionHandleMetadata) SetInputPlaneRegion(v string) {
 	x.xxx_hidden_InputPlaneRegion = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 19)
 }
 
 func (x *FunctionHandleMetadata) SetMaxObjectSizeBytes(v uint64) {
 	x.xxx_hidden_MaxObjectSizeBytes = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 19)
 }
 
 func (x *FunctionHandleMetadata) SetMaxAsyncObjectSizeBytes(v uint64) {
 	x.xxx_hidden_MaxAsyncObjectSizeBytes = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 13, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 13, 19)
 }
 
 func (x *FunctionHandleMetadata) SetXExperimentalFlashUrls(v []string) {
@@ -30841,6 +30879,10 @@ func (x *FunctionHandleMetadata) SetSupportedOutputFormats(v []DataFormat) {
 
 func (x *FunctionHandleMetadata) SetAppId(v string) {
 	x.xxx_hidden_AppId = v
+}
+
+func (x *FunctionHandleMetadata) SetBaseFunctionId(v string) {
+	x.xxx_hidden_BaseFunctionId = v
 }
 
 func (x *FunctionHandleMetadata) HasClassParameterInfo() bool {
@@ -30937,6 +30979,8 @@ type FunctionHandleMetadata_builder struct {
 	SupportedInputFormats   []DataFormat
 	SupportedOutputFormats  []DataFormat
 	AppId                   string
+	// The base Function ID for a variant, or the Function's own ID otherwise.
+	BaseFunctionId string
 }
 
 func (b0 FunctionHandleMetadata_builder) Build() *FunctionHandleMetadata {
@@ -30954,25 +30998,26 @@ func (b0 FunctionHandleMetadata_builder) Build() *FunctionHandleMetadata {
 	x.xxx_hidden_MethodHandleMetadata = b.MethodHandleMetadata
 	x.xxx_hidden_FunctionSchema = b.FunctionSchema
 	if b.InputPlaneUrl != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 19)
 		x.xxx_hidden_InputPlaneUrl = b.InputPlaneUrl
 	}
 	if b.InputPlaneRegion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 19)
 		x.xxx_hidden_InputPlaneRegion = b.InputPlaneRegion
 	}
 	if b.MaxObjectSizeBytes != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 19)
 		x.xxx_hidden_MaxObjectSizeBytes = *b.MaxObjectSizeBytes
 	}
 	if b.MaxAsyncObjectSizeBytes != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 13, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 13, 19)
 		x.xxx_hidden_MaxAsyncObjectSizeBytes = *b.MaxAsyncObjectSizeBytes
 	}
 	x.xxx_hidden_XExperimentalFlashUrls = b.XExperimentalFlashUrls
 	x.xxx_hidden_SupportedInputFormats = b.SupportedInputFormats
 	x.xxx_hidden_SupportedOutputFormats = b.SupportedOutputFormats
 	x.xxx_hidden_AppId = b.AppId
+	x.xxx_hidden_BaseFunctionId = b.BaseFunctionId
 	return m0
 }
 
@@ -66586,7 +66631,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1aAppClientDisconnectRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x129\n" +
 	"\x06reason\x18\x02 \x01(\x0e2!.modal.client.AppDisconnectReasonR\x06reason\x12\x1c\n" +
-	"\texception\x18\x03 \x01(\tR\texception\"\x8b\x03\n" +
+	"\texception\x18\x03 \x01(\tR\texception\"\xc5\x03\n" +
 	"\x13AppCountLogsRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x1f\n" +
@@ -66602,7 +66647,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vbucket_secs\x18\t \x01(\rR\n" +
 	"bucketSecs\x124\n" +
 	"\x06source\x18\n" +
-	" \x01(\x0e2\x1c.modal.client.FileDescriptorR\x06source\"\xaa\x02\n" +
+	" \x01(\x0e2\x1c.modal.client.FileDescriptorR\x06source\x128\n" +
+	"\x18parametrized_function_id\x18\v \x01(\tR\x16parametrizedFunctionId\"\xaa\x02\n" +
 	"\x14AppCountLogsResponse\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12F\n" +
 	"\abuckets\x18\x02 \x03(\v2,.modal.client.AppCountLogsResponse.LogBucketR\abuckets\x1a\xb2\x01\n" +
@@ -66660,7 +66706,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\"\xb2\x01\n" +
 	"\x1cAppDeploymentHistoryResponse\x12\\\n" +
 	"\x18app_deployment_histories\x18\x01 \x03(\v2\".modal.client.AppDeploymentHistoryR\x16appDeploymentHistories\x124\n" +
-	"\x16production_app_version\x18\x02 \x01(\rR\x14productionAppVersion\"\x80\x03\n" +
+	"\x16production_app_version\x18\x02 \x01(\rR\x14productionAppVersion\"\xba\x03\n" +
 	"\x13AppFetchLogsRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x120\n" +
 	"\x05since\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x120\n" +
@@ -66675,7 +66721,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"sandbox_id\x18\t \x01(\tR\tsandboxId\x12\x1f\n" +
 	"\vsearch_text\x18\n" +
 	" \x01(\tR\n" +
-	"searchText\"M\n" +
+	"searchText\x128\n" +
+	"\x18parametrized_function_id\x18\v \x01(\tR\x16parametrizedFunctionId\"M\n" +
 	"\x14AppFetchLogsResponse\x125\n" +
 	"\abatches\x18\x01 \x03(\v2\x1b.modal.client.TaskLogsBatchR\abatches\"d\n" +
 	"\x1dAppGetByDeploymentNameRequest\x12\x12\n" +
@@ -68175,7 +68222,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2).modal.client.StatsPercentileDistributionR\x05value:\x028\x01\x1av\n" +
 	"\x1dContainerPercentileStatsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12?\n" +
-	"\x05value\x18\x02 \x01(\v2).modal.client.StatsPercentileDistributionR\x05value:\x028\x01\"\xe8\t\n" +
+	"\x05value\x18\x02 \x01(\v2).modal.client.StatsPercentileDistributionR\x05value:\x028\x01\"\x92\n" +
+	"\n" +
 	"\x16FunctionHandleMetadata\x12#\n" +
 	"\rfunction_name\x18\x02 \x01(\tR\ffunctionName\x12H\n" +
 	"\rfunction_type\x18\b \x01(\x0e2#.modal.client.Function.FunctionTypeR\ffunctionType\x12\x17\n" +
@@ -68194,7 +68242,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x18_experimental_flash_urls\x181 \x03(\tR\x15ExperimentalFlashUrls\x12P\n" +
 	"\x17supported_input_formats\x182 \x03(\x0e2\x18.modal.client.DataFormatR\x15supportedInputFormats\x12R\n" +
 	"\x18supported_output_formats\x183 \x03(\x0e2\x18.modal.client.DataFormatR\x16supportedOutputFormats\x12\x15\n" +
-	"\x06app_id\x184 \x01(\tR\x05appId\x1am\n" +
+	"\x06app_id\x184 \x01(\tR\x05appId\x12(\n" +
+	"\x10base_function_id\x186 \x01(\tR\x0ebaseFunctionId\x1am\n" +
 	"\x19MethodHandleMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12:\n" +
 	"\x05value\x18\x02 \x01(\v2$.modal.client.FunctionHandleMetadataR\x05value:\x028\x01B\x12\n" +
