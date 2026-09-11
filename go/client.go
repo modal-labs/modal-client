@@ -216,7 +216,7 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 		c.cpClient = &clientWithConn{ModalClientClient: client, conn: conn}
 	}
 
-	c.authTokenManager = newAuthTokenManager(c.cpClient, c.logger)
+	c.authTokenManager = newAuthTokenManager(authTokenGetFetcher(c.cpClient), c.logger)
 	c.environmentManager = newEnvironmentManager(c.cpClient, c.logger)
 
 	logger.DebugContext(ctx, "Modal client initialized successfully")

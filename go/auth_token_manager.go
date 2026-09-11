@@ -13,6 +13,7 @@ import (
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -55,6 +56,19 @@ type tokenAndExpiry struct {
 	refreshAt int64
 }
 
+// tokenFetcher wraps a single RPC call and must not retry; the manager handles retries via opts.
+type tokenFetcher func(ctx context.Context, opts ...grpc.CallOption) (string, error)
+
+func authTokenGetFetcher(client pb.ModalClientClient) tokenFetcher {
+	return func(ctx context.Context, opts ...grpc.CallOption) (string, error) {
+		resp, err := client.AuthTokenGet(ctx, &pb.AuthTokenGetRequest{}, opts...)
+		if err != nil {
+			return "", err
+		}
+		return resp.GetToken(), nil
+	}
+}
+
 // newTokenAndExpiry schedules the proactive refresh a jittered fraction of the way through
 // the token's lifetime.
 //
@@ -88,7 +102,7 @@ func (d *atomicDuration) Store(v time.Duration) {
 // when GetToken is called. Tokens are refreshed when expired, or once they
 // have used up a jittered fraction of their lifetime.
 type authTokenManager struct {
-	client pb.ModalClientClient
+	fetch  tokenFetcher
 	logger *slog.Logger
 
 	tokenAndExpiry atomic.Pointer[tokenAndExpiry]
@@ -100,9 +114,9 @@ type authTokenManager struct {
 	backoff    atomicDuration
 }
 
-func newAuthTokenManager(client pb.ModalClientClient, logger *slog.Logger) *authTokenManager {
+func newAuthTokenManager(fetch tokenFetcher, logger *slog.Logger) *authTokenManager {
 	manager := &authTokenManager{
-		client: client,
+		fetch:  fetch,
 		logger: logger,
 	}
 
@@ -209,7 +223,7 @@ func tokenFromRefresh(result singleflight.Result) (string, error) {
 	return result.Val.(string), nil
 }
 
-// FetchToken fetches a new token using AuthTokenGet() and stores it.
+// FetchToken fetches a new token and stores it.
 func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 	retries := 0
 	if m.tokenAndExpiry.Load().token == "" {
@@ -217,11 +231,11 @@ func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 		// Otherwise one attempt, and retryAfter handles the cooldown.
 		retries = defaultRetryAttempts
 	}
-	resp, err := m.client.AuthTokenGet(ctx, &pb.AuthTokenGetRequest{},
+	token, err := m.fetch(ctx,
 		timeoutCallOption{timeout: authTokenGetTimeout},
 		retryCallOption{retries: &retries},
 	)
-	if err == nil && resp.GetToken() == "" {
+	if err == nil && token == "" {
 		err = fmt.Errorf("internal error: did not receive auth token from server, please contact Modal support")
 	}
 	if err != nil {
@@ -240,7 +254,6 @@ func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	token := resp.GetToken()
 	var expiry int64
 	if exp := m.decodeJWT(token); exp > 0 {
 		expiry = exp

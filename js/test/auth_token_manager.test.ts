@@ -6,6 +6,7 @@ import {
   AUTH_TOKEN_GET_TIMEOUT_MS,
   AUTH_TOKEN_GET_MAX_RETRIES,
   AuthTokenManager,
+  authTokenGetFetcher,
   FAILURE_BACKOFF_BASE_MS,
   FAILURE_BACKOFF_MAX_MS,
 } from "../src/auth_token_manager";
@@ -38,7 +39,10 @@ describe("AuthTokenManager", () => {
 
   beforeEach(() => {
     mockClient = newMockAuthClient();
-    manager = new AuthTokenManager(mockClient as any, newLogger());
+    manager = new AuthTokenManager(
+      authTokenGetFetcher(mockClient as any),
+      newLogger(),
+    );
   });
 
   test("TestAuthToken_DecodeJWT", async () => {
@@ -66,6 +70,24 @@ describe("AuthTokenManager", () => {
     expect(secondToken).toBe(token);
 
     expect(mockClient.authTokenGet).toHaveBeenCalledTimes(1);
+  });
+
+  test("TestAuthToken_CustomFetcher", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = createTestJWT(now + 3600);
+    const fetch = vi.fn(
+      async (_options: { retries: number; timeoutMs: number }) => token,
+    );
+    manager = new AuthTokenManager(fetch, newLogger());
+
+    await expect(manager.getToken()).resolves.toBe(token);
+    await expect(manager.getToken()).resolves.toBe(token);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith({
+      retries: AUTH_TOKEN_GET_MAX_RETRIES,
+      timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
+    });
   });
 
   test("TestAuthToken_FetchOnlyRetriesWithoutCachedToken", async () => {

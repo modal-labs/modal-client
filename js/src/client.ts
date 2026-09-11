@@ -26,7 +26,7 @@ import { VolumeService } from "./volume";
 
 import { ClientType, ModalClientDefinition } from "../proto/modal_proto/api";
 import { getProfile, type Profile } from "./config";
-import { AuthTokenManager } from "./auth_token_manager";
+import { AuthTokenManager, authTokenGetFetcher } from "./auth_token_manager";
 import { getSDKVersion } from "./version";
 import { checkForRenamedParams } from "./validation";
 import { createLogger, type Logger, type LogLevel } from "./logger";
@@ -505,7 +505,7 @@ export class ModalClient {
     const getOrCreateAuthTokenManager = () => {
       if (!this.authTokenManager) {
         this.authTokenManager = new AuthTokenManager(
-          this.cpClient,
+          authTokenGetFetcher(this.cpClient),
           this.logger,
         );
       }

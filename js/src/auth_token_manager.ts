@@ -1,4 +1,5 @@
 import { ClientError, Status } from "nice-grpc";
+import type { ModalGrpcClient } from "./client";
 import type { Logger } from "./logger";
 
 // Fraction of the token's lifetime to use before refreshing.
@@ -19,6 +20,25 @@ export const FAILURE_BACKOFF_MAX_MS = 60 * 1000;
 export const DEFAULT_EXPIRY_OFFSET = 20 * 60;
 
 /**
+ * Wraps a single RPC call and must not retry; the manager handles retries via `options`.
+ *
+ * @internal
+ * @hidden
+ */
+export type TokenFetcher = (options: {
+  retries: number;
+  timeoutMs: number;
+}) => Promise<string>;
+
+/**
+ * @internal
+ * @hidden
+ */
+export function authTokenGetFetcher(client: ModalGrpcClient): TokenFetcher {
+  return async (options) => (await client.authTokenGet({}, options)).token;
+}
+
+/**
  * Manages authentication tokens, refreshing them lazily when getToken is
  * called. Tokens are refreshed when expired, or once they have used up a
  * jittered REFRESH_FRACTION of their lifetime.
@@ -32,7 +52,7 @@ export const DEFAULT_EXPIRY_OFFSET = 20 * 60;
  *     still-valid token.
  */
 export class AuthTokenManager {
-  private client: any;
+  private fetch: TokenFetcher;
   private logger: Logger;
   private currentToken: string = "";
   private tokenExpiry: number = 0;
@@ -41,8 +61,8 @@ export class AuthTokenManager {
   private retryAfter: number = 0;
   private backoffMs: number = FAILURE_BACKOFF_BASE_MS;
 
-  constructor(client: any, logger: Logger) {
-    this.client = client;
+  constructor(fetch: TokenFetcher, logger: Logger) {
+    this.fetch = fetch;
     this.logger = logger;
   }
 
@@ -108,16 +128,12 @@ export class AuthTokenManager {
   private async fetchToken(): Promise<void> {
     try {
       const hasCachedToken = !!this.currentToken;
-      const response = await this.client.authTokenGet(
-        {},
-        {
-          // No cached token to fall back on, so a failure is user-visible: retry transient errors.
-          // Otherwise one attempt, and retryAfter handles the cooldown.
-          retries: hasCachedToken ? 0 : AUTH_TOKEN_GET_MAX_RETRIES,
-          timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
-        },
-      );
-      const token = response.token;
+      const token = await this.fetch({
+        // No cached token to fall back on, so a failure is user-visible: retry transient errors.
+        // Otherwise one attempt, and retryAfter handles the cooldown.
+        retries: hasCachedToken ? 0 : AUTH_TOKEN_GET_MAX_RETRIES,
+        timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
+      });
       if (!token) {
         throw new Error(
           "Internal error: did not receive auth token from server, please contact Modal support",

@@ -99,7 +99,7 @@ func TestAuthTokenManager_DecodeJWT(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	mockClient := newMockAuthClient()
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	validToken := createTestJWT(123456789)
 	mockClient.setAuthToken(validToken)
@@ -118,7 +118,7 @@ func TestAuthTokenManager_LazyFetch(t *testing.T) {
 	token := createTestJWT(time.Now().Unix() + 3600)
 	mockClient.setAuthToken(token)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	// First GetToken lazily fetches
 	firstToken, err := manager.GetToken(t.Context())
@@ -133,6 +133,31 @@ func TestAuthTokenManager_LazyFetch(t *testing.T) {
 	g.Expect(mockClient.getCallCount()).Should(gomega.Equal(1))
 }
 
+func TestAuthTokenManager_CustomFetcher(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	token := createTestJWT(time.Now().Unix() + 3600)
+	var callCount int
+	var receivedOpts []grpc.CallOption
+	fetch := func(ctx context.Context, opts ...grpc.CallOption) (string, error) {
+		callCount++
+		receivedOpts = opts
+		return token, nil
+	}
+	manager := newAuthTokenManager(fetch, slog.Default())
+
+	firstToken, err := manager.GetToken(t.Context())
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(firstToken).Should(gomega.Equal(token))
+
+	secondToken, err := manager.GetToken(t.Context())
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(secondToken).Should(gomega.Equal(token))
+	g.Expect(callCount).Should(gomega.Equal(1))
+	g.Expect(receivedOpts).Should(gomega.HaveLen(2))
+}
+
 func TestAuthTokenManager_FetchOnlyRetriesWithoutCachedToken(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -140,7 +165,7 @@ func TestAuthTokenManager_FetchOnlyRetriesWithoutCachedToken(t *testing.T) {
 	mockClient := newMockAuthClient()
 	token := createTestJWT(time.Now().Unix() + 3600)
 	mockClient.setAuthToken(token)
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	_, err := manager.GetToken(t.Context())
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -200,7 +225,7 @@ func TestAuthTokenManager_RefreshExpiredToken(t *testing.T) {
 	expiringToken := createTestJWT(now - 60)
 	freshToken := createTestJWT(now + 3600)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.SetToken(expiringToken, now-60)
 	mockClient.setAuthToken(freshToken)
 
@@ -221,7 +246,7 @@ func TestAuthTokenManager_RefreshTokenPastRefreshPoint(t *testing.T) {
 	expiringToken := createTestJWT(now + 60)
 	freshToken := createTestJWT(now + 3600)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.setTokenWithRefreshAt(expiringToken, now+60, now-1)
 	mockClient.setAuthToken(freshToken)
 
@@ -250,7 +275,7 @@ func TestAuthTokenManager_GetToken_EmptyResponse(t *testing.T) {
 
 	mockClient := newMockAuthClient()
 	// authToken is "" by default, so AuthTokenGet returns empty
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	_, err := manager.GetToken(t.Context())
 	g.Expect(err).Should(gomega.HaveOccurred())
@@ -264,7 +289,7 @@ func TestAuthTokenManager_ExpiredRefreshFailureBacksOff(t *testing.T) {
 	mockClient.setAuthTokenError(fmt.Errorf("server blip"))
 	now := time.Now().Unix()
 	expiredToken := createTestJWT(now - 60)
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.SetToken(expiredToken, now-60)
 
 	token, err := manager.GetToken(t.Context())
@@ -284,7 +309,7 @@ func TestAuthTokenManager_NoCachedTokenRefreshFailureReturnsError(t *testing.T) 
 
 	mockClient := newMockAuthClient()
 	mockClient.setAuthTokenError(fmt.Errorf("server blip"))
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	_, err := manager.GetToken(t.Context())
 	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("server blip")))
@@ -297,7 +322,7 @@ func TestAuthTokenManager_EmptyResponseBacksOff(t *testing.T) {
 	mockClient := newMockAuthClient()
 	now := time.Now().Unix()
 	expiredToken := createTestJWT(now - 60)
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.SetToken(expiredToken, now-60)
 
 	token, err := manager.GetToken(t.Context())
@@ -319,7 +344,7 @@ func TestAuthTokenManager_RefreshBackoffGrowsExponentially(t *testing.T) {
 	now := time.Now().Unix()
 	expiredToken := createTestJWT(now - 60)
 	freshToken := createTestJWT(now + 3600)
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.SetToken(expiredToken, now-60)
 	mockClient.setAuthTokenError(fmt.Errorf("server blip"))
 
@@ -371,7 +396,7 @@ func TestAuthTokenManager_TimedOutFetchArmsBackoff(t *testing.T) {
 	mockClient.setAuthToken(createTestJWT(time.Now().Unix() + 3600))
 	mockClient.setDelay(time.Minute)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	// A server too slow to answer within the refresh timeout is a health signal like any other failure.
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
@@ -394,7 +419,7 @@ func TestAuthTokenManager_AuthDeniedDoesNotFallBack(t *testing.T) {
 			mockClient := newMockAuthClient()
 			now := time.Now().Unix()
 			expiredToken := createTestJWT(now - 60)
-			manager := newAuthTokenManager(mockClient, slog.Default())
+			manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 			manager.SetToken(expiredToken, now-60)
 			mockClient.setAuthTokenError(status.Error(code, "credentials rejected"))
 
@@ -419,7 +444,7 @@ func TestAuthToken_ConcurrentGetTokenWithExpiredToken(t *testing.T) {
 	expiredToken := createTestJWT(now - 10)
 	freshToken := createTestJWT(now + 7200)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.SetToken(expiredToken, now-10)
 	mockClient.setAuthToken(freshToken)
 
@@ -448,7 +473,7 @@ func TestAuthToken_ConcurrentGetTokenWithFailingFetch(t *testing.T) {
 	mockClient.setAuthTokenError(errors.New("auth server unavailable"))
 	mockClient.setDelay(250 * time.Millisecond)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	var wg sync.WaitGroup
 	errs := make([]error, 3)
@@ -479,7 +504,7 @@ func TestAuthToken_NearExpiryRefreshDoesNotBlockOtherCallers(t *testing.T) {
 	mockClient.setAuthToken(freshToken)
 	mockClient.setDelay(500 * time.Millisecond)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.setTokenWithRefreshAt(nearExpiryToken, nearExpiry, now-1)
 
 	var wg sync.WaitGroup
@@ -514,7 +539,7 @@ func TestAuthToken_AbandonedNearExpiryRefreshDoesNotBlockOtherCallers(t *testing
 	mockClient.setAuthToken(createTestJWT(now + 7200))
 	mockClient.setDelay(500 * time.Millisecond)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 	manager.setTokenWithRefreshAt(nearExpiryToken, nearExpiry, now-1)
 
 	// Start the refresh, then abandon it: the request keeps running without anyone waiting on it.
@@ -549,7 +574,7 @@ func TestAuthToken_CancellingCallerDoesNotCancelRefresh(t *testing.T) {
 	mockClient.setAuthToken(token)
 	mockClient.setDelay(500 * time.Millisecond)
 
-	manager := newAuthTokenManager(mockClient, slog.Default())
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	var wg sync.WaitGroup
