@@ -1424,9 +1424,9 @@ type IdentityProviderType int32
 const (
 	IdentityProviderType_IDENTITY_PROVIDER_TYPE_UNSPECIFIED IdentityProviderType = 0
 	IdentityProviderType_IDENTITY_PROVIDER_TYPE_GITHUB      IdentityProviderType = 1
+	IdentityProviderType_IDENTITY_PROVIDER_TYPE_SAML        IdentityProviderType = 2
 	// Deprecated: Marked as deprecated in modal_proto/api.proto.
 	IdentityProviderType_IDENTITY_PROVIDER_TYPE_OKTA         IdentityProviderType = 2
-	IdentityProviderType_IDENTITY_PROVIDER_TYPE_SAML         IdentityProviderType = 2
 	IdentityProviderType_IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH IdentityProviderType = 3
 )
 
@@ -1435,15 +1435,15 @@ var (
 	IdentityProviderType_name = map[int32]string{
 		0: "IDENTITY_PROVIDER_TYPE_UNSPECIFIED",
 		1: "IDENTITY_PROVIDER_TYPE_GITHUB",
-		2: "IDENTITY_PROVIDER_TYPE_OKTA",
-		// Duplicate value: 2: "IDENTITY_PROVIDER_TYPE_SAML",
+		2: "IDENTITY_PROVIDER_TYPE_SAML",
+		// Duplicate value: 2: "IDENTITY_PROVIDER_TYPE_OKTA",
 		3: "IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH",
 	}
 	IdentityProviderType_value = map[string]int32{
 		"IDENTITY_PROVIDER_TYPE_UNSPECIFIED":  0,
 		"IDENTITY_PROVIDER_TYPE_GITHUB":       1,
-		"IDENTITY_PROVIDER_TYPE_OKTA":         2,
 		"IDENTITY_PROVIDER_TYPE_SAML":         2,
+		"IDENTITY_PROVIDER_TYPE_OKTA":         2,
 		"IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH": 3,
 	}
 )
@@ -70172,9 +70172,9 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\rGPU_TYPE_H200\x10\f*\xd4\x01\n" +
 	"\x14IdentityProviderType\x12&\n" +
 	"\"IDENTITY_PROVIDER_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
-	"\x1dIDENTITY_PROVIDER_TYPE_GITHUB\x10\x01\x12#\n" +
-	"\x1bIDENTITY_PROVIDER_TYPE_OKTA\x10\x02\x1a\x02\b\x01\x12\x1f\n" +
-	"\x1bIDENTITY_PROVIDER_TYPE_SAML\x10\x02\x12'\n" +
+	"\x1dIDENTITY_PROVIDER_TYPE_GITHUB\x10\x01\x12\x1f\n" +
+	"\x1bIDENTITY_PROVIDER_TYPE_SAML\x10\x02\x12#\n" +
+	"\x1bIDENTITY_PROVIDER_TYPE_OKTA\x10\x02\x1a\x02\b\x01\x12'\n" +
 	"#IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH\x10\x03\x1a\x02\x10\x01*S\n" +
 	"\tLLMEngine\x12\x1a\n" +
 	"\x16LLM_ENGINE_UNSPECIFIED\x10\x00\x12\x15\n" +
