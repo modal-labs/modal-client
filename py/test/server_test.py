@@ -373,7 +373,7 @@ flash_params_override_app = modal.App("flash-params-override")
     port=8080,
     routing_region="us-west",
     target_concurrency=11,
-    experimental_options={"flash": "us-east"},
+    experimental_options={"flash": "us-east", "priority": "low"},
 )
 class FlashParamsOverrideClass:
     @modal.enter()
@@ -392,6 +392,7 @@ def test_flash_params_override_experimental_options(client, servicer):
 
         assert servicer.app_functions[server_function_id].autoscaler_settings.target_concurrency_float == 11.0
         assert servicer.app_functions[server_function_id].experimental_options["flash"] == "us-east"
+        assert servicer.app_functions[server_function_id].experimental_options["priority"] == "low"
 
 
 # =============================================================================
