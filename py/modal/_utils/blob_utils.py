@@ -254,26 +254,28 @@ def get_content_length(data: BinaryIO) -> int:
 
 async def _blob_upload_with_fallback(
     items, blob_ids: list[str], callback, content_length: int
-) -> tuple[str, bool, int]:
+) -> tuple[str, list[api_pb2.BlobUploadResult]]:
     """Try uploading to each provider in order, with fallback on failure."""
-    r2_throughput_bytes_s = 0
-    r2_failed = False
+    results: list[api_pb2.BlobUploadResult] = []
     for idx, (item, blob_id) in enumerate(zip(items, blob_ids)):
+        t0 = time.monotonic_ns()
         try:
-            if blob_id.endswith(":r2"):
-                t0 = time.monotonic_ns()
-                await callback(item)
-                dt_ns = time.monotonic_ns() - t0
-                r2_throughput_bytes_s = (content_length * 1_000_000_000) // max(dt_ns, 1)
-            else:
-                await callback(item)
-            return blob_id, r2_failed, r2_throughput_bytes_s
+            await callback(item)
         except Exception:
-            if blob_id.endswith(":r2"):
-                r2_failed = True
+            results.append(api_pb2.BlobUploadResult(blob_id=blob_id, outcome=api_pb2.BlobUploadResult.OUTCOME_FAILURE))
             # Ignore all errors except the last one, since we're out of fallback options.
             if idx == len(items) - 1:
                 raise
+            continue
+        dt_ns = time.monotonic_ns() - t0
+        results.append(
+            api_pb2.BlobUploadResult(
+                blob_id=blob_id,
+                outcome=api_pb2.BlobUploadResult.OUTCOME_SUCCESS,
+                throughput_bytes_s=(content_length * 1_000_000_000) // max(dt_ns, 1),
+            )
+        )
+        return blob_id, results
     raise ExecutionError("Failed to upload blob")
 
 
@@ -283,7 +285,7 @@ async def _blob_upload(
     stub,
     progress_report_cb: Callable | None = None,
     byte_budget: _ByteBudget | None = None,
-) -> tuple[str, bool, int]:
+) -> tuple[str, list[api_pb2.BlobUploadResult]]:
     if isinstance(data, bytes):
         data = BytesIO(data)
 
@@ -310,7 +312,7 @@ async def _blob_upload(
                 byte_budget=byte_budget,
             )
 
-        blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload_with_fallback(
+        blob_id, upload_results = await _blob_upload_with_fallback(
             resp.multiparts.items,
             resp.blob_ids,
             upload_multipart_upload,
@@ -331,7 +333,7 @@ async def _blob_upload(
                 content_md5_b64=upload_hashes.md5_base64,
             )
 
-        blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload_with_fallback(
+        blob_id, upload_results = await _blob_upload_with_fallback(
             resp.upload_urls.items,
             resp.blob_ids,
             upload_to_s3_url,
@@ -341,10 +343,12 @@ async def _blob_upload(
     if progress_report_cb:
         progress_report_cb(complete=True)
 
-    return blob_id, r2_failed, r2_throughput_bytes_s
+    return blob_id, upload_results
 
 
-async def blob_upload_with_r2_failure_info(payload: bytes, stub: ModalClientModal) -> tuple[str, bool, int]:
+async def blob_upload_with_results(
+    payload: bytes, stub: ModalClientModal
+) -> tuple[str, list[api_pb2.BlobUploadResult]]:
     size_mib = len(payload) / 1024 / 1024
     logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
     t0 = time.time()
@@ -352,17 +356,17 @@ async def blob_upload_with_r2_failure_info(payload: bytes, stub: ModalClientModa
         logger.debug("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
-    blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload(upload_hashes, payload, stub)
+    blob_id, upload_results = await _blob_upload(upload_hashes, payload, stub)
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = (size_mib) / dur_s
     logger.debug(
         f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s). {blob_id}"
     )
-    return blob_id, r2_failed, r2_throughput_bytes_s
+    return blob_id, upload_results
 
 
 async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
-    blob_id, _, _ = await blob_upload_with_r2_failure_info(payload, stub)
+    blob_id, _ = await blob_upload_with_results(payload, stub)
     return blob_id
 
 
@@ -381,7 +385,7 @@ async def blob_upload_file(
     byte_budget: _ByteBudget | None = None,
 ) -> str:
     upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex, md5_hex=md5_hex)
-    blob_id, _, _ = await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb, byte_budget=byte_budget)
+    blob_id, _ = await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb, byte_budget=byte_budget)
     return blob_id
 
 

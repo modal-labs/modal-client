@@ -8,6 +8,7 @@ import modal
 from modal._utils.async_utils import synchronize_api
 from modal._utils.blob_utils import (
     MULTIPART_INFLIGHT_BYTES_MIN,
+    _blob_upload_with_fallback,
     _ByteBudget,
     _get_multipart_inflight_budget,
     blob_download as _blob_download,
@@ -15,6 +16,7 @@ from modal._utils.blob_utils import (
     blob_upload_file as _blob_upload_file,
 )
 from modal.exception import ExecutionError
+from modal_proto import api_pb2
 
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
@@ -29,6 +31,39 @@ async def test_blob_put_get(servicer, blob_server, client):
     # Download
     data = await blob_download.aio(blob_id, client.stub)
     assert data == b"Hello, world"
+
+
+@pytest.mark.asyncio
+async def test_blob_upload_with_fallback_results():
+    async def upload(item):
+        if item == "r2":
+            raise RuntimeError("r2 down")
+
+    blob_id, results = await _blob_upload_with_fallback(
+        ["r2", "s3"], ["bl-123:r2", "bl-123"], upload, content_length=1000
+    )
+    assert blob_id == "bl-123"
+    assert [(r.blob_id, r.outcome) for r in results] == [
+        ("bl-123:r2", api_pb2.BlobUploadResult.OUTCOME_FAILURE),
+        ("bl-123", api_pb2.BlobUploadResult.OUTCOME_SUCCESS),
+    ]
+    assert results[0].throughput_bytes_s == 0
+    assert results[1].throughput_bytes_s > 0
+
+    async def ok(item):
+        pass
+
+    blob_id, results = await _blob_upload_with_fallback(["r2", "s3"], ["bl-456:r2", "bl-456"], ok, content_length=1000)
+    assert blob_id == "bl-456:r2"
+    assert [(r.blob_id, r.outcome) for r in results] == [
+        ("bl-456:r2", api_pb2.BlobUploadResult.OUTCOME_SUCCESS),
+    ]
+
+    async def fail(item):
+        raise RuntimeError("down")
+
+    with pytest.raises(RuntimeError):
+        await _blob_upload_with_fallback(["r2", "s3"], ["bl-789:r2", "bl-789"], fail, content_length=1000)
 
 
 @pytest.mark.asyncio

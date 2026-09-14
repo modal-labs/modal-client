@@ -41,7 +41,7 @@ from .blob_utils import (
     MAX_ASYNC_OBJECT_SIZE_BYTES,
     MAX_OBJECT_SIZE_BYTES,
     blob_download,
-    blob_upload_with_r2_failure_info,
+    blob_upload_with_results,
 )
 
 if typing.TYPE_CHECKING:
@@ -631,7 +631,7 @@ async def _create_input(
     if should_upload(
         len(args_serialized), max_object_size_bytes, max_async_object_size_bytes, function_call_invocation_type
     ):
-        args_blob_id, r2_failed, r2_throughput_bytes_s = await blob_upload_with_r2_failure_info(args_serialized, stub)
+        args_blob_id, blob_upload_results = await blob_upload_with_results(args_serialized, stub)
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args_blob_id=args_blob_id,
@@ -639,8 +639,7 @@ async def _create_input(
                 method_name=method_name,
             ),
             idx=idx,
-            r2_failed=r2_failed,
-            r2_throughput_bytes_s=r2_throughput_bytes_s,
+            blob_upload_results=blob_upload_results,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
