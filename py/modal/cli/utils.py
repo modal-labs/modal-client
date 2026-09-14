@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from csv import writer as csv_writer
 from datetime import datetime
 from json import dumps
-from typing import Literal, overload
+from typing import Literal
 
 import click
 from click.exceptions import UsageError
@@ -64,6 +64,7 @@ async def _stream_app_logs(
                 prefix_fields=prefix_fields or [],
                 file_descriptor=filters.source,
                 function_id=filters.function_id,
+                parametrized_function_id=filters.parametrized_function_id,
                 function_call_id=filters.function_call_id,
                 search_text=filters.search_text,
             )
@@ -209,7 +210,6 @@ def _is_function_id(ref: str) -> bool:
     return bool(re.match(r"^fu-[0-9a-zA-Z]+$", ref))
 
 
-@overload
 async def _resolve_function_id(
     client: _Client,
     function_identifier: str,
@@ -217,31 +217,7 @@ async def _resolve_function_id(
     *,
     object_type: Literal["Function", "Server"] = "Function",
     command: Literal["logs", "stats"],
-    include_app_id: Literal[True],
-) -> tuple[str, str]: ...
-
-
-@overload
-async def _resolve_function_id(
-    client: _Client,
-    function_identifier: str,
-    environment_name: str,
-    *,
-    object_type: Literal["Function", "Server"] = "Function",
-    command: Literal["logs", "stats"],
-    include_app_id: Literal[False],
-) -> str: ...
-
-
-async def _resolve_function_id(
-    client: _Client,
-    function_identifier: str,
-    environment_name: str,
-    *,
-    object_type: Literal["Function", "Server"] = "Function",
-    command: Literal["logs", "stats"],
-    include_app_id: bool,
-) -> str | tuple[str, str]:
+) -> tuple[str, api_pb2.FunctionHandleMetadata]:
     identifier_label = object_type.upper()
     usage = (
         f"{identifier_label} must be a Function ID (fu-…) "
@@ -272,16 +248,12 @@ async def _resolve_function_id(
             raise
 
         print_server_warnings(response.server_warnings)
-        if include_app_id:
-            return response.function_id, response.handle_metadata.app_id
-        return response.function_id
+        return response.function_id, response.handle_metadata
 
     if _is_function_id(function_identifier):
-        if include_app_id:
-            get_by_id_response = await client.stub.FunctionGetById(
-                api_pb2.FunctionGetByIdRequest(function_id=function_identifier)
-            )
-            return function_identifier, get_by_id_response.handle_metadata.app_id
-        return function_identifier
+        get_by_id_response = await client.stub.FunctionGetById(
+            api_pb2.FunctionGetByIdRequest(function_id=function_identifier)
+        )
+        return function_identifier, get_by_id_response.handle_metadata
 
     raise UsageError(usage)

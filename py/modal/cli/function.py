@@ -193,9 +193,7 @@ async def stats(
 
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
-    function_id = await _resolve_function_id(
-        client, function_identifier, environment_name, command="stats", include_app_id=False
-    )
+    function_id, _ = await _resolve_function_id(client, function_identifier, environment_name, command="stats")
     req = api_pb2.FunctionGetTimeRangeStatsRequest(
         function_id=function_id,
         since=_timestamp(since_dt),
@@ -322,11 +320,13 @@ async def stats(
 @click.option("--show-function-id", is_flag=True, default=False, help="Prefix each line with its Function ID")
 @click.option("--show-function-call-id", is_flag=True, default=False, help="Prefix each line with its FunctionCall ID")
 @click.option("--show-container-id", is_flag=True, default=False, help="Prefix each line with its Container ID")
+@click.option("--all-variants", is_flag=True, default=False, help="Include logs from the base and all its variants.")
 @env_option
 @synchronizer.create_blocking
 async def logs(
     function_ref: str,
     follow: bool = False,
+    all_variants: bool = False,
     since: str | None = None,
     until: str | None = None,
     tail: int | None = None,
@@ -345,6 +345,9 @@ async def logs(
 
     By default, this command fetches the last 100 log entries and exits. Use ``-f`` to
     live-stream logs from a running function instead. Fetch and follow are mutually exclusive.
+
+    By default, logs are limited to the specified ID. Pass ``--all-variants`` to
+    include the base and all its variants, even when specifying a variant ID.
 
     Examples:
 
@@ -400,8 +403,8 @@ async def logs(
     _validate_logs_args(follow=follow, since=since, until=until, tail=tail)
 
     client = await _Client.from_env()
-    function_id, app_id = await _resolve_function_id(
-        client, function_ref, env, object_type="Function", command="logs", include_app_id=True
+    function_id, metadata = await _resolve_function_id(
+        client, function_ref, env, object_type="Function", command="logs"
     )
 
     prefix_fields: list[str] = []
@@ -413,13 +416,14 @@ async def logs(
         prefix_fields.append("ta")
 
     await _run_logs_command(
-        app_id,
+        metadata.app_id,
         follow=follow,
         since=since,
         until=until,
         tail=tail,
         search=search,
-        function_id=function_id,
+        function_id=metadata.base_function_id or function_id,
+        parametrized_function_id="" if all_variants else function_id,
         function_call_id=function_call_id,
         container_id=container_id,
         source=source,

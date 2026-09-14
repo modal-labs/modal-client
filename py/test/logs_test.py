@@ -2648,3 +2648,65 @@ def test_container_logs_search(servicer, server_url_env, set_env_client):
 
         res = run_cli_command(["container", "logs", "ta-test1", "--search", "matched"])
         assert fetch_requests[0].search_text == "matched"
+
+
+@pytest.mark.parametrize(
+    "command,selected_id,all_variants",
+    [
+        ("function", "fu-base", False),
+        ("function", "fu-base", True),
+        ("function", "fu-variant", False),
+        ("function", "fu-variant", True),
+    ],
+)
+@pytest.mark.parametrize("by_name", [False, True])
+@pytest.mark.parametrize("mode", ["fetch", "tail", "follow"])
+def test_cli_logs_variant_scope(
+    servicer, server_url_env, set_env_client, command, by_name, selected_id, all_variants, mode
+):
+    metadata = api_pb2.FunctionHandleMetadata(app_id="ap-test", base_function_id="fu-base")
+    requests = []
+
+    async def count_handler(self, stream):
+        requests.append(await stream.recv_message())
+        await stream.send_message(_make_count_response())
+
+    async def fetch_handler(self, stream):
+        requests.append(await stream.recv_message())
+        await stream.send_message(_make_fetch_response())
+
+    async def follow_handler(self, stream):
+        requests.append(await stream.recv_message())
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    args = [command, "logs", "my-app/my-object" if by_name else selected_id, "--container", "ta-test1"]
+    if command == "function":
+        args += ["--function-call", "fc-test"]
+    if all_variants:
+        args.append("--all-variants")
+    if mode == "fetch":
+        args += ["--since", _SINCE_ARG, "--until", _UNTIL_ARG]
+    elif mode == "tail":
+        args += ["--tail", "1"]
+    else:
+        args.append("--follow")
+
+    with servicer.intercept() as ctx:
+        if by_name:
+            ctx.add_response(
+                "FunctionGet", api_pb2.FunctionGetResponse(function_id=selected_id, handle_metadata=metadata)
+            )
+        else:
+            ctx.add_response("FunctionGetById", api_pb2.FunctionGetByIdResponse(handle_metadata=metadata))
+        ctx.set_responder("AppCountLogs", count_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+        ctx.set_responder("AppGetLogs", follow_handler)
+        run_cli_command(args)
+
+    assert len(requests) == (2 if mode == "fetch" else 1)
+    for request in requests:
+        assert request.app_id == "ap-test"
+        assert request.function_id == "fu-base"
+        assert request.parametrized_function_id == ("" if all_variants else selected_id)
+        assert request.task_id == "ta-test1"
+        assert request.function_call_id == ("fc-test" if command == "function" else "")

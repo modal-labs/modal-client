@@ -61,6 +61,7 @@ async def _run_logs_command(
     tail: int | None,
     search: str | None,
     function_id: str = "",
+    parametrized_function_id: str = "",
     function_call_id: str = "",
     container_id: str = "",
     source: str | None,
@@ -77,6 +78,7 @@ async def _run_logs_command(
     log_filters = LogsFilters(
         source=source_fd,
         function_id=function_id,
+        parametrized_function_id=parametrized_function_id,
         function_call_id=function_call_id,
         task_id=container_id,
         search_text=search or "",

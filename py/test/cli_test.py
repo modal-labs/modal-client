@@ -4194,6 +4194,7 @@ def test_function_stats_cli_resolves_fu_prefixed_app_name(servicer, set_env_clie
 
 
 def test_function_stats_cli_filters_by_container(servicer, set_env_client):
+    servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
     response = api_pb2.FunctionGetTimeRangeStatsResponse()
@@ -4222,6 +4223,7 @@ def test_function_stats_cli_filters_by_container(servicer, set_env_client):
 
 
 def test_function_stats_cli_renders_server_defined_percentile_metrics(servicer, set_env_client):
+    servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
     response = api_pb2.FunctionGetTimeRangeStatsResponse(
@@ -4358,6 +4360,7 @@ def test_server_stats_cli(servicer, set_env_client):
 
 
 def test_server_stats_cli_json(servicer, set_env_client):
+    servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
@@ -4415,6 +4418,7 @@ def test_server_stats_cli_json(servicer, set_env_client):
 
 
 def test_server_stats_cli_json_preserves_unknown_inference_enums(servicer, set_env_client):
+    servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
@@ -4450,6 +4454,7 @@ def test_server_stats_cli_json_preserves_unknown_inference_enums(servicer, set_e
 
 
 def test_server_stats_cli_filters_by_container(servicer, set_env_client):
+    servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
     response = api_pb2.ServerGetTimeRangeStatsResponse()
@@ -4478,6 +4483,7 @@ def test_server_stats_cli_filters_by_container(servicer, set_env_client):
 
 
 def test_server_stats_cli_inference_status(servicer, set_env_client):
+    servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
@@ -4516,23 +4522,15 @@ def test_server_stats_cli_rejects_invalid_identifier(set_env_client):
 
 
 def test_server_stats_cli_nonexistent_id(servicer, set_env_client):
-    async def server_stats_not_found(_servicer, stream):
-        from grpclib import GRPCError, Status
-
-        request = await stream.recv_message()
-        assert request.function_id == "fu-doesnotexist"
-        raise GRPCError(Status.NOT_FOUND, "Function not found")
-
-    with servicer.intercept() as ctx:
-        ctx.set_responder("ServerGetTimeRangeStats", server_stats_not_found)
-        run_cli_command(
-            ["server", "stats", "fu-doesnotexist"],
-            expected_exit_code=1,
-            expected_error="Function not found",
-        )
+    run_cli_command(
+        ["server", "stats", "fu-doesnotexist"],
+        expected_exit_code=1,
+        expected_error="Function not found",
+    )
 
 
 def test_function_stats_cli_relative_since(servicer, set_env_client):
+    servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
     since = until - timedelta(minutes=30)
     response = api_pb2.FunctionGetTimeRangeStatsResponse()

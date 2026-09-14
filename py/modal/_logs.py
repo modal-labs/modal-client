@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 class LogsFilters:
     source: "api_pb2.FileDescriptor.ValueType" = api_pb2.FILE_DESCRIPTOR_UNSPECIFIED
     function_id: str = ""
+    parametrized_function_id: str = ""
     function_call_id: str = ""
     task_id: str = ""
     sandbox_id: str = ""
@@ -249,6 +250,7 @@ async def _refine_dense_ranges(
                     bucket_secs=smaller_secs,
                     source=filters.source,
                     function_id=filters.function_id,
+                    parametrized_function_id=filters.parametrized_function_id,
                     function_call_id=filters.function_call_id,
                     task_id=filters.task_id,
                     sandbox_id=filters.sandbox_id,
@@ -303,6 +305,7 @@ async def _fetch_interval(
         limit=limit,
         source=filters.source,
         function_id=filters.function_id,
+        parametrized_function_id=filters.parametrized_function_id,
         function_call_id=filters.function_call_id,
         task_id=filters.task_id,
         sandbox_id=filters.sandbox_id,
@@ -356,6 +359,7 @@ async def tail_logs(
             limit=n,
             source=filters.source,
             function_id=filters.function_id,
+            parametrized_function_id=filters.parametrized_function_id,
             function_call_id=filters.function_call_id,
             task_id=filters.task_id,
             sandbox_id=filters.sandbox_id,
@@ -377,6 +381,7 @@ async def tail_logs(
             limit=n,
             source=filters.source,
             function_id=filters.function_id,
+            parametrized_function_id=filters.parametrized_function_id,
             function_call_id=filters.function_call_id,
             task_id=filters.task_id,
             sandbox_id=filters.sandbox_id,
@@ -422,6 +427,7 @@ async def fetch_logs(
         bucket_secs=bucket_secs,
         source=filters.source,
         function_id=filters.function_id,
+        parametrized_function_id=filters.parametrized_function_id,
         function_call_id=filters.function_call_id,
         task_id=filters.task_id,
         sandbox_id=filters.sandbox_id,

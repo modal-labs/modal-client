@@ -101,6 +101,7 @@ async def get_app_logs_loop(
     function_id: str = "",
     function_call_id: str = "",
     search_text: str = "",
+    parametrized_function_id: str = "",
 ):
     last_log_batch_entry_id = last_entry_id
     _prefixes = prefix_fields or []
@@ -172,6 +173,7 @@ async def get_app_logs_loop(
             last_entry_id=last_log_batch_entry_id,
             file_descriptor=file_descriptor,
             function_id=function_id,
+            parametrized_function_id=parametrized_function_id,
             function_call_id=function_call_id,
         )
         log_batch: api_pb2.TaskLogsBatch
