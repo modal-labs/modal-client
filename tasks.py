@@ -104,6 +104,78 @@ def update_version_go_js(
         )
 
 
+def get_next_dev_version_js(ctx: context.Context) -> str:
+    """Computes the next nightly dev version for the JS SDK.
+
+    js/package.json (the release source of truth) always holds a plain
+    released version — nightly dev versions are never committed. This bumps
+    the patch version and finds the next free `-dev.N` suffix by checking
+    existing `sdk-js/v*-dev.*` tags on the remote, mirroring how the Python
+    SDK's `inv version --dev` derives its `sdk-py/*.devN` tags.
+    """
+    package_json = Path("js/package.json")
+    current_version = get_current_js_version(package_json)
+
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", current_version)
+    if match is None:
+        raise RuntimeError(
+            f"Expected a plain released version (X.Y.Z) in {package_json}, got {current_version!r}. "
+            "The checked-in version should never itself be a -dev prerelease."
+        )
+    major, minor, patch = (int(part) for part in match.groups())
+    next_version = f"{major}.{minor}.{patch + 1}"
+
+    # ls-remote queries the remote tags directly, without needing local tags fetched.
+    result = ctx.run(f"git ls-remote --tags origin 'refs/tags/sdk-js/v{next_version}-dev.*'", hide=True)
+
+    max_dev = -1
+    dev_tag_re = re.compile(rf"^refs/tags/sdk-js/v{re.escape(next_version)}-dev\.(\d+)$")
+    for line in result.stdout.splitlines():
+        # Each line is "<sha>\trefs/tags/<tag>"; skip peeled tag entries (^{}).
+        ref = line.split("\t", 1)[-1]
+        dev_match = dev_tag_re.match(ref)
+        if dev_match:
+            max_dev = max(max_dev, int(dev_match.group(1)))
+
+    return f"{next_version}-dev.{max_dev + 1}"
+
+
+@task()
+def version_js(ctx: context.Context, dev: bool = False):
+    """Print version for the current release or the next nightly dev release."""
+    if dev:
+        print(get_next_dev_version_js(ctx))
+    else:
+        print(get_current_js_version(Path("js/package.json")))
+
+
+@task()
+def prepare_version_js(ctx: context.Context, version: str, dry_run: bool = False):
+    """Overrides js/package.json and js/src/version.ts with `version`, without committing.
+
+    Used by the nightly release workflow to build and publish the JS SDK at a
+    dev version computed at release time. The Go SDK has no nightly release.
+    """
+    if not version:
+        print("version must be specified")
+        sys.exit(1)
+
+    if dry_run:
+        print(f"Would set js/package.json version and {JS_VERSION_PATH} to {version!r}")
+        return
+
+    with ctx.cd("js"):
+        # --ignore-scripts: `npm version` otherwise runs the "version" lifecycle
+        # script (a `tsc` type-check), which is both unnecessary here and fails
+        # if dependencies haven't been installed yet.
+        ctx.run(
+            f"npm version {version} --no-git-tag-version --allow-same-version --ignore-scripts",
+            echo=True,
+        )
+
+    set_checked_in_version(JS_VERSION_PATH, JS_VERSION_RE, version)
+
+
 def lint_protos_impl(ctx, proto_fname: str):
     with open(proto_fname) as f:
         proto_text = f.read()
@@ -184,8 +256,8 @@ def lint_versions(ctx):
         for path, version in versions.items():
             console.print(f"  {path}: {version}")
         console.print(
-            f"\nUpdate the checked-in versions to match {package_json} (the release source of "
-            "truth). Running `inv update-version-go-js` keeps all three in sync automatically.",
+            f"\nUpdate the checked-in version to match {package_json} (the release source of "
+            "truth). Running `inv update-version-go-js` keeps them in sync automatically.",
             style="dim",
         )
         sys.exit(1)
