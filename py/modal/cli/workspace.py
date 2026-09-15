@@ -76,15 +76,23 @@ proxy_tokens_cli = ModalGroup(name="proxy-tokens", help=PROXY_TOKENS_HELP_TEXT)
 workspace_cli.add_command(proxy_tokens_cli)
 
 
-@proxy_tokens_cli.command("create", help="Create a proxy token in the current Workspace.")
+@proxy_tokens_cli.command("create")
+@click.option("--name", default="", help="Name to help identify the token.")
 @click.option("--json", is_flag=True, default=False)
-def proxy_tokens_create(*, json: bool = False):
+def proxy_tokens_create(*, name: str = "", json: bool = False):
     """Create a proxy token in the current Workspace.
 
     The new token's ID and secret will be printed to stdout. The secret is only
     shown at creation time and cannot be retrieved later.
+
+    Examples:
+
+    ```
+    modal workspace proxy-tokens create --name production-webhooks
+    modal workspace proxy-tokens create --json
+    ```
     """
-    token = Workspace.from_context().proxy_tokens.create()
+    token = Workspace.from_context().proxy_tokens.create(name=name)
     output_manager = OutputManager.get()
     bearer = f"Bearer {token.token_id}.{token.token_secret}"
     if json:
@@ -104,7 +112,7 @@ def proxy_tokens_create(*, json: bool = False):
         output_manager.print(table)
 
 
-@proxy_tokens_cli.command("list", help="List the proxy tokens of the current Workspace.")
+@proxy_tokens_cli.command("list")
 @click.option(
     "-e",
     "--environment",
@@ -113,39 +121,75 @@ def proxy_tokens_create(*, json: bool = False):
 )
 @click.option("--json", is_flag=True, default=False)
 def proxy_tokens_list(environment: str | None = None, json: bool = False):
+    """List the proxy tokens of the current Workspace.
+
+    Examples:
+
+    ```
+    modal workspace proxy-tokens list
+    modal workspace proxy-tokens list --environment prod
+    modal workspace proxy-tokens list --json
+    ```
+    """
     tokens = Workspace.from_context().proxy_tokens.list(environment_name=environment)
     # Emit a real boolean for JSON output, but a string for the rich table (which can't render a bare bool).
     rows = [
         [
+            token.name,
             token.token_id,
             timestamp_to_localized_str(token.created_at.timestamp(), json),
+            token.created_by,
             token.scoped if json else str(token.scoped),
         ]
         for token in tokens
     ]
-    display_table(["Token ID", "Created at", "Scoped"], rows, json=json)
+    display_table(["Name", "Token ID", "Created at", "Created by", "Scoped"], rows, json=json)
 
 
-@proxy_tokens_cli.command("allow", help="Allow a proxy token to authenticate to an environment.", no_args_is_help=True)
+@proxy_tokens_cli.command("allow", no_args_is_help=True)
 @click.argument("token_id")
 @click.argument("environment_name")
 def proxy_tokens_allow(token_id: str, environment_name: str):
+    """Allow a proxy token to authenticate to an environment.
+
+    Example:
+
+    ```
+    modal workspace proxy-tokens allow wk-123 prod
+    ```
+    """
     Workspace.from_context().proxy_tokens.allow(token_id, environment_name)
     rich.print(f"[green]✓[/green] Allowed proxy token {token_id!r} to authenticate to environment {environment_name!r}")
 
 
-@proxy_tokens_cli.command("revoke", help="Revoke a proxy token's access to an environment.", no_args_is_help=True)
+@proxy_tokens_cli.command("revoke", no_args_is_help=True)
 @click.argument("token_id")
 @click.argument("environment_name")
 def proxy_tokens_revoke(token_id: str, environment_name: str):
+    """Revoke a proxy token's access to an environment.
+
+    Example:
+
+    ```
+    modal workspace proxy-tokens revoke wk-123 prod
+    ```
+    """
     Workspace.from_context().proxy_tokens.revoke(token_id, environment_name)
     rich.print(f"[green]✓[/green] Revoked proxy token {token_id!r} access to environment {environment_name!r}")
 
 
-@proxy_tokens_cli.command("delete", help="Delete a proxy token from the current Workspace.", no_args_is_help=True)
+@proxy_tokens_cli.command("delete", no_args_is_help=True)
 @click.argument("token_id")
 @yes_option
 def proxy_tokens_delete(token_id: str, yes: bool = False):
+    """Delete a proxy token from the current Workspace.
+
+    Example:
+
+    ```
+    modal workspace proxy-tokens delete wk-123
+    ```
+    """
     if not yes:
         message = (
             f"Are you sure you want to delete proxy token {token_id!r}? Requests using this token will be rejected."

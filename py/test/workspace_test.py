@@ -58,22 +58,37 @@ def test_workspace_members_list_empty(servicer, client):
 
 def test_workspace_proxy_tokens_create(servicer, client):
     workspace = Workspace.from_context(client=client)
-    token = workspace.proxy_tokens.create()
+    token = workspace.proxy_tokens.create(name="production-webhooks")
 
     assert isinstance(token, TokenData)
     assert token.token_id in servicer.webhook_tokens
+    assert servicer.webhook_tokens[token.token_id]["name"] == "production-webhooks"
     assert token.token_secret == f"secret-{token.token_id}"
 
 
 def test_workspace_proxy_tokens_list(servicer, client):
     servicer.webhook_tokens = {
-        "wt-1": {"created_at": 1577836800.0, "scoped": True},
+        "wt-1": {
+            "created_at": 1577836800.0,
+            "scoped": True,
+            "name": "production-webhooks",
+            "created_by": api_pb2.UserIdentity(
+                user_id="us-1",
+                username="Alice",
+            ),
+        },
         "wt-2": {"created_at": 1609459200.0, "scoped": False},
     }
     workspace = Workspace.from_context(client=client)
 
     assert workspace.proxy_tokens.list() == [
-        ProxyTokenInfo(token_id="wt-1", created_at=timestamp_to_localized_dt(1577836800.0), scoped=True),
+        ProxyTokenInfo(
+            token_id="wt-1",
+            created_at=timestamp_to_localized_dt(1577836800.0),
+            scoped=True,
+            name="production-webhooks",
+            created_by="Alice",
+        ),
         ProxyTokenInfo(token_id="wt-2", created_at=timestamp_to_localized_dt(1609459200.0), scoped=False),
     ]
 
@@ -86,7 +101,15 @@ def test_workspace_proxy_tokens_list_empty(servicer, client):
 def test_workspace_proxy_tokens_list_for_environment(servicer, client):
     main_env_id = servicer.environments["main"]
     # A scoped token associated with "main" is returned ...
-    servicer.webhook_tokens["wt-1"] = {"created_at": 1577836800.0, "scoped": True}
+    servicer.webhook_tokens["wt-1"] = {
+        "created_at": 1577836800.0,
+        "scoped": True,
+        "name": "production-webhooks",
+        "created_by": api_pb2.UserIdentity(
+            user_id="us-1",
+            username="Alice",
+        ),
+    }
     servicer.webhook_token_environments["wt-1"] = {main_env_id}
     # ... while a token associated with a different environment is not.
     servicer.webhook_tokens["wt-2"] = {"created_at": 1609459200.0, "scoped": True}
@@ -94,7 +117,13 @@ def test_workspace_proxy_tokens_list_for_environment(servicer, client):
     workspace = Workspace.from_context(client=client)
 
     assert workspace.proxy_tokens.list(environment_name="main") == [
-        ProxyTokenInfo(token_id="wt-1", created_at=timestamp_to_localized_dt(1577836800.0), scoped=True),
+        ProxyTokenInfo(
+            token_id="wt-1",
+            created_at=timestamp_to_localized_dt(1577836800.0),
+            scoped=True,
+            name="production-webhooks",
+            created_by="Alice",
+        ),
     ]
 
 

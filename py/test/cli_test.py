@@ -120,21 +120,29 @@ def test_workspace_members_list_cli(servicer, set_env_client):
 def test_workspace_proxy_tokens_cli(servicer, set_env_client):
     # `create` prints the Modal-Key / Modal-Secret request headers and the bearer
     # credential; `--json` emits them as JSON
-    data = json.loads(run_cli_command(["workspace", "proxy-tokens", "create", "--json"]).stdout)
+    data = json.loads(
+        run_cli_command(["workspace", "proxy-tokens", "create", "--name", "production-webhooks", "--json"]).stdout
+    )
     assert set(data) == {"Authorization", "Modal-Key", "Modal-Secret"}
     token_id = data["Modal-Key"]
     assert token_id in servicer.webhook_tokens
+    assert servicer.webhook_tokens[token_id]["name"] == "production-webhooks"
     # The bearer credential joins the token id and secret with a period
     assert data["Authorization"] == f"Bearer {token_id}.{data['Modal-Secret']}"
 
     # `list` shows the token, including its scoped status
     listed = json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "--json"]).stdout)
     assert [row["token_id"] for row in listed] == [token_id]
+    assert listed[0]["name"] == "production-webhooks"
+    assert listed[0]["created_by"] == servicer.default_username
     # `scoped` is emitted as a real JSON boolean, not a string
     assert listed[0]["scoped"] is False
 
     # The non-JSON table also renders (the bool is stringified for rich)
-    assert token_id in run_cli_command(["workspace", "proxy-tokens", "list"]).stdout
+    output = run_cli_command(["workspace", "proxy-tokens", "list"]).stdout
+    assert token_id in output
+    assert "production-webhooks" in output
+    assert servicer.default_username in output
 
     # `delete` removes it (requires confirmation, bypassed with --yes)
     run_cli_command(["workspace", "proxy-tokens", "delete", token_id, "--yes"])

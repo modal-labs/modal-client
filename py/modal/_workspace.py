@@ -137,17 +137,20 @@ class _WorkspaceProxyTokenManager:
         """mdmd:hidden"""
         self._workspace = workspace
 
-    async def create(self) -> TokenData:
+    async def create(self, name: str = "") -> TokenData:
         """Create a new proxy token for the Workspace.
+
+        Args:
+            name: An optional name to help identify the token.
 
         Examples:
             ```python notest
-            token = modal.Workspace.from_context().proxy_tokens.create()
+            token = modal.Workspace.from_context().proxy_tokens.create(name="production-webhooks")
             print(token.token_id, token.token_secret)
             ```
         """
         await self._workspace.hydrate()
-        resp = await self._workspace.client.stub.WebhookTokenCreate(api_pb2.WebhookTokenCreateRequest())
+        resp = await self._workspace.client.stub.WebhookTokenCreate(api_pb2.WebhookTokenCreateRequest(name=name))
         return TokenData(token_id=resp.token_id, token_secret=resp.token_secret)
 
     async def list(self, environment_name: Optional[str] = None) -> builtins.list[ProxyTokenInfo]:
@@ -180,6 +183,8 @@ class _WorkspaceProxyTokenManager:
                 token_id=token.token_id,
                 created_at=timestamp_to_localized_dt(token.created_at),
                 scoped=token.scoped,
+                name=token.name,
+                created_by=token.created_by.username,
             )
             for token in resp.tokens
         ]

@@ -310,6 +310,8 @@ class ProxyTokenInfo:
     token_id: str
     created_at: datetime
     scoped: bool
+    name: str = ""
+    created_by: str = ""
 
 
 @dataclass(frozen=True)
