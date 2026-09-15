@@ -533,7 +533,16 @@ message AppGetInfoRequest {
 }
 
 message AppGetInfoResponse {
+  message FunctionInfoSummary {
+    repeated GPUConfig gpu_config = 1;
+    Schedule schedule = 2;
+    // True for Web Functions and classes with web methods; false for Servers.
+    bool web_function = 3;
+    optional bool requires_proxy_auth = 4;
+  }
+
   AppHandleMetadata info = 1;
+  map<string, FunctionInfoSummary> function_info_summaries = 2;
 }
 
 message AppGetLayoutRequest {
