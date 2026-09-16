@@ -91,7 +91,8 @@ async def make_client():
         await client.close()
 
 
-def test_modal_channel_release_leaves_channel_usable():
+@pytest.mark.asyncio
+async def test_modal_channel_release_leaves_channel_usable():
     """Releasing a connection must not trip the terminal close guard."""
     channel = ModalChannel("router.test", 443, ssl=False, closed_error_message="detached")
     channel.release_connection()
