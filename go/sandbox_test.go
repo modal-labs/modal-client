@@ -1928,3 +1928,202 @@ func TestSandboxV2FlagRoutesList(t *testing.T) {
 		g.Expect(stub.v2Lists).To(gomega.Equal(0))
 	})
 }
+
+type mockSandboxContainerCreateV2Client struct {
+	pb.ModalClientClient
+	gotReq *pb.SandboxContainerCreateV2Request
+	resp   *pb.SandboxContainerCreateV2Response
+	err    error
+}
+
+func (m *mockSandboxContainerCreateV2Client) SandboxContainerCreateV2(
+	_ context.Context,
+	req *pb.SandboxContainerCreateV2Request,
+	_ ...grpc.CallOption,
+) (*pb.SandboxContainerCreateV2Response, error) {
+	m.gotReq = req
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.resp, nil
+}
+
+func newSidecarCreateSandbox(mock *mockSandboxContainerCreateV2Client) *Sandbox {
+	return newSidecarCreateSandboxWithID(mock, testV2SandboxID)
+}
+
+// errNoTaskIDInTest is what creating over the Sandbox connection fails with here.
+var errNoTaskIDInTest = errors.New("task ID lookup not stubbed in this test")
+
+// Creating over the Sandbox connection resolves the Sandbox's task ID first. Stub
+// both the V1 and V2 lookups so that path fails deterministically; the embedded
+// ModalClientClient is nil, so without these it panics instead.
+//
+//nolint:staticcheck // name must match the generated ModalClientClient interface method.
+func (m *mockSandboxContainerCreateV2Client) SandboxGetTaskIdV2(
+	_ context.Context,
+	_ *pb.SandboxGetTaskIdRequest,
+	_ ...grpc.CallOption,
+) (*pb.SandboxGetTaskIdResponse, error) {
+	return nil, errNoTaskIDInTest
+}
+
+//nolint:staticcheck // name must match the generated ModalClientClient interface method.
+func (m *mockSandboxContainerCreateV2Client) SandboxGetTaskId(
+	_ context.Context,
+	_ *pb.SandboxGetTaskIdRequest,
+	_ ...grpc.CallOption,
+) (*pb.SandboxGetTaskIdResponse, error) {
+	return nil, errNoTaskIDInTest
+}
+
+func newSidecarCreateSandboxWithID(mock *mockSandboxContainerCreateV2Client, sandboxID string) *Sandbox {
+	return newSandbox(&Client{
+		cpClient: &clientWithConn{ModalClientClient: mock},
+		logger:   slog.New(slog.DiscardHandler),
+	}, sandboxID)
+}
+
+func TestSidecarCreateBuildsControlPlaneRequest(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{
+			ContainerId:   "sb-test-ctr-SIDECAR123",
+			ContainerName: "worker",
+		}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	localSecret := &Secret{hydrator: &secretFromMapHydrator{
+		envDict: map[string]string{"API_KEY": "local", "FROM_MAP": "yes"},
+	}}
+	container, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		Command:               []string{"sleep", "100"},
+		Env:                   map[string]string{"API_KEY": "override"},
+		Secrets:               []*Secret{localSecret, {SecretID: "st-named"}},
+		Workdir:               "/work",
+		OutboundCIDRAllowlist: &Allowlist{Entries: []string{"10.0.0.0/8"}},
+		PTY:                   true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(container.ContainerID).To(gomega.Equal("sb-test-ctr-SIDECAR123"))
+	g.Expect(container.ContainerName).To(gomega.Equal("worker"))
+
+	req := mock.gotReq
+	g.Expect(req).ShouldNot(gomega.BeNil())
+	g.Expect(req.GetSandboxId()).To(gomega.Equal(testV2SandboxID))
+	g.Expect(req.GetContainerName()).To(gomega.Equal("worker"))
+
+	// Env-dict Secrets and Env travel as ephemeral secrets rather than in the
+	// definition, with Env winning on key collisions.
+	g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{
+		"API_KEY": "override", "FROM_MAP": "yes",
+	}))
+
+	definition := req.GetDefinition()
+	g.Expect(definition.GetImageId()).To(gomega.Equal("im-123"))
+	g.Expect(definition.GetEntrypointArgs()).To(gomega.Equal([]string{"sleep", "100"}))
+	g.Expect(definition.GetWorkdir()).To(gomega.Equal("/work"))
+	g.Expect(definition.GetSecretIds()).To(gomega.Equal([]string{"st-named"}))
+	g.Expect(definition.GetEnvironmentVariables()).To(gomega.BeNil())
+	g.Expect(definition.GetPtyInfo()).ShouldNot(gomega.BeNil())
+	g.Expect(definition.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
+	g.Expect(definition.GetNetworkAccess().GetAllowedCidrs()).To(gomega.Equal([]string{"10.0.0.0/8"}))
+}
+
+func TestSidecarCreateOmitsEmptyOptionalFields(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	container, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	// An empty name in the response falls back to the requested name.
+	g.Expect(container.ContainerName).To(gomega.Equal("worker"))
+
+	definition := mock.gotReq.GetDefinition()
+	g.Expect(mock.gotReq.GetEphemeralSecrets()).To(gomega.BeNil())
+	g.Expect(definition.HasWorkdir()).To(gomega.BeFalse())
+	g.Expect(definition.GetPtyInfo()).To(gomega.BeNil())
+	g.Expect(definition.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_OPEN))
+}
+
+func TestSidecarCreateMapsGRPCErrors(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+
+	cases := []struct {
+		name    string
+		code    codes.Code
+		matches func(error) bool
+	}{
+		{"already exists", codes.AlreadyExists, func(err error) bool {
+			var target AlreadyExistsError
+			return errors.As(err, &target)
+		}},
+		{"invalid argument", codes.InvalidArgument, func(err error) bool {
+			var target InvalidError
+			return errors.As(err, &target)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			mock := &mockSandboxContainerCreateV2Client{err: status.Error(tc.code, "boom")}
+			sb := newSidecarCreateSandbox(mock)
+
+			_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+			g.Expect(err).Should(gomega.HaveOccurred())
+			g.Expect(tc.matches(err)).To(gomega.BeTrue(), "unexpected error type %T: %v", err, err)
+			g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("boom")))
+		})
+	}
+}
+
+func TestSidecarCreateSkipsControlPlaneByDefault(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandbox(mock)
+
+	// Without the opt-in the call goes over the Sandbox connection, which fails on
+	// the stubbed task ID lookup; what matters is that nothing reached the Modal server.
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+	g.Expect(err).To(gomega.MatchError(errNoTaskIDInTest), "it should have gone over the Sandbox connection")
+	g.Expect(mock.gotReq).To(gomega.BeNil(), "and it should not have called the Modal server")
+}
+
+func TestSidecarCreateSkipsControlPlaneForV1Sandbox(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandboxWithID(mock, testV1SandboxID)
+
+	// The opt-in only applies to V2 Sandboxes; a V1 Sandbox always creates sidecars
+	// over the Sandbox connection.
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+	g.Expect(err).To(gomega.MatchError(errNoTaskIDInTest), "it should have gone over the Sandbox connection")
+	g.Expect(mock.gotReq).To(gomega.BeNil(), "and it should not have called the Modal server")
+}
+
+func TestSidecarCreateRejectsDetachedSandbox(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandbox(mock)
+	g.Expect(sb.Detach()).ShouldNot(gomega.HaveOccurred())
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+	var clientClosed ClientClosedError
+	g.Expect(errors.As(err, &clientClosed)).To(gomega.BeTrue(), "unexpected error type %T: %v", err, err)
+	g.Expect(mock.gotReq).To(gomega.BeNil())
+}

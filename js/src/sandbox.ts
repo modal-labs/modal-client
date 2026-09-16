@@ -1665,6 +1665,8 @@ export class Sandbox {
     if (!this.#sidecars) {
       this.#sidecars = new SidecarService({
         client: this.#client,
+        sandboxId: this.sandboxId,
+        ensureAttached: () => this.#ensureAttached(),
         exec: (command, params, containerId) =>
           this.#execInternal(command, params, containerId),
         commandRouter: () => this.#getCommandRouter(),

@@ -3,6 +3,7 @@ package modal
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -114,6 +115,46 @@ func validateSidecarName(name string) error {
 	return nil
 }
 
+// controlPlaneSidecarCreateEnvVar opts a client in to sending sidecar create
+// requests to the Modal server rather than over the Sandbox connection.
+const controlPlaneSidecarCreateEnvVar = "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE"
+
+// controlPlaneSidecarCreateEnabled reports whether Create sends its request to
+// the Modal server. Only V2 Sandboxes can; V1 Sandboxes always create sidecars
+// over the Sandbox connection.
+func controlPlaneSidecarCreateEnabled(isV2 bool) bool {
+	return isV2 && os.Getenv(controlPlaneSidecarCreateEnvVar) == "1"
+}
+
+// sidecarCreateInputs is the definition shared by both create paths.
+type sidecarCreateInputs struct {
+	name          string
+	image         *Image
+	params        *SidecarCreateParams
+	envDict       map[string]string
+	secretIds     []string
+	networkAccess *pb.NetworkAccess
+	ptyInfo       *pb.PTYInfo
+}
+
+// sidecarCreateResult is what either create path reports back.
+type sidecarCreateResult struct {
+	containerID   string
+	containerName string
+}
+
+func sidecarCreateError(err error) error {
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.AlreadyExists:
+			return AlreadyExistsError{Exception: st.Message()}
+		case codes.InvalidArgument:
+			return InvalidError{Exception: st.Message()}
+		}
+	}
+	return err
+}
+
 func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Image, params *SidecarCreateParams) (*SidecarContainer, error) {
 	if err := validateSidecarName(name); err != nil {
 		return nil, err
@@ -136,9 +177,10 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		ptyInfo = defaultSandboxPTYInfo()
 	}
 
-	// Locally-created Secrets (FromMap) are passed directly to the worker as
-	// environment variables, so only the remaining Secrets need hydrating. This
-	// avoids a SecretGetOrCreate round-trip for env-dict Secrets.
+	// Locally-created Secrets (FromMap) and params.Env are sent directly as
+	// ephemeral env vars, avoiding a SecretGetOrCreate round-trip; params.Env
+	// takes precedence on key collisions. Only the remaining resolvable Secrets
+	// (e.g. from FromName) need hydrating to secret IDs.
 	envDict, resolvableSecrets := splitEnvDictAndResolvableSecrets(params.Secrets)
 	for k, v := range params.Env {
 		if err := validateEnvVarName(k); err != nil {
@@ -154,50 +196,101 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		return nil, err
 	}
 
-	taskID, client, err := s.sandbox.getCommandRouter(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	networkAccess, err := buildOutboundNetworkAccess(false, params.OutboundCIDRAllowlist, params.OutboundDomainAllowlist)
 	if err != nil {
 		return nil, err
 	}
 
-	req := pb.TaskContainerCreateRequest_builder{
-		TaskId:        taskID,
-		ContainerName: name,
-		ImageId:       image.ImageID,
-		Args:          params.Command,
-		Env:           envDict,
-		Workdir:       params.Workdir,
-		SecretIds:     secretIds,
-		NetworkAccess: networkAccess,
-		PtyInfo:       ptyInfo,
-	}.Build()
+	inputs := sidecarCreateInputs{
+		name:          name,
+		image:         image,
+		params:        params,
+		envDict:       envDict,
+		secretIds:     secretIds,
+		networkAccess: networkAccess,
+		ptyInfo:       ptyInfo,
+	}
 
-	resp, err := client.ContainerCreate(ctx, req)
+	var result sidecarCreateResult
+	if controlPlaneSidecarCreateEnabled(s.sandbox.isV2) {
+		result, err = s.createViaControlPlane(ctx, inputs)
+	} else {
+		result, err = s.createViaCommandRouter(ctx, inputs)
+	}
 	if err != nil {
-		if st, ok := status.FromError(err); ok {
-			switch st.Code() {
-			case codes.AlreadyExists:
-				return nil, AlreadyExistsError{Exception: st.Message()}
-			case codes.InvalidArgument:
-				return nil, InvalidError{Exception: st.Message()}
-			}
-		}
 		return nil, err
 	}
 
-	containerName := resp.GetContainerName()
+	containerName := result.containerName
 	if containerName == "" {
 		containerName = name
 	}
 	s.sandbox.client.logger.DebugContext(ctx, "Created SidecarContainer",
-		"container_id", resp.GetContainerId(),
+		"container_id", result.containerID,
 		"container_name", containerName,
 		"sandbox_id", s.sandbox.SandboxID)
-	return newSidecarContainer(s.sandbox, resp.GetContainerId(), containerName, nil), nil
+	return newSidecarContainer(s.sandbox, result.containerID, containerName, nil), nil
+}
+
+func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
+	if err := s.sandbox.ensureAttached(); err != nil {
+		return sidecarCreateResult{}, err
+	}
+
+	var workdir *string
+	if in.params.Workdir != "" {
+		workdir = &in.params.Workdir
+	}
+
+	var ephemeralSecrets *pb.StringMap
+	if len(in.envDict) > 0 {
+		ephemeralSecrets = pb.StringMap_builder{Contents: in.envDict}.Build()
+	}
+
+	req := pb.SandboxContainerCreateV2Request_builder{
+		SandboxId:     s.sandbox.SandboxID,
+		ContainerName: in.name,
+		Definition: pb.Sandbox_builder{
+			ImageId:        in.image.ImageID,
+			EntrypointArgs: in.params.Command,
+			Workdir:        workdir,
+			SecretIds:      in.secretIds,
+			NetworkAccess:  in.networkAccess,
+			PtyInfo:        in.ptyInfo,
+		}.Build(),
+		EphemeralSecrets: ephemeralSecrets,
+	}.Build()
+
+	resp, err := s.sandbox.client.cpClient.SandboxContainerCreateV2(ctx, req)
+	if err != nil {
+		return sidecarCreateResult{}, sidecarCreateError(err)
+	}
+	return sidecarCreateResult{containerID: resp.GetContainerId(), containerName: resp.GetContainerName()}, nil
+}
+
+func (s *sidecarServiceImpl) createViaCommandRouter(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
+	taskID, client, err := s.sandbox.getCommandRouter(ctx)
+	if err != nil {
+		return sidecarCreateResult{}, err
+	}
+
+	req := pb.TaskContainerCreateRequest_builder{
+		TaskId:        taskID,
+		ContainerName: in.name,
+		ImageId:       in.image.ImageID,
+		Args:          in.params.Command,
+		Env:           in.envDict,
+		Workdir:       in.params.Workdir,
+		SecretIds:     in.secretIds,
+		NetworkAccess: in.networkAccess,
+		PtyInfo:       in.ptyInfo,
+	}.Build()
+
+	resp, err := client.ContainerCreate(ctx, req)
+	if err != nil {
+		return sidecarCreateResult{}, sidecarCreateError(err)
+	}
+	return sidecarCreateResult{containerID: resp.GetContainerId(), containerName: resp.GetContainerName()}, nil
 }
 
 func (s *sidecarServiceImpl) Get(ctx context.Context, name string, params *SidecarGetParams) (*SidecarContainer, error) {

@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
+import contextlib
+import enum
 import hashlib
 import inspect
 import json
@@ -8,6 +10,7 @@ import time
 import typing
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from grpclib import GRPCError, Status
@@ -3161,32 +3164,99 @@ def test_sandbox_container_get_and_list_forward_include_terminated(app, servicer
     assert all(isinstance(container, SidecarContainer) for container in containers)
 
 
+class SidecarCreatePath(enum.Enum):
+    COMMAND_ROUTER = "command_router"
+    CONTROL_PLANE = "control_plane"
+
+
+def _opt_in_to_control_plane_sidecar_create(monkeypatch) -> None:
+    monkeypatch.setenv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1")
+
+
+@pytest.fixture(params=list(SidecarCreatePath), ids=lambda path: path.value)
+def sidecar_create_path(request, monkeypatch) -> SidecarCreatePath:
+    """Run a sidecar create test over both create paths.
+
+    Sending the create to the Modal server is opt-in and only applies to V2
+    Sandboxes, so selecting that path also switches the Sandbox under test to V2.
+    """
+    if request.param is SidecarCreatePath.CONTROL_PLANE:
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+        _opt_in_to_control_plane_sidecar_create(monkeypatch)
+    return request.param
+
+
+@contextlib.contextmanager
+def _intercept_sidecar_create(servicer):
+    """Intercept both create paths at once: the Modal server and the Sandbox connection."""
+    with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
+        yield SimpleNamespace(control_plane=ctx, command_router=tcr_ctx)
+
+
+def _sidecar_create_request(ctx, path: SidecarCreatePath):
+    """The sidecar create request that was sent, normalized across both paths.
+
+    Both carry the same fields in different envelopes, so the Sandbox connection
+    request is re-expressed as the Sandbox definition sent to the Modal server.
+    Also asserts the other path was not used.
+    """
+    if path is SidecarCreatePath.CONTROL_PLANE:
+        (req,) = ctx.control_plane.get_requests("SandboxContainerCreateV2")
+        assert ctx.command_router.get_requests("TaskContainerCreate") == []
+        return SimpleNamespace(
+            container_name=req.container_name,
+            definition=req.definition,
+            env=dict(req.ephemeral_secrets.contents),
+            has_env=req.HasField("ephemeral_secrets"),
+        )
+
+    (req,) = ctx.command_router.get_requests("TaskContainerCreate")
+    assert ctx.control_plane.get_requests("SandboxContainerCreateV2") == []
+    return SimpleNamespace(
+        container_name=req.container_name,
+        definition=api_pb2.Sandbox(
+            image_id=req.image_id,
+            entrypoint_args=list(req.args),
+            secret_ids=list(req.secret_ids),
+            volume_mounts=req.volume_mounts,
+            network_access=req.network_access,
+            pty_info=req.pty_info if req.HasField("pty_info") else None,
+        ),
+        env=dict(req.env),
+        has_env=bool(req.env),
+    )
+
+
 @skip_non_subprocess
-def test_sandbox_container_create_accepts_prebuilt_image(app, servicer):
+def test_sandbox_container_create_accepts_prebuilt_image(app, servicer, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
 
-    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
-    assert container_create_request.image_id == image.object_id
-    assert list(container_create_request.secret_ids) == []
+    container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
+    assert container_create_request.container_name == "worker"
+    assert container_create_request.definition.image_id == image.object_id
+    assert list(container_create_request.definition.entrypoint_args) == ["bash", "-c", "sleep 100"]
+    assert list(container_create_request.definition.secret_ids) == []
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer):
+def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, client, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
-    secret = Secret.from_dict({"API_KEY": "secret-value"})
+    Secret.objects.create("sidecar-secret", {"DB_PASSWORD": "hunter2"}, client=client)
+    named_secret = Secret.from_name("sidecar-secret")
+    dict_secret = Secret.from_dict({"API_KEY": "secret-value", "FROM_DICT": "yes"})
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create(
             "bash",
             "-c",
@@ -3194,72 +3264,96 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer):
             name="worker",
             image=image,
             env={"API_KEY": "override", "PLAIN_ENV": "plain"},
-            secrets=[secret],
+            secrets=[dict_secret, named_secret],
         )
 
-    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
-    assert container_create_request.image_id == image.object_id
-    assert dict(container_create_request.env) == {"API_KEY": "override", "PLAIN_ENV": "plain"}
-    assert list(container_create_request.secret_ids) == [secret.object_id]
+    container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
+    assert container_create_request.definition.image_id == image.object_id
+    # `from_dict` secrets travel as ephemeral env vars, with `env` winning on key collisions;
+    # `from_name` secrets are resolved server-side and referenced by id.
+    assert container_create_request.env == {"API_KEY": "override", "FROM_DICT": "yes", "PLAIN_ENV": "plain"}
+    assert list(container_create_request.definition.secret_ids) == [named_secret.object_id]
+    (secret_request,) = ctx.control_plane.get_requests("SecretGetOrCreate")
+    assert secret_request.deployment_name == "sidecar-secret"
 
 
-@skip_non_subprocess
-def test_sandbox_container_create_defaults_to_open_network_access(app, servicer):
+def test_sandbox_container_create_rejects_invalid_local_secret_key(app, servicer, sidecar_create_path):
+    # Locally-resolvable Secrets are inlined without a server round-trip, so their keys are
+    # checked client-side before either create path is taken.
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx, pytest.raises(InvalidError, match="API-KEY"):
+        sb._experimental_sidecars.create(
+            "bash", "-c", "sleep 100", name="worker", image=image, secrets=[Secret.from_dict({"API-KEY": "value"})]
+        )
+
+    assert ctx.control_plane.get_requests("SandboxContainerCreateV2") == []
+    assert ctx.command_router.get_requests("TaskContainerCreate") == []
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_defaults_to_open_network_access(app, servicer, sidecar_create_path):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
 
-    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
-    assert container_create_request.network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+    container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
+    network_access = container_create_request.definition.network_access
+    assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+    assert not container_create_request.has_env
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_with_outbound_cidr_allowlist(app, servicer):
+def test_sandbox_container_create_with_outbound_cidr_allowlist(app, servicer, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create(
             "bash", "-c", "sleep 100", name="worker", image=image, outbound_cidr_allowlist=["10.0.0.0/8"]
         )
 
-    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
-    network_access = container_create_request.network_access
+    container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
+    network_access = container_create_request.definition.network_access
     assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
     assert list(network_access.allowed_cidrs) == ["10.0.0.0/8"]
     assert list(network_access.allowed_domains) == []
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_with_outbound_domain_allowlist(app, servicer):
+def test_sandbox_container_create_with_outbound_domain_allowlist(app, servicer, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create(
             "bash", "-c", "sleep 100", name="worker", image=image, outbound_domain_allowlist=["*.example.com"]
         )
 
-    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
-    network_access = container_create_request.network_access
+    container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
+    network_access = container_create_request.definition.network_access
     assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
     assert list(network_access.allowed_domains) == ["*.example.com"]
     assert list(network_access.allowed_cidrs) == []
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_empty_cidr_allowlist_blocks_egress(app, servicer):
+def test_sandbox_container_create_empty_cidr_allowlist_blocks_egress(app, servicer, sidecar_create_path):
     # An empty allowlist is the supported way to block external egress while
     # keeping connectivity to the main container; it must not become BLOCKED.
     image = mock.Mock()
@@ -3268,16 +3362,53 @@ def test_sandbox_container_create_empty_cidr_allowlist_blocks_egress(app, servic
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create(
             "bash", "-c", "sleep 100", name="worker", image=image, outbound_cidr_allowlist=[]
         )
 
-    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
-    network_access = container_create_request.network_access
+    container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
+    network_access = container_create_request.definition.network_access
     assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
     assert list(network_access.allowed_cidrs) == []
     assert list(network_access.allowed_domains) == []
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_targets_the_sandbox(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    _opt_in_to_control_plane_sidecar_create(monkeypatch)
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.intercept() as ctx:
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+    (req,) = ctx.get_requests("SandboxContainerCreateV2")
+    assert req.sandbox_id == sb.object_id
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_v1_sandbox_ignores_opt_in(app, servicer, monkeypatch):
+    # The opt-in only applies to V2 Sandboxes; a V1 Sandbox always creates sidecars
+    # over the Sandbox connection.
+    _opt_in_to_control_plane_sidecar_create(monkeypatch)
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
+
+    with _intercept_sidecar_create(servicer) as ctx:
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+    assert ctx.control_plane.get_requests("SandboxContainerCreateV2") == []
+    (req,) = ctx.command_router.get_requests("TaskContainerCreate")
+    assert req.container_name == "worker"
 
 
 def test_sandbox_container_create_rejects_image_with_mount_layers(app):
@@ -3311,7 +3442,7 @@ def test_sandbox_container_create_rejects_mounts_kwarg(app):
 
 
 @skip_non_subprocess
-def test_sandbox_container_volume_mounts(app, servicer):
+def test_sandbox_container_volume_mounts(app, servicer, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
@@ -3321,7 +3452,7 @@ def test_sandbox_container_volume_mounts(app, servicer):
     read_only_volume = Volume.from_name("sidecar-ro-volume", create_if_missing=True).with_mount_options(read_only=True)
     writable_volume = Volume.from_name("sidecar-rw-volume", create_if_missing=True)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create(
             "bash",
             "-c",
@@ -3331,8 +3462,8 @@ def test_sandbox_container_volume_mounts(app, servicer):
             volumes={"/mnt/ro": read_only_volume, "/mnt/rw": writable_volume},
         )
 
-    (req,) = tcr_ctx.get_requests("TaskContainerCreate")
-    mounts_by_id = {mount.volume_id: mount for mount in req.volume_mounts}
+    req = _sidecar_create_request(ctx, sidecar_create_path)
+    mounts_by_id = {mount.volume_id: mount for mount in req.definition.volume_mounts}
     assert len(mounts_by_id) == 2
 
     ro_mount = mounts_by_id[read_only_volume.object_id]
@@ -3346,14 +3477,14 @@ def test_sandbox_container_volume_mounts(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_container_pty(app, servicer):
+def test_sandbox_container_pty(app, servicer, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create(
             "bash",
             "-c",
@@ -3363,10 +3494,9 @@ def test_sandbox_container_pty(app, servicer):
             pty=True,
         )
 
-        req = tcr_ctx.pop_request("TaskContainerCreate")
-
-        assert req.pty_info is not None
-        assert req.pty_info.enabled
+    req = _sidecar_create_request(ctx, sidecar_create_path)
+    assert req.definition.HasField("pty_info")
+    assert req.definition.pty_info.enabled
 
 
 def test_sandbox_wait_allowed_after_detached(app, servicer):

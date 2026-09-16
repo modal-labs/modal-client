@@ -1,13 +1,25 @@
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
+import { ClientError, Status } from "nice-grpc";
 
 import { tc } from "../test-support/test-client";
+import { createMockModalClients } from "../test-support/grpc_mock";
 import {
+  AlreadyExistsError,
+  ClientClosedError,
   InvalidError,
   NotFoundError,
   SandboxFilesystemNotFoundError,
 } from "../src/errors";
-import type { Image } from "../src/image";
-import type { Sandbox } from "../src/sandbox";
+import { Image } from "../src/image";
+import { Sandbox } from "../src/sandbox";
+import {
+  NetworkAccess_NetworkAccessType,
+  SandboxContainerCreateV2Request,
+  SandboxContainerCreateV2Response,
+} from "../proto/modal_proto/api";
+
+const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
+const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 
 async function createSandbox(): Promise<Sandbox> {
   const app = await tc.apps.fromName("libmodal-test", {
@@ -169,4 +181,193 @@ test("SidecarFilesystem", async () => {
   await expect(sb.filesystem.stat("/tmp/sidecar-hello")).rejects.toThrow(
     SandboxFilesystemNotFoundError,
   );
+});
+
+test("sidecar create sends SandboxContainerCreateV2 to the control plane", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  let request: SandboxContainerCreateV2Request | undefined;
+  mock.handleUnary("/SandboxContainerCreateV2", (req) => {
+    request = req as SandboxContainerCreateV2Request;
+    return SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+    });
+  });
+
+  const container = await sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    {
+      command: ["sleep", "100"],
+      env: { PLAIN_ENV: "plain" },
+      workdir: "/app",
+      outboundCidrAllowlist: ["10.0.0.0/8"],
+      outboundDomainAllowlist: ["example.com"],
+      pty: true,
+    },
+  );
+
+  expect(container.containerId).toBe("sb-test-ctr-SIDECAR123");
+  // The response carries no name here, so the requested name is used.
+  expect(container.containerName).toBe("worker");
+
+  expect(request?.sandboxId).toBe(V2_SANDBOX_ID);
+  expect(request?.containerName).toBe("worker");
+  expect(request?.definition?.imageId).toBe("im-built");
+  expect(request?.definition?.entrypointArgs).toEqual(["sleep", "100"]);
+  expect(request?.definition?.workdir).toBe("/app");
+  expect(request?.definition?.secretIds).toEqual([]);
+  expect(request?.definition?.ptyInfo).toBeDefined();
+  expect(request?.definition?.networkAccess?.networkAccessType).toBe(
+    NetworkAccess_NetworkAccessType.ALLOWLIST,
+  );
+  expect(request?.definition?.networkAccess?.allowedCidrs).toEqual([
+    "10.0.0.0/8",
+  ]);
+  expect(request?.definition?.networkAccess?.allowedDomains).toEqual([
+    "example.com",
+  ]);
+  // Env vars travel as ephemeral secrets, not on the definition.
+  expect(request?.ephemeralSecrets?.contents).toEqual({ PLAIN_ENV: "plain" });
+  expect(request?.definition?.environmentVariables).toBeUndefined();
+
+  mock.assertExhausted();
+});
+
+test("sidecar create omits ephemeral secrets when no env vars are set", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  let request: SandboxContainerCreateV2Request | undefined;
+  mock.handleUnary("/SandboxContainerCreateV2", (req) => {
+    request = req as SandboxContainerCreateV2Request;
+    return SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+      containerName: "worker",
+    });
+  });
+
+  await sb.experimentalSidecars.create("worker", new Image(mc, "im-built", ""));
+
+  expect(request?.ephemeralSecrets).toBeUndefined();
+  expect(request?.definition?.workdir).toBeUndefined();
+  expect(request?.definition?.ptyInfo).toBeUndefined();
+  mock.assertExhausted();
+});
+
+// The three tests below register a Modal server create handler they expect
+// never to fire, so they deliberately skip mock.assertExhausted(). If a guard
+// ever inverts, the create succeeds and usedControlPlane flips, failing the test.
+
+test("sidecar create uses the command router by default", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  let usedControlPlane = false;
+  mock.handleUnary("/SandboxContainerCreateV2", () => {
+    usedControlPlane = true;
+    return SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+    });
+  });
+
+  // Without the opt-in this goes over the Sandbox connection, which is not
+  // mocked here; what matters is that nothing reached the Modal server.
+  await expect(
+    sb.experimentalSidecars.create("worker", new Image(mc, "im-built", "")),
+  ).rejects.toThrow();
+  expect(usedControlPlane).toBe(false);
+});
+
+test("sidecar create ignores the opt-in for a V1 sandbox", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+
+  let usedControlPlane = false;
+  mock.handleUnary("/SandboxContainerCreateV2", () => {
+    usedControlPlane = true;
+    return SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+    });
+  });
+
+  // The opt-in only applies to V2 Sandboxes; a V1 Sandbox always creates
+  // sidecars over the Sandbox connection.
+  await expect(
+    sb.experimentalSidecars.create("worker", new Image(mc, "im-built", "")),
+  ).rejects.toThrow();
+  expect(usedControlPlane).toBe(false);
+});
+
+test("sidecar create rejects a detached sandbox", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  let usedControlPlane = false;
+  mock.handleUnary("/SandboxContainerCreateV2", () => {
+    usedControlPlane = true;
+    return SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+    });
+  });
+
+  // The service is obtained while attached; detaching afterwards must still
+  // stop it from creating containers.
+  const sidecars = sb.experimentalSidecars;
+  sb.detach();
+
+  await expect(
+    sidecars.create("worker", new Image(mc, "im-built", "")),
+  ).rejects.toThrow(ClientClosedError);
+  expect(usedControlPlane).toBe(false);
+});
+
+test("sidecar create maps control plane errors", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  mock.handleUnary("/SandboxContainerCreateV2", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxContainerCreateV2",
+      Status.ALREADY_EXISTS,
+      "sidecar already exists",
+    );
+  });
+  await expect(
+    sb.experimentalSidecars.create("worker", new Image(mc, "im-built", "")),
+  ).rejects.toThrow(AlreadyExistsError);
+
+  mock.handleUnary("/SandboxContainerCreateV2", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxContainerCreateV2",
+      Status.INVALID_ARGUMENT,
+      "bad definition",
+    );
+  });
+  await expect(
+    sb.experimentalSidecars.create("worker", new Image(mc, "im-built", "")),
+  ).rejects.toThrow(InvalidError);
+
+  mock.assertExhausted();
 });

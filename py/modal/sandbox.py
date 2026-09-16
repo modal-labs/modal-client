@@ -2979,6 +2979,15 @@ class _SidecarContainer:
 _MAIN_CONTAINER_NAME: str = "main"
 
 
+def _use_control_plane_sidecar_create(is_v2: bool) -> bool:
+    """Whether a sidecar create request goes to the Modal server rather than over the Sandbox connection.
+
+    Opt-in via the `use_control_plane_sidecar_create` config setting. Only V2
+    Sandboxes can; V1 Sandboxes always create sidecars over the Sandbox connection.
+    """
+    return is_v2 and config.get("use_control_plane_sidecar_create")
+
+
 class _SidecarManager:
     """Creates and manages sidecar containers in a Sandbox."""
 
@@ -3060,8 +3069,13 @@ class _SidecarManager:
                 "or `.snapshot_filesystem()`\n"
             )
 
-        secrets = secrets or []
-        hydrate_coros = [secret.hydrate(client=self._sandbox._client) for secret in secrets] + [
+        env_dict, resolvable_secrets = _split_env_dict_and_resolvable_secrets(list(secrets or []))
+        if env:
+            # `env` takes precedence over environment variables from secrets
+            env_dict |= env
+        _validate_sandbox_env(env_dict)
+
+        hydrate_coros = [secret.hydrate(client=self._sandbox._client) for secret in resolvable_secrets] + [
             volume.hydrate(client=self._sandbox._client) for _, volume in validated_volumes
         ]
         await TaskContext.gather(*hydrate_coros)
@@ -3073,21 +3087,48 @@ class _SidecarManager:
         # Relies on dicts being ordered (true as of Python 3.6).
         volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
 
-        task_id, command_router_client = await self._get_command_router()
+        network_access = _build_outbound_network_access(False, outbound_cidr_allowlist, outbound_domain_allowlist)
+        pty_info = _Sandbox._default_pty_info() if pty else None
 
-        create_req = sr_pb2.TaskContainerCreateRequest(
-            task_id=task_id,
-            container_name=name,
-            image_id=image.object_id,
-            args=list(args),
-            env=env or {},
-            workdir=workdir or "",
-            secret_ids=[secret.object_id for secret in secrets],
-            volume_mounts=volume_mounts,
-            network_access=_build_outbound_network_access(False, outbound_cidr_allowlist, outbound_domain_allowlist),
-            pty_info=_Sandbox._default_pty_info() if pty else None,
-        )
-        create_resp = await command_router_client.container_create(create_req)
+        if _use_control_plane_sidecar_create(self._sandbox._is_v2):
+            definition = api_pb2.Sandbox(
+                entrypoint_args=list(args),
+                image_id=image.object_id,
+                secret_ids=[secret.object_id for secret in resolvable_secrets],
+                workdir=workdir,
+                volume_mounts=volume_mounts,
+                network_access=network_access,
+                pty_info=pty_info,
+            )
+            create_req = api_pb2.SandboxContainerCreateV2Request(
+                sandbox_id=self._sandbox.object_id,
+                container_name=name,
+                definition=definition,
+                ephemeral_secrets=api_pb2.StringMap(contents=env_dict) if env_dict else None,
+            )
+            client = self._sandbox._client
+            assert client._auth_token_manager
+            auth_token = await client._auth_token_manager.get_token()
+            create_resp = await client.stub.SandboxContainerCreateV2(
+                create_req, metadata=[("x-modal-auth-token", auth_token)]
+            )
+        else:
+            task_id, command_router_client = await self._get_command_router()
+            create_resp = await command_router_client.container_create(
+                sr_pb2.TaskContainerCreateRequest(
+                    task_id=task_id,
+                    container_name=name,
+                    image_id=image.object_id,
+                    args=list(args),
+                    env=env_dict,
+                    workdir=workdir or "",
+                    secret_ids=[secret.object_id for secret in resolvable_secrets],
+                    volume_mounts=volume_mounts,
+                    network_access=network_access,
+                    pty_info=pty_info,
+                )
+            )
+
         container_id = create_resp.container_id
         container_name = create_resp.container_name or name
         return _SidecarContainer(self._sandbox, container_id, container_name)

@@ -23,7 +23,7 @@ import time
 import traceback
 import uuid
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Callable, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any, get_args
@@ -349,26 +349,38 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
             return "stopping"
         return "running"
 
-    async def TaskContainerCreate(self, stream) -> None:
-        request: sr_pb2.TaskContainerCreateRequest = await stream.recv_message()
-        task_state = self._task_state(request.task_id)
-        if request.container_name in task_state.container_name_to_id:
+    async def create_container(
+        self, *, task_id: str, container_name: str, args: Sequence[str], workdir: str | None
+    ) -> str:
+        """Start a container as a local subprocess and return its container id."""
+        task_state = self._task_state(task_id)
+        if container_name in task_state.container_name_to_id:
             raise GRPCError(Status.INVALID_ARGUMENT, "container name already in use")
-        self.last_container_create_request = request
 
         self._next_container_id += 1
         container_id = f"ctr-test-{self._next_container_id:06d}"
         proc = await asyncio.subprocess.create_subprocess_exec(
-            *list(request.args),
+            *list(args),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
             stdin=asyncio.subprocess.DEVNULL,
-            cwd=(request.workdir or None),
+            cwd=(workdir or None),
         )
         task_state.container_procs[container_id] = proc
-        task_state.container_names[container_id] = request.container_name
-        task_state.container_name_to_id[request.container_name] = container_id
-        task_state.latest_container_name_to_id[request.container_name] = container_id
+        task_state.container_names[container_id] = container_name
+        task_state.container_name_to_id[container_name] = container_id
+        task_state.latest_container_name_to_id[container_name] = container_id
+        return container_id
+
+    async def TaskContainerCreate(self, stream) -> None:
+        request: sr_pb2.TaskContainerCreateRequest = await stream.recv_message()
+        self.last_container_create_request = request
+        container_id = await self.create_container(
+            task_id=request.task_id,
+            container_name=request.container_name,
+            args=request.args,
+            workdir=request.workdir,
+        )
         await stream.send_message(
             sr_pb2.TaskContainerCreateResponse(
                 container_id=container_id,
@@ -902,6 +914,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox_app_id = None
+        self.sandbox_task_ids: dict[str, str] = {}
         # Set True to make SandboxCreateV2 omit command_router_access, as a scheduler
         # that could not mint a token does.
         self.sandbox_create_v2_omits_router_access = False
@@ -3173,6 +3186,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
         self.sandbox_tags["sb-nGEijt9WbBMlGrsPH9FOaC"] = {tag.tag_name: tag.tag_value for tag in request.tags}
+        self.sandbox_task_ids["sb-nGEijt9WbBMlGrsPH9FOaC"] = "ta-modalcontainerexec"
         await stream.send_message(
             api_pb2.SandboxCreateResponse(
                 sandbox_id="sb-nGEijt9WbBMlGrsPH9FOaC",
@@ -3184,6 +3198,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SandboxCreateV2Request = await stream.recv_message()
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
+        self.sandbox_task_ids["sb-v2-123"] = "ta-v2-123"
 
         # Only encrypted tunnels are known at create time. Unencrypted
         # tunnels are relay-assigned after the container starts.
@@ -3204,6 +3219,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     if self.sandbox_create_v2_omits_router_access
                     else api_pb2.CommandRouterAccess(url=self.task_command_router_url, jwt="fake-jwt-token")
                 ),
+            )
+        )
+
+    async def SandboxContainerCreateV2(self, stream):
+        request: api_pb2.SandboxContainerCreateV2Request = await stream.recv_message()
+        task_id = self.sandbox_task_ids.get(request.sandbox_id, "ta-modalcontainerexec")
+        container_id = await self.task_command_router.create_container(
+            task_id=task_id,
+            container_name=request.container_name,
+            args=request.definition.entrypoint_args,
+            workdir=request.definition.workdir,
+        )
+        await stream.send_message(
+            api_pb2.SandboxContainerCreateV2Response(
+                container_id=container_id,
+                container_name=request.container_name,
             )
         )
 

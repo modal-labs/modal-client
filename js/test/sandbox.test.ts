@@ -24,6 +24,7 @@ import {
   GenericResult_GenericStatus,
   ImageGetOrCreateResponse,
   AppGetOrCreateResponse,
+  SandboxContainerCreateV2Response,
   SandboxCreateResponse,
   SandboxCreateV2Response,
   SandboxGetExitSnapshotResponse_ErrorCode,
@@ -2965,24 +2966,23 @@ test("updateNetworkPolicy sends correct request via mocked command router", asyn
 });
 
 test("sidecar snapshotFilesystem targets its container", async () => {
-  const { mockClient: mc } = createMockModalClients();
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
 
-  const containerCreate = vi.fn().mockResolvedValue({
-    containerId: "sb-test-ctr-SIDECAR123",
-    containerName: "worker",
-  });
+  mock.handleUnary("/SandboxContainerCreateV2", () =>
+    SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+      containerName: "worker",
+    }),
+  );
   const snapshotFilesystem = vi
     .fn()
     .mockResolvedValue({ imageId: "im-sidecar-snapshot" });
-  const tryInit = vi
-    .spyOn(TaskCommandRouterClientImpl, "tryInit")
-    .mockResolvedValue({
-      containerCreate,
-      snapshotFilesystem,
-      close: vi.fn(),
-    } as unknown as TaskCommandRouterClientImpl);
-  onTestFinished(() => tryInit.mockRestore());
+  mockCommandRouter({ snapshotFilesystem });
 
   const sidecar = await sb.experimentalSidecars.create(
     "worker",

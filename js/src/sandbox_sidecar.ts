@@ -4,6 +4,9 @@ import { v4 as uuidv4 } from "uuid";
 import {
   GenericResult,
   GenericResult_GenericStatus,
+  Sandbox as SandboxDefinition,
+  SandboxContainerCreateV2Request,
+  StringMap,
 } from "../proto/modal_proto/api";
 import {
   TaskContainerCreateRequest,
@@ -21,8 +24,10 @@ import {
   ContainerProcess,
   defaultSandboxPTYInfo,
   getReturnCode,
+  getSandboxVersion,
   resolveMountImageId,
   resolveTtlSeconds,
+  SandboxVersion,
   validateExecArgs,
   validateWorkdir,
   type SandboxExecParams,
@@ -56,6 +61,24 @@ const MAIN_CONTAINER_NAME = "main";
  */
 const CONTAINER_WAIT_POLL_TIMEOUT_SECONDS = 10;
 
+/**
+ * Opts a client in to sending sidecar create requests to the Modal server
+ * rather than over the Sandbox connection.
+ */
+const CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR =
+  "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE";
+
+/**
+ * Whether create sends its request to the Modal server. Only V2 Sandboxes
+ * can; V1 Sandboxes always create sidecars over the Sandbox connection.
+ */
+function useControlPlaneSidecarCreate(sandboxId: string): boolean {
+  return (
+    getSandboxVersion(sandboxId) === SandboxVersion.V2 &&
+    process.env[CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR] === "1"
+  );
+}
+
 type SandboxSidecarCommandRouter = Pick<
   TaskCommandRouterClientImpl,
   | "containerCreate"
@@ -70,6 +93,8 @@ type SandboxSidecarCommandRouter = Pick<
 
 type SandboxSidecarAccess = {
   client: ModalClient;
+  sandboxId: string;
+  ensureAttached(): void;
   exec(
     command: string[],
     params: SandboxExecParams | undefined,
@@ -202,6 +227,7 @@ export class SidecarService {
     image: Image,
     params?: SidecarCreateParams,
   ): Promise<SidecarContainer> {
+    this.#access.ensureAttached();
     validateSidecarName(name);
     if (!image || image.imageId === "") {
       throw new InvalidError(
@@ -213,9 +239,11 @@ export class SidecarService {
     validateExecArgs(command);
     validateWorkdir(params?.workdir);
 
-    // Locally-created Secrets (fromObject) are passed directly to the worker as
-    // environment variables, so only the remaining Secrets need hydrating. This
-    // avoids a SecretGetOrCreate round-trip for env-dict Secrets.
+    // Sidecar containers support ephemeral env vars natively (passed via
+    // ephemeralSecrets in the request), so locally-created Secrets (fromObject)
+    // and params.env are sent directly rather than folded into a server-side
+    // Secret; params.env takes precedence on key collisions. Only the remaining
+    // resolvable Secrets (e.g. from fromName) need hydrating to secret IDs.
     validateEnvVarKeys(params?.env ?? {});
     const [envDict, resolvableSecrets] = splitEnvDictAndResolvableSecrets(
       params?.secrets ?? [],
@@ -225,28 +253,50 @@ export class SidecarService {
     const secretIds = collectSecretIds(resolvableSecrets);
 
     const ptyInfo = params?.pty ? defaultSandboxPTYInfo() : undefined;
-
-    const [taskId, client] = await this.#access.commandRouter();
+    const networkAccess = buildOutboundNetworkAccess(
+      false,
+      params?.outboundCidrAllowlist,
+      params?.outboundDomainAllowlist,
+    );
 
     let resp;
     try {
-      resp = await client.containerCreate(
-        TaskContainerCreateRequest.create({
-          taskId,
-          containerName: name,
-          imageId: image.imageId,
-          args: command,
-          env: envDict,
-          workdir: params?.workdir ?? "",
-          secretIds,
-          networkAccess: buildOutboundNetworkAccess(
-            false,
-            params?.outboundCidrAllowlist,
-            params?.outboundDomainAllowlist,
-          ),
-          ptyInfo,
-        }),
-      );
+      if (useControlPlaneSidecarCreate(this.#access.sandboxId)) {
+        const ephemeralSecrets =
+          Object.keys(envDict).length > 0
+            ? StringMap.create({ contents: envDict })
+            : undefined;
+        resp = await this.#access.client.cpClient.sandboxContainerCreateV2(
+          SandboxContainerCreateV2Request.create({
+            sandboxId: this.#access.sandboxId,
+            containerName: name,
+            definition: SandboxDefinition.create({
+              imageId: image.imageId,
+              entrypointArgs: command,
+              workdir: params?.workdir ?? undefined,
+              secretIds,
+              networkAccess,
+              ptyInfo,
+            }),
+            ephemeralSecrets,
+          }),
+        );
+      } else {
+        const [taskId, client] = await this.#access.commandRouter();
+        resp = await client.containerCreate(
+          TaskContainerCreateRequest.create({
+            taskId,
+            containerName: name,
+            imageId: image.imageId,
+            args: command,
+            env: envDict,
+            workdir: params?.workdir ?? "",
+            secretIds,
+            networkAccess,
+            ptyInfo,
+          }),
+        );
+      }
     } catch (err) {
       if (err instanceof ClientError) {
         if (err.code === Status.ALREADY_EXISTS) {
