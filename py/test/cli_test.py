@@ -2982,9 +2982,11 @@ def test_app_info(servicer, mock_dir, set_env_client):
     assert "my_app_foo" in res.stdout
     assert app_id in res.stdout
     assert "deployed" in res.stdout
-    assert "Lifecycle" in res.stdout
+    assert "Lifecycle" not in res.stdout
     assert "Created" in res.stdout
-    assert "Deployed (v1)" in res.stdout
+    assert "Deployment:" in res.stdout
+    assert "v1" in res.stdout
+    assert res.stdout.index("Created") < res.stdout.index("Functions")
     assert "Functions" in res.stdout
     assert "square" in res.stdout, res.stdout
     assert "Servers" not in res.stdout  # omitted when the App has none
@@ -2998,16 +3000,92 @@ def test_app_info(servicer, mock_dir, set_env_client):
     assert data["lifecycle"]["version"] == 1
     assert data["lifecycle"]["created_at"] is not None
     assert data["lifecycle"]["stopped_at"] is None
-    assert data["functions"] == {"square": "fu-1"}
+    assert data["functions"] == {"square": {"id": "fu-1", "summary": {}}}
     assert data["servers"] == {}
 
     res = run_cli_command(["app", "info", "does-not-exist"], expected_exit_code=1)
 
-    # App IDs are validated through the shared identifier resolver before fetching their info.
+    # App IDs are validated by the shared resolver before fetching info.
     with servicer.intercept() as ctx:
         run_cli_command(["app", "info", "ap-abcdefghABCDEFGH012345"], expected_exit_code=1)
     request = ctx.pop_request("AppGetLifecycle")
     assert request.app_id == "ap-abcdefghABCDEFGH012345"
+
+
+@pytest.mark.parametrize("authenticated", [False, True])
+@pytest.mark.parametrize("secondary_gpus", [[], ["A100", "L4"]])
+def test_app_info_summaries(servicer, set_env_client, authenticated, secondary_gpus):
+    servicer.app_state_history["ap-abcdefghABCDEFGH012345"] = [api_pb2.APP_STATE_STOPPED]
+    summary = api_pb2.AppGetInfoResponse.FunctionInfoSummary
+    response = api_pb2.AppGetInfoResponse(
+        info=api_pb2.AppHandleMetadata(
+            app_id="ap-abcdefghABCDEFGH012345",
+            description="my-app",
+            lifecycle=api_pb2.AppLifecycle(
+                app_state=api_pb2.APP_STATE_STOPPED,
+                created_at=1700000000,
+                deployed_at=1700000100,
+                stopped_at=1700000200,
+                version=17,
+            ),
+            functions={"z_missing": "fu-missing", "alpha": "fu-cpu", "MyClass.*": "fu-gpu"},
+            servers={"LongNamedFileServer": "fu-server"},
+        ),
+        function_info_summaries={
+            "fu-cpu": summary(schedule=api_pb2.Schedule(period=api_pb2.Schedule.Period(minutes=15))),
+            "fu-gpu": summary(
+                gpu_config=[api_pb2.GPUConfig(gpu_type=gpu_type, count=2) for gpu_type in ["H100", *secondary_gpus]],
+                schedule=api_pb2.Schedule(cron=api_pb2.Schedule.Cron(cron_string="0 0 * * *", timezone="UTC")),
+                web_function=True,
+            ),
+            "fu-server": summary(requires_proxy_auth=authenticated),
+        },
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetInfo", response)
+        result = run_cli_command(["app", "info", "ap-abcdefghABCDEFGH012345"])
+        assert len(ctx.get_requests("AppGetInfo")) == 1
+        assert len(ctx.get_requests("AppGetLifecycle")) == 1
+        assert not ctx.get_requests("FunctionGetById")
+    rendered = result.stdout
+    assert "CPU · Every 15 minutes" in rendered
+    alternatives = " (2 × A100 GPU, 2 × L4 GPU)" if secondary_gpus else ""
+    assert f"2 × H100 GPU{alternatives} · Web function" in rendered
+    assert "0 0 * * * (UTC)" in rendered
+    assert "Every 15 minutes" in rendered
+    if authenticated:
+        assert "Unauthenticated" not in rendered
+    else:
+        assert "CPU · Unauthenticated" in rendered
+    assert " · Auth" not in rendered
+    assert "No auth" not in rendered
+    assert rendered.count("Web function") == 1
+    assert "URL:" not in rendered
+    id_lines = [line for line in rendered.splitlines() if "fu-" in line]
+    assert len(id_lines) == 4
+    assert len({line.index("fu-") for line in id_lines}) == 1
+    assert "\n\n  alpha" in rendered
+    assert rendered.index("Stopped:") < rendered.index("Functions (3):") < rendered.index("Servers (1):")
+    assert rendered.index("MyClass.*") < rendered.index("alpha") < rendered.index("z_missing")
+    assert "fu-missing" in rendered
+    assert "\x1b[" not in rendered
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetInfo", response)
+        result = run_cli_command(["app", "info", "ap-abcdefghABCDEFGH012345", "--json"])
+    data = json.loads(result.stdout)
+    assert "function_info_summaries" not in data
+    assert data["functions"]["MyClass.*"]["id"] == "fu-gpu"
+    assert data["functions"]["MyClass.*"]["summary"]["gpu_config"] == [
+        {"gpu_type": gpu_type, "count": 2} for gpu_type in ["H100", *secondary_gpus]
+    ]
+    assert data["functions"]["MyClass.*"]["summary"]["web_function"] is True
+    assert data["functions"]["z_missing"] == {"id": "fu-missing", "summary": {}}
+    server = data["servers"]["LongNamedFileServer"]
+    assert server["id"] == "fu-server"
+    assert not server["summary"].get("web_function", False)
+    assert server["summary"]["requires_proxy_auth"] is authenticated
+    assert "requires_proxy_auth" not in data["functions"]["alpha"]["summary"]
 
 
 def test_app_info_with_servers(servicer, mock_dir, set_env_client):
@@ -3026,7 +3104,7 @@ def test_app_info_with_servers(servicer, mock_dir, set_env_client):
     res = run_cli_command(["app", "info", "my_app_foo", "--json"])
     data = json.loads(res.stdout)
     assert data["functions"] == {}
-    assert data["servers"] == {"square": "fu-1"}
+    assert data["servers"] == {"square": {"id": "fu-1", "summary": {}}}
 
 
 def test_app_rollback(servicer, mock_dir, set_env_client):

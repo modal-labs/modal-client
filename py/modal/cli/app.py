@@ -3,13 +3,15 @@ import re
 import sys
 import time
 import warnings
+from collections.abc import Mapping
 from json import dumps
 from typing import Literal, get_args
 
 import click
 import rich
 from click import UsageError
-from rich.table import Column
+from google.protobuf.json_format import MessageToDict
+from rich.table import Column, Table
 from rich.text import Text
 
 from modal._environments import ensure_env
@@ -620,8 +622,9 @@ async def dashboard(
 @click.argument("app_identifier")
 @env_option
 @click.option("--json", is_flag=True, default=False)
+@click.option("--no-color", is_flag=True, default=False, help="Disable colors in the output.")
 @synchronizer.create_blocking
-async def info(app_identifier: str, *, env: str | None = None, json: bool = False):
+async def info(app_identifier: str, *, env: str | None = None, json: bool = False, no_color: bool = False):
     """Show an App's lifecycle, Functions, and Servers.
 
     Examples:
@@ -650,6 +653,17 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
     state = APP_STATE_TO_MESSAGE.get(lifecycle.app_state, Text("unknown", style="gray"))
 
     if json:
+        summaries = {
+            function_id: MessageToDict(summary, preserving_proto_field_name=True)
+            for function_id, summary in resp.function_info_summaries.items()
+        }
+
+        def entries_with_info(entries: Mapping[str, str]) -> dict[str, dict]:
+            return {
+                name: {"id": function_id, "summary": summaries.get(function_id, {})}
+                for name, function_id in sorted(entries.items())
+            }
+
         output.print_json(
             dumps(
                 {
@@ -665,28 +679,71 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
                         "stopped_at": timestamp_to_localized_str(lifecycle.stopped_at, json),
                         "stopped_by": lifecycle.stopped_by or None,
                     },
-                    "functions": dict(sorted(app_info.functions.items())),
-                    "servers": dict(sorted(app_info.servers.items())),
+                    "functions": entries_with_info(app_info.functions),
+                    "servers": entries_with_info(app_info.servers),
                 }
             )
         )
         return
 
-    output.print(
-        Text.assemble("App: ", (app_info.app_id, "bold"), " - ", (app_info.description, "bold"), " (", state, ")")
-    )
+    header = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
+    header.add_row(Text("App:"), Text(app_info.description))
+    header.add_row(Text("App ID:"), Text(app_info.app_id))
+    header.add_row(Text("State:"), Text(state.plain))
 
-    if app_info.functions:
-        display_table(["Name", "Function ID"], sorted(app_info.functions.items()), title="Functions")
-    if app_info.servers:
-        display_table(["Name", "Function ID"], sorted(app_info.servers.items()), title="Servers")
+    def event(label: str, timestamp: float, actor: str, version: int = 0) -> None:
+        parts = [timestamp_to_localized_str(timestamp, isotz=False), actor]
+        if version:
+            parts.insert(0, f"v{version}")
+        header.add_row(Text(label + ":"), Text(" · ".join(p for p in parts if p)))
 
-    events: list[list[Text | str | None]] = [
-        ["Created", timestamp_to_localized_str(lifecycle.created_at, json), lifecycle.created_by]
-    ]
-    if lifecycle.deployed_at:
-        label = f"Deployed (v{lifecycle.version})" if lifecycle.version else "Deployed"
-        events.append([label, timestamp_to_localized_str(lifecycle.deployed_at, json), lifecycle.deployed_by])
     if lifecycle.stopped_at:
-        events.append(["Stopped", timestamp_to_localized_str(lifecycle.stopped_at, json), lifecycle.stopped_by])
-    display_table(["Event", "Time", "By"], events, title="Lifecycle")
+        event("Stopped", lifecycle.stopped_at, lifecycle.stopped_by)
+    if lifecycle.deployed_at:
+        event("Deployment", lifecycle.deployed_at, lifecycle.deployed_by, lifecycle.version)
+    event("Created", lifecycle.created_at, lifecycle.created_by)
+    output.print(header)
+
+    name_width = max((len(name) for name in [*app_info.functions, *app_info.servers]), default=0)
+    for title, entries in (("Functions", app_info.functions), ("Servers", app_info.servers)):
+        if not entries:
+            continue
+        output.print("")
+        output.print(Text(f"{title} ({len(entries)}):"))
+        for index, (name, function_id) in enumerate(sorted(entries.items())):
+            if index:
+                output.print("")
+            identity = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
+            identity.add_column(width=name_width + 2)
+            identity.add_column(no_wrap=True)
+            identity.add_row(Text(f"  {name}"), Text(function_id))
+            output.print(identity)
+            if function_id not in resp.function_info_summaries:
+                continue
+            summary = resp.function_info_summaries[function_id]
+            hardware = [f"{gpu.count} × {gpu.gpu_type} GPU" for gpu in summary.gpu_config]
+            metadata = Text(f"    {hardware[0] if hardware else 'CPU'}")
+            if len(hardware) > 1:
+                metadata.append(f" ({', '.join(hardware[1:])})", style=None if no_color else "bright_black")
+            if summary.web_function:
+                metadata.append(" · Web function")
+            if schedule := _app_function_schedule(summary.schedule):
+                metadata.append(" · ")
+                metadata.append(schedule)
+            if summary.HasField("requires_proxy_auth") and not summary.requires_proxy_auth:
+                metadata.append(" · ")
+                metadata.append("Unauthenticated", style=None if no_color else "yellow")
+            output.print(metadata)
+
+
+def _app_function_schedule(schedule: api_pb2.Schedule) -> str | None:
+    if schedule.HasField("cron"):
+        return f"{schedule.cron.cron_string} ({schedule.cron.timezone or 'UTC'})"
+    if schedule.HasField("period"):
+        parts = [
+            f"{value:g} {field.name.removesuffix('s') if value == 1 else field.name}"
+            for field, value in schedule.period.ListFields()
+            if value
+        ]
+        return "Every " + ", ".join(parts)
+    return None
