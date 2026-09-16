@@ -44230,6 +44230,7 @@ type Sandbox struct {
 	xxx_hidden_InboundCidrAllowlist         []string                 `protobuf:"bytes,39,rep,name=inbound_cidr_allowlist,json=inboundCidrAllowlist,proto3"`
 	xxx_hidden_EnvironmentVariables         *StringMap               `protobuf:"bytes,40,opt,name=environment_variables,json=environmentVariables,proto3"`
 	xxx_hidden_OutboundPolicy               *OutboundPolicy          `protobuf:"bytes,42,opt,name=outbound_policy,json=outboundPolicy,proto3,oneof"`
+	xxx_hidden_IncludeX509Svid              bool                     `protobuf:"varint,43,opt,name=include_x509_svid,json=includeX509Svid,proto3"`
 	XXX_raceDetectHookData                  protoimpl.RaceDetectHookData
 	XXX_presence                            [2]uint32
 	unknownFields                           protoimpl.UnknownFields
@@ -44568,6 +44569,13 @@ func (x *Sandbox) GetOutboundPolicy() *OutboundPolicy {
 	return nil
 }
 
+func (x *Sandbox) GetIncludeX509Svid() bool {
+	if x != nil {
+		return x.xxx_hidden_IncludeX509Svid
+	}
+	return false
+}
+
 func (x *Sandbox) SetEntrypointArgs(v []string) {
 	x.xxx_hidden_EntrypointArgs = v
 }
@@ -44598,7 +44606,7 @@ func (x *Sandbox) SetTimeoutSecs(v uint32) {
 
 func (x *Sandbox) SetWorkdir(v string) {
 	x.xxx_hidden_Workdir = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 40)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 41)
 }
 
 func (x *Sandbox) SetNfsMounts(v []*SharedVolumeMount) {
@@ -44655,7 +44663,7 @@ func (x *Sandbox) SetNetworkAccess(v *NetworkAccess) {
 
 func (x *Sandbox) SetProxyId(v string) {
 	x.xxx_hidden_ProxyId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 20, 40)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 20, 41)
 }
 
 func (x *Sandbox) SetEnableSnapshot(v bool) {
@@ -44664,7 +44672,7 @@ func (x *Sandbox) SetEnableSnapshot(v bool) {
 
 func (x *Sandbox) SetSnapshotVersion(v uint32) {
 	x.xxx_hidden_SnapshotVersion = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 22, 40)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 22, 41)
 }
 
 func (x *Sandbox) SetCloudProviderStr(v string) {
@@ -44673,12 +44681,12 @@ func (x *Sandbox) SetCloudProviderStr(v string) {
 
 func (x *Sandbox) SetRunscRuntimeVersion(v string) {
 	x.xxx_hidden_RunscRuntimeVersion = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 24, 40)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 24, 41)
 }
 
 func (x *Sandbox) SetRuntime(v string) {
 	x.xxx_hidden_Runtime = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 25, 40)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 25, 41)
 }
 
 func (x *Sandbox) SetVerbose(v bool) {
@@ -44687,7 +44695,7 @@ func (x *Sandbox) SetVerbose(v bool) {
 
 func (x *Sandbox) SetName(v string) {
 	x.xxx_hidden_Name = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 27, 40)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 27, 41)
 }
 
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
@@ -44705,7 +44713,7 @@ func (x *Sandbox) SetPreloadPathPrefixes(v []string) {
 
 func (x *Sandbox) SetIdleTimeoutSecs(v uint32) {
 	x.xxx_hidden_IdleTimeoutSecs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 31, 40)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 31, 41)
 }
 
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
@@ -44739,6 +44747,10 @@ func (x *Sandbox) SetEnvironmentVariables(v *StringMap) {
 
 func (x *Sandbox) SetOutboundPolicy(v *OutboundPolicy) {
 	x.xxx_hidden_OutboundPolicy = v
+}
+
+func (x *Sandbox) SetIncludeX509Svid(v bool) {
+	x.xxx_hidden_IncludeX509Svid = v
 }
 
 func (x *Sandbox) HasResources() bool {
@@ -45015,6 +45027,11 @@ type Sandbox_builder struct {
 	InboundCidrAllowlist []string
 	EnvironmentVariables *StringMap
 	OutboundPolicy       *OutboundPolicy
+	// If set, the sandbox's main container is served an X.509-SVID over a
+	// SPIFFE Workload API socket, addressed by SPIFFE_ENDPOINT_SOCKET. The
+	// certificate federates into a cloud account (AWS IAM Roles Anywhere).
+	// Sidecars are not served one.
+	IncludeX509Svid bool
 }
 
 func (b0 Sandbox_builder) Build() *Sandbox {
@@ -45029,7 +45046,7 @@ func (b0 Sandbox_builder) Build() *Sandbox {
 	x.xxx_hidden_CloudProvider = b.CloudProvider
 	x.xxx_hidden_TimeoutSecs = b.TimeoutSecs
 	if b.Workdir != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 40)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 41)
 		x.xxx_hidden_Workdir = b.Workdir
 	}
 	x.xxx_hidden_NfsMounts = &b.NfsMounts
@@ -45047,33 +45064,33 @@ func (b0 Sandbox_builder) Build() *Sandbox {
 	x.xxx_hidden_I6PnEnabled = b.I6PnEnabled
 	x.xxx_hidden_NetworkAccess = b.NetworkAccess
 	if b.ProxyId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 20, 40)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 20, 41)
 		x.xxx_hidden_ProxyId = b.ProxyId
 	}
 	x.xxx_hidden_EnableSnapshot = b.EnableSnapshot
 	if b.SnapshotVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 22, 40)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 22, 41)
 		x.xxx_hidden_SnapshotVersion = *b.SnapshotVersion
 	}
 	x.xxx_hidden_CloudProviderStr = b.CloudProviderStr
 	if b.RunscRuntimeVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 24, 40)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 24, 41)
 		x.xxx_hidden_RunscRuntimeVersion = b.RunscRuntimeVersion
 	}
 	if b.Runtime != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 25, 40)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 25, 41)
 		x.xxx_hidden_Runtime = b.Runtime
 	}
 	x.xxx_hidden_Verbose = b.Verbose
 	if b.Name != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 27, 40)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 27, 41)
 		x.xxx_hidden_Name = b.Name
 	}
 	x.xxx_hidden_ExperimentalOptions = b.ExperimentalOptions
 	x.xxx_hidden_ExperimentalOptionsV2 = b.ExperimentalOptionsV2
 	x.xxx_hidden_PreloadPathPrefixes = b.PreloadPathPrefixes
 	if b.IdleTimeoutSecs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 31, 40)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 31, 41)
 		x.xxx_hidden_IdleTimeoutSecs = *b.IdleTimeoutSecs
 	}
 	x.xxx_hidden_DirectSandboxCommandsEnabled = b.DirectSandboxCommandsEnabled
@@ -45084,6 +45101,7 @@ func (b0 Sandbox_builder) Build() *Sandbox {
 	x.xxx_hidden_InboundCidrAllowlist = b.InboundCidrAllowlist
 	x.xxx_hidden_EnvironmentVariables = b.EnvironmentVariables
 	x.xxx_hidden_OutboundPolicy = b.OutboundPolicy
+	x.xxx_hidden_IncludeX509Svid = b.IncludeX509Svid
 	return m0
 }
 
@@ -69202,7 +69220,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x02 \x01(\tR\tmountPath\x122\n" +
 	"\x15credentials_secret_id\x18\x03 \x01(\tR\x13credentialsSecretId\x12\x1b\n" +
-	"\tread_only\x18\x04 \x01(\bR\breadOnly\"\xa0\x13\n" +
+	"\tread_only\x18\x04 \x01(\bR\breadOnly\"\xcc\x13\n" +
 	"\aSandbox\x12'\n" +
 	"\x0fentrypoint_args\x18\x01 \x03(\tR\x0eentrypointArgs\x12\x1b\n" +
 	"\tmount_ids\x18\x02 \x03(\tR\bmountIds\x12\x19\n" +
@@ -69248,7 +69266,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x16inbound_cidr_allowlist\x18' \x03(\tR\x14inboundCidrAllowlist\x12L\n" +
 	"\x15environment_variables\x18( \x01(\v2\x17.modal.client.StringMapR\x14environmentVariables\x12J\n" +
 	"\x0foutbound_policy\x18* \x01(\v2\x1c.modal.client.OutboundPolicyH\n" +
-	"R\x0eoutboundPolicy\x88\x01\x01\x1aF\n" +
+	"R\x0eoutboundPolicy\x88\x01\x01\x12*\n" +
+	"\x11include_x509_svid\x18+ \x01(\bR\x0fincludeX509Svid\x1aF\n" +
 	"\x18ExperimentalOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\bR\x05value:\x028\x01\x1aH\n" +

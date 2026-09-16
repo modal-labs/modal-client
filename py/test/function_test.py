@@ -1053,6 +1053,18 @@ def custom_exception_function(x):
     return x * x
 
 
+def only_deprecations(recorded):
+    """The DeprecationErrors among the warnings `pytest.warns` recorded.
+
+    Inside a `pytest.warns` block pytest installs an `always` filter, which
+    suspends the `filterwarnings` entries in `client/py/pyproject.toml`. Every
+    warning raised in the block is therefore recorded, including ones the suite
+    normally ignores, so a bare `len(recorded)` counts whatever unrelated
+    once-per-process warning happens to fire there first.
+    """
+    return [w for w in recorded if issubclass(w.category, DeprecationError)]
+
+
 def test_map_exceptions(client, servicer):
     app = App(include_source=False)
 
@@ -1075,8 +1087,9 @@ def test_map_exceptions(client, servicer):
         for value in (True, False):
             with pytest.warns(DeprecationError) as warnings:
                 res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=value))
-                assert len(warnings) == 1
-                assert "wrap_returned_exceptions" in str(warnings[0].message)
+                deprecations = only_deprecations(warnings)
+                assert len(deprecations) == 1
+                assert "wrap_returned_exceptions" in str(deprecations[0].message)
             assert res[:4] == [0, 1, 4, 9] and res[5] == 25
             assert type(res[4]) is CustomException and "bad" in str(res[4])
 
@@ -1103,8 +1116,9 @@ def test_map_exceptions_input_plane(client, servicer):
         for value in (True, False):
             with pytest.warns(DeprecationError) as warnings:
                 res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=value))
-                assert len(warnings) == 1
-                assert "wrap_returned_exceptions" in str(warnings[0].message)
+                deprecations = only_deprecations(warnings)
+                assert len(deprecations) == 1
+                assert "wrap_returned_exceptions" in str(deprecations[0].message)
             assert res[:4] == [0, 1, 4, 9] and res[5] == 25
             assert type(res[4]) is CustomException and "bad" in str(res[4])
 
@@ -1127,8 +1141,9 @@ async def test_async_map_wrap_exceptions_deprecation_warning(client, servicer):
                 range(6), return_exceptions=True, wrap_returned_exceptions=False
             ):
                 pass
-            assert len(warnings) == 1
-            assert "wrap_returned_exceptions" in str(warnings[0].message)
+            deprecations = only_deprecations(warnings)
+            assert len(deprecations) == 1
+            assert "wrap_returned_exceptions" in str(deprecations[0].message)
 
 
 @pytest.mark.asyncio
@@ -1149,8 +1164,9 @@ async def test_async_map_wrap_exceptions_deprecation_warning_input_plane(client,
                 range(6), return_exceptions=True, wrap_returned_exceptions=False
             ):
                 pass
-            assert len(warnings) == 1
-            assert "wrap_returned_exceptions" in str(warnings[0].message)
+            deprecations = only_deprecations(warnings)
+            assert len(deprecations) == 1
+            assert "wrap_returned_exceptions" in str(deprecations[0].message)
 
 
 def import_failure():

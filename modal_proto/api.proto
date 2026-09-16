@@ -3680,6 +3680,12 @@ message Sandbox {
   StringMap environment_variables = 40;
 
   optional OutboundPolicy outbound_policy = 42;
+
+  // If set, the sandbox's main container is served an X.509-SVID over a
+  // SPIFFE Workload API socket, addressed by SPIFFE_ENDPOINT_SOCKET. The
+  // certificate federates into a cloud account (AWS IAM Roles Anywhere).
+  // Sidecars are not served one.
+  bool include_x509_svid = 43;
 }
 
 message SandboxContainerCreateV2Request {
