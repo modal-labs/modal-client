@@ -29,6 +29,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `modal function logs` to fetch or stream logs from a modal function.
 - Added `modal server logs` to fetch or stream logs from a modal server.
 - Added `modal server stats` to inspect performance metrics for a Server over a selected time window.
+- We're removing the experimental `modal bootstrap` CLI; use `modal endpoint` to quickly stand up production-ready endpoints.
 
 ## JS
 

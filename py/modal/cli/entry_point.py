@@ -11,7 +11,6 @@ from . import run, shell as shell_module
 from ._help import ModalCommand, ModalGroup, ModalProfileOption
 from .app import app_cli
 from .billing import billing_cli
-from .bootstrap import bootstrap
 from .changelog import changelog
 from .cluster import cluster_cli
 from .config import config_cli
@@ -131,8 +130,6 @@ entrypoint_cli.add_command(secret_cli, panel="Storage")
 entrypoint_cli.add_command(queue_cli, panel="Storage")
 entrypoint_cli.add_command(volume_cli, panel="Storage")
 
-entrypoint_cli.add_command(setup, panel="Onboarding")
-entrypoint_cli.add_command(bootstrap, panel="Onboarding")
 
 entrypoint_cli.add_command(workspace_cli, panel="Configuration")
 entrypoint_cli.add_command(environment_cli, panel="Configuration")
@@ -140,6 +137,7 @@ entrypoint_cli.add_command(profile_cli, panel="Configuration")
 entrypoint_cli.add_command(config_cli, panel="Configuration")
 entrypoint_cli.add_command(token_cli, panel="Configuration")
 entrypoint_cli.add_command(skills_cli, panel="Configuration")
+entrypoint_cli.add_command(setup, panel="Configuration")
 
 entrypoint_cli.add_command(billing_cli, panel="Observability")
 entrypoint_cli.add_command(changelog, panel="Observability")

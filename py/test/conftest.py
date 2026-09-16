@@ -954,7 +954,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.flash_container_registrations = {}
         self.flash_rpc_calls: list[str] = []  # Track Flash RPC calls in order
-        self.template_list_items: list[api_pb2.TemplateListResponse.TemplateListItem] = []
         self.endpoint_create_requests: list[api_pb2.EndpointCreateRequest] = []
         self.endpoint_list_requests: list[api_pb2.EndpointListRequest] = []
         self.endpoint_list_items: list[api_pb2.EndpointListItem] = []
@@ -3652,12 +3651,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if self.task_result is None:
             self.task_result = request.result
         await stream.send_message(Empty())
-
-    ### Templates
-
-    async def TemplateList(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.TemplateListResponse(items=self.template_list_items))
 
     ### Token flow
 
