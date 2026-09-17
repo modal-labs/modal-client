@@ -3068,7 +3068,7 @@ def test_app_info_summaries(servicer, set_env_client, authenticated, secondary_g
     rendered = result.stdout
     assert "CPU · Every 15 minutes" in rendered
     alternatives = " (2 × A100 GPU, 2 × L4 GPU)" if secondary_gpus else ""
-    assert f"2 × H100 GPU{alternatives} · Web function" in rendered
+    assert f"2 × H100 GPU{alternatives} · Web Function" in rendered
     assert "0 0 * * * (UTC)" in rendered
     assert "Every 15 minutes" in rendered
     if authenticated:
@@ -3077,7 +3077,7 @@ def test_app_info_summaries(servicer, set_env_client, authenticated, secondary_g
         assert "CPU · Unauthenticated" in rendered
     assert " · Auth" not in rendered
     assert "No auth" not in rendered
-    assert rendered.count("Web function") == 1
+    assert rendered.count("Web Function") == 1
     assert "URL:" not in rendered
     id_lines = [line for line in rendered.splitlines() if "fu-" in line]
     assert len(id_lines) == 4

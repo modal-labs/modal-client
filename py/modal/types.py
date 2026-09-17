@@ -733,16 +733,14 @@ class ServerInfo:
         )
 
 
-class AppState(enum.Enum):
-    APP_STATE_UNSPECIFIED = 0
-    APP_STATE_EPHEMERAL = 1
-    APP_STATE_DETACHED = 2
-    APP_STATE_DEPLOYED = 3
-    APP_STATE_STOPPING = 4
-    APP_STATE_STOPPED = 5
-    APP_STATE_INITIALIZING = 6
-    APP_STATE_DISABLED = 7
-    APP_STATE_DETACHED_DISCONNECTED = 8
+class AppState(str, enum.Enum):
+    EPHEMERAL = "ephemeral"
+    DETACHED = "detached"
+    DEPLOYED = "deployed"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    INITIALIZING = "initializing"
+    DISABLED = "disabled"
 
 
 @dataclass
@@ -764,8 +762,19 @@ class AppLifecycle:
 
     @classmethod
     def _from_proto(cls, proto: api_pb2.AppLifecycle) -> "AppLifecycle":
+        proto_to_state = {
+            api_pb2.AppState.APP_STATE_UNSPECIFIED: AppState.EPHEMERAL,
+            api_pb2.AppState.APP_STATE_EPHEMERAL: AppState.EPHEMERAL,
+            api_pb2.AppState.APP_STATE_DETACHED: AppState.DETACHED,
+            api_pb2.AppState.APP_STATE_DEPLOYED: AppState.DEPLOYED,
+            api_pb2.AppState.APP_STATE_STOPPING: AppState.STOPPING,
+            api_pb2.AppState.APP_STATE_STOPPED: AppState.STOPPED,
+            api_pb2.AppState.APP_STATE_INITIALIZING: AppState.INITIALIZING,
+            api_pb2.AppState.APP_STATE_DISABLED: AppState.DISABLED,
+            api_pb2.AppState.APP_STATE_DETACHED_DISCONNECTED: AppState.DETACHED,
+        }
         return cls(
-            state=AppState(proto.app_state),
+            state=proto_to_state[proto.app_state],
             version=proto.version if proto.version else None,
             deployed_by=proto.deployed_by if proto.deployed_by else None,
             stopped_at=datetime.fromtimestamp(proto.stopped_at, tz=timezone.utc) if proto.stopped_at > 0 else None,

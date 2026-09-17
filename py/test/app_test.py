@@ -177,7 +177,7 @@ def test_ephemeral_app_info(client, servicer):
         with app.run(client=client):
             info = app.info()
 
-    assert info.lifecycle.state == AppState.APP_STATE_EPHEMERAL
+    assert info.lifecycle.state == AppState.EPHEMERAL
     assert info.lifecycle.deployed_at is None
     assert info.lifecycle.stopped_at is None
     assert info.functions == {"square": "fu-1"}
@@ -217,7 +217,7 @@ def test_app_info_from_lookup(client, servicer):
 
     assert info.description == "my-app"
     assert info.app_id == "ap-123"
-    assert info.lifecycle.state == AppState.APP_STATE_DEPLOYED
+    assert info.lifecycle.state == AppState.DEPLOYED
     assert info.functions == {"square": "fu-123"}
     assert info.servers == {"server": "fu-456"}
 
