@@ -18929,19 +18929,20 @@ func (*endpointComputeRegionSpec_Colocated) isEndpointComputeRegionSpec_Placemen
 func (*endpointComputeRegionSpec_Explicit) isEndpointComputeRegionSpec_Placement() {}
 
 type EndpointCreateRequest struct {
-	state                      protoimpl.MessageState     `protogen:"opaque.v1"`
-	xxx_hidden_Name            string                     `protobuf:"bytes,1,opt,name=name,proto3"`
-	xxx_hidden_Description     string                     `protobuf:"bytes,2,opt,name=description,proto3"`
-	xxx_hidden_ProxyRegions    []string                   `protobuf:"bytes,3,rep,name=proxy_regions,json=proxyRegions,proto3"`
-	xxx_hidden_ComputeRegion   *EndpointComputeRegionSpec `protobuf:"bytes,4,opt,name=compute_region,json=computeRegion,proto3"`
-	xxx_hidden_Model           *EndpointModelSource       `protobuf:"bytes,5,opt,name=model,proto3"`
-	xxx_hidden_ApiSurfaces     []EndpointApiSurface       `protobuf:"varint,6,rep,packed,name=api_surfaces,json=apiSurfaces,proto3,enum=modal.client.EndpointApiSurface"`
-	xxx_hidden_InputModalities []EndpointInputModality    `protobuf:"varint,7,rep,packed,name=input_modalities,json=inputModalities,proto3,enum=modal.client.EndpointInputModality"`
-	xxx_hidden_EnvironmentName string                     `protobuf:"bytes,8,opt,name=environment_name,json=environmentName,proto3"`
-	xxx_hidden_Unauthenticated bool                       `protobuf:"varint,9,opt,name=unauthenticated,proto3"`
-	xxx_hidden_ServingMode     EndpointServingMode        `protobuf:"varint,10,opt,name=serving_mode,json=servingMode,proto3,enum=modal.client.EndpointServingMode"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state                                       protoimpl.MessageState     `protogen:"opaque.v1"`
+	xxx_hidden_Name                             string                     `protobuf:"bytes,1,opt,name=name,proto3"`
+	xxx_hidden_Description                      string                     `protobuf:"bytes,2,opt,name=description,proto3"`
+	xxx_hidden_ProxyRegions                     []string                   `protobuf:"bytes,3,rep,name=proxy_regions,json=proxyRegions,proto3"`
+	xxx_hidden_ComputeRegion                    *EndpointComputeRegionSpec `protobuf:"bytes,4,opt,name=compute_region,json=computeRegion,proto3"`
+	xxx_hidden_Model                            *EndpointModelSource       `protobuf:"bytes,5,opt,name=model,proto3"`
+	xxx_hidden_ApiSurfaces                      []EndpointApiSurface       `protobuf:"varint,6,rep,packed,name=api_surfaces,json=apiSurfaces,proto3,enum=modal.client.EndpointApiSurface"`
+	xxx_hidden_InputModalities                  []EndpointInputModality    `protobuf:"varint,7,rep,packed,name=input_modalities,json=inputModalities,proto3,enum=modal.client.EndpointInputModality"`
+	xxx_hidden_EnvironmentName                  string                     `protobuf:"bytes,8,opt,name=environment_name,json=environmentName,proto3"`
+	xxx_hidden_Unauthenticated                  bool                       `protobuf:"varint,9,opt,name=unauthenticated,proto3"`
+	xxx_hidden_ServingMode                      EndpointServingMode        `protobuf:"varint,10,opt,name=serving_mode,json=servingMode,proto3,enum=modal.client.EndpointServingMode"`
+	xxx_hidden_SharedEndpointNoticeAcknowledged bool                       `protobuf:"varint,11,opt,name=shared_endpoint_notice_acknowledged,json=sharedEndpointNoticeAcknowledged,proto3"`
+	unknownFields                               protoimpl.UnknownFields
+	sizeCache                                   protoimpl.SizeCache
 }
 
 func (x *EndpointCreateRequest) Reset() {
@@ -19039,6 +19040,13 @@ func (x *EndpointCreateRequest) GetServingMode() EndpointServingMode {
 	return EndpointServingMode_ENDPOINT_SERVING_MODE_UNSPECIFIED
 }
 
+func (x *EndpointCreateRequest) GetSharedEndpointNoticeAcknowledged() bool {
+	if x != nil {
+		return x.xxx_hidden_SharedEndpointNoticeAcknowledged
+	}
+	return false
+}
+
 func (x *EndpointCreateRequest) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -19079,6 +19087,10 @@ func (x *EndpointCreateRequest) SetServingMode(v EndpointServingMode) {
 	x.xxx_hidden_ServingMode = v
 }
 
+func (x *EndpointCreateRequest) SetSharedEndpointNoticeAcknowledged(v bool) {
+	x.xxx_hidden_SharedEndpointNoticeAcknowledged = v
+}
+
 func (x *EndpointCreateRequest) HasComputeRegion() bool {
 	if x == nil {
 		return false
@@ -19104,16 +19116,17 @@ func (x *EndpointCreateRequest) ClearModel() {
 type EndpointCreateRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Name            string
-	Description     string
-	ProxyRegions    []string
-	ComputeRegion   *EndpointComputeRegionSpec
-	Model           *EndpointModelSource
-	ApiSurfaces     []EndpointApiSurface
-	InputModalities []EndpointInputModality
-	EnvironmentName string
-	Unauthenticated bool
-	ServingMode     EndpointServingMode
+	Name                             string
+	Description                      string
+	ProxyRegions                     []string
+	ComputeRegion                    *EndpointComputeRegionSpec
+	Model                            *EndpointModelSource
+	ApiSurfaces                      []EndpointApiSurface
+	InputModalities                  []EndpointInputModality
+	EnvironmentName                  string
+	Unauthenticated                  bool
+	ServingMode                      EndpointServingMode
+	SharedEndpointNoticeAcknowledged bool
 }
 
 func (b0 EndpointCreateRequest_builder) Build() *EndpointCreateRequest {
@@ -19130,6 +19143,7 @@ func (b0 EndpointCreateRequest_builder) Build() *EndpointCreateRequest {
 	x.xxx_hidden_EnvironmentName = b.EnvironmentName
 	x.xxx_hidden_Unauthenticated = b.Unauthenticated
 	x.xxx_hidden_ServingMode = b.ServingMode
+	x.xxx_hidden_SharedEndpointNoticeAcknowledged = b.SharedEndpointNoticeAcknowledged
 	return m0
 }
 
@@ -67736,7 +67750,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bexplicit\x18\x03 \x01(\v27.modal.client.EndpointComputeRegionSpec.ExplicitRegionsH\x00R\bexplicit\x1a+\n" +
 	"\x0fExplicitRegions\x12\x18\n" +
 	"\aregions\x18\x01 \x03(\tR\aregionsB\v\n" +
-	"\tplacement\"\xab\x04\n" +
+	"\tplacement\"\xfa\x04\n" +
 	"\x15EndpointCreateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12#\n" +
@@ -67748,7 +67762,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10environment_name\x18\b \x01(\tR\x0fenvironmentName\x12(\n" +
 	"\x0funauthenticated\x18\t \x01(\bR\x0funauthenticated\x12D\n" +
 	"\fserving_mode\x18\n" +
-	" \x01(\x0e2!.modal.client.EndpointServingModeR\vservingMode\"y\n" +
+	" \x01(\x0e2!.modal.client.EndpointServingModeR\vservingMode\x12M\n" +
+	"#shared_endpoint_notice_acknowledged\x18\v \x01(\bR sharedEndpointNoticeAcknowledged\"y\n" +
 	"\x16EndpointCreateResponse\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
 	"endpointId\x12*\n" +

@@ -1591,6 +1591,7 @@ message EndpointCreateRequest {
   string environment_name = 8;
   bool unauthenticated = 9;
   EndpointServingMode serving_mode = 10;
+  bool shared_endpoint_notice_acknowledged = 11;
 }
 
 message EndpointCreateResponse {
