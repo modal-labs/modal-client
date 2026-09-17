@@ -54666,6 +54666,7 @@ type TaskLogsBatch struct {
 	xxx_hidden_PtyExecId      string                 `protobuf:"bytes,15,opt,name=pty_exec_id,json=ptyExecId,proto3"`
 	xxx_hidden_RootFunctionId string                 `protobuf:"bytes,16,opt,name=root_function_id,json=rootFunctionId,proto3"`
 	xxx_hidden_TtlDays        uint32                 `protobuf:"varint,17,opt,name=ttl_days,json=ttlDays,proto3"`
+	xxx_hidden_SandboxId      string                 `protobuf:"bytes,18,opt,name=sandbox_id,json=sandboxId,proto3"`
 	unknownFields             protoimpl.UnknownFields
 	sizeCache                 protoimpl.SizeCache
 }
@@ -54774,6 +54775,13 @@ func (x *TaskLogsBatch) GetTtlDays() uint32 {
 	return 0
 }
 
+func (x *TaskLogsBatch) GetSandboxId() string {
+	if x != nil {
+		return x.xxx_hidden_SandboxId
+	}
+	return ""
+}
+
 func (x *TaskLogsBatch) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -54818,6 +54826,10 @@ func (x *TaskLogsBatch) SetTtlDays(v uint32) {
 	x.xxx_hidden_TtlDays = v
 }
 
+func (x *TaskLogsBatch) SetSandboxId(v string) {
+	x.xxx_hidden_SandboxId = v
+}
+
 type TaskLogsBatch_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -54832,6 +54844,7 @@ type TaskLogsBatch_builder struct {
 	PtyExecId      string
 	RootFunctionId string
 	TtlDays        uint32
+	SandboxId      string
 }
 
 func (b0 TaskLogsBatch_builder) Build() *TaskLogsBatch {
@@ -54849,6 +54862,7 @@ func (b0 TaskLogsBatch_builder) Build() *TaskLogsBatch {
 	x.xxx_hidden_PtyExecId = b.PtyExecId
 	x.xxx_hidden_RootFunctionId = b.RootFunctionId
 	x.xxx_hidden_TtlDays = b.TtlDays
+	x.xxx_hidden_SandboxId = b.SandboxId
 	return m0
 }
 
@@ -69842,7 +69856,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\binput_id\x18\v \x01(\tR\ainputId\x12%\n" +
 	"\ftimestamp_ns\x18\f \x01(\x04B\x020\x01R\vtimestampNs\x12!\n" +
 	"\fcontainer_id\x18\r \x01(\tR\vcontainerId\x12%\n" +
-	"\x0econtainer_name\x18\x0e \x01(\tR\rcontainerName\"\xda\x02\n" +
+	"\x0econtainer_name\x18\x0e \x01(\tR\rcontainerName\"\xf9\x02\n" +
 	"\rTaskLogsBatch\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12,\n" +
 	"\x05items\x18\x02 \x03(\v2\x16.modal.client.TaskLogsR\x05items\x12\x19\n" +
@@ -69856,7 +69870,9 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x03eof\x18\x0e \x01(\bR\x03eof\x12\x1e\n" +
 	"\vpty_exec_id\x18\x0f \x01(\tR\tptyExecId\x12(\n" +
 	"\x10root_function_id\x18\x10 \x01(\tR\x0erootFunctionId\x12\x19\n" +
-	"\bttl_days\x18\x11 \x01(\rR\attlDays\"\x95\x01\n" +
+	"\bttl_days\x18\x11 \x01(\rR\attlDays\x12\x1d\n" +
+	"\n" +
+	"sandbox_id\x18\x12 \x01(\tR\tsandboxId\"\x95\x01\n" +
 	"\fTaskProgress\x12\x10\n" +
 	"\x03len\x18\x01 \x01(\x04R\x03len\x12\x10\n" +
 	"\x03pos\x18\x02 \x01(\x04R\x03pos\x12?\n" +
