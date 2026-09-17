@@ -2794,6 +2794,7 @@ message HTTPConfig {
   bool h2_enabled = 5;
   uint32 target_concurrency = 6;
   bool unauthenticated = 7;
+  optional LiftAndShiftConfig lift_and_shift_config = 8;
 }
 
 message Image {
@@ -3030,6 +3031,8 @@ message InputInfo {
   double task_startup_time = 6;
   bool task_first_input = 7;
 }
+
+message LiftAndShiftConfig {}
 
 message ListPagination {
   int32 max_objects = 1;
