@@ -38,6 +38,7 @@ import {
   SandboxStdioReadV2Response,
   TaskExecStdioReadResponse,
   TaskSetNetworkAccessRequest,
+  TaskSetOutboundPolicyRequest,
   TaskSnapshotFilesystemRequest,
   TaskSnapshotMemoryRequest,
 } from "../proto/modal_proto/task_command_router";
@@ -48,6 +49,8 @@ import {
   Image,
   InvalidError,
   NotFoundError,
+  OutboundPolicy,
+  Secret,
   SnapshotCreationError,
   TimeoutError,
 } from "modal";
@@ -3375,4 +3378,175 @@ test("experimentalGetExitSnapshot surfaces a rate limit without a retry policy",
   expect(err).toBeInstanceOf(ClientError);
   expect((err as ClientError).code).toBe(Status.RESOURCE_EXHAUSTED);
   mock.assertExhausted();
+});
+
+test("buildSandboxCreateRequestProto supports an outbound policy", async () => {
+  const secret = new Secret("st-1", "my-secret");
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    outboundPolicy: new OutboundPolicy()
+      .withHeaderReplacement({
+        domain: "api.example.com",
+        secret,
+        headers: { Authorization: "Bearer $API_KEY" },
+      })
+      .withHeaderReplacement({
+        domain: "*.example.com",
+        headers: { "X-Static": "plain" },
+      }),
+  });
+
+  const replacements = req.definition?.outboundPolicy?.headerReplacements ?? [];
+  expect(replacements).toHaveLength(2);
+  expect(replacements[0].domain).toBe("api.example.com");
+  expect(replacements[0].secretId).toBe("st-1");
+  expect(replacements[0].headers).toEqual({ Authorization: "Bearer $API_KEY" });
+  expect(replacements[1].domain).toBe("*.example.com");
+  expect(replacements[1].secretId).toBe("");
+  expect(replacements[1].headers).toEqual({ "X-Static": "plain" });
+});
+
+test("buildSandboxCreateRequestProto rejects outboundPolicy with blockNetwork", async () => {
+  const outboundPolicy = new OutboundPolicy().withHeaderReplacement({
+    domain: "example.com",
+    headers: { a: "b" },
+  });
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      blockNetwork: true,
+      outboundPolicy,
+    }),
+  ).rejects.toThrow(
+    "outboundPolicy cannot be used when blockNetwork is enabled",
+  );
+});
+
+test("buildSandboxCreateRequestProto rejects outboundPolicy with outboundDomainAllowlist", async () => {
+  const outboundPolicy = new OutboundPolicy().withHeaderReplacement({
+    domain: "example.com",
+    headers: { a: "b" },
+  });
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      outboundDomainAllowlist: ["example.com"],
+      outboundPolicy,
+    }),
+  ).rejects.toThrow(
+    "outboundPolicy cannot be used with outboundDomainAllowlist",
+  );
+});
+
+test("buildSandboxCreateRequestProto allows outboundPolicy with CIDR-only allowlist", async () => {
+  const outboundPolicy = new OutboundPolicy().withHeaderReplacement({
+    domain: "example.com",
+    headers: { a: "b" },
+  });
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    outboundCidrAllowlist: ["10.0.0.0/8"],
+    outboundPolicy,
+  });
+  expect(req.definition?.outboundPolicy).toBeDefined();
+});
+
+test("buildSandboxCreateRequestProto leaves outboundPolicy unset when absent", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {});
+  expect(req.definition?.outboundPolicy).toBeUndefined();
+});
+
+test("create sends the outbound policy in the definition", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/AppGetOrCreate", (): AppGetOrCreateResponse => {
+    return AppGetOrCreateResponse.create({ appId: "ap-1234" });
+  });
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    return {
+      environmentId: "en-main-123",
+      metadata: {
+        name: "main",
+        settings: {
+          imageBuilderVersion: "2025.06",
+          webhookSuffix: "modal.run",
+        },
+      },
+    };
+  });
+  mock.handleUnary("/ImageGetOrCreate", (): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+  mock.handleUnary("/SandboxCreate", (req: any): SandboxCreateResponse => {
+    const replacements =
+      req.definition?.outboundPolicy?.headerReplacements ?? [];
+    expect(replacements).toHaveLength(1);
+    expect(replacements[0].domain).toBe("api.example.com");
+    expect(replacements[0].secretId).toBe("st-1");
+    expect(replacements[0].headers).toEqual({
+      Authorization: "Bearer $API_KEY",
+    });
+    return {
+      sandboxId: "sb-1234",
+      metadata: { result: undefined, appId: "app-123" },
+    };
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = mc.images.fromRegistry("alpine:3.21");
+
+  const sb = await mc.sandboxes.create(app, image, {
+    outboundPolicy: new OutboundPolicy().withHeaderReplacement({
+      domain: "api.example.com",
+      secret: new Secret("st-1", "my-secret"),
+      headers: { Authorization: "Bearer $API_KEY" },
+    }),
+  });
+  expect(sb.sandboxId).toEqual("sb-1234");
+
+  mock.assertExhausted();
+});
+
+test("updateOutboundPolicy sends correct request via mocked command router", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
+    taskId: "ta-v2-123",
+  });
+
+  const setOutboundPolicy = vi.fn().mockResolvedValue(undefined);
+  const tryInit = vi
+    .spyOn(TaskCommandRouterClientImpl, "tryInit")
+    .mockResolvedValue({
+      setOutboundPolicy,
+      close: vi.fn(),
+    } as unknown as TaskCommandRouterClientImpl);
+  onTestFinished(() => tryInit.mockRestore());
+
+  await sb.updateOutboundPolicy(
+    new OutboundPolicy().withHeaderReplacement({
+      domain: "api.example.com",
+      secret: new Secret("st-1", "my-secret"),
+      headers: { Authorization: "Bearer $API_KEY" },
+    }),
+  );
+
+  expect(setOutboundPolicy).toHaveBeenCalledTimes(1);
+  const request = setOutboundPolicy.mock
+    .calls[0][0] as TaskSetOutboundPolicyRequest;
+  expect(request.taskId).toBe("ta-v2-123");
+  const replacements = request.outboundPolicy?.headerReplacements ?? [];
+  expect(replacements).toHaveLength(1);
+  expect(replacements[0].domain).toBe("api.example.com");
+  expect(replacements[0].secretId).toBe("st-1");
+  expect(replacements[0].headers).toEqual({ Authorization: "Bearer $API_KEY" });
 });

@@ -35,12 +35,14 @@ import {
   TaskSnapshotMemoryRequest,
   TaskUnmountDirectoryRequest,
   TaskSetNetworkAccessRequest,
+  TaskSetOutboundPolicyRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
   TaskCommandRouterClientImpl,
   type CommandRouterAccess,
   type StdinSource,
 } from "./task_command_router_client";
+import { OutboundPolicy } from "./outbound_policy";
 import { v4 as uuidv4 } from "uuid";
 import {
   type ModalClient,
@@ -373,6 +375,11 @@ export type SandboxCreateParams = {
   /** List of domain names the Sandbox is allowed to access. Supports wildcard prefixes (`*.example.com`). Cannot be used with blockNetwork. */
   outboundDomainAllowlist?: string[];
 
+  /** Configuration for replacing headers in outbound HTTPS requests from the Sandbox.
+   * Secrets referenced by the policy are resolved outside the Sandbox and are never
+   * visible to the workload. See {@link OutboundPolicy}. */
+  outboundPolicy?: OutboundPolicy;
+
   /** List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
   inboundCidrAllowlist?: string[];
 
@@ -561,6 +568,22 @@ export async function buildSandboxCreateRequestProto(
       );
     }
   }
+  if (params.outboundPolicy !== undefined) {
+    params.outboundPolicy._validate();
+    if (params.blockNetwork) {
+      throw new InvalidError(
+        "outboundPolicy cannot be used when blockNetwork is enabled",
+      );
+    }
+    if (
+      params.outboundDomainAllowlist &&
+      params.outboundDomainAllowlist.length > 0
+    ) {
+      throw new InvalidError(
+        "outboundPolicy cannot be used with outboundDomainAllowlist",
+      );
+    }
+  }
   const networkAccess = buildOutboundNetworkAccess(
     params.blockNetwork,
     params.outboundCidrAllowlist,
@@ -663,6 +686,7 @@ export async function buildSandboxCreateRequestProto(
           : undefined,
       workdir: params.workdir ?? undefined,
       networkAccess,
+      outboundPolicy: params.outboundPolicy?._toProto(),
       resources: Resources.create({
         milliCpu,
         milliCpuMax,
@@ -758,7 +782,7 @@ export class SandboxService {
     // Secrets (and env vars) must be hydrated into server-side Secrets first.
     await hydrateSandboxSecrets(
       this.#client,
-      mergedSecrets,
+      [...mergedSecrets, ...(params.outboundPolicy?._secrets() ?? [])],
       params.cloudBucketMounts,
     );
 
@@ -834,7 +858,7 @@ export class SandboxService {
 
     await hydrateSandboxSecrets(
       this.#client,
-      resolvableSecrets,
+      [...resolvableSecrets, ...(params.outboundPolicy?._secrets() ?? [])],
       params.cloudBucketMounts,
     );
 
@@ -2445,6 +2469,31 @@ export class Sandbox {
       }),
     });
     await commandRouterClient.setNetworkAccess(request);
+  }
+
+  /**
+   * Replace the outbound policy of a running Sandbox.
+   *
+   * The new policy replaces all existing policy configuration on the
+   * Sandbox; build a policy including any existing rules you want to keep.
+   *
+   * Only Sandboxes created with an `outboundPolicy` can be updated this
+   * way; for Sandboxes created without one this fails, since header
+   * replacement is only set up at creation time.
+   */
+  async updateOutboundPolicy(outboundPolicy: OutboundPolicy): Promise<void> {
+    this.#ensureAttached();
+    outboundPolicy._validate();
+    const [, [taskId, commandRouterClient]] = await Promise.all([
+      hydrateSecrets(this.#client, outboundPolicy._secrets()),
+      this.#getCommandRouter(),
+    ]);
+
+    const request = TaskSetOutboundPolicyRequest.create({
+      taskId,
+      outboundPolicy: outboundPolicy._toProto(),
+    });
+    await commandRouterClient.setOutboundPolicy(request);
   }
 
   /**

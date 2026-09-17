@@ -8,6 +8,7 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -216,6 +218,7 @@ type SandboxCreateParams struct {
 	CustomDomain               string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
 	IncludeOidcIdentityToken   bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
 	ExperimentalEnableSnapshot bool                         // Enable memory snapshots.
+	OutboundPolicy             *OutboundPolicy              // Configuration for replacing headers in outbound HTTPS requests from the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never visible to the workload.
 }
 
 // buildOutboundNetworkAccess builds the outbound network policy for the given
@@ -330,6 +333,17 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		}
 		if params.InboundCIDRAllowlist != nil {
 			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
+		}
+	}
+	if params.OutboundPolicy != nil {
+		if err := params.OutboundPolicy.validate(); err != nil {
+			return nil, err
+		}
+		if params.BlockNetwork {
+			return nil, fmt.Errorf("OutboundPolicy cannot be used when BlockNetwork is enabled")
+		}
+		if allowlist := params.OutboundDomainAllowlist; allowlist != nil && len(allowlist.Entries) > 0 {
+			return nil, fmt.Errorf("OutboundPolicy cannot be used with OutboundDomainAllowlist")
 		}
 	}
 	networkAccess, err := buildOutboundNetworkAccess(params.BlockNetwork, params.OutboundCIDRAllowlist, params.OutboundDomainAllowlist)
@@ -467,6 +481,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			IdleTimeoutSecs:          idleTimeoutSecs,
 			Workdir:                  workdir,
 			NetworkAccess:            networkAccess,
+			OutboundPolicy:           params.OutboundPolicy.toProto(),
 			Resources:                resourcesBuilder.Build(),
 			VolumeMounts:             volumeMounts,
 			CloudBucketMounts:        cloudBucketMounts,
@@ -537,7 +552,7 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 
 	// The SandboxCreate request only carries secret IDs, so any locally-created
 	// Secrets (and env vars) must be hydrated into server-side Secrets first.
-	if err := hydrateSandboxSecrets(ctx, s.client, mergedSecrets, params.CloudBucketMounts); err != nil {
+	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(mergedSecrets), params.OutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 
@@ -601,7 +616,7 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 		}
 		envDict[k] = v
 	}
-	if err := hydrateSandboxSecrets(ctx, s.client, resolvableSecrets, params.CloudBucketMounts); err != nil {
+	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(resolvableSecrets), params.OutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 
@@ -2052,6 +2067,39 @@ func (sb *Sandbox) UpdateNetworkPolicy(ctx context.Context, params *SandboxUpdat
 	}
 	request := buildUpdateNetworkPolicyProto(taskID, *params)
 	return crClient.SetNetworkAccess(ctx, request)
+}
+
+// UpdateOutboundPolicy replaces the outbound policy of a running Sandbox.
+//
+// The new policy replaces all existing policy configuration on the Sandbox;
+// build a policy including any existing rules you want to keep.
+//
+// Only Sandboxes created with an OutboundPolicy can be updated this way.
+func (sb *Sandbox) UpdateOutboundPolicy(ctx context.Context, policy *OutboundPolicy) error {
+	if policy == nil {
+		policy = &OutboundPolicy{}
+	}
+	if err := policy.validate(); err != nil {
+		return err
+	}
+	var taskID string
+	var crClient *taskCommandRouterClient
+	g, groupCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return hydrateSecrets(groupCtx, sb.client, policy.secrets())
+	})
+	g.Go(func() error {
+		var err error
+		taskID, crClient, err = sb.getCommandRouter(groupCtx)
+		return err
+	})
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	return crClient.SetOutboundPolicy(ctx, pb.TaskSetOutboundPolicyRequest_builder{
+		TaskId:         taskID,
+		OutboundPolicy: policy.toProto(),
+	}.Build())
 }
 
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.

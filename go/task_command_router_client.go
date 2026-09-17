@@ -595,6 +595,14 @@ func (c *taskCommandRouterClient) SetNetworkAccess(ctx context.Context, request 
 	return err
 }
 
+// SetOutboundPolicy replaces the task's outbound policy.
+func (c *taskCommandRouterClient) SetOutboundPolicy(ctx context.Context, request *pb.TaskSetOutboundPolicyRequest) error {
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskSetOutboundPolicyResponse, error) {
+		return c.stubValue.TaskSetOutboundPolicy(authCtx, request)
+	})
+	return err
+}
+
 // MountDirectory mounts an image at a directory in the container.
 func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *pb.TaskMountDirectoryRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {

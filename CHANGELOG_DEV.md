@@ -6,6 +6,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Python
 
+- Sandboxes now support replacing headers in outbound HTTPS requests with secret values that are never visible to the workload, via the new `modal.OutboundPolicy` configuration object: pass `outbound_policy=` to `Sandbox.create` and call `Sandbox.update_outbound_policy` on a running Sandbox.
 - Proxy tokens can now be named when created, and proxy token listings include the token name and creator.
 - Removed the deprecated legacy Sandbox filesystem API: `Sandbox.open()`, `Sandbox.ls()`, `Sandbox.mkdir()`, `Sandbox.rm()`, `Sandbox.watch()`, the `modal.file_io.FileIO` type, and `modal.exception.FilesystemExecutionError`. Use the [`Sandbox.filesystem`](/docs/sdk/py/latest/Sandbox#filesystem) APIs instead.
 - [`FunctionCall.get_call_graph()`](/docs/sdk/py/latest/FunctionCall#get_call_graph) now returns up to 5000

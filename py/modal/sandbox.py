@@ -72,6 +72,7 @@ from .io_streams import (
     _StreamWriterThroughServerParams,
 )
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
+from .outbound_policy import _OutboundPolicy, _validate_compatible_network_access
 from .proxy import _Proxy
 from .sandbox_fs import _SandboxFilesystem
 from .secret import _Secret
@@ -448,6 +449,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
+        outbound_policy: _OutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -477,6 +479,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
 
+        if outbound_policy is not None:
+            outbound_policy._validate()
+        _validate_compatible_network_access(outbound_policy, block_network, outbound_domain_allowlist)
+
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
@@ -499,6 +505,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 dep_tasks.append(resolver.load(image, load_context))
             for dep in list(mounts) + list(secrets):
                 dep_tasks.append(resolver.load(dep, load_context))
+            if outbound_policy:
+                for secret in outbound_policy._secrets():
+                    dep_tasks.append(resolver.load(secret, load_context))
             for _, vol in validated_network_file_systems:
                 dep_tasks.append(resolver.load(vol, load_context))
             for _, vol in validated_volumes:
@@ -530,6 +539,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             network_access = _build_outbound_network_access(
                 block_network, outbound_cidr_allowlist, outbound_domain_allowlist
             )
+            outbound_policy_proto = outbound_policy._to_proto() if outbound_policy else None
 
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
@@ -554,6 +564,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
+                outbound_policy=outbound_policy_proto,
                 proxy_id=(proxy.object_id if proxy else None),
                 readiness_probe=(readiness_probe._to_proto() if readiness_probe else None),
                 enable_snapshot=enable_snapshot,
@@ -605,6 +616,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
+        outbound_policy: _OutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -658,6 +670,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             inbound_cidr_allowlist:
                 List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens). If None,
                 all CIDRs are allowed.
+            outbound_policy: Configuration for replacing headers in outbound HTTPS requests from the Sandbox.
+                Secrets referenced by the policy are resolved outside the Sandbox and are never visible to
+                the workload. See `modal.OutboundPolicy`.
             volumes: Mount points for Modal Volumes and CloudBucketMounts.
             pty:
                 Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the
@@ -739,6 +754,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 block_network=block_network,
                 outbound_cidr_allowlist=outbound_cidr_allowlist,
                 outbound_domain_allowlist=outbound_domain_allowlist,
+                outbound_policy=outbound_policy,
                 inbound_cidr_allowlist=inbound_cidr_allowlist,
                 volumes=volumes,
                 pty=pty,
@@ -777,6 +793,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
+            outbound_policy=outbound_policy,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,
@@ -817,6 +834,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
+        outbound_policy: _OutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -869,6 +887,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
+            outbound_policy=outbound_policy,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,
@@ -914,6 +933,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
+        outbound_policy: _OutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         i6pn: bool = False,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
@@ -975,6 +995,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "`block_network` disables all networking, including i6pn. To keep i6pn while blocking "
                 "public egress, use an empty outbound allowlist (`outbound_cidr_allowlist=[]`) instead."
             )
+
+        if outbound_policy is not None:
+            outbound_policy._validate()
+        _validate_compatible_network_access(outbound_policy, block_network, outbound_domain_allowlist)
 
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
@@ -1041,6 +1065,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 dep_tasks.append(resolver.load(image, load_context))
             for secret in resolvable_secrets:
                 dep_tasks.append(resolver.load(secret, load_context))
+            if outbound_policy:
+                for secret in outbound_policy._secrets():
+                    dep_tasks.append(resolver.load(secret, load_context))
             for _, vol in validated_volumes:
                 dep_tasks.append(resolver.load(vol, load_context))
             for _, cloud_bucket_mount in cloud_bucket_mounts:
@@ -1076,6 +1103,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
+                outbound_policy=outbound_policy._to_proto() if outbound_policy else None,
                 proxy_id=(proxy.object_id if proxy else None),
                 verbose=verbose,
                 name=name,
@@ -1492,6 +1520,32 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
         req = sr_pb2.TaskSetNetworkAccessRequest(task_id=task_id, network_access=network_access)
         await command_router_client.set_network_access(req)
+
+    async def update_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
+        """Replace the outbound policy of a running Sandbox.
+
+        The new policy replaces all existing policy configuration on the
+        Sandbox; build a policy including any existing rules you want to keep.
+
+        Only Sandboxes created with an `outbound_policy` can be updated this
+        way; for Sandboxes created without one this fails, since header
+        replacement is only set up at creation time.
+
+        Args:
+            outbound_policy: The new policy to apply.
+        """
+        outbound_policy._validate()
+
+        async def hydrate_policy_secrets() -> None:
+            await TaskContext.gather(*(secret.hydrate(client=self._client) for secret in outbound_policy._secrets()))
+
+        async def resolve_router() -> tuple[str, TaskCommandRouterClient]:
+            task_id = await self._get_task_id()
+            return task_id, await self._get_command_router_client(task_id)
+
+        _, (task_id, command_router_client) = await TaskContext.gather(hydrate_policy_secrets(), resolve_router())
+        req = sr_pb2.TaskSetOutboundPolicyRequest(task_id=task_id, outbound_policy=outbound_policy._to_proto())
+        await command_router_client.set_outbound_policy(req)
 
     async def _experimental_get_exit_snapshot(self, timeout: float | None = None) -> _Image:
         """Get the exit filesystem snapshot image.

@@ -44,6 +44,7 @@ import {
   TaskSnapshotMemoryResponse,
   TaskUnmountDirectoryRequest,
   TaskSetNetworkAccessRequest,
+  TaskSetOutboundPolicyRequest,
   SandboxStdinWriteV2Request,
   SandboxStdinWriteV2Response,
   SandboxStdioFileDescriptor,
@@ -970,6 +971,12 @@ export class TaskCommandRouterClientImpl {
 
   async setNetworkAccess(request: TaskSetNetworkAccessRequest): Promise<void> {
     await this.callUnary(() => this.stub.taskSetNetworkAccess(request));
+  }
+
+  async setOutboundPolicy(
+    request: TaskSetOutboundPolicyRequest,
+  ): Promise<void> {
+    await this.callUnary(() => this.stub.taskSetOutboundPolicy(request));
   }
 
   /**

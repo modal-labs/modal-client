@@ -2977,6 +2977,7 @@ detach_error_funcs = {
     "create_connect_token": lambda sb: sb.create_connect_token(),
     "reload_volumes": lambda sb: sb.reload_volumes(),
     "terminate": lambda sb: sb.terminate(),
+    "update_outbound_policy": lambda sb: sb.update_outbound_policy(modal.OutboundPolicy()),
     "wait_until_ready": lambda sb: sb.wait_until_ready(),
     "poll": lambda sb: sb.poll(),
     "exec": lambda sb: sb.exec("echo", "hello"),
@@ -3650,3 +3651,93 @@ def test_experimental_sandbox_create_logs_per_dependency_timing(app, servicer, c
     assert secret.object_id in msg
 
     sb.terminate()
+
+
+def test_sandbox_create_outbound_policy_v1(app, servicer, client):
+    Secret.objects.create("my-secret", {"API_KEY": "k"}, client=client)
+    policy = (
+        modal.OutboundPolicy()
+        .with_header_replacement(
+            domain="api.example.com",
+            secret=Secret.from_name("my-secret"),
+            headers={"Authorization": "Bearer $API_KEY"},
+        )
+        .with_header_replacement(domain="*.example.com", headers={"X-Static": "plain"})
+    )
+
+    Sandbox.create("echo", "hi", app=app, outbound_policy=policy)
+
+    replacements = servicer.sandbox_defs[0].outbound_policy.header_replacements
+    assert len(replacements) == 2
+    assert replacements[0].domain == "api.example.com"
+    assert replacements[0].secret_id  # resolved to a server-side secret id
+    assert dict(replacements[0].headers) == {"Authorization": "Bearer $API_KEY"}
+    assert replacements[1].domain == "*.example.com"
+    assert replacements[1].secret_id == ""
+    assert dict(replacements[1].headers) == {"X-Static": "plain"}
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True])
+def test_sandbox_create_outbound_policy_rejects_block_network(app, monkeypatch, sandbox_v2):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    policy = modal.OutboundPolicy().with_header_replacement(domain="example.com", headers={"a": "b"})
+    with pytest.raises(InvalidError, match="`outbound_policy` cannot be used when `block_network` is enabled"):
+        Sandbox.create("echo", "hi", app=app, block_network=True, outbound_policy=policy)
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True])
+def test_sandbox_create_outbound_policy_rejects_domain_allowlist(app, monkeypatch, sandbox_v2):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    policy = modal.OutboundPolicy().with_header_replacement(domain="example.com", headers={"a": "b"})
+    with pytest.raises(InvalidError, match="`outbound_policy` cannot be used with `outbound_domain_allowlist`"):
+        Sandbox.create("echo", "hi", app=app, outbound_domain_allowlist=["example.com"], outbound_policy=policy)
+
+
+def test_sandbox_create_outbound_policy_allows_cidr_only_allowlist(app, servicer):
+    policy = modal.OutboundPolicy().with_header_replacement(domain="example.com", headers={"a": "b"})
+    Sandbox.create("echo", "hi", app=app, outbound_cidr_allowlist=["10.0.0.0/8"], outbound_policy=policy)
+    assert servicer.sandbox_defs[0].HasField("outbound_policy")
+
+
+def test_sandbox_create_outbound_policy_v2(app, servicer, client, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    Secret.objects.create("my-secret", {"API_KEY": "k"}, client=client)
+    policy = modal.OutboundPolicy().with_header_replacement(
+        domain="api.example.com",
+        secret=Secret.from_name("my-secret"),
+        headers={"Authorization": "Bearer $API_KEY"},
+    )
+
+    with servicer.intercept() as ctx:
+        Sandbox.create("echo", "hi", app=app, outbound_policy=policy)
+        (req,) = ctx.get_requests("SandboxCreateV2")
+
+    (replacement,) = req.definition.outbound_policy.header_replacements
+    assert replacement.domain == "api.example.com"
+    assert replacement.secret_id
+    assert dict(replacement.headers) == {"Authorization": "Bearer $API_KEY"}
+
+
+def test_sandbox_create_no_outbound_policy_unset(app, servicer):
+    Sandbox.create("echo", "hi", app=app)
+    assert not servicer.sandbox_defs[0].HasField("outbound_policy")
+
+
+def test_sandbox_update_outbound_policy(app, servicer, client):
+    Secret.objects.create("my-secret", {"API_KEY": "k"}, client=client)
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    secret = Secret.from_name("my-secret")
+    policy = modal.OutboundPolicy().with_header_replacement(
+        domain="api.example.com",
+        secret=secret,
+        headers={"Authorization": "Bearer $API_KEY"},
+    )
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb.update_outbound_policy(policy)
+
+    (req,) = tcr_ctx.get_requests("TaskSetOutboundPolicy")
+    (replacement,) = req.outbound_policy.header_replacements
+    assert replacement.domain == "api.example.com"
+    assert replacement.secret_id == secret.object_id
+    assert dict(replacement.headers) == {"Authorization": "Bearer $API_KEY"}
