@@ -2473,24 +2473,29 @@ def test_app_stop(servicer, mock_dir, set_env_client):
 
 def test_nfs_get(set_env_client, servicer):
     nfs_name = "my-shared-nfs"
-    run_cli_command(["nfs", "create", nfs_name])
+    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
+        run_cli_command(["nfs", "create", nfs_name])
     with tempfile.TemporaryDirectory() as tmpdir:
         upload_path = os.path.join(tmpdir, "upload.txt")
         with open(upload_path, "w") as f:
             f.write("foo bar baz")
             f.flush()
-        run_cli_command(["nfs", "put", nfs_name, upload_path, "test.txt"])
+        with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
+            run_cli_command(["nfs", "put", nfs_name, upload_path, "test.txt"])
 
-        run_cli_command(["nfs", "get", nfs_name, "test.txt", tmpdir])
+        with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
+            run_cli_command(["nfs", "get", nfs_name, "test.txt", tmpdir])
         with open(os.path.join(tmpdir, "test.txt")) as f:
             assert f.read() == "foo bar baz"
 
 
 def test_nfs_create_delete(servicer, server_url_env, set_env_client):
     name = "test-delete-nfs"
-    run_cli_command(["nfs", "create", name])
+    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
+        run_cli_command(["nfs", "create", name])
     assert name in run_cli_command(["nfs", "list"]).stdout
-    run_cli_command(["nfs", "delete", "--yes", name])
+    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
+        run_cli_command(["nfs", "delete", "--yes", name])
     assert name not in run_cli_command(["nfs", "list"]).stdout
 
 
@@ -2646,8 +2651,8 @@ def test_environment_flag(test_dir, servicer, command):
             ),
         )  # built-in client lookup
         ctx.add_response(
-            "SharedVolumeGetOrCreate",
-            api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
+            "VolumeGetOrCreate",
+            api_pb2.VolumeGetOrCreateResponse(volume_id="vo-123"),
             request_filter=lambda req: req.deployment_name == "volume_app" and req.environment_name == "staging",
         )
         run_cli_command(command + ["--env=staging", str(app_file)])
@@ -2682,8 +2687,8 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
             ),
         )  # built-in client lookup
         ctx.add_response(
-            "SharedVolumeGetOrCreate",
-            api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
+            "VolumeGetOrCreate",
+            api_pb2.VolumeGetOrCreateResponse(volume_id="vo-123"),
             request_filter=lambda req: (
                 req.deployment_name == "volume_app" and req.environment_name == "some_weird_default_env"
             ),

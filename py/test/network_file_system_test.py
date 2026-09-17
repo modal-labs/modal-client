@@ -8,17 +8,24 @@ import modal
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
-from modal.exception import InvalidError, NotFoundError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
+
+NFS_WARNING_MATCH = "`modal.NetworkFileSystem` is deprecated"
 
 
 def dummy():
     pass
 
 
+def nfs_from_name(name: str, *, create_if_missing: bool = False):
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        return modal.NetworkFileSystem.from_name(name, create_if_missing=create_if_missing)
+
+
 def test_network_file_system_files(client, test_dir, servicer):
     app = modal.App()
-    nfs = modal.NetworkFileSystem.from_name("xyz", create_if_missing=True)
+    nfs = nfs_from_name("xyz", create_if_missing=True)
 
     dummy_modal = app.function(network_file_systems={"/root/foo": nfs})(dummy)
 
@@ -28,7 +35,7 @@ def test_network_file_system_files(client, test_dir, servicer):
 
 def test_network_file_system_bad_paths():
     app = modal.App()
-    nfs = modal.NetworkFileSystem.from_name("xyz", create_if_missing=True)
+    nfs = nfs_from_name("xyz", create_if_missing=True)
 
     def _f():
         pass
@@ -47,10 +54,11 @@ def test_network_file_system_handle_single_file(client, tmp_path, servicer):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
-        nfs.add_local_file(local_file_path)
-        nfs.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
-        object_id = nfs.object_id
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+            nfs.add_local_file(local_file_path)
+            nfs.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
+            object_id = nfs.object_id
 
     assert servicer.nfs_files[object_id].keys() == {
         "/some_file",
@@ -70,9 +78,10 @@ async def test_network_file_system_handle_dir(client, tmp_path, servicer):
     subdir.mkdir()
     (subdir / "other").write_text("####")
 
-    async with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
-        await nfs.add_local_dir.aio(local_dir)
-        object_id = nfs.object_id
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        async with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+            await nfs.add_local_dir.aio(local_dir)
+            object_id = nfs.object_id
 
     assert servicer.nfs_files[object_id].keys() == {
         "/some_dir/smol",
@@ -88,9 +97,10 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
         local_file_path = tmp_path / "bigfile"
         local_file_path.write_text("hello world, this is a lot of text")
 
-        async with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
-            await nfs.add_local_file.aio(local_file_path)
-            object_id = nfs.object_id
+        with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+            async with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+                await nfs.add_local_file.aio(local_file_path)
+                object_id = nfs.object_id
 
         assert servicer.nfs_files[object_id].keys() == {"/bigfile"}
         assert servicer.nfs_files[object_id]["/bigfile"].data == b""
@@ -101,33 +111,35 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 
 
 def test_read_file(client, tmp_path, servicer):
-    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
-        with pytest.raises(FileNotFoundError):
-            for _ in nfs.read_file("idontexist.txt"):
-                ...
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+            with pytest.raises(FileNotFoundError):
+                for _ in nfs.read_file("idontexist.txt"):
+                    ...
 
 
 def test_write_file(client, tmp_path, servicer):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
-        nfs.write_file("remote_path.txt", open(local_file_path, "rb"))
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+            nfs.write_file("remote_path.txt", open(local_file_path, "rb"))
 
-        # Make sure we can write through the provider too
-        nfs.write_file("remote_path.txt", open(local_file_path, "rb"))
+            # Make sure we can write through the provider too
+            nfs.write_file("remote_path.txt", open(local_file_path, "rb"))
 
 
 def test_persisted(servicer, client):
     # Lookup should fail since it doesn't exist
     with pytest.raises(NotFoundError):
-        modal.NetworkFileSystem.from_name("xyz").hydrate(client)
+        nfs_from_name("xyz").hydrate(client)
 
     # Create it
-    modal.NetworkFileSystem.from_name("xyz", create_if_missing=True).hydrate(client)
+    nfs_from_name("xyz", create_if_missing=True).hydrate(client)
 
     # Lookup should succeed now
-    modal.NetworkFileSystem.from_name("xyz").hydrate(client)
+    nfs_from_name("xyz").hydrate(client)
 
 
 def test_nfs_ephemeral(servicer, client, tmp_path):
@@ -135,28 +147,31 @@ def test_nfs_ephemeral(servicer, client, tmp_path):
     local_file_path.write_text("hello world")
 
     assert servicer.n_nfs_heartbeats == 0
-    with modal.NetworkFileSystem.ephemeral(client=client, _heartbeat_sleep=1) as nfs:
-        assert nfs.listdir("/") == []
-        nfs.write_file("xyz.txt", open(local_file_path, "rb"))
-        (entry,) = nfs.listdir("/")
-        assert entry.path == "xyz.txt"
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        with modal.NetworkFileSystem.ephemeral(client=client, _heartbeat_sleep=1) as nfs:
+            assert nfs.listdir("/") == []
+            nfs.write_file("xyz.txt", open(local_file_path, "rb"))
+            (entry,) = nfs.listdir("/")
+            assert entry.path == "xyz.txt"
 
-        time.sleep(1.5)  # Make time for 2 heartbeats
+            time.sleep(1.5)  # Make time for 2 heartbeats
     # Windows timer granularity (~15.6ms) can cause an extra heartbeat to
     # slip in before the context manager tears down.
     assert servicer.n_nfs_heartbeats in (2, 3)
 
 
 def test_nfs_lazy_hydration_from_name(client):
-    nfs = modal.NetworkFileSystem.from_name("nfs", create_if_missing=True, client=client)
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        nfs = modal.NetworkFileSystem.from_name("nfs", create_if_missing=True, client=client)
     bio = BytesIO(b"content")
     nfs.write_file("blah", bio)
 
 
 def test_nfs_from_name_double_resolve(client, servicer):
     name = "my-nfs"
-    modal.NetworkFileSystem.create_deployed(name, client=client)
-    nfs = modal.NetworkFileSystem.from_name(name)
+    with pytest.warns(DeprecationError, match=NFS_WARNING_MATCH):
+        modal.NetworkFileSystem.create_deployed(name, client=client)
+    nfs = nfs_from_name(name)
 
     @synchronizer.wrap
     async def wrapped_test(nfs, client):
@@ -182,10 +197,18 @@ def test_invalid_name(name):
         modal.NetworkFileSystem.from_name(name)
 
 
+def test_nfs_from_name_create_if_missing_warns():
+    nfs_from_name("xyz", create_if_missing=True)
+
+
+def test_nfs_from_name_lookup_warns():
+    nfs_from_name("xyz")
+
+
 def test_attempt_mount_volume(client, servicer):
     app = modal.App()
     modal.Volume.objects.create("my-other-vol", client=client)
-    vol = modal.NetworkFileSystem.from_name("my-other-vol", create_if_missing=False)
+    vol = nfs_from_name("my-other-vol")
     f = app.function(network_file_systems={"/data": vol})(dummy)
     with pytest.raises(InvalidError, match="already exists as a Volume"):
         with app.run(client=client):

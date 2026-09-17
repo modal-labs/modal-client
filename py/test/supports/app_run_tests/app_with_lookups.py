@@ -3,7 +3,7 @@ import modal
 
 app = modal.App("my-app")
 
-nfs = modal.NetworkFileSystem.from_name("volume_app").hydrate()
+volume = modal.Volume.from_name("volume_app").hydrate()
 
 
 @app.function()

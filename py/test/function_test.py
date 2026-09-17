@@ -16,7 +16,7 @@ from grpclib import GRPCError, Status
 
 import modal
 import modal.experimental
-from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
+from modal import App, Image, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._partial_function import MAX_MAX_BATCH_SIZE
 from modal._utils.async_utils import synchronize_api, synchronizer
@@ -1549,17 +1549,17 @@ def test_deps_explicit(client, servicer):
     app = App(include_source=False)
 
     image = Image.debian_slim()
-    nfs_1 = NetworkFileSystem.from_name("nfs-1", create_if_missing=True)
-    nfs_2 = NetworkFileSystem.from_name("nfs-2", create_if_missing=True)
+    vol_1 = modal.Volume.from_name("vol-1", create_if_missing=True)
+    vol_2 = modal.Volume.from_name("vol-2", create_if_missing=True)
 
-    app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
+    app.function(image=image, volumes={"/vol_1": vol_1, "/vol_2": vol_2})(dummy)
 
     with app.run(client=client):
         object_id: str = app._local_state.functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     dep_object_ids = {d.object_id for d in f.object_dependencies}
-    assert dep_object_ids == {image.object_id, nfs_1.object_id, nfs_2.object_id}
+    assert dep_object_ids == {image.object_id, vol_1.object_id, vol_2.object_id}
 
 
 def assert_is_wrapped_dict(some_arg):
@@ -1611,7 +1611,6 @@ def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir):
     app.function(
         image=modal.Image.debian_slim().add_local_python_source("pkg_a"),
         volumes={"/vol": modal.Volume.from_name("vol", create_if_missing=True)},
-        network_file_systems={"/vol": modal.NetworkFileSystem.from_name("nfs", create_if_missing=True)},
         secrets=[modal.Secret.from_dict({"foo": "bar"})],
     )(dummy)
 

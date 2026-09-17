@@ -267,11 +267,12 @@ def test_sandbox_initialize_from_other_preserves_app_id_and_version(app, sandbox
 
 
 def test_sandbox_nfs(client, app, servicer, tmpdir):
-    with NetworkFileSystem.ephemeral(client=client) as nfs:
-        with pytest.raises(InvalidError):
-            Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs}, app=app)
+    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
+        with NetworkFileSystem.ephemeral(client=client) as nfs:
+            with pytest.raises(InvalidError):
+                Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs}, app=app)
 
-        Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs}, app=app)
+            Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs}, app=app)
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 
@@ -871,9 +872,10 @@ def test_sandbox_create_env_flag_nfs_stays_v1(app, client, servicer, monkeypatch
     # Network file systems have no V2 equivalent, so the call stays on V1.
     monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
 
-    with NetworkFileSystem.ephemeral(client=client) as nfs:
-        with servicer.intercept() as ctx:
-            sb = Sandbox.create("echo", "hi", network_file_systems={"/cache": nfs}, app=app)
+    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
+        with NetworkFileSystem.ephemeral(client=client) as nfs:
+            with servicer.intercept() as ctx:
+                sb = Sandbox.create("echo", "hi", network_file_systems={"/cache": nfs}, app=app)
 
     assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
     assert ctx.get_requests("SandboxCreateV2") == []

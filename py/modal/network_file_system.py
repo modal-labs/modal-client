@@ -22,6 +22,7 @@ from ._object import (
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
+from ._utils.deprecation import deprecation_warning
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -31,6 +32,14 @@ from .types import FileEntry
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
 )  # 10 min max for transferring files (does not include upload time to s3)
+
+
+def _warn_network_file_system_deprecated() -> None:
+    deprecation_warning(
+        (2026, 9, 16),
+        "`modal.NetworkFileSystem` is deprecated and will be removed in a future release. Use `modal.Volume` instead.",
+        show_source=False,
+    )
 
 
 def network_file_system_mount_protos(
@@ -119,6 +128,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             ```
         """
         check_object_name(name, "NetworkFileSystem")
+        _warn_network_file_system_deprecated()
 
         async def _load(
             self: _NetworkFileSystem, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
@@ -175,6 +185,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 assert await nfs.listdir("/") == []
             ```
         """
+        _warn_network_file_system_deprecated()
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
@@ -201,6 +212,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "NetworkFileSystem")
+        _warn_network_file_system_deprecated()
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
