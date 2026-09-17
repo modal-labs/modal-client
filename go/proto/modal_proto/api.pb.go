@@ -23888,7 +23888,6 @@ type Function struct {
 	xxx_hidden_CloudBucketMounts                    *[]*CloudBucketMount         `protobuf:"bytes,51,rep,name=cloud_bucket_mounts,json=cloudBucketMounts,proto3"`
 	xxx_hidden_SchedulerPlacement                   *SchedulerPlacement          `protobuf:"bytes,50,opt,name=scheduler_placement,json=schedulerPlacement,proto3,oneof"`
 	xxx_hidden_IsClass                              bool                         `protobuf:"varint,53,opt,name=is_class,json=isClass,proto3"`
-	xxx_hidden_UseFunctionId                        string                       `protobuf:"bytes,54,opt,name=use_function_id,json=useFunctionId,proto3"`
 	xxx_hidden_UseMethodName                        string                       `protobuf:"bytes,55,opt,name=use_method_name,json=useMethodName,proto3"`
 	xxx_hidden_ClassParameterInfo                   *ClassParameterInfo          `protobuf:"bytes,56,opt,name=class_parameter_info,json=classParameterInfo,proto3"`
 	xxx_hidden_BatchMaxSize                         uint32                       `protobuf:"varint,60,opt,name=batch_max_size,json=batchMaxSize,proto3"`
@@ -24276,13 +24275,6 @@ func (x *Function) GetIsClass() bool {
 	return false
 }
 
-func (x *Function) GetUseFunctionId() string {
-	if x != nil {
-		return x.xxx_hidden_UseFunctionId
-	}
-	return ""
-}
-
 func (x *Function) GetUseMethodName() string {
 	if x != nil {
 		return x.xxx_hidden_UseMethodName
@@ -24608,7 +24600,7 @@ func (x *Function) SetSharedVolumeMounts(v []*SharedVolumeMount) {
 
 func (x *Function) SetProxyId(v string) {
 	x.xxx_hidden_ProxyId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 82)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 81)
 }
 
 func (x *Function) SetRetryPolicy(v *FunctionRetryPolicy) {
@@ -24640,7 +24632,7 @@ func (x *Function) SetTaskIdleTimeoutSecs(v uint32) {
 
 func (x *Function) SetCloudProvider(v CloudProvider) {
 	x.xxx_hidden_CloudProvider = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 82)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 81)
 }
 
 func (x *Function) SetWarmPoolSize(v uint32) {
@@ -24735,10 +24727,6 @@ func (x *Function) SetIsClass(v bool) {
 	x.xxx_hidden_IsClass = v
 }
 
-func (x *Function) SetUseFunctionId(v string) {
-	x.xxx_hidden_UseFunctionId = v
-}
-
 func (x *Function) SetUseMethodName(v string) {
 	x.xxx_hidden_UseMethodName = v
 }
@@ -24794,7 +24782,7 @@ func (x *Function) SetXExperimentalBufferContainers(v uint32) {
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *Function) SetXExperimentalProxyIp(v string) {
 	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 57, 82)
+	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 56, 81)
 }
 
 func (x *Function) SetRuntimePerfRecord(v bool) {
@@ -24975,7 +24963,7 @@ func (x *Function) HasXExperimentalProxyIp() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[1]), 57)
+	return protoimpl.X.Present(&(x.XXX_presence[1]), 56)
 }
 
 func (x *Function) HasSchedule() bool {
@@ -25054,7 +25042,7 @@ func (x *Function) ClearClassParameterInfo() {
 
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *Function) ClearXExperimentalProxyIp() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[1]), 57)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[1]), 56)
 	x.xxx_hidden_XExperimentalProxyIp = nil
 }
 
@@ -25124,7 +25112,6 @@ type Function_builder struct {
 	CloudBucketMounts                    []*CloudBucketMount
 	SchedulerPlacement                   *SchedulerPlacement
 	IsClass                              bool
-	UseFunctionId                        string
 	UseMethodName                        string
 	ClassParameterInfo                   *ClassParameterInfo
 	BatchMaxSize                         uint32
@@ -25201,7 +25188,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_SharedVolumeMounts = &b.SharedVolumeMounts
 	if b.ProxyId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 82)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 81)
 		x.xxx_hidden_ProxyId = b.ProxyId
 	}
 	x.xxx_hidden_RetryPolicy = b.RetryPolicy
@@ -25211,7 +25198,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_ClassSerialized = b.ClassSerialized
 	x.xxx_hidden_TaskIdleTimeoutSecs = b.TaskIdleTimeoutSecs
 	if b.CloudProvider != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 82)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 81)
 		x.xxx_hidden_CloudProvider = *b.CloudProvider
 	}
 	x.xxx_hidden_WarmPoolSize = b.WarmPoolSize
@@ -25237,7 +25224,6 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_CloudBucketMounts = &b.CloudBucketMounts
 	x.xxx_hidden_SchedulerPlacement = b.SchedulerPlacement
 	x.xxx_hidden_IsClass = b.IsClass
-	x.xxx_hidden_UseFunctionId = b.UseFunctionId
 	x.xxx_hidden_UseMethodName = b.UseMethodName
 	x.xxx_hidden_ClassParameterInfo = b.ClassParameterInfo
 	x.xxx_hidden_BatchMaxSize = b.BatchMaxSize
@@ -25252,7 +25238,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_Untrusted = b.Untrusted
 	x.xxx_hidden_XExperimentalBufferContainers = b.XExperimentalBufferContainers
 	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 57, 82)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 56, 81)
 		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
 	}
 	x.xxx_hidden_RuntimePerfRecord = b.RuntimePerfRecord
@@ -27278,7 +27264,6 @@ type FunctionData struct {
 	xxx_hidden_IsClass                        bool                            `protobuf:"varint,13,opt,name=is_class,json=isClass,proto3"`
 	xxx_hidden_ClassParameterInfo             *ClassParameterInfo             `protobuf:"bytes,14,opt,name=class_parameter_info,json=classParameterInfo,proto3"`
 	xxx_hidden_IsMethod                       bool                            `protobuf:"varint,15,opt,name=is_method,json=isMethod,proto3"`
-	xxx_hidden_UseFunctionId                  string                          `protobuf:"bytes,16,opt,name=use_function_id,json=useFunctionId,proto3"`
 	xxx_hidden_UseMethodName                  string                          `protobuf:"bytes,17,opt,name=use_method_name,json=useMethodName,proto3"`
 	xxx_hidden_RankedFunctions                *[]*FunctionData_RankedFunction `protobuf:"bytes,18,rep,name=ranked_functions,json=rankedFunctions,proto3"`
 	xxx_hidden_Schedule                       *Schedule                       `protobuf:"bytes,20,opt,name=schedule,proto3"`
@@ -27496,13 +27481,6 @@ func (x *FunctionData) GetIsMethod() bool {
 	return false
 }
 
-func (x *FunctionData) GetUseFunctionId() string {
-	if x != nil {
-		return x.xxx_hidden_UseFunctionId
-	}
-	return ""
-}
-
 func (x *FunctionData) GetUseMethodName() string {
 	if x != nil {
 		return x.xxx_hidden_UseMethodName
@@ -27709,7 +27687,7 @@ func (x *FunctionData) SetCustomDomainInfo(v []*CustomDomainInfo) {
 // Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *FunctionData) SetXExperimentalProxyIp(v string) {
 	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 43)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 42)
 }
 
 func (x *FunctionData) SetMethodDefinitions(v map[string]*MethodDefinition) {
@@ -27730,10 +27708,6 @@ func (x *FunctionData) SetClassParameterInfo(v *ClassParameterInfo) {
 
 func (x *FunctionData) SetIsMethod(v bool) {
 	x.xxx_hidden_IsMethod = v
-}
-
-func (x *FunctionData) SetUseFunctionId(v string) {
-	x.xxx_hidden_UseFunctionId = v
 }
 
 func (x *FunctionData) SetUseMethodName(v string) {
@@ -27937,7 +27911,6 @@ type FunctionData_builder struct {
 	IsClass                bool
 	ClassParameterInfo     *ClassParameterInfo
 	IsMethod               bool
-	UseFunctionId          string
 	UseMethodName          string
 	RankedFunctions        []*FunctionData_RankedFunction
 	Schedule               *Schedule
@@ -27984,7 +27957,7 @@ func (b0 FunctionData_builder) Build() *FunctionData {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_CustomDomainInfo = &b.CustomDomainInfo
 	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 43)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 42)
 		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
 	}
 	x.xxx_hidden_MethodDefinitions = b.MethodDefinitions
@@ -27992,7 +27965,6 @@ func (b0 FunctionData_builder) Build() *FunctionData {
 	x.xxx_hidden_IsClass = b.IsClass
 	x.xxx_hidden_ClassParameterInfo = b.ClassParameterInfo
 	x.xxx_hidden_IsMethod = b.IsMethod
-	x.xxx_hidden_UseFunctionId = b.UseFunctionId
 	x.xxx_hidden_UseMethodName = b.UseMethodName
 	x.xxx_hidden_RankedFunctions = &b.RankedFunctions
 	x.xxx_hidden_Schedule = b.Schedule
@@ -30644,7 +30616,6 @@ type FunctionHandleMetadata struct {
 	xxx_hidden_FunctionType            Function_FunctionType              `protobuf:"varint,8,opt,name=function_type,json=functionType,proto3,enum=modal.client.Function_FunctionType"`
 	xxx_hidden_WebUrl                  string                             `protobuf:"bytes,28,opt,name=web_url,json=webUrl,proto3"`
 	xxx_hidden_IsMethod                bool                               `protobuf:"varint,39,opt,name=is_method,json=isMethod,proto3"`
-	xxx_hidden_UseFunctionId           string                             `protobuf:"bytes,40,opt,name=use_function_id,json=useFunctionId,proto3"`
 	xxx_hidden_UseMethodName           string                             `protobuf:"bytes,41,opt,name=use_method_name,json=useMethodName,proto3"`
 	xxx_hidden_DefinitionId            string                             `protobuf:"bytes,42,opt,name=definition_id,json=definitionId,proto3"`
 	xxx_hidden_ClassParameterInfo      *ClassParameterInfo                `protobuf:"bytes,43,opt,name=class_parameter_info,json=classParameterInfo,proto3"`
@@ -30716,13 +30687,6 @@ func (x *FunctionHandleMetadata) GetIsMethod() bool {
 		return x.xxx_hidden_IsMethod
 	}
 	return false
-}
-
-func (x *FunctionHandleMetadata) GetUseFunctionId() string {
-	if x != nil {
-		return x.xxx_hidden_UseFunctionId
-	}
-	return ""
 }
 
 func (x *FunctionHandleMetadata) GetUseMethodName() string {
@@ -30845,10 +30809,6 @@ func (x *FunctionHandleMetadata) SetIsMethod(v bool) {
 	x.xxx_hidden_IsMethod = v
 }
 
-func (x *FunctionHandleMetadata) SetUseFunctionId(v string) {
-	x.xxx_hidden_UseFunctionId = v
-}
-
 func (x *FunctionHandleMetadata) SetUseMethodName(v string) {
 	x.xxx_hidden_UseMethodName = v
 }
@@ -30871,22 +30831,22 @@ func (x *FunctionHandleMetadata) SetFunctionSchema(v *FunctionSchema) {
 
 func (x *FunctionHandleMetadata) SetInputPlaneUrl(v string) {
 	x.xxx_hidden_InputPlaneUrl = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 19)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 9, 18)
 }
 
 func (x *FunctionHandleMetadata) SetInputPlaneRegion(v string) {
 	x.xxx_hidden_InputPlaneRegion = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 19)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 18)
 }
 
 func (x *FunctionHandleMetadata) SetMaxObjectSizeBytes(v uint64) {
 	x.xxx_hidden_MaxObjectSizeBytes = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 19)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 18)
 }
 
 func (x *FunctionHandleMetadata) SetMaxAsyncObjectSizeBytes(v uint64) {
 	x.xxx_hidden_MaxAsyncObjectSizeBytes = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 13, 19)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 18)
 }
 
 func (x *FunctionHandleMetadata) SetXExperimentalFlashUrls(v []string) {
@@ -30927,28 +30887,28 @@ func (x *FunctionHandleMetadata) HasInputPlaneUrl() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 10)
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 9)
 }
 
 func (x *FunctionHandleMetadata) HasInputPlaneRegion() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 11)
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 10)
 }
 
 func (x *FunctionHandleMetadata) HasMaxObjectSizeBytes() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 12)
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 11)
 }
 
 func (x *FunctionHandleMetadata) HasMaxAsyncObjectSizeBytes() bool {
 	if x == nil {
 		return false
 	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 13)
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 12)
 }
 
 func (x *FunctionHandleMetadata) ClearClassParameterInfo() {
@@ -30960,22 +30920,22 @@ func (x *FunctionHandleMetadata) ClearFunctionSchema() {
 }
 
 func (x *FunctionHandleMetadata) ClearInputPlaneUrl() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 10)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 9)
 	x.xxx_hidden_InputPlaneUrl = nil
 }
 
 func (x *FunctionHandleMetadata) ClearInputPlaneRegion() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 11)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 10)
 	x.xxx_hidden_InputPlaneRegion = nil
 }
 
 func (x *FunctionHandleMetadata) ClearMaxObjectSizeBytes() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 12)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 11)
 	x.xxx_hidden_MaxObjectSizeBytes = 0
 }
 
 func (x *FunctionHandleMetadata) ClearMaxAsyncObjectSizeBytes() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 13)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 12)
 	x.xxx_hidden_MaxAsyncObjectSizeBytes = 0
 }
 
@@ -30987,7 +30947,6 @@ type FunctionHandleMetadata_builder struct {
 	FunctionType       Function_FunctionType
 	WebUrl             string
 	IsMethod           bool
-	UseFunctionId      string
 	UseMethodName      string
 	DefinitionId       string
 	ClassParameterInfo *ClassParameterInfo
@@ -31015,26 +30974,25 @@ func (b0 FunctionHandleMetadata_builder) Build() *FunctionHandleMetadata {
 	x.xxx_hidden_FunctionType = b.FunctionType
 	x.xxx_hidden_WebUrl = b.WebUrl
 	x.xxx_hidden_IsMethod = b.IsMethod
-	x.xxx_hidden_UseFunctionId = b.UseFunctionId
 	x.xxx_hidden_UseMethodName = b.UseMethodName
 	x.xxx_hidden_DefinitionId = b.DefinitionId
 	x.xxx_hidden_ClassParameterInfo = b.ClassParameterInfo
 	x.xxx_hidden_MethodHandleMetadata = b.MethodHandleMetadata
 	x.xxx_hidden_FunctionSchema = b.FunctionSchema
 	if b.InputPlaneUrl != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 19)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 9, 18)
 		x.xxx_hidden_InputPlaneUrl = b.InputPlaneUrl
 	}
 	if b.InputPlaneRegion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 19)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 18)
 		x.xxx_hidden_InputPlaneRegion = b.InputPlaneRegion
 	}
 	if b.MaxObjectSizeBytes != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 19)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 18)
 		x.xxx_hidden_MaxObjectSizeBytes = *b.MaxObjectSizeBytes
 	}
 	if b.MaxAsyncObjectSizeBytes != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 13, 19)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 18)
 		x.xxx_hidden_MaxAsyncObjectSizeBytes = *b.MaxAsyncObjectSizeBytes
 	}
 	x.xxx_hidden_XExperimentalFlashUrls = b.XExperimentalFlashUrls
@@ -32213,7 +32171,6 @@ type FunctionPrecreateRequest struct {
 	xxx_hidden_ExistingFunctionId     string                       `protobuf:"bytes,3,opt,name=existing_function_id,json=existingFunctionId,proto3"`
 	xxx_hidden_FunctionType           Function_FunctionType        `protobuf:"varint,4,opt,name=function_type,json=functionType,proto3,enum=modal.client.Function_FunctionType"`
 	xxx_hidden_WebhookConfig          *WebhookConfig               `protobuf:"bytes,5,opt,name=webhook_config,json=webhookConfig,proto3"`
-	xxx_hidden_UseFunctionId          string                       `protobuf:"bytes,6,opt,name=use_function_id,json=useFunctionId,proto3"`
 	xxx_hidden_UseMethodName          string                       `protobuf:"bytes,7,opt,name=use_method_name,json=useMethodName,proto3"`
 	xxx_hidden_MethodDefinitions      map[string]*MethodDefinition `protobuf:"bytes,8,rep,name=method_definitions,json=methodDefinitions,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	xxx_hidden_FunctionSchema         *FunctionSchema              `protobuf:"bytes,9,opt,name=function_schema,json=functionSchema,proto3"`
@@ -32283,13 +32240,6 @@ func (x *FunctionPrecreateRequest) GetWebhookConfig() *WebhookConfig {
 	return nil
 }
 
-func (x *FunctionPrecreateRequest) GetUseFunctionId() string {
-	if x != nil {
-		return x.xxx_hidden_UseFunctionId
-	}
-	return ""
-}
-
 func (x *FunctionPrecreateRequest) GetUseMethodName() string {
 	if x != nil {
 		return x.xxx_hidden_UseMethodName
@@ -32345,10 +32295,6 @@ func (x *FunctionPrecreateRequest) SetWebhookConfig(v *WebhookConfig) {
 	x.xxx_hidden_WebhookConfig = v
 }
 
-func (x *FunctionPrecreateRequest) SetUseFunctionId(v string) {
-	x.xxx_hidden_UseFunctionId = v
-}
-
 func (x *FunctionPrecreateRequest) SetUseMethodName(v string) {
 	x.xxx_hidden_UseMethodName = v
 }
@@ -32399,7 +32345,6 @@ type FunctionPrecreateRequest_builder struct {
 	ExistingFunctionId string
 	FunctionType       Function_FunctionType
 	WebhookConfig      *WebhookConfig
-	UseFunctionId      string
 	UseMethodName      string
 	// Mapping of method names to method definitions, only non-empty for class service functions
 	MethodDefinitions      map[string]*MethodDefinition
@@ -32417,7 +32362,6 @@ func (b0 FunctionPrecreateRequest_builder) Build() *FunctionPrecreateRequest {
 	x.xxx_hidden_ExistingFunctionId = b.ExistingFunctionId
 	x.xxx_hidden_FunctionType = b.FunctionType
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
-	x.xxx_hidden_UseFunctionId = b.UseFunctionId
 	x.xxx_hidden_UseMethodName = b.UseMethodName
 	x.xxx_hidden_MethodDefinitions = b.MethodDefinitions
 	x.xxx_hidden_FunctionSchema = b.FunctionSchema
@@ -68114,7 +68058,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12!\n" +
 	"\ftarget_slots\x18\x02 \x01(\rR\vtargetSlots\"$\n" +
-	"\"FlashSetTargetSlotsMetricsResponse\"\xeb&\n" +
+	"\"FlashSetTargetSlotsMetricsResponse\"\xc9&\n" +
 	"\bFunction\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -68167,7 +68111,6 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13cloud_bucket_mounts\x183 \x03(\v2\x1e.modal.client.CloudBucketMountR\x11cloudBucketMounts\x12V\n" +
 	"\x13scheduler_placement\x182 \x01(\v2 .modal.client.SchedulerPlacementH\x02R\x12schedulerPlacement\x88\x01\x01\x12\x19\n" +
 	"\bis_class\x185 \x01(\bR\aisClass\x12&\n" +
-	"\x0fuse_function_id\x186 \x01(\tR\ruseFunctionId\x12&\n" +
 	"\x0fuse_method_name\x187 \x01(\tR\ruseMethodName\x12R\n" +
 	"\x14class_parameter_info\x188 \x01(\v2 .modal.client.ClassParameterInfoR\x12classParameterInfo\x12$\n" +
 	"\x0ebatch_max_size\x18< \x01(\rR\fbatchMaxSize\x12&\n" +
@@ -68225,7 +68168,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0f_cloud_providerB\x16\n" +
 	"\x14_scheduler_placementB\x19\n" +
 	"\x17X_experimental_proxy_ipB\x0e\n" +
-	"\f_http_configJ\x04\b\x14\x10\x15J\x04\b0\x101J\x04\b1\x102J\x04\b4\x105J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<\"\x98\x01\n" +
+	"\f_http_configJ\x04\b\x14\x10\x15J\x04\b0\x101J\x04\b1\x102J\x04\b4\x105J\x04\b6\x107J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<\"\x98\x01\n" +
 	"\x1aFunctionAsyncInvokeRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12&\n" +
@@ -68318,7 +68261,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bfunction\x18\x04 \x01(\v2\x16.modal.client.FunctionR\bfunction\x12M\n" +
 	"\x0fhandle_metadata\x18\x05 \x01(\v2$.modal.client.FunctionHandleMetadataR\x0ehandleMetadata\x12>\n" +
 	"\x0fserver_warnings\x18\x06 \x03(\v2\x15.modal.client.WarningR\x0eserverWarnings\x12?\n" +
-	"\rfunction_data\x18\a \x01(\v2\x1a.modal.client.FunctionDataR\ffunctionData\"\x8d\x15\n" +
+	"\rfunction_data\x18\a \x01(\v2\x1a.modal.client.FunctionDataR\ffunctionData\"\xeb\x14\n" +
 	"\fFunctionData\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -68346,7 +68289,6 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bis_class\x18\r \x01(\bR\aisClass\x12R\n" +
 	"\x14class_parameter_info\x18\x0e \x01(\v2 .modal.client.ClassParameterInfoR\x12classParameterInfo\x12\x1b\n" +
 	"\tis_method\x18\x0f \x01(\bR\bisMethod\x12&\n" +
-	"\x0fuse_function_id\x18\x10 \x01(\tR\ruseFunctionId\x12&\n" +
 	"\x0fuse_method_name\x18\x11 \x01(\tR\ruseMethodName\x12T\n" +
 	"\x10ranked_functions\x18\x12 \x03(\v2).modal.client.FunctionData.RankedFunctionR\x0frankedFunctions\x122\n" +
 	"\bschedule\x18\x14 \x01(\v2\x16.modal.client.ScheduleR\bschedule\x12\x1c\n" +
@@ -68377,7 +68319,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x19\n" +
 	"\x17X_experimental_proxy_ipB\x0e\n" +
-	"\f_http_configJ\x04\b\x15\x10\x16\"\xdc\x01\n" +
+	"\f_http_configJ\x04\b\x10\x10\x11J\x04\b\x15\x10\x16\"\xdc\x01\n" +
 	"\x10FunctionExtended\x12'\n" +
 	"\x0ftype_identifier\x18\x01 \x01(\rR\x0etypeIdentifier\x12G\n" +
 	"\x12function_singleton\x18\x02 \x01(\v2\x16.modal.client.FunctionH\x00R\x11functionSingleton\x12A\n" +
@@ -68528,14 +68470,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2).modal.client.StatsPercentileDistributionR\x05value:\x028\x01\x1av\n" +
 	"\x1dContainerPercentileStatsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12?\n" +
-	"\x05value\x18\x02 \x01(\v2).modal.client.StatsPercentileDistributionR\x05value:\x028\x01\"\x92\n" +
-	"\n" +
+	"\x05value\x18\x02 \x01(\v2).modal.client.StatsPercentileDistributionR\x05value:\x028\x01\"\xf0\t\n" +
 	"\x16FunctionHandleMetadata\x12#\n" +
 	"\rfunction_name\x18\x02 \x01(\tR\ffunctionName\x12H\n" +
 	"\rfunction_type\x18\b \x01(\x0e2#.modal.client.Function.FunctionTypeR\ffunctionType\x12\x17\n" +
 	"\aweb_url\x18\x1c \x01(\tR\x06webUrl\x12\x1b\n" +
 	"\tis_method\x18' \x01(\bR\bisMethod\x12&\n" +
-	"\x0fuse_function_id\x18( \x01(\tR\ruseFunctionId\x12&\n" +
 	"\x0fuse_method_name\x18) \x01(\tR\ruseMethodName\x12#\n" +
 	"\rdefinition_id\x18* \x01(\tR\fdefinitionId\x12R\n" +
 	"\x14class_parameter_info\x18+ \x01(\v2 .modal.client.ClassParameterInfoR\x12classParameterInfo\x12t\n" +
@@ -68556,7 +68496,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10_input_plane_urlB\x15\n" +
 	"\x13_input_plane_regionB\x18\n" +
 	"\x16_max_object_size_bytesB\x1e\n" +
-	"\x1c_max_async_object_size_bytes\"\xe9\x01\n" +
+	"\x1c_max_async_object_size_bytesJ\x04\b(\x10)\"\xe9\x01\n" +
 	"\rFunctionInput\x12\x14\n" +
 	"\x04args\x18\x01 \x01(\fH\x00R\x04args\x12\"\n" +
 	"\fargs_blob_id\x18\a \x01(\tH\x00R\n" +
@@ -68633,14 +68573,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x14_scheduler_placementB\x15\n" +
 	"\x13_cloud_provider_strB\x15\n" +
 	"\x13_pinned_app_versionB\x11\n" +
-	"\x0f_routing_region\"\xa7\x06\n" +
+	"\x0f_routing_region\"\x85\x06\n" +
 	"\x18FunctionPrecreateRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12#\n" +
 	"\rfunction_name\x18\x02 \x01(\tR\ffunctionName\x120\n" +
 	"\x14existing_function_id\x18\x03 \x01(\tR\x12existingFunctionId\x12H\n" +
 	"\rfunction_type\x18\x04 \x01(\x0e2#.modal.client.Function.FunctionTypeR\ffunctionType\x12B\n" +
 	"\x0ewebhook_config\x18\x05 \x01(\v2\x1b.modal.client.WebhookConfigR\rwebhookConfig\x12&\n" +
-	"\x0fuse_function_id\x18\x06 \x01(\tR\ruseFunctionId\x12&\n" +
 	"\x0fuse_method_name\x18\a \x01(\tR\ruseMethodName\x12l\n" +
 	"\x12method_definitions\x18\b \x03(\v2=.modal.client.FunctionPrecreateRequest.MethodDefinitionsEntryR\x11methodDefinitions\x12E\n" +
 	"\x0ffunction_schema\x18\t \x01(\v2\x1c.modal.client.FunctionSchemaR\x0efunctionSchema\x12P\n" +
@@ -68649,7 +68588,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x18supported_output_formats\x18\v \x03(\x0e2\x18.modal.client.DataFormatR\x16supportedOutputFormats\x1ad\n" +
 	"\x16MethodDefinitionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x124\n" +
-	"\x05value\x18\x02 \x01(\v2\x1e.modal.client.MethodDefinitionR\x05value:\x028\x01\"\x8b\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x1e.modal.client.MethodDefinitionR\x05value:\x028\x01J\x04\b\x06\x10\a\"\x8b\x01\n" +
 	"\x19FunctionPrecreateResponse\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12M\n" +

@@ -328,7 +328,6 @@ def test_with_options_from_name(servicer, client):
                 handle_metadata=api_pb2.FunctionHandleMetadata(
                     method_handle_metadata={
                         "some_method": api_pb2.FunctionHandleMetadata(
-                            use_function_id="fu-123",
                             use_method_name="some_method",
                             function_name="SomeClass.some_method",
                         )
@@ -343,7 +342,6 @@ def test_with_options_from_name(servicer, client):
                 handle_metadata=api_pb2.FunctionHandleMetadata(
                     method_handle_metadata={
                         "some_method": api_pb2.FunctionHandleMetadata(
-                            use_function_id="fu-124",
                             use_method_name="some_method",
                             function_name="SomeClass.some_method",
                         )
@@ -1661,7 +1659,6 @@ def test_cls_duplicate_volume_mounts_with_options(client, servicer):
                 handle_metadata=api_pb2.FunctionHandleMetadata(
                     method_handle_metadata={
                         "some_method": api_pb2.FunctionHandleMetadata(
-                            use_function_id="fu-123",
                             use_method_name="some_method",
                             function_name="SomeClass.some_method",
                         )

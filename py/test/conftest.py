@@ -1110,7 +1110,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             web_url=function_proto.web_url,
             is_method=function_proto.is_method,
             use_method_name=function_proto.use_method_name,
-            use_function_id=function_proto.use_function_id,
             class_parameter_info=function_proto.class_parameter_info,
             method_handle_metadata={
                 method_name: api_pb2.FunctionHandleMetadata(
@@ -2199,7 +2198,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.function_options[function_id] = request.function_options
 
         handle_metadata = self.get_function_metadata(function_id)
-        handle_metadata.use_function_id = function_id
         handle_metadata.use_method_name = ""
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
@@ -2282,7 +2280,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=req.function_name,
                     function_type=req.function_type,
                     web_url=web_url,
-                    use_function_id=req.use_function_id or function_id,
                     use_method_name=req.use_method_name,
                     method_handle_metadata=method_handle_metadata,
                     function_schema=req.function_schema,
@@ -2362,7 +2359,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 is_class=function.is_class,
                 class_parameter_info=function.class_parameter_info,
                 is_method=function.is_method,
-                use_function_id=function.use_function_id,
                 use_method_name=function.use_method_name,
                 ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function)],
                 schedule=function.schedule,
@@ -2434,7 +2430,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 is_class=function_proto.is_class,
                 class_parameter_info=function_proto.class_parameter_info,
                 is_method=function_proto.is_method,
-                use_function_id=function_proto.use_function_id,
                 use_method_name=function_proto.use_method_name,
                 ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function_proto)],
                 schedule=function_proto.schedule,
@@ -2497,7 +2492,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 is_class=function.is_class,
                 class_parameter_info=function.class_parameter_info,
                 is_method=function.is_method,
-                use_function_id=function.use_function_id,
                 use_method_name=function.use_method_name,
                 ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function)],
                 schedule=function.schedule,
