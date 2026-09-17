@@ -2084,16 +2084,34 @@ def _mock_server_logs(monkeypatch):
     client.stub.FunctionGet = mock.AsyncMock(
         return_value=api_pb2.FunctionGetResponse(
             function_id="fu-server",
+            function=api_pb2.FunctionData(is_server=True),
             handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-server-app"),
         )
     )
     client.stub.FunctionGetById = mock.AsyncMock(
         return_value=api_pb2.FunctionGetByIdResponse(
-            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-server-app")
+            handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-server-app"),
+            function=api_pb2.FunctionData(is_server=True),
         )
     )
     monkeypatch.setattr("modal.cli.server._Client.from_env", mock.AsyncMock(return_value=client))
     return client
+
+
+@pytest.mark.parametrize("command", ["logs", "stats"])
+@pytest.mark.parametrize("object_type", ["function", "server"])
+@pytest.mark.parametrize("identifier", ["fu-test", "my-app/my-object"])
+def test_function_and_server_commands_reject_wrong_type(set_env_client, monkeypatch, command, object_type, identifier):
+    if object_type == "function":
+        _mock_server_logs(monkeypatch)
+        actual_type = "Server"
+    else:
+        _mock_function_logs(monkeypatch)
+        actual_type = "Function"
+
+    result = run_cli_command([object_type, command, identifier], expected_exit_code=2)
+    assert f"'{identifier}' is a {actual_type}." in result.stderr
+    assert f"`modal {actual_type.lower()} {command}`." in result.stderr
 
 
 def test_server_logs_defaults_to_tail(set_env_client, monkeypatch):
@@ -4397,7 +4415,10 @@ def test_server_stats_cli(servicer, set_env_client):
     response.until.FromDatetime(until)
 
     with servicer.intercept() as ctx:
-        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-server"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(function_id="fu-server", function=api_pb2.FunctionData(is_server=True)),
+        )
         ctx.add_response("ServerGetTimeRangeStats", response)
         result = run_cli_command(
             [

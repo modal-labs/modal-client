@@ -248,12 +248,21 @@ async def _resolve_function_id(
             raise
 
         print_server_warnings(response.server_warnings)
-        return response.function_id, response.handle_metadata
-
-    if _is_function_id(function_identifier):
+        function_id = response.function_id
+        function = response.function
+        metadata = response.handle_metadata
+    elif _is_function_id(function_identifier):
         get_by_id_response = await client.stub.FunctionGetById(
             api_pb2.FunctionGetByIdRequest(function_id=function_identifier)
         )
-        return function_identifier, get_by_id_response.handle_metadata
+        function_id = function_identifier
+        function = get_by_id_response.function
+        metadata = get_by_id_response.handle_metadata
+    else:
+        raise UsageError(usage)
 
-    raise UsageError(usage)
+    if function.is_server != (object_type == "Server"):
+        actual_type = "Server" if function.is_server else "Function"
+        raise UsageError(f"'{function_identifier}' is a {actual_type}. Use `modal {actual_type.lower()} {command}`.")
+
+    return function_id, metadata
