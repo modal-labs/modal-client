@@ -55466,12 +55466,13 @@ func (b0 TokenDeleteRequest_builder) Build() *TokenDeleteRequest {
 }
 
 type TokenFlowCreateRequest struct {
-	state                    protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_UtmSource     string                 `protobuf:"bytes,3,opt,name=utm_source,json=utmSource,proto3"`
-	xxx_hidden_LocalhostPort int32                  `protobuf:"varint,4,opt,name=localhost_port,json=localhostPort,proto3"`
-	xxx_hidden_NextUrl       string                 `protobuf:"bytes,5,opt,name=next_url,json=nextUrl,proto3"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                       protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UtmSource        string                 `protobuf:"bytes,3,opt,name=utm_source,json=utmSource,proto3"`
+	xxx_hidden_LocalhostPort    int32                  `protobuf:"varint,4,opt,name=localhost_port,json=localhostPort,proto3"`
+	xxx_hidden_NextUrl          string                 `protobuf:"bytes,5,opt,name=next_url,json=nextUrl,proto3"`
+	xxx_hidden_ExpiresInSeconds uint32                 `protobuf:"varint,6,opt,name=expires_in_seconds,json=expiresInSeconds,proto3"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *TokenFlowCreateRequest) Reset() {
@@ -55520,6 +55521,13 @@ func (x *TokenFlowCreateRequest) GetNextUrl() string {
 	return ""
 }
 
+func (x *TokenFlowCreateRequest) GetExpiresInSeconds() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ExpiresInSeconds
+	}
+	return 0
+}
+
 func (x *TokenFlowCreateRequest) SetUtmSource(v string) {
 	x.xxx_hidden_UtmSource = v
 }
@@ -55532,12 +55540,17 @@ func (x *TokenFlowCreateRequest) SetNextUrl(v string) {
 	x.xxx_hidden_NextUrl = v
 }
 
+func (x *TokenFlowCreateRequest) SetExpiresInSeconds(v uint32) {
+	x.xxx_hidden_ExpiresInSeconds = v
+}
+
 type TokenFlowCreateRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	UtmSource     string
-	LocalhostPort int32
-	NextUrl       string
+	UtmSource        string
+	LocalhostPort    int32
+	NextUrl          string
+	ExpiresInSeconds uint32
 }
 
 func (b0 TokenFlowCreateRequest_builder) Build() *TokenFlowCreateRequest {
@@ -55547,6 +55560,7 @@ func (b0 TokenFlowCreateRequest_builder) Build() *TokenFlowCreateRequest {
 	x.xxx_hidden_UtmSource = b.UtmSource
 	x.xxx_hidden_LocalhostPort = b.LocalhostPort
 	x.xxx_hidden_NextUrl = b.NextUrl
+	x.xxx_hidden_ExpiresInSeconds = b.ExpiresInSeconds
 	return m0
 }
 
@@ -69866,12 +69880,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\btoken_id\x18\x01 \x01(\tR\atokenId\x12!\n" +
 	"\ftoken_secret\x18\x02 \x01(\tR\vtokenSecret\"/\n" +
 	"\x12TokenDeleteRequest\x12\x19\n" +
-	"\btoken_id\x18\x02 \x01(\tR\atokenId\"y\n" +
+	"\btoken_id\x18\x02 \x01(\tR\atokenId\"\xa7\x01\n" +
 	"\x16TokenFlowCreateRequest\x12\x1d\n" +
 	"\n" +
 	"utm_source\x18\x03 \x01(\tR\tutmSource\x12%\n" +
 	"\x0elocalhost_port\x18\x04 \x01(\x05R\rlocalhostPort\x12\x19\n" +
-	"\bnext_url\x18\x05 \x01(\tR\anextUrl\"\x8b\x01\n" +
+	"\bnext_url\x18\x05 \x01(\tR\anextUrl\x12,\n" +
+	"\x12expires_in_seconds\x18\x06 \x01(\rR\x10expiresInSeconds\"\x8b\x01\n" +
 	"\x17TokenFlowCreateResponse\x12\"\n" +
 	"\rtoken_flow_id\x18\x01 \x01(\tR\vtokenFlowId\x12\x17\n" +
 	"\aweb_url\x18\x02 \x01(\tR\x06webUrl\x12\x12\n" +

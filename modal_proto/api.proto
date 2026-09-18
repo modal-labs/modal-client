@@ -4459,6 +4459,7 @@ message TokenFlowCreateRequest {
   string utm_source = 3;
   int32 localhost_port = 4;
   string next_url = 5;
+  uint32 expires_in_seconds = 6;
 }
 
 message TokenFlowCreateResponse {
