@@ -1109,7 +1109,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_type=function_proto.function_type,
             web_url=function_proto.web_url,
             is_method=function_proto.is_method,
-            use_method_name=function_proto.use_method_name,
             class_parameter_info=function_proto.class_parameter_info,
             method_handle_metadata={
                 method_name: api_pb2.FunctionHandleMetadata(
@@ -2184,7 +2183,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-            assert not base_function.use_method_name
 
             bound_func = api_pb2.Function()
             bound_func.CopyFrom(base_function)
@@ -2198,7 +2196,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.function_options[function_id] = request.function_options
 
         handle_metadata = self.get_function_metadata(function_id)
-        handle_metadata.use_method_name = ""
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
                 bound_function_id=function_id,
@@ -2280,7 +2277,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=req.function_name,
                     function_type=req.function_type,
                     web_url=web_url,
-                    use_method_name=req.use_method_name,
                     method_handle_metadata=method_handle_metadata,
                     function_schema=req.function_schema,
                     app_id=req.app_id,
@@ -2359,7 +2355,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 is_class=function.is_class,
                 class_parameter_info=function.class_parameter_info,
                 is_method=function.is_method,
-                use_method_name=function.use_method_name,
                 ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function)],
                 schedule=function.schedule,
                 untrusted=function.untrusted,
@@ -2430,7 +2425,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 is_class=function_proto.is_class,
                 class_parameter_info=function_proto.class_parameter_info,
                 is_method=function_proto.is_method,
-                use_method_name=function_proto.use_method_name,
                 ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function_proto)],
                 schedule=function_proto.schedule,
                 untrusted=function_proto.untrusted,
@@ -2492,7 +2486,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 is_class=function.is_class,
                 class_parameter_info=function.class_parameter_info,
                 is_method=function.is_method,
-                use_method_name=function.use_method_name,
                 ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=function)],
                 schedule=function.schedule,
                 untrusted=function.untrusted,

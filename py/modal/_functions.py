@@ -1103,7 +1103,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         is_class=function_definition.is_class,
                         class_parameter_info=function_definition.class_parameter_info,
                         is_method=function_definition.is_method,
-                        use_method_name=function_definition.use_method_name,
                         method_definitions=function_definition.method_definitions,
                         method_definitions_set=function_definition.method_definitions_set,
                         experimental_options=experimental_options or {},

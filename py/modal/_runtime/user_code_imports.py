@@ -562,7 +562,6 @@ def _get_cls_or_user_cls(
                 f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"
             )
 
-        assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
         cls_name = parts[0]
         cls_or_user_cls = getattr(module, cls_name)
     return cls_or_user_cls

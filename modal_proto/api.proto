@@ -2034,7 +2034,7 @@ message Function {
   bool is_class = 53;  // if "Function" is actually a class grouping multiple methods
 
   reserved 54; // use_function_id, pre-0.67 class method placeholders
-  string use_method_name = 55;  // for class methods - this method name needs to be included in the FunctionInput
+  reserved 55; // use_method_name, pre-0.67 class method placeholders
 
   ClassParameterInfo class_parameter_info = 56;
 
@@ -2288,7 +2288,7 @@ message FunctionData {
 
   bool is_method = 15;
   reserved 16; // use_function_id, pre-0.67 class method placeholders
-  string use_method_name = 17; // used for methods
+  reserved 17; // use_method_name, pre-0.67 class method placeholders
 
   message RankedFunction {
     uint32 rank = 1;
@@ -2630,7 +2630,7 @@ message FunctionPrecreateRequest {
   Function.FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
   reserved 6; // use_function_id, pre-0.67 class method placeholders
-  string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
+  reserved 7; // use_method_name, pre-0.67 class method placeholders
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
   FunctionSchema function_schema = 9;
