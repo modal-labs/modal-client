@@ -22,7 +22,6 @@ from .endpoint import endpoint_cli
 from .environment import environment_cli
 from .function import function_cli
 from .image import image_cli
-from .launch import launch_cli
 from .logo import print_logo
 from .network_file_system import nfs_cli
 from .profile import profile_cli
@@ -112,9 +111,6 @@ entrypoint_cli.add_command(run.deploy, "deploy", panel="Commands")
 entrypoint_cli.add_command(run.serve, "serve", panel="Commands")
 entrypoint_cli.add_command(shell_module.shell, "shell", panel="Commands")
 entrypoint_cli.add_command(run.run, "run", panel="Commands")
-# launch is hidden as it's experimental and we're tracking towards removing it
-entrypoint_cli.add_command(launch_cli, hidden=True)
-
 entrypoint_cli.add_command(app_cli, panel="Deployments")
 entrypoint_cli.add_command(container_cli, panel="Deployments")
 entrypoint_cli.add_command(endpoint_cli, panel="Deployments")

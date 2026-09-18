@@ -153,7 +153,6 @@ ignore_errors = true
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 timeout = 300
-addopts = "--ignore=modal/cli/programs"
 filterwarnings = [
     "error::DeprecationWarning",
     "ignore:Type google._upb.*MapContainer uses PyType_Spec.*Python 3.14:DeprecationWarning",
@@ -206,7 +205,6 @@ extend-select = ['PLR1702']
 "*_test.py" = ['E712', 'T201']
 "test/**" = ['T201']
 "test/supports/notebooks/*.py" = ['E402']
-"modal/cli/programs/*" = ['T201']
 "modal_docs/**" = ['T201']
 "modal_global_objects/**" = ['T201']
 "tasks.py" = ['T201']

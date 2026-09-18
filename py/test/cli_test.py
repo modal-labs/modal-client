@@ -16,13 +16,12 @@ from pathlib import Path
 from pickle import dumps
 from typing import cast
 from unittest import mock
-from unittest.mock import MagicMock
 
 import toml
 from grpclib import GRPCError, Status
 
 import modal
-from modal._serialization import PICKLE_PROTOCOL, serialize
+from modal._serialization import PICKLE_PROTOCOL
 from modal._utils.grpc_testing import InterceptionContext
 from modal.exception import DeprecationError, InvalidError, NotFoundError, _CliUserExecutionError
 from modal.types import LogEntry
@@ -3680,17 +3679,6 @@ def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatc
     for runnable in expected_runnables:
         assert runnable in res.stderr
         run_cli_command(["run", "-m", f"multifile_project.main::{runnable}"], expected_exit_code=0)
-
-
-def test_modal_launch_vscode(monkeypatch, set_env_client, servicer):
-    mock_open = MagicMock()
-    monkeypatch.setattr("webbrowser.open", mock_open)
-    with servicer.intercept() as ctx:
-        ctx.add_response("QueueGet", api_pb2.QueueGetResponse(values=[serialize(("http://dummy", "tok"))]))
-        ctx.add_response("QueueGet", api_pb2.QueueGetResponse(values=[serialize("done")]))
-        run_cli_command(["launch", "vscode"])
-
-    assert mock_open.call_count == 1
 
 
 def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
