@@ -115,6 +115,7 @@ const (
 	ModalClient_FunctionAsyncInvoke_FullMethodName                    = "/modal.client.ModalClient/FunctionAsyncInvoke"
 	ModalClient_FunctionBindParams_FullMethodName                     = "/modal.client.ModalClient/FunctionBindParams"
 	ModalClient_FunctionCallCancel_FullMethodName                     = "/modal.client.ModalClient/FunctionCallCancel"
+	ModalClient_FunctionCallFetch_FullMethodName                      = "/modal.client.ModalClient/FunctionCallFetch"
 	ModalClient_FunctionCallFromId_FullMethodName                     = "/modal.client.ModalClient/FunctionCallFromId"
 	ModalClient_FunctionCallGetDataIn_FullMethodName                  = "/modal.client.ModalClient/FunctionCallGetDataIn"
 	ModalClient_FunctionCallGetDataOut_FullMethodName                 = "/modal.client.ModalClient/FunctionCallGetDataOut"
@@ -217,6 +218,7 @@ const (
 	ModalClient_SecretList_FullMethodName                             = "/modal.client.ModalClient/SecretList"
 	ModalClient_SecretUpdate_FullMethodName                           = "/modal.client.ModalClient/SecretUpdate"
 	ModalClient_ServerGetTimeRangeStats_FullMethodName                = "/modal.client.ModalClient/ServerGetTimeRangeStats"
+	ModalClient_ServerRequestFetch_FullMethodName                     = "/modal.client.ModalClient/ServerRequestFetch"
 	ModalClient_ServiceUserList_FullMethodName                        = "/modal.client.ModalClient/ServiceUserList"
 	ModalClient_SharedVolumeDelete_FullMethodName                     = "/modal.client.ModalClient/SharedVolumeDelete"
 	ModalClient_SharedVolumeGetFile_FullMethodName                    = "/modal.client.ModalClient/SharedVolumeGetFile"
@@ -385,6 +387,7 @@ type ModalClientClient interface {
 	FunctionAsyncInvoke(ctx context.Context, in *FunctionAsyncInvokeRequest, opts ...grpc.CallOption) (*FunctionAsyncInvokeResponse, error)
 	FunctionBindParams(ctx context.Context, in *FunctionBindParamsRequest, opts ...grpc.CallOption) (*FunctionBindParamsResponse, error)
 	FunctionCallCancel(ctx context.Context, in *FunctionCallCancelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	FunctionCallFetch(ctx context.Context, in *FunctionCallFetchRequest, opts ...grpc.CallOption) (*FunctionCallFetchResponse, error)
 	FunctionCallFromId(ctx context.Context, in *FunctionCallFromIdRequest, opts ...grpc.CallOption) (*FunctionCallFromIdResponse, error)
 	FunctionCallGetDataIn(ctx context.Context, in *FunctionCallGetDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataChunk], error)
 	FunctionCallGetDataOut(ctx context.Context, in *FunctionCallGetDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataChunk], error)
@@ -496,6 +499,7 @@ type ModalClientClient interface {
 	SecretUpdate(ctx context.Context, in *SecretUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Servers
 	ServerGetTimeRangeStats(ctx context.Context, in *ServerGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*ServerGetTimeRangeStatsResponse, error)
+	ServerRequestFetch(ctx context.Context, in *ServerRequestFetchRequest, opts ...grpc.CallOption) (*ServerRequestFetchResponse, error)
 	// Service users
 	ServiceUserList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceUserListResponse, error)
 	// SharedVolumes
@@ -1494,6 +1498,16 @@ func (c *modalClientClient) FunctionCallCancel(ctx context.Context, in *Function
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ModalClient_FunctionCallCancel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) FunctionCallFetch(ctx context.Context, in *FunctionCallFetchRequest, opts ...grpc.CallOption) (*FunctionCallFetchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FunctionCallFetchResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionCallFetch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2556,6 +2570,16 @@ func (c *modalClientClient) ServerGetTimeRangeStats(ctx context.Context, in *Ser
 	return out, nil
 }
 
+func (c *modalClientClient) ServerRequestFetch(ctx context.Context, in *ServerRequestFetchRequest, opts ...grpc.CallOption) (*ServerRequestFetchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerRequestFetchResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ServerRequestFetch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) ServiceUserList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceUserListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ServiceUserListResponse)
@@ -3280,6 +3304,7 @@ type ModalClientServer interface {
 	FunctionAsyncInvoke(context.Context, *FunctionAsyncInvokeRequest) (*FunctionAsyncInvokeResponse, error)
 	FunctionBindParams(context.Context, *FunctionBindParamsRequest) (*FunctionBindParamsResponse, error)
 	FunctionCallCancel(context.Context, *FunctionCallCancelRequest) (*emptypb.Empty, error)
+	FunctionCallFetch(context.Context, *FunctionCallFetchRequest) (*FunctionCallFetchResponse, error)
 	FunctionCallFromId(context.Context, *FunctionCallFromIdRequest) (*FunctionCallFromIdResponse, error)
 	FunctionCallGetDataIn(*FunctionCallGetDataRequest, grpc.ServerStreamingServer[DataChunk]) error
 	FunctionCallGetDataOut(*FunctionCallGetDataRequest, grpc.ServerStreamingServer[DataChunk]) error
@@ -3391,6 +3416,7 @@ type ModalClientServer interface {
 	SecretUpdate(context.Context, *SecretUpdateRequest) (*emptypb.Empty, error)
 	// Servers
 	ServerGetTimeRangeStats(context.Context, *ServerGetTimeRangeStatsRequest) (*ServerGetTimeRangeStatsResponse, error)
+	ServerRequestFetch(context.Context, *ServerRequestFetchRequest) (*ServerRequestFetchResponse, error)
 	// Service users
 	ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error)
 	// SharedVolumes
@@ -3736,6 +3762,9 @@ func (UnimplementedModalClientServer) FunctionBindParams(context.Context, *Funct
 func (UnimplementedModalClientServer) FunctionCallCancel(context.Context, *FunctionCallCancelRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionCallCancel not implemented")
 }
+func (UnimplementedModalClientServer) FunctionCallFetch(context.Context, *FunctionCallFetchRequest) (*FunctionCallFetchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionCallFetch not implemented")
+}
 func (UnimplementedModalClientServer) FunctionCallFromId(context.Context, *FunctionCallFromIdRequest) (*FunctionCallFromIdResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionCallFromId not implemented")
 }
@@ -4041,6 +4070,9 @@ func (UnimplementedModalClientServer) SecretUpdate(context.Context, *SecretUpdat
 }
 func (UnimplementedModalClientServer) ServerGetTimeRangeStats(context.Context, *ServerGetTimeRangeStatsRequest) (*ServerGetTimeRangeStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServerGetTimeRangeStats not implemented")
+}
+func (UnimplementedModalClientServer) ServerRequestFetch(context.Context, *ServerRequestFetchRequest) (*ServerRequestFetchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ServerRequestFetch not implemented")
 }
 func (UnimplementedModalClientServer) ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServiceUserList not implemented")
@@ -5807,6 +5839,24 @@ func _ModalClient_FunctionCallCancel_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).FunctionCallCancel(ctx, req.(*FunctionCallCancelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_FunctionCallFetch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FunctionCallFetchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionCallFetch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionCallFetch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionCallFetch(ctx, req.(*FunctionCallFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7619,6 +7669,24 @@ func _ModalClient_ServerGetTimeRangeStats_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_ServerRequestFetch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServerRequestFetchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ServerRequestFetch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ServerRequestFetch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ServerRequestFetch(ctx, req.(*ServerRequestFetchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_ServiceUserList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -8983,6 +9051,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_FunctionCallCancel_Handler,
 		},
 		{
+			MethodName: "FunctionCallFetch",
+			Handler:    _ModalClient_FunctionCallFetch_Handler,
+		},
+		{
 			MethodName: "FunctionCallFromId",
 			Handler:    _ModalClient_FunctionCallFromId_Handler,
 		},
@@ -9373,6 +9445,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ServerGetTimeRangeStats",
 			Handler:    _ModalClient_ServerGetTimeRangeStats_Handler,
+		},
+		{
+			MethodName: "ServerRequestFetch",
+			Handler:    _ModalClient_ServerRequestFetch_Handler,
 		},
 		{
 			MethodName: "ServiceUserList",
