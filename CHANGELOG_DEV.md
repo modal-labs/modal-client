@@ -6,6 +6,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Python
 
+- Added a `max_concurrency` parameter to `@app.server()` for limiting the number of concurrent requests handled by each container. This hard limit does not affect autoscaling; configure `target_concurrency` separately to scale based on request load.
 - Sandboxes now support replacing headers in outbound HTTPS requests with secret values that are never visible to the workload, via the new `modal.OutboundPolicy` configuration object: pass `outbound_policy=` to `Sandbox.create` and call `Sandbox.update_outbound_policy` on a running Sandbox.
 - Constructing a `modal.NetworkFileSystem` now emits a deprecation warning. Use `modal.Volume` instead.
 - Proxy tokens can now be named when created, and proxy token listings include the token name and creator.

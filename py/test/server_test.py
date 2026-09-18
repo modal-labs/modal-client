@@ -850,6 +850,103 @@ def test_server_target_concurrency_zero(client, servicer):
         assert function_def.autoscaler_settings.target_concurrency_float == 0.0
 
 
+def test_server_max_concurrency(client, servicer):
+    app = modal.App("server-max-concurrency-test", include_source=False)
+
+    @app.server(
+        port=8000,
+        routing_region="us-east",
+        target_concurrency=50.5,
+        max_concurrency=100,
+        serialized=True,
+    )
+    class MaxConcurrencyServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        function_id = MaxConcurrencyServer._get_service_function().object_id  # type: ignore[attr-defined]
+        function_def = servicer.app_functions[function_id]
+        assert function_def.autoscaler_settings.target_concurrency_float == 50.5
+        assert function_def.max_concurrent_inputs == 100
+
+
+@pytest.mark.parametrize(
+    ("max_concurrency", "match"),
+    [
+        (True, "must be a number"),
+        (1.5, "must be an integer"),
+        (-1, "must be non-negative"),
+        ("100", "must be a number"),
+    ],
+)
+def test_server_rejects_invalid_max_concurrency(max_concurrency, match):
+    with pytest.raises(InvalidError, match=match):
+        app = modal.App("server-invalid-max-concurrency-test", include_source=False)
+
+        @app.server(
+            port=8000,
+            routing_region="us-east",
+            max_concurrency=cast(Any, max_concurrency),
+            serialized=True,
+        )
+        class InvalidMaxConcurrencyServer:
+            pass
+
+
+def test_server_allows_zero_max_concurrency(client, servicer):
+    app = modal.App("server-zero-max-concurrency-test", include_source=False)
+
+    @app.server(
+        port=8000,
+        routing_region="us-east",
+        target_concurrency=10,
+        max_concurrency=0,
+        serialized=True,
+    )
+    class UnlimitedConcurrencyServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        function_id = UnlimitedConcurrencyServer._get_service_function().object_id  # type: ignore[attr-defined]
+        function_def = servicer.app_functions[function_id]
+        assert function_def.autoscaler_settings.target_concurrency_float == 10
+        assert function_def.max_concurrent_inputs == 0
+
+
+def test_server_rejects_target_concurrency_above_max_concurrency():
+    with pytest.raises(InvalidError, match="cannot be greater than `max_concurrency`"):
+        app = modal.App("server-target-above-max-concurrency-test", include_source=False)
+
+        @app.server(
+            port=8000,
+            routing_region="us-east",
+            target_concurrency=10.5,
+            max_concurrency=10,
+            serialized=True,
+        )
+        class TargetAboveMaxConcurrencyServer:
+            pass
+
+
+def test_server_rejects_duplicate_max_concurrency_configuration():
+    with pytest.raises(InvalidError, match="cannot be set both"):
+        app = modal.App("server-duplicate-max-concurrency-test", include_source=False)
+
+        @app.server(
+            port=8000,
+            routing_region="us-east",
+            max_concurrency=10,
+            experimental_options={"max_concurrency": 3},
+            serialized=True,
+        )
+        class DuplicateMaxConcurrencyServer:
+            pass
+
+
 @pytest.mark.parametrize(
     ("requested", "expected"),
     [

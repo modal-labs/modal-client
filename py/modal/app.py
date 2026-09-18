@@ -1332,6 +1332,7 @@ class _App:
         memory: int | tuple[int, int] | None = None,  # Memory in MiB to request
         ephemeral_disk: int | None = None,  # Ephemeral disk size in MiB
         target_concurrency: float | None = None,  # Target concurrency for the server; 0 disables autoscaling
+        max_concurrency: int | None = None,  # Maximum concurrent requests per container
         min_containers: int | None = None,  # Minimum number of containers to keep warm
         max_containers: int | None = None,  # Maximum number of containers
         buffer_containers: int | None = None,  # Additional idle containers under active load
@@ -1381,6 +1382,9 @@ class _App:
             target_concurrency:
                 Target number of concurrent requests per container; 0 disables autoscaling. May be
                 fractional, e.g. 1.5 to target three concurrent requests per two containers.
+            max_concurrency:
+                Maximum number of concurrent requests per container. Requests above this limit
+                receive a 503 response. If set to 0 or unset, request concurrency is unlimited.
             min_containers: Minimum number of containers to keep running regardless of demand.
             max_containers: Limit on the number of containers that can be concurrently running.
             buffer_containers: Extra containers to scale up beyond current demand.
@@ -1429,6 +1433,22 @@ class _App:
 
         if target_concurrency is not None:
             validate_target_concurrency(target_concurrency, "target_concurrency", allow_fractional=True)
+
+        if max_concurrency is not None:
+            if experimental_options is not None and "max_concurrency" in experimental_options:
+                raise InvalidError(
+                    "`max_concurrency` cannot be set both as an app.server parameter and an experimental option."
+                )
+            if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, (int, float)):
+                raise InvalidError(
+                    f"The `max_concurrency` argument must be a number, not {type(max_concurrency).__name__}."
+                )
+            if not isinstance(max_concurrency, int):
+                raise InvalidError("The `max_concurrency` argument must be an integer.")
+            if max_concurrency < 0:
+                raise InvalidError("The `max_concurrency` argument must be non-negative.")
+            if max_concurrency and target_concurrency is not None and target_concurrency > max_concurrency:
+                raise InvalidError("The `target_concurrency` argument cannot be greater than `max_concurrency`.")
 
         if scaleup_window is not None and scaleup_window <= 0:
             raise InvalidError("`scaleup_window` must be > 0")
@@ -1491,8 +1511,8 @@ class _App:
                 scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=None,  # No support for Server level retries
-                max_concurrent_inputs=None,  # No support for Server level concurrent inputs
-                target_concurrent_inputs=target_concurrency,  # No support for Server level concurrent inputs
+                max_concurrent_inputs=max_concurrency,
+                target_concurrent_inputs=target_concurrency,
                 batch_max_size=None,  # No support for Server level batching
                 batch_wait_ms=None,  # No support for Server level batching
                 startup_timeout=startup_timeout,
