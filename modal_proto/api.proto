@@ -2568,6 +2568,20 @@ message FunctionInput {
   optional string method_name = 11; // specifies which method to call when calling a class/object function
 }
 
+message FunctionListVariantsRequest {
+  string function_id = 1;
+  FunctionVariantCursor cursor = 2;
+  uint32 limit = 3;
+}
+
+message FunctionListVariantsResponse {
+  repeated FunctionVariantInfo infos = 1;
+  // Pass back as cursor to fetch the next page. Unset once the listing is complete.
+  FunctionVariantCursor next_cursor = 2;
+  // Set by the server when it ordered the variants by how many tasks each is running, busiest first.
+  bool ordered_by_task_count = 3;
+}
+
 // Structured error detail attached to a failed FunctionGet lookup.
 message FunctionLookupError {
   enum Reason {
@@ -2733,6 +2747,17 @@ message FunctionUpdateSchedulingParamsRequest {
 
 message FunctionUpdateSchedulingParamsResponse {
   AutoscalerSettings current_settings = 1;
+}
+
+message FunctionVariantCursor {
+  double created_before = 1;
+  string function_id = 2;
+}
+
+message FunctionVariantInfo {
+  string function_id = 1;
+  bytes serialized_params = 2;
+  FunctionOptions function_options = 3;
 }
 
 message GPUConfig {
@@ -5122,6 +5147,7 @@ service ModalClient {
   rpc FunctionGetSchedulingParams(FunctionGetSchedulingParamsRequest) returns (FunctionGetSchedulingParamsResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
   rpc FunctionGetTimeRangeStats(FunctionGetTimeRangeStatsRequest) returns (FunctionGetTimeRangeStatsResponse);
+  rpc FunctionListVariants(FunctionListVariantsRequest) returns (FunctionListVariantsResponse);
   rpc FunctionMap(FunctionMapRequest) returns (FunctionMapResponse);
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
