@@ -81,7 +81,12 @@ from .stream_type import StreamType
 from .types import SandboxConnectCredentials
 
 _default_image: _Image = _Image.debian_slim()
-_EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset((api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,))
+_EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset(
+    (
+        api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,
+        api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_FILESYSTEM_INCONSISTENT,
+    )
+)
 
 # Exit snapshot polling holds a server-side long poll for at most _EXIT_SNAPSHOT_LONG_POLL_TIMEOUT seconds and
 # then re-polls from the client, so a request is never held open indefinitely however long the caller waits.

@@ -1777,6 +1777,7 @@ def test_sandbox_experimental_get_exit_snapshot_rejects_negative_timeout(app, se
     "error_code",
     [
         api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_TIMEOUT,
+        api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_FILESYSTEM_INCONSISTENT,
     ],
 )
 def test_sandbox_experimental_get_exit_snapshot_not_found_errors(app, servicer, error_code):

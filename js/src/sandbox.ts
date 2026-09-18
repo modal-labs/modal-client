@@ -2332,7 +2332,9 @@ export class Sandbox {
       if (resp.error) {
         if (
           resp.error.errorCode ===
-          SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_TIMEOUT
+            SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_TIMEOUT ||
+          resp.error.errorCode ===
+            SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_FILESYSTEM_INCONSISTENT
         ) {
           throw new SnapshotCreationError(
             resp.error.message || "No exit snapshot image will be produced",

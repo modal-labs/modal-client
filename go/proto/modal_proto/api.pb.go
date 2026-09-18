@@ -2939,6 +2939,9 @@ const (
 	SandboxGetExitSnapshotResponse_ERROR_CODE_UNSPECIFIED SandboxGetExitSnapshotResponse_ErrorCode = 0
 	SandboxGetExitSnapshotResponse_ERROR_CODE_TIMEOUT     SandboxGetExitSnapshotResponse_ErrorCode = 1
 	SandboxGetExitSnapshotResponse_ERROR_CODE_INTERNAL    SandboxGetExitSnapshotResponse_ErrorCode = 2
+	// The sandbox exited without leaving a consistent filesystem (e.g. killed
+	// before it could flush) and recovery failed, so no exit snapshot exists.
+	SandboxGetExitSnapshotResponse_ERROR_CODE_FILESYSTEM_INCONSISTENT SandboxGetExitSnapshotResponse_ErrorCode = 3
 )
 
 // Enum value maps for SandboxGetExitSnapshotResponse_ErrorCode.
@@ -2947,11 +2950,13 @@ var (
 		0: "ERROR_CODE_UNSPECIFIED",
 		1: "ERROR_CODE_TIMEOUT",
 		2: "ERROR_CODE_INTERNAL",
+		3: "ERROR_CODE_FILESYSTEM_INCONSISTENT",
 	}
 	SandboxGetExitSnapshotResponse_ErrorCode_value = map[string]int32{
-		"ERROR_CODE_UNSPECIFIED": 0,
-		"ERROR_CODE_TIMEOUT":     1,
-		"ERROR_CODE_INTERNAL":    2,
+		"ERROR_CODE_UNSPECIFIED":             0,
+		"ERROR_CODE_TIMEOUT":                 1,
+		"ERROR_CODE_INTERNAL":                2,
+		"ERROR_CODE_FILESYSTEM_INCONSISTENT": 3,
 	}
 )
 
@@ -69342,7 +69347,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1dSandboxGetExitSnapshotRequest\x12\x1d\n" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12\x18\n" +
-	"\atimeout\x18\x02 \x01(\x02R\atimeout\"\xa0\x04\n" +
+	"\atimeout\x18\x02 \x01(\x02R\atimeout\"\xc9\x04\n" +
 	"\x1eSandboxGetExitSnapshotResponse\x12P\n" +
 	"\asuccess\x18\x01 \x01(\v24.modal.client.SandboxGetExitSnapshotResponse.SuccessH\x00R\asuccess\x12P\n" +
 	"\apending\x18\x02 \x01(\v24.modal.client.SandboxGetExitSnapshotResponse.PendingH\x00R\apending\x12J\n" +
@@ -69353,11 +69358,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05Error\x12U\n" +
 	"\n" +
 	"error_code\x18\x01 \x01(\x0e26.modal.client.SandboxGetExitSnapshotResponse.ErrorCodeR\terrorCode\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"X\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x80\x01\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12ERROR_CODE_TIMEOUT\x10\x01\x12\x17\n" +
-	"\x13ERROR_CODE_INTERNAL\x10\x02B\t\n" +
+	"\x13ERROR_CODE_INTERNAL\x10\x02\x12&\n" +
+	"\"ERROR_CODE_FILESYSTEM_INCONSISTENT\x10\x03B\t\n" +
 	"\aoutcome\"\x84\x01\n" +
 	"\x19SandboxGetFromNameRequest\x12!\n" +
 	"\fsandbox_name\x18\x01 \x01(\tR\vsandboxName\x12)\n" +

@@ -1892,7 +1892,9 @@ func (sb *Sandbox) ExperimentalGetExitSnapshot(ctx context.Context, params *Sand
 			return &Image{ImageID: resp.GetSuccess().GetImageId(), client: sb.client}, nil
 		case resp.GetError() != nil:
 			message := resp.GetError().GetMessage()
-			if resp.GetError().GetErrorCode() == pb.SandboxGetExitSnapshotResponse_ERROR_CODE_TIMEOUT {
+			errorCode := resp.GetError().GetErrorCode()
+			if errorCode == pb.SandboxGetExitSnapshotResponse_ERROR_CODE_TIMEOUT ||
+				errorCode == pb.SandboxGetExitSnapshotResponse_ERROR_CODE_FILESYSTEM_INCONSISTENT {
 				if message == "" {
 					message = "No exit snapshot image will be produced"
 				}
