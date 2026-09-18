@@ -128,8 +128,8 @@ async def get_app_logs_loop(
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
             output_mgr.update_task_state(log_batch.task_id, log.task_state)
-            if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
-                # Close function's queueing progress bar (if it exists)
+            if log_batch.function_id:
+                # Any task state the server reports means the task is on a worker, so close queueing progress
                 output_mgr.update_queueing_progress(
                     function_id=log_batch.function_id, completed=1, total=1, description=None
                 )

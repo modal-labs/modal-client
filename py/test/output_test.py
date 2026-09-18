@@ -1,11 +1,12 @@
 # Copyright Modal Labs 2025
 """Tests for the output management system."""
 
+import time
 from io import StringIO
 
 from rich.console import Console
 
-from modal._output.rich import RichOutputManager
+from modal._output.rich import QUEUEING_STRAGGLER_GRACE_SECS, RichOutputManager
 
 
 def test_print_suppressed_in_quiet_mode():
@@ -71,3 +72,45 @@ def test_status_suppressed_in_quiet_mode(monkeypatch):
 
     output_after_quiet = output.getvalue()
     assert len(output_after_quiet) == output_length_before, "Expected no additional output when quiet mode is enabled"
+
+
+def _queued_update(manager: RichOutputManager, function_id: str, seconds_in_queue: int) -> None:
+    manager.update_queueing_progress(
+        function_id=function_id,
+        completed=seconds_in_queue,
+        total=0,
+        description=f"Function {function_id} is waiting to be scheduled",
+    )
+
+
+def _scheduled_update(manager: RichOutputManager, function_id: str) -> None:
+    manager.update_queueing_progress(function_id=function_id, completed=1, total=1, description=None)
+
+
+def _queueing_bar_task_count(manager: RichOutputManager) -> int:
+    progress = manager._function_queueing_progress
+    return len(progress.tasks) if progress else 0
+
+
+def test_queueing_progress_ignores_straggler_update():
+    """A queueing update published just before the function was scheduled must not revive the bar."""
+    manager = RichOutputManager()
+    _queued_update(manager, "fu-123", 11)
+    assert _queueing_bar_task_count(manager) == 1
+
+    _scheduled_update(manager, "fu-123")
+
+    _queued_update(manager, "fu-123", 12)
+    assert _queueing_bar_task_count(manager) == 0
+
+
+def test_queueing_progress_returns_for_later_queueing(monkeypatch):
+    """Once the grace period passes, a function that queues again gets its bar back."""
+    manager = RichOutputManager()
+    _queued_update(manager, "fu-123", 11)
+    _scheduled_update(manager, "fu-123")
+
+    now = time.monotonic() + QUEUEING_STRAGGLER_GRACE_SECS + 1
+    monkeypatch.setattr(time, "monotonic", lambda: now)
+    _queued_update(manager, "fu-123", 11)
+    assert _queueing_bar_task_count(manager) == 1
