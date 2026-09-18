@@ -4189,6 +4189,7 @@ message SecretListResponse {
 message SecretMetadata {
   string name = 1;
   CreationInfo creation_info = 2;
+  repeated string keys = 3;
 }
 
 message SecretUpdateRequest {
