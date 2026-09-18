@@ -29,7 +29,7 @@ from modal._utils.function_utils import (
 from modal.app import _App
 from modal.config import logger
 from modal.exception import ExecutionError, InvalidError
-from modal.experimental.flash import _FlashContainerEntry
+from modal.experimental._flash_container_entry import _FlashContainerEntry
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:

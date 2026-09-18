@@ -8,12 +8,10 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse
 
-from modal._clustered_functions import get_cluster_info
 from modal._partial_function import _PartialFunctionFlags
 from modal.cls import _Cls
 from modal_proto import api_pb2
 
-from .._runtime.task_lifecycle_manager import UserException
 from .._server import validate_http_server_config
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
@@ -35,17 +33,15 @@ class _FlashManager:
         startup_timeout: int = 30,
         exit_grace_period: int = 0,
         h2_enabled: bool = False,
-        is_server: bool = False,
     ):
         self.client = client
         self.port = port
         self.process = process
+        self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
         # Health check is not currently being used
         self.health_check_url = health_check_url
         self.startup_timeout = startup_timeout
         self.exit_grace_period = exit_grace_period
-        self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
-        self.is_server = is_server
         self.stopped = False
         self.num_heartbeat_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
@@ -85,15 +81,7 @@ class _FlashManager:
         host = parsed_url.hostname
         assert host is not None, f"Tunnel URL has no host: {self.tunnel.url}"
         port = parsed_url.port or 443
-
-        if self.is_server:
-            await self._start_server_tunnel()
-            return
         await self._start_flash_registration(host, port)
-
-    async def _start_server_tunnel(self) -> None:
-        # Worker-side HTTP relay owns Flash registration and drain for server tasks.
-        logger.warning(f"[Modal Flash] Server tunnel opened at {self.tunnel.url}.")
 
     async def _start_flash_registration(self, host: str, port: int) -> None:
         try:
@@ -231,12 +219,9 @@ class _FlashManager:
     async def close(self):
         if not self.stopped:
             await self.stop()
-
-        # Server tasks drain via the worker-side HTTP relay, so skip the
-        # Python-side sleep here to avoid double-counting the grace period.
-        if not self.is_server:
-            await asyncio.sleep(self.exit_grace_period)
-
+        # The container is already deregistered at this point, so waiting out the grace period
+        # gives in-flight requests time to finish before the tunnel goes away.
+        await asyncio.sleep(self.exit_grace_period)
         logger.warning(f"[Modal Flash] Closing tunnel on {self.tunnel.url}.")
         await self.tunnel_manager.__aexit__(*sys.exc_info())
 
@@ -252,7 +237,6 @@ async def flash_forward(
     startup_timeout: int = 30,
     exit_grace_period: int = 0,
     h2_enabled: bool = False,
-    is_server: bool = False,
 ) -> _FlashManager:
     """
     Forward a port to the Modal Flash service, exposing that port as a stable endpoint.
@@ -269,7 +253,6 @@ async def flash_forward(
         startup_timeout=startup_timeout,
         exit_grace_period=exit_grace_period,
         h2_enabled=h2_enabled,
-        is_server=is_server,
     )
     await manager._start()
     return manager
@@ -314,7 +297,7 @@ def _http_server(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
         )
-    validate_http_server_config(port, proxy_regions, startup_timeout, exit_grace_period, is_server=False)
+    validate_http_server_config(port, proxy_regions, startup_timeout, exit_grace_period)
 
     from modal._partial_function import _PartialFunction, _PartialFunctionParams
 
@@ -342,48 +325,3 @@ def _http_server(
 
 
 http_server = synchronize_api(_http_server, target_module=__name__)
-
-
-class _FlashContainerEntry:
-    """
-    A class that manages the lifecycle of Flash manager for Flash containers.
-
-    It is intentional that stop() runs before exit handlers and close().
-    This ensures the container is deregistered first, preventing new requests from being routed to it
-    while exit handlers execute and the exit grace period elapses, before finally closing the tunnel.
-    """
-
-    flash_manager: FlashManager | None  # type: ignore
-
-    def __init__(self, http_config: api_pb2.HTTPConfig, is_server: bool = False):
-        self.http_config: api_pb2.HTTPConfig = http_config
-        self.flash_manager = None
-        self.is_server = is_server
-
-    def enter(self):
-        if self.http_config != api_pb2.HTTPConfig():
-            try:
-                rank = get_cluster_info().rank
-                if rank != 0:
-                    return
-            except InvalidError:
-                pass
-            try:
-                self.flash_manager = flash_forward(
-                    self.http_config.port,
-                    startup_timeout=self.http_config.startup_timeout,
-                    exit_grace_period=self.http_config.exit_grace_period,
-                    h2_enabled=self.http_config.h2_enabled,
-                    is_server=self.is_server,
-                )
-            except Exception as e:
-                logger.warning(f"[Modal Flash] Startup failed: {e}")
-                raise UserException()
-
-    def stop(self):
-        if self.flash_manager:
-            self.flash_manager.stop()
-
-    def close(self):
-        if self.flash_manager:
-            self.flash_manager.close()

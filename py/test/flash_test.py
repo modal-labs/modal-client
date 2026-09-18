@@ -6,7 +6,9 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from modal._clustered_functions import ClusterInfo
-from modal.experimental.flash import _FlashContainerEntry, _FlashManager
+from modal.experimental._flash_container_entry import _FlashContainerEntry
+from modal.experimental.flash import _FlashManager
+from modal.experimental.flash_server import _ServerManager
 from modal_proto import api_pb2
 from test.supports.skip import skip_windows
 
@@ -38,6 +40,15 @@ def flash_manager(client, mock_tunnel_manager):
         return manager
 
 
+@pytest.fixture
+def server_manager(client):
+    lifecycle_ready = AsyncMock()
+    client.stub.ContainerServerLifecycleReady = lifecycle_ready
+    with patch.dict(os.environ, {"MODAL_TASK_ID": "test-server-task-123"}):
+        manager = _ServerManager(client=client)
+    return manager, lifecycle_ready
+
+
 class _DummyContainer:
     def __init__(self, host: str):
         self.host = host
@@ -48,6 +59,27 @@ class _DummyContainer:
 class _DummySample:
     def __init__(self, value: float):
         self.value = value
+
+
+class TestFlashServerManager:
+    @pytest.mark.asyncio
+    async def test_start_signals_lifecycle_ready_without_tunnel(self, server_manager):
+        manager, lifecycle_ready = server_manager
+        await manager._start()
+
+        lifecycle_ready.assert_awaited_once_with(api_pb2.ContainerServerLifecycleReadyRequest())
+        assert not hasattr(manager, "tunnel")
+
+    @pytest.mark.asyncio
+    async def test_stop_and_close_without_tunnel(self, server_manager):
+        manager, lifecycle_ready = server_manager
+        await manager._start()
+
+        await manager.stop()
+        await manager.close()
+
+        lifecycle_ready.assert_awaited_once()
+        assert not hasattr(manager, "tunnel")
 
 
 class TestFlashManagerStopping:
@@ -518,8 +550,11 @@ class TestFlashClusteredEntry:
         return api_pb2.HTTPConfig(port=1234, startup_timeout=1, exit_grace_period=0)
 
     def test_only_rank_zero_exposes_flash_handle(self, monkeypatch, http_config):
-        flash_forward_mock = MagicMock(return_value="flash-manager")
-        monkeypatch.setattr("modal.experimental.flash.flash_forward", flash_forward_mock)
+        flash_manager = MagicMock()
+        flash_manager.stop = MagicMock()
+        flash_manager.close = MagicMock()
+        flash_forward_mock = MagicMock(return_value=flash_manager)
+        monkeypatch.setattr("modal.experimental._flash_container_entry.flash_forward", flash_forward_mock)
 
         container_ips = ["2001:db8::1", "2001:db8::2"]
         container_ipv4_ips = ["10.0.0.1", "10.0.0.2"]
@@ -536,13 +571,12 @@ class TestFlashClusteredEntry:
         entry = _FlashContainerEntry(http_config)
         entry.enter()
 
-        assert entry.flash_manager == "flash-manager"
+        assert entry.flash_manager is flash_manager
         flash_forward_mock.assert_called_once_with(
             http_config.port,
             startup_timeout=http_config.startup_timeout,
             exit_grace_period=http_config.exit_grace_period,
             h2_enabled=http_config.h2_enabled,
-            is_server=False,
         )
 
         flash_forward_mock.reset_mock()

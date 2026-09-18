@@ -173,7 +173,6 @@ async def _forward(
         forwarding code in an `@enter` lifecycle method of an @app.cls, to only make a single
         ssh server and port for each container (and not one for each input to the function).
     """
-
     if not isinstance(port, int):
         raise InvalidError(f"The port argument should be an int, not {port!r}")
     if port < 1 or port > 65535:
