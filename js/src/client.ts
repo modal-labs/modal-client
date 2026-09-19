@@ -513,6 +513,10 @@ export class ModalClient {
     };
     const oauthJwtKey = this.oauthJwtKey;
 
+    // gRPC sends the hostname in the :authority pseudo-header, but that gets stripped before our
+    // servers can read it, so send it in a header of our own too.
+    const host = new URL(profile.serverUrl).hostname;
+
     return async function* authMiddleware<Request, Response>(
       call: ClientMiddlewareCall<Request, Response>,
       options: CallOptions,
@@ -559,6 +563,7 @@ export class ModalClient {
         options.metadata.set("x-modal-token-id", profile.tokenId!);
         options.metadata.set("x-modal-token-secret", profile.tokenSecret!);
       }
+      options.metadata.set("x-modal-host", host);
 
       // Skip auth token for AuthTokenGet requests to prevent it from getting stuck
       if (call.method.path !== "/modal.client.ModalClient/AuthTokenGet") {

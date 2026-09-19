@@ -135,7 +135,7 @@ func TestInjectRequiredHeadersWithOAuthJWTKey(t *testing.T) {
 		sdkVersion:  "test-version",
 		oauthJWTKey: key,
 	}
-	ctx, err := injectRequiredHeaders(context.Background(), c)
+	ctx, err := injectRequiredHeaders(context.Background(), c, "api.modal.com")
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	md, ok := metadata.FromOutgoingContext(ctx)
 	g.Expect(ok).To(gomega.BeTrue())

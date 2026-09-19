@@ -568,3 +568,33 @@ test("ModalClient with custom middleware", async () => {
   expect(secondCalled).toBe(true);
   expect(secondMethod).toContain("ModalClient/");
 });
+
+test("authMiddleware: injects the endpoint hostname as x-modal-host", async () => {
+  const client = new ModalClient({
+    tokenId: "test",
+    tokenSecret: "test",
+    logger: noopLogger,
+  });
+  const middleware = (client as any).authMiddleware({
+    ...client.profile,
+    serverUrl: "https://api.modal.com:443",
+  });
+
+  let metadata: Metadata | undefined;
+  // Use AuthTokenGet so the middleware skips the auth token fetch, which would hit the network.
+  const call = makeMockCall(async function* (
+    _request: unknown,
+    options: CallOptions,
+  ) {
+    metadata = options.metadata as Metadata;
+    yield { token: "" };
+  });
+  call.method.path = "/modal.client.ModalClient/AuthTokenGet";
+
+  for await (const _ of middleware(call, {})) {
+    // intentionally empty
+  }
+  client.close();
+
+  expect(metadata!.get("x-modal-host")).toBe("api.modal.com");
+});

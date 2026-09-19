@@ -57,7 +57,7 @@ func TestInjectRequiredHeadersWithOAuthCredentials(t *testing.T) {
 		sdkVersion: "test-version",
 	}
 
-	ctx, err := injectRequiredHeaders(context.Background(), c)
+	ctx, err := injectRequiredHeaders(context.Background(), c, "api.modal.com")
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	md, ok := metadata.FromOutgoingContext(ctx)
 	g.Expect(ok).To(gomega.BeTrue())
@@ -230,6 +230,30 @@ func TestClientWithCustomInterceptors(t *testing.T) {
 	g.Expect(secondCalled).To(gomega.BeTrue())
 	g.Expect(secondMethod).To(gomega.ContainSubstring("ModalClient/"))
 	mu.Unlock()
+}
+
+func TestHeaderInjectorUnaryInterceptor(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	c := &Client{
+		profile:    Profile{TokenID: "test-token-id", TokenSecret: "test-token-secret"},
+		sdkVersion: "1.2.3",
+	}
+	interceptor := headerInjectorUnaryInterceptor(c, "api.modal.com")
+
+	var md metadata.MD
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		md, _ = metadata.FromOutgoingContext(ctx)
+		return nil
+	}
+
+	err := interceptor(t.Context(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(md.Get("x-modal-host")).To(gomega.Equal([]string{"api.modal.com"}))
+	g.Expect(md.Get("x-modal-token-id")).To(gomega.Equal([]string{"test-token-id"}))
+	g.Expect(md.Get("x-modal-libmodal-version")).To(gomega.Equal([]string{"modal-go/1.2.3"}))
 }
 
 // makeThrottleError builds a gRPC RESOURCE_EXHAUSTED error carrying an RPCRetryPolicy detail

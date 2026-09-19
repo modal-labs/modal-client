@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -378,8 +379,14 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 
 	c.logger.DebugContext(ctx, "Connecting to Modal server", "target", target, "scheme", scheme)
 
+	parsedURL, err := url.Parse(profile.ServerURL)
+	if err != nil {
+		return nil, nil, status.Errorf(codes.InvalidArgument, "invalid server URL: %s", profile.ServerURL)
+	}
+	host := parsedURL.Hostname()
+
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
-		headerInjectorUnaryInterceptor(c),
+		headerInjectorUnaryInterceptor(c, host),
 		authTokenInterceptor(c),
 		retryInterceptor(c),
 		timeoutInterceptor(),
@@ -387,7 +394,7 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 	unaryInterceptors = append(unaryInterceptors, customUnaryInterceptors...)
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
-		headerInjectorStreamInterceptor(c),
+		headerInjectorStreamInterceptor(c, host),
 	}
 	streamInterceptors = append(streamInterceptors, customStreamInterceptors...)
 
@@ -414,13 +421,16 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 	return conn, pb.NewModalClientClient(conn), nil
 }
 
-// injectRequiredHeaders adds required headers to the context.
-func injectRequiredHeaders(ctx context.Context, c *Client) (context.Context, error) {
+// injectRequiredHeaders adds required headers to the context. `host` is the hostname of the server
+// being called, which the server can't read off the :authority pseudo-header, so we send it
+// explicitly.
+func injectRequiredHeaders(ctx context.Context, c *Client, host string) (context.Context, error) {
 	clientType := strconv.Itoa(int(pb.ClientType_CLIENT_TYPE_LIBMODAL_GO))
 	headerPairs := []string{
 		"x-modal-client-type", clientType,
 		"x-modal-client-version", "1.0.0", // CLIENT VERSION: Behaves like this Python SDK version
 		"x-modal-libmodal-version", "modal-go/" + c.sdkVersion,
+		"x-modal-host", host,
 	}
 	if c.profile.OAuthRefreshToken != "" {
 		headerPairs = append(headerPairs,
@@ -452,7 +462,7 @@ func injectRequiredHeaders(ctx context.Context, c *Client) (context.Context, err
 }
 
 // headerInjectorUnaryInterceptor adds required headers to outgoing unary RPCs.
-func headerInjectorUnaryInterceptor(c *Client) grpc.UnaryClientInterceptor {
+func headerInjectorUnaryInterceptor(c *Client, host string) grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
 		method string,
@@ -462,7 +472,7 @@ func headerInjectorUnaryInterceptor(c *Client) grpc.UnaryClientInterceptor {
 		opts ...grpc.CallOption,
 	) error {
 		var err error
-		ctx, err = injectRequiredHeaders(ctx, c)
+		ctx, err = injectRequiredHeaders(ctx, c, host)
 		if err != nil {
 			return err
 		}
@@ -471,7 +481,7 @@ func headerInjectorUnaryInterceptor(c *Client) grpc.UnaryClientInterceptor {
 }
 
 // headerInjectorStreamInterceptor adds required headers to outgoing streaming RPCs.
-func headerInjectorStreamInterceptor(c *Client) grpc.StreamClientInterceptor {
+func headerInjectorStreamInterceptor(c *Client, host string) grpc.StreamClientInterceptor {
 	return func(
 		ctx context.Context,
 		desc *grpc.StreamDesc,
@@ -481,7 +491,7 @@ func headerInjectorStreamInterceptor(c *Client) grpc.StreamClientInterceptor {
 		opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
 		var err error
-		ctx, err = injectRequiredHeaders(ctx, c)
+		ctx, err = injectRequiredHeaders(ctx, c, host)
 		if err != nil {
 			return nil, err
 		}
