@@ -113,6 +113,7 @@ var typeRegistry = []typeEntry{
 	{name: "SidecarContainer", typ: reflect.TypeOf((*SidecarContainer)(nil)), isInterface: false},
 	{name: "FunctionLogsManager", typ: reflect.TypeOf((*FunctionLogsManager)(nil)), isInterface: false},
 	{name: "FunctionCallLogsManager", typ: reflect.TypeOf((*FunctionCallLogsManager)(nil)), isInterface: false},
+	{name: "SandboxLogsManager", typ: reflect.TypeOf((*SandboxLogsManager)(nil)), isInterface: false},
 }
 
 // excludedTypes lists exported types that are intentionally absent from

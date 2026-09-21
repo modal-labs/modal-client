@@ -647,6 +647,57 @@ func TestFunctionCallLogsTailFiltersAndBuildsEntries(t *testing.T) {
 	g.Expect(request.GetSource()).To(Equal(pb.FileDescriptor_FILE_DESCRIPTOR_STDERR))
 }
 
+func TestSandboxLogsTailFiltersByTaskID(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+
+	mockClient := &mockLogsClient{
+		responder: func(ctx context.Context, request *pb.AppFetchLogsRequest, callIndex int) (*pb.AppFetchLogsResponse, error) {
+			return pb.AppFetchLogsResponse_builder{
+				Batches: []*pb.TaskLogsBatch{logBatch("sandbox-tail", 2)},
+			}.Build(), nil
+		},
+	}
+	appIDResolutions := 0
+	taskIDResolutions := 0
+	manager := &SandboxLogsManager{
+		client:    newLogsTestClient(mockClient),
+		sandboxID: "sb-123",
+		getAppIDFunc: func(ctx context.Context) (string, error) {
+			appIDResolutions++
+			return "ap-123", nil
+		},
+		getTaskIDFunc: func(ctx context.Context) (string, error) {
+			taskIDResolutions++
+			return "ta-123", nil
+		},
+	}
+
+	params := &LogTailParams{Entries: 2, Source: LogSourceStdout}
+	sequence, err := manager.Tail(t.Context(), params)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(params).To(Equal(&LogTailParams{Entries: 2, Source: LogSourceStdout}))
+	entries, err := collectLogEntries(sequence)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(entries).To(HaveLen(2))
+	g.Expect(entries[0].ObjectID).To(Equal("sb-123"))
+	g.Expect(entries[0].Message).To(Equal("sandbox-tail-000"))
+	g.Expect(appIDResolutions).To(Equal(1))
+	g.Expect(taskIDResolutions).To(Equal(1))
+	g.Expect(mockClient.requests).To(HaveLen(1))
+
+	request := mockClient.requests[0]
+	g.Expect(request.GetAppId()).To(Equal("ap-123"))
+	g.Expect(request.GetTaskId()).To(Equal("ta-123"))
+	g.Expect(request.GetSandboxId()).To(BeEmpty())
+	g.Expect(request.GetFunctionId()).To(BeEmpty())
+	g.Expect(request.GetFunctionCallId()).To(BeEmpty())
+	g.Expect(request.GetLimit()).To(Equal(uint32(2)))
+	g.Expect(request.GetSource()).To(Equal(pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT))
+}
+
 func TestLogsTailValidatesParams(t *testing.T) {
 	t.Parallel()
 
@@ -826,6 +877,88 @@ func TestFunctionLogsFetch(t *testing.T) {
 	g.Expect(countRequest.GetSearchText()).To(Equal("needle"))
 
 	fetchRequest := mockClient.requests[0]
+	g.Expect(fetchRequest.GetLimit()).To(Equal(uint32(maxLogFetchEntries)))
+	g.Expect(fetchRequest.GetSince().AsTime()).To(Equal(since))
+	g.Expect(fetchRequest.GetUntil().AsTime()).To(Equal(since.Add(6 * time.Second)))
+	g.Expect(fetchRequest.GetSource()).To(Equal(pb.FileDescriptor_FILE_DESCRIPTOR_STDERR))
+	g.Expect(fetchRequest.GetSearchText()).To(Equal("needle"))
+}
+
+func TestSandboxLogsFetchFiltersByTaskID(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+
+	since := time.Date(2026, time.July, 28, 12, 0, 0, 0, time.UTC)
+	until := since.Add(10 * time.Minute)
+	mockClient := &mockLogsClient{
+		countResponder: func(request *pb.AppCountLogsRequest, callIndex int) (*pb.AppCountLogsResponse, error) {
+			return pb.AppCountLogsResponse_builder{
+				Buckets: []*pb.AppCountLogsResponse_LogBucket{logBucket(since, 1)},
+			}.Build(), nil
+		},
+		responder: func(ctx context.Context, request *pb.AppFetchLogsRequest, callIndex int) (*pb.AppFetchLogsResponse, error) {
+			return pb.AppFetchLogsResponse_builder{
+				Batches: []*pb.TaskLogsBatch{logBatch("sandbox-fetch", 1)},
+			}.Build(), nil
+		},
+	}
+	appIDResolutions := 0
+	taskIDResolutions := 0
+	manager := &SandboxLogsManager{
+		client:    newLogsTestClient(mockClient),
+		sandboxID: "sb-123",
+		getAppIDFunc: func(ctx context.Context) (string, error) {
+			appIDResolutions++
+			return "ap-123", nil
+		},
+		getTaskIDFunc: func(ctx context.Context) (string, error) {
+			taskIDResolutions++
+			return "ta-123", nil
+		},
+	}
+
+	params := &SandboxLogFetchParams{
+		Until:      &until,
+		Source:     LogSourceStderr,
+		SearchText: "needle",
+	}
+	sequence, err := manager.Fetch(t.Context(), since, params)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(params).To(Equal(&SandboxLogFetchParams{
+		Until:      &until,
+		Source:     LogSourceStderr,
+		SearchText: "needle",
+	}))
+	entries, err := collectLogEntries(sequence)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(entries).To(HaveLen(1))
+	g.Expect(entries[0].ObjectID).To(Equal("sb-123"))
+	g.Expect(entries[0].Message).To(Equal("sandbox-fetch-000"))
+	g.Expect(appIDResolutions).To(Equal(1))
+	g.Expect(taskIDResolutions).To(Equal(1))
+	g.Expect(mockClient.countRequests).To(HaveLen(1))
+	g.Expect(mockClient.requests).To(HaveLen(1))
+
+	countRequest := mockClient.countRequests[0]
+	g.Expect(countRequest.GetAppId()).To(Equal("ap-123"))
+	g.Expect(countRequest.GetTaskId()).To(Equal("ta-123"))
+	g.Expect(countRequest.GetSandboxId()).To(BeEmpty())
+	g.Expect(countRequest.GetFunctionId()).To(BeEmpty())
+	g.Expect(countRequest.GetFunctionCallId()).To(BeEmpty())
+	g.Expect(countRequest.GetSince().AsTime()).To(Equal(since))
+	g.Expect(countRequest.GetUntil().AsTime()).To(Equal(until))
+	g.Expect(countRequest.GetBucketSecs()).To(Equal(uint32(6)))
+	g.Expect(countRequest.GetSource()).To(Equal(pb.FileDescriptor_FILE_DESCRIPTOR_STDERR))
+	g.Expect(countRequest.GetSearchText()).To(Equal("needle"))
+
+	fetchRequest := mockClient.requests[0]
+	g.Expect(fetchRequest.GetAppId()).To(Equal("ap-123"))
+	g.Expect(fetchRequest.GetTaskId()).To(Equal("ta-123"))
+	g.Expect(fetchRequest.GetSandboxId()).To(BeEmpty())
+	g.Expect(fetchRequest.GetFunctionId()).To(BeEmpty())
+	g.Expect(fetchRequest.GetFunctionCallId()).To(BeEmpty())
 	g.Expect(fetchRequest.GetLimit()).To(Equal(uint32(maxLogFetchEntries)))
 	g.Expect(fetchRequest.GetSince().AsTime()).To(Equal(since))
 	g.Expect(fetchRequest.GetUntil().AsTime()).To(Equal(since.Add(6 * time.Second)))

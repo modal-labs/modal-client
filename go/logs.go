@@ -106,6 +106,19 @@ type FunctionCallLogsManager struct {
 	functionCallID string
 }
 
+type getTaskIDFunc func(ctx context.Context) (string, error)
+type getAppIDFunc func(ctx context.Context) (string, error)
+
+type SandboxLogsManager struct {
+	client        *Client
+	sandboxID     string
+	getTaskIDFunc getTaskIDFunc
+	getAppIDFunc  getAppIDFunc
+	mu            sync.Mutex
+	taskID        *string
+	appID         *string
+}
+
 // FunctionLogFetchParams are options for fetching Function logs.
 type FunctionLogFetchParams struct {
 	// Until is the end of the time range. It defaults to the current time.
@@ -125,6 +138,16 @@ type FunctionCallLogFetchParams struct {
 	// Source filters logs by stdout, stderr, or system. The zero value includes all sources.
 	Source LogSource
 	// SearchText filters FunctionCall logs by search text.
+	SearchText string
+}
+
+// SandboxLogFetchParams are options for fetching Sandbox logs.
+type SandboxLogFetchParams struct {
+	// Until is the end of the time range. It defaults to the current time.
+	Until *time.Time
+	// Source filters logs by stdout, stderr, or system. The zero value includes all sources.
+	Source LogSource
+	// SearchText filters Sandbox logs by search text.
 	SearchText string
 }
 
@@ -400,6 +423,116 @@ func (fclm *FunctionCallLogsManager) Stream(
 		},
 		idleTimeout,
 		fclm.functionCallComplete,
+	), nil
+}
+
+func (slm *SandboxLogsManager) resolveAppID(ctx context.Context) error {
+	slm.mu.Lock()
+	defer slm.mu.Unlock()
+	if slm.appID == nil {
+		appID, err := slm.getAppIDFunc(ctx)
+		if err != nil {
+			return err
+		}
+		slm.appID = &appID
+
+		return nil
+	}
+	return nil
+}
+
+func (slm *SandboxLogsManager) resolveTaskID(ctx context.Context) error {
+	slm.mu.Lock()
+	defer slm.mu.Unlock()
+	if slm.taskID == nil {
+		taskID, err := slm.getTaskIDFunc(ctx)
+		if err != nil {
+			return err
+		}
+		if taskID == "" {
+			return ExecutionError{
+				Exception: `Sandbox TaskID cannot be empty to fetch logs. Wait for the sandbox to be scheduled.`,
+			}
+		}
+		slm.taskID = &taskID
+	}
+	return nil
+}
+
+// Fetch fetches Sandbox entrypoint logs corresponding to the date range and filters.
+//
+// since is the start of the time range. params.Until defaults to the current
+// time. The sequence yields [LogEntry] values in chronological order.
+func (slm *SandboxLogsManager) Fetch(
+	ctx context.Context,
+	since time.Time,
+	params *SandboxLogFetchParams,
+) (iter.Seq2[LogEntry, error], error) {
+	var until *time.Time
+	var source LogSource
+	var searchText string
+	if params != nil {
+		until = params.Until
+		source = params.Source
+		searchText = params.SearchText
+	}
+
+	resolved, err := resolveLogFetchParams(until, source, searchText)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateLogFetchRange(since, resolved.until); err != nil {
+		return nil, err
+	}
+
+	if err := slm.resolveAppID(ctx); err != nil {
+		return nil, err
+	}
+	err = slm.resolveTaskID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return fetchLogEntries(
+		ctx,
+		slm.client,
+		*slm.appID,
+		slm.sandboxID,
+		since,
+		resolved.until,
+		logsFilters{
+			Source:     resolved.source,
+			TaskID:     *slm.taskID,
+			SearchText: resolved.searchText,
+		},
+	), nil
+}
+
+// Tail fetches the most recent Sandbox entrypoint logs.
+//
+// The sequence yields [LogEntry] values in chronological order.
+func (slm *SandboxLogsManager) Tail(ctx context.Context, params *LogTailParams) (iter.Seq2[LogEntry, error], error) {
+	entries, source, err := resolveLogTailParams(params)
+	if err != nil {
+		return nil, err
+	}
+
+	err = slm.resolveAppID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = slm.resolveTaskID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tailLogEntries(
+		ctx,
+		slm.client,
+		*slm.appID,
+		slm.sandboxID,
+		entries,
+		logsFilters{Source: source, TaskID: *slm.taskID},
 	), nil
 }
 
@@ -1518,6 +1651,10 @@ func logEntryContextIDs(item *pb.TaskLogs, batch *pb.TaskLogsBatch, objectID str
 	case strings.HasPrefix(objectID, "fc-"):
 		contextIDs = []string{
 			firstNonEmpty(item.GetInputId(), batch.GetInputId()),
+			firstNonEmpty(item.GetContainerId(), batch.GetTaskId()),
+		}
+	case strings.HasPrefix(objectID, "sb-"):
+		contextIDs = []string{
 			firstNonEmpty(item.GetContainerId(), batch.GetTaskId()),
 		}
 	}

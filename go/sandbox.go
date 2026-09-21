@@ -720,6 +720,9 @@ type Sandbox struct {
 	// EXPERIMENTAL: the API is subject to change.
 	ExperimentalSidecars SidecarService
 
+	// Logs provides access to entrypoint logs emitted by this Sandbox.
+	Logs *SandboxLogsManager
+
 	taskID   string
 	taskIDMu sync.Mutex
 	tunnels  map[int]*Tunnel
@@ -752,6 +755,15 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 	sb.Filesystem = &SandboxFilesystem{sandbox: sb, logger: client.logger}
 	sb.ExperimentalSidecars = &sidecarServiceImpl{sandbox: sb}
 	sb.attached.Store(true)
+	getAppIDFunc := func(ctx context.Context) (string, error) {
+		resp, err := sb.sandboxWait(ctx, 0)
+		return resp.GetMetadata().GetAppId(), err
+	}
+
+	getTaskIDFunc := func(ctx context.Context) (string, error) {
+		resp, err := sb.sandboxGetTaskID(ctx)
+		return resp.GetTaskId(), err
+	}
 	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
 		sb.isV2 = true
 		sb.Stdin = &sbStdinV2{sb: sb}
@@ -771,11 +783,15 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 				return outputStreamSbV2(stderrCtx, sb, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
 			},
 		}
+		sb.Logs = &SandboxLogsManager{client: client, sandboxID: sandboxID, getAppIDFunc: getAppIDFunc, getTaskIDFunc: getTaskIDFunc}
+
 		return sb
 	}
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
 	sb.Stdout = outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, client.profile.SandboxChannelIdleTimeout)
 	sb.Stderr = outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR, client.profile.SandboxChannelIdleTimeout)
+
+	sb.Logs = &SandboxLogsManager{client: client, sandboxID: sandboxID, getAppIDFunc: getAppIDFunc, getTaskIDFunc: getTaskIDFunc}
 	return sb
 }
 
