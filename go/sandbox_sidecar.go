@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +47,8 @@ type SidecarCreateParams struct {
 	Secrets []*Secret
 	// Workdir sets the working directory of the sidecar container.
 	Workdir string
+	// Volumes to mount in the sidecar container, keyed by mount path.
+	Volumes map[string]*Volume
 	// OutboundCIDRAllowlist restricts the sidecar's outbound traffic to these CIDRs. Independent of the main
 	// container; nil means all CIDRs are allowed. A non-nil allowlist with empty Entries blocks all external
 	// egress while preserving connectivity to the main container.
@@ -115,6 +119,30 @@ func validateSidecarName(name string) error {
 	return nil
 }
 
+func buildSidecarVolumeMounts(volumes map[string]*Volume) ([]*pb.VolumeMount, error) {
+	if volumes == nil {
+		return nil, nil
+	}
+	mountPathsByVolumeID := make(map[string][]string, len(volumes))
+	volumeMounts := make([]*pb.VolumeMount, 0, len(volumes))
+	for mountPath, volume := range volumes {
+		if volume == nil {
+			return nil, InvalidError{Exception: fmt.Sprintf("Volume mounted at %q must not be nil", mountPath)}
+		}
+		mountPathsByVolumeID[volume.VolumeID] = append(mountPathsByVolumeID[volume.VolumeID], mountPath)
+		volumeMounts = append(volumeMounts, volumeToMountProto(mountPath, volume))
+	}
+	for _, mountPaths := range mountPathsByVolumeID {
+		if len(mountPaths) > 1 {
+			sort.Strings(mountPaths)
+			return nil, InvalidError{Exception: fmt.Sprintf(
+				"The same Volume cannot be mounted at multiple paths in a sidecar: %s", strings.Join(mountPaths, ", "),
+			)}
+		}
+	}
+	return volumeMounts, nil
+}
+
 // controlPlaneSidecarCreateEnvVar opts a client in to sending sidecar create
 // requests to the Modal server rather than over the Sandbox connection.
 const controlPlaneSidecarCreateEnvVar = "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE"
@@ -133,6 +161,7 @@ type sidecarCreateInputs struct {
 	params        *SidecarCreateParams
 	envDict       map[string]string
 	secretIds     []string
+	volumeMounts  []*pb.VolumeMount
 	networkAccess *pb.NetworkAccess
 	ptyInfo       *pb.PTYInfo
 }
@@ -201,12 +230,18 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		return nil, err
 	}
 
+	volumeMounts, err := buildSidecarVolumeMounts(params.Volumes)
+	if err != nil {
+		return nil, err
+	}
+
 	inputs := sidecarCreateInputs{
 		name:          name,
 		image:         image,
 		params:        params,
 		envDict:       envDict,
 		secretIds:     secretIds,
+		volumeMounts:  volumeMounts,
 		networkAccess: networkAccess,
 		ptyInfo:       ptyInfo,
 	}
@@ -255,6 +290,7 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 			EntrypointArgs: in.params.Command,
 			Workdir:        workdir,
 			SecretIds:      in.secretIds,
+			VolumeMounts:   in.volumeMounts,
 			NetworkAccess:  in.networkAccess,
 			PtyInfo:        in.ptyInfo,
 		}.Build(),
@@ -282,6 +318,7 @@ func (s *sidecarServiceImpl) createViaCommandRouter(ctx context.Context, in side
 		Env:           in.envDict,
 		Workdir:       in.params.Workdir,
 		SecretIds:     in.secretIds,
+		VolumeMounts:  in.volumeMounts,
 		NetworkAccess: in.networkAccess,
 		PtyInfo:       in.ptyInfo,
 	}.Build()

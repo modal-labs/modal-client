@@ -3,6 +3,7 @@ package test
 import (
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	modal "github.com/modal-labs/modal-client/go"
@@ -209,6 +210,39 @@ func TestSidecarCreateForwardsSecretsAndEnv(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(code).Should(gomega.Equal(0))
 	g.Expect(string(output)).Should(gomega.Equal("override:plain"))
+}
+
+func TestSidecarCreateMountsVolume(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	volume, err := tc.Volumes.Ephemeral(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer volume.CloseEphemeral()
+
+	sb := createSandbox(ctx, g, tc)
+	defer terminateSandbox(g, sb)
+
+	image := buildAlpineImage(t, g, tc)
+
+	container, err := sb.ExperimentalSidecars.Create(ctx, "worker", image, &modal.SidecarCreateParams{
+		Command: []string{"sleep", "100"},
+		Volumes: map[string]*modal.Volume{"/mnt/data": volume},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	proc, err := container.Exec(ctx, []string{"sh", "-c", "echo volume-works > /mnt/data/marker.txt && cat /mnt/data/marker.txt"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	output, err := io.ReadAll(proc.Stdout)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	code, err := proc.Wait(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(code).Should(gomega.Equal(0))
+	g.Expect(strings.TrimSpace(string(output))).Should(gomega.Equal("volume-works"))
 }
 
 func TestSidecarExec(t *testing.T) {

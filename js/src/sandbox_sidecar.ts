@@ -7,6 +7,7 @@ import {
   Sandbox as SandboxDefinition,
   SandboxContainerCreateV2Request,
   StringMap,
+  VolumeMount,
 } from "../proto/modal_proto/api";
 import {
   TaskContainerCreateRequest,
@@ -51,6 +52,7 @@ import {
   validateEnvVarKeys,
   type Secret,
 } from "./secret";
+import { volumeToMountProto, type Volume } from "./volume";
 
 /** Reserved name of a Sandbox's main container. */
 const MAIN_CONTAINER_NAME = "main";
@@ -121,6 +123,8 @@ export type SidecarCreateParams = {
   secrets?: Secret[];
   /** Working directory of the sidecar container. */
   workdir?: string;
+  /** Mount points for Modal {@link Volume}s. */
+  volumes?: Record<string, Volume>;
   /**
    * List of CIDRs the sidecar is allowed to access. Independent of the main
    * container; if not set, all CIDRs are allowed. An empty list blocks all
@@ -192,6 +196,33 @@ function validateSidecarName(name: string): void {
   }
 }
 
+function buildSidecarVolumeMounts(
+  volumes: Record<string, Volume> | undefined,
+): VolumeMount[] {
+  const mountPathsByVolumeId = new Map<string, string[]>();
+  const volumeMounts: VolumeMount[] = [];
+  for (const [mountPath, volume] of Object.entries(volumes ?? {})) {
+    if (!volume) {
+      throw new InvalidError(
+        `Volume mounted at "${mountPath}" must not be null or undefined`,
+      );
+    }
+    const mountPaths = mountPathsByVolumeId.get(volume.volumeId) ?? [];
+    mountPaths.push(mountPath);
+    mountPathsByVolumeId.set(volume.volumeId, mountPaths);
+    volumeMounts.push(volumeToMountProto(mountPath, volume));
+  }
+  for (const mountPaths of mountPathsByVolumeId.values()) {
+    if (mountPaths.length > 1) {
+      throw new InvalidError(
+        "The same Volume cannot be mounted at multiple paths in a sidecar: " +
+          mountPaths.sort().join(", "),
+      );
+    }
+  }
+  return volumeMounts;
+}
+
 function sidecarContainerFromProto(
   access: SandboxSidecarAccess,
   info: TaskContainerInfo,
@@ -252,6 +283,8 @@ export class SidecarService {
     await hydrateSecrets(this.#access.client, resolvableSecrets);
     const secretIds = collectSecretIds(resolvableSecrets);
 
+    const volumeMounts = buildSidecarVolumeMounts(params?.volumes);
+
     const ptyInfo = params?.pty ? defaultSandboxPTYInfo() : undefined;
     const networkAccess = buildOutboundNetworkAccess(
       false,
@@ -275,6 +308,7 @@ export class SidecarService {
               entrypointArgs: command,
               workdir: params?.workdir ?? undefined,
               secretIds,
+              volumeMounts,
               networkAccess,
               ptyInfo,
             }),
@@ -292,6 +326,7 @@ export class SidecarService {
             env: envDict,
             workdir: params?.workdir ?? "",
             secretIds,
+            volumeMounts,
             networkAccess,
             ptyInfo,
           }),

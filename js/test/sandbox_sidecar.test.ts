@@ -17,6 +17,9 @@ import {
   SandboxContainerCreateV2Request,
   SandboxContainerCreateV2Response,
 } from "../proto/modal_proto/api";
+import { TaskContainerCreateRequest } from "../proto/modal_proto/task_command_router";
+import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
+import { Volume } from "../src/volume";
 
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
@@ -151,6 +154,31 @@ test("SidecarCreateForwardsSecretsAndEnv", async () => {
   expect(output).toBe("override:plain");
 });
 
+test("SidecarCreateMountsVolume", async () => {
+  const volume = await tc.volumes.ephemeral();
+  onTestFinished(() => volume.closeEphemeral());
+
+  const sb = await createSandbox();
+  const image = await buildAlpineImage();
+
+  const container = await sb.experimentalSidecars.create("worker", image, {
+    command: ["sleep", "100"],
+    volumes: { "/mnt/data": volume },
+  });
+
+  const write = await container.exec([
+    "sh",
+    "-c",
+    "echo volume-works > /mnt/data/marker.txt",
+  ]);
+  expect(await write.wait()).toBe(0);
+
+  const read = await container.exec(["cat", "/mnt/data/marker.txt"]);
+  const output = await read.stdout.readText();
+  expect(await read.wait()).toBe(0);
+  expect(output.trim()).toBe("volume-works");
+});
+
 test("SidecarExec", async () => {
   const sb = await createSandbox();
   const image = await buildAlpineImage();
@@ -206,6 +234,13 @@ test("sidecar create sends SandboxContainerCreateV2 to the control plane", async
       command: ["sleep", "100"],
       env: { PLAIN_ENV: "plain" },
       workdir: "/app",
+      volumes: {
+        "/mnt/data": new Volume("vo-plain"),
+        "/mnt/scoped": new Volume("vo-scoped").withMountOptions({
+          readOnly: true,
+          subPath: "/inner",
+        }),
+      },
       outboundCidrAllowlist: ["10.0.0.0/8"],
       outboundDomainAllowlist: ["example.com"],
       pty: true,
@@ -222,6 +257,22 @@ test("sidecar create sends SandboxContainerCreateV2 to the control plane", async
   expect(request?.definition?.entrypointArgs).toEqual(["sleep", "100"]);
   expect(request?.definition?.workdir).toBe("/app");
   expect(request?.definition?.secretIds).toEqual([]);
+  expect(request?.definition?.volumeMounts).toEqual([
+    {
+      volumeId: "vo-plain",
+      mountPath: "/mnt/data",
+      allowBackgroundCommits: true,
+      readOnly: false,
+      subPath: undefined,
+    },
+    {
+      volumeId: "vo-scoped",
+      mountPath: "/mnt/scoped",
+      allowBackgroundCommits: true,
+      readOnly: true,
+      subPath: "/inner",
+    },
+  ]);
   expect(request?.definition?.ptyInfo).toBeDefined();
   expect(request?.definition?.networkAccess?.networkAccessType).toBe(
     NetworkAccess_NetworkAccessType.ALLOWLIST,
@@ -260,7 +311,97 @@ test("sidecar create omits ephemeral secrets when no env vars are set", async ()
 
   expect(request?.ephemeralSecrets).toBeUndefined();
   expect(request?.definition?.workdir).toBeUndefined();
+  expect(request?.definition?.volumeMounts).toEqual([]);
   expect(request?.definition?.ptyInfo).toBeUndefined();
+  mock.assertExhausted();
+});
+
+test("sidecar create sends volume mounts over the command router", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const containerCreate = vi.fn().mockResolvedValue({
+    containerId: "sb-test-ctr-SIDECAR123",
+    containerName: "worker",
+  });
+  const tryInit = vi
+    .spyOn(TaskCommandRouterClientImpl, "tryInit")
+    .mockResolvedValue({
+      containerCreate,
+      close: vi.fn(),
+    } as unknown as TaskCommandRouterClientImpl);
+  onTestFinished(() => tryInit.mockRestore());
+
+  await sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    {
+      volumes: {
+        "/mnt/data": new Volume("vo-plain"),
+        "/mnt/scoped": new Volume("vo-scoped").withMountOptions({
+          readOnly: true,
+          subPath: "/inner",
+        }),
+      },
+    },
+  );
+
+  expect(containerCreate).toHaveBeenCalledTimes(1);
+  const request = containerCreate.mock
+    .calls[0][0] as TaskContainerCreateRequest;
+  expect(request.taskId).toBe("ta-v2-123");
+  expect(request.volumeMounts).toEqual([
+    {
+      volumeId: "vo-plain",
+      mountPath: "/mnt/data",
+      allowBackgroundCommits: true,
+      readOnly: false,
+      subPath: undefined,
+    },
+    {
+      volumeId: "vo-scoped",
+      mountPath: "/mnt/scoped",
+      allowBackgroundCommits: true,
+      readOnly: true,
+      subPath: "/inner",
+    },
+  ]);
+});
+
+test("sidecar create rejects invalid volume entries", async () => {
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const tryInit = vi.spyOn(TaskCommandRouterClientImpl, "tryInit");
+  onTestFinished(() => tryInit.mockRestore());
+
+  const sharedVolume = new Volume("vo-shared");
+  const cases: [Record<string, Volume>, string][] = [
+    [{ "/mnt/data": null as unknown as Volume }, '"/mnt/data"'],
+    [
+      {
+        "/mnt/b": sharedVolume,
+        "/mnt/a": sharedVolume.withMountOptions({ readOnly: true }),
+      },
+      "/mnt/a, /mnt/b",
+    ],
+  ];
+  for (const [volumes, expectedMessage] of cases) {
+    for (const useControlPlane of ["1", ""]) {
+      vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", useControlPlane);
+      const create = sb.experimentalSidecars.create(
+        "worker",
+        new Image(mc, "im-built", ""),
+        { volumes },
+      );
+      await expect(create).rejects.toThrow(InvalidError);
+      await expect(create).rejects.toThrow(expectedMessage);
+    }
+  }
+
+  expect(tryInit).not.toHaveBeenCalled();
   mock.assertExhausted();
 });
 

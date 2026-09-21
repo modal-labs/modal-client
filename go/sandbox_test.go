@@ -322,7 +322,7 @@ func (m *mockWaitUntilReadyStub) SandboxWaitUntilReady(
 }
 
 func newReadinessSandbox(t *testing.T, version sandboxVersion, stub pb.TaskCommandRouterClient) *Sandbox {
-	client := &Client{}
+	client := &Client{logger: slog.New(slog.DiscardHandler)}
 	sandboxID := testV1SandboxID
 	if version == sandboxVersionV2 {
 		sandboxID = testV2SandboxID
@@ -2051,7 +2051,155 @@ func TestSidecarCreateOmitsEmptyOptionalFields(t *testing.T) {
 	g.Expect(mock.gotReq.GetEphemeralSecrets()).To(gomega.BeNil())
 	g.Expect(definition.HasWorkdir()).To(gomega.BeFalse())
 	g.Expect(definition.GetPtyInfo()).To(gomega.BeNil())
+	g.Expect(definition.GetVolumeMounts()).To(gomega.BeEmpty())
 	g.Expect(definition.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_OPEN))
+}
+
+// Indexed by mount path because the Volumes map iterates in random order.
+func volumeMountsByPath(mounts []*pb.VolumeMount) map[string]*pb.VolumeMount {
+	byPath := make(map[string]*pb.VolumeMount, len(mounts))
+	for _, mount := range mounts {
+		byPath[mount.GetMountPath()] = mount
+	}
+	return byPath
+}
+
+func TestSidecarCreateForwardsVolumeMountsToControlPlane(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	readOnly := true
+	subPath := "/scoped"
+	scopedVolume := (&Volume{VolumeID: "vo-scoped", Name: "scoped"}).WithMountOptions(&VolumeMountOptionsParams{
+		ReadOnly: &readOnly,
+		SubPath:  &subPath,
+	})
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		Volumes: map[string]*Volume{
+			"/mnt/data":   {VolumeID: "vo-data", Name: "data"},
+			"/mnt/scoped": scopedVolume,
+		},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	mounts := volumeMountsByPath(mock.gotReq.GetDefinition().GetVolumeMounts())
+	g.Expect(mounts).To(gomega.HaveLen(2))
+
+	dataMount := mounts["/mnt/data"]
+	g.Expect(dataMount).ShouldNot(gomega.BeNil())
+	g.Expect(dataMount.GetVolumeId()).To(gomega.Equal("vo-data"))
+	g.Expect(dataMount.GetAllowBackgroundCommits()).To(gomega.BeTrue())
+	g.Expect(dataMount.GetReadOnly()).To(gomega.BeFalse())
+	g.Expect(dataMount.HasSubPath()).To(gomega.BeFalse())
+
+	scopedMount := mounts["/mnt/scoped"]
+	g.Expect(scopedMount).ShouldNot(gomega.BeNil())
+	g.Expect(scopedMount.GetVolumeId()).To(gomega.Equal("vo-scoped"))
+	g.Expect(scopedMount.GetAllowBackgroundCommits()).To(gomega.BeTrue())
+	g.Expect(scopedMount.GetReadOnly()).To(gomega.BeTrue())
+	g.Expect(scopedMount.GetSubPath()).To(gomega.Equal("/scoped"))
+}
+
+type mockContainerCreateStub struct {
+	pb.TaskCommandRouterClient
+	gotReq *pb.TaskContainerCreateRequest
+}
+
+func (m *mockContainerCreateStub) TaskContainerCreate(
+	_ context.Context,
+	in *pb.TaskContainerCreateRequest,
+	_ ...grpc.CallOption,
+) (*pb.TaskContainerCreateResponse, error) {
+	m.gotReq = in
+	return pb.TaskContainerCreateResponse_builder{
+		ContainerId:   "sb-test-ctr-SIDECAR123",
+		ContainerName: "worker",
+	}.Build(), nil
+}
+
+func TestSidecarCreateForwardsVolumeMountsOverCommandRouter(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	stub := &mockContainerCreateStub{}
+	sb := newReadinessSandbox(t, sandboxVersionV2, stub)
+
+	readOnly := true
+	readOnlyVolume := (&Volume{VolumeID: "vo-data", Name: "data"}).WithMountOptions(&VolumeMountOptionsParams{
+		ReadOnly: &readOnly,
+	})
+
+	container, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		Volumes: map[string]*Volume{"/mnt/data": readOnlyVolume},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(container.ContainerName).To(gomega.Equal("worker"))
+
+	g.Expect(stub.gotReq).ShouldNot(gomega.BeNil())
+	g.Expect(stub.gotReq.GetTaskId()).To(gomega.Equal("ta-wait-123"))
+	mounts := stub.gotReq.GetVolumeMounts()
+	g.Expect(mounts).To(gomega.HaveLen(1))
+	g.Expect(mounts[0].GetVolumeId()).To(gomega.Equal("vo-data"))
+	g.Expect(mounts[0].GetMountPath()).To(gomega.Equal("/mnt/data"))
+	g.Expect(mounts[0].GetAllowBackgroundCommits()).To(gomega.BeTrue())
+	g.Expect(mounts[0].GetReadOnly()).To(gomega.BeTrue())
+	g.Expect(mounts[0].HasSubPath()).To(gomega.BeFalse())
+}
+
+func TestSidecarCreateRejectsInvalidVolumes(t *testing.T) {
+	readOnly := true
+	sharedVolume := &Volume{VolumeID: "vo-shared", Name: "shared"}
+	cases := []struct {
+		name          string
+		volumes       map[string]*Volume
+		wantSubstring string
+	}{
+		{
+			name:          "nil entry",
+			volumes:       map[string]*Volume{"/mnt/data": nil},
+			wantSubstring: `"/mnt/data"`,
+		},
+		{
+			name: "same Volume at two paths",
+			volumes: map[string]*Volume{
+				"/mnt/b": sharedVolume,
+				"/mnt/a": sharedVolume.WithMountOptions(&VolumeMountOptionsParams{ReadOnly: &readOnly}),
+			},
+			wantSubstring: "/mnt/a, /mnt/b",
+		},
+	}
+	createPaths := []struct {
+		name            string
+		useControlPlane string
+	}{
+		{"control plane", "1"},
+		{"command router", ""},
+	}
+	for _, tc := range cases {
+		for _, createPath := range createPaths {
+			t.Run(tc.name+" via "+createPath.name, func(t *testing.T) {
+				t.Setenv(controlPlaneSidecarCreateEnvVar, createPath.useControlPlane)
+				g := gomega.NewWithT(t)
+
+				mock := &mockSandboxContainerCreateV2Client{}
+				sb := newSidecarCreateSandbox(mock)
+
+				_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+					Volumes: tc.volumes,
+				})
+				g.Expect(err).To(gomega.HaveOccurred())
+				g.Expect(err.Error()).To(gomega.ContainSubstring(tc.wantSubstring))
+				var invalidErr InvalidError
+				g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue())
+				g.Expect(mock.gotReq).To(gomega.BeNil())
+			})
+		}
+	}
 }
 
 func TestSidecarCreateMapsGRPCErrors(t *testing.T) {
