@@ -43,6 +43,22 @@ def _get_config(env={}):
 def test_config():
     config = _get_config()
     assert config["server_url"]
+    assert "function_runtime_debug" not in config
+
+
+def test_config_show_internal_fields():
+    stdout = _cli(["config", "show"])
+    config = json.loads(stdout)
+    assert "function_runtime_debug" not in config
+
+    stdout = _cli(["config", "show", "--include-internal"])
+    config = json.loads(stdout)
+    assert "function_runtime_debug" in config
+
+
+def test_config_to_dict_internal_settings():
+    assert "function_runtime_debug" not in config.to_dict()
+    assert config.to_dict(include_internal=True)["function_runtime_debug"] is False
 
 
 def test_config_env_override():

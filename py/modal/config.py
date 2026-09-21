@@ -108,6 +108,7 @@ from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
 
+from ._utils.deprecation import deprecation_warning
 from ._utils.logger import configure_logger
 from .exception import AuthError, InvalidError, NotFoundError
 
@@ -294,15 +295,14 @@ def _set_profile(profile: str) -> None:
     _profile = profile
 
 
-# Define settings
-
-
 def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
-def _check_value(options: list[str]) -> Callable[[str], str]:
+def _check_value(options: list[str], lowercase: bool = True) -> Callable[[str], str]:
     def checker(x: str) -> str:
+        if lowercase:
+            x = x.lower()
         if x not in options:
             raise ValueError(f"Must be one of {options}.")
         return x
@@ -346,61 +346,58 @@ def _transform_headers(s: str) -> dict[str, str]:
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
+    deprecated: tuple[int, int, int] | None = None
+    internal: bool = False
 
 
 _SETTINGS = {
-    "loglevel": _Setting("WARNING", lambda s: s.upper()),
-    "log_format": _Setting("STRING", lambda s: s.upper()),
-    "log_pattern": _Setting(),  # optional override of the formatting pattern
+    # --- Authentication ---------------------------------------------------------
     "server_url": _Setting(DEFAULT_SERVER_URL),
     "token_id": _Setting(),
     "token_secret": _Setting(),
     "oauth_refresh_token": _Setting(),
     "oauth_client_id": _Setting(),
     "oauth_client_secret": _Setting(),
-    "task_id": _Setting(),
-    "serve_timeout": _Setting(transform=float),
-    "sync_entrypoint": _Setting(),
-    "logs_timeout": _Setting(10, float),
-    "image_id": _Setting(),
-    "heartbeat_interval": _Setting(15, float),
-    "function_runtime": _Setting(),
-    "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
-    "runtime_perf_record": _Setting(False, transform=_to_boolean),  # For internal debugging use.
+    # --- Logging ----------------------------------------------------------------
+    "loglevel": _Setting("WARNING", lambda s: s.upper()),
+    "log_format": _Setting("STRING", lambda s: s.upper()),
+    "log_pattern": _Setting(),
+    # --- User-facing feature flags ----------------------------------------------
+    "sandbox_v2": _Setting(None, transform=_to_boolean),
+    "payload_format": _Setting("pickle", transform=_check_value(["pickle", "cbor"])),
+    "async_warnings": _Setting(True, transform=_to_boolean, deprecated=(2026, 9, 12)),
+    # --- User-facing configuration ----------------------------------------------
     "environment": _Setting(),
-    "default_cloud": _Setting(None, transform=lambda x: x if x else None),
-    "worker_id": _Setting(),  # For internal debugging use.
-    "restore_state_path": _Setting("/__modal/restore-state.json"),
+    "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
+    "traceback": _Setting(False, transform=_to_boolean),
+    "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
+    "image_builder_version": _Setting(),
     "force_build": _Setting(False, transform=_to_boolean),
     "ignore_cache": _Setting(False, transform=_to_boolean),
-    "traceback": _Setting(False, transform=_to_boolean),
-    "image_builder_version": _Setting(),
-    "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
-    "sandbox_v2": _Setting(None, transform=_to_boolean),
-    "use_control_plane_sidecar_create": _Setting(False, transform=_to_boolean),  # For internal/experimental use
-    "snapshot_debug": _Setting(False, transform=_to_boolean),
-    "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
-    # Used to indicate gVisor cuda-checkpoint automation.
-    "runtime_managed_cuda_checkpoint": _Setting(False, transform=_to_boolean),
-    "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
-    # Payload format for function inputs/outputs: 'pickle' (default) or 'cbor'
-    "payload_format": _Setting(
-        "pickle",
-        transform=lambda s: _check_value(["pickle", "cbor"])(s.lower()),
-    ),
-    "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
-    "max_throttle_wait": _Setting(None, transform=lambda x: int(x) if x else None),
-    "async_warnings": _Setting(True, transform=_to_boolean),  # Activate synchronicity usage warnings
     "disable_api_proxy": _Setting(False, transform=_to_boolean),
-    "override_headers": _Setting(None, transform=_transform_headers),
-    # How long a Sandbox connection may sit idle before the client releases it.
-    # The Sandbox stays usable: the next operation reconnects. Seconds; set to 0
-    # to keep Sandbox connections open until the client closes.
+    "default_cloud": _Setting(None, transform=lambda x: x if x else None, deprecated=(2026, 9, 12)),
+    # --- User-facing time controls -----------------------------------------------
+    "max_throttle_wait": _Setting(None, transform=lambda x: int(x) if x else None),
+    "logs_timeout": _Setting(10, float),
+    "serve_timeout": _Setting(transform=float),
     "sandbox_channel_idle_timeout": _Setting(30, transform=float),
-    # How long a Volume block download may go without receiving any data before the
-    # attempt is abandoned and retried. Only inactivity is bounded; a transfer that keeps
-    # delivering data may take arbitrarily long. Seconds; set to 0 to wait indefinitely.
     "volume_block_read_timeout": _Setting(60, transform=float),
+    # --- Internal configuration --------------------------------------------------
+    "sync_entrypoint": _Setting(internal=True),
+    "heartbeat_interval": _Setting(15, float, internal=True),
+    "function_runtime": _Setting(internal=True),
+    "function_runtime_debug": _Setting(False, transform=_to_boolean, internal=True),
+    "runtime_perf_record": _Setting(False, transform=_to_boolean, internal=True),
+    "use_control_plane_sidecar_create": _Setting(False, transform=_to_boolean, internal=True),
+    "worker_id": _Setting(internal=True),
+    "task_id": _Setting(internal=True),  # Read only -- unneeded?
+    "image_id": _Setting(internal=True),  # Read only -- unneeded?
+    # --- Internal CUDA checkpointing options -------------------------------------
+    "runtime_managed_cuda_checkpoint": _Setting(False, transform=_to_boolean, internal=True),
+    "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint", internal=True),
+    "restore_state_path": _Setting("/__modal/restore-state.json", internal=True),
+    "snapshot_debug": _Setting(False, transform=_to_boolean, internal=True),
+    "override_headers": _Setting(None, transform=_transform_headers, internal=True),
 }
 
 
@@ -439,8 +436,20 @@ class Config:
                 raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
 
         if use_env and env_var_key in os.environ:
+            if s.deprecated is not None:
+                deprecation_warning(
+                    s.deprecated,
+                    f"The MODAL_{key.upper()} environment variable is deprecated and will be ignored in the future.",
+                    show_source=False,
+                )
             return transform(os.environ[env_var_key])
         elif profile in _user_config and key in _user_config[profile]:
+            if s.deprecated is not None:
+                deprecation_warning(
+                    s.deprecated,
+                    f"The {key} profile setting is deprecated and will be ignored in the future.",
+                    show_source=False,
+                )
             return transform(_user_config[profile][key])
         else:
             return s.default
@@ -463,8 +472,10 @@ class Config:
     def __repr__(self):
         return repr(self.to_dict())
 
-    def to_dict(self):
-        return {key: self.get(key) for key in sorted(_SETTINGS)}
+    def to_dict(self, *, include_internal: bool = False):
+        return {
+            key: self.get(key) for key, setting in sorted(_SETTINGS.items()) if include_internal or not setting.internal
+        }
 
 
 config = Config()

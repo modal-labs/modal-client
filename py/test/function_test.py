@@ -1558,12 +1558,13 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     app = App(include_source=False)
 
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "xyz")
-    app.function()(dummy)
+    with pytest.warns(DeprecationError, match="MODAL_DEFAULT_CLOUD"):
+        app.function()(dummy)
     with app.run(client=client):
         object_id: str = app._local_state.functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
-    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer sent
+    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED
     assert f.cloud_provider_str == "xyz"
 
 

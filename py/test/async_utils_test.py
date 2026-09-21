@@ -1710,7 +1710,9 @@ async def test_disable_async_warnings(servicer, client, monkeypatch, set_env_cli
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         modal.Dict.objects.list()
-    assert len(w) == 0
+    assert len(w) == 1
+    assert issubclass(w[0].category, modal.exception.DeprecationError)
+    assert "MODAL_ASYNC_WARNINGS" in str(w[0].message)
 
 
 def test_extract_user_call_frame_filters_packages_not_filenames():

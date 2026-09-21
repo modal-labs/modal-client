@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-import json
+from json import dumps
 
 import click
 
@@ -21,11 +21,12 @@ config_cli = ModalGroup(
 )
 
 
-@config_cli.command("show", help="Show current configuration values (debugging command).")
+@config_cli.command("show", help="Show current configuration values.")
 @click.option("--redact/--no-redact", default=True, help="Redact secret credential values.")
-def show(redact: bool):
-    # This is just a test command
-    config_dict = config.to_dict()
+@click.option("--include-internal", is_flag=True, help="Include internal feature flags.", hidden=True)
+@click.option("--json", is_flag=True, default=False)
+def show(redact: bool, include_internal: bool, json: bool):
+    config_dict = config.to_dict(include_internal=include_internal)
     if redact and config_dict.get("token_secret"):
         config_dict["token_secret"] = "***"
     if redact and config_dict.get("oauth_refresh_token"):
@@ -33,7 +34,8 @@ def show(redact: bool):
     if redact and config_dict.get("oauth_client_secret"):
         config_dict["oauth_client_secret"] = "***"
 
-    OutputManager.get().print_json(json.dumps(config_dict))
+    # Accept --json as a no-op for consistency; we may change the default formatting later
+    OutputManager.get().print_json(dumps(config_dict))
 
 
 SET_DEFAULT_ENV_HELP = """Set the default Modal environment for the active profile
