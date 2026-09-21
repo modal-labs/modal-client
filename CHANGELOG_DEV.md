@@ -33,6 +33,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `modal server logs` to fetch or stream logs from a modal server.
 - Added `modal server stats` to inspect performance metrics for a Server over a selected time window.
 - We're removing the experimental `modal bootstrap` CLI; use `modal endpoint` to quickly stand up production-ready endpoints.
+- Added `modal function variants` to list the variants of a Function. It shows the 200 variants running the most containers by default; pass `-n`/`--limit` to show a different number, or `--limit 0` to list every variant, newest first.
 
 ## JS
 

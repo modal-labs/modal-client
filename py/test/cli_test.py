@@ -21,7 +21,7 @@ import toml
 from grpclib import GRPCError, Status
 
 import modal
-from modal._serialization import PICKLE_PROTOCOL
+from modal._serialization import PICKLE_PROTOCOL, serialize_proto_params
 from modal._utils.grpc_testing import InterceptionContext
 from modal.exception import DeprecationError, InvalidError, NotFoundError, _CliUserExecutionError
 from modal.types import LogEntry
@@ -4239,6 +4239,289 @@ def test_function_stats_cli(servicer, set_env_client):
     assert result.stdout.index("Execution time (s)") < result.stdout.index("End-to-end latency (s)")
     assert result.stdout.index("Startup time (s)") < result.stdout.index("CPU Usage (cores)")
     assert result.stdout.index("CPU Usage (cores)") < result.stdout.index("Memory Usage (GiB)")
+
+
+def _run_variants_cli_with_ctx(
+    servicer,
+    variant_infos: list[api_pb2.FunctionVariantInfo],
+    args: list[str] = [],
+    handle_metadata: api_pb2.FunctionHandleMetadata | None = None,
+    ordered_by_task_count: bool = False,
+):
+    """Run `modal function variants` and return its result alongside the intercepted requests."""
+    # Widen the console so that the options of one variant are rendered on a single line.
+    with mock.patch.dict(os.environ, {"COLUMNS": "200"}), servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test", handle_metadata=handle_metadata or api_pb2.FunctionHandleMetadata()
+            ),
+        )
+        ctx.add_response(
+            "FunctionListVariants",
+            api_pb2.FunctionListVariantsResponse(infos=variant_infos, ordered_by_task_count=ordered_by_task_count),
+        )
+        result = run_cli_command(["function", "variants", "my-app/my-function", *args])
+    return result, ctx
+
+
+def _run_variants_cli(
+    servicer,
+    variant_infos: list[api_pb2.FunctionVariantInfo],
+    args: list[str] = [],
+    handle_metadata: api_pb2.FunctionHandleMetadata | None = None,
+    ordered_by_task_count: bool = False,
+):
+    result, _ = _run_variants_cli_with_ctx(servicer, variant_infos, args, handle_metadata, ordered_by_task_count)
+    return result
+
+
+def _s3_mount() -> api_pb2.CloudBucketMount:
+    return api_pb2.CloudBucketMount(
+        mount_path="/bucket",
+        bucket_name="my-bucket",
+        bucket_type=api_pb2.CloudBucketMount.BucketType.S3,
+        key_prefix="logs/",
+        read_only=True,
+    )
+
+
+def test_function_variants_cli(servicer, set_env_client):
+    variant_infos = [
+        api_pb2.FunctionVariantInfo(
+            function_id="fu-variant-1",
+            function_options=api_pb2.FunctionOptions(
+                resources=api_pb2.Resources(milli_cpu=4000),
+                cloud_bucket_mounts=[_s3_mount()],
+                retry_policy=api_pb2.FunctionRetryPolicy(retries=3),
+            ),
+        ),
+        api_pb2.FunctionVariantInfo(function_id="fu-variant-2", function_options=api_pb2.FunctionOptions()),
+    ]
+
+    result = _run_variants_cli(servicer, variant_infos)
+
+    assert "Variants of fu-test" in result.stdout
+    # The retry count is the only part of a retry policy that the table shows.
+    assert "cpu=4.0, cloud_bucket_mounts={/bucket: s3://my-bucket/logs/ (ro)}, retries=3" in result.stdout
+    assert "fu-variant-2" in result.stdout
+    # A variant that overrides nothing has no parameters column and an empty options cell.
+    assert "Parameters" not in result.stdout
+
+
+def test_function_variants_cli_bucket_mount_formats(servicer, set_env_client):
+    variant_infos = [
+        api_pb2.FunctionVariantInfo(
+            function_id="fu-variant",
+            function_options=api_pb2.FunctionOptions(
+                cloud_bucket_mounts=[
+                    api_pb2.CloudBucketMount(
+                        mount_path="/r2", bucket_name="other", bucket_type=api_pb2.CloudBucketMount.BucketType.R2
+                    ),
+                    api_pb2.CloudBucketMount(
+                        mount_path="/gcp",
+                        bucket_name="gcp-bucket",
+                        bucket_type=api_pb2.CloudBucketMount.BucketType.GCP,
+                        key_prefix="data/",
+                    ),
+                ]
+            ),
+        ),
+    ]
+
+    result = _run_variants_cli(servicer, variant_infos)
+
+    assert "cloud_bucket_mounts={/r2: r2://other, /gcp: gcp://gcp-bucket/data/}" in result.stdout
+
+
+def test_function_variants_cli_volume_mount_options(servicer, set_env_client):
+    """A volume mounted with `.with_mount_options()` shows what it changed, not just the volume."""
+    variant_infos = [
+        api_pb2.FunctionVariantInfo(
+            function_id="fu-variant",
+            function_options=api_pb2.FunctionOptions(
+                volume_mounts=[
+                    api_pb2.VolumeMount(mount_path="/a", volume_id="vo-1"),
+                    api_pb2.VolumeMount(mount_path="/b", volume_id="vo-2", read_only=True),
+                    api_pb2.VolumeMount(mount_path="/c", volume_id="vo-3", sub_path="sub"),
+                    api_pb2.VolumeMount(mount_path="/d", volume_id="vo-4", read_only=True, sub_path="sub"),
+                ]
+            ),
+        ),
+    ]
+
+    result = _run_variants_cli(servicer, variant_infos)
+
+    assert "volumes={/a: vo-1, /b: vo-2 (ro), /c: vo-3:sub, /d: vo-4:sub (ro)}" in result.stdout
+
+
+def test_function_variants_cli_truncates_long_options(servicer, set_env_client):
+    variant_infos = [
+        api_pb2.FunctionVariantInfo(
+            function_id="fu-variant",
+            function_options=api_pb2.FunctionOptions(
+                cloud_bucket_mounts=[
+                    api_pb2.CloudBucketMount(mount_path=f"/bucket-{i}", bucket_name=f"bucket-{i}") for i in range(10)
+                ]
+            ),
+        ),
+    ]
+
+    result = _run_variants_cli(servicer, variant_infos)
+
+    assert "\u2026" in result.stdout
+
+
+def test_function_variants_cli_parameters(servicer, set_env_client):
+    variant_infos = [
+        api_pb2.FunctionVariantInfo(
+            function_id="fu-variant",
+            serialized_params=serialize_proto_params({"x": 42, "name": "foo", "blob": b"0" * 2048}),
+        ),
+        api_pb2.FunctionVariantInfo(function_id="fu-undecodable", serialized_params=b"not-a-parameter-set"),
+    ]
+    # A Function that carries metadata for its methods serves a Cls, whose variants are parameterized.
+    handle_metadata = api_pb2.FunctionHandleMetadata(
+        method_handle_metadata={"my_method": api_pb2.FunctionHandleMetadata()}
+    )
+
+    result = _run_variants_cli(servicer, variant_infos, handle_metadata=handle_metadata)
+
+    assert "Parameters" in result.stdout
+    # A bytes parameter is rendered as its size rather than its contents.
+    assert "x=42, name='foo', blob=<bytes: 2.0 KiB>" in result.stdout
+    assert "unavailable" in result.stdout
+
+
+def test_function_variants_cli_json(servicer, set_env_client):
+    variant_infos = [
+        api_pb2.FunctionVariantInfo(
+            function_id="fu-variant",
+            function_options=api_pb2.FunctionOptions(
+                resources=api_pb2.Resources(milli_cpu=2000, milli_cpu_max=4000, memory_mb=2048),
+                cloud_bucket_mounts=[_s3_mount()],
+                volume_mounts=[api_pb2.VolumeMount(mount_path="/vol", volume_id="vo-123")],
+                retry_policy=api_pb2.FunctionRetryPolicy(retries=3, backoff_coefficient=2.0, initial_delay_ms=1000),
+                max_concurrent_inputs=100,
+                target_concurrent_inputs=50,
+                concurrency_limit=10,
+            ),
+        ),
+    ]
+
+    result = _run_variants_cli(servicer, variant_infos, args=["--json"])
+
+    assert json.loads(result.stdout) == [
+        {
+            "function_id": "fu-variant",
+            "options": {
+                "cpu": [2.0, 4.0],
+                "memory": 2048,
+                "volumes": {"/vol": {"name": None, "volume_id": "vo-123", "read_only": False, "sub_path": None}},
+                "cloud_bucket_mounts": {
+                    "/bucket": {
+                        "bucket_name": "my-bucket",
+                        "bucket_type": "s3",
+                        "read_only": True,
+                        "key_prefix": "logs/",
+                    }
+                },
+                "retries": {
+                    "max_retries": 3,
+                    "backoff_coefficient": 2.0,
+                    "initial_delay": 1.0,
+                    "max_delay": 60.0,
+                },
+                "max_containers": 10,
+                "max_inputs": 100,
+                "target_inputs": 50,
+            },
+        }
+    ]
+
+
+def _variant_infos(count: int) -> list[api_pb2.FunctionVariantInfo]:
+    return [api_pb2.FunctionVariantInfo(function_id=f"fu-variant-{i}") for i in range(count)]
+
+
+def _unwrapped(text: str) -> str:
+    """Collapse whitespace so assertions survive the table title wrapping to the table's width."""
+    return " ".join(text.split())
+
+
+def test_function_variants_cli_defaults_to_busiest(servicer, set_env_client):
+    """Without a limit the command asks for the busiest variants, and says so, since the ordering
+    is not otherwise visible in the table."""
+    result, ctx = _run_variants_cli_with_ctx(servicer, _variant_infos(2), ordered_by_task_count=True)
+
+    (request,) = ctx.get_requests("FunctionListVariants")
+    assert request.limit == 200
+    assert "Variants of fu-test · 2 busiest" in _unwrapped(result.stdout)
+
+
+def test_function_variants_cli_limit_zero_lists_everything(servicer, set_env_client):
+    """`--limit 0` asks for every variant, and the title stops claiming the listing is ordered."""
+    result, ctx = _run_variants_cli_with_ctx(servicer, _variant_infos(2), args=["--limit", "0"])
+
+    (request,) = ctx.get_requests("FunctionListVariants")
+    assert request.limit == 0
+    assert "2 newest" in _unwrapped(result.stdout)
+    assert "busiest" not in result.stdout
+
+
+def test_function_variants_cli_large_limit_is_unordered(servicer, set_env_client):
+    """The title follows what the server reports, not the limit that was asked for: a listing the
+    server did not rank must not be called busiest, however large the limit."""
+    result, ctx = _run_variants_cli_with_ctx(servicer, _variant_infos(2), args=["--limit", "201"])
+
+    (request,) = ctx.get_requests("FunctionListVariants")
+    assert request.limit == 201
+    assert "2 newest" in _unwrapped(result.stdout)
+    assert "busiest" not in result.stdout
+
+
+def test_function_variants_cli_title_follows_the_server(servicer, set_env_client):
+    """The client no longer decides which listings are ranked: a limit the server would not rank
+    today still titles the table busiest when the server says it ordered by task count."""
+    result = _run_variants_cli(servicer, _variant_infos(2), args=["--limit", "201"], ordered_by_task_count=True)
+
+    assert "2 busiest" in _unwrapped(result.stdout)
+
+
+def test_function_variants_cli_lists_the_family_of_a_variant(servicer, set_env_client):
+    """A variant has no variants of its own, so naming one lists the family it belongs to."""
+    handle_metadata = api_pb2.FunctionHandleMetadata(base_function_id="fu-base")
+    result, ctx = _run_variants_cli_with_ctx(servicer, _variant_infos(2), handle_metadata=handle_metadata)
+
+    (request,) = ctx.get_requests("FunctionListVariants")
+    assert request.function_id == "fu-base"
+    assert "Variants of fu-base" in _unwrapped(result.stdout)
+
+
+def test_function_variants_cli_empty_listing_names_the_base(servicer, set_env_client):
+    """The Function reported as having no variants is the one that was listed."""
+    handle_metadata = api_pb2.FunctionHandleMetadata(base_function_id="fu-base")
+    result = _run_variants_cli(servicer, [], handle_metadata=handle_metadata)
+
+    assert "No variants found for fu-base." in _unwrapped(result.stdout)
+
+
+def test_function_variants_cli_reports_truncation(servicer, set_env_client):
+    """A full page is indistinguishable from a complete listing, so say how to get the rest."""
+    result = _run_variants_cli(servicer, _variant_infos(2), args=["--limit", "2"])
+    assert "use --limit 0 to list every variant" in _unwrapped(result.stdout)
+
+    result = _run_variants_cli(servicer, _variant_infos(2), args=["--limit", "3"])
+    assert "use --limit 0" not in _unwrapped(result.stdout)
+
+
+def test_function_variants_cli_rejects_negative_limit(set_env_client):
+    """A negative limit is caught before any request goes out."""
+    result = run_cli_command(
+        ["function", "variants", "my-app/my-function", "--limit", "-1"],
+        expected_exit_code=2,
+    )
+    assert "--limit cannot be negative" in result.stderr
 
 
 @pytest.mark.parametrize("reason", [None, 0, api_pb2.FunctionLookupError.REASON_CLASS_NAME_USED])

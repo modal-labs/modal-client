@@ -1,18 +1,23 @@
 # Copyright Modal Labs 2026
+import dataclasses
 import json as json_lib
 from datetime import datetime, timedelta, timezone
-from typing import cast
+from typing import Any, cast
 
 import click
 from click import UsageError
+from rich.table import Column
 from rich.text import Text
 
 from modal._environments import ensure_env
+from modal._function_variants import _FunctionOptionsInfo, _list_function_variants
 from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import parse_duration
 from modal.client import _Client
 from modal.output import OutputManager
+from modal.retries import Retries
+from modal.types import CloudBucketMountInfo, VolumeMountInfo
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
@@ -32,7 +37,7 @@ from ._stats import (
     stats_style,
     success_style,
 )
-from .utils import _resolve_function_id, env_option
+from .utils import _resolve_function_id, display_table, env_option, humanize_filesize
 
 function_cli = ModalGroup(name="function", help="Inspect Modal Functions.")
 
@@ -406,6 +411,7 @@ async def logs(
     function_id, metadata = await _resolve_function_id(
         client, function_ref, env, object_type="Function", command="logs"
     )
+    app_id = metadata.app_id
 
     prefix_fields: list[str] = []
     if show_function_id:
@@ -430,3 +436,206 @@ async def logs(
         timestamps=timestamps,
         prefix_fields=prefix_fields,
     )
+
+
+def _overridden_options(options: _FunctionOptionsInfo | None) -> list[tuple[str, Any]]:
+    """Return the settings a variant overrides, keyed by the builder-method parameter name."""
+    if options is None:
+        return []
+    fields = ((field.name, getattr(options, field.name)) for field in dataclasses.fields(options))
+    return [(name, value) for name, value in fields if value is not None]
+
+
+def _variant_overrides_json(options: _FunctionOptionsInfo | None) -> dict[str, Any]:
+    """Return the overridden settings in a form that can be serialized as JSON."""
+    overrides: dict[str, Any] = {}
+    for name, value in _overridden_options(options):
+        if isinstance(value, Retries):
+            value = {
+                "max_retries": value.max_retries,
+                "backoff_coefficient": value.backoff_coefficient,
+                "initial_delay": value.initial_delay.total_seconds(),
+                "max_delay": value.max_delay.total_seconds(),
+            }
+        elif isinstance(value, tuple):
+            value = list(value)
+        elif name in ("cloud_bucket_mounts", "volumes"):
+            value = {path: dataclasses.asdict(mount) for path, mount in value.items()}
+        overrides[name] = value
+    return overrides
+
+
+def _format_bucket_mount(mount: CloudBucketMountInfo) -> str:
+    """Render a cloud bucket mount as a URI, which is the part that identifies it at a glance."""
+    uri = f"{mount.bucket_type}://{mount.bucket_name}"
+    if mount.key_prefix:
+        uri = f"{uri}/{mount.key_prefix}"
+    return f"{uri} (ro)" if mount.read_only else uri
+
+
+def _format_volume_mount(mount: VolumeMountInfo) -> str:
+    """Render a volume mount as its ID plus whatever `.with_mount_options()` changed about it."""
+    volume = mount.volume_id or mount.name or ""
+    if mount.sub_path:
+        volume = f"{volume}:{mount.sub_path}"
+    return f"{volume} (ro)" if mount.read_only else volume
+
+
+def _format_override(value: Any) -> str:
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{k}: {_format_override(v)}" for k, v in value.items()) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_format_override(v) for v in value) + "]"
+    return str(value)
+
+
+def _variant_cell(text: str, style: str = "") -> Text:
+    """Render one table cell that is truncated rather than wrapped, so one variant stays in one row."""
+    return Text(text, style=style, no_wrap=True, overflow="ellipsis")
+
+
+def _format_parameter(value: Any) -> str:
+    if isinstance(value, bytes):
+        # A bytes parameter is an opaque payload; its size is the only part that reads well in a table.
+        return f"<bytes: {humanize_filesize(len(value))}>"
+    return repr(value)
+
+
+def _parameters_cell(parameters: dict[str, Any] | None) -> Text:
+    if parameters is None:
+        return _variant_cell("unavailable", style="dim")
+    return _variant_cell(", ".join(f"{name}={_format_parameter(value)}" for name, value in parameters.items()))
+
+
+def _options_cell(options: _FunctionOptionsInfo | None) -> Text:
+    parts = []
+    for name, value in _overridden_options(options):
+        if isinstance(value, Retries):
+            # The retry count is the useful part of a retry policy at a glance.
+            value = value.max_retries
+        elif name == "cloud_bucket_mounts":
+            value = {path: _format_bucket_mount(mount) for path, mount in value.items()}
+        elif name == "volumes":
+            value = {path: _format_volume_mount(mount) for path, mount in value.items()}
+        parts.append(f"{name}={_format_override(value)}")
+    return _variant_cell(", ".join(parts))
+
+
+@function_cli.command("variants", no_args_is_help=True)
+@click.argument("function_ref", metavar="FUNCTION")
+@click.option(
+    "-n",
+    "--limit",
+    "limit",
+    default=200,
+    show_default=True,
+    type=int,
+    help="Show at most N variants, those running the most containers first. Use 0 to list every variant, newest first.",
+)
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@env_option
+@synchronizer.create_blocking
+async def variants(
+    function_ref: str,
+    limit: int = 200,
+    json: bool = False,
+    env: str | None = None,
+):
+    """List the variants of a modal Function.
+
+    Variants are the parameterized instances of a `modal.Cls` and the Functions created with
+    `.with_options()`. FUNCTION may be a Function ID or a deployed Function name in the form
+    ``APP_NAME/FUNCTION_NAME``.
+
+    By default, the busiest variants are listed first. If you ask for more variants than can be
+    ranked, or for all of them, they are listed newest first instead.
+
+    Examples:
+
+    List the busiest variants of a deployed Function:
+
+    ```
+    modal function variants my-app/my-function
+    ```
+
+    List the parameterized instances of a deployed `modal.Cls`:
+
+    ```
+    modal function variants 'my-app/MyClass.*'
+    ```
+
+    Show only the ten busiest variants:
+
+    ```
+    modal function variants my-app/my-function --limit 10
+    ```
+
+    List every variant of a Function ID as JSON:
+
+    ```
+    modal function variants fu-abc123 --limit 0 --json
+    ```
+    """
+    if limit < 0:
+        raise UsageError("--limit cannot be negative.")
+
+    environment_name = _get_environment_name(ensure_env(env))
+    client = await _Client.from_env()
+    function_id, handle_metadata = await _resolve_function_id(
+        client,
+        function_ref,
+        environment_name,
+        command="variants",
+    )
+    # A variant has no variants of its own, so resolving one lists the family it belongs to.
+    base_function_id = handle_metadata.base_function_id or function_id
+    effective_limit = limit or None
+    listing = await _list_function_variants(client, base_function_id, limit=effective_limit)
+    function_variants = listing.variants
+    show_parameters = bool(handle_metadata.method_handle_metadata)
+
+    output = OutputManager.get()
+    if json:
+        payload: list[dict[str, Any]] = []
+        for variant in function_variants:
+            entry: dict[str, Any] = {"function_id": variant.function_id}
+            if show_parameters:
+                entry["parameters"] = variant.parameters
+            entry["options"] = _variant_overrides_json(variant.options)
+            payload.append(entry)
+        # Parameter values may include bytes, which have no JSON representation of their own.
+        output.print_json(json_lib.dumps(payload, default=repr))
+        return
+
+    if not function_variants:
+        output.print(f"No variants found for {base_function_id}.")
+        return
+
+    rows: list[list[Text | str | None]] = []
+    for variant in function_variants:
+        options_cell = _options_cell(variant.options)
+        if show_parameters:
+            rows.append(
+                [
+                    variant.function_id,
+                    _parameters_cell(variant.parameters),
+                    options_cell,
+                ]
+            )
+        else:
+            rows.append([variant.function_id, options_cell])
+
+    id_column = Column("Function ID", no_wrap=True)
+    columns = (
+        [id_column, Column("Parameters"), Column("Options")] if show_parameters else [id_column, Column("Options")]
+    )
+    ordering = f"{len(rows)} busiest" if listing.ordered_by_task_count else f"{len(rows)} newest"
+    display_table(columns, rows, title=f"Variants of {base_function_id} · {ordering}")
+
+    if effective_limit is not None and len(function_variants) == effective_limit:
+        output.print(
+            Text(
+                f"Showing {effective_limit} variants; use --limit 0 to list every variant.",
+                style="dim",
+            )
+        )

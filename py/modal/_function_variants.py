@@ -4,12 +4,15 @@ from collections.abc import Collection, Sequence, Sized
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+import google.protobuf.message
+
 from modal.types import CloudBucketMountInfo, FunctionInfo, VolumeMountInfo
 from modal_proto import api_pb2
 
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import (
     apply_defaults,
+    deserialize_proto_params,
     serialize,
     serialize_proto_params,
     validate_parameter_values,
@@ -17,11 +20,14 @@ from ._serialization import (
 from ._utils.function_utils import _parse_retries
 from ._utils.mount_utils import validate_volumes, validate_volumes_by_object_id
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
+from .exception import InvalidError
 from .retries import Retries
 from .secret import _Secret
 from .volume import _Volume, _volume_to_mount_proto
 
 if TYPE_CHECKING:
+    from modal.client import _Client
+
     from ._functions import _Function
     from ._load_context import LoadContext
     from ._object import _Object
@@ -188,6 +194,157 @@ class _FunctionOptions:
             cloud_provider_str=self.cloud,
             routing_region=self.routing_region,
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class _FunctionOptionsInfo:
+    """Configuration overrides applied to a Function variant.
+
+    Fields are named after the parameters of the builder methods that set them: `.with_options()`,
+    `.with_concurrency()` (`max_inputs`, `target_inputs`), and `.with_batching()` (`max_batch_size`,
+    `wait_ms`). Fields are None when the variant does not override that setting.
+    """
+
+    cpu: float | tuple[float, float] | None = None
+    memory: int | tuple[int, int] | None = None
+    gpu: str | None = None
+    secrets: list[str] | None = None
+    volumes: dict[str, VolumeMountInfo] | None = None  # mount path -> volume and its mount options
+    cloud_bucket_mounts: dict[str, CloudBucketMountInfo] | None = None  # mount path -> bucket mount
+    retries: Retries | None = None
+    max_containers: int | None = None
+    buffer_containers: int | None = None
+    scaledown_window: int | None = None
+    timeout: int | None = None
+    region: str | list[str] | None = None
+    cloud: str | None = None
+    routing_region: str | None = None
+    max_inputs: int | None = None
+    target_inputs: int | None = None
+    max_batch_size: int | None = None
+    wait_ms: int | None = None
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.FunctionOptions) -> "_FunctionOptionsInfo":
+        cpu: float | tuple[float, float] | None = None
+        memory: int | tuple[int, int] | None = None
+        gpu: str | None = None
+        if proto.HasField("resources"):
+            resources = proto.resources
+            if resources.milli_cpu_max > 0:
+                cpu = (resources.milli_cpu / 1000, resources.milli_cpu_max / 1000)
+            elif resources.milli_cpu > 0:
+                cpu = resources.milli_cpu / 1000
+
+            if resources.memory_mb_max > 0:
+                memory = (resources.memory_mb, resources.memory_mb_max)
+            elif resources.memory_mb > 0:
+                memory = resources.memory_mb
+
+            if resources.gpu_config.count > 0:
+                gpu_config = resources.gpu_config
+                gpu = gpu_config.gpu_type if gpu_config.count == 1 else f"{gpu_config.gpu_type}:{gpu_config.count}"
+
+        retries: Retries | None = None
+        if proto.HasField("retry_policy"):
+            retry_policy = proto.retry_policy
+            retries = Retries(
+                max_retries=retry_policy.retries,
+                backoff_coefficient=retry_policy.backoff_coefficient or 2.0,
+                initial_delay=retry_policy.initial_delay_ms / 1000,
+                max_delay=retry_policy.max_delay_ms / 1000 or 60.0,
+            )
+
+        region: str | list[str] | None = None
+        if proto.HasField("scheduler_placement") and proto.scheduler_placement.regions:
+            region = list(proto.scheduler_placement.regions)
+
+        return cls(
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            secrets=list(proto.secret_ids) or None,
+            volumes={
+                vm.mount_path: VolumeMountInfo(
+                    name=None,  # The mount records which Volume, not what it was called.
+                    volume_id=vm.volume_id,
+                    read_only=vm.read_only,
+                    sub_path=vm.sub_path if vm.HasField("sub_path") else None,
+                )
+                for vm in proto.volume_mounts
+            }
+            or None,
+            cloud_bucket_mounts={
+                cbm.mount_path: CloudBucketMountInfo._from_proto(cbm) for cbm in proto.cloud_bucket_mounts
+            }
+            or None,
+            retries=retries,
+            max_containers=proto.concurrency_limit if proto.HasField("concurrency_limit") else None,
+            buffer_containers=proto.buffer_containers if proto.HasField("buffer_containers") else None,
+            scaledown_window=proto.task_idle_timeout_secs if proto.HasField("task_idle_timeout_secs") else None,
+            timeout=proto.timeout_secs if proto.HasField("timeout_secs") else None,
+            region=region,
+            cloud=proto.cloud_provider_str if proto.HasField("cloud_provider_str") else None,
+            routing_region=proto.routing_region if proto.HasField("routing_region") else None,
+            max_inputs=proto.max_concurrent_inputs if proto.HasField("max_concurrent_inputs") else None,
+            target_inputs=proto.target_concurrent_inputs if proto.HasField("target_concurrent_inputs") else None,
+            max_batch_size=proto.batch_max_size if proto.HasField("batch_max_size") else None,
+            wait_ms=proto.batch_linger_ms if proto.HasField("batch_linger_ms") else None,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class _FunctionVariantInfo:
+    """Information about a variant of a Function, created by parametrization or `.with_options()`."""
+
+    function_id: str
+    parameters: dict[str, str | int | bytes | bool] | None  # None when the parameters can't be decoded
+    options: _FunctionOptionsInfo | None
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.FunctionVariantInfo) -> "_FunctionVariantInfo":
+        parameters: dict[str, str | int | bytes | bool] | None
+        try:
+            parameters = deserialize_proto_params(proto.serialized_params)
+        except (google.protobuf.message.DecodeError, InvalidError):
+            parameters = None
+
+        return cls(
+            function_id=proto.function_id,
+            parameters=parameters,
+            options=_FunctionOptionsInfo._from_proto(proto.function_options)
+            if proto.HasField("function_options")
+            else None,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class _FunctionVariantListing:
+    """The variants of a Function, and how the server chose to order them."""
+
+    variants: list[_FunctionVariantInfo]
+    # True when the variants are ordered by how many tasks each is running, busiest first.
+    ordered_by_task_count: bool
+
+
+async def _list_function_variants(
+    client: "_Client", function_id: str, *, limit: int | None = None
+) -> _FunctionVariantListing:
+    variants: list[_FunctionVariantInfo] = []
+    ordered_by_task_count = False
+    cursor = None
+    while True:
+        request = api_pb2.FunctionListVariantsRequest(function_id=function_id, cursor=cursor, limit=limit or 0)
+        response = await client.stub.FunctionListVariants(request)
+        # An ordered listing arrives as a single response, so there is nothing to reconcile across
+        # pages: every response of a multi-page listing reports itself unordered.
+        ordered_by_task_count = response.ordered_by_task_count
+        variants.extend(_FunctionVariantInfo._from_proto(info) for info in response.infos)
+        if limit is not None and len(variants) >= limit:
+            return _FunctionVariantListing(variants[:limit], ordered_by_task_count)
+        if not response.HasField("next_cursor"):
+            return _FunctionVariantListing(variants, ordered_by_task_count)
+        cursor = response.next_cursor
 
 
 async def _function_bind_params_cached(

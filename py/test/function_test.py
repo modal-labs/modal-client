@@ -17,11 +17,13 @@ from grpclib import GRPCError, Status
 import modal
 import modal.experimental
 from modal import App, Image, Proxy, asgi_app, batched, fastapi_endpoint
+from modal._function_variants import _FunctionOptionsInfo, _list_function_variants
 from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._partial_function import MAX_MAX_BATCH_SIZE
 from modal._utils.async_utils import synchronize_api, synchronizer
 from modal._vendor import cloudpickle
 from modal.client import Client
+from modal.cloud_bucket_mount import CloudBucketMount
 from modal.exception import (
     DeprecationError,
     ExecutionError,
@@ -199,6 +201,127 @@ def test_function_dynamic_config_bind_params_cache_cleared_by_rehydration(client
     with servicer.intercept() as ctx, app.run(client=client):
         assert foo.with_options(cpu=4).remote(2, 4) == 20
         assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+
+_list_variants = synchronize_api(_list_function_variants)
+
+
+def test_list_function_variants(client, servicer):
+    with app.run(client=client):
+        assert _list_variants(client, foo.object_id).variants == []
+
+        foo.with_options(cpu=4, max_containers=10).hydrate()
+        foo.with_options(memory=2048, region=["us-east-1", "us-west-2"]).hydrate()
+
+        variants = _list_variants(client, foo.object_id).variants
+
+    # Newest variant first.
+    assert [variant.options for variant in variants] == [
+        _FunctionOptionsInfo(memory=2048, region=["us-east-1", "us-west-2"]),
+        _FunctionOptionsInfo(cpu=4.0, max_containers=10),
+    ]
+    # Variants of a plain Function are not parameterized
+    assert [variant.parameters for variant in variants] == [{}, {}]
+
+
+def test_list_function_variants_cloud_bucket_mounts(client, servicer):
+    with app.run(client=client):
+        foo.with_options(
+            volumes={"/bucket": CloudBucketMount("my-bucket", key_prefix="logs/", read_only=True)}
+        ).hydrate()
+
+        (variant,) = _list_variants(client, foo.object_id).variants
+
+    assert variant.options.cloud_bucket_mounts == {
+        "/bucket": CloudBucketMountInfo(bucket_name="my-bucket", bucket_type="s3", read_only=True, key_prefix="logs/")
+    }
+
+
+def test_list_function_variants_dynamic_config(client, servicer):
+    with app.run(client=client):
+        foo.with_concurrency(max_inputs=100, target_inputs=50).hydrate()
+        foo.with_batching(max_batch_size=10, wait_ms=20).hydrate()
+
+        variants = _list_variants(client, foo.object_id).variants
+
+    assert [variant.options for variant in variants] == [
+        _FunctionOptionsInfo(max_batch_size=10, wait_ms=20),
+        _FunctionOptionsInfo(max_inputs=100, target_inputs=50),
+    ]
+
+
+def test_list_function_variants_paginates(client, servicer):
+    servicer.function_variants_page_size = 1
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        for cpu in [2, 4, 6]:
+            foo.with_options(cpu=cpu).hydrate()
+
+        listing = _list_variants(client, foo.object_id)
+        assert len(ctx.get_requests("FunctionListVariants")) == 3
+
+    assert [variant.options.cpu for variant in listing.variants] == [6.0, 4.0, 2.0]
+    # Paged listings run newest first, and say so on every page.
+    assert not listing.ordered_by_task_count
+
+
+def test_list_function_variants_busiest_first(client, servicer):
+    """A limit asks for the variants running the most containers, busiest first."""
+    with app.run(client=client):
+        variant_ids = [foo.with_options(cpu=cpu).hydrate().object_id for cpu in [2, 4, 6]]
+        servicer.function_variant_task_counts = {variant_ids[0]: 1, variant_ids[1]: 7, variant_ids[2]: 3}
+
+        listing = _list_variants(client, foo.object_id, limit=10)
+
+    assert [variant.function_id for variant in listing.variants] == [variant_ids[1], variant_ids[2], variant_ids[0]]
+    assert listing.ordered_by_task_count
+
+
+def test_list_function_variants_ranked_limit_takes_one_request(client, servicer):
+    """A limit small enough to rank is answered in a single response, with no paging."""
+    servicer.function_variants_page_size = 1
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        for cpu in [2, 4, 6]:
+            foo.with_options(cpu=cpu).hydrate()
+
+        listing = _list_variants(client, foo.object_id, limit=2)
+        requests = ctx.get_requests("FunctionListVariants")
+
+    assert len(listing.variants) == 2
+    assert [request.limit for request in requests] == [2]
+
+
+def test_list_function_variants_limit_truncates_paged_results(client, servicer, monkeypatch):
+    """A limit too large to rank still caps the result, so it means the same thing whichever way
+    the variants come back. Lowering the ranking threshold stands in for the hundreds of variants
+    it would otherwise take to page past the limit."""
+    monkeypatch.setattr("test.conftest.MAX_SORTED_FUNCTION_VARIANTS_LIMIT", 1)
+    servicer.function_variants_page_size = 1
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        for cpu in [2, 4, 6]:
+            foo.with_options(cpu=cpu).hydrate()
+
+        listing = _list_variants(client, foo.object_id, limit=2)
+        requests = ctx.get_requests("FunctionListVariants")
+
+    assert len(listing.variants) == 2
+    # Two single-variant pages, then truncation rather than a third request for the last variant.
+    assert len(requests) == 2
+    # Truncating a paged listing does not make it a ranked one.
+    assert not listing.ordered_by_task_count
+
+
+def test_list_function_variants_no_limit_sends_none(client, servicer):
+    """Asking for every variant sends no limit, which is what an older client also sends."""
+    with servicer.intercept() as ctx, app.run(client=client):
+        foo.with_options(cpu=2).hydrate()
+
+        _list_variants(client, foo.object_id)
+        (request,) = ctx.get_requests("FunctionListVariants")
+
+    assert request.limit == 0
 
 
 def test_function_dynamic_config_validation():

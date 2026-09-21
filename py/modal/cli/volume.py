@@ -13,7 +13,7 @@ from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
-from modal.cli.utils import display_table, env_option, yes_option
+from modal.cli.utils import display_table, env_option, humanize_filesize, yes_option
 from modal.output import OutputManager
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
@@ -28,18 +28,6 @@ volume_cli = ModalGroup(
     Note: users of `modal.NetworkFileSystem` should use the `modal nfs` command instead.
     """,
 )
-
-
-def humanize_filesize(value: int) -> str:
-    if value < 0:
-        raise ValueError("value should be >= 0")
-    base = 1024
-    size = float(value)
-    for unit in ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"):
-        if size < base:
-            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
-        size /= base
-    return f"{size:.1f} ZiB"
 
 
 @volume_cli.command("create", help="Create a named, persistent modal.Volume.", panel="Management", no_args_is_help=True)

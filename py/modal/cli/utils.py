@@ -132,6 +132,18 @@ async def _fetch_app_logs(
     await _drain_batches(output_mgr, batches, prefix_fields or [], filters.search_text)
 
 
+def humanize_filesize(value: int) -> str:
+    if value < 0:
+        raise ValueError("value should be >= 0")
+    base = 1024
+    size = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"):
+        if size < base:
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= base
+    return f"{size:.1f} ZiB"
+
+
 def _plain(text: "Text | str | bool | None") -> "str | bool | None":
     return text.plain if isinstance(text, Text) else text
 
@@ -216,7 +228,7 @@ async def _resolve_function_id(
     environment_name: str,
     *,
     object_type: Literal["Function", "Server"] = "Function",
-    command: Literal["logs", "stats"],
+    command: Literal["logs", "stats", "variants"],
 ) -> tuple[str, api_pb2.FunctionHandleMetadata]:
     identifier_label = object_type.upper()
     usage = (

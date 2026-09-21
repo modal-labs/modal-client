@@ -63,6 +63,10 @@ from modal_proto import api_grpc, api_pb2, task_command_router_grpc, task_comman
 VALID_GPU_TYPES = ["ANY", "T4", "L4", "A10G", "L40S", "A100", "A100-40GB", "A100-80GB", "H100"]
 VALID_CLOUD_PROVIDERS = ["AWS", "GCP", "OCI", "AUTO", "XYZ"]
 
+# Largest FunctionListVariants limit the server answers with a busiest-first listing. Mirrors the
+# server's own limit, which this repository cannot import.
+MAX_SORTED_FUNCTION_VARIANTS_LIMIT = 200
+
 
 @dataclasses.dataclass
 class TaskCommandRouterTaskState:
@@ -686,6 +690,10 @@ class FunctionsRegistry:
     def __init__(self):
         self._functions: dict[str, api_pb2.Function] = {}
         self._functions_data: dict[str, api_pb2.FunctionData] = {}
+        # Every registered function has a definition, including ones a test injects directly.
+        # Callers that share a definition across functions (parameter binding) overwrite the entry.
+        self.definition_ids: dict[str, str] = {}
+        self._n_definitions = 0
 
     def __getitem__(self, key):
         if key in self._functions:
@@ -697,6 +705,8 @@ class FunctionsRegistry:
             self._functions_data[key] = value
         else:
             self._functions[key] = value
+        self._n_definitions += 1
+        self.definition_ids[key] = f"de-{self._n_definitions}"
 
     def __len__(self):
         return len(self._functions) + len(self._functions_data)
@@ -867,7 +877,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_functions: FunctionsRegistry = FunctionsRegistry()
         self.bound_functions: dict[bytes, str] = {}
         self.function_params: dict[str, tuple[tuple, dict[str, Any]]] = {}
+        self.function_serialized_params: dict[str, bytes] = {}
         self.function_options: dict[str, api_pb2.FunctionOptions] = {}
+        self.function_variants: dict[str, list[str]] = {}  # base function ID -> bound function IDs
+        self.function_variants_page_size: int | None = None  # None serves every variant in one page
+        self.function_variant_task_counts: dict[str, int] = {}  # bound function ID -> running containers
         self.function_call_num_inputs: dict[str, int] = {}
         self.fcidx = 0
 
@@ -956,7 +970,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.auth_tokens_generated = 0
         self.flash_endpoint_auth_token = "flash-endpoint-auth-token"
         self.cli_get_flash_endpoint_auth_token_requests: list[api_pb2.CurlAuthTokenRequest] = []
-        self.function_id_to_definition_id: dict[str, str] = {}
         self.function_id_to_app_id: dict[str, str] = {}
         self.auth_token_delay = 0.0
         # Number of times AttemptAwait was called.
@@ -1102,7 +1115,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def get_function_metadata(self, function_id: str) -> api_pb2.FunctionHandleMetadata:
         function_proto: api_pb2.Function = self.app_functions[function_id]
-        definition_id = self.function_id_to_definition_id[function_id]
+        definition_id = self.app_functions.definition_ids[function_id]
 
         return api_pb2.FunctionHandleMetadata(
             function_name=function_proto.function_name,
@@ -2189,11 +2202,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if request.function_options.HasField("routing_region"):
                 bound_func.routing_region = request.function_options.routing_region
             self.app_functions[function_id] = bound_func
-            self.function_id_to_definition_id[function_id] = self.function_id_to_definition_id[request.function_id]
+            self.app_functions.definition_ids[function_id] = self.app_functions.definition_ids[request.function_id]
             self.function_id_to_app_id[function_id] = self.function_id_to_app_id.get(request.function_id, "")
             self.bound_functions[bind_params_key] = function_id
             self.function_params[function_id] = deserialize_params(request.serialized_params, bound_func, None)
+            self.function_serialized_params[function_id] = request.serialized_params
             self.function_options[function_id] = request.function_options
+            self.function_variants.setdefault(request.function_id, []).append(function_id)
 
         handle_metadata = self.get_function_metadata(function_id)
         await stream.send_message(
@@ -2202,6 +2217,41 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 handle_metadata=handle_metadata,
             )
         )
+
+    async def FunctionListVariants(self, stream):
+        request: api_pb2.FunctionListVariantsRequest = await stream.recv_message()
+        variant_ids = self.function_variants.get(request.function_id, [])
+        # Variants are registered oldest first, so their position stands in for created_at.
+        created_at = {variant_id: position for position, variant_id in enumerate(variant_ids)}
+        ordered_by_task_count = 0 < request.limit <= MAX_SORTED_FUNCTION_VARIANTS_LIMIT
+        if ordered_by_task_count:
+            # Small enough limits are answered in one ranked page, busiest first, so they never
+            # hand back a cursor.
+            counts = self.function_variant_task_counts
+            page = sorted(variant_ids, key=lambda fid: (-counts.get(fid, 0), fid))[: request.limit]
+            has_more = False
+        else:
+            # Keyed the way the server keys it, so a cursor the server would reject can't pass here.
+            remaining = sorted(variant_ids, key=lambda fid: (created_at[fid], fid), reverse=True)
+            if request.HasField("cursor"):
+                bound = (request.cursor.created_before, request.cursor.function_id)
+                remaining = [fid for fid in remaining if (created_at[fid], fid) < bound]
+            page_size = self.function_variants_page_size or len(remaining)
+            page, has_more = remaining[:page_size], len(remaining) > page_size
+        infos = [
+            api_pb2.FunctionVariantInfo(
+                function_id=variant_id,
+                serialized_params=self.function_serialized_params.get(variant_id, b""),
+                function_options=self.function_options.get(variant_id) or api_pb2.FunctionOptions(),
+            )
+            for variant_id in page
+        ]
+        response = api_pb2.FunctionListVariantsResponse(infos=infos, ordered_by_task_count=ordered_by_task_count)
+        if has_more:
+            response.next_cursor.CopyFrom(
+                api_pb2.FunctionVariantCursor(created_before=created_at[page[-1]], function_id=page[-1])
+            )
+        await stream.send_message(response)
 
     @contextlib.contextmanager
     def input_lockstep(self) -> Iterator[threading.Barrier]:
@@ -2319,7 +2369,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if method_definition.webhook_config.type:
                 method_definition.web_url = f"http://{method_name}.internal"
         self.app_functions[function_id] = function_defn
-        self.function_id_to_definition_id[function_id] = f"de-{len(self.function_id_to_definition_id)}"
         self.function_id_to_app_id[function_id] = request.app_id
 
         if function_defn.schedule:
@@ -2506,7 +2555,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 is_sessioned=function.is_sessioned,
             )
 
-        await stream.send_message(api_pb2.FunctionGetByIdResponse(function=function))
+        await stream.send_message(
+            api_pb2.FunctionGetByIdResponse(
+                function=function, handle_metadata=self.get_function_metadata(request.function_id)
+            )
+        )
 
     async def FunctionMap(self, stream):
         self.fcidx += 1
