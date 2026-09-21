@@ -177,13 +177,13 @@ def test_url_displayed_function_create_status_web_url(monkeypatch):
         handle_metadata=api_pb2.FunctionHandleMetadata(web_url=web_url),
     )
 
-    with FunctionCreationStatus(tag) as function_creation_status:
+    with FunctionCreationStatus("Function", tag) as function_creation_status:
         function_creation_status.set_response(response)
 
     start_message = status_row_mock.message.call_args.args[0]
-    assert f"Creating function {tag}..." == start_message
+    assert f"Creating Function {tag}..." == start_message
 
-    finish_message = status_row_mock.finish.call_args.args[0]
+    finish_message = status_row_mock.details.call_args.args[0]
     assert web_url in finish_message
 
 

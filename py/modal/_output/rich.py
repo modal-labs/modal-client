@@ -194,6 +194,10 @@ class RichStatusRow(StatusRow):
         if self._spinner is not None:
             self._spinner.update(text=message)
 
+    def details(self, message: str) -> None:
+        if self._step_node is not None:
+            self._step_node.add(f"{message}")
+
     def warn(self, warning: api_pb2.Warning) -> None:
         if self._step_node is not None:
             self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
@@ -201,7 +205,7 @@ class RichStatusRow(StatusRow):
     def finish(self, message: str) -> None:
         if self._step_node is not None and self._spinner is not None:
             self._spinner.update(text=message)
-            self._step_node.label = f"🔨 {message}"
+            self._step_node.label = f"[green]✓[/green] {message}"
 
 
 _LOG_FLUSH_THRESHOLD = 32768  # 32KB — flush batched log output roughly every ~400 lines

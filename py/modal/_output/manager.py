@@ -59,6 +59,11 @@ class StatusRow(ABC):
         ...
 
     @abstractmethod
+    def details(self, message: str) -> None:
+        """Append additional details to the row."""
+        ...
+
+    @abstractmethod
     def finish(self, message: str) -> None:
         """Mark the row as finished with the given message."""
         ...
@@ -71,6 +76,9 @@ class DisabledStatusRow(StatusRow):
         pass
 
     def warn(self, warning: "api_pb2.Warning") -> None:
+        pass
+
+    def details(self, message: str) -> None:
         pass
 
     def finish(self, message: str) -> None:

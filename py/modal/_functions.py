@@ -945,7 +945,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
-            with FunctionCreationStatus(tag) as function_creation_status:
+            with FunctionCreationStatus("Server" if is_server else "Function", tag) as function_creation_status:
                 timeout_secs = timeout
 
                 if app and app._is_interactive_ and not is_builder_function:

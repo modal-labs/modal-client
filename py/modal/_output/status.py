@@ -12,7 +12,7 @@ from modal_proto import api_pb2
 from .manager import OutputManager
 
 
-def _get_suffix_from_web_url_info(url_info: api_pb2.WebUrlInfo) -> str:
+def _get_annotation_for_web_url(url_info: api_pb2.WebUrlInfo) -> str:
     if url_info.truncated:
         suffix = " [grey70](label truncated)[/grey70]"
     elif url_info.label_stolen:
@@ -25,16 +25,18 @@ def _get_suffix_from_web_url_info(url_info: api_pb2.WebUrlInfo) -> str:
 class FunctionCreationStatus:
     """Context manager for tracking and displaying function creation progress."""
 
-    tag: str
+    type: str
+    name: str
     response: api_pb2.FunctionCreateResponse | None = None
 
-    def __init__(self, tag: str):
-        self.tag = tag
+    def __init__(self, type: str, name: str):
+        self.type = type
+        self.name = name
         self._output_mgr = OutputManager.get()
 
     def __enter__(self):
         self.status_row = self._output_mgr.add_status_row()
-        self.status_row.message(f"Creating function {self.tag}...")
+        self.status_row.message(f"Creating {self.type} {self.name}...")
         return self
 
     def set_response(self, resp: api_pb2.FunctionCreateResponse):
@@ -45,7 +47,7 @@ class FunctionCreationStatus:
             raise exc_val
 
         if not self.response:
-            self.status_row.finish(f"Unknown error when creating function {self.tag}")
+            self.status_row.finish(f"Unknown error when creating {self.type} {self.name}")
             return
 
         for warning in self.response.server_warnings:
@@ -53,46 +55,38 @@ class FunctionCreationStatus:
 
         if web_url := self.response.handle_metadata.web_url:
             url_info = self.response.function.web_url_info
-            requires_proxy_auth = self.response.function.webhook_config.requires_proxy_auth
-            proxy_auth_suffix = " 🔑" if requires_proxy_auth else ""
-            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-            suffix = _get_suffix_from_web_url_info(url_info)
-            self.status_row.finish(
-                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]"
-                f"{proxy_auth_suffix}{suffix}"
-            )
+            authenticated = self.response.function.webhook_config.requires_proxy_auth
+            auth_suffix = " 🔑" if authenticated else " [yellow](unauthenticated)[/yellow]"
+            suffix = _get_annotation_for_web_url(url_info)
 
-            # Print custom domain in terminal
+            self.status_row.finish(f"Created {self.type} [green]{self.name}[/green]")
+            self.status_row.details(f"[dim underline]{web_url}[/dim underline]{auth_suffix}{suffix}")
             for custom_domain in self.response.function.custom_domain_info:
-                custom_domain_status_row = self._output_mgr.add_status_row()
-                custom_domain_status_row.finish(
-                    f"Custom domain for {self.tag} => [magenta underline]{custom_domain.url}[/magenta underline]"
-                )
+                self.status_row.details(f"Custom domain: [dim underline]{custom_domain.url}[/dim underline]")
 
         elif self.response.function.flash_service_urls:
-            self.status_row.finish(f"Created function {self.tag}.")
-            for flash_service_url in self.response.function.flash_service_urls:
-                flash_service_url_status_row = self._output_mgr.add_status_row()
-                flash_service_url_status_row.finish(
-                    f"Created flash service endpoint for {self.tag} => "
-                    f"[magenta underline]{flash_service_url}[/magenta underline]"
-                )
+            # Despite the gRPC API types, Servers only have one URL
+            authenticated = self.response.function.is_server and not self.response.function.http_config.unauthenticated
+            auth_suffix = " 🔑" if authenticated else " [yellow](unauthenticated)[/yellow]"
+            self.status_row.finish(f"Created {self.type} [green]{self.name}[/green]")
+            url = self.response.function.flash_service_urls[0]
+            self.status_row.details(f"[dim underline]{url}[/dim underline]{auth_suffix}")
 
         else:
-            self.status_row.finish(f"Created function {self.tag}.")
+            self.status_row.finish(f"Created {self.type} [green]{self.name}[/green].")
             if self.response.function.method_definitions_set:
                 for method_definition in self.response.function.method_definitions.values():
                     if method_definition.web_url:
                         url_info = method_definition.web_url_info
-                        suffix = _get_suffix_from_web_url_info(url_info)
-                        class_web_endpoint_method_status_row = self._output_mgr.add_status_row()
-                        class_web_endpoint_method_status_row.finish(
-                            f"Created Web Function URL for {method_definition.function_name} => [magenta underline]"
-                            f"{method_definition.web_url}[/magenta underline]{suffix}"
+                        suffix = _get_annotation_for_web_url(url_info)
+                        authenticated = method_definition.webhook_config.requires_proxy_auth
+                        auth_suffix = " 🔑" if authenticated else " [yellow](unauthenticated)[/yellow]"
+                        self.status_row.details(
+                            f"{method_definition.function_name} -> "
+                            f"[dim underline]{method_definition.web_url}[/dim underline]{auth_suffix}{suffix}"
                         )
                         for custom_domain in method_definition.custom_domain_info:
-                            custom_domain_status_row = self._output_mgr.add_status_row()
-                            custom_domain_status_row.finish(
-                                f"Custom domain for {method_definition.function_name} => [magenta underline]"
-                                f"{custom_domain.url}[/magenta underline]"
+                            indent = len(method_definition.function_name) * " "
+                            self.status_row.details(
+                                f"{indent} -> [dim underline]{custom_domain.url}[/dim underline]{auth_suffix}"
                             )

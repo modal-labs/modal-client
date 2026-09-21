@@ -668,7 +668,7 @@ class _Mount(_Object, type_prefix="mo"):
             )
 
         resp = await load_context.client.stub.MountGetOrCreate(req, retry=Retry(base_delay=1))
-        status_row.finish(f"Created mount {message_label}")
+        status_row.finish(f"Uploaded {message_label}")
 
         logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")
         self._hydrate(resp.mount_id, load_context.client, resp.handle_metadata)
