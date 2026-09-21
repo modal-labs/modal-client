@@ -7,6 +7,7 @@ from typing import cast
 
 import click
 from click import UsageError
+from rich.table import Column
 from rich.text import Text
 
 from modal._environments import ensure_env
@@ -36,9 +37,22 @@ from ._stats import (
     stats_style,
     success_style,
 )
-from .utils import _resolve_function_id, env_option
+from .utils import (
+    HEADER_ONLY,
+    _resolve_function_id,
+    display_table,
+    env_option,
+    grouped_utc_timestamp,
+)
 
 server_cli = ModalGroup(name="server", help="Manage Servers.")
+
+_DEFAULT_REQUEST_TAIL = 100
+_MAX_REQUEST_TAIL = 1000
+
+
+def _server_request_status_cell(status: int, no_color: bool = False) -> Text:
+    return Text(str(status), style="red") if status >= 400 and not no_color else Text(str(status))
 
 
 @server_cli.command("logs", no_args_is_help=True)
@@ -153,6 +167,118 @@ async def logs(
         source=source,
         timestamps=timestamps,
         prefix_fields=prefix_fields,
+    )
+
+
+@server_cli.command("requests", no_args_is_help=True)
+@click.argument("server_identifier", metavar="SERVER")
+@click.option(
+    "-n",
+    "--tail",
+    type=click.IntRange(min=1, max=_MAX_REQUEST_TAIL),
+    default=_DEFAULT_REQUEST_TAIL,
+    show_default=True,
+    help="Show up to the last N Server requests.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False, help="Output requests as JSON.")
+@click.option("--no-color", "no_color", is_flag=True, default=False, help="Disable colors in the output.")
+@env_option
+@synchronizer.create_blocking
+async def requests(
+    server_identifier: str,
+    tail: int = _DEFAULT_REQUEST_TAIL,
+    json_output: bool = False,
+    no_color: bool = False,
+    *,
+    env: str | None = None,
+) -> None:
+    """Show recent requests handled by a Modal Server.
+
+    SERVER may be a Function ID or a deployed Server name in the form
+    ``APP_NAME/SERVER_NAME``.
+
+    Examples:
+
+    ```
+    modal server requests my-app/my-server
+    ```
+
+    ```
+    modal server requests my-app/my-server --tail 500
+    ```
+
+    Disable color in the output:
+
+    ```
+    modal server requests my-app/my-server --no-color
+    ```
+    """
+    environment_name = _get_environment_name(ensure_env(env))
+    client = await _Client.from_env()
+    function_id, _ = await _resolve_function_id(
+        client,
+        server_identifier,
+        environment_name,
+        object_type="Server",
+        command="requests",
+    )
+    response = await client.stub.ServerRequestFetch(
+        api_pb2.ServerRequestFetchRequest(
+            function_id=function_id, tail=api_pb2.ServerRequestFetchRequest.Tail(count=tail)
+        )
+    )
+
+    if json_output:
+        OutputManager.get().print_json(
+            json_lib.dumps(
+                [
+                    {
+                        "timestamp": request.timestamp.ToJsonString(),
+                        "route": request.route,
+                        "container_id": request.container_id,
+                        "duration_seconds": request.duration_seconds,
+                        "status": request.status,
+                    }
+                    for request in response.requests
+                ]
+            )
+        )
+        return
+
+    rows: list[list[Text | str]] = []
+    previous_request_date = None
+    for request in response.requests:
+        timestamp, previous_request_date = grouped_utc_timestamp(request.timestamp, previous_request_date)
+        rows.append(
+            [
+                Text(timestamp),
+                Text(request.route),
+                Text(request.container_id),
+                Text(f"{request.duration_seconds:.2f}"),
+                _server_request_status_cell(request.status, no_color=no_color),
+            ]
+        )
+    output = OutputManager.get()
+    output.print("")
+    output.print(Text(f"Server requests for {function_id}"))
+    output.print(
+        Text(
+            f"Displaying {len(rows):,} {'row' if len(rows) == 1 else 'rows'}",
+            style=STATS_METADATA_STYLE if not no_color else "",
+        )
+    )
+    output.print("")
+    display_table(
+        [
+            Column("Timestamp (UTC)", justify="right"),
+            "Route",
+            Column("Container", width=29),
+            Column("Duration (s)", justify="right"),
+            "Status",
+        ],
+        rows,
+        table_box=HEADER_ONLY,
+        border_style=STATS_METADATA_STYLE if not no_color else None,
     )
 
 

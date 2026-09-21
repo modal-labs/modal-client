@@ -37,7 +37,14 @@ from ._stats import (
     stats_style,
     success_style,
 )
-from .utils import _resolve_function_id, display_table, env_option, humanize_filesize
+from .utils import (
+    HEADER_ONLY,
+    _resolve_function_id,
+    display_table,
+    env_option,
+    grouped_utc_timestamp,
+    humanize_filesize,
+)
 
 function_cli = ModalGroup(name="function", help="Inspect Modal Functions.")
 
@@ -48,6 +55,46 @@ _CONTAINER_METRIC_ORDER = (
     "Memory Usage (GiB)",
     "GPU Utilization (%)",
 )
+_DEFAULT_CALL_TAIL = 100
+_MAX_CALL_TAIL = 1000
+_FAILURE_STATUSES = {
+    api_pb2.FUNCTION_CALL_INPUT_STATUS_FAILURE: "Failure",
+    api_pb2.FUNCTION_CALL_INPUT_STATUS_TIMEOUT: "Timeout",
+    api_pb2.FUNCTION_CALL_INPUT_STATUS_TERMINATED: "Terminated",
+    api_pb2.FUNCTION_CALL_INPUT_STATUS_INIT_FAILURE: "Failure",
+    api_pb2.FUNCTION_CALL_INPUT_STATUS_INTERNAL_FAILURE: "Failure",
+    api_pb2.FUNCTION_CALL_INPUT_STATUS_IDLE_TIMEOUT: "Timeout (idle)",
+    api_pb2.FUNCTION_CALL_INPUT_STATUS_MEMORY_MANAGER_EVICTION: "Evicted (over memory request)",
+}
+
+
+def _optional_duration(value: float, present: bool) -> str:
+    if not present:
+        return "—"
+    return f"{value:.2f}"
+
+
+def _function_call_status(status: api_pb2.FunctionCallInputStatus.ValueType, json_output: bool = False) -> str | int:
+    try:
+        name = api_pb2.FunctionCallInputStatus.Name(status)
+    except ValueError:
+        return status
+    label = name.removeprefix("FUNCTION_CALL_INPUT_STATUS_").replace("_", " ")
+    if json_output:
+        return label.lower()
+    return _FAILURE_STATUSES.get(status, label.title())
+
+
+def _function_call_status_cell(status: api_pb2.FunctionCallInputStatus.ValueType, no_color: bool = False) -> Text:
+    style = None
+    if status == api_pb2.FUNCTION_CALL_INPUT_STATUS_PENDING:
+        style = "yellow"
+    elif status == api_pb2.FUNCTION_CALL_INPUT_STATUS_RUNNING:
+        style = "green"
+    elif status in _FAILURE_STATUSES:
+        style = "red"
+    label = str(_function_call_status(status))
+    return Text(label, style=style) if style and not no_color else Text(label)
 
 
 def _time_range_stats_json(response: api_pb2.FunctionGetTimeRangeStatsResponse) -> dict[str, object]:
@@ -305,6 +352,183 @@ async def stats(
     if container_rows:
         output.print("")
         output.print(_percentile_table(container_rows, use_color))
+
+
+@function_cli.command("calls", no_args_is_help=True)
+@click.argument("function_identifier", metavar="FUNCTION")
+@click.option(
+    "-n",
+    "--tail",
+    type=click.IntRange(min=1, max=_MAX_CALL_TAIL),
+    default=_DEFAULT_CALL_TAIL,
+    show_default=True,
+    help="Show up to the last N Function inputs.",
+)
+@click.option(
+    "--all-variants",
+    is_flag=True,
+    default=False,
+    help="Include inputs from the base Function and all its variants.",
+)
+@click.option(
+    "--show-function-call-id",
+    is_flag=True,
+    default=False,
+    help="Include the Function Call ID in table output.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False, help="Output calls as JSON.")
+@click.option("--no-color", "no_color", is_flag=True, default=False, help="Disable colors in the output.")
+@env_option
+@synchronizer.create_blocking
+async def calls(
+    function_identifier: str,
+    tail: int = _DEFAULT_CALL_TAIL,
+    all_variants: bool = False,
+    show_function_call_id: bool = False,
+    json_output: bool = False,
+    no_color: bool = False,
+    *,
+    env: str | None = None,
+) -> None:
+    """Show recent inputs for a Modal Function.
+
+    FUNCTION may be a Function ID or a deployed Function name in the form
+    ``APP_NAME/FUNCTION_NAME``. Each unique input corresponds to one entry
+    in the output.
+
+    Examples:
+
+    ```
+    modal function calls my-app/my-function
+    ```
+
+    Show recent calls across all variants of a Cls:
+
+    ```
+    modal function calls 'my-app/MyClass.*' --all-variants --tail 500
+    ```
+
+    Disable color in the output:
+
+    ```
+    modal function calls my-app/my-function --no-color
+    ```
+    """
+    environment_name = _get_environment_name(ensure_env(env))
+    client = await _Client.from_env()
+    function_id, _ = await _resolve_function_id(
+        client,
+        function_identifier,
+        environment_name,
+        command="calls",
+    )
+    response = await client.stub.FunctionCallFetch(
+        api_pb2.FunctionCallFetchRequest(
+            function_id=function_id,
+            tail=api_pb2.FunctionCallFetchRequest.Tail(count=tail),
+            all_variants=all_variants,
+        )
+    )
+
+    if json_output:
+        OutputManager.get().print_json(
+            json_lib.dumps(
+                [
+                    {
+                        "function_call_id": call.function_call_id,
+                        "service_method_name": (
+                            call.service_method_name if call.HasField("service_method_name") else None
+                        ),
+                        "enqueued_at": (call.enqueued_at.ToJsonString() if call.HasField("enqueued_at") else None),
+                        "started_at": (call.started_at.ToJsonString() if call.HasField("started_at") else None),
+                        "container_id": call.container_id if call.HasField("container_id") else None,
+                        "startup_time_seconds": (
+                            call.startup_time_seconds if call.HasField("startup_time_seconds") else None
+                        ),
+                        "execution_time_seconds": (
+                            call.execution_time_seconds if call.HasField("execution_time_seconds") else None
+                        ),
+                        "status": _function_call_status(call.status, True),
+                    }
+                    for call in response.function_call_inputs
+                ]
+            )
+        )
+        return
+
+    show_service_method_name = bool(response.function_call_inputs) and all(
+        call.HasField("service_method_name") for call in response.function_call_inputs
+    )
+    rows: list[list[Text | str]] = []
+    previous_enqueued_date = None
+    for call in response.function_call_inputs:
+        if call.HasField("enqueued_at"):
+            enqueued_at, enqueued_date = grouped_utc_timestamp(call.enqueued_at, previous_enqueued_date)
+            previous_enqueued_date = enqueued_date
+        else:
+            enqueued_at = "—"
+            enqueued_date = None
+
+        if call.HasField("started_at") and enqueued_date:
+            started_secs = (
+                call.started_at.ToDatetime(tzinfo=timezone.utc) - call.enqueued_at.ToDatetime(tzinfo=timezone.utc)
+            ).total_seconds()
+            started_at = f"{started_secs:.2f}"
+        else:
+            started_at = "—"
+
+        row: list[Text | str] = [Text(enqueued_at), Text(started_at)]
+        if show_function_call_id:
+            row.append(Text(call.function_call_id or "—"))
+        if show_service_method_name:
+            row.append(Text(call.service_method_name))
+        row.extend(
+            [
+                Text(
+                    call.container_id if call.HasField("container_id") else "—",
+                ),
+                Text(
+                    _optional_duration(call.execution_time_seconds, call.HasField("execution_time_seconds")),
+                ),
+                _function_call_status_cell(call.status, no_color=no_color),
+            ]
+        )
+        rows.append(row)
+
+    title = f"Function calls for {function_id}"
+    if all_variants:
+        title += " · all variants"
+    output = OutputManager.get()
+    output.print("")
+    output.print(Text(title))
+    output.print(
+        Text(
+            f"Displaying {len(rows):,} {'row' if len(rows) == 1 else 'rows'}",
+            style=STATS_METADATA_STYLE if not no_color else "",
+        )
+    )
+    output.print("")
+    columns: list[str | Column] = [
+        Column("Enqueued (UTC)", no_wrap=True, justify="right"),
+        Column("Queue Time (s)", justify="right"),
+    ]
+    if show_function_call_id:
+        columns.append("Function Call ID")
+    if show_service_method_name:
+        columns.append("Method")
+    columns.extend(
+        [
+            Column("Container", width=29),
+            Column("Execution (s)", justify="right"),
+            "Status",
+        ]
+    )
+    display_table(
+        columns,
+        rows,
+        table_box=HEADER_ONLY,
+        border_style=STATS_METADATA_STYLE if not no_color else "",
+    )
 
 
 @function_cli.command("logs", no_args_is_help=True)

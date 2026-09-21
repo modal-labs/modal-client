@@ -6,12 +6,14 @@ import sys
 from collections.abc import Sequence
 from contextlib import nullcontext
 from csv import writer as csv_writer
-from datetime import datetime
+from datetime import date, datetime, timezone
 from json import dumps
 from typing import Literal
 
 import click
 from click.exceptions import UsageError
+from google.protobuf.timestamp_pb2 import Timestamp
+from rich.box import SIMPLE_HEAD, Box
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -25,6 +27,16 @@ from .._utils.grpc_utils import is_class_function_lookup_error
 from ..client import _Client
 from ..exception import InvalidError, NotFoundError
 from ..output import OutputManager
+
+HEADER_ONLY = SIMPLE_HEAD
+
+
+def grouped_utc_timestamp(timestamp: Timestamp, previous_date: date | None) -> tuple[str, date]:
+    timestamp_datetime = timestamp.ToDatetime(tzinfo=timezone.utc)
+    current_date = timestamp_datetime.date()
+    date_prefix = f"{current_date.isoformat()} " if current_date != previous_date else ""
+    time_label = timestamp_datetime.strftime("%H:%M:%S")
+    return f"{date_prefix}{time_label}", current_date
 
 
 async def _stream_app_logs(
@@ -163,6 +175,9 @@ def display_table(
     json: bool = False,
     csv: bool = False,
     title: str = "",
+    table_box: Box | None = None,
+    header_style: str | None = None,
+    border_style: str | None = None,
 ):
     def col_to_str(col: Column | str) -> str:
         return str(col.header) if isinstance(col, Column) else col
@@ -183,7 +198,17 @@ def display_table(
             writer.writerow([_plain(cell) for cell in row])
         output.print(csv_buffer.getvalue(), end="")
     else:
-        table = Table(*columns, title=title)
+        table = (
+            Table(*columns, title=title, header_style=header_style, border_style=border_style)
+            if table_box is None
+            else Table(
+                *columns,
+                title=title,
+                box=table_box,
+                header_style=header_style,
+                border_style=border_style,
+            )
+        )
         for row in rows:
             # rich can't render bare scalars like bools; stringify anything that isn't already
             # a renderable (str/Text) or None (which rich treats as an empty cell).
@@ -228,7 +253,7 @@ async def _resolve_function_id(
     environment_name: str,
     *,
     object_type: Literal["Function", "Server"] = "Function",
-    command: Literal["logs", "stats", "variants"],
+    command: Literal["calls", "logs", "requests", "stats", "variants"],
 ) -> tuple[str, api_pb2.FunctionHandleMetadata]:
     identifier_label = object_type.upper()
     usage = (

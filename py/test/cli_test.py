@@ -4168,6 +4168,246 @@ def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb
     )
 
 
+def test_function_calls_cli(servicer, set_env_client, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "160")
+    enqueued_at = datetime(2026, 9, 15, 12, 0, 0, 123000, tzinfo=timezone.utc)
+    started_at = enqueued_at + timedelta(seconds=1)
+    response = api_pb2.FunctionCallFetchResponse()
+    completed = response.function_call_inputs.add(
+        function_call_id="fc-1",
+        container_id="ta-123",
+        execution_time_seconds=2.5,
+        status=api_pb2.FUNCTION_CALL_INPUT_STATUS_SUCCESS,
+    )
+    completed.enqueued_at.FromDatetime(enqueued_at)
+    completed.started_at.FromDatetime(started_at)
+    pending = response.function_call_inputs.add(
+        function_call_id="fc-2",
+        status=api_pb2.FUNCTION_CALL_INPUT_STATUS_PENDING,
+    )
+    pending.enqueued_at.FromDatetime(enqueued_at - timedelta(seconds=1))
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-test"))
+        ctx.add_response("FunctionCallFetch", response)
+        result = run_cli_command(
+            [
+                "function",
+                "calls",
+                "my-app/my-function",
+                "--tail",
+                "500",
+                "--all-variants",
+                "--show-function-call-id",
+            ]
+        )
+
+    request = ctx.pop_request("FunctionCallFetch")
+    assert request.function_id == "fu-test"
+    assert request.tail.count == 500
+    assert request.all_variants
+    assert "Function calls for fu-test · all variants" in result.stdout
+    assert result.stdout.count("2026-09-") == 1
+    assert "fc-1" in result.stdout
+    assert "fc-2" in result.stdout
+    assert "ta-123" in result.stdout
+    assert "Queue Time (s)" in result.stdout
+    assert "Execution (s)" in result.stdout
+    assert "1.00" in result.stdout
+    assert "2.50" in result.stdout
+    assert "Success" in result.stdout
+    assert "Pending" in result.stdout
+    assert "Displaying 2 rows" in result.stdout
+    output_lines = result.stdout.splitlines()
+    title_line = next(i for i, line in enumerate(output_lines) if "Function calls for fu-test" in line)
+    assert output_lines[title_line].startswith("Function calls for fu-test")
+    assert output_lines[title_line + 1] == "Displaying 2 rows"
+    completed_row = next(line for line in result.stdout.splitlines() if "ta-123" in line)
+    assert "│" not in completed_row
+    assert not {"╭", "╰", "│"} & set(result.stdout)
+    assert "─" in result.stdout
+
+
+def test_function_calls_cli_shows_method_if_all_rows_have_it(servicer, set_env_client, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "160")
+    response = api_pb2.FunctionCallFetchResponse(
+        function_call_inputs=[
+            api_pb2.FunctionCallInputInfo(
+                function_call_id="fc-first",
+                service_method_name="foo",
+                status=api_pb2.FUNCTION_CALL_INPUT_STATUS_SUCCESS,
+            ),
+            api_pb2.FunctionCallInputInfo(
+                function_call_id="fc-second",
+                service_method_name="bar",
+                status=api_pb2.FUNCTION_CALL_INPUT_STATUS_PENDING,
+            ),
+        ]
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-test"))
+        ctx.add_response("FunctionCallFetch", response)
+        result = run_cli_command(["function", "calls", "my-app/my-function"])
+
+    assert "Method" in result.stdout
+    assert "foo" in result.stdout
+    assert "bar" in result.stdout
+
+
+def test_function_calls_cli_hides_method_if_any_row_is_missing_it(servicer, set_env_client):
+    response = api_pb2.FunctionCallFetchResponse(
+        function_call_inputs=[
+            api_pb2.FunctionCallInputInfo(
+                function_call_id="fc-method",
+                service_method_name="method_name",
+                status=api_pb2.FUNCTION_CALL_INPUT_STATUS_SUCCESS,
+            ),
+            api_pb2.FunctionCallInputInfo(
+                function_call_id="fc-no-method",
+                status=api_pb2.FUNCTION_CALL_INPUT_STATUS_PENDING,
+            ),
+        ]
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-test"))
+        ctx.add_response("FunctionCallFetch", response)
+        result = run_cli_command(["function", "calls", "my-app/my-function"])
+
+    assert "Method" not in result.stdout
+    assert "method_name" not in result.stdout
+
+
+def test_function_calls_cli_hides_function_call_id_by_default(servicer, set_env_client):
+    response = api_pb2.FunctionCallFetchResponse(
+        function_call_inputs=[
+            api_pb2.FunctionCallInputInfo(
+                function_call_id="fc-hidden",
+                container_id="ta-123",
+                status=api_pb2.FUNCTION_CALL_INPUT_STATUS_RUNNING,
+            )
+        ]
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-test"))
+        ctx.add_response("FunctionCallFetch", response)
+        result = run_cli_command(["function", "calls", "my-app/my-function"])
+
+    assert "Function Call ID" not in result.stdout
+    assert "fc-hidden" not in result.stdout
+    assert "ta-123" in result.stdout
+
+
+def test_server_requests_cli(servicer, set_env_client, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "160")
+    timestamp = datetime(2026, 9, 15, 12, 0, 0, 123000, tzinfo=timezone.utc)
+    response = api_pb2.ServerRequestFetchResponse()
+    request_info = response.requests.add(
+        route="/v1/responses",
+        container_id="ta-123",
+        duration_seconds=1.25,
+        status=200,
+    )
+    request_info.timestamp.FromDatetime(timestamp)
+    next_request = response.requests.add(
+        route="/health",
+        container_id="ta-456",
+        duration_seconds=0.01,
+        status=500,
+    )
+    next_request.timestamp.FromDatetime(timestamp - timedelta(seconds=1))
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-server",
+                function=api_pb2.FunctionData(is_server=True),
+            ),
+        )
+        ctx.add_response("ServerRequestFetch", response)
+        result = run_cli_command(
+            [
+                "server",
+                "requests",
+                "my-app/my-server",
+                "--tail",
+                "500",
+            ]
+        )
+
+    request = ctx.pop_request("ServerRequestFetch")
+    assert request.function_id == "fu-server"
+    assert request.tail.count == 500
+    assert "Server requests for fu-server" in result.stdout
+    assert result.stdout.count("2026-09-15") == 1
+    assert "/v1/responses" in result.stdout
+    assert "ta-123" in result.stdout
+    assert "Duration (s)" in result.stdout
+    assert "1.25" in result.stdout
+    assert "200" in result.stdout
+    assert "Displaying 2 rows" in result.stdout
+    output_lines = result.stdout.splitlines()
+    title_line = next(i for i, line in enumerate(output_lines) if "Server requests for fu-server" in line)
+    assert output_lines[title_line].startswith("Server requests for fu-server")
+    assert output_lines[title_line + 1] == "Displaying 2 rows"
+    request_row = next(line for line in result.stdout.splitlines() if "ta-123" in line)
+    assert "│" not in request_row
+    assert not {"╭", "╰", "│"} & set(result.stdout)
+    assert "─" in result.stdout
+
+
+def test_invocation_status_styles():
+    from modal.cli.function import _function_call_status_cell
+    from modal.cli.server import _server_request_status_cell
+
+    assert _function_call_status_cell(api_pb2.FUNCTION_CALL_INPUT_STATUS_PENDING).style == "yellow"
+    assert _function_call_status_cell(api_pb2.FUNCTION_CALL_INPUT_STATUS_FAILURE).style == "red"
+    assert _function_call_status_cell(api_pb2.FUNCTION_CALL_INPUT_STATUS_TIMEOUT).style == "red"
+    assert _function_call_status_cell(api_pb2.FUNCTION_CALL_INPUT_STATUS_RUNNING).style == "green"
+    assert not _function_call_status_cell(api_pb2.FUNCTION_CALL_INPUT_STATUS_SUCCESS).style
+    assert _server_request_status_cell(500).style == "red"
+    assert not _server_request_status_cell(200).style
+
+
+def test_function_calls_json(servicer, set_env_client):
+    enqueued_at = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    response = api_pb2.FunctionCallFetchResponse()
+    call = response.function_call_inputs.add(
+        function_call_id="fc-123",
+        status=api_pb2.FUNCTION_CALL_INPUT_STATUS_RUNNING,
+    )
+    call.enqueued_at.FromDatetime(enqueued_at)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-test"))
+        ctx.add_response("FunctionCallFetch", response)
+        result = run_cli_command(["function", "calls", "my-app/my-function", "--json"])
+
+    assert json.loads(result.stdout) == [
+        {
+            "function_call_id": "fc-123",
+            "service_method_name": None,
+            "enqueued_at": "2026-09-15T12:00:00Z",
+            "started_at": None,
+            "container_id": None,
+            "startup_time_seconds": None,
+            "execution_time_seconds": None,
+            "status": "running",
+        }
+    ]
+
+
+@pytest.mark.parametrize("command", [["function", "calls", "fu-test"], ["server", "requests", "fu-test"]])
+@pytest.mark.parametrize("tail", [0, 1001])
+def test_invocation_cli_validates_tail(command, tail):
+    command.extend(["--tail", str(tail)])
+    result = run_cli_command(command, expected_exit_code=2)
+    assert "1<=x<=1000" in result.stderr
+
+
 def test_function_stats_cli(servicer, set_env_client):
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
