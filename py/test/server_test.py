@@ -683,6 +683,53 @@ def test_server_from_name_with_environment(client, servicer):
 
 
 # =============================================================================
+# from_id Tests
+# =============================================================================
+
+
+def test_server_from_id(client, servicer):
+    server_app.deploy(client=client)
+    server_id = BasicServer.object_id  # type: ignore
+
+    with servicer.intercept() as ctx:
+        server = Server.from_id(server_id, client=client)
+        service_function = server._get_service_function()
+        service_function_impl = synchronizer._translate_in(service_function)
+        assert not service_function_impl._is_hydrated
+        assert not ctx.get_requests("FunctionGetById")
+
+        server.hydrate()
+
+        (request,) = ctx.get_requests("FunctionGetById")
+        assert request.function_id == server_id
+        assert server.object_id == server_id
+        assert service_function_impl._is_hydrated
+
+
+def test_server_from_id_failed_lookup(client):
+    with pytest.raises(NotFoundError, match="Lookup failed for Server 'fu-does-not-exist'"):
+        Server.from_id("fu-does-not-exist", client=client).hydrate()
+
+
+@pytest.mark.parametrize(
+    ("function", "error"),
+    [
+        (api_pb2.FunctionData(), "is a Function"),
+        (api_pb2.FunctionData(is_class=True), "is a Cls"),
+    ],
+)
+def test_server_from_id_rejects_other_types(client, servicer, function, error):
+    async def function_get_by_id(servicer, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.FunctionGetByIdResponse(function=function))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetById", function_get_by_id)
+        with pytest.raises(InvalidError, match=error) as exc_info:
+            Server.from_id("fu-123", client=client).hydrate()
+
+
+# =============================================================================
 # Live Method Tests
 # =============================================================================
 

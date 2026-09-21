@@ -10,7 +10,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Callable, Collection,
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -1386,6 +1386,72 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         rep = f"modal.Function.from_name('{app_name}', '{name}'{environment_rep})"
         return cls._from_loader(
             _load_remote, rep, skip_reload=True, hydrate_lazily=True, load_context_overrides=load_context_overrides
+        )
+
+    @classmethod
+    def _from_id(
+        cls,
+        function_id: str,
+        *,
+        load_context_overrides: LoadContext,
+        called_from: Literal["Function", "Server"] = "Function",
+    ):
+        # internal function lookup implementation that allows lookup of class "service functions"
+        # in addition to non-class functions
+        async def _load_remote(
+            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
+        ):
+            request = api_pb2.FunctionGetByIdRequest(function_id=function_id)
+            try:
+                response = await load_context.client.stub.FunctionGetById(request)
+            except NotFoundError as exc:
+                # refine the error message
+                msg = f"Lookup failed for {called_from} '{function_id}': {exc}."
+                raise NotFoundError(msg) from None
+            if called_from == "Function" and (response.function.is_server or response.function.is_class):
+                if response.function.is_server:
+                    raise InvalidError(f"{function_id} is a Server. Use \n ``modal.Server.from_id('{function_id}')``")
+                raise InvalidError(f"{function_id} is a Cls and cannot be loaded with Function.from_id().")
+            if called_from == "Server" and not response.function.is_server:
+                if response.function.is_class:
+                    raise InvalidError(f"{function_id} is a Cls and cannot be loaded with Server.from_id().")
+                raise InvalidError(f"{function_id} is a Function. Use \n ``modal.Function.from_id('{function_id}')``")
+            self._hydrate(function_id, load_context.client, response.handle_metadata)
+            self._function_info = FunctionInfo._from_function_proto(response.function)
+
+        rep = f"modal.Function.from_id('{function_id}')"
+        return cls._from_loader(
+            _load_remote, rep, skip_reload=True, hydrate_lazily=True, load_context_overrides=load_context_overrides
+        )
+
+    @classmethod
+    def from_id(
+        cls: type["_Function"],
+        function_id: str,
+        *,
+        client: _Client | None = None,
+    ):
+        """Reference a Function from a deployed or running App by its ID.
+
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
+
+        Args:
+            function_id: ID of the function.
+            client: Modal client to use; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            A lazy `Function` handle.
+
+        Examples:
+            ```python
+            f = modal.Function.from_id("fu-123")
+            ```
+        """
+        return cls._from_id(
+            function_id,
+            load_context_overrides=LoadContext(client=client),
         )
 
     @classmethod

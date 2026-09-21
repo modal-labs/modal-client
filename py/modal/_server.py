@@ -273,6 +273,38 @@ class _Server:
         )
         return server
 
+    @classmethod
+    def from_id(
+        cls: type["_Server"],
+        server_id: str,
+        *,
+        client: _Client | None = None,
+    ):
+        """Reference a Server from a deployed or running App by its ID.
+
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
+
+        Args:
+            server_id: The ID of the server.
+            client: Modal client instance for this session.
+
+        Examples:
+            ```python notest
+            server = modal.Server.from_id("fu-456")
+            ```
+        """
+        load_context_overrides = LoadContext(client=client)
+
+        server = _Server()
+        server._service_function = _Function._from_id(
+            server_id,
+            load_context_overrides=load_context_overrides,
+            called_from="Server",
+        )
+        return server
+
     def _is_local(self) -> bool:
         """Returns True if this Server has local source code available."""
         return self._user_cls is not None

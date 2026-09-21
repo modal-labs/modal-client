@@ -2485,6 +2485,53 @@ def test_failed_lookup_error(client, servicer):
         Function.from_name("app", "f", environment_name="some-env").hydrate(client=client)
 
 
+def test_function_from_id(client, servicer):
+    lookup_app = App(include_source=False)
+
+    @lookup_app.function(serialized=True)
+    def looked_up_function():
+        pass
+
+    with lookup_app.run(client=client):
+        function_id = looked_up_function.object_id
+
+    with servicer.intercept() as ctx:
+        function = Function.from_id(function_id, client=client)
+        function_impl = synchronizer._translate_in(function)
+        assert not function_impl._is_hydrated
+        assert not ctx.get_requests("FunctionGetById")
+
+        function.hydrate()
+
+        (request,) = ctx.get_requests("FunctionGetById")
+        assert request.function_id == function_id
+        assert function.object_id == function_id
+        assert function_impl._is_hydrated
+
+
+def test_function_from_id_failed_lookup(client):
+    with pytest.raises(NotFoundError, match="Lookup failed for Function 'fu-does-not-exist'"):
+        Function.from_id("fu-does-not-exist", client=client).hydrate()
+
+
+@pytest.mark.parametrize(
+    ("function", "error"),
+    [
+        (api_pb2.FunctionData(is_server=True), "is a Server"),
+        (api_pb2.FunctionData(is_class=True), "is a Cls"),
+    ],
+)
+def test_function_from_id_rejects_other_types(client, servicer, function, error):
+    async def function_get_by_id(servicer, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.FunctionGetByIdResponse(function=function))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetById", function_get_by_id)
+        with pytest.raises(InvalidError, match=error) as exc_info:
+            Function.from_id("fu-123", client=client).hydrate()
+
+
 @pytest.mark.parametrize("decorator", ["function", "cls"])
 def test_experimental_options(client, servicer, decorator):
     app = App(include_source=False)
