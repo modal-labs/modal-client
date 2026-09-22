@@ -4152,6 +4152,14 @@ message SecretDeleteRequest {
   string secret_id = 1;
 }
 
+message SecretGetInfoRequest {
+  string secret_id = 1;
+}
+
+message SecretGetInfoResponse {
+  SecretMetadata metadata = 1;
+}
+
 message SecretGetOrCreateRequest {
   string deployment_name = 1;
   reserved 2; // removed namespace
@@ -5313,6 +5321,7 @@ service ModalClient {
 
   // Secrets
   rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
+  rpc SecretGetInfo(SecretGetInfoRequest) returns (SecretGetInfoResponse);
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
   rpc SecretUpdate(SecretUpdateRequest) returns (google.protobuf.Empty);
