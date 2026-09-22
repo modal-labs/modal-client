@@ -453,6 +453,92 @@ async def test_create_channel_with_fallbacks_single_url(servicer):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("connection_type", ["tcp", "tls", "proxy", "unix"])
+async def test_modal_channel_logs_connection_attempts(connection_type, monkeypatch, caplog):
+    caplog.set_level("DEBUG", logger="modal-utils")
+    use_tls = connection_type in ("tls", "proxy")
+    target = "/tmp/router.sock" if connection_type == "unix" else "worker.example:443"
+    channel = (
+        ModalChannel(path=target) if connection_type == "unix" else ModalChannel("worker.example", 443, ssl=use_tls)
+    )
+    protocol = mock.Mock()
+    protocol.handler.connection_lost = False
+    protocol.connection.is_closing.return_value = False
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    error = ConnectionResetError()
+
+    async def create_connection(*args, **kwargs):
+        started.set()
+        await finish.wait()
+        if protocol.handler.connection_lost:
+            raise error
+        return protocol
+
+    from modal._utils import proxy_support
+
+    proxy_url = "http://username:password@proxy.example:8080" if connection_type == "proxy" else None
+    monkeypatch.setattr(proxy_support, "get_proxy_url", lambda *args, **kwargs: proxy_url)
+    monkeypatch.setattr(proxy_support, "create_proxied_connection", create_connection)
+    monkeypatch.setattr(grpclib.client.Channel, "_create_connection", create_connection)
+    monkeypatch.setattr(
+        modal._utils.grpc_utils, "time", mock.Mock(monotonic=mock.Mock(side_effect=[10, 12.5, 20, 30.25]))
+    )
+
+    connect = asyncio.create_task(channel.__connect__())
+    try:
+        await started.wait()
+        start_message = f"Starting connection attempt to {target} (TLS={use_tls})"
+        assert caplog.messages == [start_message]
+
+        finish.set()
+        assert await connect is protocol
+        # A reused connection doesn't log a new attempt.
+        assert await channel.__connect__() is protocol
+        assert caplog.messages == [start_message, f"Connection to {target} established after 2.500s"]
+
+        protocol.handler.connection_lost = True
+        with pytest.raises(ConnectionResetError) as exc:
+            await channel.__connect__()
+        assert exc.value is error
+        assert caplog.messages[-2:] == [
+            start_message,
+            f"Connection attempt to {target} failed after 10.250s: ConnectionResetError()",
+        ]
+        assert all(record.levelname == "DEBUG" for record in caplog.records)
+        assert "password" not in caplog.text
+    finally:
+        finish.set()
+        await connect
+        channel.close()
+
+
+@pytest.mark.asyncio
+async def test_modal_channel_logs_cancelled_connection(monkeypatch, caplog):
+    caplog.set_level("DEBUG", logger="modal-utils")
+    channel = ModalChannel("worker.example", 443)
+    started = asyncio.Event()
+
+    async def create_connection(*args, **kwargs):
+        started.set()
+        await asyncio.Future()
+
+    from modal._utils import proxy_support
+
+    monkeypatch.setattr(proxy_support, "get_proxy_url", lambda *args, **kwargs: None)
+    monkeypatch.setattr(grpclib.client.Channel, "_create_connection", create_connection)
+    connect = asyncio.create_task(channel.__connect__())
+    await started.wait()
+    connect.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await connect
+    assert caplog.messages[0] == "Starting connection attempt to worker.example:443 (TLS=False)"
+    assert caplog.messages[1].startswith("Connection attempt to worker.example:443 cancelled after ")
+    assert caplog.messages[1].endswith(": CancelledError()")
+    channel.close()
+
+
+@pytest.mark.asyncio
 async def test_create_channel_with_fallbacks_falls_back(servicer, monkeypatch):
     # Keep each candidate's connect budget short so the unreachable URL loses the race quickly.
     monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)

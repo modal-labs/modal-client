@@ -6,7 +6,7 @@ Unit tests for task command router client.
 import asyncio
 import pytest
 import time
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest_asyncio
 from grpclib import GRPCError, Status
@@ -877,6 +877,115 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
     assert send_message_cnt == 0
     assert aenter_called == 1
     assert open_timeout is not None
+
+
+@pytest.mark.asyncio
+async def test_exec_wait_logs_transient_failures(make_router_client, monkeypatch, caplog):
+    from modal._utils import task_command_router_client
+
+    caplog.set_level("DEBUG", logger="modal-client")
+    client = make_router_client()
+    wait = AsyncMock(
+        side_effect=[
+            StreamTerminatedError("Connection lost"),
+            ConnectionResetError(),
+            sr_pb2.TaskExecWaitResponse(code=23),
+        ]
+    )
+    monkeypatch.setattr(client._stub, "TaskExecWait", wait)
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    monkeypatch.setattr(
+        task_command_router_client,
+        "time",
+        Mock(monotonic=Mock(side_effect=[0, 40, 41, 51.25, 52.25])),
+    )
+
+    response = await client.exec_wait("task-1", "exec-1")
+
+    assert response.code == 23
+    assert caplog.messages == [
+        "TaskExecWait for exec exec-1 attempt 1 failed after 40.000s, retrying in 1s: "
+        "StreamTerminatedError('Connection lost')",
+        "TaskExecWait for exec exec-1 attempt 2 failed after 10.250s, retrying in 1s: ConnectionResetError()",
+    ]
+    assert all(record.levelname == "DEBUG" for record in caplog.records)
+    assert [call.args for call in sleep.await_args_list] == [(1,), (1,)]
+    assert wait.await_count == 3
+    assert all(call.kwargs["timeout"] == 60 for call in wait.await_args_list)
+    assert "Bearer t" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionResetError(),
+        ConnectionRefusedError(),
+        OSError("Network is unreachable"),
+        StreamTerminatedError("Connection lost"),
+        AttributeError("'NoneType' object has no attribute '_write_appdata'"),
+        GRPCError(Status.UNAVAILABLE),
+        GRPCError(Status.INTERNAL),
+        GRPCError(Status.UNKNOWN),
+        GRPCError(Status.CANCELLED),
+    ],
+)
+async def test_exec_wait_warns_once_after_three_failures(make_router_client, monkeypatch, caplog, error):
+    caplog.set_level("WARNING", logger="modal-client")
+    client = make_router_client()
+    calls = 0
+
+    async def wait(*args, **kwargs):
+        nonlocal calls
+        assert len(caplog.records) == (0 if calls < 3 else 1)
+        calls += 1
+        if calls <= 6:
+            raise error
+        return sr_pb2.TaskExecWaitResponse(code=23)
+
+    monkeypatch.setattr(client._stub, "TaskExecWait", wait)
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    response = await client.exec_wait("task-1", "exec-1")
+
+    assert response.code == 23
+    assert calls == 7
+    assert caplog.messages == [
+        "Cannot retrieve the exit status for exec exec-1 due to connection or service errors. "
+        "The command may have already exited. "
+        "Retrying after 3 consecutive failures. Set MODAL_LOGLEVEL=DEBUG for details."
+    ]
+    assert caplog.records[0].levelname == "WARNING"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timeout", [asyncio.TimeoutError(), GRPCError(Status.DEADLINE_EXCEEDED)])
+async def test_exec_wait_timeouts_reset_warning_threshold(make_router_client, monkeypatch, caplog, timeout):
+    caplog.set_level("WARNING", logger="modal-client")
+    client = make_router_client()
+    # Two failures between long-poll timeouts must not accumulate into a warning.
+    outcomes = [timeout] * 4 + [ConnectionResetError(), GRPCError(Status.UNAVAILABLE), timeout] * 3
+    outcomes += [ConnectionResetError(), GRPCError(Status.INTERNAL), StreamTerminatedError("Connection lost")]
+    outcomes += [sr_pb2.TaskExecWaitResponse(code=23)]
+    calls = 0
+
+    async def wait(*args, **kwargs):
+        nonlocal calls
+        assert len(caplog.records) == (1 if calls == len(outcomes) - 1 else 0)
+        outcome = outcomes[calls]
+        calls += 1
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(client._stub, "TaskExecWait", wait)
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    response = await client.exec_wait("task-1", "exec-1")
+
+    assert response.code == 23
+    assert len(caplog.records) == 1
 
 
 @pytest.mark.asyncio

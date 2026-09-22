@@ -130,6 +130,24 @@ class ModalChannel(grpclib.client.Channel):
         return await super().__connect__()
 
     async def _create_connection(self) -> H2Protocol:
+        target = self._path if self.__use_unix_socket else f"{self.__target_host}:{self.__target_port}"
+        tls = self.__ssl_context is not None
+        started_at = time.monotonic()
+        # Logged before awaiting: a reconnect is invisible until it resolves, which
+        # can be long after the RPC waiting on it appears to hang.
+        logger.debug(f"Starting connection attempt to {target} (TLS={tls})")
+        try:
+            protocol = await self._open_connection()
+        except (asyncio.CancelledError, Exception) as exc:
+            outcome = "cancelled" if isinstance(exc, asyncio.CancelledError) else "failed"
+            elapsed = time.monotonic() - started_at
+            logger.debug(f"Connection attempt to {target} {outcome} after {elapsed:.3f}s: {exc!r}")
+            raise
+        elapsed = time.monotonic() - started_at
+        logger.debug(f"Connection to {target} established after {elapsed:.3f}s")
+        return protocol
+
+    async def _open_connection(self) -> H2Protocol:
         if self.__use_unix_socket:
             return await super()._create_connection()
 

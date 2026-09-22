@@ -89,6 +89,11 @@ def _parse_jwt_expiration(jwt_token: str) -> float | None:
     return None
 
 
+# Enough consecutive failures to distinguish a connection that keeps breaking from
+# an isolated blip, without leaving a stuck call silent for long.
+RETRY_WARNING_THRESHOLD = 3
+
+
 async def call_with_retries_on_transient_errors(
     func,
     *,
@@ -97,6 +102,9 @@ async def call_with_retries_on_transient_errors(
     max_retries: int | None = 10,
     exclude_status_codes: list[Status] | None = None,
     timeout_deadline: float | None = None,
+    rpc_name: str = "RPC",
+    exec_id: str | None = None,
+    warning_message: str | None = None,
 ):
     """Call func() with transient error retries and exponential backoff.
 
@@ -113,10 +121,18 @@ async def call_with_retries_on_transient_errors(
             exception (e.g., into a TimeoutError) based on the deadline check.
             The caller is also responsible for propagating the remaining budget
             into `func()` (typically as the per-call gRPC timeout).
+        rpc_name: RPC name to include in retry diagnostics.
+        exec_id: Execution ID to include in retry diagnostics, for correlating
+            the retries of concurrent executions.
+        warning_message: Optional warning to emit once after
+            RETRY_WARNING_THRESHOLD consecutive non-timeout failures.
     """
     delay_secs = base_delay_secs
     num_retries = 0
+    consecutive_failures = 0
+    warned = False
     exclude_status_codes = exclude_status_codes or []
+    called_for = f" for exec {exec_id}" if exec_id is not None else ""
 
     def is_retryable_status(status: Status) -> bool:
         return status in RETRYABLE_GRPC_STATUS_CODES and status not in exclude_status_codes
@@ -128,25 +144,41 @@ async def call_with_retries_on_transient_errors(
             return False
         return True
 
-    async def sleep_and_advance(e: Exception):
-        nonlocal delay_secs, num_retries
+    async def sleep_and_advance(e: Exception, *, count_failure: bool = True):
+        nonlocal delay_secs, num_retries, consecutive_failures, warned
         # Clamp the backoff sleep to the remaining deadline so we don't sleep
         # past it just to fail on the next iteration's deadline check.
         sleep_for = delay_secs
         if timeout_deadline is not None:
             sleep_for = min(sleep_for, max(0.0, timeout_deadline - time.monotonic()))
-        logger.debug(f"Retrying RPC with delay {sleep_for}s due to error: {e}")
+        elapsed = time.monotonic() - attempt_started_at
+        logger.debug(
+            f"{rpc_name}{called_for} attempt {num_retries + 1} failed after {elapsed:.3f}s, "
+            f"retrying in {sleep_for}s: {e!r}"
+        )
+        if count_failure:
+            consecutive_failures += 1
+            if warning_message is not None and consecutive_failures >= RETRY_WARNING_THRESHOLD and not warned:
+                logger.warning(
+                    f"{warning_message} Retrying after {consecutive_failures} consecutive failures. "
+                    "Set MODAL_LOGLEVEL=DEBUG for details."
+                )
+                warned = True
+        else:
+            consecutive_failures = 0
         await asyncio.sleep(sleep_for)
         delay_secs *= delay_factor
         num_retries += 1
 
     while True:
+        attempt_started_at = time.monotonic()
         try:
             return await func()
         except GRPCError as e:
             if not is_retryable_status(e.status) or not can_retry():
                 raise
-            await sleep_and_advance(e)
+            # Long-poll deadlines can expire while the process is still running on a healthy connection.
+            await sleep_and_advance(e, count_failure=e.status != Status.DEADLINE_EXCEEDED)
         except AttributeError as e:
             # StreamTerminatedError are not properly raised in grpclib<=0.4.7
             # fixed in https://github.com/vmagamedov/grpclib/issues/185
@@ -165,7 +197,9 @@ async def call_with_retries_on_transient_errors(
                 # `timeout_deadline` can further translate this based on
                 # whether the deadline has elapsed.
                 raise ConnectionError(str(e))
-            await sleep_and_advance(e)
+            # A client-side timeout says nothing about the connection's health, so it
+            # doesn't count toward the warning.
+            await sleep_and_advance(e, count_failure=not isinstance(e, asyncio.TimeoutError))
 
 
 _StdioReq = TypeVar("_StdioReq")
@@ -828,6 +862,12 @@ class TaskCommandRouterClient:
                         #   infinitely retry. For callers without an exec deadline, this
                         #   could hang indefinitely.
                         lambda: self._call_with_auth_retry(self._stub.TaskExecWait, request, timeout=60),
+                        rpc_name="TaskExecWait",
+                        exec_id=exec_id,
+                        warning_message=(
+                            f"Cannot retrieve the exit status for exec {exec_id} due to connection or service errors. "
+                            "The command may have already exited."
+                        ),
                         base_delay_secs=1,  # Retry after 1s since total time is expected to be long.
                         delay_factor=1,  # Fixed delay.
                         max_retries=None,  # Retry forever.
