@@ -3603,6 +3603,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         try:
             timestamp = self.resource_creation_timestamps[request.secret_id]
             environment_name = self.secret_environment_names[request.secret_id]
+            env_dict = self.secrets[request.secret_id]
         except KeyError:
             raise GRPCError(Status.NOT_FOUND, f"Secret {request.secret_id!r} not found")
 
@@ -3618,6 +3619,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                         name=secret_name,
                         creation_info=creation_info,
                         environment_name=environment_name,
+                        keys=list(env_dict.keys()),
                     )
                 )
             )
@@ -3626,8 +3628,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(
             api_pb2.SecretGetInfoResponse(
                 metadata=api_pb2.SecretMetadata(
-                    creation_info=creation_info,
-                    environment_name=environment_name,
+                    creation_info=creation_info, environment_name=environment_name, keys=list(env_dict.keys())
                 )
             )
         )
@@ -3636,6 +3637,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         environment_name = self.get_environment(request.environment_name)
         k = (request.deployment_name, environment_name)
+        env_dict = request.env_dict
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
@@ -3654,9 +3656,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_secrets:
                 raise GRPCError(Status.NOT_FOUND, f"Secret {k} not found")
             secret_id = self.deployed_secrets[k]
+            env_dict = self.secrets[secret_id]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             if k in self.deployed_secrets:
                 secret_id = self.deployed_secrets[k]
+                env_dict = self.secrets[secret_id]
         else:
             raise Exception("unsupported creation type")
 
@@ -3669,7 +3673,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.resource_creation_timestamps[secret_id] = timestamp = datetime.datetime.now().timestamp()
         creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
         metadata = api_pb2.SecretMetadata(
-            name=request.deployment_name, creation_info=creation_info, environment_name=environment_name
+            name=request.deployment_name,
+            creation_info=creation_info,
+            environment_name=environment_name,
+            keys=list(env_dict.keys()),
         )
         await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id, metadata=metadata))
 
@@ -3679,13 +3686,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
         secrets = []
         for (name, environment_name), obj_id in self.deployed_secrets.items():
             timestamp = self.resource_creation_timestamps[obj_id]
+            env_dict = self.secrets[obj_id]
+
             if environment_name != environment:
                 continue
             elif timestamp >= req.pagination.created_before:
                 continue
 
             creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
-            metadata = api_pb2.SecretMetadata(name=name, creation_info=creation_info, environment_name=environment_name)
+            metadata = api_pb2.SecretMetadata(
+                name=name,
+                creation_info=creation_info,
+                environment_name=environment_name,
+                keys=list(env_dict.keys()),
+            )
             secrets.append(api_pb2.SecretListItem(label=name, secret_id=obj_id, metadata=metadata))
             if req.pagination.max_objects and len(secrets) >= req.pagination.max_objects:
                 break

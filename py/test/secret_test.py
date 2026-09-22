@@ -42,6 +42,7 @@ def test_secret_from_dotenv(servicer, client):
         app.function(secrets=[secret])(dummy)
         with app.run(client=client):
             assert secret.object_id == "st-0"
+            assert secret._get_keys() == {"USER", "PASSWORD"}
             assert servicer.secrets["st-0"] == {"USER": "user", "PASSWORD": "abc123"}
 
         app = App(include_source=False)
@@ -49,6 +50,7 @@ def test_secret_from_dotenv(servicer, client):
         app.function(secrets=[secret])(dummy)
         with app.run(client=client):
             assert secret.object_id == "st-1"
+            assert secret._get_keys() == {"USER", "PASSWORD"}
             assert servicer.secrets["st-1"] == {"USER": "user2", "PASSWORD": "abc456"}
 
 
@@ -259,3 +261,100 @@ def test_secret_update(servicer, client):
 
     with pytest.raises(InvalidError):
         secret.update({"key": 123})  # type: ignore
+
+
+def test_secret_keys(client, servicer):
+    # Remote reference
+    Secret.objects.create(name="test-secret-update", env_dict={"FOO": "123", "BAR": "456"}, client=client)
+    secret = Secret.from_name("test-secret-update", client=client)
+
+    # Getting keys on a remote reference requires hydration
+    keys = secret._get_keys()
+    assert secret._is_hydrated
+    assert keys == {"FOO", "BAR"}
+
+    # Update: overwrite one key, add a new key
+    secret.update({"FOO": "new-value", "BAZ": "789"})
+
+    # Getting keys without refresh shouldn't make a new RPC, but `.update()` should update the keyset
+    with servicer.intercept() as ctx:
+        keys = secret._get_keys(refresh=False)
+        assert len(ctx.calls) == 0
+
+    assert keys == {"FOO", "BAR", "BAZ"}
+
+    secret = Secret.from_dict({"a": "b"})
+    with servicer.intercept() as ctx:
+        keys = secret._get_keys()
+        assert len(ctx.calls) == 0
+
+    assert keys == {"a"}
+
+    # This hydration is only here to propagate the test client. Since `.update` is `@live_method`, it
+    # would hydrate anyway regardless
+    secret.hydrate(client)
+    secret.update({"c": "d"})
+
+    with servicer.intercept() as ctx:
+        keys = secret._get_keys()
+        assert len(ctx.calls) == 0
+
+    assert keys == {"a", "c"}
+
+    secret1 = Secret.from_name("test-secret-update", client=client)
+    secret1.hydrate()
+    secret2 = Secret.from_name("test-secret-update", client=client)
+    secret2.hydrate()
+
+    secret1.update({"a": "b"})
+    secret2.update({"c": "d"})
+
+    assert "a" in secret1._get_keys()
+    assert "c" not in secret1._get_keys()
+    assert "a" not in secret2._get_keys()
+    assert "c" in secret2._get_keys()
+
+    assert secret1._get_keys(refresh=True) == secret2._get_keys(refresh=True)
+
+
+def test_secret_keys_respect_environment(client):
+    Secret.objects.create("test-secret", {"key_in_env1": "value"}, client=client)
+    Secret.objects.create("test-secret", {"key_in_env2": "value"}, environment_name="env2", client=client)
+
+    s1 = Secret.from_name("test-secret", client=client)  # should only have `key_in_env1`
+    s2 = Secret.from_name("test-secret", environment_name="env2", client=client)  # should only have `key_in_env2`
+    s3 = Secret.from_name("test-secret", environment_name="env2", client=client)  # should only have `key_in_env2`
+
+    # First call will hydrate
+    assert s1._get_keys() == {"key_in_env1"}
+    assert s2._get_keys() == {"key_in_env2"}
+
+    s3.update({"this_key_should_only_show_up_in_env2_also": "a"})
+
+    assert s1._get_keys() == {"key_in_env1"}
+    assert s1._get_keys(refresh=True) == {"key_in_env1"}
+
+    assert s2._get_keys() == {"key_in_env2"}
+    assert s2._get_keys(refresh=True) == {"key_in_env2", "this_key_should_only_show_up_in_env2_also"}
+
+    # Make sure that if this secret is hydrated within a running App in a separate environment,
+    # `._get_keys()` respects that environment when refreshing
+    s4 = Secret.from_name("test-secret", client=client)
+
+    app = App()
+
+    @app.function(secrets=[s4], serialized=True)
+    def f():
+        pass
+
+    with app.run(environment_name="env2", client=client):
+        f.local()
+
+    # Since s4 is resolved w.r.t. the environment of the running App, which is `env2`, we should see
+    # `env2` keys here
+    assert s4._get_keys() == {"key_in_env2", "this_key_should_only_show_up_in_env2_also"}
+
+    s3.update({"one_more_update": "a"})
+
+    # Subsequent refreshes should maintain the environment that the underlying handle was hydrated in
+    assert s4._get_keys(refresh=True) == {"key_in_env2", "this_key_should_only_show_up_in_env2_also", "one_more_update"}
