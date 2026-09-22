@@ -141,6 +141,7 @@ export { type Logger, type LogLevel } from "./logger";
 export {
   FunctionLogsManager,
   FunctionCallLogsManager,
+  SandboxLogsManager,
   type LogEntry,
   type FunctionLogFetchParams as LogFetchParams,
   type LogSource,
@@ -150,5 +151,7 @@ export {
   type FunctionCallLogTailParams,
   type FunctionLogStreamParams,
   type FunctionCallLogStreamParams,
+  type SandboxLogFetchParams,
+  type SandboxLogTailParams,
 } from "./logs";
 export { checkForRenamedParams } from "./validation";

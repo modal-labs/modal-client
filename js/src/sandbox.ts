@@ -22,6 +22,7 @@ import {
   Probe as ProbeProto,
   StringMap,
   SandboxGetExitSnapshotResponse_ErrorCode,
+  SandboxGetTaskIdRequest,
   SandboxRestoreRequest_SandboxNameOverrideType,
 } from "../proto/modal_proto/api";
 import {
@@ -90,11 +91,13 @@ import type { CloudBucketMount } from "./cloud_bucket_mount";
 import type { App } from "./app";
 import { parseGpuConfig } from "./app";
 import { checkForRenamedParams } from "./validation";
+import { SandboxLogsManager } from "./logs";
 
 // Backoff configuration for SandboxGetLogs retry behavior.
 const SB_LOGS_INITIAL_DELAY_MS = 10;
 const SB_LOGS_DELAY_FACTOR = 2;
 const SB_LOGS_MAX_RETRIES = 10;
+const SB_LOGS_TASK_ID_TIMEOUT_SECONDS = 0.5;
 
 const TTL_NO_EXPIRY_SENTINEL = -1;
 const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16;
@@ -1572,6 +1575,7 @@ export class Sandbox {
   readonly #client: ModalClient;
   readonly sandboxId: string;
 
+  #appId: string | undefined;
   #stdin?: ModalWriteStream<string>;
   #stdout?: ModalReadStream<string>;
   #stderr?: ModalReadStream<string>;
@@ -1632,6 +1636,26 @@ export class Sandbox {
       this.#stderr = this.#outputStream(FileDescriptor.FILE_DESCRIPTOR_STDERR);
     }
     return this.#stderr;
+  }
+
+  /**
+   * Access persisted entrypoint logs emitted by this Sandbox.
+   *
+   * Use {@link SandboxLogsManager#fetch fetch()} to read logs from a UTC time
+   * range and {@link SandboxLogsManager#tail tail()} to read the most recent
+   * logs.
+   *
+   * This is separate from {@link Sandbox#stdout stdout} and
+   * {@link Sandbox#stderr stderr}, which expose the Sandbox's live output
+   * streams.
+   */
+  get logs(): SandboxLogsManager {
+    return new SandboxLogsManager(
+      this.#client,
+      this.sandboxId,
+      () => this.#getAppId(),
+      () => this.#resolveTaskIdForLogs(),
+    );
   }
 
   #outputStream(fileDescriptor: FileDescriptor): ModalReadStream<string> {
@@ -1912,8 +1936,11 @@ export class Sandbox {
     return this.#client.cpClient.sandboxWait(req);
   }
 
-  #sandboxGetTaskId(signal?: AbortSignal) {
-    const req = { sandboxId: this.sandboxId };
+  #sandboxGetTaskId(signal?: AbortSignal, timeout?: number) {
+    const req = SandboxGetTaskIdRequest.create({
+      sandboxId: this.sandboxId,
+      timeout,
+    });
     if (this.#isV2) {
       return this.#client.cpClient.sandboxGetTaskIdV2(req, { signal });
     }
@@ -1949,6 +1976,50 @@ export class Sandbox {
   }
 
   static readonly #maxGetTaskIdAttempts = 600; // 5 minutes at 500ms intervals
+
+  async #getAppId(): Promise<string> {
+    if (this.#appId !== undefined) {
+      return this.#appId;
+    }
+
+    const resp = await this.#sandboxWait(0);
+    const appId = resp.metadata?.appId;
+    if (!appId) {
+      throw new ExecutionError(
+        "Sandbox app ID should have been set during hydration",
+      );
+    }
+    this.#appId = appId;
+    return appId;
+  }
+
+  async #resolveTaskIdForLogs(): Promise<string> {
+    if (this.#taskId !== undefined) {
+      return this.#taskId;
+    }
+
+    let resp;
+    try {
+      resp = await this.#sandboxGetTaskId(
+        undefined,
+        SB_LOGS_TASK_ID_TIMEOUT_SECONDS,
+      );
+    } catch (error) {
+      if (
+        error instanceof ClientError &&
+        error.code === Status.DEADLINE_EXCEEDED
+      ) {
+        throw new ExecutionError("Sandbox task ID is not available yet.");
+      }
+      throw error;
+    }
+
+    if (!resp.taskId) {
+      throw new ExecutionError("Sandbox task ID is not available.");
+    }
+    this.#taskId = resp.taskId;
+    return this.#taskId;
+  }
 
   async #getTaskId(signal?: AbortSignal): Promise<string> {
     if (this.#taskId !== undefined) {

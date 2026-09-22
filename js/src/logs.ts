@@ -13,6 +13,7 @@ import {
 } from "../proto/modal_proto/api";
 import { pLimit } from "./vendor/plimit";
 import { ClientError, Status } from "nice-grpc";
+import { ExecutionError } from "./errors";
 
 const tailLookbacksMs = [
   1000 * 60 * 60, // 1 hour
@@ -122,6 +123,9 @@ export interface FunctionCallLogFetchParams {
   searchText?: string;
 }
 
+export type SandboxLogFetchParams = FunctionLogFetchParams;
+export type SandboxLogTailParams = FunctionLogTailParams;
+
 interface FunctionLogs {
   fetch(params: FunctionLogFetchParams): AsyncIterable<LogEntry>;
   tail(params?: FunctionLogTailParams): AsyncIterable<LogEntry>;
@@ -132,6 +136,11 @@ interface FunctionCallLogs extends Omit<FunctionLogs, "fetch"> {
   fetch(params?: FunctionCallLogFetchParams): AsyncIterable<LogEntry>;
   tail(params?: FunctionCallLogTailParams): AsyncIterable<LogEntry>;
   stream(params?: FunctionCallLogStreamParams): AsyncIterable<LogEntry>;
+}
+
+interface SandboxLogs {
+  fetch(params: SandboxLogFetchParams): AsyncIterable<LogEntry>;
+  tail(params?: SandboxLogTailParams): AsyncIterable<LogEntry>;
 }
 
 interface LogQueryParams {
@@ -203,6 +212,8 @@ function contextIds(
         item.inputId || batch.inputId,
         item.containerId || batch.taskId,
       ].filter((id) => id);
+    case "sb":
+      return [item.containerId || batch.taskId].filter((id) => id);
     default:
       return [];
   }
@@ -1231,5 +1242,102 @@ export class FunctionCallLogsManager
         this.params.functionCallId,
       ),
     );
+  }
+}
+
+/** Namespace for Sandbox entrypoint log APIs. */
+export class SandboxLogsManager implements SandboxLogs {
+  /** @ignore */
+  constructor(
+    private readonly client: ModalClient,
+    private readonly sandboxId: string,
+    private readonly getAppId: () => Promise<string>,
+    private readonly getTaskId: () => Promise<string>,
+  ) {}
+
+  /**
+   * Fetch Sandbox entrypoint logs corresponding to a UTC time range and
+   * optional filters.
+   *
+   * Entries are returned in chronological order.
+   *
+   * @returns An async iterable of {@link LogEntry} objects.
+   *
+   * @example
+   * ```typescript
+   * import { ModalClient } from "modal";
+   *
+   * const modal = new ModalClient();
+   * const sandbox = await modal.sandboxes.fromId("sb-...");
+   *
+   * for await (const entry of sandbox.logs.fetch({
+   *   since: new Date(Date.now() - 60 * 60 * 1_000),
+   *   source: "stdout",
+   * })) {
+   *   process.stdout.write(entry.message);
+   * }
+   * ```
+   */
+  async *fetch(params: SandboxLogFetchParams): AsyncIterable<LogEntry> {
+    const [appId, taskId] = await Promise.all([
+      this.getAppId(),
+      this.getTaskId(),
+    ]);
+    if (!taskId) {
+      throw new ExecutionError(
+        "Cannot resolve Sandbox metadata needed for fetching logs. Wait for the Sandbox to be scheduled.",
+      );
+    }
+
+    yield* fetchLogs(
+      this.client,
+      {
+        appId,
+        objectId: this.sandboxId,
+        taskId,
+        source: sourceToFileDescriptor(params.source),
+        searchText: params.searchText,
+      },
+      params.since,
+      params.until,
+    );
+  }
+
+  /**
+   * Fetch the most recent Sandbox entrypoint logs.
+   *
+   * Entries are returned in chronological order.
+   *
+   * @returns An async iterable of {@link LogEntry} objects.
+   *
+   * @example
+   * ```typescript
+   * import { ModalClient } from "modal";
+   *
+   * const modal = new ModalClient();
+   * const sandbox = await modal.sandboxes.fromId("sb-...");
+   *
+   * for await (const entry of sandbox.logs.tail({ entries: 20 })) {
+   *   process.stdout.write(entry.message);
+   * }
+   * ```
+   */
+  async *tail(params: SandboxLogTailParams = {}): AsyncIterable<LogEntry> {
+    const [appId, taskId] = await Promise.all([
+      this.getAppId(),
+      this.getTaskId(),
+    ]);
+    if (!taskId) {
+      throw new ExecutionError(
+        "Sandbox task ID cannot be empty when fetching logs. Wait for the Sandbox to be scheduled.",
+      );
+    }
+
+    yield* tailLogs(this.client, params.entries ?? 100, {
+      appId,
+      objectId: this.sandboxId,
+      taskId,
+      source: sourceToFileDescriptor(params.source),
+    });
   }
 }

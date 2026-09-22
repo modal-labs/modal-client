@@ -10,6 +10,7 @@ import {
   FunctionCallGetInfoRequest,
   FunctionCallGetInfoResponse,
   FunctionHandleMetadata,
+  GenericResult_GenericStatus,
   TaskLogs,
   TaskLogsBatch,
 } from "../proto/modal_proto/api";
@@ -19,6 +20,7 @@ import {
   FunctionCall,
   FunctionCallLogsManager,
   FunctionLogsManager,
+  Sandbox,
   type ModalClient,
 } from "modal";
 import { ClientError, Status } from "nice-grpc";
@@ -139,6 +141,182 @@ test("tail uses a default request limit of 100 when n is omitted", async () => {
     source: "stderr",
     objectId: "fu-123",
   });
+  mockCpClient.assertExhausted();
+});
+
+test("Sandbox.logs.tail reads completed V1 Sandbox logs by task ID", async () => {
+  const { mockClient, mockCpClient } = createMockModalClients();
+  const sandboxId = "sb-nGEijt9WbBMlGrsPH9FOaC";
+  const requests: AppFetchLogsRequest[] = [];
+
+  mockCpClient.handleUnary("/SandboxWait", (value) => {
+    expect(value).toMatchObject({ sandboxId, timeout: 0 });
+    return { metadata: { appId: "ap-123" } };
+  });
+  mockCpClient.handleUnary("/SandboxGetTaskId", (value) => {
+    expect(value).toMatchObject({ sandboxId, timeout: 0.5 });
+    return {
+      taskId: "ta-123",
+      taskResult: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+      },
+    };
+  });
+  mockCpClient.handleUnary("/AppFetchLogs", (value) => {
+    requests.push(value as AppFetchLogsRequest);
+    return AppFetchLogsResponse.create({
+      batches: [
+        TaskLogsBatch.create({
+          taskId: "ta-123",
+          items: [
+            TaskLogs.create({
+              data: "sandbox tail\n",
+              fileDescriptor: FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+              timestamp: now.getTime() / 1000,
+            }),
+          ],
+        }),
+      ],
+    });
+  });
+
+  const sandbox = new Sandbox(mockClient, sandboxId);
+  const entries = [];
+  for await (const entry of sandbox.logs.tail({
+    entries: 1,
+    source: "stdout",
+  })) {
+    entries.push(entry);
+  }
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    appId: "ap-123",
+    taskId: "ta-123",
+    sandboxId: "",
+    functionId: "",
+    functionCallId: "",
+    limit: 1,
+    source: FileDescriptor.FILE_DESCRIPTOR_STDOUT,
+  });
+  expect(entries).toEqual([
+    expect.objectContaining({
+      message: "sandbox tail\n",
+      objectId: sandboxId,
+      contextIds: ["ta-123"],
+    }),
+  ]);
+  mockCpClient.assertExhausted();
+});
+
+test("Sandbox.logs.fetch resolves V2 IDs and filters by task ID", async () => {
+  const { mockClient, mockCpClient } = createMockModalClients();
+  const sandboxId = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
+  const since = new Date(now.getTime() - 10_000);
+  const countRequests: AppCountLogsRequest[] = [];
+  const fetchRequests: AppFetchLogsRequest[] = [];
+
+  mockCpClient.handleUnary("/SandboxWaitV2", (value) => {
+    expect(value).toMatchObject({ sandboxId, timeout: 0 });
+    return { metadata: { appId: "ap-123" } };
+  });
+  mockCpClient.handleUnary("/SandboxGetTaskIdV2", (value) => {
+    expect(value).toMatchObject({ sandboxId, timeout: 0.5 });
+    return { taskId: "ta-123" };
+  });
+  mockCpClient.handleUnary("/AppCountLogs", (value) => {
+    const request = value as AppCountLogsRequest;
+    countRequests.push(request);
+    return AppCountLogsResponse.create({
+      buckets: [
+        AppCountLogsResponse_LogBucket.create({
+          bucketStartAt: request.since,
+          stderrLogs: 1,
+        }),
+      ],
+    });
+  });
+  mockCpClient.handleUnary("/AppFetchLogs", (value) => {
+    fetchRequests.push(value as AppFetchLogsRequest);
+    return AppFetchLogsResponse.create({
+      batches: [
+        TaskLogsBatch.create({
+          taskId: "ta-123",
+          items: [
+            TaskLogs.create({
+              data: "sandbox fetch\n",
+              fileDescriptor: FileDescriptor.FILE_DESCRIPTOR_STDERR,
+              timestamp: now.getTime() / 1000,
+            }),
+          ],
+        }),
+      ],
+    });
+  });
+
+  const sandbox = new Sandbox(mockClient, sandboxId);
+  const entries = [];
+  for await (const entry of sandbox.logs.fetch({
+    since,
+    until: now,
+    source: "stderr",
+    searchText: "fetch",
+  })) {
+    entries.push(entry);
+  }
+
+  expect(countRequests).toHaveLength(1);
+  expect(countRequests[0]).toMatchObject({
+    appId: "ap-123",
+    taskId: "ta-123",
+    sandboxId: "",
+    functionId: "",
+    functionCallId: "",
+    source: FileDescriptor.FILE_DESCRIPTOR_STDERR,
+    searchText: "fetch",
+  });
+  expect(fetchRequests).toHaveLength(1);
+  expect(fetchRequests[0]).toMatchObject({
+    appId: "ap-123",
+    taskId: "ta-123",
+    sandboxId: "",
+    functionId: "",
+    functionCallId: "",
+    source: FileDescriptor.FILE_DESCRIPTOR_STDERR,
+    searchText: "fetch",
+  });
+  expect(entries).toEqual([
+    expect.objectContaining({
+      message: "sandbox fetch\n",
+      objectId: sandboxId,
+      contextIds: ["ta-123"],
+    }),
+  ]);
+  mockCpClient.assertExhausted();
+});
+
+test("Sandbox logs fail promptly when a task ID is not available", async () => {
+  const { mockClient, mockCpClient } = createMockModalClients();
+  const sandboxId = "sb-nGEijt9WbBMlGrsPH9FOaC";
+
+  mockCpClient.handleUnary("/SandboxWait", () => ({
+    metadata: { appId: "ap-123" },
+  }));
+  mockCpClient.handleUnary("/SandboxGetTaskId", (value) => {
+    expect(value).toMatchObject({ sandboxId, timeout: 0.5 });
+    return {};
+  });
+
+  const sandbox = new Sandbox(mockClient, sandboxId);
+  const consumeLogs = async () => {
+    for await (const _entry of sandbox.logs.tail()) {
+      // The task ID resolution fails before logs are fetched.
+    }
+  };
+
+  await expect(consumeLogs()).rejects.toThrow(
+    "Sandbox task ID is not available.",
+  );
   mockCpClient.assertExhausted();
 });
 
