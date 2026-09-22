@@ -4198,6 +4198,7 @@ message SecretMetadata {
   string name = 1;
   CreationInfo creation_info = 2;
   repeated string keys = 3;
+  string environment_name = 4;
 }
 
 message SecretUpdateRequest {
