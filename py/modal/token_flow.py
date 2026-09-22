@@ -23,7 +23,7 @@ class _TokenFlow:
 
     @asynccontextmanager
     async def start(
-        self, utm_source: str | None = None, next_url: str | None = None
+        self, utm_source: str | None = None, next_url: str | None = None, expires_in_seconds: int | None = None
     ) -> AsyncGenerator[tuple[str, str, str], None]:
         """mdmd:hidden"""
         # Run a temporary http server returning the token id on /
@@ -41,6 +41,7 @@ class _TokenFlow:
                 utm_source=utm_source or "",
                 next_url=next_url or "",
                 localhost_port=int(url.split(":")[-1]),
+                expires_in_seconds=expires_in_seconds or 0,
             )
             resp = await self.stub.TokenFlowCreate(req)
             self.token_flow_id = resp.token_flow_id
@@ -72,6 +73,7 @@ async def _new_token(
     verify: bool = True,
     source: str | None = None,
     next_url: str | None = None,
+    expires_in_seconds: int | None = None,
 ):
     server_url = config.get("server_url", profile=profile)
 
@@ -80,7 +82,7 @@ async def _new_token(
     async with _Client.anonymous(server_url) as client:
         token_flow = _TokenFlow(client)
 
-        async with token_flow.start(source, next_url) as (_, web_url, code):
+        async with token_flow.start(source, next_url, expires_in_seconds) as (_, web_url, code):
             with output.status("Waiting for authentication in the web browser"):
                 # Open the web url in the browser
                 if open_url(web_url):

@@ -30,6 +30,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `Function.stats()` method to inspect performance metrics for a Function over a selected time window
 - Renamed the return type of `Function.get_current_stats()` to `FunctionCurrentStats`.
   The `num_total_runners` field was renamed to `num_total_containers`.
+- Added an `--expires-in` option to `modal token new` for setting the lifetime of the new token (e.g. `12h`, `7d`).
 - Added `modal function logs` to fetch or stream logs from a modal function.
 - Added `modal server logs` to fetch or stream logs from a modal server.
 - Added `modal server stats` to inspect performance metrics for a Server over a selected time window.

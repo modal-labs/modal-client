@@ -6,6 +6,7 @@ from datetime import datetime
 import click
 
 from modal._utils.async_utils import synchronizer
+from modal._utils.time_utils import parse_duration
 from modal.client import _Client
 from modal.output import OutputManager
 from modal.token_flow import _new_token, _set_token
@@ -45,11 +46,28 @@ async def set(
 @token_cli.command("new")
 @click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
 @click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
+@click.option(
+    "--expires-in",
+    default=None,
+    help="Lifetime of the new token, e.g. 12h, 7d, or 90d. Defaults to the workspace's maximum allowed lifetime.",
+)
 @click.option("--source", default=None, hidden=True)
 @synchronizer.create_blocking
-async def new(activate: bool, verify: bool, source: str | None):
+async def new(activate: bool, verify: bool, expires_in: str | None, source: str | None):
     """Create a new token by using an authenticated web session."""
-    await _new_token(activate=activate, verify=verify, source=source)
+    expires_in_seconds: int | None = None
+    if expires_in is not None:
+        try:
+            expires_in_seconds = int(parse_duration(expires_in).total_seconds())
+        except (OverflowError, ValueError):
+            raise click.BadParameter(
+                "Expected a duration such as 30m, 12h, or 7d.", param_hint="--expires-in"
+            ) from None
+        if expires_in_seconds <= 0:
+            raise click.BadParameter("Duration must be positive.", param_hint="--expires-in")
+        if expires_in_seconds > 2**32 - 1:
+            raise click.BadParameter("Duration is too large.", param_hint="--expires-in")
+    await _new_token(activate=activate, verify=verify, source=source, expires_in_seconds=expires_in_seconds)
 
 
 @token_cli.command("info")

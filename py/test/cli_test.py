@@ -641,6 +641,20 @@ def test_app_token_new(servicer, set_env_client, server_url_env, modal_config, m
     with modal_config() as config_file_path:
         run_cli_command(["token", "new", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
+        assert servicer.token_flow_expires_in_seconds == 0
+
+
+def test_app_token_new_expires_in(servicer, set_env_client, server_url_env, modal_config, mock_webbrowser):
+    servicer.required_creds = {"abc": "xyz"}
+    mock_webbrowser()
+
+    with modal_config():
+        run_cli_command(["token", "new", "--profile", "_test", "--expires-in", "12h"])
+        assert servicer.token_flow_expires_in_seconds == 12 * 3600
+
+    with modal_config():
+        res = run_cli_command(["token", "new", "--profile", "_test", "--expires-in", "12 hours"], expected_exit_code=2)
+        assert "--expires-in" in res.stderr
 
 
 def test_token_env_var_warning(servicer, set_env_client, server_url_env, modal_config, mock_webbrowser, monkeypatch):
