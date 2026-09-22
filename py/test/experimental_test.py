@@ -3,7 +3,6 @@ import pytest
 from datetime import datetime, timezone
 
 import modal
-import modal.experimental
 from modal.exception import NotFoundError
 from modal_proto import api_pb2
 

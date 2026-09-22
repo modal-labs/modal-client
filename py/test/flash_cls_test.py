@@ -3,7 +3,6 @@ import pytest
 import subprocess
 
 import modal
-import modal.experimental
 from modal import App
 from modal.cls import Cls
 from modal.exception import InvalidError

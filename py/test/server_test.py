@@ -7,7 +7,6 @@ from typing import Any, cast
 from unittest import mock
 
 import modal
-import modal.experimental
 from modal._serialization import deserialize
 from modal._server import _Server
 from modal._utils.async_utils import synchronizer

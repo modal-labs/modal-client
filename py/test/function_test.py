@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 from grpclib import GRPCError, Status
 
 import modal
-import modal.experimental
 from modal import App, Image, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._function_variants import _FunctionOptionsInfo, _list_function_variants
 from modal._functions import MAX_INTERNAL_FAILURE_COUNT

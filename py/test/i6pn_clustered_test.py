@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2024
-import modal.experimental
+import modal
 from modal import App
 
 app = App(include_source=False)

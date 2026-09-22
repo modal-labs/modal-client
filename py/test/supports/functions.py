@@ -717,8 +717,6 @@ class StopFetching:
 
     @method()
     def after_two(self, x):
-        import modal.experimental
-
         self.counter += 1
 
         if self.counter >= 2:

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
 
-import modal.experimental
 import modal.partial_function
 from modal import App, Cls, Function, Image, Secret, Volume, enter, exit, method
 from modal._function_variants import _FunctionOptions
