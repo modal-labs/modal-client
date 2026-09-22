@@ -459,6 +459,45 @@ class _Secret(_Object, type_prefix="st"):
         )
 
     @staticmethod
+    def _from_id(secret_id: str, *, client: _Client | None = None):
+        """mdmd:hidden
+
+        Reference a Secret by ID.
+
+        Hydration is lazy until the Secret is used.
+
+        Args:
+            secret_id: ID of the Secret.
+            client: Modal client to use for loading; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            A `Secret` handle (possibly not yet hydrated).
+
+        Examples:
+            ```python
+            secret = modal.Secret._from_id("st-1234")
+
+            @app.function(secrets=[secret])
+            def run():
+                ...
+            ```
+        """
+
+        async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
+            req = api_pb2.SecretGetInfoRequest(secret_id=secret_id)
+            response = await load_context.client.stub.SecretGetInfo(req)
+            self._hydrate(secret_id, load_context.client, response.metadata)
+
+        rep = f"modal.Secret.from_id({secret_id!r})"
+        return _Secret._from_loader(
+            _load,
+            rep,
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(client=client),
+            skip_reload=True,
+        )
+
+    @staticmethod
     async def _create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],

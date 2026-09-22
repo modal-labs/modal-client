@@ -912,6 +912,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_secrets = {}
         self.deployed_volumes = {}
 
+        self.secret_environment_names = {}
+
         self.cleared_function_calls = set()
 
         self.cancelled_calls = []
@@ -3580,6 +3582,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SecretDeleteRequest = await stream.recv_message()
         self.deployed_secrets = {k: v for k, v in self.deployed_secrets.items() if v != request.secret_id}
         self.secrets.pop(request.secret_id)
+        self.resource_creation_timestamps.pop(request.secret_id)
+        self.secret_environment_names.pop(request.secret_id)
         await stream.send_message(Empty())
 
     async def SecretUpdate(self, stream):
@@ -3593,6 +3597,41 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.secrets[request.secret_id] = env_dict
         await stream.send_message(Empty())
 
+    async def SecretGetInfo(self, stream):
+        request: api_pb2.SecretGetInfoRequest = await stream.recv_message()
+
+        try:
+            timestamp = self.resource_creation_timestamps[request.secret_id]
+            environment_name = self.secret_environment_names[request.secret_id]
+        except KeyError:
+            raise GRPCError(Status.NOT_FOUND, f"Secret {request.secret_id!r} not found")
+
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+
+        for (secret_name, _), secret_id in self.deployed_secrets.items():
+            if secret_id != request.secret_id:
+                continue
+
+            await stream.send_message(
+                api_pb2.SecretGetInfoResponse(
+                    metadata=api_pb2.SecretMetadata(
+                        name=secret_name,
+                        creation_info=creation_info,
+                        environment_name=environment_name,
+                    )
+                )
+            )
+            return
+
+        await stream.send_message(
+            api_pb2.SecretGetInfoResponse(
+                metadata=api_pb2.SecretMetadata(
+                    creation_info=creation_info,
+                    environment_name=environment_name,
+                )
+            )
+        )
+
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         environment_name = self.get_environment(request.environment_name)
@@ -3600,9 +3639,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
+            self.secret_environment_names[secret_id] = environment_name
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
+            self.secret_environment_names[secret_id] = environment_name
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_secrets:
                 raise GRPCError(Status.ALREADY_EXISTS, f"Secret {k} already exists")
@@ -3622,6 +3663,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if secret_id is None:  # Create one
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
+            self.secret_environment_names[secret_id] = environment_name
             self.deployed_secrets[k] = secret_id
 
         self.resource_creation_timestamps[secret_id] = timestamp = datetime.datetime.now().timestamp()

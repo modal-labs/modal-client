@@ -144,6 +144,46 @@ def test_secret_from_name(servicer, client):
     Secret.objects.delete("my-secret", client=client, allow_missing=True)
 
 
+def test_secret_from_id(servicer, client):
+    # Deploy secret
+    name = "my-secret"
+    Secret.objects.create(name, {"FOO": "123"}, client=client)
+
+    # Look up secret
+    secret = Secret.from_name(name)
+    assert secret.name == name
+    secret.hydrate(client)
+    secret_id = secret.object_id
+
+    # Now look it up by ID
+    secret = Secret._from_id(secret_id, client=client)
+    assert not secret._is_hydrated
+
+    secret.hydrate(client)
+
+    assert secret.object_id == secret_id
+    info = secret.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
+    assert info.environment_name == servicer.get_environment()
+
+    # Look up secret through app
+    app = App()
+    secret = Secret._from_id(secret_id, client=client)
+    app.function(secrets=[secret])(dummy)
+    with app.run(client=client):
+        assert secret.object_id == secret_id
+
+        info = secret.info()
+        assert info.name == name
+        assert info.created_by == servicer.default_username
+        assert info.environment_name == servicer.get_environment()
+
+    Secret.objects.delete(name, client=client)
+    with pytest.raises(NotFoundError):
+        Secret._from_id(secret_id, client=client).hydrate(client)
+
+
 def test_secret_from_name_double_resolve(client, servicer):
     # Checks that Resolver logic is set up to *not* re-lookup
     # secrets that are defined by name, since those are unlikely
