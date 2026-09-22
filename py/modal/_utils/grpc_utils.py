@@ -24,6 +24,7 @@ from grpclib.config import Configuration
 from grpclib.encoding.base import CodecBase, StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
+from h2.exceptions import ProtocolError as H2ProtocolError
 
 from modal.exception import ClientClosed, ConnectionError, NotFoundError
 from modal_proto import api_pb2
@@ -514,6 +515,8 @@ def process_exception_before_retry(
                 raise ConnectionError(str(exc))
             elif isinstance(exc, asyncio.TimeoutError):
                 raise ConnectionError(str(exc))
+            elif isinstance(exc, H2ProtocolError):
+                raise ConnectionError(str(exc))
             else:
                 raise exc
 
@@ -601,6 +604,7 @@ async def _retry_transient_errors(
             OSError,
             asyncio.TimeoutError,
             AttributeError,
+            H2ProtocolError,
         ) as exc:
             # Note that we only catch AttributeError to handle a specific case that works around a bug
             # in grpclib<=0.4.7. See above (search for `write_appdata`).
