@@ -28,6 +28,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, get_args
 from unittest import mock
+from urllib.parse import quote
 
 import aiohttp.web
 import click.testing
@@ -959,6 +960,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.last_metadata = None
 
         self.function_get_server_warnings = None
+        # Messages sent back in the `x-modal-warning` trailing metadata of every ClientHello.
+        self.client_hello_warnings: list[str] = []
+        # When set, ClientHello fails with this message instead of returning a response.
+        self.client_hello_error: str | None = None
         self.resp_jitter_secs: float = 0.0
         # Set a list of custom, fixed responses for the AttemptAwait RPC.
         # This mock server will return responses in order. The regular behavior will resume once this list is exhausted.
@@ -1684,8 +1689,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
             ]
         else:
             warnings = []
+        # One entry per warning; gRPC metadata allows a key to repeat.
+        trailing_metadata = [("x-modal-warning", quote(message, safe="")) for message in self.client_hello_warnings]
+
+        if self.client_hello_error is not None:
+            # No message sent first, so this goes out as a trailers-only response, the way
+            # the real server's `abort()` does.
+            await stream.send_trailing_metadata(
+                status=Status.INTERNAL, status_message=self.client_hello_error, metadata=trailing_metadata
+            )
+            return
+
         resp = api_pb2.ClientHelloResponse(server_warnings=warnings)
         await stream.send_message(resp)
+        if trailing_metadata:
+            await stream.send_trailing_metadata(metadata=trailing_metadata)
 
     # Container
 

@@ -7,10 +7,18 @@ import urllib.parse
 
 from google.protobuf.empty_pb2 import Empty
 
+import modal._traceback
 import modal._utils.grpc_utils
 from modal import Client
 from modal.client import _OAuthCredentials
-from modal.exception import AuthError, ConflictError, ConnectionError, InvalidError, ServerWarning
+from modal.exception import (
+    AuthError,
+    ConflictError,
+    ConnectionError,
+    InternalError,
+    InvalidError,
+    ServerWarning,
+)
 from modal_proto import api_pb2
 
 from .supports.skip import skip_bazel, skip_windows, skip_windows_unix_socket
@@ -112,6 +120,31 @@ async def test_client_deprecated(servicer, credentials):
     async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="deprecated") as client:
         with pytest.warns(ServerWarning):
             await client.hello.aio()
+
+
+@pytest.fixture
+def fresh_server_warnings():
+    """Clear the process-global state that suppresses repeats of a server warning."""
+    modal._traceback._server_warning_registry.clear()
+
+
+@pytest.mark.asyncio
+async def test_server_warning_header(servicer, credentials, fresh_server_warnings):
+    servicer.client_hello_warnings = ["watch out, `foo` is deprecated", "and 100% of `bar` too"]
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+        with pytest.warns(ServerWarning) as record:
+            await client.hello.aio()
+        assert [str(w.message) for w in record] == servicer.client_hello_warnings
+
+
+@pytest.mark.asyncio
+async def test_server_warning_header_on_failed_request(servicer, credentials, fresh_server_warnings):
+    servicer.client_hello_warnings = ["something to say about the request that just failed"]
+    servicer.client_hello_error = "everything is on fire"
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+        with pytest.warns(ServerWarning, match="something to say"):
+            with pytest.raises(InternalError, match="everything is on fire"):
+                await client.hello.aio()
 
 
 @pytest.mark.asyncio

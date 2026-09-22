@@ -123,13 +123,25 @@ def print_exception(exc: type[BaseException] | None, value: BaseException | None
         print(*notes, sep="\n", file=sys.stderr)  # noqa: T201
 
 
-def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
+_server_warning_registry: dict[Any, Any] = {}
+SERVER_WARNING_REGISTRY_LIMIT = 2048
+
+
+def print_server_warning(message: str):
     """Issue a warning originating from the server with empty metadata about local origin.
 
     When using the Modal CLI, these warnings should get caught and coerced into Rich panels.
     """
+    if len(_server_warning_registry) > SERVER_WARNING_REGISTRY_LIMIT:
+        # Start over instead of going quiet: overflow costs a repeat, never a hidden warning.
+        _server_warning_registry.clear()
+    warnings.warn_explicit(message, ServerWarning, "<modal-server>", 0, registry=_server_warning_registry)
+
+
+def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
+    """Issue warnings that the server attached to a response message."""
     for warning in server_warnings:
-        warnings.warn_explicit(warning.message, ServerWarning, "<modal-server>", 0)
+        print_server_warning(warning.message)
 
 
 # for some reason, the traceback cleanup here can't be moved into a context manager :(

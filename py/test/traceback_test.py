@@ -2,6 +2,7 @@
 import pytest
 import sys
 import types
+import warnings
 from pathlib import Path
 from traceback import extract_tb
 
@@ -10,13 +11,16 @@ from grpclib import GRPCError, Status
 
 import modal
 from modal._traceback import (
+    SERVER_WARNING_REGISTRY_LIMIT,
+    _server_warning_registry,
     append_modal_tb,
     extract_traceback,
+    print_server_warning,
     reduce_traceback_to_user_code,
     traceback_contains_remote_call,
 )
 from modal._vendor import tblib
-from modal.exception import NotFoundError
+from modal.exception import NotFoundError, ServerWarning
 
 from .supports.raise_error import raise_error
 
@@ -242,3 +246,41 @@ def test_internal_frame_suppression_internal_error(client, servicer):
                 (grpclib.client, "_raise_for_grpc_status"),  # raw status
             ],
         )
+
+
+@pytest.fixture
+def fresh_server_warnings():
+    """Clear the process-global state that suppresses repeats of a server warning."""
+    _server_warning_registry.clear()
+
+
+def test_server_warning_repeats_suppressed(fresh_server_warnings):
+    # `pytest.warns` installs an "always" filter, which would show every occurrence.
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("default")
+        for _ in range(5):
+            print_server_warning("the same warning, over and over")
+        print_server_warning("a different warning")
+
+    assert [str(w.message) for w in record] == ["the same warning, over and over", "a different warning"]
+
+
+def test_server_warning_registry_bounded(fresh_server_warnings):
+    """A server that varies the text of a warning grows the registry, but only up to the limit."""
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("default")
+        for i in range(SERVER_WARNING_REGISTRY_LIMIT * 3):
+            print_server_warning(f"warning about object {i}")
+        # Overflow drops the entry for this message rather than silencing it.
+        print_server_warning("warning about object 0")
+
+    assert len(_server_warning_registry) <= SERVER_WARNING_REGISTRY_LIMIT + 2
+    messages = [str(w.message) for w in record]
+    assert len(messages) == SERVER_WARNING_REGISTRY_LIMIT * 3 + 1
+    assert messages[-1] == "warning about object 0"
+
+
+def test_server_warning_category(fresh_server_warnings):
+    with pytest.warns(ServerWarning, match="from the server") as record:
+        print_server_warning("a message from the server")
+    assert record[0].filename == "<modal-server>"

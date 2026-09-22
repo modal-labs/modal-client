@@ -30,7 +30,7 @@ from modal.exception import ClientClosed, ConnectionError, NotFoundError
 from modal_proto import api_pb2
 from modal_version import __version__
 
-from .._traceback import suppress_tb_frame
+from .._traceback import print_server_warning, suppress_tb_frame
 from ..config import config
 from .async_utils import TaskContext, retry
 from .logger import logger
@@ -327,6 +327,20 @@ def create_channel_config(*, sustained_keepalive: bool = False) -> grpclib.confi
     )
 
 
+# Header the server uses to attach a non-fatal message to any response, one entry per
+# percent-encoded warning. It rides in the trailing metadata, which grpclib also
+# surfaces for trailers-only responses, i.e. failed requests.
+SERVER_WARNING_HEADER = "x-modal-warning"
+
+
+def _issue_server_warnings(metadata: Any) -> None:
+    """Issue the warnings in a response's metadata, which `print_server_warning` deduplicates."""
+    for key, encoded_message in metadata.items():
+        if key != SERVER_WARNING_HEADER:
+            continue
+        print_server_warning(urllib.parse.unquote(encoded_message))
+
+
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
@@ -374,6 +388,12 @@ def create_channel(
             logger.debug(f"Sending request to {event.method_name} ({idempotency_key[:8]})")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+
+    # Surface warnings the server attached to any response on this channel.
+    async def recv_trailing_metadata(event: grpclib.events.RecvTrailingMetadata) -> None:
+        _issue_server_warnings(event.metadata)
+
+    grpclib.events.listen(channel, grpclib.events.RecvTrailingMetadata, recv_trailing_metadata)
 
     return channel
 
