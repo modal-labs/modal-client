@@ -129,6 +129,7 @@ def test_secret_from_name(servicer, client):
     info = secret.info()
     assert info.name == name
     assert info.created_by == servicer.default_username
+    assert info.environment_name == servicer.get_environment()
 
     # Look up secret through app
     app = App()

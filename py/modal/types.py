@@ -108,6 +108,7 @@ class SecretInfo:
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
 
     name: str | None
+    environment_name: str
     created_at: datetime
     created_by: str | None
 

@@ -493,6 +493,7 @@ class _Secret(_Object, type_prefix="st"):
             name=metadata.name or None,
             created_at=timestamp_to_localized_dt(creation_info.created_at),
             created_by=creation_info.created_by or None,
+            environment_name=metadata.environment_name,
         )
 
     @live_method

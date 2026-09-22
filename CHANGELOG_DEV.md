@@ -37,6 +37,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `modal function variants` to list the variants of a Function. It shows the 200 variants running the most containers by default; pass `-n`/`--limit` to show a different number, or `--limit 0` to list every variant, newest first.
 - Added `modal.Function.from_id` and `modal.Server.from_id` methods to look up Functions and Servers from their ID.
 - Added `modal function calls` and `modal server requests` to inspect recent invocations.
+- Added an `environment_name` field to `modal.SecretInfo`.
 
 ## JS
 

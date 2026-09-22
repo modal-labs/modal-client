@@ -3595,7 +3595,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, self.get_environment(request.environment_name))
+        environment_name = self.get_environment(request.environment_name)
+        k = (request.deployment_name, environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
@@ -3625,7 +3626,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.resource_creation_timestamps[secret_id] = timestamp = datetime.datetime.now().timestamp()
         creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
-        metadata = api_pb2.SecretMetadata(name=request.deployment_name, creation_info=creation_info)
+        metadata = api_pb2.SecretMetadata(
+            name=request.deployment_name, creation_info=creation_info, environment_name=environment_name
+        )
         await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id, metadata=metadata))
 
     async def SecretList(self, stream):
@@ -3640,7 +3643,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 continue
 
             creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
-            metadata = api_pb2.SecretMetadata(name=name, creation_info=creation_info)
+            metadata = api_pb2.SecretMetadata(name=name, creation_info=creation_info, environment_name=environment_name)
             secrets.append(api_pb2.SecretListItem(label=name, secret_id=obj_id, metadata=metadata))
             if req.pagination.max_objects and len(secrets) >= req.pagination.max_objects:
                 break
