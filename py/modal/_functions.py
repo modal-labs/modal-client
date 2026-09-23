@@ -818,6 +818,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 validate_target_concurrency(target_concurrent_inputs, "target_inputs", allow_fractional=False)
                 target_concurrent_inputs_int = int(target_concurrent_inputs)
 
+        if cluster_size and batch_max_size:
+            raise InvalidError("Clustered Functions do not support dynamic batching.")
+
         # For clustered functions, container settings must be multiples of cluster_size
         if cluster_size is not None and cluster_size > 1:
             for field in ["min_containers", "max_containers", "buffer_containers"]:

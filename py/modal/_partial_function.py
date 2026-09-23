@@ -801,8 +801,8 @@ def _clustered(
 
     assert broadcast, "broadcast=False has not been implemented yet!"
 
-    if size <= 0:
-        raise ValueError("cluster size must be greater than 0")
+    if not isinstance(size, int) or size <= 0:
+        raise InvalidError("cluster size must be a positive integer")
 
     if fabric_size is not None:
         if not isinstance(fabric_size, int) or fabric_size <= 0:
