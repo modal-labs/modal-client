@@ -341,6 +341,15 @@ def _issue_server_warnings(metadata: Any) -> None:
         print_server_warning(urllib.parse.unquote(encoded_message))
 
 
+def listen_for_server_warnings(channel: grpclib.client.Channel) -> None:
+    """Surface warnings the server attaches to any response on this channel."""
+
+    async def recv_trailing_metadata(event: grpclib.events.RecvTrailingMetadata) -> None:
+        _issue_server_warnings(event.metadata)
+
+    grpclib.events.listen(channel, grpclib.events.RecvTrailingMetadata, recv_trailing_metadata)
+
+
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
@@ -388,12 +397,7 @@ def create_channel(
             logger.debug(f"Sending request to {event.method_name} ({idempotency_key[:8]})")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
-
-    # Surface warnings the server attached to any response on this channel.
-    async def recv_trailing_metadata(event: grpclib.events.RecvTrailingMetadata) -> None:
-        _issue_server_warnings(event.metadata)
-
-    grpclib.events.listen(channel, grpclib.events.RecvTrailingMetadata, recv_trailing_metadata)
+    listen_for_server_warnings(channel)
 
     return channel
 

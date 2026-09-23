@@ -32,7 +32,7 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .._grpc_client import grpc_error_converter
-from .._utils.grpc_utils import ModalChannel, create_channel_config
+from .._utils.grpc_utils import ModalChannel, create_channel_config, listen_for_server_warnings
 from .async_utils import aclosing, retry
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .idle_countdown import IdleCountdown
@@ -306,6 +306,7 @@ class TaskCommandRouterClient:
                 logger.debug(f"Sending request to {event.method_name} ({idempotency_key[:8]})")
 
         grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+        listen_for_server_warnings(channel)
 
         try:
             await _connect_channel(channel)

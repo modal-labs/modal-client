@@ -655,6 +655,18 @@ def test_sandbox_exec_wait(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_exec_server_warning(app, servicer):
+    modal._traceback._server_warning_registry.clear()
+    servicer.task_command_router.exec_poll_warnings = ["the command router has something to say"]
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    cp = sb.exec("true")
+
+    with pytest.warns(modal.exception.ServerWarning, match="something to say"):
+        cp.poll()
+    cp.wait()
+
+
+@skip_non_subprocess
 def test_sandbox_exec_wait_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 

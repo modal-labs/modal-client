@@ -105,6 +105,8 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         # (closing stdin) but raises instead of sending the response, simulating
         # a completed upload whose response was lost.
         self.stdin_stream_drop_response: bool = False
+        # Messages sent back in the `x-modal-warning` trailing metadata of every TaskExecPoll.
+        self.exec_poll_warnings: list[str] = []
 
     def _task_state(self, task_id: str) -> TaskCommandRouterTaskState:
         return self._task_states[task_id]
@@ -249,6 +251,10 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
             await stream.send_message(sr_pb2.TaskExecPollResponse())
         else:
             await stream.send_message(sr_pb2.TaskExecPollResponse(code=proc.returncode))
+        if self.exec_poll_warnings:
+            await stream.send_trailing_metadata(
+                metadata=[("x-modal-warning", quote(message, safe="")) for message in self.exec_poll_warnings]
+            )
 
     async def TaskExecWait(self, stream) -> None:
         request: sr_pb2.TaskExecWaitRequest = await stream.recv_message()
