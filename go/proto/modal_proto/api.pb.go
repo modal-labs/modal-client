@@ -45875,7 +45875,8 @@ type Sandbox_builder struct {
 	// Specifies container runtime behavior for sandboxes which are restored from a snapshot.
 	// Set by the backend at snapshot creation time.
 	RunscRuntimeVersion *string
-	// If set, overrides the runtime used by the function, either "runc" or "gvisor".
+	// Runtime the sandbox runs in: "vm" for a virtual machine, or a container
+	// runtime such as "gvisor". Leave it unset to let Modal pick.
 	Runtime *string
 	// If set, the sandbox will be created with verbose logging enabled.
 	Verbose bool
