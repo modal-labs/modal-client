@@ -95,7 +95,7 @@ async def list_(*, json: bool = False, env: str | None = None):
         max_page_size = 100
         pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
         req = api_pb2.QueueListRequest(environment_name=env, pagination=pagination, total_size_limit=max_total_size)
-        resp = await client.stub.QueueList(req)
+        resp = await client._stub.QueueList(req)
         items.extend(resp.queues)
         return len(resp.queues) < max_page_size
 

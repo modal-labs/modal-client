@@ -129,7 +129,7 @@ async def test_stream_function_call_data(servicer, client):
             ),
         ],
     )
-    await client.stub.FunctionCallPutDataOut(req)
+    await client._stub.FunctionCallPutDataOut(req)
 
     t0 = time.time()
     gen = _stream_function_call_data(client, None, "fc-bar", variant="data_out")

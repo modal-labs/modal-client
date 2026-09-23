@@ -438,7 +438,7 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
         nonlocal last_entry_id, result_response
 
         request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
-        async for response in client.stub.ImageJoinStreaming.unary_stream(request):
+        async for response in client._stub.ImageJoinStreaming.unary_stream(request):
             if response.entry_id:
                 last_entry_id = response.entry_id
             if response.result.status:
@@ -746,7 +746,7 @@ class _Image(_Object, type_prefix="im"):
                 allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
                 ignore_cache=config.get("ignore_cache"),
             )
-            resp = await load_context.client.stub.ImageGetOrCreate(req)
+            resp = await load_context.client._stub.ImageGetOrCreate(req)
             image_id = resp.image_id
             result: api_pb2.GenericResult
             metadata: api_pb2.ImageMetadata | None = None
@@ -1013,7 +1013,7 @@ class _Image(_Object, type_prefix="im"):
         _client = typing.cast(_Client, synchronizer._translate_in(client))
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
-            resp = await load_context.client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
+            resp = await load_context.client._stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
@@ -2959,7 +2959,7 @@ class _Image(_Object, type_prefix="im"):
         request = api_pb2.ImageJoinStreamingRequest(
             image_id=self.object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
         )
-        async for response in self.client.stub.ImageJoinStreaming.unary_stream(request):
+        async for response in self.client._stub.ImageJoinStreaming.unary_stream(request):
             if response.result.status:
                 return
             if response.entry_id:
@@ -2995,7 +2995,7 @@ class _Image(_Object, type_prefix="im"):
             req = api_pb2.ImageGetByTagRequest(
                 tag=_upgrade_image_name(name, fallback_environment_name=load_context.environment_name),
             )
-            response = await load_context.client.stub.ImageGetByTag(req)
+            response = await load_context.client._stub.ImageGetByTag(req)
             self._hydrate(response.image_id, load_context.client, None)
 
         rep = _Image._repr(name, environment_name)
@@ -3039,7 +3039,7 @@ class _Image(_Object, type_prefix="im"):
             fallback_environment_name=config.get("environment"),
         )
 
-        await _client.stub.ImagePublish(
+        await _client._stub.ImagePublish(
             api_pb2.ImagePublishRequest(
                 image_id=self._object_id,
                 allow_public=bool((experimental_options or {}).get("is_public", False)),
@@ -3074,7 +3074,7 @@ class _Image(_Object, type_prefix="im"):
 
         if self._build_steps is None:
             request = api_pb2.ImageBuildChainGetRequest(image_id=image_id)
-            response = await client.stub.ImageBuildChainGet(request)
+            response = await client._stub.ImageBuildChainGet(request)
             self._build_steps = list(response.build_steps)
         return _ImageLogQueryData(client, self._build_steps or [], image_id)
 

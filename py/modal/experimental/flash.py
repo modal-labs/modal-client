@@ -95,7 +95,7 @@ class _FlashManager:
 
     async def _deregister(self):
         await asyncio.shield(
-            self.client.stub.FlashContainerDeregister(
+            self.client._stub.FlashContainerDeregister(
                 api_pb2.FlashContainerDeregisterRequest(),
                 timeout=2,
                 retry=None,
@@ -117,7 +117,7 @@ class _FlashManager:
                     # handle close upon container exit
 
                     if self.task_id:
-                        await self.client.stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=self.task_id))
+                        await self.client._stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=self.task_id))
                     return
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
@@ -138,7 +138,7 @@ class _FlashManager:
             try:
                 port_check_resp, _ = await self.is_port_connection_healthy(process=self.process)
                 if port_check_resp:
-                    resp = await self.client.stub.FlashContainerRegister(
+                    resp = await self.client._stub.FlashContainerRegister(
                         api_pb2.FlashContainerRegisterRequest(
                             priority=10,
                             weight=5,
@@ -167,7 +167,7 @@ class _FlashManager:
             try:
                 port_check_resp, port_check_error = await self.is_port_connection_healthy(process=self.process)
                 if port_check_resp:
-                    resp = await self.client.stub.FlashContainerRegister(
+                    resp = await self.client._stub.FlashContainerRegister(
                         api_pb2.FlashContainerRegisterRequest(
                             priority=10,
                             weight=5,
@@ -272,7 +272,7 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[Any]:
     fn = _Cls.from_name(app_name, cls_name)._get_class_service_function()
     await fn.hydrate(client=client)
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
-    resp = await client.stub.FlashContainerList(req)
+    resp = await client._stub.FlashContainerList(req)
     return list(resp.containers)
 
 

@@ -255,7 +255,7 @@ async def stats(
     if container:
         req.container_id = container
 
-    resp = await client.stub.FunctionGetTimeRangeStats(req)
+    resp = await client._stub.FunctionGetTimeRangeStats(req)
 
     if json_output:
         OutputManager.get().print_json(json_lib.dumps(_stats_json(function_id, resp, all_variants)))
@@ -422,7 +422,7 @@ async def calls(
         environment_name,
         command="calls",
     )
-    response = await client.stub.FunctionCallFetch(
+    response = await client._stub.FunctionCallFetch(
         api_pb2.FunctionCallFetchRequest(
             function_id=function_id,
             tail=api_pb2.FunctionCallFetchRequest.Tail(count=tail),

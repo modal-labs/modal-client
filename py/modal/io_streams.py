@@ -40,7 +40,7 @@ async def _sandbox_logs_iterator(
         timeout=55,
         last_entry_id=last_entry_id,
     )
-    async for log_batch in client.stub.SandboxGetLogs.unary_stream(req):
+    async for log_batch in client._stub.SandboxGetLogs.unary_stream(req):
         last_entry_id = log_batch.entry_id
 
         for message in log_batch.items:
@@ -621,7 +621,7 @@ class _StreamWriterThroughServer:
         index = self._get_next_index()
 
         try:
-            await self._client.stub.SandboxStdinWrite(
+            await self._client._stub.SandboxStdinWrite(
                 api_pb2.SandboxStdinWriteRequest(
                     sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
                 ),

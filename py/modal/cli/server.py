@@ -222,7 +222,7 @@ async def requests(
         object_type="Server",
         command="requests",
     )
-    response = await client.stub.ServerRequestFetch(
+    response = await client._stub.ServerRequestFetch(
         api_pb2.ServerRequestFetchRequest(
             function_id=function_id, tail=api_pb2.ServerRequestFetchRequest.Tail(count=tail)
         )
@@ -558,7 +558,7 @@ async def stats(
     if container_id:
         req.container_id = container_id
 
-    history = await client.stub.ServerGetTimeRangeStats(req)
+    history = await client._stub.ServerGetTimeRangeStats(req)
 
     if json_output:
         OutputManager.get().print_json(json_lib.dumps(_stats_json(function_id, history)))

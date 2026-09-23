@@ -83,7 +83,7 @@ def square(x):
 @synchronize_api
 async def stop_app(client, app_id):
     # helper to ensur we run the rpc from the synchronicity loop - otherwise we can run into weird deadlocks
-    return await client.stub.AppStop(api_pb2.AppStopRequest(app_id=app_id))
+    return await client._stub.AppStop(api_pb2.AppStopRequest(app_id=app_id))
 
 
 @contextmanager
@@ -187,7 +187,7 @@ async def test_container_snapshot_restore_pauses_heartbeats_during_memory_snapsh
         await finish_checkpoint.wait()
         return Empty()
 
-    monkeypatch.setattr(io_manager._client.stub, "ContainerCheckpoint", container_checkpoint)
+    monkeypatch.setattr(io_manager._client._stub, "ContainerCheckpoint", container_checkpoint)
     monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", heartbeat_interval_secs)
     servicer.container_heartbeat_abort.set()
 
@@ -303,7 +303,7 @@ async def test_container_checkpoint_failure_unpauses_heartbeats(servicer, contai
     async def raise_checkpoint_error(request):
         raise RuntimeError("container checkpoint failed")
 
-    monkeypatch.setattr(io_manager._client.stub, "ContainerCheckpoint", raise_checkpoint_error)
+    monkeypatch.setattr(io_manager._client._stub, "ContainerCheckpoint", raise_checkpoint_error)
     monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", heartbeat_interval_secs)
     servicer.container_heartbeat_abort.set()
 
@@ -358,13 +358,13 @@ async def test_rpc_wrapping_restores(container_client, servicer, tmpdir, client)
     async def exercise_rpcs():
         n = 0
         # Test UnaryStreamWrapper
-        async for _ in container_client.stub.DictContents.unary_stream(
+        async for _ in container_client._stub.DictContents.unary_stream(
             api_pb2.DictContentsRequest(dict_id=d.object_id, keys=True)
         ):
             n += 1
         assert n == 2
         # Test UnaryUnaryWrapper
-        await container_client.stub.DictClear(api_pb2.DictClearRequest(dict_id=d.object_id))
+        await container_client._stub.DictClear(api_pb2.DictClearRequest(dict_id=d.object_id))
 
     await exercise_rpcs.aio()
 

@@ -76,13 +76,13 @@ async def resolve_app_identifier(
         # the App's current state as conveyed by the lifecycle. We do propagate a NotFoundError
         # from the server if the App ID doesn't actually exist.
         request = api_pb2.AppGetLifecycleRequest(app_id=app_identifier)
-        resp = await client.stub.AppGetLifecycle(request)
+        resp = await client._stub.AppGetLifecycle(request)
         return app_identifier, "", resp.lifecycle
     else:
         # Identifier is treated as a name, which may or may not point at a currently deployed App
         # (inside a specific environment)
         request = api_pb2.AppGetByDeploymentNameRequest(name=app_identifier, environment_name=env or "")
-        resp = await client.stub.AppGetByDeploymentName(request)
+        resp = await client._stub.AppGetByDeploymentName(request)
         if resp.app_id:
             # App is currently deployed
             return resp.app_id, resp.environment_name, resp.lifecycle
@@ -104,7 +104,7 @@ async def list_(env: str | None = None, json: bool = False):
     env = ensure_env(env)
     client = await _Client.from_env()
 
-    resp: api_pb2.AppListResponse = await client.stub.AppList(
+    resp: api_pb2.AppListResponse = await client._stub.AppList(
         api_pb2.AppListRequest(environment_name=_get_environment_name(env))
     )
 
@@ -301,7 +301,7 @@ async def promote(
         env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
         raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
 
-    resp = await client.stub.AppPromote(api_pb2.AppPromoteRequest(app_id=app_id, version=version_number))
+    resp = await client._stub.AppPromote(api_pb2.AppPromoteRequest(app_id=app_id, version=version_number))
     print_server_warnings(resp.server_warnings)
 
     output_mgr = OutputManager.get()
@@ -369,7 +369,7 @@ async def rollback(
         else:
             raise UsageError(f"Invalid version specifier: {version}")
     req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
-    resp = await client.stub.AppRollback(req)
+    resp = await client._stub.AppRollback(req)
     print_server_warnings(resp.server_warnings)
     output_mgr = OutputManager.get()
     if strategy == "recreate":
@@ -436,7 +436,7 @@ async def rollover(
     t0 = time.monotonic()
 
     req = api_pb2.AppRolloverRequest(app_id=app_id)
-    response = await client.stub.AppRollover(req)
+    response = await client._stub.AppRollover(req)
     print_server_warnings(response.server_warnings)
 
     if strategy == "recreate":
@@ -478,7 +478,7 @@ async def stop(
         raise SystemExit(msg)
 
     if not yes:
-        res = await client.stub.TaskList(api_pb2.TaskListRequest(app_id=app_id))
+        res = await client._stub.TaskList(api_pb2.TaskListRequest(app_id=app_id))
         num_containers = len(res.tasks)
 
         if environment_name:
@@ -495,7 +495,7 @@ async def stop(
             msg += " No containers are currently running."
         confirm_or_suggest_yes(msg)
     req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
-    await client.stub.AppStop(req)
+    await client._stub.AppStop(req)
 
 
 @app_cli.command("history", no_args_is_help=True)
@@ -529,7 +529,7 @@ async def history(
     env = ensure_env(env)
     client = await _Client.from_env()
     app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
-    resp = await client.stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
+    resp = await client._stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
 
     columns = [
         "Version",
@@ -646,7 +646,7 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
     client = await _Client.from_env()
     app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
     request = api_pb2.AppGetInfoRequest(app_id=app_id)
-    resp: api_pb2.AppGetInfoResponse = await client.stub.AppGetInfo(request)
+    resp: api_pb2.AppGetInfoResponse = await client._stub.AppGetInfo(request)
     app_info = resp.info
     lifecycle = app_info.lifecycle
     output = OutputManager.get()

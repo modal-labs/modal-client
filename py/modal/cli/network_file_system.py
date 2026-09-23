@@ -33,7 +33,7 @@ async def list_(env: str | None = None, json: bool = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
-    response = await client.stub.SharedVolumeList(api_pb2.SharedVolumeListRequest(environment_name=env))
+    response = await client._stub.SharedVolumeList(api_pb2.SharedVolumeListRequest(environment_name=env))
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Location", "Created at"]
     rows = []

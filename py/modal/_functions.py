@@ -158,8 +158,8 @@ class _Invocation:
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         from_spawn_map: bool = False,
     ) -> "_Invocation":
-        assert client.stub
-        stub = client.stub
+        assert client._stub
+        stub = client._stub
 
         function_id = function.object_id
         item = await _create_input(
@@ -180,7 +180,7 @@ class _Invocation:
 
         if from_spawn_map:
             request.from_spawn_map = True
-            response = await client.stub.FunctionMap(
+            response = await client._stub.FunctionMap(
                 request,
                 retry=Retry(
                     max_retries=None,
@@ -195,7 +195,7 @@ class _Invocation:
                 ),
             )
         else:
-            response = await client.stub.FunctionMap(request)
+            response = await client._stub.FunctionMap(request)
 
         function_call_id = response.function_call_id
         if response.pipelined_inputs:
@@ -215,7 +215,7 @@ class _Invocation:
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
-        inputs_response: api_pb2.FunctionPutInputsResponse = await client.stub.FunctionPutInputs(request_put)
+        inputs_response: api_pb2.FunctionPutInputsResponse = await client._stub.FunctionPutInputs(request_put)
         processed_inputs = inputs_response.inputs
         if not processed_inputs:
             raise Exception("Could not create function call - the input queue seems to be full")
@@ -438,10 +438,10 @@ class _InputPlaneInvocation:
         input_plane_region: str,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_InputPlaneInvocation":
-        stub = await client.get_stub(input_plane_url)
+        stub = await client._get_stub(input_plane_url)
 
         function_id = function.object_id
-        control_plane_stub = client.stub
+        control_plane_stub = client._stub
         # Note: Blob upload is done on the control plane stub, not the input plane stub!
         input_item = await _create_input(
             args,
@@ -491,7 +491,7 @@ class _InputPlaneInvocation:
             # If we have a final output, return.
             if await_response.output.result.status in TERMINAL_STATUSES:
                 return await _process_result(
-                    await_response.output.result, await_response.output.data_format, self.client.stub, self.client
+                    await_response.output.result, await_response.output.data_format, self.client._stub, self.client
                 )
 
             # We have a failure (internal or application), so see if there are any retries left, and if so, retry.
@@ -510,7 +510,7 @@ class _InputPlaneInvocation:
 
             # No more retries left.
             return await _process_result(
-                await_response.output.result, await_response.output.data_format, self.client.stub, self.client
+                await_response.output.result, await_response.output.data_format, self.client._stub, self.client
             )
 
     async def _retry_input(self, metadata: list[tuple[str, str]]) -> str:
@@ -963,7 +963,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
 
-            response = await load_context.client.stub.FunctionPrecreate(req)
+            response = await load_context.client._stub.FunctionPrecreate(req)
             self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
@@ -1177,7 +1177,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     existing_function_id=existing_object_id or "",
                 )
                 try:
-                    response: api_pb2.FunctionCreateResponse = await load_context.client.stub.FunctionCreate(request)
+                    response: api_pb2.FunctionCreateResponse = await load_context.client._stub.FunctionCreate(request)
                 except Exception as exc:
                     if "Received :status = '413'" in str(exc):
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
@@ -1278,7 +1278,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             scaledown_window=scaledown_window,
         )
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
-        response = await self.client.stub.FunctionUpdateSchedulingParams(request)
+        response = await self.client._stub.FunctionUpdateSchedulingParams(request)
 
         return FunctionAutoscalerSettings._from_proto(response.current_settings)
 
@@ -1303,7 +1303,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             validate_target_concurrency(target_concurrency, "target_concurrency", allow_fractional=True)
             settings.target_concurrency_float = normalize_fractional_target_concurrency(target_concurrency)
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
-        response = await self.client.stub.FunctionUpdateSchedulingParams(request)
+        response = await self.client._stub.FunctionUpdateSchedulingParams(request)
 
         return ServerAutoscalerSettings._from_proto(response.current_settings)
 
@@ -1381,7 +1381,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 app_version=version or 0,
             )
             try:
-                response = await load_context.client.stub.FunctionGet(request)
+                response = await load_context.client._stub.FunctionGet(request)
             except NotFoundError as exc:
                 # refine the error message
                 env_context = (
@@ -1425,7 +1425,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ):
             request = api_pb2.FunctionGetByIdRequest(function_id=function_id)
             try:
-                response = await load_context.client.stub.FunctionGetById(request)
+                response = await load_context.client._stub.FunctionGetById(request)
             except NotFoundError as exc:
                 # refine the error message
                 msg = f"Lookup failed for {called_from} '{function_id}': {exc}."
@@ -1585,7 +1585,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if refresh or self._function_info is None:
             # Accessing `.client` or `.object_id` here can't throw since we only get to this branch on a
             # hydrated handle
-            response = await self.client.stub.FunctionGetById(
+            response = await self.client._stub.FunctionGetById(
                 api_pb2.FunctionGetByIdRequest(
                     function_id=self.object_id,
                 )
@@ -2246,7 +2246,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Returns:
             A `FunctionCurrentStats` object containing live input and container counts.
         """
-        resp = await self.client.stub.FunctionGetCurrentStats(
+        resp = await self.client._stub.FunctionGetCurrentStats(
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             retry=Retry(total_timeout=10.0),
         )
@@ -2292,7 +2292,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         historical_request.until.FromDatetime(until)
         if container:
             historical_request.container_id = container
-        stats = await self.client.stub.FunctionGetTimeRangeStats(historical_request)
+        stats = await self.client._stub.FunctionGetTimeRangeStats(historical_request)
         return FunctionStats._from_proto(stats)
 
     @live_method
@@ -2329,12 +2329,12 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     _function_id: str | None = None
 
     def _invocation(self):
-        return _Invocation(self.client.stub, self.object_id, self.client)
+        return _Invocation(self.client._stub, self.object_id, self.client)
 
     async def _hydrate_from_id_metadata(self) -> None:
         """Hydrate metadata only when needed for FunctionCall fields."""
         request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
-        resp = await self.client.stub.FunctionCallFromId(request)
+        resp = await self.client._stub.FunctionCallFromId(request)
         self._hydrate_metadata(resp)
 
     async def _get_log_query_data(self) -> _LogQueryData:
@@ -2450,9 +2450,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         Returns:
             A list of `InputInfo` nodes describing the call graph.
         """
-        assert self._client and self._client.stub
+        assert self._client and self._client._stub
         request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
-        response = await self._client.stub.FunctionGetCallGraph(request)
+        response = await self._client._stub.FunctionGetCallGraph(request)
         if response.truncated:
             logger.warning(
                 f"Call graph for {self.object_id} was truncated; "
@@ -2472,8 +2472,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         request = api_pb2.FunctionCallCancelRequest(
             function_call_id=self.object_id, terminate_containers=terminate_containers
         )
-        assert self._client and self._client.stub
-        await self._client.stub.FunctionCallCancel(request)
+        assert self._client and self._client._stub
+        await self._client._stub.FunctionCallCancel(request)
 
     @deprecate_aio_usage((2025, 11, 14), "FunctionCall.from_id")
     @classmethod

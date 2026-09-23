@@ -230,7 +230,7 @@ async def _lookup_workspace(
         credentials,
         oauth_credentials=oauth_credentials,
     ) as client:
-        return await client.stub.WorkspaceNameLookup(Empty(), retry=None, timeout=3)
+        return await client._stub.WorkspaceNameLookup(Empty(), retry=None, timeout=3)
 
 
 def config_profiles():

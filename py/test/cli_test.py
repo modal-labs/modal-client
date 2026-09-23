@@ -2077,13 +2077,13 @@ def test_app_descriptions_with_name(servicer, set_env_client, test_dir):
 
 def _mock_function_logs(monkeypatch):
     client = mock.Mock()
-    client.stub.FunctionGet = mock.AsyncMock(
+    client._stub.FunctionGet = mock.AsyncMock(
         return_value=api_pb2.FunctionGetResponse(
             function_id="fu-function",
             handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-function-app"),
         )
     )
-    client.stub.FunctionGetById = mock.AsyncMock(
+    client._stub.FunctionGetById = mock.AsyncMock(
         return_value=api_pb2.FunctionGetByIdResponse(
             handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-function-app")
         )
@@ -2094,14 +2094,14 @@ def _mock_function_logs(monkeypatch):
 
 def _mock_server_logs(monkeypatch):
     client = mock.Mock()
-    client.stub.FunctionGet = mock.AsyncMock(
+    client._stub.FunctionGet = mock.AsyncMock(
         return_value=api_pb2.FunctionGetResponse(
             function_id="fu-server",
             function=api_pb2.FunctionData(is_server=True),
             handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-server-app"),
         )
     )
-    client.stub.FunctionGetById = mock.AsyncMock(
+    client._stub.FunctionGetById = mock.AsyncMock(
         return_value=api_pb2.FunctionGetByIdResponse(
             handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-server-app"),
             function=api_pb2.FunctionData(is_server=True),
@@ -2134,7 +2134,7 @@ def test_server_logs_defaults_to_tail(set_env_client, monkeypatch):
 
     run_cli_command(["server", "logs", "my-app/WebServer"])
 
-    request = client.stub.FunctionGet.await_args.args[0]
+    request = client._stub.FunctionGet.await_args.args[0]
     assert request.app_name == "my-app"
     assert request.object_tag == "WebServer"
     assert request.environment_name == ""
@@ -2152,7 +2152,7 @@ def test_server_logs_resolves_fu_prefixed_app_name(set_env_client, monkeypatch):
 
     run_cli_command(["server", "logs", "fu-prefixed-app/WebServer"])
 
-    request = client.stub.FunctionGet.await_args.args[0]
+    request = client._stub.FunctionGet.await_args.args[0]
     assert request.app_name == "fu-prefixed-app"
     assert request.object_tag == "WebServer"
     assert request.environment_name == ""
@@ -2182,7 +2182,7 @@ def test_server_logs_fetches_time_range(set_env_client, monkeypatch):
         ]
     )
 
-    request = client.stub.FunctionGet.await_args.args[0]
+    request = client._stub.FunctionGet.await_args.args[0]
     assert request.app_name == "my-app"
     assert request.object_tag == "WebServer"
     assert request.environment_name == "prod"
@@ -2247,8 +2247,8 @@ def test_server_logs_requires_app_and_server_names(set_env_client, monkeypatch):
     result = run_cli_command(["server", "logs", "WebServer"], expected_exit_code=2)
 
     assert "SERVER must be a Function ID (fu-…) or a deployed Server name (APP_NAME/SERVER_NAME)" in result.stderr
-    client.stub.FunctionGet.assert_not_awaited()
-    client.stub.FunctionGetById.assert_not_awaited()
+    client._stub.FunctionGet.assert_not_awaited()
+    client._stub.FunctionGetById.assert_not_awaited()
 
 
 def test_function_logs_resolves_name_and_runs_shared_command(set_env_client, monkeypatch):
@@ -2278,7 +2278,7 @@ def test_function_logs_resolves_name_and_runs_shared_command(set_env_client, mon
         ]
     )
 
-    request = client.stub.FunctionGet.await_args.args[0]
+    request = client._stub.FunctionGet.await_args.args[0]
     assert request.app_name == "my-app"
     assert request.object_tag == "process"
     assert request.environment_name == "prod"
@@ -2301,7 +2301,7 @@ def test_function_logs_resolves_fu_prefixed_app_name(set_env_client, monkeypatch
 
     run_cli_command(["function", "logs", "fu-prefixed-app/process"])
 
-    request = client.stub.FunctionGet.await_args.args[0]
+    request = client._stub.FunctionGet.await_args.args[0]
     assert request.app_name == "fu-prefixed-app"
     assert request.object_tag == "process"
     assert request.environment_name == ""
@@ -2313,14 +2313,14 @@ def test_function_logs_resolves_app_id_from_function_id(set_env_client, monkeypa
     run_logs = mock.AsyncMock()
     monkeypatch.setattr("modal.cli.function._run_logs_command", run_logs)
 
-    client.stub.FunctionGetById.return_value = api_pb2.FunctionGetByIdResponse(
+    client._stub.FunctionGetById.return_value = api_pb2.FunctionGetByIdResponse(
         handle_metadata=api_pb2.FunctionHandleMetadata(app_id="ap-from-function-id")
     )
 
     run_cli_command(["function", "logs", "fu-123"])
 
-    client.stub.FunctionGet.assert_not_awaited()
-    request = client.stub.FunctionGetById.await_args.args[0]
+    client._stub.FunctionGet.assert_not_awaited()
+    request = client._stub.FunctionGetById.await_args.args[0]
     assert request.function_id == "fu-123"
     run_logs.assert_awaited_once()
     args, kwargs = run_logs.await_args
@@ -2354,8 +2354,8 @@ def test_function_logs_requires_app_and_function_names(set_env_client, monkeypat
     result = run_cli_command(["function", "logs", "process"], expected_exit_code=2)
 
     assert "FUNCTION must be a Function ID (fu-…) or a deployed Function name (APP_NAME/FUNCTION_NAME)" in result.stderr
-    client.stub.FunctionGet.assert_not_awaited()
-    client.stub.FunctionGetById.assert_not_awaited()
+    client._stub.FunctionGet.assert_not_awaited()
+    client._stub.FunctionGetById.assert_not_awaited()
 
 
 def test_function_logs_help(set_env_client):

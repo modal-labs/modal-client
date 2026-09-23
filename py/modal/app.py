@@ -387,7 +387,7 @@ class _App:
             object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
         )
 
-        response = await client.stub.AppGetOrCreate(request)
+        response = await client._stub.AppGetOrCreate(request)
 
         return _App._new_remote(
             name,
@@ -1648,7 +1648,7 @@ class _App:
         req = api_pb2.AppSetTagsRequest(app_id=self._app_id, tags=tags)
 
         client = client or self._client or await _Client.from_env()
-        await client.stub.AppSetTags(req)
+        await client._stub.AppSetTags(req)
 
     async def get_tags(self, *, client: _Client | None = None) -> dict[str, str]:
         """Get the tags that are currently attached to the App.
@@ -1663,7 +1663,7 @@ class _App:
             raise InvalidError("`App.get_tags` cannot be called before the App is running.")
         req = api_pb2.AppGetTagsRequest(app_id=self._app_id)
         client = client or self._client or await _Client.from_env()
-        resp = await client.stub.AppGetTags(req)
+        resp = await client._stub.AppGetTags(req)
         return dict(resp.tags)
 
     @classmethod
@@ -1732,7 +1732,7 @@ class _App:
             raise InvalidError("`app.info` requires a running or stopped app.")
         request = api_pb2.AppGetInfoRequest(app_id=self._app_id)
         client = self._client or await _Client.from_env()
-        resp = await client.stub.AppGetInfo(request)
+        resp = await client._stub.AppGetInfo(request)
         self._info = AppInfo._from_proto(resp.info, self._app_id)
         return self._info
 

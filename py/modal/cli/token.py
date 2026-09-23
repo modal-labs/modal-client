@@ -76,7 +76,7 @@ async def info():
     """Display information about the token that is currently in use."""
     client = await _Client.from_env()
     req = api_pb2.TokenInfoGetRequest()
-    resp = await client.stub.TokenInfoGet(req)
+    resp = await client._stub.TokenInfoGet(req)
 
     output = OutputManager.get()
     env_vars = []

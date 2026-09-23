@@ -149,7 +149,7 @@ class IOContext:
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
             if input.WhichOneof("args_oneof") == "args_blob_id":
-                args = await blob_download(input.args_blob_id, client.stub)
+                args = await blob_download(input.args_blob_id, client._stub)
                 # Mutating
                 input.ClearField("args_blob_id")
                 input.args = args
@@ -374,7 +374,7 @@ class IOContext:
             repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
         data: bytes = pickle_exception(exc)
-        data_result_part = await format_blob_data(data, self._client.stub, exception_size_limit)
+        data_result_part = await format_blob_data(data, self._client._stub, exception_size_limit)
         serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
 
         # Failure outputs for when input exceptions occur
@@ -451,7 +451,7 @@ class IOContext:
 
             serialized_bytes = serialize_data_format(item, data_format=output_format)
             formatted = await format_blob_data(
-                serialized_bytes, self._client.stub, self._output_size_limit(invocation_type)
+                serialized_bytes, self._client._stub, self._output_size_limit(invocation_type)
             )
             # Create the result
             result = api_pb2.GenericResult(
@@ -640,7 +640,7 @@ class _ContainerIOManager:
         return self._task_lifecycle_manager._client
 
     async def hello(self):
-        await self._client.stub.ContainerHello(Empty())
+        await self._client._stub.ContainerHello(Empty())
 
     async def _run_heartbeat_loop(self):
         t_last_success = time.monotonic()
@@ -695,7 +695,7 @@ class _ContainerIOManager:
                 await self.heartbeat_condition.wait()
 
             request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs_v2=True)
-            response = await self._client.stub.ContainerHeartbeat(
+            response = await self._client._stub.ContainerHeartbeat(
                 request, retry=Retry(attempt_timeout=HEARTBEAT_TIMEOUT)
             )
 
@@ -743,7 +743,7 @@ class _ContainerIOManager:
                     target_concurrency=self._target_concurrency,
                     max_concurrency=self._max_concurrency,
                 )
-                resp = await self._client.stub.FunctionGetDynamicConcurrency(
+                resp = await self._client._stub.FunctionGetDynamicConcurrency(
                     request,
                     retry=Retry(attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS),
                 )
@@ -758,9 +758,9 @@ class _ContainerIOManager:
 
     async def get_data_in(self, function_call_id: str, attempt_token: str | None) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
-        stub = self._client.stub
+        stub = self._client._stub
         if self.input_plane_server_url:
-            stub = await self._client.get_stub(self.input_plane_server_url)
+            stub = await self._client._get_stub(self.input_plane_server_url)
 
         async for data in _stream_function_call_data(
             self._client, stub, function_call_id, variant="data_in", attempt_token=attempt_token
@@ -783,7 +783,7 @@ class _ContainerIOManager:
         for i, message_bytes in enumerate(serialized_messages):
             chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
             if len(message_bytes) > self._max_object_size_bytes:
-                chunk.data_blob_id = await blob_upload(message_bytes, self._client.stub)
+                chunk.data_blob_id = await blob_upload(message_bytes, self._client._stub)
             else:
                 chunk.data = message_bytes
             data_chunks.append(chunk)
@@ -793,10 +793,10 @@ class _ContainerIOManager:
             req.attempt_token = attempt_token  # oneof clears function_call_id.
 
         if self.input_plane_server_url:
-            stub = await self._client.get_stub(self.input_plane_server_url)
+            stub = await self._client._get_stub(self.input_plane_server_url)
             await stub.FunctionCallPutDataOut(req)
         else:
-            await self._client.stub.FunctionCallPutDataOut(req)
+            await self._client._stub.FunctionCallPutDataOut(req)
 
     @asynccontextmanager
     async def generator_output_sender(
@@ -872,7 +872,7 @@ class _ContainerIOManager:
             try:
                 # If number of active inputs is at max queue size, this will block.
                 iteration += 1
-                response: api_pb2.FunctionGetInputsResponse = await self._client.stub.FunctionGetInputs(request)
+                response: api_pb2.FunctionGetInputsResponse = await self._client._stub.FunctionGetInputs(request)
 
                 if response.rate_limit_sleep_duration:
                     logger.info(
@@ -967,7 +967,7 @@ class _ContainerIOManager:
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
         output_batch_size = 20
         for i in range(0, len(outputs), output_batch_size):
-            await self._client.stub.FunctionPutOutputs(
+            await self._client._stub.FunctionPutOutputs(
                 api_pb2.FunctionPutOutputsRequest(outputs=outputs[i : i + output_batch_size]),
                 retry=Retry(
                     additional_status_codes=[Status.RESOURCE_EXHAUSTED],
@@ -1067,7 +1067,7 @@ class _ContainerIOManager:
             raise InvalidError(f"Cannot use {trigger} without running Modal in interactive mode.")
 
         try:
-            await self._client.stub.FunctionStartPtyShell(Empty())
+            await self._client._stub.FunctionStartPtyShell(Empty())
         except Exception as e:
             logger.error("Failed to start PTY shell.")
             raise e
@@ -1136,7 +1136,7 @@ class _ContainerIOManager:
         if not io_manager:
             raise RuntimeError("Must be called from within a Modal container.")
         request = api_pb2.ContainerStopRequest(task_id=io_manager.task_id, graceful=True)
-        await io_manager._client.stub.ContainerStop(
+        await io_manager._client._stub.ContainerStop(
             request,
             retry=Retry(total_timeout=5.0),
         )

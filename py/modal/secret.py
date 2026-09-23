@@ -85,7 +85,7 @@ class _SecretManager:
             env_dict=env_dict,
         )
         try:
-            await client.stub.SecretGetOrCreate(req)
+            await client._stub.SecretGetOrCreate(req)
         except AlreadyExistsError:
             if not allow_existing:
                 raise
@@ -144,7 +144,7 @@ class _SecretManager:
             req = api_pb2.SecretListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await client.stub.SecretList(req)
+            resp = await client._stub.SecretList(req)
             items.extend(resp.items)
             finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -205,7 +205,7 @@ class _SecretManager:
                 raise
         else:
             req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
-            await obj.client.stub.SecretDelete(req)
+            await obj.client._stub.SecretDelete(req)
 
 
 SecretManager = synchronize_api(_SecretManager)
@@ -227,7 +227,7 @@ async def _load_from_env_dict(instance: "_Secret", load_context: LoadContext, en
             environment_name=load_context.environment_name,
         )
 
-    resp = await load_context.client.stub.SecretGetOrCreate(req)
+    resp = await load_context.client._stub.SecretGetOrCreate(req)
     instance._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
 
@@ -262,7 +262,7 @@ class _Secret(_Object, type_prefix="st"):
             return
 
         req = api_pb2.SecretGetInfoRequest(secret_id=self.object_id)
-        response = await self.client.stub.SecretGetInfo(req)
+        response = await self.client._stub.SecretGetInfo(req)
         self._hydrate(self.object_id, self.client, response.metadata)
 
     def _hydrate_metadata(self, metadata: Message | None):
@@ -468,7 +468,7 @@ class _Secret(_Object, type_prefix="st"):
                 environment_name=load_context.environment_name,
                 required_keys=required_keys,
             )
-            response = await load_context.client.stub.SecretGetOrCreate(req)
+            response = await load_context.client._stub.SecretGetOrCreate(req)
             self._hydrate(response.secret_id, load_context.client, response.metadata)
 
         rep = _Secret._repr(name, environment_name)
@@ -508,7 +508,7 @@ class _Secret(_Object, type_prefix="st"):
 
         async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.SecretGetInfoRequest(secret_id=secret_id)
-            response = await load_context.client.stub.SecretGetInfo(req)
+            response = await load_context.client._stub.SecretGetInfo(req)
             self._hydrate(secret_id, load_context.client, response.metadata)
 
         rep = f"modal.Secret.from_id({secret_id!r})"
@@ -543,7 +543,7 @@ class _Secret(_Object, type_prefix="st"):
             object_creation_type=object_creation_type,
             env_dict=env_dict,
         )
-        resp = await client.stub.SecretGetOrCreate(request)
+        resp = await client._stub.SecretGetOrCreate(request)
         return resp.secret_id
 
     @live_method
@@ -575,7 +575,7 @@ class _Secret(_Object, type_prefix="st"):
         updates = [api_pb2.SecretUpdateRequest.Update(key=k, value=v) for k, v in env_dict.items()]
         req = api_pb2.SecretUpdateRequest(secret_id=self.object_id, updates=updates)
 
-        await self.client.stub.SecretUpdate(req)
+        await self.client._stub.SecretUpdate(req)
 
         # Since we are hydrated at this point, this will never be None
         assert self._keys is not None

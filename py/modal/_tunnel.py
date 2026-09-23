@@ -188,7 +188,7 @@ async def _forward(
 
     tunnel_type = api_pb2.TUNNEL_TYPE_H2 if h2_enabled else api_pb2.TUNNEL_TYPE_UNSPECIFIED
     try:
-        response = await client.stub.TunnelStart(
+        response = await client._stub.TunnelStart(
             api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, tunnel_type=tunnel_type)
         )
     except AlreadyExistsError as exc:
@@ -199,7 +199,7 @@ async def _forward(
     try:
         yield Tunnel(response.host, response.port, response.unencrypted_host, response.unencrypted_port)
     finally:
-        await client.stub.TunnelStop(api_pb2.TunnelStopRequest(port=port))
+        await client._stub.TunnelStop(api_pb2.TunnelStopRequest(port=port))
 
 
 forward = synchronize_api(_forward)

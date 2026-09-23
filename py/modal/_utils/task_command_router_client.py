@@ -216,7 +216,7 @@ def _is_v2_task_id(task_id: str) -> bool:
 
 async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.TaskGetCommandRouterAccessResponse:
     """Fetch direct command router access info from Modal server."""
-    return await server_client.stub.TaskGetCommandRouterAccess(
+    return await server_client._stub.TaskGetCommandRouterAccess(
         api_pb2.TaskGetCommandRouterAccessRequest(task_id=task_id),
     )
 
@@ -236,7 +236,7 @@ async def fetch_command_router_access_v2(
         raise ValueError("Either sandbox_id or task_id must be provided")
     assert server_client._auth_token_manager
     auth_token = await server_client._auth_token_manager.get_token()
-    return await server_client.stub.SandboxGetCommandRouterAccess(
+    return await server_client._stub.SandboxGetCommandRouterAccess(
         request,
         metadata=[("x-modal-auth-token", auth_token)],
     )

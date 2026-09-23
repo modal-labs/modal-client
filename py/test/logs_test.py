@@ -293,7 +293,7 @@ class _MockStub:
 
 class _MockClient:
     def __init__(self, responses: dict):
-        self.stub = _MockStub(responses)
+        self._stub = _MockStub(responses)
 
 
 def _count_response(buckets_data: list[tuple[float, int]], bucket_secs: int):
@@ -523,12 +523,12 @@ async def test_fetch_logs_errors_on_too_dense_interval():
 
     client: Any = _MockClient({})
     # Override AppCountLogs to return our dense response
-    original = client.stub.AppCountLogs
+    original = client._stub.AppCountLogs
 
     async def patched_count(req):
         return count_resp
 
-    client.stub.AppCountLogs = patched_count
+    client._stub.AppCountLogs = patched_count
 
     with pytest.raises(LogsFetchError, match="Too many logs to fetch"):
         async for _ in fetch_logs(client, "app-1", since, until):
@@ -560,7 +560,7 @@ async def test_fetch_logs_errors_on_too_many_intervals():
     async def patched_count(req):
         return count_resp
 
-    client.stub.AppCountLogs = patched_count
+    client._stub.AppCountLogs = patched_count
 
     with pytest.raises(LogsFetchError, match="Too many logs to fetch"):
         async for _ in fetch_logs(client, "app-1", since, until):
@@ -604,7 +604,7 @@ async def test_fetch_logs_trims_leading_trailing_zeros():
             return fetch_resp
 
     class _TrimMockClient:
-        stub = _TrimMockStub()
+        _stub = _TrimMockStub()
 
     client: Any = _TrimMockClient()
     batches = [b async for b in fetch_logs(client, "app-1", since, until)]
@@ -649,7 +649,7 @@ async def test_tail_logs_single_rpc():
             return fetch_resp
 
     class _TailMockClient:
-        stub = _TailMockStub()
+        _stub = _TailMockStub()
 
     client: Any = _TailMockClient()
     batches = [b async for b in tail_logs(client, "app-1", 50)]
@@ -695,7 +695,7 @@ async def test_tail_logs_widens_lookback():
             return partial_resp if call_count == 1 else full_resp
 
     class _TailMockClient:
-        stub = _TailMockStub()
+        _stub = _TailMockStub()
 
     client: Any = _TailMockClient()
     batches = [b async for b in tail_logs(client, "app-1", 10)]
@@ -723,7 +723,7 @@ async def test_tail_logs_with_explicit_since():
             return fetch_resp
 
     class _TailMockClient:
-        stub = _TailMockStub()
+        _stub = _TailMockStub()
 
     client: Any = _TailMockClient()
     since = datetime.now(timezone.utc) - timedelta(hours=2)
@@ -759,7 +759,7 @@ async def test_tail_logs_with_explicit_until():
             return fetch_resp
 
     class _TailMockClient:
-        stub = _TailMockStub()
+        _stub = _TailMockStub()
 
     client: Any = _TailMockClient()
     until = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -1546,7 +1546,7 @@ class _FakeLogSource:
 
         class _FakeClient:
             def __init__(self):
-                self.stub = _FakeStub()
+                self._stub = _FakeStub()
 
         return _LogQueryData(
             cast(Any, _FakeClient()),
@@ -1649,7 +1649,7 @@ class _ScriptedLogSource:
 
         class _FakeClient:
             def __init__(self):
-                self.stub = _FakeStub()
+                self._stub = _FakeStub()
 
         return _LogQueryData(
             cast(Any, _FakeClient()),

@@ -4,6 +4,7 @@ import pytest
 import subprocess
 import sys
 import urllib.parse
+import warnings
 
 from google.protobuf.empty_pb2 import Empty
 
@@ -15,6 +16,7 @@ from modal.exception import (
     AuthError,
     ConflictError,
     ConnectionError,
+    InternalAPIWarning,
     InternalError,
     InvalidError,
     ServerWarning,
@@ -32,6 +34,32 @@ def test_client_type(servicer, client):
     assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], Empty)
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+
+
+def test_client_stub_access_warns(servicer, client):
+    with pytest.warns(InternalAPIWarning, match="Client.stub"):
+        client.stub
+
+
+def test_client_get_stub_access_warns(servicer, client):
+    with pytest.warns(InternalAPIWarning, match="Client.get_stub"):
+        client.get_stub(servicer.client_addr)
+
+
+def test_client_stub_access_warns_once(servicer, client):
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("default")
+        for _ in range(3):
+            client.stub
+        client.stub
+    assert len([w for w in record if issubclass(w.category, InternalAPIWarning)]) == 1
+
+
+def test_sdk_rpcs_do_not_warn(servicer, client):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", InternalAPIWarning)
+        client.hello()
+        modal.Dict.from_name("my-dict", create_if_missing=True, client=client).hydrate()
 
 
 CHALLENGING_PLATFORM_NODE = "\0äbc \n"

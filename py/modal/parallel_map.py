@@ -127,7 +127,7 @@ class InputPreprocessor:
             return await _create_input(
                 args,
                 kwargs,
-                self.client.stub,
+                self.client._stub,
                 idx=idx,
                 function=self.function,
             )
@@ -172,7 +172,7 @@ class InputPumper:
         self.max_batch_size = max_batch_size
 
     async def pump_inputs(self):
-        assert self.client.stub
+        assert self.client._stub
         async for items in queue_batch_iterator(self.input_queue, max_batch_size=self.max_batch_size):
             # Add items to the manager. Their state will be SENDING.
             if self.map_items_manager is not None:
@@ -187,7 +187,7 @@ class InputPumper:
                 f" push is {self.input_queue.qsize()}. "
             )
 
-            resp = await self.client.stub.FunctionPutInputs(request, retry=self._function_inputs_retry)
+            resp = await self.client._stub.FunctionPutInputs(request, retry=self._function_inputs_retry)
             self.inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             if self.map_items_manager is not None:
@@ -250,7 +250,7 @@ class SyncInputPumper(InputPumper):
                 function_call_jwt=self.function_call_jwt,
                 inputs=inputs,
             )
-            resp = await self.client.stub.FunctionRetryInputs(request, retry=self._function_inputs_retry)
+            resp = await self.client._stub.FunctionRetryInputs(request, retry=self._function_inputs_retry)
             # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
             # to the new value in the response.
             self.map_items_manager.handle_retry_response(resp.input_jwts)
@@ -284,21 +284,21 @@ class AsyncInputPumper(InputPumper):
             function_call_id=self.function_call_id,
             num_inputs=self.inputs_sent,
         )
-        await self.client.stub.FunctionFinishInputs(request, retry=Retry(max_retries=None))
+        await self.client._stub.FunctionFinishInputs(request, retry=Retry(max_retries=None))
         yield
 
 
 async def _spawn_map_invocation(
     function: "modal._functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
 ) -> tuple[str, int]:
-    assert client.stub
+    assert client._stub
     request = api_pb2.FunctionMapRequest(
         function_id=function.object_id,
         parent_input_id=current_input_id() or "",
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
     )
-    response: api_pb2.FunctionMapResponse = await client.stub.FunctionMap(request)
+    response: api_pb2.FunctionMapResponse = await client._stub.FunctionMap(request)
     function_call_id = response.function_call_id
 
     have_all_inputs = False
@@ -368,7 +368,7 @@ async def _map_invocation(
     count_update_callback: Callable[[int, int], None] | None,
     function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
 ):
-    assert client.stub
+    assert client._stub
     request = api_pb2.FunctionMapRequest(
         function_id=function.object_id,
         parent_input_id=current_input_id() or "",
@@ -376,7 +376,7 @@ async def _map_invocation(
         return_exceptions=return_exceptions,
         function_call_invocation_type=function_call_invocation_type,
     )
-    response: api_pb2.FunctionMapResponse = await client.stub.FunctionMap(request)
+    response: api_pb2.FunctionMapResponse = await client._stub.FunctionMap(request)
 
     function_call_id = response.function_call_id
     function_call_jwt = response.function_call_jwt
@@ -445,7 +445,7 @@ async def _map_invocation(
             map_done_event.set()
 
     async def get_all_outputs():
-        assert client.stub
+        assert client._stub
         nonlocal \
             successful_completions, \
             failed_completions, \
@@ -472,7 +472,7 @@ async def _map_invocation(
                 input_jwts=input_jwts,
             )
             get_response_task = asyncio.create_task(
-                client.stub.FunctionGetOutputs(
+                client._stub.FunctionGetOutputs(
                     request,
                     retry=Retry(
                         max_retries=20,
@@ -522,7 +522,7 @@ async def _map_invocation(
                     yield item
 
     async def get_all_outputs_and_clean_up():
-        assert client.stub
+        assert client._stub
         try:
             async with aclosing(get_all_outputs()) as output_items:
                 async for item in output_items:
@@ -536,12 +536,12 @@ async def _map_invocation(
                 clear_on_success=True,
                 requested_at=time.time(),
             )
-            await client.stub.FunctionGetOutputs(request)
+            await client._stub.FunctionGetOutputs(request)
             await retry_queue.close()
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
-            output = await _process_result(item.result, item.data_format, client.stub, client)
+            output = await _process_result(item.result, item.data_format, client._stub, client)
         except Exception as e:
             if return_exceptions:
                 output = e
@@ -635,10 +635,10 @@ async def _map_invocation_inputplane(
 
     assert function._input_plane_url, "_map_invocation_inputplane should only be used for input-plane backed functions"
 
-    input_plane_stub = await client.get_stub(function._input_plane_url)
+    input_plane_stub = await client._get_stub(function._input_plane_url)
 
     # Required for _create_input.
-    assert client.stub, "Client must be hydrated with a stub for _map_invocation_inputplane"
+    assert client._stub, "Client must be hydrated with a stub for _map_invocation_inputplane"
 
     # ------------------------------------------------------------
     # Invocation-wide state
@@ -710,7 +710,7 @@ async def _map_invocation_inputplane(
         put_item: api_pb2.FunctionPutInputsItem = await _create_input(
             args,
             kwargs,
-            client.stub,
+            client._stub,
             idx=idx,
             function=function,
         )

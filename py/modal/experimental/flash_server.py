@@ -17,7 +17,7 @@ class _ServerManager:
         self.task_id = os.environ["MODAL_TASK_ID"]
 
     async def _start(self):
-        await self.client.stub.ContainerServerLifecycleReady(api_pb2.ContainerServerLifecycleReadyRequest())
+        await self.client._stub.ContainerServerLifecycleReady(api_pb2.ContainerServerLifecycleReadyRequest())
         logger.warning(f"[Modal Server] Ready for task {self.task_id}.")
 
     async def stop(self):

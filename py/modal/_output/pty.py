@@ -53,7 +53,7 @@ async def stream_pty_shell_input(client: "_Client", exec_id: str, finish_event: 
     """
 
     async def _handle_input(data: bytes, message_index: int):
-        await client.stub.ContainerExecPutInput(
+        await client._stub.ContainerExecPutInput(
             api_pb2.ContainerExecPutInputRequest(
                 exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
             ),
@@ -177,7 +177,7 @@ async def get_app_logs_loop(
             function_call_id=function_call_id,
         )
         log_batch: api_pb2.TaskLogsBatch
-        async for log_batch in client.stub.AppGetLogs.unary_stream(request):
+        async for log_batch in client._stub.AppGetLogs.unary_stream(request):
             if log_batch.entry_id:
                 # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                 last_log_batch_entry_id = log_batch.entry_id

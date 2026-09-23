@@ -648,7 +648,7 @@ More information on class parameterization can be found here: https://modal.com/
             req = api_pb2.ClassCreateRequest(
                 app_id=load_context.app_id, existing_class_id=existing_object_id, only_class_function=True
             )
-            resp = await load_context.client.stub.ClassCreate(req)
+            resp = await load_context.client._stub.ClassCreate(req)
             self._hydrate(resp.class_id, load_context.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
@@ -717,7 +717,7 @@ More information on class parameterization can be found here: https://modal.com/
                 only_class_function=True,
             )
             try:
-                response = await load_context.client.stub.ClassGet(request)
+                response = await load_context.client._stub.ClassGet(request)
             except NotFoundError as exc:
                 env_context = (
                     f" (in the '{load_context.environment_name}' environment)" if load_context.environment_name else ""

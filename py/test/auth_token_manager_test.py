@@ -17,7 +17,7 @@ SECRET_KEY = "your-super-flexible-and-long-shared-secret-key"
 @pytest.fixture
 def auth_token_manager(client):
     """Create an AuthTokenManager instance for testing."""
-    return _AuthTokenManager(client.stub)
+    return _AuthTokenManager(client._stub)
 
 
 @pytest.fixture
@@ -599,7 +599,7 @@ async def test_custom_fetch(client, valid_jwt_token):
         calls.append(retry)
         return valid_jwt_token
 
-    manager = _AuthTokenManager(client.stub, fetch=fetch)
+    manager = _AuthTokenManager(client._stub, fetch=fetch)
 
     @synchronize_api
     async def wrapped_get_token():

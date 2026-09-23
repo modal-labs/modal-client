@@ -26,10 +26,10 @@ blob_upload_file = synchronize_api(_blob_upload_file)
 @pytest.mark.asyncio
 async def test_blob_put_get(servicer, blob_server, client):
     # Upload
-    blob_id = await blob_upload.aio(b"Hello, world", client.stub)
+    blob_id = await blob_upload.aio(b"Hello, world", client._stub)
 
     # Download
-    data = await blob_download.aio(blob_id, client.stub)
+    data = await blob_download.aio(blob_id, client._stub)
     assert data == b"Hello, world"
 
 
@@ -70,21 +70,21 @@ async def test_blob_upload_with_fallback_results():
 async def test_blob_put_failure(servicer, blob_server, client, monkeypatch):
     monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     with pytest.raises(ExecutionError):
-        await blob_upload.aio(b"FAILURE", client.stub)
+        await blob_upload.aio(b"FAILURE", client._stub)
 
 
 @pytest.mark.asyncio
 async def test_blob_get_failure(servicer, blob_server, client, monkeypatch):
     monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     with pytest.raises(ExecutionError):
-        await blob_download.aio("bl-failure", client.stub)
+        await blob_download.aio("bl-failure", client._stub)
 
 
 @pytest.mark.asyncio
 async def test_blob_large(servicer, blob_server, client):
     data = b"*" * 10_000_000
-    blob_id = await blob_upload.aio(data, client.stub)
-    assert await blob_download.aio(blob_id, client.stub) == data
+    blob_id = await blob_upload.aio(data, client._stub)
+    assert await blob_download.aio(blob_id, client._stub) == data
 
 
 @pytest.mark.asyncio
@@ -96,16 +96,16 @@ async def test_blob_multipart(servicer, blob_server, client, monkeypatch, tmp_pa
     # - make last part significantly shorter than rest, creating uneven upload time.
     data_len = (256 * multipart_threshold) + (multipart_threshold // 2)
     data = random.randbytes(data_len)  # random data will not hide byte re-ordering corruption
-    blob_id = await blob_upload.aio(data, client.stub)
-    assert await blob_download.aio(blob_id, client.stub) == data
+    blob_id = await blob_upload.aio(data, client._stub)
+    assert await blob_download.aio(blob_id, client._stub) == data
 
     data_len = (256 * multipart_threshold) + (multipart_threshold // 2)
     data = random.randbytes(data_len)  # random data will not hide byte re-ordering corruption
     data_filepath = tmp_path / "temp.bin"
     data_filepath.write_bytes(data)
     with data_filepath.open("rb") as f:
-        blob_id = await blob_upload_file.aio(f, client.stub)
-    assert await blob_download.aio(blob_id, client.stub) == data
+        blob_id = await blob_upload_file.aio(f, client._stub)
+    assert await blob_download.aio(blob_id, client._stub) == data
 
 
 @pytest.mark.asyncio
@@ -136,9 +136,9 @@ async def test_blob_multipart_inflight_bytes_bounded(servicer, blob_server, clie
     path = tmp_path / "temp.bin"
     path.write_bytes(data)
     with path.open("rb") as f:
-        blob_id = await blob_upload_file.aio(f, client.stub, byte_budget=budget)
+        blob_id = await blob_upload_file.aio(f, client._stub, byte_budget=budget)
 
-    assert await blob_download.aio(blob_id, client.stub) == data
+    assert await blob_download.aio(blob_id, client._stub) == data
 
     assert min_available == 0, "test did not exercise concurrent uploads"
 
@@ -164,4 +164,4 @@ def test_get_multipart_inflight_budget_psutil_exception_fallback(monkeypatch, ex
 
 def test_sync(blob_server, client):
     # just tests that tests running blocking calls that upload to blob storage don't deadlock
-    blob_upload(b"adsfadsf", client.stub)
+    blob_upload(b"adsfadsf", client._stub)

@@ -108,7 +108,7 @@ async def list_deployed_apps(environment_name: str = "", client: _Client | None 
     # one the new API is released.
     client = client or await _Client.from_env()
 
-    resp: api_pb2.AppListResponse = await client.stub.AppList(
+    resp: api_pb2.AppListResponse = await client._stub.AppList(
         api_pb2.AppListRequest(environment_name=_get_environment_name(environment_name))
     )
 
@@ -152,7 +152,7 @@ async def get_app_lifecycle(app_id: str, *, client: _Client | None = None) -> Ap
     """
     client = client or await _Client.from_env()
 
-    resp: api_pb2.AppGetLifecycleResponse = await client.stub.AppGetLifecycle(
+    resp: api_pb2.AppGetLifecycleResponse = await client._stub.AppGetLifecycle(
         api_pb2.AppGetLifecycleRequest(app_id=app_id)
     )
     lifecycle = resp.lifecycle
@@ -178,7 +178,7 @@ async def stop_app(name: str, *, environment_name: str | None = None, client: _C
     app = await _App.lookup(name, environment_name=environment_name, client=client_)
     assert app.app_id
     req = api_pb2.AppStopRequest(app_id=app.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
-    await client_.stub.AppStop(req)
+    await client_._stub.AppStop(req)
 
 
 @synchronizer.create_blocking
@@ -212,7 +212,7 @@ async def get_app_objects(
     app = await _App.lookup(app_name, environment_name=environment_name, client=client)
     assert app.app_id
     req = api_pb2.AppGetLayoutRequest(app_id=app.app_id)
-    app_layout_resp = await client.stub.AppGetLayout(req)
+    app_layout_resp = await client._stub.AppGetLayout(req)
 
     app_objects: dict[str, _Function | _Cls] = {}
 
@@ -250,4 +250,4 @@ async def image_delete(
         client = await _Client.from_env()
 
     req = api_pb2.ImageDeleteRequest(image_id=image_id)
-    await client.stub.ImageDelete(req)
+    await client._stub.ImageDelete(req)

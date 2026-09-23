@@ -256,7 +256,7 @@ async def _refine_dense_ranges(
                     sandbox_id=filters.sandbox_id,
                     search_text=filters.search_text,
                 )
-                sub_resp = await client.stub.AppCountLogs(sub_req)
+                sub_resp = await client._stub.AppCountLogs(sub_req)
                 sub_ranges = _buckets_to_ranges(list(sub_resp.buckets), smaller_secs)
                 # Clamp the edge sub-ranges to the parent boundaries. Bucket
                 # alignment can make the first bucket begin before the parent
@@ -311,7 +311,7 @@ async def _fetch_interval(
         sandbox_id=filters.sandbox_id,
         search_text=filters.search_text,
     )
-    resp: api_pb2.AppFetchLogsResponse = await client.stub.AppFetchLogs(req)
+    resp: api_pb2.AppFetchLogsResponse = await client._stub.AppFetchLogs(req)
     return list(resp.batches)
 
 
@@ -365,7 +365,7 @@ async def tail_logs(
             sandbox_id=filters.sandbox_id,
             search_text=filters.search_text,
         )
-        resp = await client.stub.AppFetchLogs(req)
+        resp = await client._stub.AppFetchLogs(req)
         for batch in resp.batches:
             yield batch
         return
@@ -387,7 +387,7 @@ async def tail_logs(
             sandbox_id=filters.sandbox_id,
             search_text=filters.search_text,
         )
-        resp = await client.stub.AppFetchLogs(req)
+        resp = await client._stub.AppFetchLogs(req)
 
         total_items = sum(len(b.items) for b in resp.batches)
         if total_items >= n or lookback == _TAIL_LOOKBACKS[-1]:
@@ -433,7 +433,7 @@ async def fetch_logs(
         sandbox_id=filters.sandbox_id,
         search_text=filters.search_text,
     )
-    count_resp: api_pb2.AppCountLogsResponse = await client.stub.AppCountLogs(count_req)
+    count_resp: api_pb2.AppCountLogsResponse = await client._stub.AppCountLogs(count_req)
 
     ranges = _buckets_to_ranges(list(count_resp.buckets), bucket_secs)
     total_logs = sum(count for _, _, count in ranges)

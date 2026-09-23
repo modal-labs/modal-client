@@ -19,7 +19,7 @@ from .output import OutputManager
 
 class _TokenFlow:
     def __init__(self, client: _Client):
-        self.stub = client.stub
+        self.stub = client._stub
 
     @asynccontextmanager
     async def start(

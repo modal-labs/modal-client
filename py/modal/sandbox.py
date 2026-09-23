@@ -589,7 +589,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 app_id=load_context.app_id, definition=definition, tags=tag_protos
             )
             rpc_start = time.monotonic()
-            create_resp = await load_context.client.stub.SandboxCreate(create_req)
+            create_resp = await load_context.client._stub.SandboxCreate(create_req)
             rpc_elapsed = time.monotonic() - rpc_start
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, create_resp.metadata)
@@ -1135,7 +1135,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             assert load_context.client._auth_token_manager
             auth_token = await load_context.client._auth_token_manager.get_token()
             rpc_start = time.monotonic()
-            create_resp = await load_context.client.stub.SandboxCreateV2(
+            create_resp = await load_context.client._stub.SandboxCreateV2(
                 create_req, metadata=[("x-modal-auth-token", auth_token)]
             )
             rpc_elapsed = time.monotonic() - rpc_start
@@ -1343,7 +1343,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         env_name = _get_environment_name(environment_name)
 
         req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
-        resp = await client.stub.SandboxGetFromName(req)
+        resp = await client._stub.SandboxGetFromName(req)
         return _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
 
     @staticmethod
@@ -1377,7 +1377,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
         assert client._auth_token_manager
         auth_token = await client._auth_token_manager.get_token()
-        resp = await client.stub.SandboxGetFromNameV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        resp = await client._stub.SandboxGetFromNameV2(req, metadata=[("x-modal-auth-token", auth_token)])
 
         return _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
 
@@ -1403,9 +1403,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         if is_v2:
             assert client._auth_token_manager
             auth_token = await client._auth_token_manager.get_token()
-            resp = await client.stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            resp = await client._stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
         else:
-            resp = await client.stub.SandboxWait(req)
+            resp = await client._stub.SandboxWait(req)
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, resp.metadata)
         obj._is_v2 = is_v2
@@ -1424,7 +1424,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             Tags as a map from tag name to tag value.
         """
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
-        stub = self._client.stub
+        stub = self._client._stub
         if self._is_v2:
             assert self._client._auth_token_manager
             auth_token = await self._client._auth_token_manager.get_token()
@@ -1452,7 +1452,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
         tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
-        stub = self._client.stub
+        stub = self._client._stub
         if self._is_v2:
             assert self._client._auth_token_manager
             auth_token = await self._client._auth_token_manager.get_token()
@@ -1491,7 +1491,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxSetNameRequest(sandbox_id=self.object_id, name=name)
         assert self._client._auth_token_manager
         auth_token = await self._client._auth_token_manager.get_token()
-        await self._client.stub.SandboxSetName(req, metadata=[("x-modal-auth-token", auth_token)])
+        await self._client._stub.SandboxSetName(req, metadata=[("x-modal-auth-token", auth_token)])
 
     async def _experimental_set_outbound_network_policy(
         self,
@@ -1601,11 +1601,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 if self._is_v2:
                     assert client._auth_token_manager
                     auth_token = await client._auth_token_manager.get_token()
-                    resp = await client.stub.SandboxGetExitSnapshotV2(
+                    resp = await client._stub.SandboxGetExitSnapshotV2(
                         req, retry=poll_retry, metadata=[("x-modal-auth-token", auth_token)]
                     )
                 else:
-                    resp = await client.stub.SandboxGetExitSnapshot(req, retry=poll_retry)
+                    resp = await client._stub.SandboxGetExitSnapshot(req, retry=poll_retry)
             except (ConnectionError, InternalError, ServiceError):
                 if deadline is not None and time.monotonic() >= deadline:
                     raise TimeoutError(timeout_message)
@@ -1702,7 +1702,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._ensure_v1("snapshot_filesystem")
         await self._get_task_id()
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
-        resp = await self._client.stub.SandboxSnapshotFs(req)
+        resp = await self._client._stub.SandboxSnapshotFs(req)
 
         if resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(resp.result.exception)
@@ -1849,7 +1849,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
             # Use the private __client to allow `wait` to work with a detached sandbox
-            stub = self.__client.stub
+            stub = self.__client._stub
             if self._is_v2:
                 assert self.__client._auth_token_manager
                 auth_token = await self.__client._auth_token_manager.get_token()
@@ -1920,7 +1920,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             return self._tunnels
 
         req = api_pb2.SandboxGetTunnelsRequest(sandbox_id=self.object_id, timeout=timeout)
-        stub = self._client.stub
+        stub = self._client._stub
         if self._is_v2:
             assert self._client._auth_token_manager
             auth_token = await self._client._auth_token_manager.get_token()
@@ -1970,11 +1970,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         if self._is_v2:
             assert self._client._auth_token_manager
             auth_token = await self._client._auth_token_manager.get_token()
-            resp = await self._client.stub.SandboxCreateConnectTokenV2(
+            resp = await self._client._stub.SandboxCreateConnectTokenV2(
                 req, metadata=[("x-modal-auth-token", auth_token)]
             )
         else:
-            resp = await self._client.stub.SandboxCreateConnectToken(req)
+            resp = await self._client._stub.SandboxCreateConnectToken(req)
         return SandboxConnectCredentials(resp.url, resp.token)
 
     async def reload_volumes(self, *, timeout: int = 55) -> None:
@@ -2028,7 +2028,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             The sandbox exit code when `wait` is True; otherwise None.
         """
         req = api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
-        stub = self._client.stub
+        stub = self._client._stub
         if self._is_v2:
             assert self._client._auth_token_manager
             auth_token = await self._client._auth_token_manager.get_token()
@@ -2047,7 +2047,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
 
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
-        stub = self._client.stub
+        stub = self._client._stub
         if self._is_v2:
             assert self._client._auth_token_manager
             auth_token = await self._client._auth_token_manager.get_token()
@@ -2063,7 +2063,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _get_task_id(self, raise_if_task_complete=False) -> str:
         while not self._task_id:
             req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
-            stub = self._client.stub
+            stub = self._client._stub
             if self._is_v2:
                 assert self._client._auth_token_manager
                 auth_token = await self._client._auth_token_manager.get_token()
@@ -2088,7 +2088,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             return self._task_id
 
         req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
-        stub = self.__client.stub
+        stub = self.__client._stub
         if self._is_v2:
             assert self.__client._auth_token_manager
             auth_token = await self.__client._auth_token_manager.get_token()
@@ -2380,14 +2380,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         else:
             await self._get_task_id()
             snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
-            snap_resp = await self._client.stub.SandboxSnapshot(snap_req)
+            snap_resp = await self._client._stub.SandboxSnapshot(snap_req)
 
             snapshot_id = snap_resp.snapshot_id
 
             # wait for the snapshot to succeed. this is implemented as a second idempotent rpc
             # because the snapshot itself may take a while to complete.
             wait_req = api_pb2.SandboxSnapshotWaitRequest(snapshot_id=snapshot_id, timeout=55.0)
-            wait_resp = await self._client.stub.SandboxSnapshotWait(wait_req)
+            wait_resp = await self._client._stub.SandboxSnapshotWait(wait_req)
             if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 raise ExecutionError(wait_resp.result.exception)
 
@@ -2451,14 +2451,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         # set.
         if worker_id := config.get("worker_id"):
             restore_req.worker_id = worker_id
-        restore_resp: api_pb2.SandboxRestoreResponse = await client.stub.SandboxRestore(restore_req)
+        restore_resp: api_pb2.SandboxRestoreResponse = await client._stub.SandboxRestore(restore_req)
 
         sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
 
         task_id_req = api_pb2.SandboxGetTaskIdRequest(
             sandbox_id=restore_resp.sandbox_id, wait_until_ready=True, timeout=55.0
         )
-        resp = await client.stub.SandboxGetTaskId(task_id_req)
+        resp = await client._stub.SandboxGetTaskId(task_id_req)
         if resp.task_result.status not in [
             api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED,
             api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -2485,7 +2485,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         assert client._auth_token_manager
         auth_token = await client._auth_token_manager.get_token()
-        restore_resp: api_pb2.SandboxRestoreV2Response = await client.stub.SandboxRestoreV2(
+        restore_resp: api_pb2.SandboxRestoreV2Response = await client._stub.SandboxRestoreV2(
             restore_req, metadata=[("x-modal-auth-token", auth_token)]
         )
 
@@ -2586,7 +2586,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             # Fetches a batch of sandboxes.
-            resp = await client.stub.SandboxList(req)
+            resp = await client._stub.SandboxList(req)
 
             if not resp.sandboxes:
                 return
@@ -2647,7 +2647,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             # Fetches a batch of sandboxes. SandboxListV2 authenticates via the
             # auth-token metadata, like the other V2 sandbox RPCs.
             auth_token = await client._auth_token_manager.get_token()
-            resp = await client.stub.SandboxListV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            resp = await client._stub.SandboxListV2(req, metadata=[("x-modal-auth-token", auth_token)])
 
             if not resp.sandboxes:
                 return
@@ -3167,7 +3167,7 @@ class _SidecarManager:
             client = self._sandbox._client
             assert client._auth_token_manager
             auth_token = await client._auth_token_manager.get_token()
-            create_resp = await client.stub.SandboxContainerCreateV2(
+            create_resp = await client._stub.SandboxContainerCreateV2(
                 create_req, metadata=[("x-modal-auth-token", auth_token)]
             )
         else:

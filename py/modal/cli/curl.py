@@ -83,7 +83,7 @@ def _write_cached_token(cache_key: str, token: str, now: float) -> None:
 
 
 async def _get_flash_endpoint_auth_token(client: _Client, url: str, cache_key: str, now: float) -> str:
-    resp = await client.stub.CurlGetAuthToken(api_pb2.CurlAuthTokenRequest(url=url))
+    resp = await client._stub.CurlGetAuthToken(api_pb2.CurlAuthTokenRequest(url=url))
     _write_cached_token(cache_key, resp.token, now)
     return resp.token
 

@@ -63,14 +63,14 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     # TODO(erikbern): we should capture exceptions here
     # * if request fails: destroy the client
     # * if server says the app is gone: print a helpful warning about detaching
-    await client.stub.AppHeartbeat(request, retry=Retry(attempt_timeout=HEARTBEAT_TIMEOUT))
+    await client._stub.AppHeartbeat(request, retry=Retry(attempt_timeout=HEARTBEAT_TIMEOUT))
 
 
 async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
     # Get all the objects first
     obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
-        client.stub.AppGetLayout(obj_req),
+        client._stub.AppGetLayout(obj_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
     )
@@ -97,7 +97,7 @@ async def _init_local_app_new(
         tags=tags,
     )
     app_resp, _ = await gather_cancel_on_exc(  # TODO: use TaskGroup?
-        client.stub.AppCreate(app_req),
+        client._stub.AppCreate(app_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
     )
@@ -121,7 +121,7 @@ async def _init_local_app_from_name(
         name=name,
         environment_name=environment_name,
     )
-    app_resp = await client.stub.AppGetByDeploymentName(app_req)
+    app_resp = await client._stub.AppGetByDeploymentName(app_req)
     existing_app_id = app_resp.app_id or None
 
     # Grab the app
@@ -214,7 +214,7 @@ async def _stop_and_wait_for_containers(
         return
 
     async def get_old_container_ids() -> list[str]:
-        res = await client.stub.TaskList(api_pb2.TaskListRequest(environment_name=environment_name, app_id=app_id))
+        res = await client._stub.TaskList(api_pb2.TaskListRequest(environment_name=environment_name, app_id=app_id))
         return [
             container.task_id
             for container in res.tasks
@@ -231,7 +231,7 @@ async def _stop_and_wait_for_containers(
                 return
 
             async with sem:
-                await client.stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=tid))
+                await client._stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=tid))
                 stopped_ids.add(tid)
 
         stop_tasks = [stop_one_container(tid) for tid in container_ids if tid not in stopped_ids]
@@ -303,7 +303,7 @@ async def _publish_app(
         definition_ids=definition_ids,
         staged=staged,
     )
-    response = await client.stub.AppPublish(request)
+    response = await client._stub.AppPublish(request)
     print_server_warnings(response.server_warnings)
 
     if deployment_strategy == "recreate":
@@ -337,7 +337,7 @@ async def _disconnect(
 
     logger.debug("Sending app disconnect/stop request")
     req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=app_id, reason=reason, exception=exc_str)
-    await client.stub.AppClientDisconnect(req_disconnect)
+    await client._stub.AppClientDisconnect(req_disconnect)
     logger.debug("App disconnected")
 
 
@@ -794,9 +794,9 @@ async def _interactive_shell(
             if sandbox._is_v2:
                 assert sandbox._client._auth_token_manager
                 auth_token = await sandbox._client._auth_token_manager.get_token()
-                resp = await sandbox._client.stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+                resp = await sandbox._client._stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
             else:
-                resp = await sandbox._client.stub.SandboxWait(req)
+                resp = await sandbox._client._stub.SandboxWait(req)
             if resp.result.exception:
                 raise RemoteError(resp.result.exception)
             else:

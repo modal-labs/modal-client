@@ -597,7 +597,7 @@ def _get_inputs(
     data_format: "api_pb2.DataFormat.ValueType" = api_pb2.DATA_FORMAT_PICKLE,
 ) -> list[api_pb2.FunctionGetInputsResponse]:
     if upload_to_blob:
-        args_blob_id = blob_upload(serialize_data_format(args, data_format), client.stub)
+        args_blob_id = blob_upload(serialize_data_format(args, data_format), client._stub)
         input_pb = api_pb2.FunctionInput(
             args_blob_id=args_blob_id, data_format=data_format, method_name=method_name or ""
         )
@@ -642,7 +642,7 @@ def _unwrap_scalar(ret: ContainerResult):
 def _unwrap_blob_scalar(ret: ContainerResult, client: Client):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    data = blob_download(ret.items[0].result.data_blob_id, client.stub)
+    data = blob_download(ret.items[0].result.data_blob_id, client._stub)
     return deserialize(data, ret.client)
 
 

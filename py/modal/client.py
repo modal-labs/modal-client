@@ -25,7 +25,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.auth_token_manager import _AuthTokenManager
 from ._utils.grpc_utils import ConnectionManager
 from .config import _agent_environment, _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, InvalidError
+from .exception import AuthError, ClientClosed, InternalAPIWarning, InvalidError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -88,6 +88,17 @@ def _get_metadata(
     return metadata
 
 
+def _warn_internal_api(name: str) -> None:
+    """Warn that user code is accessing Modal's internal gRPC API."""
+    msg = (
+        f"`modal.{name}` provides direct access to Modal's internal gRPC API, which is not a supported interface."
+        " It may change or be removed at any time, without notice or a deprecation period."
+        " Please use the methods on Modal objects instead."
+    )
+    # Attributing the warning to the accessor gives it a fixed location, so it shows once per process
+    warnings.warn(msg, InternalAPIWarning, stacklevel=2)
+
+
 T = TypeVar("T")
 ReturnType = TypeVar("ReturnType")
 _Value = str | bytes
@@ -101,7 +112,7 @@ class _Client:
     _client_from_env_lock: ClassVar[asyncio.Lock | None] = None
     _cancellation_context: TaskContext
     _cancellation_context_event_loop: asyncio.AbstractEventLoop | None = None
-    _stub: modal_api_grpc.ModalClientModal | None = None
+    _control_plane_stub: modal_api_grpc.ModalClientModal | None = None
     _auth_token_manager: _AuthTokenManager | None = None
     _snapshotted: bool = False
     _connection_manager: ConnectionManager | None = None
@@ -126,7 +137,7 @@ class _Client:
         self._oauth_credentials = oauth_credentials
         self.version = version
         self._closed = False
-        self._stub = None
+        self._control_plane_stub = None
         self._auth_token_manager = None
         self._snapshotted = False
         self._owner_pid = None
@@ -146,32 +157,45 @@ class _Client:
         return hostname in {"localhost", "127.0.0.1", "::1", "172.21.0.1"}
 
     @property
+    def _stub(self) -> modal_api_grpc.ModalClientModal:
+        """Retrieve the cached gRPC stub for the control plane."""
+        assert self._control_plane_stub
+        return self._control_plane_stub
+
+    async def _get_stub(self, server_url: str) -> modal_api_grpc.ModalClientModal:
+        """Create a gRPC stub for a specific server URL.
+
+        This function is O(n) where n is the number of RPCs in ModalClient.
+        """
+        # TODO(michael): should we add some caching here?
+        return await modal_api_grpc.ModalClientModal._create(self, server_url)
+
+    @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
         """mdmd:hidden
-        The default stub. Stubs can safely be used across forks / client snapshots.
+        Low-level gRPC stub for Modal's control plane API.
 
-        This is useful if you want to make requests to the default Modal server in us-east, for example
-        control plane requests.
-
-        This is equivalent to client.get_stub(default_server_url), but it's cached, so it's a bit faster.
+        **This is not a supported interface.** Modal's gRPC API is internal and may change or be
+        removed at any time, without notice or a deprecation period. Use the methods on Modal
+        SDK objects instead.
         """
-        assert self._stub
+        _warn_internal_api("Client.stub")
         return self._stub
 
     async def get_stub(self, server_url: str) -> modal_api_grpc.ModalClientModal:
         """mdmd:hidden
-        Get a stub for a specific server URL. Stubs can safely be used across forks / client snapshots.
+        Create a gRPC stub for a specific server URL.
 
-        This is useful if you want to make requests to a regional Modal server, for example low-latency
-        function calls in us-west.
-
-        This function is O(n) where n is the number of RPCs in ModalClient.
+        **This is not a supported interface.** Modal's gRPC API is internal and may change or be
+        removed at any time, without notice or a deprecation period. Use the methods on Modal
+        SDK objects instead.
         """
-        return await modal_api_grpc.ModalClientModal._create(self, server_url)
+        _warn_internal_api("Client.get_stub")
+        return await self._get_stub(server_url)
 
     async def _open(self):
         self._closed = False
-        assert self._stub is None
+        assert self._control_plane_stub is None
         metadata = _get_metadata(
             self.client_type,
             self._credentials,
@@ -182,8 +206,8 @@ class _Client:
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
         self._connection_manager = ConnectionManager(client=self, metadata=metadata)
-        self._stub = await self.get_stub(self.server_url)
-        self._auth_token_manager = _AuthTokenManager(self.stub)
+        self._control_plane_stub = await self._get_stub(self.server_url)
+        self._auth_token_manager = _AuthTokenManager(self._stub)
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):
@@ -209,7 +233,7 @@ class _Client:
             ```
         """
         logger.debug(f"Client ({id(self)}): Starting")
-        resp = await self.stub.ClientHello(empty_pb2.Empty())
+        resp = await self._stub.ClientHello(empty_pb2.Empty())
         print_server_warnings(resp.server_warnings)
 
     async def __aenter__(self):
@@ -477,7 +501,7 @@ class _Client:
             # not calling .close() since that would also interact with stale resources
             # just reset the internal state
             self._connection_manager = None
-            self._stub = None
+            self._control_plane_stub = None
             self._owner_pid = None
 
             self.set_env_client(None)

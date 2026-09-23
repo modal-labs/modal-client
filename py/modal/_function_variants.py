@@ -335,7 +335,7 @@ async def _list_function_variants(
     cursor = None
     while True:
         request = api_pb2.FunctionListVariantsRequest(function_id=function_id, cursor=cursor, limit=limit or 0)
-        response = await client.stub.FunctionListVariants(request)
+        response = await client._stub.FunctionListVariants(request)
         # An ordered listing arrives as a single response, so there is nothing to reconcile across
         # pages: every response of a multi-page listing reports itself unordered.
         ordered_by_task_count = response.ordered_by_task_count
@@ -376,8 +376,8 @@ async def _function_bind_params_cached(
         response.ParseFromString(cached_response)
         return response
 
-    assert base_function._client and base_function._client.stub
-    response = await base_function._client.stub.FunctionBindParams(req)
+    assert base_function._client and base_function._client._stub
+    response = await base_function._client._stub.FunctionBindParams(req)
 
     cache[cache_key] = response.SerializeToString(deterministic=True)
     cache.move_to_end(cache_key)
@@ -407,7 +407,7 @@ def _make_function_variant(
         if not base_function._is_hydrated:
             await base_function.hydrate(load_context.client)
 
-        assert base_function._client and base_function._client.stub
+        assert base_function._client and base_function._client._stub
 
         if parameter_schema is None:
             # This branch is about backwards compatibility.

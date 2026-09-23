@@ -446,7 +446,7 @@ async def _stream_function_call_data(
         raise ValueError("function_call_id or attempt_token is required to read from a data stream")
 
     if stub is None:
-        stub = client.stub
+        stub = client._stub
 
     last_index = 0
 
@@ -473,7 +473,7 @@ async def _stream_function_call_data(
                 if chunk.index <= last_index:
                     continue
                 if chunk.data_blob_id:
-                    message_bytes = await blob_download(chunk.data_blob_id, client.stub)
+                    message_bytes = await blob_download(chunk.data_blob_id, client._stub)
                 else:
                     message_bytes = chunk.data
                 message = deserialize_data_format(message_bytes, chunk.data_format, client)

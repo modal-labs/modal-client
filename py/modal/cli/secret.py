@@ -44,7 +44,7 @@ async def list_(env: str | None = None, json: bool = False):
         max_page_size = 100
         pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
         req = api_pb2.SecretListRequest(environment_name=env, pagination=pagination)
-        resp = await client.stub.SecretList(req)
+        resp = await client._stub.SecretList(req)
         items.extend(resp.items)
         return len(resp.items) < max_page_size
 

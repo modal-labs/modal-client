@@ -494,7 +494,7 @@ class _Mount(_Object, type_prefix="mo"):
                 request = api_pb2.MountBatchedCheckExistenceRequest(
                     sha256_hex_hashes=[spec.sha256_hex for spec in batch]
                 )
-                response = await client.stub.MountBatchedCheckExistence(request, retry=Retry(base_delay=1))
+                response = await client._stub.MountBatchedCheckExistence(request, retry=Retry(base_delay=1))
                 missing_hashes = set(response.missing_sha256_hex_hashes)
 
                 for spec in batch:
@@ -586,7 +586,7 @@ class _Mount(_Object, type_prefix="mo"):
                 async with blob_upload_concurrency:
                     with file_spec.source() as fp:
                         blob_id = await blob_upload_file(
-                            fp, load_context.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
+                            fp, load_context.client._stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
                         )
 
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
@@ -606,7 +606,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
-                response = await load_context.client.stub.MountPutFile(request, retry=Retry(base_delay=1))
+                response = await load_context.client._stub.MountPutFile(request, retry=Retry(base_delay=1))
 
                 if response.exists:
                     n_finished += 1
@@ -667,7 +667,7 @@ class _Mount(_Object, type_prefix="mo"):
                 environment_name=load_context.environment_name,
             )
 
-        resp = await load_context.client.stub.MountGetOrCreate(req, retry=Retry(base_delay=1))
+        resp = await load_context.client._stub.MountGetOrCreate(req, retry=Retry(base_delay=1))
         status_row.finish(f"Uploaded {message_label}")
 
         logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")
@@ -714,7 +714,7 @@ class _Mount(_Object, type_prefix="mo"):
                 namespace=namespace,
                 environment_name=load_context.environment_name,
             )
-            response = await load_context.client.stub.MountGetOrCreate(req)
+            response = await load_context.client._stub.MountGetOrCreate(req)
             provider._hydrate(response.mount_id, load_context.client, response.handle_metadata)
 
         return _Mount._from_loader(

@@ -190,7 +190,7 @@ class _LogsManager:
             task_id=params.filters.task_id,
             sandbox_id=params.filters.sandbox_id,
         )
-        return params.client.stub.AppGetLogs.unary_stream(request)
+        return params.client._stub.AppGetLogs.unary_stream(request)
 
     def _stream_entries(self, batch: api_pb2.TaskLogsBatch, source_object_id: str):
         for item in batch.items:
@@ -544,7 +544,7 @@ class _FunctionCallLogsManager:
                     function_id=self._function_id,
                     function_call_id=params.filters.function_call_id,
                 )
-                response = await params.client.stub.FunctionCallGetInfo(request)
+                response = await params.client._stub.FunctionCallGetInfo(request)
                 return response.info
             except NotFoundError:
                 if i < 4:

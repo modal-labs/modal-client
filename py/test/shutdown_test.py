@@ -52,7 +52,7 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, credenti
             timeout=55,
             last_entry_id="",
         )
-        async for _ in client.stub.AppGetLogs.unary_stream(request):
+        async for _ in client._stub.AppGetLogs.unary_stream(request):
             pass
 
     sync_log_loop = synchronize_api(_mocked_logs_loop)
@@ -100,7 +100,7 @@ async def test_client_close_cancellation_context_only_used_in_correct_event_loop
             # this request should not use task context since it's not issued from the same loop
             # that the task context is triggered from, otherwise we'll get cross-event loop
             # waits/cancellations etc.
-            t = asyncio.create_task(client.stub.QueueGet(request, retry=None))
+            t = asyncio.create_task(client._stub.QueueGet(request, retry=None))
             await asyncio.sleep(0.1)
     with pytest.raises(grpclib.exceptions.StreamTerminatedError):
         await t

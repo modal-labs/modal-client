@@ -71,7 +71,7 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
         os.environ["NCCL_NSOCKS_PERTHREAD"] = "1"
 
     if world_size > 1:
-        resp = await client.stub.TaskClusterHello(
+        resp = await client._stub.TaskClusterHello(
             api_pb2.TaskClusterHelloRequest(
                 task_id=task_id,
                 container_ip=container_ip,

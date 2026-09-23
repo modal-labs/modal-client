@@ -62,7 +62,7 @@ class _EnvironmentManager:
             request.default_member_role_str = default_role
         if (experimental_options or {}).get("is_public", False):
             request.environment_type = api_pb2.ENVIRONMENT_TYPE_PUBLIC
-        await client.stub.EnvironmentCreate(request)
+        await client._stub.EnvironmentCreate(request)
 
     async def list(
         self,
@@ -79,7 +79,7 @@ class _EnvironmentManager:
         ```
         """
         client = await _Client.from_env() if client is None else client
-        resp = await client.stub.EnvironmentList(Empty())
+        resp = await client._stub.EnvironmentList(Empty())
         environments = []
         for item in resp.items:
             metadata = api_pb2.EnvironmentMetadata(
@@ -113,7 +113,7 @@ class _EnvironmentManager:
         ```
         """
         client = await _Client.from_env() if client is None else client
-        await client.stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
+        await client._stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
 
 
 class _EnvironmentRolesManager:
@@ -142,7 +142,7 @@ class _EnvironmentRolesManager:
         """
         await self._environment.hydrate()
         req = api_pb2.EnvironmentGetRolesRequest(environment_id=self._environment.object_id)
-        resp = await self._environment.client.stub.EnvironmentGetRoles(req)
+        resp = await self._environment.client._stub.EnvironmentGetRoles(req)
 
         users: dict[str, str] = {}
         service_users: dict[str, str] = {}
@@ -183,7 +183,7 @@ class _EnvironmentRolesManager:
         service_users = service_users or {}
 
         req = api_pb2.EnvironmentGetRolesRequest(environment_id=self._environment.object_id)
-        resp = await self._environment.client.stub.EnvironmentGetRoles(req)
+        resp = await self._environment.client._stub.EnvironmentGetRoles(req)
 
         # EnvironmentGetRoles returns every workspace principal
         user_name_to_id: dict[str, str] = {}
@@ -217,7 +217,7 @@ class _EnvironmentRolesManager:
     async def _dispatch_role_updates(self, requests: dict[str, api_pb2.EnvironmentRoleSetRequest]) -> None:
         """Send batched EnvironmentRoleSet RPCs and report all errors encountered."""
         results = await asyncio.gather(
-            *(self._environment.client.stub.EnvironmentRoleSet(req) for req in requests.values()),
+            *(self._environment.client._stub.EnvironmentRoleSet(req) for req in requests.values()),
             return_exceptions=True,
         )
         errors = [(label, result) for label, result in zip(requests.keys(), results) if isinstance(result, Exception)]
@@ -272,7 +272,7 @@ class _EnvironmentMembersManager:
         service_users = service_users or []
 
         req = api_pb2.EnvironmentGetRolesRequest(environment_id=self._environment.object_id)
-        resp = await self._environment.client.stub.EnvironmentGetRoles(req)
+        resp = await self._environment.client._stub.EnvironmentGetRoles(req)
 
         user_name_to_id: dict[str, str] = {}
         service_user_name_to_id: dict[str, str] = {}
@@ -332,7 +332,7 @@ class _EnvironmentAppsManager:
         await self._environment.hydrate()
         assert self._environment.name is not None
 
-        response = await self._environment.client.stub.AppList(
+        response = await self._environment.client._stub.AppList(
             api_pb2.AppListRequest(environment_name=self._environment.name)
         )
         stopped_app_states = (
@@ -423,7 +423,7 @@ class _Environment(_Object, type_prefix="en"):
                     else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
                 ),
             )
-            response = await load_context.client.stub.EnvironmentGetOrCreate(request)
+            response = await load_context.client._stub.EnvironmentGetOrCreate(request)
             logger.debug(f"Created environment with id {response.environment_id}")
             self._hydrate(response.environment_id, load_context.client, response.metadata)
 
@@ -548,7 +548,7 @@ class _EnvironmentBillingManager:
 
         return [
             BillingReportItem._from_proto(pb_item)
-            async for pb_item in self._environment.client.stub.WorkspaceBillingReport.unary_stream(request)
+            async for pb_item in self._environment.client._stub.WorkspaceBillingReport.unary_stream(request)
         ]
 
     async def summary(
@@ -613,7 +613,7 @@ class _EnvironmentBillingManager:
         request.start_timestamp.FromDatetime(cycle)
 
         return EnvironmentBillingSummary._from_proto(
-            await self._environment.client.stub.EnvironmentBillingSummary(request)
+            await self._environment.client._stub.EnvironmentBillingSummary(request)
         )
 
 
@@ -639,7 +639,7 @@ async def _get_environment_cached(name: str, client: _Client) -> _Environment:
 async def _delete_environment(name: str, client: _Client | None = None):
     if client is None:
         client = await _Client.from_env()
-    await client.stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
+    await client._stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
 
 
 async def _update_environment(
@@ -665,19 +665,19 @@ async def _update_environment(
     )
     if client is None:
         client = await _Client.from_env()
-    await client.stub.EnvironmentUpdate(update_payload)
+    await client._stub.EnvironmentUpdate(update_payload)
 
 
 async def _create_environment(name: str, client: _Client | None = None):
     if client is None:
         client = await _Client.from_env()
-    await client.stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name))
+    await client._stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name))
 
 
 async def _list_environments(client: _Client | None = None) -> list[api_pb2.EnvironmentListItem]:
     if client is None:
         client = await _Client.from_env()
-    resp = await client.stub.EnvironmentList(Empty())
+    resp = await client._stub.EnvironmentList(Empty())
     return list(resp.items)
 
 

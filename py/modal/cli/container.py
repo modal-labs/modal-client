@@ -51,7 +51,7 @@ async def list_(
     env = ensure_env(env)
     client = await _Client.from_env()
     environment_name = _get_environment_name(env)
-    res: api_pb2.TaskListResponse = await client.stub.TaskList(
+    res: api_pb2.TaskListResponse = await client._stub.TaskList(
         api_pb2.TaskListRequest(environment_name=environment_name, app_id=app_id)
     )
 
@@ -221,11 +221,11 @@ async def logs(
             log_filters = dataclasses.replace(log_filters, sandbox_id="", task_id=task_id)
         else:
             if sandbox_id:
-                sb_resp = await client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id))
+                sb_resp = await client._stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id))
                 task_id = sb_resp.task_id
 
             assert task_id
-            task_info_resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=task_id))
+            task_info_resp = await client._stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=task_id))
             app_id = task_info_resp.app_id
 
             if not task_info_resp.info.enqueued_at:
@@ -328,10 +328,10 @@ async def stop(container_id: str = "", *, graceful: bool = False, yes: bool = Fa
 
     """
     client = await _Client.from_env()
-    resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=container_id))
+    resp = await client._stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=container_id))
     if resp.info.finished_at:
         raise SystemExit(f"Container '{container_id}' is already stopped.")
     if not yes:
         confirm_or_suggest_yes(f"Are you sure you want to stop container '{container_id}'?")
     request = api_pb2.ContainerStopRequest(task_id=container_id, graceful=graceful)
-    await client.stub.ContainerStop(request)
+    await client._stub.ContainerStop(request)

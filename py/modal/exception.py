@@ -268,6 +268,10 @@ class AsyncUsageWarning(UserWarning):
     """Warning emitted when a blocking Modal interface is used in an async context."""
 
 
+class InternalAPIWarning(UserWarning):
+    """Warning emitted when user code directly accesses Modal's internal gRPC API."""
+
+
 class InternalFailure(Error):
     """Retriable internal error."""
 

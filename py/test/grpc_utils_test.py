@@ -83,7 +83,7 @@ async def test_http_broken_channel():
 
 @pytest.mark.asyncio
 async def test_retry_transient_errors(servicer, client):
-    client_stub = client.stub
+    client_stub = client._stub
 
     @synchronize_api
     async def wrapped_blob_create(req, **kwargs):
@@ -151,7 +151,7 @@ async def test_retry_transient_errors(servicer, client):
 
 @pytest.mark.asyncio
 async def test_retry_timeout_error(servicer, client):
-    client_stub = client.stub
+    client_stub = client._stub
 
     @synchronize_api
     async def wrapped_blob_create(req, **kwargs):
@@ -246,13 +246,13 @@ async def test_codec_with_channel(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("BlobCreate", raise_error)
         with pytest.raises(GRPCError) as excinfo:
-            await client.stub.BlobCreate.direct(req, timeout=2.0)
+            await client._stub.BlobCreate.direct(req, timeout=2.0)
     assert excinfo.value.details == details
 
 
 @pytest.mark.asyncio
 async def test_flash_container_register_deregister(servicer, client):
-    client_stub = client.stub
+    client_stub = client._stub
 
     @synchronize_api
     async def wrapped_flash_container_register(req, **kwargs):
@@ -351,7 +351,7 @@ async def test_retry_transient_errors_grpc_retry(servicer, client, caplog, monke
     ] * 10
 
     with pytest.raises(GRPCError):
-        await client.stub.BlobCreate(req)
+        await client._stub.BlobCreate(req)
 
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "10"
@@ -378,7 +378,7 @@ async def test_retry_transient_errors_grpc_retry_total_timeout(servicer, client,
     ]
 
     with pytest.raises(GRPCError):
-        await client.stub.BlobCreate(req)
+        await client._stub.BlobCreate(req)
 
     assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "0"
 
@@ -399,7 +399,7 @@ async def test_retry_transient_errors_grpc_no_retries(servicer, client, monkeypa
     ]
 
     with pytest.raises(GRPCError):
-        await client.stub.BlobCreate(req)
+        await client._stub.BlobCreate(req)
 
     assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "0"
 

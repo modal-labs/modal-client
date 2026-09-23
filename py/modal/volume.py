@@ -336,7 +336,7 @@ class _VolumeManager:
             ),
         )
         try:
-            response = await client.stub.VolumeGetOrCreate(req)
+            response = await client._stub.VolumeGetOrCreate(req)
             if version is not None:
                 _validate_volume_version(version, response.metadata.version, name)
         except AlreadyExistsError:
@@ -397,7 +397,7 @@ class _VolumeManager:
             req = api_pb2.VolumeListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await client.stub.VolumeList(req)
+            resp = await client._stub.VolumeList(req)
             items.extend(resp.items)
             finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -458,7 +458,7 @@ class _VolumeManager:
                 raise
         else:
             req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
-            await obj.client.stub.VolumeDelete(req)
+            await obj.client._stub.VolumeDelete(req)
 
 
 VolumeManager = synchronize_api(_VolumeManager)
@@ -754,7 +754,7 @@ class _Volume(_Object, type_prefix="vo"):
                 version=self._get_version_proto(version),
                 create_options=_volume_create_options_to_proto(create_options),
             )
-            response = await load_context.client.stub.VolumeGetOrCreate(req)
+            response = await load_context.client._stub.VolumeGetOrCreate(req)
             if version is not None:
                 _validate_volume_version(version, response.metadata.version, name)
             self._hydrate(response.volume_id, load_context.client, response.metadata)
@@ -804,7 +804,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         async def _load(self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.VolumeGetByIdRequest(volume_id=volume_id)
-            response = await load_context.client.stub.VolumeGetById(req)
+            response = await load_context.client._stub.VolumeGetById(req)
             self._hydrate(response.volume_id, load_context.client, response.metadata)
 
         rep = f"Volume.from_id({volume_id!r})"
@@ -855,10 +855,10 @@ class _Volume(_Object, type_prefix="vo"):
             version=api_pb2.VOLUME_FS_VERSION_UNSPECIFIED if version is None else version,
             create_options=_volume_create_options_to_proto(create_options),
         )
-        response = await client.stub.VolumeGetOrCreate(request)
+        response = await client._stub.VolumeGetOrCreate(request)
         async with TaskContext() as tc:
             request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
-            tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
+            tc.infinite_loop(lambda: client._stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
             yield cls._new_hydrated(
                 response.volume_id,
                 client,
@@ -882,7 +882,7 @@ class _Volume(_Object, type_prefix="vo"):
     async def _do_reload(self, lock=True):
         async with (await self._get_lock()) if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
-            _ = await self.client.stub.VolumeReload(req)
+            _ = await self.client._stub.VolumeReload(req)
 
     @live_method
     async def commit(self):
@@ -895,7 +895,7 @@ class _Volume(_Object, type_prefix="vo"):
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
             try:
                 # TODO(gongy): only apply indefinite retries on 504 status.
-                resp = await self.client.stub.VolumeCommit(req, retry=Retry(max_retries=90))
+                resp = await self.client._stub.VolumeCommit(req, retry=Retry(max_retries=90))
                 if not resp.skip_reload:
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
@@ -950,12 +950,12 @@ class _Volume(_Object, type_prefix="vo"):
 
         if self._is_v1:
             req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-            async for batch in self.client.stub.VolumeListFiles.unary_stream(req):
+            async for batch in self.client._stub.VolumeListFiles.unary_stream(req):
                 for entry in batch.entries:
                     yield FileEntry._from_proto(entry)
         else:
             req = api_pb2.VolumeListFiles2Request(volume_id=self.object_id, path=path, recursive=recursive)
-            async for batch in self.client.stub.VolumeListFiles2.unary_stream(req):
+            async for batch in self.client._stub.VolumeListFiles2.unary_stream(req):
                 for entry in batch.entries:
                     yield FileEntry._from_proto(entry)
 
@@ -993,7 +993,7 @@ class _Volume(_Object, type_prefix="vo"):
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path, client_pads_blocks=True)
 
         try:
-            response = await self.client.stub.VolumeGetFile2(req)
+            response = await self.client._stub.VolumeGetFile2(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
@@ -1061,7 +1061,7 @@ class _Volume(_Object, type_prefix="vo"):
         rpc_ctx = rpc_semaphore if rpc_semaphore is not None else asyncnullcontext()
         async with rpc_ctx:
             try:
-                response = await self.client.stub.VolumeGetFile2(req)
+                response = await self.client._stub.VolumeGetFile2(req)
             except modal.exception.NotFoundError as exc:
                 raise FileNotFoundError(exc.args[0])
 
@@ -1152,10 +1152,10 @@ class _Volume(_Object, type_prefix="vo"):
         try:
             if self._is_v1:
                 req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-                await self.client.stub.VolumeRemoveFile(req)
+                await self.client._stub.VolumeRemoveFile(req)
             else:
                 req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
-                await self.client.stub.VolumeRemoveFile2(req)
+                await self.client._stub.VolumeRemoveFile2(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
@@ -1198,12 +1198,12 @@ class _Volume(_Object, type_prefix="vo"):
             request = api_pb2.VolumeCopyFilesRequest(
                 volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
             )
-            await self.client.stub.VolumeCopyFiles(request, retry=Retry(base_delay=1))
+            await self.client._stub.VolumeCopyFiles(request, retry=Retry(base_delay=1))
         else:
             request = api_pb2.VolumeCopyFiles2Request(
                 volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
             )
-            await self.client.stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
+            await self.client._stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
 
     @live_method_contextmanager
     @asynccontextmanager
@@ -1243,7 +1243,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def _instance_delete(self):
-        await self.client.stub.VolumeDelete(api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
+        await self.client._stub.VolumeDelete(api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
 
     @staticmethod
     async def rename(
@@ -1255,7 +1255,7 @@ class _Volume(_Object, type_prefix="vo"):
     ):
         obj = await _Volume.from_name(old_name, environment_name=environment_name).hydrate(client)
         req = api_pb2.VolumeRenameRequest(volume_id=obj.object_id, name=new_name)
-        await obj.client.stub.VolumeRename(req)
+        await obj.client._stub.VolumeRename(req)
 
 
 Volume = synchronize_api(_Volume)
@@ -1357,7 +1357,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 disallow_overwrite_existing_files=not self._force,
             )
             try:
-                await self._client.stub.VolumePutFiles(request, retry=Retry(base_delay=1))
+                await self._client._stub.VolumePutFiles(request, retry=Retry(base_delay=1))
             except AlreadyExistsError as exc:
                 raise FileExistsError(str(exc))
 
@@ -1420,7 +1420,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
         remote_filename = file_spec.mount_filename
         progress_task_id = self._progress_cb(name=remote_filename, size=file_spec.size)
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
-        response = await self._client.stub.MountPutFile(request, retry=Retry(base_delay=1))
+        response = await self._client._stub.MountPutFile(request, retry=Retry(base_delay=1))
 
         start_time = time.monotonic()
         if not response.exists:
@@ -1429,7 +1429,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 with file_spec.source() as fp:
                     blob_id = await blob_upload_file(
                         fp,
-                        self._client.stub,
+                        self._client._stub,
                         functools.partial(self._progress_cb, progress_task_id),
                         sha256_hex=file_spec.sha256_hex,
                         md5_hex=file_spec.md5_hex,
@@ -1449,7 +1449,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 self._progress_cb(task_id=progress_task_id, complete=True)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
-                response = await self._client.stub.MountPutFile(request2, retry=Retry(base_delay=1))
+                response = await self._client._stub.MountPutFile(request2, retry=Retry(base_delay=1))
                 if response.exists:
                     break
 
@@ -1612,7 +1612,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             )
 
             try:
-                response = await self._client.stub.VolumePutFiles2(request, retry=Retry(base_delay=1))
+                response = await self._client._stub.VolumePutFiles2(request, retry=Retry(base_delay=1))
             except AlreadyExistsError as exc:
                 raise FileExistsError(str(exc))
 

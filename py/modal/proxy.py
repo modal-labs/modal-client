@@ -42,7 +42,7 @@ class _Proxy(_Object, type_prefix="pr"):
                 name=name,
                 environment_name=load_context.environment_name,
             )
-            response: api_pb2.ProxyGetResponse = await load_context.client.stub.ProxyGet(req)
+            response: api_pb2.ProxyGetResponse = await load_context.client._stub.ProxyGet(req)
             self._hydrate(response.proxy.proxy_id, load_context.client, None)
 
         rep = _Proxy._repr(name, environment_name)

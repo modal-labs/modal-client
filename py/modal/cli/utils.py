@@ -270,7 +270,7 @@ async def _resolve_function_id(
             raise UsageError(usage)
 
         try:
-            response = await client.stub.FunctionGet(
+            response = await client._stub.FunctionGet(
                 api_pb2.FunctionGetRequest(
                     app_name=app_name,
                     object_tag=function_name,
@@ -289,7 +289,7 @@ async def _resolve_function_id(
         function = response.function
         metadata = response.handle_metadata
     elif _is_function_id(function_identifier):
-        get_by_id_response = await client.stub.FunctionGetById(
+        get_by_id_response = await client._stub.FunctionGetById(
             api_pb2.FunctionGetByIdRequest(function_id=function_identifier)
         )
         function_id = function_identifier

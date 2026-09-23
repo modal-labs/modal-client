@@ -27,7 +27,7 @@ if __name__ == "__main__":
     new_proc = False
     if test == "test_stub_method":
         # Test that a reference to a stub method can be used across forks
-        rpc_method = client.stub.VolumeList
+        rpc_method = client._stub.VolumeList
         test_stub_method(rpc_method)
         if not (fork_pid := os.fork()):
             new_proc = True
@@ -36,7 +36,7 @@ if __name__ == "__main__":
             os.waitpid(fork_pid, 0)
     elif test == "test_stub_reference":
         # Test that a reference to a stub can be used across forks
-        stub = client.get_stub(config["server_url"])
+        stub = client._get_stub(config["server_url"])
         test_stub(stub)
         if not (fork_pid := os.fork()):
             test_stub(stub)
@@ -44,14 +44,14 @@ if __name__ == "__main__":
             os.waitpid(fork_pid, 0)
     elif test == "test_default_stub":
         # Test that the default stub can be used across forks
-        test_stub(client.stub)
+        test_stub(client._stub)
         if not (fork_pid := os.fork()):
-            test_stub(client.stub)
+            test_stub(client._stub)
         else:
             os.waitpid(fork_pid, 0)
     elif test == "test_default_stub_reference":
         # Test that a reference to the  default stub can be used across forks
-        stub = client.stub
+        stub = client._stub
         test_stub(stub)
         if not (fork_pid := os.fork()):
             test_stub(stub)

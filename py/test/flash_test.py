@@ -43,7 +43,7 @@ def flash_manager(client, mock_tunnel_manager):
 @pytest.fixture
 def server_manager(client):
     lifecycle_ready = AsyncMock()
-    client.stub.ContainerServerLifecycleReady = lifecycle_ready
+    client._stub.ContainerServerLifecycleReady = lifecycle_ready
     with patch.dict(os.environ, {"MODAL_TASK_ID": "test-server-task-123"}):
         manager = _ServerManager(client=client)
     return manager, lifecycle_ready
@@ -90,8 +90,8 @@ class TestFlashManagerStopping:
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
         flash_manager.startup_timeout = 0  # Skip startup grace period
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
-        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client._stub.FlashContainerDeregister = AsyncMock()
 
         original_sleep = asyncio.sleep
 
@@ -121,8 +121,8 @@ class TestFlashManagerStopping:
 
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
-        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client._stub.FlashContainerDeregister = AsyncMock()
         flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
 
         heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
@@ -141,8 +141,8 @@ class TestFlashManagerStopping:
         """Test that heartbeat failures properly increment the failure counter."""
 
         flash_manager.tunnel = MagicMock()
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
-        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client._stub.FlashContainerDeregister = AsyncMock()
         flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, Exception("unhealthy")))
         heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
         drain_task = asyncio.create_task(flash_manager._drain_container())
@@ -188,7 +188,7 @@ class TestFlashManagerStopping:
             return await type(flash_manager).is_port_connection_healthy(flash_manager, dead_process, timeout=timeout)
 
         flash_manager.is_port_connection_healthy = AsyncMock(side_effect=mock_is_port_connection_healthy)
-        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.client._stub.FlashContainerDeregister = AsyncMock()
 
         host = "heartbeat-host.modal.test"
         port = 9000
@@ -220,9 +220,9 @@ class TestFlashManagerStopping:
             )
 
             # Mock client stub methods
-            flash_manager.client.stub.FlashContainerRegister = AsyncMock()
-            flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
-            flash_manager.client.stub.ContainerStop = AsyncMock()
+            flash_manager.client._stub.FlashContainerRegister = AsyncMock()
+            flash_manager.client._stub.FlashContainerDeregister = AsyncMock()
+            flash_manager.client._stub.ContainerStop = AsyncMock()
 
             flash_manager.num_heartbeat_failures = _MAX_FAILURES
 
@@ -287,7 +287,7 @@ class TestFlashManagerStopping:
         """Test that flash startup heartbeat registers the container."""
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock()
 
         call_count = 0
 
@@ -316,13 +316,13 @@ class TestFlashManagerStopping:
         """Test that _start raises TimeoutError and cleans up when the port never becomes healthy."""
         flash_manager.startup_timeout = 0.05
         flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, None))
-        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.client._stub.FlashContainerDeregister = AsyncMock()
 
         with pytest.raises(TimeoutError, match="Timed out while waiting for port"):
             await flash_manager._start()
             await asyncio.sleep(0.2)
 
-        flash_manager.client.stub.FlashContainerDeregister.assert_called_once()
+        flash_manager.client._stub.FlashContainerDeregister.assert_called_once()
         flash_manager.tunnel_manager.__aexit__.assert_called_once()
 
     @pytest.mark.asyncio
@@ -331,7 +331,7 @@ class TestFlashManagerStopping:
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
         flash_manager.startup_timeout = 0.05
-        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.client._stub.FlashContainerDeregister = AsyncMock()
 
         original_sleep = asyncio.sleep
 
@@ -367,13 +367,13 @@ class TestFlashManagerStopping:
         flash_manager.startup_timeout = 1.0
 
         flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock(return_value=MagicMock(url="https://ready"))
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock(return_value=MagicMock(url="https://ready"))
 
         with patch("asyncio.sleep", return_value=None):
             result = await flash_manager._wait_for_port_success("test.modal.test", 443)
 
         assert result is True
-        flash_manager.client.stub.FlashContainerRegister.assert_called_once()
+        flash_manager.client._stub.FlashContainerRegister.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_wait_for_port_success_retries_on_error(self, flash_manager):
@@ -383,14 +383,14 @@ class TestFlashManagerStopping:
         flash_manager.startup_timeout = 6.0
 
         flash_manager.is_port_connection_healthy = AsyncMock(side_effect=[Exception("boom")] * 10 + [(True, None)])
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock(return_value=MagicMock(url="https://ready"))
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock(return_value=MagicMock(url="https://ready"))
 
         with patch("asyncio.sleep", return_value=None):
             result = await flash_manager._wait_for_port_success("test.modal.test", 443)
 
         assert result is True
         assert flash_manager.is_port_connection_healthy.call_count == 11
-        flash_manager.client.stub.FlashContainerRegister.assert_called_once()
+        flash_manager.client._stub.FlashContainerRegister.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_wait_for_port_success_propagates_cancelled(self, flash_manager):
@@ -400,12 +400,12 @@ class TestFlashManagerStopping:
         flash_manager.startup_timeout = 1.0
 
         flash_manager.is_port_connection_healthy = AsyncMock(side_effect=asyncio.CancelledError())
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock()
 
         with pytest.raises(asyncio.CancelledError):
             await flash_manager._wait_for_port_success("test.modal.test", 443)
 
-        flash_manager.client.stub.FlashContainerRegister.assert_not_called()
+        flash_manager.client._stub.FlashContainerRegister.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_wait_for_port_success_times_out(self, flash_manager):
@@ -415,7 +415,7 @@ class TestFlashManagerStopping:
         flash_manager.startup_timeout = 0.5
 
         flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, None))
-        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client._stub.FlashContainerRegister = AsyncMock()
 
         count = 0
 
@@ -434,7 +434,7 @@ class TestFlashManagerStopping:
             ):
                 await flash_manager._wait_for_port_success("test.modal.test", 443)
 
-        flash_manager.client.stub.FlashContainerRegister.assert_not_called()
+        flash_manager.client._stub.FlashContainerRegister.assert_not_called()
 
 
 class TestFlashCancellation:
@@ -480,7 +480,7 @@ class TestFlashCancellation:
                 started_event.set()
                 await asyncio.Event().wait()
 
-            flash_manager.client.stub.FlashContainerRegister = AsyncMock(side_effect=blocking_register)
+            flash_manager.client._stub.FlashContainerRegister = AsyncMock(side_effect=blocking_register)
 
         start_task = asyncio.create_task(flash_manager._start())
         await asyncio.wait_for(started_event.wait(), timeout=1.0)
@@ -512,7 +512,7 @@ class TestFlashCancellation:
                 started_event.set()
                 await asyncio.Event().wait()
 
-            flash_manager.client.stub.FlashContainerRegister = AsyncMock(side_effect=blocking_register)
+            flash_manager.client._stub.FlashContainerRegister = AsyncMock(side_effect=blocking_register)
         else:
             flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
 

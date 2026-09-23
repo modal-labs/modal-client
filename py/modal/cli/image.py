@@ -111,7 +111,7 @@ async def _iter_tag_pages(
     environment_name = env
 
     while True:
-        response = await client.stub.ImageListTags(
+        response = await client._stub.ImageListTags(
             api_pb2.ImageListTagsRequest(
                 environment_name=env,
                 tag_prefix=prefix,
@@ -133,7 +133,7 @@ async def _fetch_history_page(
     name_tag: str,
     page_token: str,
 ) -> api_pb2.ImageTagRevisionsResponse:
-    return await client.stub.ImageTagRevisions(
+    return await client._stub.ImageTagRevisions(
         api_pb2.ImageTagRevisionsRequest(
             tag=name_tag,
             max_objects=IMAGE_NAMES_HISTORY_PAGE_SIZE,

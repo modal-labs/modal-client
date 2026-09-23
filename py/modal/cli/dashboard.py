@@ -24,7 +24,7 @@ async def dashboard(
         env = config.get("environment") or ""
         request = api_pb2.WorkspaceDashboardUrlRequest(environment_name=env)
         client = await _Client.from_env()
-        response = await client.stub.WorkspaceDashboardUrlGet(request)
+        response = await client._stub.WorkspaceDashboardUrlGet(request)
         url = response.url
 
     open_url_and_display(url, "dashboard")

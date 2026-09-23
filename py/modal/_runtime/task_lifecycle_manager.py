@@ -96,7 +96,7 @@ class _TaskLifecycleManager:
 
             serialized_tb, tb_line_cache = pickle_traceback(exc, self.task_id)
 
-            data_or_blob = await format_blob_data(pickle_exception(exc), self._client.stub)
+            data_or_blob = await format_blob_data(pickle_exception(exc), self._client._stub)
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 **data_or_blob,
@@ -109,7 +109,7 @@ class _TaskLifecycleManager:
             )
 
             req = api_pb2.TaskResultRequest(result=result)
-            await self._client.stub.TaskResult(req)
+            await self._client._stub.TaskResult(req)
 
             # Shut down the task gracefully
             raise UserException()
@@ -124,7 +124,7 @@ class _TaskLifecycleManager:
         await asyncify(os.sync)()
         results = await asyncio.gather(
             *[
-                self._client.stub.VolumeCommit(
+                self._client._stub.VolumeCommit(
                     api_pb2.VolumeCommitRequest(volume_id=v_id),
                     retry=Retry(
                         max_retries=9,
@@ -217,7 +217,7 @@ class _TaskLifecycleManager:
                 self._cuda_checkpoint_session = gpu_memory_snapshot.CudaCheckpointSession()
                 self._cuda_checkpoint_session.checkpoint()
 
-        await self._client.stub.ContainerCheckpoint(
+        await self._client._stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
 

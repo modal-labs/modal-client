@@ -124,7 +124,7 @@ class _DictManager:
             object_creation_type=object_creation_type,
         )
         try:
-            await client.stub.DictGetOrCreate(req)
+            await client._stub.DictGetOrCreate(req)
         except AlreadyExistsError:
             if not allow_existing:
                 raise
@@ -183,7 +183,7 @@ class _DictManager:
             req = api_pb2.DictListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await client.stub.DictList(req)
+            resp = await client._stub.DictList(req)
             items.extend(resp.dicts)
             finished = (len(resp.dicts) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -244,7 +244,7 @@ class _DictManager:
                 raise
         else:
             req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
-            await obj.client.stub.DictDelete(req)
+            await obj.client._stub.DictDelete(req)
 
 
 DictManager = synchronize_api(_DictManager)
@@ -361,10 +361,10 @@ class _Dict(_Object, type_prefix="di"):
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
             environment_name=_get_environment_name(environment_name),
         )
-        response = await client.stub.DictGetOrCreate(request, retry=Retry(total_timeout=10.0))
+        response = await client._stub.DictGetOrCreate(request, retry=Retry(total_timeout=10.0))
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
-            tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
+            tc.infinite_loop(lambda: client._stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
             yield cls._new_hydrated(
                 response.dict_id,
                 client,
@@ -412,7 +412,7 @@ class _Dict(_Object, type_prefix="di"):
                     else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
                 ),
             )
-            response = await load_context.client.stub.DictGetOrCreate(req)
+            response = await load_context.client._stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, load_context.client, response.metadata)
 
@@ -461,7 +461,7 @@ class _Dict(_Object, type_prefix="di"):
 
         async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.DictGetByIdRequest(dict_id=dict_id)
-            response = await load_context.client.stub.DictGetById(req)
+            response = await load_context.client._stub.DictGetById(req)
             self._hydrate(response.dict_id, load_context.client, response.metadata)
 
         rep = f"Dict.from_id({dict_id!r})"
@@ -488,7 +488,7 @@ class _Dict(_Object, type_prefix="di"):
     async def clear(self) -> None:
         """Remove all items from the Dict."""
         req = api_pb2.DictClearRequest(dict_id=self.object_id)
-        await self.client.stub.DictClear(req)
+        await self.client._stub.DictClear(req)
 
     @live_method
     async def get(self, key: Any, default: Any | None = None) -> Any:
@@ -497,7 +497,7 @@ class _Dict(_Object, type_prefix="di"):
         Returns `default` if key does not exist.
         """
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await self.client.stub.DictGet(req)
+        resp = await self.client._stub.DictGet(req)
         if not resp.found:
             return default
         return _deserialize_dict_value(self, resp.value, key)
@@ -506,7 +506,7 @@ class _Dict(_Object, type_prefix="di"):
     async def contains(self, key: Any) -> bool:
         """Return if a key is present."""
         req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await self.client.stub.DictContains(req)
+        resp = await self.client._stub.DictContains(req)
         return resp.found
 
     @live_method
@@ -516,7 +516,7 @@ class _Dict(_Object, type_prefix="di"):
         Note: This is an expensive operation and will return at most 100,000.
         """
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
-        resp = await self.client.stub.DictLen(req)
+        resp = await self.client._stub.DictLen(req)
         return resp.len
 
     @live_method
@@ -545,7 +545,7 @@ class _Dict(_Object, type_prefix="di"):
         serialized = _serialize_dict(contents)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
-            await self.client.stub.DictUpdate(req)
+            await self.client._stub.DictUpdate(req)
         except Error as exc:
             if "status = '413'" in str(exc):
                 raise RequestSizeError("Dict.update request is too large") from exc
@@ -563,7 +563,7 @@ class _Dict(_Object, type_prefix="di"):
         serialized = _serialize_dict(updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized, if_not_exists=skip_if_exists)
         try:
-            resp = await self.client.stub.DictUpdate(req)
+            resp = await self.client._stub.DictUpdate(req)
             return resp.created
         except Error as exc:
             if "status = '413'" in str(exc):
@@ -586,7 +586,7 @@ class _Dict(_Object, type_prefix="di"):
         If key is not found, return default if provided, otherwise raise KeyError.
         """
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await self.client.stub.DictPop(req)
+        resp = await self.client._stub.DictPop(req)
         if not resp.found:
             if default is not _NO_DEFAULT:
                 return default
@@ -617,7 +617,7 @@ class _Dict(_Object, type_prefix="di"):
         and results are unordered.
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True)
-        async for resp in self.client.stub.DictContents.unary_stream(req):
+        async for resp in self.client._stub.DictContents.unary_stream(req):
             yield _deserialize_dict_key(self, resp.key)
 
     @live_method_gen
@@ -628,7 +628,7 @@ class _Dict(_Object, type_prefix="di"):
         and results are unordered.
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, values=True)
-        async for resp in self.client.stub.DictContents.unary_stream(req):
+        async for resp in self.client._stub.DictContents.unary_stream(req):
             try:
                 key_deser = _deserialize_dict_key(self, resp.key)
             except DeserializationError:
@@ -643,7 +643,7 @@ class _Dict(_Object, type_prefix="di"):
         and results are unordered.
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True, values=True)
-        async for resp in self.client.stub.DictContents.unary_stream(req):
+        async for resp in self.client._stub.DictContents.unary_stream(req):
             key_deser = _deserialize_dict_key(self, resp.key)
             value_deser = _deserialize_dict_value(self, resp.value, key_deser)
             yield (key_deser, value_deser)
