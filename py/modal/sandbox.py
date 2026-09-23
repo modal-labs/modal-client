@@ -737,54 +737,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
             outbound_cidr_allowlist = cidr_allowlist
 
-        # Opt-in to the V2 backend. GPUs and network file systems are not supported on V2, so
-        # those calls stay on V1 even when the flag is set.
-        if config.get("sandbox_v2") is True and gpu is None and not network_file_systems and pty_info is None:
-            _, client = _resolve_app_id_and_client(app, client)
-            return await _Sandbox._experimental_create(
-                *args,
-                app=app,
-                name=name,
-                tags=tags,
-                image=image,
-                env=env,
-                secrets=secrets,
-                timeout=timeout,
-                idle_timeout=idle_timeout,
-                workdir=workdir,
-                cpu=cpu,
-                memory=memory,
-                cloud=cloud,
-                region=region,
-                block_network=block_network,
-                outbound_cidr_allowlist=outbound_cidr_allowlist,
-                outbound_domain_allowlist=outbound_domain_allowlist,
-                outbound_policy=outbound_policy,
-                inbound_cidr_allowlist=inbound_cidr_allowlist,
-                volumes=volumes,
-                pty=pty,
-                encrypted_ports=encrypted_ports,
-                h2_ports=h2_ports,
-                unencrypted_ports=unencrypted_ports,
-                proxy=proxy,
-                readiness_probe=readiness_probe,
-                experimental_options=experimental_options,
-                include_oidc_identity_token=include_oidc_identity_token,
-                verbose=verbose,
-                custom_domain=custom_domain,
-                client=client,
-                _experimental_enable_snapshot=_experimental_enable_snapshot,
-            )
-
-        secrets = secrets or []
-        if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
-
         return await _Sandbox._create(
             *args,
             app=app,
             name=name,
             image=image,
+            env=env,
             secrets=secrets,
             network_file_systems=network_file_systems,
             timeout=timeout,
@@ -862,6 +820,44 @@ class _Sandbox(_Object, type_prefix="sb"):
         `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
         sandbox that runs the shell session.
         """
+        if config.get("sandbox_v2") is True and gpu is None and not network_file_systems and pty_info is None:
+            _, client = _resolve_app_id_and_client(app, client)
+            return await _Sandbox._experimental_create(
+                *args,
+                app=app,
+                name=name,
+                tags=tags,
+                image=image,
+                env=env,
+                secrets=secrets,
+                mounts=mounts,
+                timeout=timeout,
+                idle_timeout=idle_timeout,
+                workdir=workdir,
+                cpu=cpu,
+                memory=memory,
+                cloud=cloud,
+                region=region,
+                block_network=block_network,
+                outbound_cidr_allowlist=outbound_cidr_allowlist,
+                outbound_domain_allowlist=outbound_domain_allowlist,
+                outbound_policy=outbound_policy,
+                inbound_cidr_allowlist=inbound_cidr_allowlist,
+                volumes=volumes,
+                pty=pty,
+                encrypted_ports=encrypted_ports,
+                h2_ports=h2_ports,
+                unencrypted_ports=unencrypted_ports,
+                proxy=proxy,
+                readiness_probe=readiness_probe,
+                experimental_options=experimental_options,
+                include_oidc_identity_token=include_oidc_identity_token,
+                verbose=verbose,
+                custom_domain=custom_domain,
+                client=client,
+                _experimental_enable_snapshot=_experimental_enable_snapshot,
+            )
+
         _validate_exec_args(args)
         if name is not None:
             check_object_name(name, "Sandbox")
@@ -928,6 +924,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: _Image | None = None,
         env: dict[str, str | None] | None = None,
         secrets: Collection[_Secret] | None = None,
+        mounts: Sequence[_Mount] = (),
         timeout: int = 300,
         idle_timeout: int | None = None,
         workdir: str | None = None,
@@ -1068,6 +1065,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             dep_tasks: list = []
             if not image._is_hydrated:
                 dep_tasks.append(resolver.load(image, load_context))
+            for mount in mounts:
+                dep_tasks.append(resolver.load(mount, load_context))
             for secret in resolvable_secrets:
                 dep_tasks.append(resolver.load(secret, load_context))
             if outbound_policy:
@@ -1094,7 +1093,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             definition = api_pb2.Sandbox(
                 entrypoint_args=args,
                 image_id=image.object_id,
-                mount_ids=[mount.object_id for mount in image._mount_layers],
+                mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in resolvable_secrets],
                 timeout_secs=timeout,
                 idle_timeout_secs=idle_timeout,

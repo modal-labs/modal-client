@@ -755,7 +755,7 @@ async def _interactive_shell(
         # Temporarily enable output to show image build logs during sandbox creation
         output_mgr.set_quiet_mode(False)
         if v2:
-            for option in ("gpu", "mounts", "network_file_systems"):
+            for option in ("gpu", "network_file_systems"):
                 if kwargs.pop(option, None):
                     raise InvalidError(f"`{option}` is not supported for V2 sandboxes")
             sandbox = await _Sandbox._experimental_create(
@@ -791,7 +791,7 @@ async def _interactive_shell(
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox.object_id, timeout=0)
-            if v2:
+            if sandbox._is_v2:
                 assert sandbox._client._auth_token_manager
                 auth_token = await sandbox._client._auth_token_manager.get_token()
                 resp = await sandbox._client.stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])

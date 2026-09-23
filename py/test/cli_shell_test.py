@@ -4,12 +4,14 @@ import pytest
 import re
 import subprocess
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import click
 from grpclib import GRPCError, Status
 
+from modal import config as config_module
 from modal.cli.shell import _parse_experimental_options, _parse_sandbox_container_ref, _passed_forbidden_args, shell
+from modal.exception import InteractiveTimeoutError
 
 from .conftest import run_cli_command
 from .supports.skip import skip_windows
@@ -447,7 +449,8 @@ def test_shell_experimental_options_with_function_ref(servicer, set_env_client, 
     )
 
     call = mock_shell_routing["start_from_function_spec"].call_args
-    assert call.args[-1] == {"sparkle_mode": "true", "waffle_fs": "false"}
+    assert call.args[-2] == {"sparkle_mode": "true", "waffle_fs": "false"}
+    assert call.args[-1] is False
 
 
 @skip_windows("modal shell is not supported on Windows.")
@@ -458,14 +461,29 @@ def test_shell_experimental_options_with_image(servicer, set_env_client, mock_sh
     assert call.args[-2] == {"sparkle_mode": "true"}
 
 
+@pytest.fixture(params=["flag", "environment", "default"])
+def v2_shell_args(request, monkeypatch):
+    if request.param == "flag":
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
+        return ["--experimental-v2"]
+    elif request.param == "environment":
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    else:
+        monkeypatch.delenv("MODAL_SANDBOX_V2", raising=False)
+        monkeypatch.setitem(
+            config_module._SETTINGS, "sandbox_v2", config_module._SETTINGS["sandbox_v2"]._replace(default=True)
+        )
+    return []
+
+
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell_v2_creates_sandbox_with_sandbox_create_v2(servicer, set_env_client, mock_shell_pty):
+def test_shell_v2_creates_sandbox_with_sandbox_create_v2(servicer, set_env_client, mock_shell_pty, v2_shell_args):
     fake_stdin, captured_out = mock_shell_pty
     fake_stdin.clear()
     fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
     with servicer.intercept() as ctx:
-        run_cli_command(["shell", "--experimental-v2", "--cpu", "8", "--memory", "16384"])
+        run_cli_command(["shell", *v2_shell_args, "--cpu", "8", "--memory", "16384"])
 
     (create_req,) = ctx.get_requests("SandboxCreateV2")
     assert ctx.get_requests("SandboxCreate") == []
@@ -475,13 +493,13 @@ def test_shell_v2_creates_sandbox_with_sandbox_create_v2(servicer, set_env_clien
 
 
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell_v2_passes_experimental_options(servicer, set_env_client, mock_shell_pty):
+def test_shell_v2_passes_experimental_options(servicer, set_env_client, mock_shell_pty, v2_shell_args):
     fake_stdin, captured_out = mock_shell_pty
     fake_stdin.clear()
     fake_stdin.extend([b"exit\n"])
 
     with servicer.intercept() as ctx:
-        run_cli_command(["shell", "--experimental-v2", "--experimental-option", "sparkle_mode=true"])
+        run_cli_command(["shell", *v2_shell_args, "--experimental-option", "sparkle_mode=true"])
 
     (create_req,) = ctx.get_requests("SandboxCreateV2")
     assert dict(create_req.definition.experimental_options_v2) == {"sparkle_mode": "true"}
@@ -498,24 +516,71 @@ def test_shell_v2_rejects_gpu(servicer, set_env_client, mock_shell_pty):
 
 
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell_v2_rejects_add_local(servicer, set_env_client, mock_shell_pty, tmp_path):
+def test_shell_v2_add_local(servicer, set_env_client, mock_shell_pty, tmp_path, v2_shell_args):
     local_file = tmp_path / "file.txt"
     local_file.write_text("hello")
-    run_cli_command(
-        ["shell", "--experimental-v2", "--add-local", str(local_file)],
-        expected_exit_code=1,
-        expected_error="`mounts` is not supported for V2 sandboxes",
+    with servicer.intercept() as ctx:
+        run_cli_command(["shell", *v2_shell_args, "--add-local", str(local_file)])
+
+    (create_req,) = ctx.get_requests("SandboxCreateV2")
+    assert ctx.get_requests("SandboxCreate") == []
+    (mount_id,) = create_req.definition.mount_ids
+    sha = servicer.mount_contents[mount_id]["/mnt/file.txt"]
+    assert servicer.files_sha2data[sha]["data"] == b"hello"
+
+
+@skip_windows("modal shell not supported on Windows.")
+def test_shell_v2_function_mounts(servicer, set_env_client, mock_shell_pty, tmp_path, v2_shell_args):
+    image_file = tmp_path / "image-data.txt"
+    image_file.write_text("image mount")
+    app_file = tmp_path / "mounted_app.py"
+    app_file.write_text(
+        "import modal\n"
+        f"image = modal.Image.debian_slim().add_local_file({str(image_file)!r}, '/my-img-data.txt')\n"
+        "app = modal.App(image=image)\n"
+        "@app.function()\n"
+        "def f():\n"
+        "    pass\n"
     )
+
+    with servicer.intercept() as ctx:
+        run_cli_command(["shell", *v2_shell_args, f"{app_file}::f"])
+
+    (create_req,) = ctx.get_requests("SandboxCreateV2")
+    assert ctx.get_requests("SandboxCreate") == []
+    assert len(create_req.definition.mount_ids) == 3  # Client, Function source, and Image files.
+    mounted_files = {
+        k: v for mount_id in create_req.definition.mount_ids for k, v in servicer.mount_contents[mount_id].items()
+    }
+    source_sha = mounted_files["/root/mounted_app.py"]
+    assert servicer.files_sha2data[source_sha]["data"] == app_file.read_bytes()
+    image_sha = mounted_files["/my-img-data.txt"]
+    assert servicer.files_sha2data[image_sha]["data"] == b"image mount"
+
+
+@skip_windows("modal shell not supported on Windows.")
+def test_shell_v2_timeout_checks_v2_status(servicer, set_env_client, monkeypatch, v2_shell_args):
+    monkeypatch.setattr(
+        "modal.sandbox._Sandbox._exec", AsyncMock(side_effect=InteractiveTimeoutError("exec timed out"))
+    )
+
+    with servicer.intercept() as ctx:
+        run_cli_command(["shell", *v2_shell_args, "--no-pty"], expected_exit_code=1, expected_error="exec timed out")
+
+    assert len(ctx.get_requests("SandboxWaitV2")) == 1
+    assert ctx.get_requests("SandboxWait") == []
 
 
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell_v2_rejects_function_ref(servicer, set_env_client, mock_shell_routing):
-    run_cli_command(
-        ["shell", "--experimental-v2", "app.py::my_func"],
-        expected_exit_code=1,
-        expected_stderr="not supported when starting a shell from a function reference",
-    )
-    mock_shell_routing["start_from_function_spec"].assert_not_called()
+@pytest.mark.parametrize("sandbox_v2,gpu", [("0", None), ("1", "a10g")])
+def test_shell_v1_selection(servicer, set_env_client, mock_shell_pty, monkeypatch, sandbox_v2, gpu):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", sandbox_v2)
+    args = ["shell"] if not gpu else ["shell", "--gpu", gpu]
+    with servicer.intercept() as ctx:
+        run_cli_command(args)
+
+    assert ctx.get_requests("SandboxCreateV2") == []
+    assert len(ctx.get_requests("SandboxCreate")) == 1
 
 
 @skip_windows("modal shell is not supported on Windows.")

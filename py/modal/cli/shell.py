@@ -197,6 +197,7 @@ def _start_shell_from_function_spec(
     function_spec: _FunctionSpec,
     pty: bool,
     experimental_options: dict[str, str],
+    v2: bool,
 ) -> None:
     interactive_shell(
         app,
@@ -216,6 +217,7 @@ def _start_shell_from_function_spec(
         pty=pty,
         proxy=function_spec.proxy,
         experimental_options=experimental_options,
+        v2=v2,
     )
 
 
@@ -440,15 +442,8 @@ def shell(
                 f"when starting a new container from a function reference ('{ref}')."
             )
 
-        if v2:
-            # Function specs always carry mounts (e.g. the client mount), which the
-            # V2 backend does not support.
-            raise ClickException(
-                "--experimental-v2 is not supported when starting a shell from a function reference. "
-                "Use an image instead (e.g. `modal shell --experimental-v2 --image ...`)."
-            )
         function_spec = _function_spec_from_ref(ref, use_module_mode)
-        _start_shell_from_function_spec(app, cmds, env, timeout, function_spec, pty, parsed_experimental_options)
+        _start_shell_from_function_spec(app, cmds, env, timeout, function_spec, pty, parsed_experimental_options, v2)
         return
 
     if ref is not None and _is_valid_modal_id(ref, "im-"):
