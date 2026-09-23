@@ -113,3 +113,40 @@ def test_negative_assertions(type_check_root):
     assert 'Argument "a" to "local" of "Function" has incompatible type "int"' in stdout
     assert 'Unexpected keyword argument "e" for "aio" of "__remote_spec"' in stdout
     assert 'Argument "a" to "aio" of "__remote_spec" has incompatible type "float"' in stdout
+
+
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
+@skip_windows("Type tests fail on windows since they don't exclude non-windows features")
+def test_clustered_decorator_types(type_check_root):
+    source = type_check_root / "clustered_types.py"
+    source.write_text(
+        """import modal
+from typing_extensions import assert_type
+
+app = modal.App()
+
+@app.function()
+@modal.clustered(size=2)
+def fn(x: int) -> int:
+    return x
+
+@app.cls()
+@modal.clustered(size=2)
+class Service:
+    @modal.method()
+    def run(self, x: int) -> int:
+        return x
+
+@app.server(port=8000)
+@modal.clustered(size=2)
+class Server:
+    @modal.enter()
+    def start(self) -> None:
+        pass
+
+assert_type(fn.remote(1), int)
+assert_type(Service().run.remote(1), int)
+"""
+    )
+    p = _run_mypy(type_check_root, source.name)
+    assert p.returncode == 0, p.stdout

@@ -586,7 +586,7 @@ def test_server_snap_without_enable_memory_snapshot():
 
 
 def test_server_with_clustered_decorator(client, servicer):
-    """Test that @modal.experimental.clustered() works with @app.server().
+    """Test that @modal.clustered() works with @app.server().
 
     Regression test: @modal.clustered() wraps the class in a _PartialFunction,
     which caused validate_wrapped_user_cls_decorators to fail on inspect.isclass().
@@ -594,7 +594,7 @@ def test_server_with_clustered_decorator(client, servicer):
     app = modal.App("server-clustered-test", include_source=False)
 
     @app.server(port=8000, routing_region="us-east", serialized=True)
-    @modal.experimental.clustered(size=2)  # type: ignore
+    @modal.clustered(size=2)
     class ClusteredServer:
         @modal.enter()
         def start(self):

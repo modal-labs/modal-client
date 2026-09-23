@@ -776,42 +776,57 @@ def _concurrent(
     return wrapper
 
 
-# NOTE: clustered is currently exposed through modal.experimental, not the top-level namespace
-def _clustered(
-    size: int, broadcast: bool = True, rdma: bool = False, fabric_size: int | None = None
-) -> Callable[
-    [Callable[P, ReturnType] | _PartialFunction[P, ReturnType, ReturnType]],
-    _PartialFunction[P, ReturnType, ReturnType],
-]:
-    """Provision clusters of colocated and networked containers for the Function.
+_ClusteredClass = typing.TypeVar("_ClusteredClass", bound=type[Any])
+
+
+class _ClusteredDecorator:
+    # Classes are callable too; preserve their type through the app.cls() decorator stack.
+    @typing.overload
+    def __call__(self, obj: _ClusteredClass) -> _ClusteredClass: ...  # type: ignore[overload-overlap]
+
+    @typing.overload
+    def __call__(
+        self, obj: "Callable[P, ReturnType] | modal.partial_function.PartialFunction[P, ReturnType, ReturnType]"
+    ) -> "modal.partial_function.PartialFunction[P, ReturnType, ReturnType]": ...
+
+    def __call__(self, obj): ...
+
+
+def _clustered(*, size: int, rdma: bool = False) -> _ClusteredDecorator:
+    """Run a Function or Server on a cluster of colocated, networked containers.
+
+    Apply below `@app.function()`, `@app.cls()`, or `@app.server()`. Each container
+    must request all GPUs on its host (for example, `gpu="H100:8"`); CPU-only
+    clusters are not supported. A clustered Cls can expose only one method.
+    Use a Server for HTTP serving; clustered Web Functions are not supported.
+
+    Function inputs are broadcast to every container, and only rank 0's output
+    is returned. Server requests are routed only to rank 0 and are not broadcast
+    to the other containers. Use `modal.experimental.get_cluster_info()` inside
+    the container to discover its rank and its peers.
+
+    `min_containers`, `max_containers`, and `buffer_containers` count individual
+    containers and must be multiples of `size`. For example, `size=4` with
+    `min_containers=8` keeps two clusters warm.
+
+    See the [multi-node clusters guide](https://modal.com/docs/guide/multi-node-training)
+    for hardware requirements and networking details.
 
     Parameters:
     size: int
-        Number of containers spun up to handle each input.
-    broadcast: bool = True
-        If True, inputs will be sent simultaneously to each container. Otherwise,
-        inputs will be sent only to the rank-0 container, which is responsible for
-        delegating to the workers.
-    fabric_size: int | None = None
-        Experimental: constrains placement across GPU-memory fabrics. The cluster
-        is placed in co-fabric blocks of `fabric_size` containers, so every block
-        of `fabric_size` consecutive ranks shares a fabric (the scale-up domain)
-        and communicates over cross-node NVLink. Must evenly divide `size`.
+        Number of containers in each cluster.
+    rdma: bool = False
+        Request RDMA networking for fast communication between nodes, such as
+        GPU collectives during distributed training. With False, containers
+        can still communicate over the private IP network without requiring
+        RDMA-capable placement.
     """
-
-    assert broadcast, "broadcast=False has not been implemented yet!"
 
     if not isinstance(size, int) or size <= 0:
         raise InvalidError("cluster size must be a positive integer")
 
-    if fabric_size is not None:
-        if not isinstance(fabric_size, int) or fabric_size <= 0:
-            raise ValueError("fabric_size must be a positive integer")
-        if size % fabric_size != 0:
-            raise ValueError(f"fabric_size must evenly divide the cluster size ({size} % {fabric_size} != 0)")
-
     flags = _PartialFunctionFlags.CLUSTERED
-    params = _PartialFunctionParams(cluster_size=size, rdma=rdma, fabric_size=fabric_size)
+    params = _PartialFunctionParams(cluster_size=size, rdma=rdma)
 
     def wrapper(
         obj: _PartialFunction[P, ReturnType, ReturnType] | Callable[P, ReturnType],
@@ -823,4 +838,4 @@ def _clustered(
         pf.validate_obj_compatibility("clustered")
         return pf
 
-    return wrapper
+    return typing.cast(_ClusteredDecorator, wrapper)

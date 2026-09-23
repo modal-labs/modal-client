@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2025
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 
 from modal_proto import api_pb2
 
@@ -17,13 +18,14 @@ from .._image import (
     _ImageRegistryConfig as _ImageRegistryConfig,
 )
 from .._object import _get_environment_name
-from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
-from .._utils.async_utils import synchronize_api, synchronizer
+from .._utils.async_utils import synchronizer
+from .._utils.deprecation import deprecation_warning
 from ..app import _App
 from ..client import _Client
 from ..cls import _Cls
 from ..exception import InvalidError as InvalidError
+from ..partial_function import clustered as _public_clustered
 from ..secret import _Secret as _Secret
 from .flash import (  # noqa: F401
     flash_forward,
@@ -65,7 +67,26 @@ def get_fabric_peers() -> list[int]:
     return _get_fabric_peers()
 
 
-clustered = synchronize_api(_clustered, target_module=__name__)
+def clustered(size: int, broadcast: bool = True, rdma: bool = False, fabric_size: int | None = None):
+    deprecation_warning(
+        (2026, 9, 14),
+        "Use `modal.clustered(size=..., rdma=...)` instead of `modal.experimental.clustered`.",
+    )
+    assert broadcast, "broadcast=False has not been implemented yet!"
+    decorator = _public_clustered(size=size, rdma=rdma)
+    if fabric_size is not None:
+        if not isinstance(fabric_size, int) or fabric_size <= 0:
+            raise ValueError("fabric_size must be a positive integer")
+        if size % fabric_size != 0:
+            raise ValueError(f"fabric_size must evenly divide the cluster size ({size} % {fabric_size} != 0)")
+
+    def wrapper(obj):
+        result: Any = decorator(obj)
+        partial_function: Any = synchronizer._translate_in(result)
+        partial_function.params.fabric_size = fabric_size
+        return result
+
+    return wrapper
 
 
 @dataclass

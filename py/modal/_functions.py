@@ -731,6 +731,25 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Needed to avoid circular imports
         from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
+        experimental_options = dict(experimental_options or {})
+        if "fabric_size" in experimental_options:
+            if fabric_size is not None:
+                raise InvalidError(
+                    "Specify fabric_size only once, in experimental_options or the experimental decorator"
+                )
+            try:
+                fabric_size = int(experimental_options.pop("fabric_size"))
+            except ValueError:
+                raise InvalidError("fabric_size must be a positive integer") from None
+            if fabric_size <= 0:
+                raise InvalidError("fabric_size must be a positive integer")
+            if not cluster_size:
+                raise InvalidError("fabric_size requires @modal.clustered")
+            if cluster_size % fabric_size != 0:
+                raise InvalidError(
+                    f"fabric_size must evenly divide the cluster size ({cluster_size} % {fabric_size} != 0)"
+                )
+
         tag = info.get_tag()
 
         if info.raw_f:

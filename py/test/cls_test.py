@@ -1444,7 +1444,7 @@ clustered_app = App(include_source=False)
 
 def test_clustered_cls(client, servicer):
     @clustered_app.cls(serialized=True)
-    @modal.experimental.clustered(size=3, rdma=True)  # type: ignore
+    @modal.clustered(size=3, rdma=True)
     class ClusteredClass:
         @method()
         def run_task(self, x):
@@ -1482,7 +1482,7 @@ def test_clustered_cls_with_multiple_methods(client, servicer):
     ):
 
         @invalid_clustered_app.cls(serialized=True)
-        @modal.experimental.clustered(size=2)  # type: ignore
+        @modal.clustered(size=2)
         class ClusteredClassMixed:
             @method()
             def clustered_method(self, x):

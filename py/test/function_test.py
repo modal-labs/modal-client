@@ -862,27 +862,27 @@ def test_autoscaler_settings_are_multiples_of_cluster_size():
     with pytest.raises(InvalidError, match=r"`min_containers` \(7\) must be a multiple of `cluster_size` \(3\)"):
 
         @app.function(serialized=True, min_containers=7)
-        @modal.experimental.clustered(size=3)
+        @modal.clustered(size=3)
         def f1():
             pass
 
     with pytest.raises(InvalidError, match=r"`max_containers` \(5\) must be a multiple of `cluster_size` \(2\)"):
 
         @app.function(serialized=True, max_containers=5)
-        @modal.experimental.clustered(size=2)
+        @modal.clustered(size=2)
         def f2():
             pass
 
     with pytest.raises(InvalidError, match=r"`buffer_containers` \(6\) must be a multiple of `cluster_size` \(4\)"):
 
         @app.function(serialized=True, buffer_containers=6)
-        @modal.experimental.clustered(size=4)
+        @modal.clustered(size=4)
         def f3():
             pass
 
     # all settings are multiples of cluster_size (no error)
     @app.function(serialized=True, min_containers=4, max_containers=6, buffer_containers=0)
-    @modal.experimental.clustered(size=2)
+    @modal.clustered(size=2)
     def f4():
         pass
 
