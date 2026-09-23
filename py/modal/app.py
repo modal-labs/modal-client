@@ -263,6 +263,11 @@ class _App:
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)
 
+    def __repr__(self) -> str:
+        if self._name is not None or self._description is not None:
+            return f"App({(self._name or self._description)!r})"
+        return super().__repr__()
+
     @property
     def name(self) -> str | None:
         """The user-provided name of the App.
@@ -319,6 +324,28 @@ class _App:
         self._description = value
 
     @staticmethod
+    def _new_remote(
+        name: str | None,
+        app_id: str,
+        environment_name: str,
+        client: _Client,
+        info: AppInfo | None = None,
+        description: str | None = None,
+    ) -> "_App":
+        """Construct a handle for an existing remote App without making an RPC."""
+        # Skip registration in _all_apps
+        app = object.__new__(_App)
+        app._name = name
+        app._description = description if description is not None else name
+        app._local_state_attr = None
+        app._app_id = app_id
+        app._client = client
+        app._root_load_context = LoadContext(client=client, environment_name=environment_name, app_id=app_id)
+        app._running_app = RunningApp(app_id, interactive=False)
+        app._info = info
+        return app
+
+    @staticmethod
     async def lookup(
         name: str,
         *,
@@ -362,14 +389,13 @@ class _App:
 
         response = await client.stub.AppGetOrCreate(request)
 
-        app = _App(name)  # TODO: this should probably be a distinct constructor, possibly even a distinct type
-        app._local_state_attr = None  # this is not a locally defined App, so no local state
-        app._app_id = response.app_id
-        app._client = client
-        app._root_load_context = LoadContext(client=client, environment_name=environment_name, app_id=response.app_id)
-        app._running_app = RunningApp(response.app_id, interactive=False)
-        app._info = AppInfo._from_proto(response.handle_metadata, response.app_id)
-        return app
+        return _App._new_remote(
+            name,
+            response.app_id,
+            environment_name,
+            client,
+            AppInfo._from_proto(response.handle_metadata, response.app_id),
+        )
 
     async def get_dashboard_url(self) -> str:
         """Get the dashboard URL for the App.

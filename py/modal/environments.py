@@ -3,6 +3,7 @@ from ._environments import (
     _create_environment,
     _delete_environment,
     _Environment,
+    _EnvironmentAppsManager,
     _EnvironmentBillingManager,
     _EnvironmentManager,
     _EnvironmentMembersManager,
@@ -13,6 +14,7 @@ from ._environments import (
 from ._utils.async_utils import synchronize_api, synchronizer
 
 EnvironmentManager = synchronize_api(_EnvironmentManager, target_module=__name__)
+EnvironmentAppsManager = synchronize_api(_EnvironmentAppsManager, target_module=__name__)
 EnvironmentRolesManager = synchronize_api(_EnvironmentRolesManager, target_module=__name__)
 # Deprecated alias for `EnvironmentRolesManager`, retired with `Environment.members`.
 EnvironmentMembersManager = synchronize_api(_EnvironmentMembersManager, target_module=__name__)

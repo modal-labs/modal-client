@@ -142,6 +142,10 @@ def test_same_function_name(caplog):
     assert "square" in caplog.text
 
 
+def test_named_app_repr():
+    assert repr(App("my-app")) == "App('my-app')"
+
+
 def test_run_state(client, servicer):
     app = App()
     with app.run(client=client):

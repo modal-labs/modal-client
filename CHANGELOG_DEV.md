@@ -39,6 +39,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `modal.Function.from_id` and `modal.Server.from_id` methods to look up Functions and Servers from their ID.
 - Added `modal function calls` and `modal server requests` to inspect recent invocations.
 - Added an `environment_name` field to `modal.SecretInfo`.
+- Added `modal.Environment.apps` namespace with a `.list` method for listing all live apps in an environment.
 
 ## JS
 

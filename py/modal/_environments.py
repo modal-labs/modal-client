@@ -4,7 +4,7 @@ import builtins
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -23,6 +23,9 @@ from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, WorkspaceManagementError
 from .types import BillingReportItem, EnvironmentBillingSummary
+
+if TYPE_CHECKING:
+    import modal
 
 
 @dataclass(frozen=True)
@@ -300,6 +303,55 @@ class _EnvironmentMembersManager:
         await _EnvironmentRolesManager(self._environment)._dispatch_role_updates(requests)
 
 
+class _EnvironmentAppsManager:
+    """mdmd:namespace"""
+
+    def __init__(self, environment: "_Environment"):
+        """mdmd:hidden"""
+        self._environment = environment
+
+    async def list(self) -> builtins.list["modal.app._App"]:
+        """Return handles for live Apps in this Environment.
+
+        The returned handles reference existing remote Apps and can be used with APIs such as
+        [`App.info()`](https://modal.com/docs/sdk/py/latest/App#info),
+        [`App.logs`](https://modal.com/docs/sdk/py/latest/App#logs), and
+        [`Sandbox.create()`](https://modal.com/docs/sdk/py/latest/Sandbox#create). Listing Apps does not create
+        Apps.
+
+        Examples:
+
+        ```python notest
+        environment = modal.Environment.from_name("prod")
+        apps = environment.apps.list()
+        print([app.name for app in apps])
+        ```
+        """
+        from .app import _App
+
+        await self._environment.hydrate()
+        assert self._environment.name is not None
+
+        response = await self._environment.client.stub.AppList(
+            api_pb2.AppListRequest(environment_name=self._environment.name)
+        )
+        stopped_app_states = (
+            api_pb2.APP_STATE_STOPPED,
+            api_pb2.APP_STATE_DISABLED,
+        )
+        return [
+            _App._new_remote(
+                item.name or None,
+                item.app_id,
+                self._environment.name,
+                self._environment.client,
+                description=item.description or None,
+            )
+            for item in response.apps
+            if item.state not in stopped_app_states
+        ]
+
+
 class _Environment(_Object, type_prefix="en"):
     _name: str | None = None
     _settings: EnvironmentSettings
@@ -333,6 +385,11 @@ class _Environment(_Object, type_prefix="en"):
         """mdmd:hidden"""
         # Deprecated alias for `Environment.roles`.
         return _EnvironmentMembersManager(self)
+
+    @property
+    def apps(self) -> "_EnvironmentAppsManager":
+        """Namespace for accessing Apps deployed in this Environment."""
+        return _EnvironmentAppsManager(self)
 
     # TODO(michael) Keeping this private for now until we decide what else should be in it
     # And what the rules should be about updates / mutability

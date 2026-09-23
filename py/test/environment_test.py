@@ -4,6 +4,8 @@ import pytest
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
+from modal._runtime.user_code_imports import get_active_app_fallback
+from modal.app import _App
 from modal.environments import Environment
 from modal.exception import DeprecationError, InvalidError, WorkspaceManagementError
 from modal_proto import api_pb2
@@ -154,6 +156,53 @@ def test_environment_objects_delete(servicer, client):
 
     Environment.objects.delete("to-delete", client=client)
     assert "to-delete" not in servicer.environments
+
+
+def test_environment_apps_list_returns_remote_handles_without_lookup(servicer, client, monkeypatch):
+    monkeypatch.setattr(_App, "_all_apps", {})
+    local_app = _App("zebra")
+    env = Environment.from_name("main", client=client)
+    registered_apps = {name: list(apps) for name, apps in _App._all_apps.items()}
+    response = api_pb2.AppListResponse(
+        apps=[
+            api_pb2.AppListResponse.AppListItem(app_id="ap-zebra", name="zebra", state=api_pb2.APP_STATE_DEPLOYED),
+            api_pb2.AppListResponse.AppListItem(app_id="ap-alpha", name="alpha", state=api_pb2.APP_STATE_DISABLED),
+            api_pb2.AppListResponse.AppListItem(
+                app_id="ap-stopped", name="stopped", description="stopped app", state=api_pb2.APP_STATE_STOPPED
+            ),
+            api_pb2.AppListResponse.AppListItem(
+                app_id="ap-ephemeral", description="ephemeral app", state=api_pb2.APP_STATE_EPHEMERAL
+            ),
+        ]
+    )
+    info_response = api_pb2.AppGetInfoResponse(
+        info=api_pb2.AppHandleMetadata(
+            description="stopped app",
+            lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_STOPPED),
+        )
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppList", response)
+        ctx.add_response("AppGetInfo", info_response)
+        apps = env.apps.list()
+        info = apps[1].info()
+
+    assert [(app.name, app.app_id) for app in apps] == [
+        ("zebra", "ap-zebra"),
+        (None, "ap-ephemeral"),
+    ]
+    assert repr(apps) == "[App('zebra'), App('ephemeral app')]"
+    assert apps[0].get_dashboard_url() == "https://modal.com/id/ap-zebra"
+    assert apps[0].logs
+    assert info.app_id == "ap-ephemeral"
+    assert _App._all_apps == registered_apps
+    assert get_active_app_fallback(api_pb2.Function(app_name="zebra")) is local_app
+
+    app_list_request = ctx.pop_request("AppList")
+    assert app_list_request.environment_name == "main"
+    assert ctx.get_requests("AppGetOrCreate") == []
+    assert ctx.pop_request("AppGetInfo").app_id == "ap-ephemeral"
 
 
 def test_environment_get_roles(servicer, client):
