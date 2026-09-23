@@ -550,6 +550,8 @@ message AppGetInfoResponse {
     // True for Web Functions and classes with web methods; false for Servers.
     bool web_function = 3;
     optional bool requires_proxy_auth = 4;
+    // True for Sessioned Servers.
+    bool is_sessioned = 5;
   }
 
   AppHandleMetadata info = 1;

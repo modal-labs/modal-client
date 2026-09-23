@@ -63811,6 +63811,7 @@ type AppGetInfoResponse_FunctionInfoSummary struct {
 	xxx_hidden_Schedule          *Schedule              `protobuf:"bytes,2,opt,name=schedule,proto3"`
 	xxx_hidden_WebFunction       bool                   `protobuf:"varint,3,opt,name=web_function,json=webFunction,proto3"`
 	xxx_hidden_RequiresProxyAuth bool                   `protobuf:"varint,4,opt,name=requires_proxy_auth,json=requiresProxyAuth,proto3,oneof"`
+	xxx_hidden_IsSessioned       bool                   `protobuf:"varint,5,opt,name=is_sessioned,json=isSessioned,proto3"`
 	XXX_raceDetectHookData       protoimpl.RaceDetectHookData
 	XXX_presence                 [1]uint32
 	unknownFields                protoimpl.UnknownFields
@@ -63872,6 +63873,13 @@ func (x *AppGetInfoResponse_FunctionInfoSummary) GetRequiresProxyAuth() bool {
 	return false
 }
 
+func (x *AppGetInfoResponse_FunctionInfoSummary) GetIsSessioned() bool {
+	if x != nil {
+		return x.xxx_hidden_IsSessioned
+	}
+	return false
+}
+
 func (x *AppGetInfoResponse_FunctionInfoSummary) SetGpuConfig(v []*GPUConfig) {
 	x.xxx_hidden_GpuConfig = &v
 }
@@ -63886,7 +63894,11 @@ func (x *AppGetInfoResponse_FunctionInfoSummary) SetWebFunction(v bool) {
 
 func (x *AppGetInfoResponse_FunctionInfoSummary) SetRequiresProxyAuth(v bool) {
 	x.xxx_hidden_RequiresProxyAuth = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+}
+
+func (x *AppGetInfoResponse_FunctionInfoSummary) SetIsSessioned(v bool) {
+	x.xxx_hidden_IsSessioned = v
 }
 
 func (x *AppGetInfoResponse_FunctionInfoSummary) HasSchedule() bool {
@@ -63920,6 +63932,8 @@ type AppGetInfoResponse_FunctionInfoSummary_builder struct {
 	// True for Web Functions and classes with web methods; false for Servers.
 	WebFunction       bool
 	RequiresProxyAuth *bool
+	// True for Sessioned Servers.
+	IsSessioned bool
 }
 
 func (b0 AppGetInfoResponse_FunctionInfoSummary_builder) Build() *AppGetInfoResponse_FunctionInfoSummary {
@@ -63930,9 +63944,10 @@ func (b0 AppGetInfoResponse_FunctionInfoSummary_builder) Build() *AppGetInfoResp
 	x.xxx_hidden_Schedule = b.Schedule
 	x.xxx_hidden_WebFunction = b.WebFunction
 	if b.RequiresProxyAuth != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
 		x.xxx_hidden_RequiresProxyAuth = *b.RequiresProxyAuth
 	}
+	x.xxx_hidden_IsSessioned = b.IsSessioned
 	return m0
 }
 
@@ -68549,16 +68564,17 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentName\x128\n" +
 	"\tlifecycle\x18\x04 \x01(\v2\x1a.modal.client.AppLifecycleR\tlifecycle\"*\n" +
 	"\x11AppGetInfoRequest\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\"\xb2\x04\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\"\xd5\x04\n" +
 	"\x12AppGetInfoResponse\x123\n" +
 	"\x04info\x18\x01 \x01(\v2\x1f.modal.client.AppHandleMetadataR\x04info\x12s\n" +
-	"\x17function_info_summaries\x18\x02 \x03(\v2;.modal.client.AppGetInfoResponse.FunctionInfoSummariesEntryR\x15functionInfoSummaries\x1a\xf1\x01\n" +
+	"\x17function_info_summaries\x18\x02 \x03(\v2;.modal.client.AppGetInfoResponse.FunctionInfoSummariesEntryR\x15functionInfoSummaries\x1a\x94\x02\n" +
 	"\x13FunctionInfoSummary\x126\n" +
 	"\n" +
 	"gpu_config\x18\x01 \x03(\v2\x17.modal.client.GPUConfigR\tgpuConfig\x122\n" +
 	"\bschedule\x18\x02 \x01(\v2\x16.modal.client.ScheduleR\bschedule\x12!\n" +
 	"\fweb_function\x18\x03 \x01(\bR\vwebFunction\x123\n" +
-	"\x13requires_proxy_auth\x18\x04 \x01(\bH\x00R\x11requiresProxyAuth\x88\x01\x01B\x16\n" +
+	"\x13requires_proxy_auth\x18\x04 \x01(\bH\x00R\x11requiresProxyAuth\x88\x01\x01\x12!\n" +
+	"\fis_sessioned\x18\x05 \x01(\bR\visSessionedB\x16\n" +
 	"\x14_requires_proxy_auth\x1a~\n" +
 	"\x1aFunctionInfoSummariesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12J\n" +
