@@ -2,7 +2,7 @@
 """Public data types returned by Modal APIs."""
 
 import enum
-from dataclasses import FrozenInstanceError, dataclass
+from dataclasses import FrozenInstanceError, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Iterable, Literal, Optional, TypedDict
@@ -556,6 +556,30 @@ class HttpInfo:
 class FunctionInfo:
     """A simple data structure containing static info about a Function handle."""
 
+    @dataclass
+    class WebInfo:
+        # Note: deliberately not including a URL here, as that information
+        # - is already available from _Function.get_web_url()
+        # - requires hydration / is unavailable on a fresh Handle that hasn't been propagated to the
+        #   server yet
+
+        # `method` is not None iff the function is from `@modal.fastapi_endpoint` (kind == "function")
+        method: str | None
+        unauthenticated: bool
+
+        def _get_copy(self) -> "FunctionInfo.WebInfo":
+            return FunctionInfo.WebInfo(
+                method=self.method,
+                unauthenticated=self.unauthenticated,
+            )
+
+        @classmethod
+        def _from_proto(cls, webhook_config: api_pb2.WebhookConfig) -> "FunctionInfo.WebInfo":
+            return cls(
+                method=webhook_config.method if webhook_config.method else None,
+                unauthenticated=not webhook_config.requires_proxy_auth,
+            )
+
     cpu: float | tuple[float, float] | None
     memory_mib: int | tuple[int, int] | None
     gpus: list[tuple[int, str]]
@@ -568,7 +592,9 @@ class FunctionInfo:
     volumes: dict[str, VolumeMountInfo]
     cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
     secrets: list[str]
-    http_info: HttpInfo | None
+    # `_http_info` is still stored here so that we push it through to `ServerInfo`
+    _http_info: HttpInfo | None = field(repr=False)
+    web_info: WebInfo | None
 
     def _get_copy(self) -> "FunctionInfo":
         return FunctionInfo(
@@ -584,7 +610,8 @@ class FunctionInfo:
             volumes={k: v._get_copy() for k, v in self.volumes.items()},
             cloud_bucket_mounts={k: v._get_copy() for k, v in self.cloud_bucket_mounts.items()},
             secrets=[s for s in self.secrets],
-            http_info=self.http_info._get_copy() if self.http_info else None,
+            _http_info=self._http_info._get_copy() if self._http_info else None,
+            web_info=self.web_info._get_copy() if self.web_info else None,
         )
 
     @classmethod
@@ -668,6 +695,10 @@ class FunctionInfo:
         if function_data.HasField("http_config"):
             http_info = HttpInfo._from_proto(function_data.http_config)
 
+        webhook_info: FunctionInfo.WebInfo | None = None
+        if function_data.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
+            webhook_info = FunctionInfo.WebInfo._from_proto(function_data.webhook_config)
+
         return cls(
             cpu=cpu,
             memory_mib=memory_mib,
@@ -681,7 +712,8 @@ class FunctionInfo:
             volumes=volumes,
             cloud_bucket_mounts=cloud_bucket_mounts,
             secrets=list(first_function.secret_ids),
-            http_info=http_info,
+            _http_info=http_info,
+            web_info=webhook_info,
         )
 
 
@@ -719,7 +751,7 @@ class ServerInfo:
 
     @classmethod
     def _from_function_info(cls, info: FunctionInfo) -> "ServerInfo":
-        assert info.http_info is not None
+        assert info._http_info is not None
 
         return cls(
             cpu=info.cpu,
@@ -732,7 +764,7 @@ class ServerInfo:
             volumes={k: v._get_copy() for k, v in info.volumes.items()},
             cloud_bucket_mounts={k: cbm._get_copy() for k, cbm in info.cloud_bucket_mounts.items()},
             secrets=[s for s in info.secrets],
-            http_info=info.http_info._get_copy(),
+            http_info=info._http_info._get_copy(),
         )
 
 

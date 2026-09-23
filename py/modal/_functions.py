@@ -1252,7 +1252,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             },
             # We don't have any secret IDs yet as we are dehydrated, so we return the reprs instead
             secrets=[repr(s) for s in secrets],
-            http_info=HttpInfo._from_proto(http_config) if http_config else None,
+            _http_info=HttpInfo._from_proto(http_config) if http_config else None,
+            web_info=FunctionInfo.WebInfo._from_proto(webhook_config) if webhook_config else None,
         )
 
         return obj

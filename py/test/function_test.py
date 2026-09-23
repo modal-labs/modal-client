@@ -3111,3 +3111,41 @@ def test_remote_function_info_with_options(client):
     info = variant.info()
     assert variant._is_hydrated
     assert info.cpu == 3
+
+
+webapp_info = App()
+
+
+@webapp_info.function()
+@modal.fastapi_endpoint(method="HEAD", requires_proxy_auth=False)
+def web_function(): ...
+
+
+@webapp_info.function()
+@modal.web_server(port=1234, requires_proxy_auth=True)
+def web_server(): ...
+
+
+@webapp_info.function()
+@modal.asgi_app(requires_proxy_auth=False)
+def asgi_app_info(): ...
+
+
+@webapp_info.function()
+@modal.wsgi_app(requires_proxy_auth=True)
+def wsgi_app(): ...
+
+
+@pytest.mark.parametrize(
+    "handle,expected",
+    [
+        (web_function, FunctionInfo.WebInfo(method="HEAD", unauthenticated=True)),
+        (web_server, FunctionInfo.WebInfo(method=None, unauthenticated=False)),
+        (asgi_app_info, FunctionInfo.WebInfo(method=None, unauthenticated=True)),
+        (wsgi_app, FunctionInfo.WebInfo(method=None, unauthenticated=False)),
+    ],
+)
+def test_webhook_config_in_info(client, handle: Function, expected: FunctionInfo.WebInfo):
+    info = handle.info().web_info
+    assert info is not None
+    assert info == expected
