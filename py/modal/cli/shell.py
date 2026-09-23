@@ -3,7 +3,7 @@ import platform
 import shlex
 from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, get_args
 
 import click
 from click import ClickException
@@ -20,6 +20,7 @@ from ..runner import interactive_shell
 from ..sandbox import _MAIN_CONTAINER_NAME, Sandbox, SandboxVersion, _container_exec, _get_sandbox_version
 from ..secret import Secret
 from ..stream_type import StreamType
+from ..types import SandboxRuntime
 from ..volume import Volume
 from ._help import ModalCommand
 from .import_refs import (
@@ -198,6 +199,7 @@ def _start_shell_from_function_spec(
     pty: bool,
     experimental_options: dict[str, str],
     v2: bool,
+    runtime: SandboxRuntime | None,
 ) -> None:
     interactive_shell(
         app,
@@ -218,6 +220,7 @@ def _start_shell_from_function_spec(
         proxy=function_spec.proxy,
         experimental_options=experimental_options,
         v2=v2,
+        runtime=runtime,
     )
 
 
@@ -238,6 +241,7 @@ def _start_shell_from_image(
     pty: bool,
     experimental_options: dict[str, str],
     v2: bool,
+    runtime: SandboxRuntime | None,
 ) -> None:
     volumes = {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
     secrets = [Secret.from_name(s) for s in secret]
@@ -270,6 +274,7 @@ def _start_shell_from_image(
         pty=pty,
         experimental_options=experimental_options,
         v2=v2,
+        runtime=runtime,
     )
 
 
@@ -314,6 +319,12 @@ def _start_shell_from_image(
     help="Region(s) to run the container on. "
     "Can be a single region or a comma-separated list to choose from (if not using REF).",
 )
+@click.option(
+    "--runtime",
+    default=None,
+    type=click.Choice(get_args(SandboxRuntime)),
+    help="Runtime to run the shell under. If unset, Modal picks the runtime.",
+)
 @click.option("--pty/--no-pty", default=None, help="Run the command using a PTY.")
 @click.option(
     "-m",
@@ -352,6 +363,7 @@ def shell(
     gpu: str | None = None,
     cloud: str | None = None,
     region: str | None = None,
+    runtime: SandboxRuntime | None = None,
     pty: bool | None = None,
     use_module_mode: bool = False,
     experimental_options: tuple[str, ...] = (),
@@ -391,6 +403,12 @@ def shell(
 
     ```
     modal shell hello_world.py -c 'uv pip list' > env.txt
+    ```
+
+    Start a shell inside a virtual machine:
+
+    ```
+    modal shell --runtime vm
     ```
 
     Connect to a running Sandbox by ID:
@@ -435,7 +453,8 @@ def shell(
             shell.params,
             ctx,
             locals(),
-            allowed=lambda p: p in {"cmd", "env", "pty", "ref", "use_module_mode", "experimental_options", "v2"},
+            allowed=lambda p: p
+            in {"cmd", "env", "pty", "ref", "use_module_mode", "experimental_options", "v2", "runtime"},
         ):
             raise ClickException(
                 f"Cannot specify container configuration arguments ({', '.join(passed_forbidden)}) "
@@ -443,7 +462,9 @@ def shell(
             )
 
         function_spec = _function_spec_from_ref(ref, use_module_mode)
-        _start_shell_from_function_spec(app, cmds, env, timeout, function_spec, pty, parsed_experimental_options, v2)
+        _start_shell_from_function_spec(
+            app, cmds, env, timeout, function_spec, pty, parsed_experimental_options, v2, runtime
+        )
         return
 
     if ref is not None and _is_valid_modal_id(ref, "im-"):
@@ -476,4 +497,5 @@ def shell(
         pty,
         parsed_experimental_options,
         v2,
+        runtime,
     )

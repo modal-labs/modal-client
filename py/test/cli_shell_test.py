@@ -449,8 +449,9 @@ def test_shell_experimental_options_with_function_ref(servicer, set_env_client, 
     )
 
     call = mock_shell_routing["start_from_function_spec"].call_args
-    assert call.args[-2] == {"sparkle_mode": "true", "waffle_fs": "false"}
-    assert call.args[-1] is False
+    assert call.args[-3] == {"sparkle_mode": "true", "waffle_fs": "false"}
+    assert call.args[-2] is False
+    assert call.args[-1] is None
 
 
 @skip_windows("modal shell is not supported on Windows.")
@@ -458,7 +459,7 @@ def test_shell_experimental_options_with_image(servicer, set_env_client, mock_sh
     run_cli_command(["shell", "--experimental-option", "sparkle_mode=true"])
 
     call = mock_shell_routing["start_from_image"].call_args
-    assert call.args[-2] == {"sparkle_mode": "true"}
+    assert call.args[-3] == {"sparkle_mode": "true"}
 
 
 @pytest.fixture(params=["flag", "environment", "default"])
@@ -503,6 +504,45 @@ def test_shell_v2_passes_experimental_options(servicer, set_env_client, mock_she
 
     (create_req,) = ctx.get_requests("SandboxCreateV2")
     assert dict(create_req.definition.experimental_options_v2) == {"sparkle_mode": "true"}
+    captured_out.clear()
+
+
+@skip_windows("modal shell is not supported on Windows.")
+@pytest.mark.parametrize("runtime", ["vm", "gvisor"])
+def test_shell_runtime(servicer, set_env_client, mock_shell_pty, runtime):
+    with servicer.intercept() as ctx:
+        run_cli_command(["shell", "--runtime", runtime])
+
+    (create_req,) = ctx.get_requests("SandboxCreate")
+    assert create_req.definition.runtime == runtime
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_runtime_with_function_ref(servicer, set_env_client, test_dir, mock_shell_pty):
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
+    with servicer.intercept() as ctx:
+        run_cli_command(["shell", "--runtime", "vm", app_file.as_posix() + "::foo"])
+
+    (create_req,) = ctx.get_requests("SandboxCreate")
+    assert create_req.definition.runtime == "vm"
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_runtime_rejects_unknown(servicer, set_env_client, mock_shell_pty):
+    run_cli_command(["shell", "--runtime", "docker"], expected_exit_code=2, expected_stderr=None)
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_v2_runtime(servicer, set_env_client, mock_shell_pty, v2_shell_args):
+    fake_stdin, captured_out = mock_shell_pty
+    fake_stdin.clear()
+    fake_stdin.extend([b"exit\n"])
+
+    with servicer.intercept() as ctx:
+        run_cli_command(["shell", *v2_shell_args, "--runtime", "vm"])
+
+    (create_req,) = ctx.get_requests("SandboxCreateV2")
+    assert create_req.definition.runtime == "vm"
     captured_out.clear()
 
 

@@ -43,6 +43,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added an `environment_name` field to `modal.SecretInfo`.
 - Added `modal.Environment.apps` namespace with a `.list` method for listing all live apps in an environment.
 - `Sandbox.create` allows specifying a virtual machine runtime via `runtime="vm"`, which supersedes `experimental_options={"vm_runtime": True}`. Leaving `runtime` unset lets Modal pick the runtime, whilst setting `runtime="gvisor"` explicitly opts-into the gVisor runtime.
+- Added a `--runtime vm|gvisor` option to `modal shell` for choosing the runtime of the shell's Sandbox.
 
 ## JS
 
