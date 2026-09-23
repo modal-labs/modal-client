@@ -4979,6 +4979,11 @@ message WebhookTokenListResponse {
   repeated WebhookToken tokens = 1;
 }
 
+message WebhookTokenUpdateRequest {
+  string token_id = 1;
+  optional string name = 2;
+}
+
 message WorkspaceBillingRatesRequest {}
 
 message WorkspaceBillingRatesResponse {
@@ -5396,6 +5401,7 @@ service ModalClient {
   rpc WebhookTokenEnvironmentRemove(WebhookTokenEnvironmentRemoveRequest) returns (google.protobuf.Empty);
   rpc WebhookTokenList(google.protobuf.Empty) returns (WebhookTokenListResponse);
   rpc WebhookTokenListForEnvironment(WebhookTokenListForEnvironmentRequest) returns (WebhookTokenListResponse);
+  rpc WebhookTokenUpdate(WebhookTokenUpdateRequest) returns (WebhookToken);
 
   // Workspaces
   rpc WorkspaceBillingRates(WorkspaceBillingRatesRequest) returns (WorkspaceBillingRatesResponse);
