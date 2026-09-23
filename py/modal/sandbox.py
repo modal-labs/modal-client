@@ -78,7 +78,7 @@ from .sandbox_fs import _SandboxFilesystem
 from .secret import _Secret
 from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
-from .types import SandboxConnectCredentials
+from .types import SandboxConnectCredentials, SandboxRuntime
 
 _default_image: _Image = _Image.debian_slim()
 _EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset(
@@ -162,6 +162,12 @@ def _validate_sandbox_env(env: dict[str, str]) -> None:
                 f"Secret key name {key!r} is invalid for environment variables. "
                 "Only letters, numbers, and underscores are allowed."
             )
+
+
+def _validate_sandbox_runtime(runtime: SandboxRuntime | None) -> None:
+    runtimes = typing.get_args(SandboxRuntime)
+    if runtime is not None and runtime not in runtimes:
+        raise InvalidError(f"runtime must be one of {list(runtimes)}, got {runtime!r}")
 
 
 def _ttl_to_wire_ttl(ttl: int | None) -> int:
@@ -470,9 +476,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         verbose: bool = False,
         custom_domain: str | None = None,
         include_oidc_identity_token: bool = False,
+        runtime: SandboxRuntime | None = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
+        _validate_sandbox_runtime(runtime)
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         if isinstance(gpu, list):
@@ -560,7 +568,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 ),
                 cloud_provider_str=cloud if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems),
-                runtime=config.get("function_runtime"),
+                runtime=runtime or config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts)[0],
                 volume_mounts=volume_mounts,
@@ -618,6 +626,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         region: str | Sequence[str] | None = None,
         cpu: float | tuple[float, float] | None = None,
         memory: int | tuple[int, int] | None = None,
+        runtime: SandboxRuntime | None = None,
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
@@ -667,6 +676,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             memory:
                 Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to
                 additionally specify a hard limit in MiB.
+            runtime:
+                Runtime under which the Sandbox executes, or None to let Modal pick.
             block_network: Whether to block network access.
             outbound_cidr_allowlist: List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
             outbound_domain_allowlist: List of domain names the sandbox is allowed to access. Supports
@@ -753,6 +764,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             region=region,
             cpu=cpu,
             memory=memory,
+            runtime=runtime,
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
@@ -794,6 +806,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         region: str | Sequence[str] | None = None,
         cpu: float | tuple[float, float] | None = None,
         memory: int | tuple[int, int] | None = None,
+        runtime: SandboxRuntime | None = None,
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
@@ -836,6 +849,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 workdir=workdir,
                 cpu=cpu,
                 memory=memory,
+                runtime=runtime,
                 cloud=cloud,
                 region=region,
                 block_network=block_network,
@@ -904,6 +918,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             verbose=verbose,
             custom_domain=custom_domain,
             include_oidc_identity_token=include_oidc_identity_token,
+            runtime=runtime,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
@@ -930,6 +945,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         workdir: str | None = None,
         cpu: float | tuple[float, float] | None = None,
         memory: int | tuple[int, int] | None = None,
+        runtime: SandboxRuntime | None = None,
         cloud: str | None = None,
         region: str | Sequence[str] | None = None,
         block_network: bool = False,
@@ -988,6 +1004,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+
+        _validate_sandbox_runtime(runtime)
 
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
@@ -1100,7 +1118,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 workdir=workdir,
                 resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=None, ephemeral_disk=None),
                 cloud_provider_str=cloud if cloud else None,
-                runtime=config.get("function_runtime"),
+                runtime=runtime or config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 pty_info=pty_info,
                 scheduler_placement=scheduler_placement,

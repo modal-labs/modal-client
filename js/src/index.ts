@@ -91,6 +91,7 @@ export type {
   SandboxExperimentalFromNameParams,
   SandboxExperimentalFromSnapshotParams,
   SandboxCreateParams,
+  SandboxRuntime,
   SandboxUpdateNetworkPolicyParams,
 } from "./sandbox";
 export { ContainerProcess, Probe, Sandbox, SandboxService } from "./sandbox";

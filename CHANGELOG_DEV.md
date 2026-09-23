@@ -42,10 +42,13 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `modal function calls` and `modal server requests` to inspect recent invocations.
 - Added an `environment_name` field to `modal.SecretInfo`.
 - Added `modal.Environment.apps` namespace with a `.list` method for listing all live apps in an environment.
+- `Sandbox.create` allows specifying a virtual machine runtime via `runtime="vm"`, which supersedes `experimental_options={"vm_runtime": True}`. Leaving `runtime` unset lets Modal pick the runtime, whilst setting `runtime="gvisor"` explicitly opts-into the gVisor runtime.
 
 ## JS
 
 - Added a `logs` property to `Sandbox` objects for fetching entrypoint logs over a time range or tailing the most recent entries.
+- `SandboxCreateParams` allows specifying a virtual machine runtime via `runtime: "vm"`, which supersedes `experimentalOptions: { vm_runtime: true }`. Leaving `runtime` unset lets Modal pick the runtime, whilst setting `runtime: "gvisor"` explicitly opts-into the gVisor runtime.
 
 ## Go
 - Added a `logs` attribute for `Sandbox` objects for fetching entrypoint logs over a time range or tailing the most recent entries.
+- `SandboxCreateParams` allows specifying a virtual machine runtime via `Runtime: modal.SandboxRuntimeVM`, which supersedes `ExperimentalOptions: map[string]any{"vm_runtime": true}`. Leaving `Runtime` unset lets Modal pick the runtime, whilst setting `Runtime: modal.SandboxRuntimeGVisor` explicitly opts-into the gVisor runtime.

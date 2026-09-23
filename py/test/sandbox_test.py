@@ -2352,6 +2352,48 @@ def test_experimental_sandbox_create_no_experimental_options_by_default(app, ser
         assert dict(req.definition.experimental_options_v2) == {}
 
 
+@pytest.mark.parametrize("runtime,expected", [(None, ""), ("gvisor", "gvisor"), ("vm", "vm")])
+def test_sandbox_create_runtime(app, servicer, runtime, expected):
+    with servicer.intercept() as ctx:
+        Sandbox.create("echo", "hi", app=app, runtime=runtime)
+        assert ctx.pop_request("SandboxCreate").definition.runtime == expected
+
+        Sandbox._experimental_create("echo", "hi", app=app, runtime=runtime)
+        assert ctx.pop_request("SandboxCreateV2").definition.runtime == expected
+
+
+def test_sandbox_create_env_flag_v2_passes_runtime(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+
+    with servicer.intercept() as ctx:
+        Sandbox.create("echo", "hi", app=app, runtime="vm")
+
+    (req,) = ctx.get_requests("SandboxCreateV2")
+    assert req.definition.runtime == "vm"
+
+
+def test_sandbox_create_runtime_overrides_function_runtime_config(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_FUNCTION_RUNTIME", "gvisor")
+
+    with servicer.intercept() as ctx:
+        Sandbox.create("echo", "hi", app=app, runtime="vm")
+        assert ctx.pop_request("SandboxCreate").definition.runtime == "vm"
+
+        Sandbox.create("echo", "hi", app=app)
+        assert ctx.pop_request("SandboxCreate").definition.runtime == "gvisor"
+
+
+def test_sandbox_create_invalid_runtime(app, servicer):
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="runtime must be one of"):
+            Sandbox.create("echo", "hi", app=app, runtime="runc")  # type: ignore
+        with pytest.raises(InvalidError, match="runtime must be one of"):
+            Sandbox._experimental_create("echo", "hi", app=app, runtime="runc")  # type: ignore
+
+    assert ctx.get_requests("SandboxCreate") == []
+    assert ctx.get_requests("SandboxCreateV2") == []
+
+
 @pytest.mark.parametrize("read_only", [True, False])
 def test_experimental_sandbox_create_volume(app, servicer, read_only):
     volume = Volume.from_name("my-volume", create_if_missing=True)

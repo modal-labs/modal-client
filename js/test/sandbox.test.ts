@@ -643,6 +643,32 @@ test("buildSandboxCreateRequestProto sets i6pn", async () => {
   ).rejects.toThrow("blockNetwork disables all networking, including i6pn");
 });
 
+test("buildSandboxCreateRequestProto sets runtime", async () => {
+  const cases = [
+    [undefined, ""],
+    ["gvisor", "gvisor"],
+    ["vm", "vm"],
+  ] as const;
+  for (const [runtime, expected] of cases) {
+    const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+      runtime,
+    });
+    expect(req.definition?.runtime ?? "").toBe(expected);
+
+    const v2Req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+      runtime,
+    });
+    expect(v2Req.definition?.runtime ?? "").toBe(expected);
+  }
+
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      // @ts-expect-error testing an invalid runtime
+      runtime: "runc",
+    }),
+  ).rejects.toThrow('runtime must be "gvisor" or "vm", got "runc"');
+});
+
 test("buildOutboundNetworkAccess sidecar rules", () => {
   // No allowlist (the sidecar default) maps to open access, independent of the
   // main container. Sidecars never pass blockNetwork=true.

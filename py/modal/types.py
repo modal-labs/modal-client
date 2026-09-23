@@ -56,6 +56,8 @@ class FileWatchEventType(enum.Enum):
 
 LogSource = Literal["stdout", "stderr", "system"]
 
+SandboxRuntime = Literal["gvisor", "vm"]
+
 
 @dataclass(frozen=True, slots=True)
 class LogEntry:

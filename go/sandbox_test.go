@@ -938,6 +938,41 @@ func TestSandboxCreateRequestProto_CPULimitWithoutCPU(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring("must also specify non-zero CPU request when CPULimit is specified"))
 }
 
+func TestSandboxCreateRequestProto_Runtime(t *testing.T) {
+	t.Parallel()
+
+	cases := map[SandboxRuntime]string{
+		"":                   "",
+		SandboxRuntimeGVisor: "gvisor",
+		SandboxRuntimeVM:     "vm",
+	}
+	for runtime, want := range cases {
+		t.Run(string(runtime), func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{Runtime: runtime})
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			g.Expect(req.GetDefinition().GetRuntime()).To(gomega.Equal(want))
+
+			v2Req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{Runtime: runtime})
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			g.Expect(v2Req.GetDefinition().GetRuntime()).To(gomega.Equal(want))
+		})
+	}
+}
+
+func TestSandboxCreateRequestProto_InvalidRuntime(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	_, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		Runtime: "runc",
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.Equal(`invalid Runtime "runc": must be "gvisor" or "vm"`))
+}
+
 func TestSandboxCreateRequestProto_WithMemoryAndMemoryLimit(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

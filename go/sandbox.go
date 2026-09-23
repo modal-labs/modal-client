@@ -183,12 +183,37 @@ type Allowlist struct {
 	Entries []string
 }
 
+// SandboxRuntime is the runtime a Sandbox runs in.
+type SandboxRuntime string
+
+const (
+	// SandboxRuntimeGVisor runs the Sandbox in a gVisor container.
+	SandboxRuntimeGVisor SandboxRuntime = "gvisor"
+	// SandboxRuntimeVM runs the Sandbox in a virtual machine.
+	SandboxRuntimeVM SandboxRuntime = "vm"
+)
+
+// toProto returns the value for the Sandbox definition's runtime field, or nil
+// to let Modal pick.
+func (r SandboxRuntime) toProto() (*string, error) {
+	switch r {
+	case "":
+		return nil, nil
+	case SandboxRuntimeGVisor, SandboxRuntimeVM:
+		name := string(r)
+		return &name, nil
+	default:
+		return nil, fmt.Errorf("invalid Runtime %q: must be %q or %q", string(r), SandboxRuntimeGVisor, SandboxRuntimeVM)
+	}
+}
+
 // SandboxCreateParams are options for creating a Modal Sandbox.
 type SandboxCreateParams struct {
 	CPU                        float64                      // CPU request in fractional, physical cores.
 	CPULimit                   float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
 	MemoryMiB                  int                          // Memory request in MiB.
 	MemoryLimitMiB             int                          // Hard memory limit in MiB. Zero means no limit.
+	Runtime                    SandboxRuntime               // Runtime under which the Sandbox executes, or unset to let Modal pick.
 	GPU                        string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").
 	Timeout                    time.Duration                // Maximum lifetime of the Sandbox. Defaults to 5 minutes. If you pass zero you get the default 5 minutes.
 	IdleTimeout                time.Duration                // The amount of time that a Sandbox can be idle before being terminated.
@@ -269,6 +294,11 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	}
 
 	if err := validateWorkdir(params.Workdir); err != nil {
+		return nil, err
+	}
+
+	runtime, err := params.Runtime.toProto()
+	if err != nil {
 		return nil, err
 	}
 
@@ -499,6 +529,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			InboundCidrAllowlist:     params.InboundCIDRAllowlist,
 			I6PnEnabled:              params.I6PN,
 			EnableSnapshot:           params.ExperimentalEnableSnapshot,
+			Runtime:                  runtime,
 		}.Build(),
 	}.Build(), nil
 }

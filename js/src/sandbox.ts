@@ -218,6 +218,26 @@ export type StdioBehavior = "pipe" | "ignore";
  */
 export type StreamMode = "text" | "binary";
 
+/** Runtime a Sandbox runs in: a virtual machine, or gVisor. */
+export type SandboxRuntime = "gvisor" | "vm";
+
+/** The value for the Sandbox definition's runtime field, or undefined to let Modal pick. */
+function sandboxRuntimeToProto(
+  runtime: SandboxRuntime | undefined,
+): string | undefined {
+  switch (runtime) {
+    case undefined:
+      return undefined;
+    case "gvisor":
+    case "vm":
+      return runtime;
+    default:
+      throw new Error(
+        `runtime must be "gvisor" or "vm", got ${JSON.stringify(runtime)}`,
+      );
+  }
+}
+
 /** Optional parameters for {@link Probe.withTcp} and {@link Probe.withExec}. */
 export type ProbeParams = {
   intervalMs: number;
@@ -325,6 +345,9 @@ export type SandboxCreateParams = {
 
   /** Hard limit of memory in MiB. */
   memoryLimitMiB?: number;
+
+  /** Runtime under which the Sandbox executes, or undefined to let Modal pick. */
+  runtime?: SandboxRuntime;
 
   /** GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4"). */
   gpu?: string;
@@ -510,6 +533,8 @@ export async function buildSandboxCreateRequestProto(
   if (params.workdir && !params.workdir.startsWith("/")) {
     throw new Error(`workdir must be an absolute path, got: ${params.workdir}`);
   }
+
+  const runtime = sandboxRuntimeToProto(params.runtime);
 
   const volumeMounts: VolumeMount[] = params.volumes
     ? Object.entries(params.volumes).map(([mountPath, volume]) =>
@@ -714,6 +739,7 @@ export async function buildSandboxCreateRequestProto(
       inboundCidrAllowlist: params.inboundCidrAllowlist ?? [],
       i6pnEnabled: params.i6pn ?? false,
       enableSnapshot: params.experimentalEnableSnapshot ?? false,
+      runtime,
     },
   });
 }

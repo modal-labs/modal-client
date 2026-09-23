@@ -133,6 +133,7 @@ var excludedTypes = map[string]string{
 	"Proxy":                           "data type, no public methods",
 	"Retries":                         "configuration value type, no public methods",
 	"SandboxCreateConnectCredentials": "data type",
+	"SandboxRuntime":                  "string enum, no public methods",
 	"SandboxSnapshot":                 "data type, no public methods",
 	"Secret":                          "data type, no public methods",
 	"StdioBehavior":                   "string enum type",
