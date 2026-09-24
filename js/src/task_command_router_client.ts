@@ -61,6 +61,7 @@ import {
 import type { ModalGrpcClient } from "./client";
 import { timeoutMiddleware, type TimeoutOptions } from "./client";
 import type { Logger } from "./logger";
+import { serverWarningMiddleware } from "./server_warnings";
 import type { Profile } from "./config";
 import { DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS, isLocalhost } from "./config";
 import { IdleCountdown } from "./idle_countdown";
@@ -424,7 +425,8 @@ export class TaskCommandRouterClientImpl {
         options.metadata ??= new Metadata();
         options.metadata.set("authorization", `Bearer ${self.jwt}`);
         return yield* call.next(call.request, options);
-      });
+      })
+      .use(serverWarningMiddleware(logger));
 
     this.factory = factory;
     this.stub = factory.create(TaskCommandRouterDefinition, this.channel);

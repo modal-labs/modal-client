@@ -33,6 +33,7 @@ import { createLogger, type Logger, type LogLevel } from "./logger";
 import { EnvironmentManager } from "./environment";
 import { InvalidError } from "./errors";
 import { mintOAuthClientAssertion, parseOAuthJwtKey } from "./oauth";
+import { serverWarningMiddleware } from "./server_warnings";
 import type { KeyObject } from "node:crypto";
 
 export interface ModalClientParams {
@@ -286,6 +287,7 @@ export class ModalClient {
     let factory = createClientFactory()
       .use(this.authMiddleware(profile))
       .use(this.retryMiddleware())
+      .use(serverWarningMiddleware(this.logger))
       .use(timeoutMiddleware);
 
     for (const middleware of this.customMiddleware) {
