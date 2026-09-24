@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2025
 import inspect
+import json
 import typing
 
 from modal_proto import api_pb2
@@ -14,10 +15,13 @@ from ._partial_function import (
     _PartialFunctionFlags,
 )
 from ._supports_logs import _LogQueryData
+from ._utils.async_utils import retry, synchronize_api
+from ._utils.http_utils import ClientSessionRegistry
 from .client import _Client
 from .cls import is_parameter
-from .exception import InvalidError
-from .types import ServerAutoscalerSettings, ServerContainerInfo, ServerInfo
+from .config import logger
+from .exception import ExecutionError, InvalidError, ServiceError
+from .types import ServerAutoscalerSettings, ServerContainerInfo, ServerInfo, ServerSessionCredentials
 
 if typing.TYPE_CHECKING:
     import modal.app
@@ -68,6 +72,7 @@ class _Server:
     _user_cls: type | None = None  # None if remote
     _service_function: _Function
     _app: "modal.app._App | None" = None  # None if remote
+    _is_sessioned: bool | None = None  # None if remote
 
     def _get_user_cls(self) -> type:
         assert self._user_cls is not None
@@ -102,6 +107,11 @@ class _Server:
             CLI access to logs for an App.
         """
         return _ServerLogsManager(self)
+
+    @property
+    def sessions(self) -> "_ServerSessionsManager":
+        """Start and terminate sessions on a Server decorated with `@modal.sessioned()`."""
+        return _ServerSessionsManager(self)
 
     async def info(self, *, refresh: bool = False) -> ServerInfo:
         """Get an overview of a Server's resource requests, associated mounts, http config, etc.
@@ -245,6 +255,7 @@ class _Server:
         wrapped_user_cls: "type | _PartialFunction",
         app: "modal.app._App",
         service_function: _Function,
+        is_sessioned: bool = False,
     ) -> "_Server":
         """Create a Server from a local class definition."""
 
@@ -256,6 +267,7 @@ class _Server:
         server._app = app
         server._user_cls = user_cls
         server._service_function = service_function
+        server._is_sessioned = is_sessioned
         return server
 
     @classmethod
@@ -401,3 +413,114 @@ class _Server:
                 f"Server class {user_cls.__name__} cannot have a custom __init__ method. "
                 "Use @modal.enter() for initialization logic instead."
             )
+
+
+@retry(n_attempts=5, base_delay=0.5, attempt_timeout=65, total_timeout=200)
+async def _post_session_control(url: str, headers: dict[str, str]) -> tuple[int, str, str]:
+    """POST to a session control endpoint, retrying connection errors and 5xx. Returns (status, reason, body)."""
+    async with ClientSessionRegistry.get_session().post(url, headers=headers) as resp:
+        body = await resp.text()
+        if resp.status >= 400:
+            logger.debug(f"Session control request to {url} failed with status {resp.status}")
+        if resp.status >= 500:
+            raise ServiceError(f"status {resp.status} {resp.reason}")
+        return resp.status, resp.reason or "", body
+
+
+class _ServerSessionsManager:
+    """mdmd:namespace"""
+
+    def __init__(self, server: "_Server"):
+        """mdmd:hidden"""
+        self._server = server
+
+    def _validate(self) -> None:
+        if self._server._is_local() and self._server._is_sessioned is False:
+            raise InvalidError("`sessions` requires `@modal.sessioned()` on the Server.")
+
+    async def start(self, idle_timeout: int = 600) -> ServerSessionCredentials:
+        """Start a session and return its ID and token.
+
+        Requests to the server URL that carry the returned token are routed to the same container until the session
+        has had no connections for `idle_timeout` seconds or is terminated. A container won't be scaled down for as long
+        as it holds a live session.
+
+        Args:
+            idle_timeout: Seconds without an in-flight request before the session ends.
+
+        Examples:
+
+            ```python notest
+            server = modal.Server.from_name("my-app", "MyServer")
+            server_url = server.get_url()
+            session = server.sessions.start(idle_timeout=600)
+            headers = {"Modal-Authorization": f"Bearer {session.token}"}
+
+            requests.get(server_url, headers=headers).raise_for_status()
+
+            server.sessions.terminate(session.token)
+            ```
+        """
+        self._validate()
+        if not isinstance(idle_timeout, int) or idle_timeout <= 0:
+            raise InvalidError("`idle_timeout` must be a positive integer.")
+
+        fn = self._server._get_service_function()
+        url = await self._server.get_url()
+        assert url is not None, "Server has no URL."
+
+        headers = {
+            "Modal-Authorization": f"Bearer {await fn._get_flash_auth_token()}",
+            "x-modal-server-session-idle-timeout": str(idle_timeout),
+        }
+
+        try:
+            status, reason, body = await _post_session_control(f"{url}/_modal/sessions/start", headers)
+        except ServiceError as exc:
+            raise ExecutionError(f"Failed to start session: {exc}") from None
+        if status >= 400:
+            raise ExecutionError(f"Failed to start session: status {status} {reason}")
+        try:
+            data = json.loads(body)
+            return ServerSessionCredentials(session_id=data["session_id"], token=data["token"])
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.debug(f"Malformed session start response: {exc!r}")
+            raise ExecutionError("Failed to start session: unexpected response from server") from None
+
+    async def terminate(self, token: str) -> None:
+        """Terminate a session. New requests to it will be rejected. Container will continue serving other sessions.
+
+        Args:
+            token: The `token` of the `ServerSessionCredentials` to terminate.
+
+        Examples:
+
+            ```python notest
+            server = modal.Server.from_name("my-app", "MyServer")
+            session = server.sessions.start()
+
+            server.sessions.terminate(session.token)
+            ```
+        """
+        self._validate()
+
+        fn = self._server._get_service_function()
+        url = await self._server.get_url()
+        assert url is not None, "Server has no URL."
+
+        headers = {
+            "Modal-Authorization": f"Bearer {await fn._get_flash_auth_token()}",
+            "x-modal-server-session-token": token,
+        }
+        try:
+            status, reason, _body = await _post_session_control(f"{url}/_modal/sessions/terminate", headers)
+        except ServiceError as exc:
+            raise ExecutionError(f"Failed to terminate session: {exc}") from None
+        if status == 404:
+            # Treat 404 as success, assuming session was already terminated
+            return
+        if status >= 400:
+            raise ExecutionError(f"Failed to terminate session: status {status} {reason}")
+
+
+ServerSessionsManager = synchronize_api(_ServerSessionsManager, target_module=__name__)

@@ -2294,6 +2294,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionGetDynamicConcurrency(self, stream):
         await stream.send_message(api_pb2.FunctionGetDynamicConcurrencyResponse(concurrency=5))
 
+    async def FunctionGetFlashAuthToken(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.FunctionGetFlashAuthTokenResponse(token="flash-jwt"))
+
     async def FunctionGetInputs(self, stream):
         await asyncio.get_running_loop().run_in_executor(None, self.get_inputs_barrier.wait)
         request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()

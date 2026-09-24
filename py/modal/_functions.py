@@ -709,6 +709,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         is_server: bool = False,
+        is_sessioned: bool = False,
         enable_memory_snapshot: bool = False,
         block_network: bool = False,
         restrict_modal_access: bool = False,
@@ -1101,6 +1102,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     supported_output_formats=supported_output_formats,
                     http_config=http_config,
                     is_server=is_server,
+                    is_sessioned=is_sessioned,
                     routing_region=routing_region or "",
                 )
 
@@ -1739,6 +1741,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             Flash service URLs when configured, or `None`.
         """
         return list(self._experimental_flash_urls) if self._experimental_flash_urls else None
+
+    async def _get_flash_auth_token(self) -> str:
+        resp = await self.client.stub.FunctionGetFlashAuthToken(
+            api_pb2.FunctionGetFlashAuthTokenRequest(function_id=self.object_id)
+        )
+        return resp.token
 
     def _apply_dynamic_config(
         self,

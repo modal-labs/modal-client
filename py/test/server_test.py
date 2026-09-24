@@ -6,14 +6,17 @@ import subprocess
 from typing import Any, cast
 from unittest import mock
 
+import aiohttp.web
+
 import modal
 from modal._serialization import deserialize
-from modal._server import _Server
+from modal._server import _Server, _ServerSessionsManager
 from modal._utils.async_utils import synchronizer
-from modal.exception import InvalidError, NotFoundError
+from modal._utils.http_utils import ClientSessionRegistry, run_temporary_http_server
+from modal.exception import ExecutionError, InvalidError, NotFoundError
 from modal.runner import deploy_app
 from modal.server import Server
-from modal.types import CloudBucketMountInfo, ServerInfo, VolumeMountInfo
+from modal.types import CloudBucketMountInfo, ServerInfo, ServerSessionCredentials, VolumeMountInfo
 from modal_proto import api_pb2
 from test import conftest as client_test_conftest
 
@@ -55,6 +58,134 @@ def test_basic_server_registration(client, servicer):
 
         assert http_config is not None
         assert http_config.port == 8000
+
+
+def test_sessioned_server_registration(client, servicer):
+    app = modal.App("sessioned-server-test", include_source=False)
+
+    @app.server(port=8000, routing_region="us-east", serialized=True)
+    @modal.sessioned()
+    class SessionedServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        function_id = SessionedServer._get_service_function().object_id  # type: ignore[attr-defined]
+        assert servicer.app_functions[function_id].is_sessioned
+
+
+def test_sessioned_decorator_only_allowed_on_servers():
+    with pytest.raises(InvalidError, match=r"`@modal\.sessioned\(\)` can only be used with `@app\.server\(\)`"):
+        app = modal.App("sessioned-cls-test", include_source=False)
+
+        @app.cls()
+        @modal.sessioned()
+        class SessionedCls:
+            pass
+
+    with pytest.raises(InvalidError, match="Server class"):
+        app = modal.App("sessioned-function-test", include_source=False)
+
+        @app.function()
+        @modal.sessioned()
+        def sessioned_function():
+            pass
+
+
+@pytest.mark.asyncio
+async def test_server_sessions():
+    requests = []
+    start_error = False
+
+    async def handle_start(request):
+        requests.append(request)
+        if start_error:
+            return aiohttp.web.Response(status=401, text="unauthorized")
+        return aiohttp.web.json_response({"session_id": "se-123", "token": "sess"})
+
+    async def handle_terminate(request):
+        requests.append(request)
+        return aiohttp.web.Response()
+
+    app = aiohttp.web.Application()
+    app.add_routes(
+        [
+            aiohttp.web.post("/_modal/sessions/start", handle_start),
+            aiohttp.web.post("/_modal/sessions/terminate", handle_terminate),
+        ]
+    )
+
+    class FakeFunction:
+        async def _get_flash_auth_token(self):
+            return "flash-jwt"
+
+    class FakeServer:
+        _is_sessioned = True
+
+        def _is_local(self):
+            return False
+
+        def _get_service_function(self):
+            return FakeFunction()
+
+        async def get_url(self):
+            return http_url
+
+    async with aiohttp.ClientSession() as client_session:
+        with mock.patch.object(ClientSessionRegistry, "get_session", return_value=client_session):
+            async with run_temporary_http_server(app) as http_url:
+                sessions = _ServerSessionsManager(cast(_Server, FakeServer()))
+                session = await sessions.start(idle_timeout=10)
+                assert session == ServerSessionCredentials(session_id="se-123", token="sess")
+                assert requests[0].path == "/_modal/sessions/start"
+                assert requests[0].headers["Modal-Authorization"] == "Bearer flash-jwt"
+                assert requests[0].headers["x-modal-server-session-idle-timeout"] == "10"
+
+                await sessions.terminate(session.token)
+                assert requests[1].path == "/_modal/sessions/terminate"
+                assert requests[1].headers["Modal-Authorization"] == "Bearer flash-jwt"
+                assert requests[1].headers["x-modal-server-session-token"] == "sess"
+
+                start_error = True
+                with pytest.raises(
+                    ExecutionError,
+                    match=r"Failed to start session: status 401 Unauthorized$",
+                ):
+                    await sessions.start()
+
+
+@pytest.mark.parametrize("body", ["not json", '{"session_id": "se-123"}'])
+@pytest.mark.asyncio
+async def test_sessions_start_malformed_response(body):
+    async def handle_start(request):
+        return aiohttp.web.Response(status=200, text=body)
+
+    app = aiohttp.web.Application()
+    app.add_routes([aiohttp.web.post("/_modal/sessions/start", handle_start)])
+
+    class FakeFunction:
+        async def _get_flash_auth_token(self):
+            return "flash-jwt"
+
+    class FakeServer:
+        _is_sessioned = True
+
+        def _is_local(self):
+            return False
+
+        def _get_service_function(self):
+            return FakeFunction()
+
+        async def get_url(self):
+            return http_url
+
+    async with aiohttp.ClientSession() as client_session:
+        with mock.patch.object(ClientSessionRegistry, "get_session", return_value=client_session):
+            async with run_temporary_http_server(app) as http_url:
+                sessions = _ServerSessionsManager(cast(_Server, FakeServer()))
+                with pytest.raises(ExecutionError, match="unexpected response"):
+                    await sessions.start()
 
 
 def test_server_object_id_matches_service_function(client, servicer):

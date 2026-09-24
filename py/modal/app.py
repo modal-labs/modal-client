@@ -972,6 +972,8 @@ class _App:
                 )
 
             if isinstance(f, _PartialFunction):
+                if f.flags & _PartialFunctionFlags.SESSIONED:
+                    raise InvalidError("`@modal.sessioned()` can only be used with `@app.server()`.")
                 if is_method_fn(f.raw_f.__qualname__):
                     raise InvalidError(
                         "The `@app.function` decorator cannot be used on class methods. "
@@ -1206,6 +1208,8 @@ class _App:
             # Check if the decorated object is a class
             http_config = None
             if isinstance(wrapped_cls, _PartialFunction):
+                if wrapped_cls.flags & _PartialFunctionFlags.SESSIONED:
+                    raise InvalidError("`@modal.sessioned()` can only be used with `@app.server()`.")
                 user_cls = wrapped_cls.user_cls
                 if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                     http_config = wrapped_cls.params.http_config
@@ -1503,10 +1507,12 @@ class _App:
             cluster_size = None
             rdma = None
             fabric_size = None
+            is_sessioned = False
             user_cls = wrapped_user_cls
 
             if isinstance(wrapped_user_cls, _PartialFunction):
                 user_cls = wrapped_user_cls.user_cls
+                is_sessioned = bool(wrapped_user_cls.flags & _PartialFunctionFlags.SESSIONED)
                 if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_user_cls.params.cluster_size
                     rdma = wrapped_user_cls.params.rdma
@@ -1549,6 +1555,7 @@ class _App:
                 single_use_containers=False,  # No support for single-use server containers
                 http_config=http_config,
                 is_server=True,
+                is_sessioned=is_sessioned,
                 i6pn_enabled=i6pn or (cluster_size is not None),
                 cluster_size=cluster_size,
                 rdma=rdma,
@@ -1559,7 +1566,12 @@ class _App:
             )
 
             self._add_function(service_function, is_web_endpoint=False)
-            server: _Server = _Server._from_local(wrapped_user_cls, self, service_function)
+            server: _Server = _Server._from_local(
+                wrapped_user_cls,
+                self,
+                service_function,
+                is_sessioned=is_sessioned,
+            )
             return server
 
         return wrapper

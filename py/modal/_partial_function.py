@@ -44,6 +44,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     CONCURRENT = 128
     CLUSTERED = 256  # Experimental: Clustered functions
     HTTP_WEB_INTERFACE = 512  # Experimental: HTTP server
+    SESSIONED = 1024
 
     @staticmethod
     def all() -> int:
@@ -771,6 +772,74 @@ def _concurrent(
         else:
             pf = _PartialFunction(obj, flags, params)
         pf.validate_obj_compatibility("concurrent")
+        return pf
+
+    return wrapper
+
+
+def _sessioned(
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
+) -> Callable[
+    [Callable[P, ReturnType] | _PartialFunction[P, ReturnType, ReturnType]],
+    _PartialFunction[P, ReturnType, ReturnType],
+]:
+    """Decorator that enables sessions on a Server.
+
+    Every request must carry a session token obtained from a session start request; requests with the same token are
+    routed to the same container until the session is idle for `idle_timeout` seconds or explicitly terminated. A
+    container won't be scaled down for as long as it holds a live session.
+
+    Only valid with `@app.server()`.
+
+    Examples:
+        Define a sessioned Server:
+
+        ```python
+        app = modal.App("my-app")
+
+        @app.server(port=8000)
+        @modal.sessioned()
+        class MyServer:
+            @modal.enter()
+            def start(self):
+                self.proc = subprocess.Popen(["python3", "-m", "http.server", "8000"])
+
+            @modal.exit()
+            def stop(self):
+                self.proc.terminate()
+        ```
+
+        After deploying the App, start a session from another script:
+
+        ```python notest
+        server = modal.Server.from_name("my-app", "MyServer")
+        server_url = server.get_url()
+        session = server.sessions.start(idle_timeout=600)
+        headers = {"Modal-Authorization": f"Bearer {session.token}"}
+
+        requests.get(server_url, headers=headers).raise_for_status()
+
+        server.sessions.terminate(session.token)
+        ```
+    """
+    if _warn_parentheses_missing is not None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.sessioned()`."
+        )
+
+    flags = _PartialFunctionFlags.SESSIONED
+    params = _PartialFunctionParams()
+
+    def wrapper(
+        obj: _PartialFunction[P, ReturnType, ReturnType] | Callable[P, ReturnType],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        if pf.user_cls is None:
+            raise InvalidError("`@modal.sessioned()` must be applied to a Server class, not a method.")
+        pf.validate_obj_compatibility("sessioned")
         return pf
 
     return wrapper

@@ -10,6 +10,7 @@ from ._partial_function import (
     _fastapi_endpoint,
     _method,
     _PartialFunction,
+    _sessioned,
     _web_endpoint,
     _web_server,
     _wsgi_app,
@@ -30,3 +31,4 @@ exit = synchronize_api(_exit, target_module=__name__)
 batched = synchronize_api(_batched, target_module=__name__)
 concurrent = synchronize_api(_concurrent, target_module=__name__)
 clustered = synchronize_api(_clustered, target_module=__name__)
+sessioned = synchronize_api(_sessioned, target_module=__name__)
