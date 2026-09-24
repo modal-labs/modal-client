@@ -12,6 +12,7 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import jwt
 from grpclib import GRPCError, Status
 
 import modal
@@ -92,6 +93,57 @@ def test_run_function(client, servicer):
     with app.run(client=client):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_flash_auth_token_is_cached(client, servicer):
+    token = jwt.encode(
+        {"exp": int(time.time()) + 300},
+        "your-super-flexible-and-long-shared-secret-key",
+        algorithm="HS256",
+    )
+    calls = 0
+
+    async def get_flash_auth_token(self, stream):
+        nonlocal calls
+        await stream.recv_message()
+        calls += 1
+        await stream.send_message(api_pb2.FunctionGetFlashAuthTokenResponse(token=token))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetFlashAuthToken", get_flash_auth_token)
+        async with app.run(client=client):
+            assert await foo._get_flash_auth_token.aio() == token
+            assert await foo._get_flash_auth_token.aio() == token
+
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_flash_auth_token_refetched_on_rehydrate(client, servicer):
+    seen_function_ids = []
+
+    async def get_flash_auth_token(self, stream):
+        req = await stream.recv_message()
+        seen_function_ids.append(req.function_id)
+        token = jwt.encode(
+            {"exp": int(time.time()) + 300, "sub": req.function_id},
+            "your-super-flexible-and-long-shared-secret-key",
+            algorithm="HS256",
+        )
+        await stream.send_message(api_pb2.FunctionGetFlashAuthTokenResponse(token=token))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetFlashAuthToken", get_flash_auth_token)
+        async with app.run(client=client):
+            first_id = foo.object_id
+            await foo._get_flash_auth_token.aio()
+        async with app.run(client=client):
+            second_id = foo.object_id
+            await foo._get_flash_auth_token.aio()
+
+    assert first_id != second_id
+    assert seen_function_ids == [first_id, second_id]
 
 
 def test_function_with_options(client, servicer):

@@ -48,6 +48,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
+from ._utils.auth_token_manager import _AuthTokenManager
 from ._utils.blob_utils import MAX_ASYNC_OBJECT_SIZE_BYTES, MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import with_deprecation_warning
 from ._utils.function_utils import (
@@ -1647,6 +1648,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._serve_mounts = frozenset()
         self._metadata = None
         self._experimental_flash_urls = None
+        self._flash_token_manager = None
         self._options = _FunctionOptions()
         self._base_function = None
 
@@ -1661,6 +1663,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             f"{type(metadata)} is not FunctionHandleMetadata"
         )
         self._metadata = metadata
+        self._flash_token_manager = None
         # TODO: replace usage of all below with direct ._metadata access
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
@@ -1742,11 +1745,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         return list(self._experimental_flash_urls) if self._experimental_flash_urls else None
 
-    async def _get_flash_auth_token(self) -> str:
+    async def _fetch_flash_auth_token(self, retry: Retry) -> str:
         resp = await self.client.stub.FunctionGetFlashAuthToken(
-            api_pb2.FunctionGetFlashAuthTokenRequest(function_id=self.object_id)
+            api_pb2.FunctionGetFlashAuthTokenRequest(function_id=self.object_id), retry=retry
         )
         return resp.token
+
+    async def _get_flash_auth_token(self) -> str:
+        if self._flash_token_manager is None:
+            self._flash_token_manager = _AuthTokenManager(self.client.stub, fetch=self._fetch_flash_auth_token)
+        return await self._flash_token_manager.get_token()
 
     def _apply_dynamic_config(
         self,
