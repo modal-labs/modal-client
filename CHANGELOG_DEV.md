@@ -55,6 +55,11 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added a `--runtime vm|gvisor` option to `modal shell` for choosing the runtime of the shell's Sandbox.
 - Added a `FunctionInfo.web_info` field, containing info about web functions.
 - Added the `FunctionInfo.method_names` and `FunctionInfo.method_details` fields, which for `modal.Cls` instance functions, gives information about what methods are defined on the `Cls` as well as if they are web methods.
+- Added `FunctionInfo.image_info` and `ServerInfo.image_info`, which hold metadata about the image used by the calling `Function`/`Server`.
+- Added a `FunctionInfo.cluster_info` field, which returns info about functions decorated with `@modal.clustered`.
+- Added a `FunctionInfo.batching_info` field, which returns info about functions decorated with `@modal.batched` or created with `.with_batching()`.
+- Added a `FunctionInfo.concurrency_info` field, which returns info about functions decorated with `@modal.concurrent` or created with `.with_concurrency()`.
+- Added a `ServerInfo.sessioned` field which describes whether or not the Server is sessioned.
 
 ## JS
 

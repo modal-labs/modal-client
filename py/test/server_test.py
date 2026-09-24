@@ -1446,10 +1446,13 @@ class InfoServer:
 
 def test_server_info_local():
     info: modal.types.ServerInfo = InfoServer.info()  # type: ignore[attr-defined]
+    assert not info.sessioned
     assert info.http_info.proxy_regions == ["us-east"]
     assert info.http_info.port == 8000
     assert info.http_info.unauthenticated == False
     assert info.http_info.h2_enabled == False
+    assert info.timeout == 300
+    assert info.max_retries is None
 
     assert not InfoServer._get_service_function()._is_hydrated  # type: ignore[attr-defined]
 
@@ -1483,6 +1486,8 @@ def test_server_info_remote(client, servicer):
                             ),
                         )
                     ],
+                    is_server=True,
+                    is_sessioned=True,
                     http_config=api_pb2.HTTPConfig(
                         port=1, proxy_regions=["us-west-2"], unauthenticated=True, h2_enabled=True
                     ),
@@ -1491,6 +1496,8 @@ def test_server_info_remote(client, servicer):
         )
 
         info = server.info()
+
+        assert info.sessioned
 
         assert info.volumes == {
             "/tmp": VolumeMountInfo(
@@ -1544,6 +1551,47 @@ def test_server_info_refresh(client):
 
     new_info = handle.info(refresh=True)  # type: ignore[attr-defined]
     assert new_info.http_info.proxy_regions == ["us-west"]
+
+
+def test_image_info(client):
+    builder_app = modal.App()
+    with builder_app.run(client=client):
+        modal.Image.debian_slim("3.12").build(builder_app).publish("named-image", client=client)
+
+    app = modal.App(image=modal.Image.debian_slim("3.10"))
+    anon_image = modal.Image.debian_slim("3.11").pip_install("aiohttp")
+    named_image = modal.Image.from_name("named-image")
+
+    @app.server(serialized=True)
+    class ServerDefaultImage:
+        @modal.enter()
+        def start(self):
+            pass
+
+    @app.server(serialized=True, image=anon_image)
+    class ServerAnonImage:
+        @modal.enter()
+        def start(self):
+            pass
+
+    @app.server(serialized=True, image=named_image)
+    class ServerNamedImage:
+        @modal.enter()
+        def start(self):
+            pass
+
+    assert ServerDefaultImage.info().image_info == modal.types.ServerInfo.ImageInfo(None, None)  # type: ignore[attr-defined]
+
+    # Ideally this would not have two `None`s, see todo in the image_info constructor in
+    # `_functions.py`
+    assert ServerAnonImage.info().image_info == modal.types.ServerInfo.ImageInfo(None, None)  # type: ignore[attr-defined]
+
+    assert ServerNamedImage.info().image_info == modal.types.ServerInfo.ImageInfo("named-image", None)  # type: ignore[attr-defined]
+
+    with app.run(client=client):
+        assert ServerDefaultImage.info(refresh=True).image_info.image_id is not None  # type: ignore[attr-defined]
+        assert ServerAnonImage.info(refresh=True).image_info.image_id is not None  # type: ignore[attr-defined]
+        assert ServerNamedImage.info(refresh=True).image_info.image_id is not None  # type: ignore[attr-defined]
 
 
 def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb2.StatsPercentileDistribution:

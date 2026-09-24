@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
+import copy
 import dataclasses
 import inspect
 import time
@@ -18,7 +19,6 @@ from grpclib import Status
 from synchronicity.combined_types import MethodWithAio
 
 from modal._utils.logger import logger
-from modal.types import CloudBucketMountInfo, FunctionInfo, HttpInfo, VolumeMountInfo
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -101,10 +101,13 @@ from .retries import Retries, RetryManager
 from .schedule import Schedule
 from .secret import _Secret
 from .types import (
+    CloudBucketMountInfo,
     FunctionAutoscalerSettings,
     FunctionCurrentStats,
+    FunctionInfo,
     FunctionStats,
     ServerAutoscalerSettings,
+    VolumeMountInfo,
 )
 from .volume import _Volume, _volume_to_mount_proto
 
@@ -1230,13 +1233,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._function_info = FunctionInfo(
             cpu=cpu,
             memory_mib=memory,
-            gpus=[(parsed.count, parsed.gpu_type) for parsed in (parse_gpu_config(g) for g in gpus)],
+            gpus=[(parsed.gpu_type, parsed.count) for parsed in (parse_gpu_config(g) for g in gpus)],
             ephemeral_disk_mib=ephemeral_disk,
+            timeout=timeout,
+            max_retries=retry_policy.retries if retry_policy else None,
             nonpreemptible=nonpreemptible,
             regions=None if region is None else [region] if isinstance(region, str) else list(region),
             routing_region=routing_region,
             cloud=cloud,
             schedule=None if schedule is None else get_schedule_str(schedule.proto_message),
+            restrict_modal_access=restrict_modal_access,
+            block_network=block_network,
+            single_use_containers=single_use_containers,
             volumes={
                 mount_path: VolumeMountInfo(vol._name, vol._object_id, False, None)
                 if vol._mount_options is None
@@ -1254,15 +1262,39 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             },
             # We don't have any secret IDs yet as we are dehydrated, so we return the reprs instead
             secrets=[repr(s) for s in secrets],
-            _http_info=HttpInfo._from_proto(http_config) if http_config else None,
-            web_info=FunctionInfo.WebInfo._from_proto(webhook_config) if webhook_config else None,
+            _http_info=FunctionInfo.HttpInfo(
+                port=http_config.port,
+                unauthenticated=http_config.unauthenticated,
+                h2_enabled=http_config.h2_enabled,
+                proxy_regions=list(http_config.proxy_regions),
+            )
+            if http_config
+            else None,
+            _sessioned=is_sessioned,
+            web_info=FunctionInfo.WebInfo._from_proto("", webhook_config) if webhook_config else None,
             method_names=list(method_definitions.keys()) if method_definitions is not None else None,
             method_details={
-                name: (FunctionInfo.WebInfo._from_proto(method_def.webhook_config))
+                name: (FunctionInfo.WebInfo._from_proto(method_def.web_url, method_def.webhook_config))
                 for name, method_def in method_definitions.items()
                 if method_def.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
             }
             if method_definitions is not None
+            else None,
+            # todo(ayush): For anonymous Images, it would be very nice for this to print a repr for
+            # the image (e.g. Image.debian_slim().pip_install(...)) - this will require improvements
+            # to how we handle Image reprs though.
+            image_info=FunctionInfo.ImageInfo(image._name, image._object_id),
+            cluster_info=FunctionInfo.ClusterInfo(size=cluster_size, rdma=rdma or False, fabric_size=fabric_size)
+            if cluster_size
+            else None,
+            batching_info=FunctionInfo.BatchingInfo(max_batch_size=batch_max_size, wait_ms=batch_wait_ms)
+            if batch_max_size is not None and batch_wait_ms is not None
+            else None,
+            concurrency_info=FunctionInfo.ConcurrencyInfo(
+                max_inputs=max_concurrent_inputs,
+                target_inputs=target_concurrent_inputs_int if target_concurrent_inputs is not None else None,
+            )
+            if max_concurrent_inputs is not None or target_concurrent_inputs is not None
             else None,
         )
 
@@ -1580,7 +1612,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._function_info = FunctionInfo._from_function_proto(response.function)
 
         assert self._function_info is not None
-        return self._function_info._get_copy()
+        return copy.deepcopy(self._function_info)
 
     @property
     def _source_info_(self) -> FunctionSourceInfo:

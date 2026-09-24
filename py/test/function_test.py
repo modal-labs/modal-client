@@ -3037,7 +3037,7 @@ def test_function_info_local():
     info: FunctionInfo = fn_info_fn.info()
     assert info.cpu == (1, 2)
     assert info.memory_mib == 3
-    assert info.gpus == [(2, "L40S"), (1, "H100")]
+    assert info.gpus == [("L40S", 2), ("H100", 1)]
     assert info.ephemeral_disk_mib == 4
     assert info.cloud == "aws"
 
@@ -3139,13 +3139,20 @@ def test_function_info_with_options():
     assert info.memory_mib == 3
     assert info.ephemeral_disk_mib == 4
     assert info.cloud == "aws"
+    assert info.timeout == 300
+    assert info.max_retries is None
 
-    variant = fn_info_with_options_fn.with_options(cpu=(5, 6), memory=(7, 8), region=["eu", "us-west-2"])
+    variant = fn_info_with_options_fn.with_options(
+        cpu=(5, 6), memory=(7, 8), region=["eu", "us-west-2"], timeout=301, retries=1
+    )
     new_info: FunctionInfo = variant.info()
 
     assert new_info.cpu == (5, 6)
     assert new_info.memory_mib == (7, 8)
     assert new_info.regions == ["eu", "us-west-2"]
+    assert new_info.cloud == "aws"
+    assert new_info.timeout == 301
+    assert new_info.max_retries == 1
 
 
 with_options_info_app = App()
@@ -3198,13 +3205,129 @@ def wsgi_app(): ...
 @pytest.mark.parametrize(
     "handle,expected",
     [
-        (web_function, FunctionInfo.WebInfo(method="HEAD", unauthenticated=True)),
-        (web_server, FunctionInfo.WebInfo(method=None, unauthenticated=False)),
-        (asgi_app_info, FunctionInfo.WebInfo(method=None, unauthenticated=True)),
-        (wsgi_app, FunctionInfo.WebInfo(method=None, unauthenticated=False)),
+        (web_function, FunctionInfo.WebInfo(web_url="", method="HEAD", unauthenticated=True)),
+        (web_server, FunctionInfo.WebInfo(web_url="", method=None, unauthenticated=False)),
+        (asgi_app_info, FunctionInfo.WebInfo(web_url="", method=None, unauthenticated=True)),
+        (wsgi_app, FunctionInfo.WebInfo(web_url="", method=None, unauthenticated=False)),
     ],
 )
 def test_webhook_config_in_info(client, handle: Function, expected: FunctionInfo.WebInfo):
     info = handle.info().web_info
     assert info is not None
     assert info == expected
+
+
+def test_image_info(client):
+    builder_app = App()
+    with builder_app.run(client=client):
+        Image.debian_slim("3.12").build(builder_app).publish("named-image", client=client)
+
+    app = App(image=Image.debian_slim("3.10"))
+    anon_image = Image.debian_slim("3.11").pip_install("aiohttp")
+    named_image = Image.from_name("named-image")
+
+    @app.function(serialized=True)
+    def f_default_image():
+        pass
+
+    @app.function(serialized=True, image=anon_image)
+    def f_anon_image():
+        pass
+
+    @app.function(serialized=True, image=named_image)
+    def f_named_image():
+        pass
+
+    assert f_default_image.info().image_info == FunctionInfo.ImageInfo(None, None)
+
+    # Ideally this would not have two `None`s, see todo in the image_info constructor in
+    # `_functions.py`
+    assert f_anon_image.info().image_info == FunctionInfo.ImageInfo(None, None)
+
+    assert f_named_image.info().image_info == FunctionInfo.ImageInfo("named-image", None)
+
+    with app.run(client=client):
+        assert f_default_image.info(refresh=True).image_info.image_id is not None
+        assert f_anon_image.info(refresh=True).image_info.image_id is not None
+        assert f_named_image.info(refresh=True).image_info.image_id is not None
+
+
+def test_cluster_info():
+    app = App()
+
+    @app.function(serialized=True)
+    def no_cluster():
+        pass
+
+    @app.function(serialized=True, experimental_options={"fabric_size": 2})
+    @modal.clustered(size=10, rdma=True)
+    def has_fabric():
+        pass
+
+    @app.function(serialized=True)
+    @modal.clustered(size=8, rdma=False)
+    def has_none_fabric():
+        pass
+
+    assert no_cluster.info().cluster_info is None
+    assert has_fabric.info().cluster_info == FunctionInfo.ClusterInfo(size=10, rdma=True, fabric_size=2)
+    assert has_none_fabric.info().cluster_info == FunctionInfo.ClusterInfo(size=8, rdma=False, fabric_size=None)
+
+
+def test_batching_concurrency_info(client):
+    app = App()
+
+    @app.function(serialized=True)
+    def nothing():
+        pass
+
+    @app.function(serialized=True)
+    @modal.batched(max_batch_size=10, wait_ms=1)
+    def batched():
+        pass
+
+    @app.function(serialized=True)
+    @modal.concurrent(max_inputs=10, target_inputs=2)
+    def concurrent():
+        pass
+
+    assert nothing.info().batching_info is None
+    assert nothing.info().concurrency_info is None
+
+    assert batched.info().batching_info == FunctionInfo.BatchingInfo(max_batch_size=10, wait_ms=1)
+    assert batched.info().concurrency_info is None
+
+    assert concurrent.info().batching_info is None
+    assert concurrent.info().concurrency_info == FunctionInfo.ConcurrencyInfo(max_inputs=10, target_inputs=2)
+
+    with_batching = nothing.with_batching(max_batch_size=8, wait_ms=2)
+    with_concurrency = nothing.with_concurrency(max_inputs=12, target_inputs=4)
+
+    assert with_batching.info().batching_info == FunctionInfo.BatchingInfo(max_batch_size=8, wait_ms=2)
+    assert with_batching.info().concurrency_info is None
+
+    assert with_concurrency.info().batching_info is None
+    assert with_concurrency.info().concurrency_info == FunctionInfo.ConcurrencyInfo(max_inputs=12, target_inputs=4)
+
+
+def test_restricted_function_info():
+    app = App()
+
+    @app.function(serialized=True)
+    def open():
+        pass
+
+    @app.function(serialized=True, block_network=True, restrict_modal_access=True, single_use_containers=True)
+    def restricted():
+        pass
+
+    open_info: FunctionInfo = open.info()
+    restricted_info: FunctionInfo = restricted.info()
+
+    assert not open_info.block_network
+    assert not open_info.restrict_modal_access
+    assert not open_info.single_use_containers
+
+    assert restricted_info.block_network
+    assert restricted_info.restrict_modal_access
+    assert restricted_info.single_use_containers

@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2026
+import copy
 import dataclasses
 from collections.abc import Collection, Sequence, Sized
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import google.protobuf.message
 
-from modal.types import CloudBucketMountInfo, FunctionInfo, VolumeMountInfo
 from modal_proto import api_pb2
 
 from ._resources import convert_fn_config_to_resources_config
@@ -23,6 +23,7 @@ from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .exception import InvalidError
 from .retries import Retries
 from .secret import _Secret
+from .types import CloudBucketMountInfo, FunctionInfo, VolumeMountInfo
 from .volume import _Volume, _volume_to_mount_proto
 
 if TYPE_CHECKING:
@@ -441,7 +442,7 @@ def _make_function_variant(
             if options is not None:
                 function_variant._function_info = _get_function_info_with_options(base_function._function_info, options)
             else:
-                function_variant._function_info = base_function._function_info._get_copy()
+                function_variant._function_info = copy.deepcopy(base_function._function_info)
 
     def _deps():
         if options:
@@ -464,44 +465,67 @@ def _make_function_variant(
         if options is not None:
             fun._function_info = _get_function_info_with_options(base_function._function_info, options)
         else:
-            fun._function_info = base_function._function_info._get_copy()
+            fun._function_info = copy.deepcopy(base_function._function_info)
 
     return fun
 
 
+class _FunctionInfoArgsT(TypedDict, total=False):
+    cpu: float | tuple[float, float]
+    memory_mib: int | tuple[int, int]
+    gpus: list[tuple[str, int]]
+    ephemeral_disk_mib: int
+    timeout: int
+    max_retries: int
+    regions: list[str]
+    cloud: str
+    volumes: dict[str, VolumeMountInfo]
+    cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
+    secrets: list[str]
+    routing_region: str
+    batching_info: FunctionInfo.BatchingInfo
+    concurrency_info: FunctionInfo.ConcurrencyInfo
+
+
 def _get_function_info_with_options(info: FunctionInfo, options: _FunctionOptions):
-    new_info = info._get_copy()
+    args: _FunctionInfoArgsT = {}
 
     if options.resources is not None:
         res = options.resources
         if res.milli_cpu_max > 0:
-            new_info.cpu = (res.milli_cpu / 1000, res.milli_cpu_max / 1000)
+            args["cpu"] = (res.milli_cpu / 1000, res.milli_cpu_max / 1000)
         elif res.milli_cpu > 0:
-            new_info.cpu = res.milli_cpu / 1000
+            args["cpu"] = res.milli_cpu / 1000
 
         if res.memory_mb_max > 0:
-            new_info.memory_mib = (res.memory_mb, res.memory_mb_max)
+            args["memory_mib"] = (res.memory_mb, res.memory_mb_max)
         elif res.memory_mb > 0:
-            new_info.memory_mib = res.memory_mb
+            args["memory_mib"] = res.memory_mb
 
         if res.HasField("gpu_config") and res.gpu_config.count > 0:
-            new_info.gpus = [(res.gpu_config.count, res.gpu_config.gpu_type)]
+            args["gpus"] = [(res.gpu_config.gpu_type, res.gpu_config.count)]
 
         if res.ephemeral_disk_mb > 0:
-            new_info.ephemeral_disk_mib = res.ephemeral_disk_mb
+            args["ephemeral_disk_mib"] = res.ephemeral_disk_mb
+
+    if options.timeout_secs is not None:
+        args["timeout"] = options.timeout_secs
+
+    if options.retry_policy is not None:
+        args["max_retries"] = options.retry_policy.retries
 
     if options.scheduler_placement is not None:
         sp = options.scheduler_placement
         # Note: not putting `nonpreemptible` here as that is not currently possible to set via
         # `.with_options(...)`
         if len(sp.regions) > 0:
-            new_info.regions = list(sp.regions)
+            args["regions"] = list(sp.regions)
 
     if options.cloud is not None:
-        new_info.cloud = options.cloud
+        args["cloud"] = options.cloud
 
     if len(options.validated_volumes) > 0:
-        new_info.volumes = {
+        args["volumes"] = {
             mount_path: VolumeMountInfo(vol._name, vol._object_id, False, None)
             if vol._mount_options is None
             else VolumeMountInfo(
@@ -514,16 +538,44 @@ def _get_function_info_with_options(info: FunctionInfo, options: _FunctionOption
         }
 
     if len(options.cloud_bucket_mounts) > 0:
-        new_info.cloud_bucket_mounts = {}
+        args["cloud_bucket_mounts"] = {}
         protos, _ = cloud_bucket_mounts_to_proto(options.cloud_bucket_mounts, include_secrets=False)
 
         for proto in protos:
-            new_info.cloud_bucket_mounts[proto.mount_path] = CloudBucketMountInfo._from_proto(proto)
+            args["cloud_bucket_mounts"][proto.mount_path] = CloudBucketMountInfo._from_proto(proto)
 
     if len(options.secrets) > 0:
-        new_info.secrets = [repr(s) for s in options.secrets]
+        args["secrets"] = [repr(s) for s in options.secrets]
 
     if options.routing_region:
-        new_info.routing_region = options.routing_region
+        args["routing_region"] = options.routing_region
 
-    return new_info
+    if options.batch_max_size is not None and options.batch_wait_ms is not None:
+        args["batching_info"] = FunctionInfo.BatchingInfo(
+            max_batch_size=options.batch_max_size,
+            wait_ms=options.batch_wait_ms,
+        )
+
+    if options.max_concurrent_inputs is not None or options.target_concurrent_inputs is not None:
+        max_inputs = (
+            options.max_concurrent_inputs
+            if options.max_concurrent_inputs is not None
+            else info.concurrency_info.max_inputs
+            if info.concurrency_info is not None
+            else None
+        )
+
+        target_inputs = (
+            options.target_concurrent_inputs
+            if options.target_concurrent_inputs is not None
+            else info.concurrency_info.target_inputs
+            if info.concurrency_info is not None
+            else None
+        )
+
+        args["concurrency_info"] = FunctionInfo.ConcurrencyInfo(
+            max_inputs=max_inputs,
+            target_inputs=target_inputs,
+        )
+
+    return dataclasses.replace(copy.deepcopy(info), **args)

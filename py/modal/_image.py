@@ -3002,6 +3002,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_loader(
             _load,
             rep,
+            name=name,
             hydrate_lazily=True,
             skip_reload=True,
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
@@ -3046,6 +3047,8 @@ class _Image(_Object, type_prefix="im"):
                 tag=tag,
             )
         )
+
+        self._name = name
 
     async def hydrate(self, client: _Client | None = None) -> Self:
         """mdmd:hidden"""

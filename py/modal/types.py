@@ -558,7 +558,7 @@ class ServerAutoscalerSettings:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class VolumeMountInfo:
     name: str | None
     volume_id: str | None  # None if the object has not yet been hydrated
@@ -568,29 +568,13 @@ class VolumeMountInfo:
     def __post_init__(self):
         assert (self.name is not None) or (self.volume_id is not None)
 
-    def _get_copy(self) -> "VolumeMountInfo":
-        return VolumeMountInfo(
-            name=self.name,
-            volume_id=self.volume_id,
-            read_only=self.read_only,
-            sub_path=self.sub_path,
-        )
 
-
-@dataclass
+@dataclass(frozen=True)
 class CloudBucketMountInfo:
     bucket_name: str
     bucket_type: Literal["s3", "r2", "gcp"]
     read_only: bool
     key_prefix: str | None
-
-    def _get_copy(self) -> "CloudBucketMountInfo":
-        return CloudBucketMountInfo(
-            bucket_name=self.bucket_name,
-            bucket_type=self.bucket_type,
-            read_only=self.read_only,
-            key_prefix=self.key_prefix,
-        )
 
     @classmethod
     def _from_proto(cls, cbm: api_pb2.CloudBucketMount) -> "CloudBucketMountInfo":
@@ -606,96 +590,84 @@ class CloudBucketMountInfo:
         )
 
 
-@dataclass
-class HttpInfo:
-    port: int
-    unauthenticated: bool
-    h2_enabled: bool
-    proxy_regions: list[str]
-
-    def _get_copy(self) -> "HttpInfo":
-        return HttpInfo(
-            port=self.port,
-            unauthenticated=self.unauthenticated,
-            h2_enabled=self.h2_enabled,
-            proxy_regions=[pr for pr in self.proxy_regions],
-        )
-
-    @classmethod
-    def _from_proto(cls, http_config: api_pb2.HTTPConfig) -> "HttpInfo":
-        return cls(
-            port=http_config.port,
-            unauthenticated=http_config.unauthenticated,
-            h2_enabled=http_config.h2_enabled,
-            proxy_regions=list(http_config.proxy_regions),
-        )
-
-
-@dataclass
+@dataclass(frozen=True)
 class FunctionInfo:
     """A simple data structure containing static info about a Function handle."""
 
-    @dataclass
-    class WebInfo:
-        # Note: deliberately not including a URL here, as that information
-        # - is already available from _Function.get_web_url()
-        # - requires hydration / is unavailable on a fresh Handle that hasn't been propagated to the
-        #   server yet
+    @dataclass(frozen=True)
+    class HttpInfo:
+        """mdmd:hidden"""
 
+        port: int
+        unauthenticated: bool
+        h2_enabled: bool
+        proxy_regions: list[str]
+
+    @dataclass(frozen=True)
+    class WebInfo:
+        # `web_url` is an empty string if the handle is not yet hydrated
+        web_url: str
         # `method` is not None iff the function is from `@modal.fastapi_endpoint` (kind == "function")
         method: str | None
         unauthenticated: bool
 
-        def _get_copy(self) -> "FunctionInfo.WebInfo":
-            return FunctionInfo.WebInfo(
-                method=self.method,
-                unauthenticated=self.unauthenticated,
-            )
-
         @classmethod
-        def _from_proto(cls, webhook_config: api_pb2.WebhookConfig) -> "FunctionInfo.WebInfo":
+        def _from_proto(cls, url: str, webhook_config: api_pb2.WebhookConfig) -> "FunctionInfo.WebInfo":
             return cls(
+                web_url=url,
                 method=webhook_config.method if webhook_config.method else None,
                 unauthenticated=not webhook_config.requires_proxy_auth,
             )
 
+    @dataclass(frozen=True)
+    class ImageInfo:
+        image_name: str | None
+        image_id: str | None  # None if the object has not yet been hydrated
+
+    @dataclass(frozen=True)
+    class ClusterInfo:
+        size: int
+        rdma: bool
+        fabric_size: int | None
+
+    @dataclass(frozen=True)
+    class BatchingInfo:
+        max_batch_size: int
+        wait_ms: int
+
+    @dataclass(frozen=True)
+    class ConcurrencyInfo:
+        max_inputs: int | None
+        target_inputs: int | None
+
     cpu: float | tuple[float, float] | None
     memory_mib: int | tuple[int, int] | None
-    gpus: list[tuple[int, str]]
+    gpus: list[tuple[str, int]]
     ephemeral_disk_mib: int | None
+    timeout: int
+    max_retries: int | None
     nonpreemptible: bool
     regions: list[str] | None
     routing_region: str | None
     cloud: str | None
     schedule: str | None
+    restrict_modal_access: bool
+    block_network: bool
+    single_use_containers: bool
     volumes: dict[str, VolumeMountInfo]
     cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
     secrets: list[str]
-    # `_http_info` is still stored here so that we push it through to `ServerInfo`
-    _http_info: HttpInfo | None = field(repr=False)
     web_info: WebInfo | None
     method_names: list[str] | None
     method_details: dict[str, WebInfo] | None
+    image_info: ImageInfo
+    cluster_info: ClusterInfo | None
+    batching_info: BatchingInfo | None
+    concurrency_info: ConcurrencyInfo | None
 
-    def _get_copy(self) -> "FunctionInfo":
-        return FunctionInfo(
-            cpu=self.cpu,
-            memory_mib=self.memory_mib,
-            gpus=[g for g in self.gpus],
-            ephemeral_disk_mib=self.ephemeral_disk_mib,
-            nonpreemptible=self.nonpreemptible,
-            regions=[r for r in self.regions] if self.regions else None,
-            routing_region=self.routing_region,
-            cloud=self.cloud,
-            schedule=self.schedule,
-            volumes={k: v._get_copy() for k, v in self.volumes.items()},
-            cloud_bucket_mounts={k: v._get_copy() for k, v in self.cloud_bucket_mounts.items()},
-            secrets=[s for s in self.secrets],
-            _http_info=self._http_info._get_copy() if self._http_info else None,
-            web_info=self.web_info._get_copy() if self.web_info else None,
-            method_names=list(self.method_names) if self.method_names else None,
-            method_details={k: m._get_copy() for k, m in self.method_details.items()} if self.method_details else None,
-        )
+    # Private fields that are only stored here to pass to ServerInfo
+    _http_info: HttpInfo | None = field(repr=False)
+    _sessioned: bool = field(repr=False)
 
     @classmethod
     def _from_function_proto(cls, function_data: api_pb2.FunctionData) -> "FunctionInfo":
@@ -741,8 +713,8 @@ class FunctionInfo:
 
             gpus.append(
                 (
-                    fn.function.resources.gpu_config.count,
                     fn.function.resources.gpu_config.gpu_type,
+                    fn.function.resources.gpu_config.count,
                 )
             )
 
@@ -774,39 +746,78 @@ class FunctionInfo:
         for cbm in first_function.cloud_bucket_mounts:
             cloud_bucket_mounts[cbm.mount_path] = CloudBucketMountInfo._from_proto(cbm)
 
-        http_info: HttpInfo | None = None
+        http_info: FunctionInfo.HttpInfo | None = None
         if function_data.HasField("http_config"):
-            http_info = HttpInfo._from_proto(function_data.http_config)
+            http_info = FunctionInfo.HttpInfo(
+                port=function_data.http_config.port,
+                unauthenticated=function_data.http_config.unauthenticated,
+                h2_enabled=function_data.http_config.h2_enabled,
+                proxy_regions=list(function_data.http_config.proxy_regions),
+            )
 
         webhook_info: FunctionInfo.WebInfo | None = None
         if function_data.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
-            webhook_info = FunctionInfo.WebInfo._from_proto(function_data.webhook_config)
+            webhook_info = FunctionInfo.WebInfo._from_proto(function_data.web_url, function_data.webhook_config)
 
         method_names: list[str] = []
         method_details: dict[str, FunctionInfo.WebInfo] = {}
         for name, method_def in function_data.method_definitions.items():
             method_names.append(name)
 
-            if method_def.webhook_config != api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
-                method_details[name] = FunctionInfo.WebInfo._from_proto(method_def.webhook_config)
+            if method_def.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
+                method_details[name] = FunctionInfo.WebInfo._from_proto(method_def.web_url, method_def.webhook_config)
+
+        cluster_info: FunctionInfo.ClusterInfo | None = None
+        if function_data._experimental_group_size > 0:
+            cluster_info = FunctionInfo.ClusterInfo(
+                size=function_data._experimental_group_size,
+                rdma=resources.rdma,
+                fabric_size=function_data._experimental_fabric_size or None,
+            )
+
+        batching_info: FunctionInfo.BatchingInfo | None = None
+        if first_function.batch_max_size > 0:
+            batching_info = FunctionInfo.BatchingInfo(
+                max_batch_size=first_function.batch_max_size,
+                wait_ms=first_function.batch_linger_ms,
+            )
+
+        concurrency_info: FunctionInfo.ConcurrencyInfo | None = None
+        if first_function.max_concurrent_inputs > 0 or first_function.target_concurrent_inputs > 0:
+            concurrency_info = FunctionInfo.ConcurrencyInfo(
+                max_inputs=first_function.max_concurrent_inputs if first_function.max_concurrent_inputs else None,
+                target_inputs=first_function.target_concurrent_inputs
+                if first_function.target_concurrent_inputs
+                else None,
+            )
 
         return cls(
             cpu=cpu,
             memory_mib=memory_mib,
             gpus=gpus,
             ephemeral_disk_mib=ephemeral_disk_mib,
+            timeout=function_data.timeout_secs,
+            max_retries=first_function.retry_policy.retries if first_function.HasField("retry_policy") else None,
             nonpreemptible=nonpreemptible,
             regions=regions,
             routing_region=function_data.routing_region,
             cloud=cloud,
             schedule=schedule,
+            block_network=first_function.block_network,
+            restrict_modal_access=first_function.untrusted,
+            single_use_containers=first_function.single_use_containers,
             volumes=volumes,
             cloud_bucket_mounts=cloud_bucket_mounts,
             secrets=list(first_function.secret_ids),
             _http_info=http_info,
+            _sessioned=function_data.is_sessioned,
             web_info=webhook_info,
             method_names=method_names or None,
             method_details=method_details if method_names else None,
+            image_info=FunctionInfo.ImageInfo(None, first_function.image_id),
+            cluster_info=cluster_info,
+            batching_info=batching_info,
+            concurrency_info=concurrency_info,
         )
 
 
@@ -819,15 +830,30 @@ class ServerContainerInfo:
     port: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class ServerInfo:
     """A simple data structure containing static info about a Server handle."""
 
+    @dataclass(frozen=True)
+    class HttpInfo:
+        port: int
+        unauthenticated: bool
+        h2_enabled: bool
+        proxy_regions: list[str]
+
+    @dataclass(frozen=True)
+    class ImageInfo:
+        image_name: str | None
+        image_id: str | None  # None if the object has not yet been hydrated
+
     cpu: float | tuple[float, float] | None
     memory_mib: int | tuple[int, int] | None
-    gpus: list[tuple[int, str]]
+    gpus: list[tuple[str, int]]
     ephemeral_disk_mib: int | None
+    timeout: int
+    max_retries: int | None
     nonpreemptible: bool
+    sessioned: bool
     compute_regions: list[str] | None
     cloud: str | None
     volumes: dict[str, VolumeMountInfo]
@@ -835,21 +861,7 @@ class ServerInfo:
     secrets: list[str]
 
     http_info: HttpInfo
-
-    def _get_copy(self) -> "ServerInfo":
-        return ServerInfo(
-            cpu=self.cpu,
-            memory_mib=self.memory_mib,
-            gpus=[g for g in self.gpus],
-            ephemeral_disk_mib=self.ephemeral_disk_mib,
-            nonpreemptible=self.nonpreemptible,
-            compute_regions=[r for r in self.compute_regions] if self.compute_regions is not None else None,
-            cloud=self.cloud,
-            volumes={k: v._get_copy() for k, v in self.volumes.items()},
-            cloud_bucket_mounts={k: v._get_copy() for k, v in self.cloud_bucket_mounts.items()},
-            secrets=[s for s in self.secrets],
-            http_info=self.http_info._get_copy(),
-        )
+    image_info: ImageInfo
 
     @classmethod
     def _from_function_info(cls, info: FunctionInfo) -> "ServerInfo":
@@ -858,15 +870,27 @@ class ServerInfo:
         return cls(
             cpu=info.cpu,
             memory_mib=info.memory_mib,
-            gpus=[g for g in info.gpus],
+            gpus=list(info.gpus),
             ephemeral_disk_mib=info.ephemeral_disk_mib,
+            timeout=info.timeout,
+            max_retries=info.max_retries,
             nonpreemptible=info.nonpreemptible,
-            compute_regions=[r for r in info.regions] if info.regions is not None else None,
+            sessioned=info._sessioned,
+            compute_regions=list(info.regions) if info.regions is not None else None,
             cloud=info.cloud,
-            volumes={k: v._get_copy() for k, v in info.volumes.items()},
-            cloud_bucket_mounts={k: cbm._get_copy() for k, cbm in info.cloud_bucket_mounts.items()},
+            volumes=dict(info.volumes),
+            cloud_bucket_mounts=dict(info.cloud_bucket_mounts),
             secrets=[s for s in info.secrets],
-            http_info=info._http_info._get_copy(),
+            http_info=ServerInfo.HttpInfo(
+                port=info._http_info.port,
+                unauthenticated=info._http_info.unauthenticated,
+                h2_enabled=info._http_info.h2_enabled,
+                proxy_regions=list(info._http_info.proxy_regions),
+            ),
+            image_info=ServerInfo.ImageInfo(
+                image_name=info.image_info.image_name,
+                image_id=info.image_info.image_id,
+            ),
         )
 
 

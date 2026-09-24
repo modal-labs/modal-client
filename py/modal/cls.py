@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import copy
 import inspect
 import typing
 from collections.abc import Callable, Collection, Sequence
@@ -90,7 +91,7 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         if not new_function._app_id:
             new_function._app_id = service_function._app_id
         if service_function._function_info is not None:
-            new_function._function_info = service_function._function_info._get_copy()
+            new_function._function_info = copy.deepcopy(service_function._function_info)
 
     async def _load(fun: "_Function", resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
         # there is currently no actual loading logic executed to create each method on
@@ -140,7 +141,7 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
     fun._app = service_function._app
     fun._spec = service_function._spec
     if service_function._function_info is not None:
-        fun._function_info = service_function._function_info._get_copy()
+        fun._function_info = copy.deepcopy(service_function._function_info)
 
     return fun
 
@@ -242,7 +243,7 @@ class _Obj:
 
                     function._hydrate_from_other(parent)
                     if parent._function_info is not None:
-                        function._function_info = parent._function_info
+                        function._function_info = copy.deepcopy(parent._function_info)
 
                 fun = _Function._from_loader(
                     _load,
@@ -254,7 +255,7 @@ class _Obj:
                 fun._source_info = parent._source_info
                 fun._spec = parent._spec
                 if parent._function_info is not None:
-                    fun._function_info = parent._function_info._get_copy()
+                    fun._function_info = copy.deepcopy(parent._function_info)
 
             self._instance_service_function = fun
 
@@ -448,7 +449,7 @@ class _Obj:
             fun._hydrate_from_other(method_function)
             fun._app_id = method_function._app_id
             if method_function._function_info is not None:
-                fun._function_info = method_function._function_info._get_copy()
+                fun._function_info = copy.deepcopy(method_function._function_info)
 
         # The reason we don't *always* use this lazy loader is because it precludes attribute access
         # on local classes.
