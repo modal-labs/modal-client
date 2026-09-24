@@ -393,7 +393,6 @@ _SETTINGS = {
     "task_id": _Setting(internal=True),  # Read only -- unneeded?
     "image_id": _Setting(internal=True),  # Read only -- unneeded?
     # --- Internal CUDA checkpointing options -------------------------------------
-    "runtime_managed_cuda_checkpoint": _Setting(False, transform=_to_boolean, internal=True),
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint", internal=True),
     "restore_state_path": _Setting("/__modal/restore-state.json", internal=True),
     "snapshot_debug": _Setting(False, transform=_to_boolean, internal=True),

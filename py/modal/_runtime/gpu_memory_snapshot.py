@@ -1,281 +1,56 @@
 # Copyright Modal Labs 2022
 #
-# This module provides a simple interface for creating GPU memory snapshots,
-# providing a convenient interface to `cuda-checkpoint` [1]. This is intended
-# to be used in conjunction with memory snapshots.
-#
-# [1] https://github.com/NVIDIA/cuda-checkpoint
+# NOTE: Do not modify this file. GPU memory checkpoint/restore
+# (`cuda-checkpoint`) is driven by gVisor, Modal's container runtime. If you
+# feel the need to modify this file, please reach out to Modal support.
 
-import subprocess
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
-from enum import Enum
-from pathlib import Path
+import logging
+import os
 
-from modal.config import config, logger
+logger = logging.getLogger("modal-client")
 
-CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
-
-# Exit code used to signal to modal-runtime that a GPU memory snapshot restore failed
-# and the task should be retried without a snapshot. This is a sentinel value that must
-# stay in sync with `GPU_SNAPSHOT_RESTORE_FAILED_EXIT_CODE` in runner.rs.
+# Kept in sync with the runtime's GPU_SNAPSHOT_RESTORE_FAILED_EXIT_CODE.
 SNAPSHOT_RESTORE_FAILED_EXIT_CODE: int = 222
 
-# Number of retries for each individual `cuda-checkpoint --toggle` invocation.
-CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES: int = 3
-
-
-class CudaCheckpointState(Enum):
-    """State representation from the CUDA API [1].
-
-    [1] https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html"""
-
-    RUNNING = "running"
-    LOCKED = "locked"
-    CHECKPOINTED = "checkpointed"
-    FAILED = "failed"
+# Reading this file blocks until restore has completed, including the GPU
+# memory restore. The read yields "restore" (this is a restored instance),
+# "resume" (the checkpointed instance is running again), or "error".
+RUNTIME_CHECKPOINT_WAIT_PATH: str = "/proc/gvisor/checkpoint"
 
 
 class CudaCheckpointException(Exception):
     """Exception raised for CUDA checkpoint operations."""
 
-    pass
-
-
-@dataclass
-class CudaCheckpointProcess:
-    """Contains a reference to a PID with active CUDA session. This also provides
-    methods for checkpointing and restoring GPU memory."""
-
-    pid: int
-    state: CudaCheckpointState
-
-    def toggle(self, target_state: CudaCheckpointState, skip_first_refresh: bool = False) -> None:
-        """Toggle CUDA checkpoint state for current process, moving GPU memory to the
-        CPU and back depending on the current process state when called.
-        """
-        logger.debug(f"PID: {self.pid} Toggling CUDA checkpoint state to {target_state.value}")
-
-        retry_count = 0
-        max_retries = CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES
-
-        attempts = 0
-        while self._should_continue_toggle(target_state, refresh=not (skip_first_refresh and attempts == 0)):
-            attempts += 1
-            try:
-                self._execute_toggle_command()
-                # Use exponential backoff for retries
-                sleep_time = min(0.1 * (2**retry_count), 1.0)
-                time.sleep(sleep_time)
-                retry_count = 0
-            except CudaCheckpointException as e:
-                retry_count += 1
-                if retry_count >= max_retries:
-                    raise CudaCheckpointException(
-                        f"PID: {self.pid} Failed to toggle state after {max_retries} retries: {e}"
-                    )
-                logger.debug(f"PID: {self.pid} Retry {retry_count}/{max_retries} after error: {e}")
-                time.sleep(0.5 * retry_count)
-
-        logger.debug(f"PID: {self.pid} Target state {target_state.value} reached")
-
-    def _should_continue_toggle(self, target_state: CudaCheckpointState, refresh: bool = True) -> bool:
-        """Check if toggle operation should continue based on current state."""
-        if refresh:
-            self.refresh_state()
-
-        if self.state == target_state:
-            return False
-
-        if self.state == CudaCheckpointState.FAILED:
-            raise CudaCheckpointException(f"PID: {self.pid} CUDA process state is {self.state}")
-
-        return True
-
-    def _execute_toggle_command(self) -> None:
-        """Execute the cuda-checkpoint toggle command."""
-        try:
-            _ = subprocess.run(
-                [CUDA_CHECKPOINT_PATH, "--toggle", "--pid", str(self.pid)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            logger.debug(f"PID: {self.pid} Successfully toggled CUDA checkpoint state")
-        except subprocess.CalledProcessError as e:
-            error_msg = f"PID: {self.pid} Failed to toggle CUDA checkpoint state: {e.stderr}"
-            logger.debug(error_msg)
-            raise CudaCheckpointException(error_msg)
-
-    def refresh_state(self) -> None:
-        """Refreshes the current CUDA checkpoint state for this process."""
-        try:
-            result = subprocess.run(
-                [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(self.pid)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-
-            state_str = result.stdout.strip().lower()
-            self.state = CudaCheckpointState(state_str)
-
-        except subprocess.CalledProcessError as e:
-            error_msg = f"PID: {self.pid} Failed to get CUDA checkpoint state: {e.stderr}"
-            logger.debug(error_msg)
-            raise CudaCheckpointException(error_msg)
-
 
 class CudaCheckpointSession:
-    """Manages the checkpointing state of processes with active CUDA sessions."""
+    """The container runtime checkpoints and restores GPU memory itself, and
+    this session only waits for it."""
 
-    def __init__(self):
-        self.cuda_processes = self._get_cuda_pids()
-        if self.cuda_processes:
-            logger.debug(
-                f"Found {len(self.cuda_processes)} PID(s) with CUDA sessions: {[c.pid for c in self.cuda_processes]}"
-            )
-        else:
-            logger.debug("No CUDA sessions found.")
-
-    def _get_cuda_pids(self) -> list[CudaCheckpointProcess]:
-        """Iterates over all PIDs and identifies the ones that have running
-        CUDA sessions."""
-        cuda_pids: list[CudaCheckpointProcess] = []
-
-        # Get all active process IDs from /proc directory
-        proc_dir = Path("/proc")
-        if not proc_dir.exists():
-            raise CudaCheckpointException(
-                "OS does not have /proc path rendering it incompatible with GPU memory snapshots."
-            )
-
-        # Get all numeric directories (PIDs) from /proc
-        pid_dirs = [entry for entry in proc_dir.iterdir() if entry.name.isdigit()]
-
-        # Use ThreadPoolExecutor to check PIDs in parallel for better performance
-        with ThreadPoolExecutor(max_workers=min(50, len(pid_dirs))) as executor:
-            future_to_pid = {
-                executor.submit(self._check_cuda_session, int(entry.name)): int(entry.name) for entry in pid_dirs
-            }
-
-            for future in as_completed(future_to_pid):
-                pid = future_to_pid[future]
-                try:
-                    cuda_process = future.result()
-                    if cuda_process:
-                        cuda_pids.append(cuda_process)
-                except Exception as e:
-                    logger.debug(f"Error checking PID {pid}: {e}")
-
-        # Sort PIDs for ordered checkpointing
-        cuda_pids.sort(key=lambda x: x.pid)
-        return cuda_pids
-
-    def _check_cuda_session(self, pid: int) -> CudaCheckpointProcess | None:
-        """Check if a specific PID has a CUDA session."""
-        try:
-            result = subprocess.run(
-                [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)],
-                capture_output=True,
-                text=True,
-            )
-
-            # If the command succeeds (return code 0), this PID has a CUDA session
-            if result.returncode == 0:
-                state_str = result.stdout.strip().lower()
-                state = CudaCheckpointState(state_str)
-                return CudaCheckpointProcess(pid=pid, state=state)
-
-        except subprocess.CalledProcessError:
-            # Command failed, which is expected for PIDs without CUDA sessions
-            pass
-        except Exception as e:
-            logger.debug(f"Error checking PID {pid}: {e}")
-
-        return None
+    def __init__(self) -> None:
+        self.cuda_processes: list = []
+        self._runtime_wait_fd: int = -1
 
     def checkpoint(self) -> None:
-        """Checkpoint all CUDA processes, moving GPU memory to CPU."""
-        if not self.cuda_processes:
-            logger.debug("No CUDA processes to checkpoint.")
-            return
-
-        # Validate all states first
-        for proc in self.cuda_processes:
-            proc.refresh_state()  # Refresh state before validation
-            if proc.state != CudaCheckpointState.RUNNING:
-                raise CudaCheckpointException(
-                    f"PID {proc.pid}: CUDA session not in {CudaCheckpointState.RUNNING.value} state. "
-                    f"Current state: {proc.state.value}"
-                )
-
-        # Moving state from GPU to CPU can take several seconds per CUDA session.
-        # Make a parallel call per CUDA session.
-        start = time.perf_counter()
-
-        def checkpoint_impl(proc: CudaCheckpointProcess) -> None:
-            proc.toggle(CudaCheckpointState.CHECKPOINTED)
-
-        with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(checkpoint_impl, proc) for proc in self.cuda_processes]
-
-            # Wait for all futures and collect any exceptions
-            exceptions = []
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    exceptions.append(e)
-
-            if exceptions:
-                raise CudaCheckpointException(
-                    f"Failed to checkpoint {len(exceptions)} processes: {'; '.join(str(e) for e in exceptions)}"
-                )
-
-        elapsed = time.perf_counter() - start
-        logger.debug(f"Checkpointing {len(self.cuda_processes)} CUDA sessions took => {elapsed:.3f}s")
+        # Open the wait handle *before* the snapshot is taken. This is important
+        # because the open registers interest in the *next* checkpoint.
+        try:
+            self._runtime_wait_fd = os.open(RUNTIME_CHECKPOINT_WAIT_PATH, os.O_RDONLY)
+        except OSError as exc:
+            raise CudaCheckpointException(f"Failed to open {RUNTIME_CHECKPOINT_WAIT_PATH}: {exc}") from exc
 
     def restore(self) -> None:
-        """Restore all CUDA processes, moving memory back from CPU to GPU."""
-        if not self.cuda_processes:
-            logger.debug("No CUDA sessions to restore.")
+        if self._runtime_wait_fd < 0:
             return
-
-        # See checkpoint() for rationale about parallelism.
-        start = time.perf_counter()
-
-        def restore_process(proc: CudaCheckpointProcess) -> None:
-            proc.toggle(CudaCheckpointState.RUNNING, skip_first_refresh=True)
-
-        with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(restore_process, proc) for proc in self.cuda_processes]
-
-            # Wait for all futures and collect any exceptions
-            exceptions = []
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    exceptions.append(e)
-
-            if exceptions:
-                raise CudaCheckpointException(
-                    f"Failed to restore {len(exceptions)} processes: {'; '.join(str(e) for e in exceptions)}"
-                )
-
-        elapsed = time.perf_counter() - start
-        logger.debug(f"Restoring {len(self.cuda_processes)} CUDA session(s) took => {elapsed:.3f}s")
-
-    def get_process_count(self) -> int:
-        """Get the number of CUDA processes managed by this session."""
-        return len(self.cuda_processes)
-
-    def get_process_states(self) -> list[tuple[int, CudaCheckpointState]]:
-        """Get current states of all managed processes."""
-        states = []
-        for proc in self.cuda_processes:
-            proc.refresh_state()
-            states.append((proc.pid, proc.state))
-        return states
+        try:
+            result = os.read(self._runtime_wait_fd, 16).decode("utf-8", errors="replace").strip()
+        except OSError as exc:
+            raise CudaCheckpointException(f"Failed to read {RUNTIME_CHECKPOINT_WAIT_PATH}: {exc}") from exc
+        finally:
+            try:
+                os.close(self._runtime_wait_fd)
+            except OSError:
+                pass
+            self._runtime_wait_fd = -1
+        if result not in ("restore", "resume"):
+            raise CudaCheckpointException(f"Container runtime GPU memory restore failed: {result!r}")
+        logger.debug(f"Container runtime GPU memory {result} succeeded.")
