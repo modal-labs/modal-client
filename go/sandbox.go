@@ -1480,6 +1480,7 @@ func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID st
 			sb.isV2,
 			access,
 			sb.client.logger,
+			sb.client.serverWarningLogger,
 			sb.client.profile,
 		)
 		if err != nil {

@@ -1528,6 +1528,7 @@ func TestInitTaskCommandRouterClientUsesSeededAccess(t *testing.T) {
 		true,
 		&commandRouterAccess{jwt: mockJWT, url: "https://task-abc123.modal.test"},
 		slog.New(slog.DiscardHandler),
+		nil,
 		Profile{},
 	)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())

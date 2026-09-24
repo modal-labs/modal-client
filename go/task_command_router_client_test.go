@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -1298,4 +1300,46 @@ func TestUnusedCommandRouterClientReleasesItsConnection(t *testing.T) {
 	}
 	g.Eventually(released, time.Second, 10*time.Millisecond).Should(gomega.BeTrue(),
 		"a client nothing ever used should have given its connection back")
+}
+
+type warningRouterServer struct {
+	pb.UnimplementedTaskCommandRouterServer
+}
+
+func (s *warningRouterServer) TaskSetNetworkAccess(
+	ctx context.Context, _ *pb.TaskSetNetworkAccessRequest,
+) (*pb.TaskSetNetworkAccessResponse, error) {
+	if err := grpc.SetTrailer(ctx, metadata.Pairs(serverWarningHeader, "Router%20warning")); err != nil {
+		return nil, err
+	}
+	return &pb.TaskSetNetworkAccessResponse{}, nil
+}
+
+func TestCommandRouterLogsServerWarnings(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	grpcServer := grpc.NewServer()
+	pb.RegisterTaskCommandRouterServer(grpcServer, &warningRouterServer{})
+	go func() { _ = grpcServer.Serve(lis) }()
+	t.Cleanup(grpcServer.Stop)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	client, err := newTaskCommandRouterClient(commandRouterParams{
+		taskID: "ta-1",
+		jwt:    mockJWT(time.Now().Unix() + 3600),
+		target: lis.Addr().String(),
+		creds:  insecure.NewCredentials(),
+		logger: logger,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(func() { _ = client.Close() })
+
+	for range 2 {
+		g.Expect(client.SetNetworkAccess(t.Context(), &pb.TaskSetNetworkAccessRequest{})).To(gomega.Succeed())
+	}
+	g.Expect(strings.Count(buf.String(), `level=WARN msg="Router warning"`)).To(gomega.Equal(1))
 }

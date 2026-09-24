@@ -212,6 +212,7 @@ type taskCommandRouterClient struct {
 	jwt             atomic.Pointer[string]
 	jwtExp          atomic.Pointer[int64]
 	logger          *slog.Logger
+	warnings        *serverWarningLogger
 	closed          atomic.Bool
 	refreshJwtGroup singleflight.Group
 }
@@ -226,6 +227,7 @@ func initTaskCommandRouterClient(
 	isV2 bool,
 	access *commandRouterAccess,
 	logger *slog.Logger,
+	warnings *serverWarningLogger,
 	profile Profile,
 ) (*taskCommandRouterClient, error) {
 	if access == nil {
@@ -281,6 +283,7 @@ func initTaskCommandRouterClient(
 		creds:        creds,
 		idleTimeout:  profile.SandboxChannelIdleTimeout,
 		logger:       logger,
+		warnings:     warnings,
 	})
 	if err != nil {
 		return nil, err
@@ -305,6 +308,8 @@ type commandRouterParams struct {
 	creds       credentials.TransportCredentials
 	idleTimeout time.Duration
 	logger      *slog.Logger
+	// Shared with the control plane connection when the caller has one; nil makes a private one.
+	warnings *serverWarningLogger
 }
 
 // newTaskCommandRouterClient dials the command router and returns a client for
@@ -315,7 +320,10 @@ func newTaskCommandRouterClient(p commandRouterParams) (*taskCommandRouterClient
 		return nil, fmt.Errorf("command router client for task %s needs a dial target", p.taskID)
 	}
 
-	conn, err := dialCommandRouter(p.target, p.creds)
+	if p.warnings == nil {
+		p.warnings = newServerWarningLogger(p.logger)
+	}
+	conn, err := dialCommandRouter(p.target, p.creds, p.warnings)
 	if err != nil {
 		return nil, err
 	}
@@ -332,6 +340,7 @@ func newTaskCommandRouterClient(p commandRouterParams) (*taskCommandRouterClient
 		isV2:         p.isV2,
 		serverURL:    p.serverURL,
 		logger:       p.logger,
+		warnings:     p.warnings,
 	}
 	client.jwt.Store(&p.jwt)
 	client.jwtExp.Store(p.jwtExp)
@@ -346,10 +355,16 @@ func newTaskCommandRouterClient(p commandRouterParams) (*taskCommandRouterClient
 
 // dialCommandRouter opens a connection to the command router. It is called
 // again when an idle connection has been given up and a new one is needed.
-func dialCommandRouter(target string, creds credentials.TransportCredentials) (*grpc.ClientConn, error) {
+func dialCommandRouter(
+	target string,
+	creds credentials.TransportCredentials,
+	warnings *serverWarningLogger,
+) (*grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(
 		target,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithChainUnaryInterceptor(serverWarningUnaryInterceptor(warnings)),
+		grpc.WithChainStreamInterceptor(serverWarningStreamInterceptor(warnings)),
 		grpc.WithInitialWindowSize(windowSize),
 		grpc.WithInitialConnWindowSize(windowSize),
 		grpc.WithDefaultCallOptions(
@@ -455,7 +470,7 @@ func (c *taskCommandRouterClient) beginOp() (uint64, error) {
 	}
 	c.idle.stop()
 	if c.conn == nil {
-		conn, err := dialCommandRouter(c.target, c.creds)
+		conn, err := dialCommandRouter(c.target, c.creds, c.warnings)
 		if err != nil {
 			return 0, err
 		}

@@ -70,6 +70,7 @@ type Client struct {
 	mu                           sync.RWMutex
 	environmentManager           *environmentManager
 	oauthJWTKey                  *rsa.PrivateKey
+	serverWarningLogger          *serverWarningLogger
 }
 
 // NewClient generates a new client with the default profile configuration read from environment variables and ~/.modal.toml.
@@ -196,6 +197,7 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 		profile:                      profile,
 		sdkVersion:                   sdkVersion,
 		logger:                       logger,
+		serverWarningLogger:          newServerWarningLogger(logger),
 		ipClients:                    map[string]*clientWithConn{},
 		additionalUnaryInterceptors:  params.GRPCUnaryInterceptors,
 		additionalStreamInterceptors: params.GRPCStreamInterceptors,
@@ -389,12 +391,14 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 		headerInjectorUnaryInterceptor(c, host),
 		authTokenInterceptor(c),
 		retryInterceptor(c),
+		serverWarningUnaryInterceptor(c.serverWarningLogger),
 		timeoutInterceptor(),
 	}
 	unaryInterceptors = append(unaryInterceptors, customUnaryInterceptors...)
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
 		headerInjectorStreamInterceptor(c, host),
+		serverWarningStreamInterceptor(c.serverWarningLogger),
 	}
 	streamInterceptors = append(streamInterceptors, customStreamInterceptors...)
 
