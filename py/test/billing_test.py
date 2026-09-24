@@ -95,6 +95,8 @@ def test_workspace_object_billing_summary(servicer, client):
     assert isinstance(summary.adjustments, dict)
     assert isinstance(summary.metered_cost_breakdown, dict)
 
+    assert summary.adjustments["Network Egress Allowance"] == Decimal("-0.5")
+
 
 def test_environment_object_billing_report(servicer, client):
     before_request = datetime.now(timezone.utc)

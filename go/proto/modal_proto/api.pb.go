@@ -62845,7 +62845,7 @@ type WorkspaceBillingSummaryResponse_builder struct {
 	BilledCost     string
 	// keyed by deployed, ephemeral, volume, notebook, tokens
 	MeteredCostBreakdown map[string]string
-	// keyed by plan, credits, reservations, storage
+	// keyed by plan, credits, reservations, storage, network egress allowance
 	Adjustments map[string]string
 }
 

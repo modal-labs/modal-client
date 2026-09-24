@@ -5032,7 +5032,7 @@ message WorkspaceBillingSummaryResponse {
 
   // keyed by deployed, ephemeral, volume, notebook, tokens
   map<string, string> metered_cost_breakdown = 5;
-  // keyed by plan, credits, reservations, storage
+  // keyed by plan, credits, reservations, storage, network egress allowance
   map<string, string> adjustments = 6;
 }
 

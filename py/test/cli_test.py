@@ -3960,7 +3960,8 @@ def test_billing_summary(servicer, set_env_client):
 
     res = run_cli_command(["billing", "summary"])
     assert "Metered Cost" in res.stdout
-    assert "Free Volume Storage Discount" in res.stdout
+    assert "Free Storage" in res.stdout
+    assert "Network Egress Allowance" in res.stdout
     assert "Reservation Adjustment" in res.stdout
     assert "Billed Cost" in res.stdout
     assert "Deployed Apps" in res.stdout
@@ -3970,13 +3971,18 @@ def test_billing_summary(servicer, set_env_client):
 
     res = run_cli_command(["billing", "summary", "--for", "2025-01"])
     assert "Metered Cost" in res.stdout
-    assert "Free Volume Storage Discount" in res.stdout
+    assert "Free Storage" in res.stdout
+    assert "Network Egress Allowance" in res.stdout
     assert "Reservation Adjustment" in res.stdout
     assert "Billed Cost" in res.stdout
     assert "Deployed Apps" in res.stdout
     assert "Ephemeral Apps" in res.stdout
     assert "Notebooks" in res.stdout
     assert "Volumes" in res.stdout
+
+    res = run_cli_command(["billing", "summary", "--json"])
+    data = json.loads(res.stdout)
+    assert data["adjustments"]["network_egress_allowance"] == "-0.5"
 
 
 def test_environment_billing_summary(servicer, set_env_client):

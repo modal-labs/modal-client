@@ -3899,11 +3899,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             metered_cost="5.0",
             adjustments={
                 "Plan Cost": "1.0",
-                "Credits Applied": "-1.0",
+                "Credits": "-1.0",
                 "Reservation Adjustment": "-1.0",
-                "Free Volume Storage Discount": "-1.0",
+                "Free Storage": "-1.0",
+                "Network Egress Allowance": "-0.5",
             },
-            billed_cost="3.0",
+            billed_cost="2.5",
             metered_cost_breakdown={
                 "Deployed Apps": "1.0",
                 "Ephemeral Apps": "1.0",
