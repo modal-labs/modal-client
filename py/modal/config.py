@@ -363,7 +363,7 @@ _SETTINGS = {
     "log_format": _Setting("STRING", lambda s: s.upper()),
     "log_pattern": _Setting(),
     # --- User-facing feature flags ----------------------------------------------
-    "sandbox_v2": _Setting(None, transform=_to_boolean),
+    "sandbox_v2": _Setting(True, transform=_to_boolean),
     "payload_format": _Setting("pickle", transform=_check_value(["pickle", "cbor"])),
     "async_warnings": _Setting(True, transform=_to_boolean, deprecated=(2026, 9, 12)),
     # --- User-facing configuration ----------------------------------------------

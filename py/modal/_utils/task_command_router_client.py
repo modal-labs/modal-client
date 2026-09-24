@@ -565,6 +565,7 @@ class TaskCommandRouterClient:
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
         deadline: float | None = None,
+        start_offset: int = 0,
     ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         """Stream stdout/stderr batches from an exec'd command, retrying on transient errors.
 
@@ -575,6 +576,7 @@ class TaskCommandRouterClient:
             deadline: The deadline by which all output must be streamed. If
               None, wait forever. If the deadline is exceeded, raises an
               ExecTimeoutError.
+            start_offset: Byte offset into the output stream to start reading from.
         Returns:
             AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]: A stream of stdout/stderr batches.
         Raises:
@@ -592,7 +594,7 @@ class TaskCommandRouterClient:
             raise ValueError(f"Invalid file descriptor: {file_descriptor}")
 
         with grpc_error_converter():
-            async with aclosing(self._stream_stdio(task_id, exec_id, sr_fd, deadline)) as stream:
+            async with aclosing(self._stream_stdio(task_id, exec_id, sr_fd, deadline, start_offset)) as stream:
                 async for item in stream:
                     yield item
 
@@ -601,6 +603,7 @@ class TaskCommandRouterClient:
         task_id: str,
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        start_offset: int = 0,
     ) -> AsyncGenerator[sr_pb2.SandboxStdioReadV2Response, None]:
         """Stream stdout/stderr batches from a V2 sandbox.
 
@@ -609,6 +612,7 @@ class TaskCommandRouterClient:
         Args:
             task_id: The task ID hosting the V2 sandbox.
             file_descriptor: The file descriptor to read from (stdout or stderr).
+            start_offset: Byte offset into the output stream to start reading from.
         Returns:
             AsyncGenerator[sr_pb2.SandboxStdioReadV2Response, None]: A stream of stdout/stderr batches.
         Raises:
@@ -625,7 +629,7 @@ class TaskCommandRouterClient:
             raise ValueError(f"Invalid file descriptor: {file_descriptor}")
 
         with grpc_error_converter():
-            async with aclosing(self._stream_sandbox_stdio(task_id, sr_fd)) as stream:
+            async with aclosing(self._stream_sandbox_stdio(task_id, sr_fd, start_offset)) as stream:
                 async for item in stream:
                     yield item
 
@@ -932,13 +936,14 @@ class TaskCommandRouterClient:
         request_factory: Callable[[int], _StdioReq],
         deadline_label: str,
         deadline: float | None = None,
+        start_offset: int = 0,
     ) -> AsyncGenerator[_StdioResp, None]:
         """Read stdio with offset tracking, authentication, and transient retries.
 
         The connection is kept active while waiting for output and may be
         released while the caller holds a chunk.
         """
-        offset = 0
+        offset = start_offset
         # Set when an idle release invalidates the stream while its lease is suspended.
         reopen_after_release = False
         delay_secs = self.stream_stdio_retry_delay_secs
@@ -1050,6 +1055,7 @@ class TaskCommandRouterClient:
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "sr_pb2.TaskExecStdioFileDescriptor.ValueType",
         deadline: float | None = None,
+        start_offset: int = 0,
     ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         """Stream exec stdio from the task, retrying on transient errors.
         Raises ExecTimeoutError if the deadline is exceeded.
@@ -1069,6 +1075,7 @@ class TaskCommandRouterClient:
                 request_factory=request_factory,
                 deadline_label=f"exec {exec_id}",
                 deadline=deadline,
+                start_offset=start_offset,
             )
         ) as stream:
             async for item in stream:
@@ -1079,6 +1086,7 @@ class TaskCommandRouterClient:
         task_id: str,
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "sr_pb2.SandboxStdioFileDescriptor.ValueType",
+        start_offset: int = 0,
     ) -> AsyncGenerator[sr_pb2.SandboxStdioReadV2Response, None]:
         """Stream V2 sandbox top-level stdio from the task, retrying on transient errors."""
 
@@ -1095,6 +1103,7 @@ class TaskCommandRouterClient:
                 request_factory=request_factory,
                 deadline_label=f"sandbox {task_id}",
                 deadline=None,
+                start_offset=start_offset,
             )
         ) as stream:
             async for item in stream:

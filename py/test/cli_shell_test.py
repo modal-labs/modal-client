@@ -509,7 +509,8 @@ def test_shell_v2_passes_experimental_options(servicer, set_env_client, mock_she
 
 @skip_windows("modal shell is not supported on Windows.")
 @pytest.mark.parametrize("runtime", ["vm", "gvisor"])
-def test_shell_runtime(servicer, set_env_client, mock_shell_pty, runtime):
+def test_shell_runtime(servicer, set_env_client, mock_shell_pty, monkeypatch, runtime):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     with servicer.intercept() as ctx:
         run_cli_command(["shell", "--runtime", runtime])
 
@@ -518,7 +519,8 @@ def test_shell_runtime(servicer, set_env_client, mock_shell_pty, runtime):
 
 
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell_runtime_with_function_ref(servicer, set_env_client, test_dir, mock_shell_pty):
+def test_shell_runtime_with_function_ref(servicer, set_env_client, test_dir, mock_shell_pty, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     with servicer.intercept() as ctx:
         run_cli_command(["shell", "--runtime", "vm", app_file.as_posix() + "::foo"])

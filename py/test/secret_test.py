@@ -55,7 +55,8 @@ def test_secret_from_dotenv(servicer, client):
 
 
 @skip_windows("uses sandbox to repro app-ness of secret, and sandboxe tests use subprocess")
-def test_secret_from_dotenv_lazy(client, servicer):
+def test_secret_from_dotenv_lazy(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     with servicer.intercept() as ctx:
         dummy_app = App.lookup("blah", client=client, create_if_missing=True)
         Sandbox.create(client=client, secrets=[Secret.from_dotenv()], app=dummy_app)

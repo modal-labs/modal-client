@@ -6,6 +6,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Python
 
+- Sandboxes are now created on the [next-generation Sandbox backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds) by default, which was previously opt-in via the `MODAL_SANDBOX_V2=1` environment variable. Compared to the V1 backend, it supports substantially higher Sandbox creation rates and concurrent Sandbox counts, and schedules sandboxes faster. No code changes are required, and Sandboxes that use features the new backend does not support (such as GPUs and network file systems) are automatically created on the V1 backend.
 - Added `modal.Cluster` for inspecting clustered execution. Use `Cluster.from_context()` inside a cluster or `Cluster.from_id()` to inspect a cluster by ID. `container_ids()` fetches membership ordered by rank, `container_rank()` looks up a member's rank, and `container_ips()` returns addresses from within the cluster.
 
 - Added `modal.clustered` as a public API. `modal.experimental.clustered` is deprecated.

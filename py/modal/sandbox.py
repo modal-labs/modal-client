@@ -834,6 +834,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
         sandbox that runs the shell session.
         """
+        # GPUs, network file systems, and PTYs are not supported on V2, so those calls use the V1
+        # backend regardless of the setting.
         if config.get("sandbox_v2") is True and gpu is None and not network_file_systems and pty_info is None:
             _, client = _resolve_app_id_and_client(app, client)
             return await _Sandbox._experimental_create(

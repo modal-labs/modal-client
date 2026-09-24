@@ -2042,7 +2042,7 @@ def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
 @skip_github_non_linux
 def test_sandbox(servicer, deployed_support_function_definitions):
     ret = _run_container_auto(servicer, "sandbox_f", deployed_support_function_definitions)
-    assert _unwrap_scalar(ret) == "sb-nGEijt9WbBMlGrsPH9FOaC"
+    assert _unwrap_scalar(ret) == "sb-v2-123"
 
 
 @skip_github_non_linux

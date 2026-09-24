@@ -5,6 +5,7 @@ import enum
 import hashlib
 import inspect
 import json
+import os
 import pytest
 import time
 import typing
@@ -90,9 +91,14 @@ def test_probe_rejects_invalid_raw_configuration(kwargs, match):
         modal.Probe(**kwargs)
 
 
+def _create_v1_sandbox(*args, **kwargs):
+    with mock.patch.dict(os.environ, {"MODAL_SANDBOX_V2": "0"}):
+        return Sandbox.create(*args, **kwargs)
+
+
 _CONNECT_TOKEN_VERSIONS = [
     pytest.param(
-        Sandbox.create,
+        _create_v1_sandbox,
         "SandboxCreateConnectToken",
         "SandboxCreateConnectTokenV2",
         "https://sandbox.modal.host/connect",
@@ -110,7 +116,7 @@ _CONNECT_TOKEN_VERSIONS = [
 ]
 
 
-@pytest.mark.parametrize("sandbox_create", [Sandbox.create, Sandbox._experimental_create], ids=["v1", "v2"])
+@pytest.mark.parametrize("sandbox_create", [_create_v1_sandbox, Sandbox._experimental_create], ids=["v1", "v2"])
 @pytest.mark.parametrize("port", ["8080", 0, 65536, -1, 8080.0])
 def test_create_connect_token_bad_port_raises(app, servicer, sandbox_create, port):
     sb = sandbox_create("sleep", "infinity", app=app)
@@ -155,7 +161,7 @@ def test_create_connect_token_defaults_to_8080(
 @pytest.mark.parametrize(
     "sandbox_create, rpc",
     [
-        pytest.param(Sandbox.create, "SandboxCreateConnectToken", id="v1"),
+        pytest.param(_create_v1_sandbox, "SandboxCreateConnectToken", id="v1"),
         pytest.param(Sandbox._experimental_create, "SandboxCreateConnectTokenV2", id="v2"),
     ],
 )
@@ -238,12 +244,14 @@ def test_sandbox_secret(app, servicer, tmpdir):
     sb = Sandbox.create("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})], app=app)
     sb.wait()
 
-    assert len(servicer.sandbox_defs[0].secret_ids) == 1
+    assert len(servicer.sandbox_defs[0].secret_ids) == 0
+    assert servicer.sandbox_create_v2_requests[0].ephemeral_secrets.contents == {"FOO": "BAR"}
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
-def test_sandbox_create_hydrates_app_id(app, sandbox_version):
+def test_sandbox_create_hydrates_app_id(app, monkeypatch, sandbox_version):
     if sandbox_version == SandboxVersion.V1:
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
         sb = Sandbox.create("echo", "hello", app=app)
     else:
         sb = Sandbox._experimental_create("echo", "hello", app=app)
@@ -252,8 +260,9 @@ def test_sandbox_create_hydrates_app_id(app, sandbox_version):
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
-def test_sandbox_initialize_from_other_preserves_app_id_and_version(app, sandbox_version):
+def test_sandbox_initialize_from_other_preserves_app_id_and_version(app, monkeypatch, sandbox_version):
     if sandbox_version == SandboxVersion.V1:
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
         source = Sandbox.create("echo", "hello", app=app)
     else:
         source = Sandbox._experimental_create("echo", "hello", app=app)
@@ -395,7 +404,8 @@ _V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
 _V2_SANDBOX_ID_2 = "sb-01ARZ3NDEKTSV4RRFFQ69G5FBV"
 
 
-def test_experimental_set_name_rejects_v1(app, servicer):
+def test_experimental_set_name_rejects_v1(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
     with servicer.intercept() as ctx:
@@ -548,6 +558,26 @@ def test_sandbox_stdout(app, servicer, sandbox_subprocess):
     cp.stdin.drain()
 
     assert cp.stdout.read() == "foo 1\nfoo 2foo 3\n"
+
+
+@skip_non_subprocess
+def test_sandbox_stdout_read_resumes_after_failure(app, servicer, sandbox_subprocess):
+    """A read() retried after a stream failure resumes from the last delivered
+    byte instead of returning empty or replaying output from the start."""
+    sb = Sandbox.create("bash", "-c", "echo hello && echo world", app=app)
+    sb.wait()
+
+    async def flaky_stdio_read(router_self, stream):
+        request = await stream.recv_message()
+        await stream.send_message(sr_pb2.SandboxStdioReadV2Response(data=b"hello\n", starting_offset=request.offset))
+        raise GRPCError(Status.INVALID_ARGUMENT, "injected stream failure")
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        tcr_ctx.set_responder("SandboxStdioReadV2", flaky_stdio_read)
+        with pytest.raises(InvalidError, match="injected stream failure"):
+            sb.stdout.read()
+
+    assert sb.stdout.read() == "world\n"
 
 
 @skip_non_subprocess
@@ -734,10 +764,12 @@ def test_sandbox_on_app_lookup(client, servicer, sandbox_subprocess):
 
 def test_sandbox_list_env(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
-    assert len(list(Sandbox.list(client=client))) == 1
+    with pytest.warns(DeprecationError, match="without an `app_id`"):
+        assert len(list(Sandbox.list(client=client))) == 1
     sb.terminate()
     sb.wait(raise_on_termination=False)
-    assert not list(Sandbox.list(client=client))
+    with pytest.warns(DeprecationError, match="without an `app_id`"):
+        assert not list(Sandbox.list(client=client))
 
 
 def test_sandbox_list_app(client, servicer):
@@ -762,11 +794,13 @@ def test_sandbox_list_tags(app, client, servicer):
     sb.set_tags({"foo": "bar", "baz": "qux"})
     assert sb.get_tags() == {"foo": "bar", "baz": "qux"}
 
-    assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
-    assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
+    with pytest.warns(DeprecationError, match="without an `app_id`"):
+        assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
+        assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
     sb.terminate()
     sb.wait(raise_on_termination=False)
-    assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
+    with pytest.warns(DeprecationError, match="without an `app_id`"):
+        assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
 
 
 @pytest.mark.parametrize("app_id", [None, ""])
@@ -881,6 +915,21 @@ def test_sandbox_create_env_flag_gpu_stays_v1(app, servicer, monkeypatch):
     assert len(ctx.get_requests("SandboxCreate")) == 1
 
 
+def test_sandbox_create_env_flag_placement_uses_v2(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+
+    with servicer.intercept() as ctx:
+        sb_cloud = Sandbox.create("echo", "hi", app=app, cloud="aws")
+        sb_region = Sandbox.create("echo", "hi", app=app, region="us-east-1")
+
+    assert _get_sandbox_version(sb_cloud.object_id) == SandboxVersion.V2
+    assert _get_sandbox_version(sb_region.object_id) == SandboxVersion.V2
+    assert ctx.get_requests("SandboxCreate") == []
+    cloud_req, region_req = ctx.get_requests("SandboxCreateV2")
+    assert cloud_req.definition.cloud_provider_str == "aws"
+    assert region_req.definition.scheduler_placement.regions == ["us-east-1"]
+
+
 def test_sandbox_create_env_flag_nfs_stays_v1(app, client, servicer, monkeypatch):
     # Network file systems have no V2 equivalent, so the call stays on V1.
     monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
@@ -965,7 +1014,7 @@ def test_sandbox_create_with_tags(app, client, servicer):
     with servicer.intercept() as ctx:
         sb = Sandbox.create("bash", "-c", "sleep 10000", app=app, tags=tags)
 
-    request: api_pb2.SandboxCreateRequest = ctx.pop_request("SandboxCreate")
+    request: api_pb2.SandboxCreateV2Request = ctx.pop_request("SandboxCreateV2")
     assert {tag.tag_name: tag.tag_value for tag in request.tags} == tags
 
     assert sb.get_tags() == tags
@@ -1237,7 +1286,8 @@ def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, 
         cp.stdout.read()
 
 
-def test_sandbox_snapshot(app, client, servicer):
+def test_sandbox_snapshot(app, client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     sb = Sandbox.create(app=app, _experimental_enable_snapshot=True)
     sandbox_snapshot = sb._experimental_snapshot()
     snapshot_id = sandbox_snapshot.object_id
@@ -1512,6 +1562,7 @@ def test_sandbox_reload_volumes_timeout_validation(app, servicer, create):
 
 
 def test_sandbox_snapshot_fs_legacy_env_var(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     monkeypatch.setenv("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT", "1")
 
     sb = Sandbox.create(app=app)
@@ -1534,7 +1585,7 @@ def test_sandbox_experimental_get_exit_snapshot_success(app, servicer):
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(
                 success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
             ),
@@ -1542,7 +1593,7 @@ def test_sandbox_experimental_get_exit_snapshot_success(app, servicer):
         image = sb._experimental_get_exit_snapshot(timeout=0)
 
     assert image.object_id == "im-exit-snapshot-123"
-    (req,) = ctx.get_requests("SandboxGetExitSnapshot")
+    (req,) = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert req.sandbox_id == sb.object_id
     assert req.timeout == 0
 
@@ -1556,7 +1607,7 @@ def test_sandbox_experimental_get_exit_snapshot_allowed_after_detached(app, serv
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(
                 success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
             ),
@@ -1564,7 +1615,7 @@ def test_sandbox_experimental_get_exit_snapshot_allowed_after_detached(app, serv
         image = sb._experimental_get_exit_snapshot(timeout=0)
 
     assert image.object_id == "im-exit-snapshot-123"
-    (req,) = ctx.get_requests("SandboxGetExitSnapshot")
+    (req,) = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert req.sandbox_id == sb.object_id
     assert req.timeout == 0
 
@@ -1574,11 +1625,11 @@ def test_sandbox_experimental_get_exit_snapshot_waits_indefinitely(app, servicer
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
         )
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(
                 success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
             ),
@@ -1586,7 +1637,7 @@ def test_sandbox_experimental_get_exit_snapshot_waits_indefinitely(app, servicer
         image = sb._experimental_get_exit_snapshot()
 
     assert image.object_id == "im-exit-snapshot-123"
-    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert len(requests) == 2
     assert [req.timeout for req in requests] == [10, 10]
 
@@ -1600,11 +1651,11 @@ def test_sandbox_experimental_get_exit_snapshot_applies_no_default_deadline(app,
     with servicer.intercept() as ctx:
         for _ in range(pending_polls):
             ctx.add_response(
-                "SandboxGetExitSnapshot",
+                "SandboxGetExitSnapshotV2",
                 api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
             )
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(
                 success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
             ),
@@ -1612,7 +1663,7 @@ def test_sandbox_experimental_get_exit_snapshot_applies_no_default_deadline(app,
         image = sb._experimental_get_exit_snapshot()
 
     assert image.object_id == "im-exit-snapshot-123"
-    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert len(requests) == pending_polls + 1
     assert all(req.timeout == 10 for req in requests)
 
@@ -1641,11 +1692,11 @@ def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures(
         )
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("SandboxGetExitSnapshot", flaky)
+        ctx.set_responder("SandboxGetExitSnapshotV2", flaky)
         image = sb._experimental_get_exit_snapshot()
 
     assert image.object_id == "im-exit-snapshot-123"
-    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 3
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 3
 
     sb.terminate()
 
@@ -1661,14 +1712,14 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
         await asyncio.sleep(30)
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("SandboxGetExitSnapshot", wedged)
+        ctx.set_responder("SandboxGetExitSnapshotV2", wedged)
         started = time.monotonic()
         with pytest.raises(modal.exception.ConnectionError):
             sb._experimental_get_exit_snapshot()
         elapsed = time.monotonic() - started
 
     assert elapsed < 5
-    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 3
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 3
 
     sb.terminate()
 
@@ -1683,7 +1734,7 @@ def test_sandbox_experimental_get_exit_snapshot_expired_poll_deadline_maps_to_ti
         await asyncio.sleep(30)
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("SandboxGetExitSnapshot", wedged)
+        ctx.set_responder("SandboxGetExitSnapshotV2", wedged)
         with pytest.raises(TimeoutError, match="timed out"):
             sb._experimental_get_exit_snapshot(timeout=0.05)
 
@@ -1698,11 +1749,11 @@ def test_sandbox_experimental_get_exit_snapshot_rate_limit_without_policy_raises
         raise GRPCError(Status.RESOURCE_EXHAUSTED, "rate limit exceeded")
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("SandboxGetExitSnapshot", limited)
+        ctx.set_responder("SandboxGetExitSnapshotV2", limited)
         with pytest.raises(modal.exception.ResourceExhaustedError):
             sb._experimental_get_exit_snapshot()
 
-    assert len(ctx.get_requests("SandboxGetExitSnapshot")) == 1
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 1
 
     sb.terminate()
 
@@ -1713,11 +1764,11 @@ def test_sandbox_experimental_get_exit_snapshot_repeats_long_polls(app, servicer
     with servicer.intercept() as ctx:
         for _ in range(3):
             ctx.add_response(
-                "SandboxGetExitSnapshot",
+                "SandboxGetExitSnapshotV2",
                 api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
             )
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(
                 success=api_pb2.SandboxGetExitSnapshotResponse.Success(image_id="im-exit-snapshot-123")
             ),
@@ -1725,7 +1776,7 @@ def test_sandbox_experimental_get_exit_snapshot_repeats_long_polls(app, servicer
         image = sb._experimental_get_exit_snapshot(timeout=30)
 
     assert image.object_id == "im-exit-snapshot-123"
-    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert len(requests) == 4
     assert all(9 < req.timeout <= 10 for req in requests)
 
@@ -1737,13 +1788,13 @@ def test_sandbox_experimental_get_exit_snapshot_immediate_check(app, servicer):
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(pending=api_pb2.SandboxGetExitSnapshotResponse.Pending()),
         )
         with pytest.raises(TimeoutError, match="timed out"):
             sb._experimental_get_exit_snapshot(timeout=0)
 
-    (req,) = ctx.get_requests("SandboxGetExitSnapshot")
+    (req,) = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert req.timeout == 0
 
     sb.terminate()
@@ -1760,13 +1811,13 @@ def test_sandbox_experimental_get_exit_snapshot_aggregate_timeout(app, servicer)
         )
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("SandboxGetExitSnapshot", responder)
+        ctx.set_responder("SandboxGetExitSnapshotV2", responder)
         with pytest.raises(TimeoutError, match="timed out"):
             sb._experimental_get_exit_snapshot(timeout=0.05)
 
     # Event loop timer granularity can wake a long poll marginally before the aggregate deadline,
     # so the budget may be split across several requests, each bounded by the remaining time.
-    requests = ctx.get_requests("SandboxGetExitSnapshot")
+    requests = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert requests
     assert all(req.timeout > 0 for req in requests)
     assert all(req.timeout <= 0.05 or req.timeout == pytest.approx(0.05) for req in requests)
@@ -1781,7 +1832,7 @@ def test_sandbox_experimental_get_exit_snapshot_rejects_negative_timeout(app, se
         with pytest.raises(InvalidError, match="timeout"):
             sb._experimental_get_exit_snapshot(timeout=-1)
 
-    assert ctx.get_requests("SandboxGetExitSnapshot") == []
+    assert ctx.get_requests("SandboxGetExitSnapshotV2") == []
 
     sb.terminate()
 
@@ -1798,7 +1849,7 @@ def test_sandbox_experimental_get_exit_snapshot_not_found_errors(app, servicer, 
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(
                 error=api_pb2.SandboxGetExitSnapshotResponse.Error(
                     error_code=error_code,
@@ -1820,7 +1871,7 @@ def test_sandbox_experimental_get_exit_snapshot_not_enabled_raises_invalid(app, 
         raise GRPCError(Status.INVALID_ARGUMENT, "Exit snapshot is not enabled for this sandbox")
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("SandboxGetExitSnapshot", responder)
+        ctx.set_responder("SandboxGetExitSnapshotV2", responder)
         with pytest.raises(InvalidError, match="not enabled"):
             sb._experimental_get_exit_snapshot(timeout=0)
 
@@ -1832,7 +1883,7 @@ def test_sandbox_experimental_get_exit_snapshot_internal_error(app, servicer):
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "SandboxGetExitSnapshot",
+            "SandboxGetExitSnapshotV2",
             api_pb2.SandboxGetExitSnapshotResponse(
                 error=api_pb2.SandboxGetExitSnapshotResponse.Error(
                     error_code=api_pb2.SandboxGetExitSnapshotResponse.ERROR_CODE_INTERNAL,
@@ -2111,7 +2162,7 @@ def test_sandbox_experimental_get_exit_snapshot_rejects_negative_timeout_v2(clie
             sb._experimental_get_exit_snapshot(timeout=-1)
 
     assert ctx.get_requests("SandboxGetExitSnapshotV2") == []
-    assert ctx.get_requests("SandboxGetExitSnapshot") == []
+    assert ctx.get_requests("SandboxGetExitSnapshotV2") == []
 
     sb.terminate()
 
@@ -2199,7 +2250,7 @@ def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
     with servicer.intercept() as ctx:
         # test generic status
         ctx.add_response(
-            "SandboxList",
+            "SandboxListV2",
             api_pb2.SandboxListResponse(
                 sandboxes=[
                     api_pb2.SandboxInfo(
@@ -2213,9 +2264,10 @@ def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
             ),
         )
         ctx.add_response(
-            "SandboxList", api_pb2.SandboxListResponse(sandboxes=[])
+            "SandboxListV2", api_pb2.SandboxListResponse(sandboxes=[])
         )  # list will loop for older sandboxes until no more arrive
-        (list_result,) = list(Sandbox.list(client=client))
+        with pytest.warns(DeprecationError, match="without an `app_id`"):
+            (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode is None
     assert synchronizer._translate_in(list_result)._app_id == "ap-list-running"
 
@@ -2224,7 +2276,7 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
     with servicer.intercept() as ctx:
         # test generic status
         ctx.add_response(
-            "SandboxList",
+            "SandboxListV2",
             api_pb2.SandboxListResponse(
                 sandboxes=[
                     api_pb2.SandboxInfo(
@@ -2240,9 +2292,10 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
             ),
         )
         ctx.add_response(
-            "SandboxList", api_pb2.SandboxListResponse(sandboxes=[])
+            "SandboxListV2", api_pb2.SandboxListResponse(sandboxes=[])
         )  # list will loop for older sandboxes until no more arrive
-        (list_result,) = list(Sandbox.list(client=client))
+        with pytest.warns(DeprecationError, match="without an `app_id`"):
+            (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode == 0
     assert synchronizer._translate_in(list_result)._app_id == "ap-list-stopped"
 
@@ -2263,14 +2316,14 @@ def test_sandbox_volume(app, servicer, read_only):
             app=app,
             volumes={"/mnt": volume},
         )
-        req = ctx.pop_request("SandboxCreate")
+        req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.volume_mounts[0].read_only == read_only
 
 
 def test_sandbox_create_pty(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox.create("echo", "hi", pty=True, app=app)
-        req = ctx.pop_request("SandboxCreate")
+        req = ctx.pop_request("SandboxCreateV2")
 
         assert req.definition.pty_info is not None
         assert req.definition.pty_info.enabled is True
@@ -2354,7 +2407,8 @@ def test_experimental_sandbox_create_no_experimental_options_by_default(app, ser
 
 
 @pytest.mark.parametrize("runtime,expected", [(None, ""), ("gvisor", "gvisor"), ("vm", "vm")])
-def test_sandbox_create_runtime(app, servicer, runtime, expected):
+def test_sandbox_create_runtime(app, servicer, monkeypatch, runtime, expected):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     with servicer.intercept() as ctx:
         Sandbox.create("echo", "hi", app=app, runtime=runtime)
         assert ctx.pop_request("SandboxCreate").definition.runtime == expected
@@ -2374,6 +2428,7 @@ def test_sandbox_create_env_flag_v2_passes_runtime(app, servicer, monkeypatch):
 
 
 def test_sandbox_create_runtime_overrides_function_runtime_config(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     monkeypatch.setenv("MODAL_FUNCTION_RUNTIME", "gvisor")
 
     with servicer.intercept() as ctx:
@@ -3002,7 +3057,8 @@ def test_unmount_image(servicer, client, app):
     sb.terminate()
 
 
-def test_exec_on_terminate_sandbox_raises(servicer, client, app):
+def test_exec_on_terminate_sandbox_raises(servicer, client, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     sb = Sandbox.create(app=app)
     sb.terminate()
 
@@ -3092,7 +3148,7 @@ def test_sandbox_terminate_wait(app, servicer):
 
     with servicer.intercept() as ctx:
         exit_code = sb.terminate(wait=True)
-        req = ctx.pop_request("SandboxWait")
+        req = ctx.pop_request("SandboxWaitV2")
 
     assert req.sandbox_id == sb.object_id
     assert exit_code != 0
@@ -3456,6 +3512,7 @@ def test_sandbox_container_create_targets_the_sandbox(app, servicer, monkeypatch
 def test_sandbox_container_create_v1_sandbox_ignores_opt_in(app, servicer, monkeypatch):
     # The opt-in only applies to V2 Sandboxes; a V1 Sandbox always creates sidecars
     # over the Sandbox connection.
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     _opt_in_to_control_plane_sidecar_create(monkeypatch)
     image = mock.Mock()
     image.object_id = "im-test-1"
@@ -3666,12 +3723,13 @@ def test_sandbox_create_timing_log_caps_dependency_list():
     assert "im-004" not in line
 
 
-def test_sandbox_create_logs_per_dependency_timing(app, servicer, caplog):
+def test_sandbox_create_logs_per_dependency_timing(app, servicer, caplog, monkeypatch):
     """V1 Sandbox.create emits a debug log with the sandbox id, total + RPC
     elapsed, and per-dependency object_id timings.
     """
     import logging
 
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     image = Image.debian_slim().add_local_python_source("modal", copy=True)
     secret = Secret.from_dict({"FOO": "bar"})
 

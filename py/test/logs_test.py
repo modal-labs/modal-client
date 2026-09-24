@@ -1236,7 +1236,8 @@ def test_server_logs_tail(client, servicer):
     assert fetch_requests[0].limit == 1
 
 
-def test_sandbox_logs_tail(client, servicer):
+def test_sandbox_logs_tail(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     app = modal.App()
     sandbox_get_task_id_requests = []
     fetch_requests = []
@@ -1283,7 +1284,8 @@ def test_sandbox_logs_tail(client, servicer):
     assert fetch_requests[0].limit == 1
 
 
-def test_sandbox_logs_tail_after_detach(client, servicer):
+def test_sandbox_logs_tail_after_detach(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     app = modal.App()
     sandbox_get_task_id_requests = []
     fetch_requests = []
@@ -1321,7 +1323,8 @@ def test_sandbox_logs_tail_after_detach(client, servicer):
     assert fetch_requests[0].limit == 1
 
 
-def test_sandbox_logs_fetch(client, servicer):
+def test_sandbox_logs_fetch(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     app = modal.App()
     sandbox_get_task_id_requests = []
     count_requests = []

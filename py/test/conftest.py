@@ -80,6 +80,13 @@ class TaskCommandRouterTaskState:
     latest_container_name_to_id: dict[str, str] = dataclasses.field(default_factory=dict)
     container_results: dict[str, api_pb2.GenericResult] = dataclasses.field(default_factory=dict)
     container_termination_requested: set[str] = dataclasses.field(default_factory=set)
+    entrypoint_proc: asyncio.subprocess.Process | None = None
+    entrypoint_buffers: dict[int, bytearray] = dataclasses.field(default_factory=dict)
+    entrypoint_eof: dict[int, bool] = dataclasses.field(default_factory=dict)
+    entrypoint_pumps: list[asyncio.Task] = dataclasses.field(default_factory=list)
+    # Set (and replaced) whenever an entrypoint buffer grows or reaches EOF.
+    entrypoint_changed: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
+    entrypoint_stdin_offset: int = 0
 
 
 @patch_mock_servicer
@@ -114,13 +121,96 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
     async def recv_request(self, event: RecvRequest) -> None:
         pass
 
+    def register_entrypoint(self, task_id: str, proc: asyncio.subprocess.Process) -> None:
+        """Serve a local subprocess as the task's sandbox entrypoint.
+
+        Pumps the process's stdout/stderr into per-fd buffers so that
+        SandboxStdioReadV2 can serve reads from any offset, live or after exit.
+        Re-registering replaces the previous entrypoint.
+        """
+        task_state = self._task_state(task_id)
+        for stale_pump in task_state.entrypoint_pumps:
+            stale_pump.cancel()
+        # Readers of the previous entrypoint hold its buffers and EOF flags, so
+        # end their streams rather than letting them wait forever.
+        for fd in task_state.entrypoint_eof:
+            task_state.entrypoint_eof[fd] = True
+        self._notify_entrypoint_changed(task_state)
+        task_state.entrypoint_proc = proc
+        task_state.entrypoint_buffers = {
+            sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT: bytearray(),
+            sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR: bytearray(),
+        }
+        task_state.entrypoint_eof = {
+            sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT: False,
+            sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR: False,
+        }
+        task_state.entrypoint_stdin_offset = 0
+        buffers = task_state.entrypoint_buffers
+        eof = task_state.entrypoint_eof
+
+        async def pump(fd: int, source: asyncio.StreamReader) -> None:
+            while chunk := await source.read(4096):
+                buffers[fd].extend(chunk)
+                self._notify_entrypoint_changed(task_state)
+            eof[fd] = True
+            self._notify_entrypoint_changed(task_state)
+
+        task_state.entrypoint_pumps = [
+            asyncio.create_task(pump(sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT, proc.stdout)),
+            asyncio.create_task(pump(sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR, proc.stderr)),
+        ]
+
     async def SandboxStdinWriteV2(self, stream) -> None:
-        await stream.recv_message()
-        raise GRPCError(Status.UNIMPLEMENTED, "SandboxStdinWriteV2 not implemented in mock task command router")
+        request: sr_pb2.SandboxStdinWriteV2Request = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
+        proc = task_state.entrypoint_proc
+        if proc is None or proc.returncode is not None:
+            raise GRPCError(
+                Status.FAILED_PRECONDITION, "Sandbox has already completed. Stdin is no longer accepting writes"
+            )
+        if request.data:
+            try:
+                proc.stdin.write(request.data)
+                await proc.stdin.drain()
+            except ConnectionError:
+                pass
+            task_state.entrypoint_stdin_offset += len(request.data)
+        if request.eof:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+        await stream.send_message(sr_pb2.SandboxStdinWriteV2Response())
 
     async def SandboxStdioReadV2(self, stream) -> None:
-        await stream.recv_message()
-        raise GRPCError(Status.UNIMPLEMENTED, "SandboxStdioReadV2 not implemented in mock task command router")
+        request: sr_pb2.SandboxStdioReadV2Request = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
+        if task_state.entrypoint_proc is None:
+            return
+        if request.file_descriptor not in task_state.entrypoint_buffers:
+            raise GRPCError(Status.INVALID_ARGUMENT, f"Unsupported file descriptor: {request.file_descriptor}")
+        fd = request.file_descriptor
+        buffer = task_state.entrypoint_buffers[fd]
+        eof = task_state.entrypoint_eof
+        offset = request.offset
+        while True:
+            # Grab the event before checking state so a notification between the
+            # check and the wait is not lost.
+            changed = task_state.entrypoint_changed
+            if offset < len(buffer):
+                chunk = bytes(buffer[offset:])
+                await stream.send_message(sr_pb2.SandboxStdioReadV2Response(data=chunk, starting_offset=offset))
+                offset += len(chunk)
+            elif eof[fd]:
+                return
+            else:
+                await changed.wait()
+
+    @staticmethod
+    def _notify_entrypoint_changed(task_state: TaskCommandRouterTaskState) -> None:
+        changed, task_state.entrypoint_changed = task_state.entrypoint_changed, asyncio.Event()
+        changed.set()
 
     async def SandboxWaitUntilReady(self, stream) -> None:
         await stream.recv_message()
@@ -476,6 +566,10 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         for task_state in self._task_states.values():
             procs.extend(task_state.procs.values())
             procs.extend(task_state.container_procs.values())
+            if task_state.entrypoint_proc is not None:
+                procs.append(task_state.entrypoint_proc)
+            for pump in task_state.entrypoint_pumps:
+                pump.cancel()
         for proc in procs:
             if proc.returncode is None:
                 with contextlib.suppress(ProcessLookupError):
@@ -523,17 +617,21 @@ def sandbox_subprocess_intercept(servicer):
     """
     proc_holder: dict[str, asyncio.subprocess.Process] = {}
 
-    async def _SandboxCreate(servicer_self, stream):
-        request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
-        servicer_self.sandbox_tags[sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
+    async def _spawn_entrypoint(entrypoint_args) -> asyncio.subprocess.Process:
         proc = await asyncio.subprocess.create_subprocess_exec(
-            *(request.definition.entrypoint_args or ["sleep", f"{48 * 3600}"]),
+            *(entrypoint_args or ["sleep", f"{48 * 3600}"]),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
         )
         proc_holder["proc"] = proc
+        return proc
+
+    async def _SandboxCreate(servicer_self, stream):
+        request: api_pb2.SandboxCreateRequest = await stream.recv_message()
+        sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
+        servicer_self.sandbox_tags[sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
+        await _spawn_entrypoint(request.definition.entrypoint_args)
         servicer_self._sandbox_terminated = False
         servicer_self.sandbox_app_id = request.app_id
         servicer_self.sandbox_defs.append(request.definition)
@@ -541,6 +639,29 @@ def sandbox_subprocess_intercept(servicer):
             api_pb2.SandboxCreateResponse(
                 sandbox_id=sandbox_id,
                 metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
+            )
+        )
+
+    async def _SandboxCreateV2(servicer_self, stream):
+        request: api_pb2.SandboxCreateV2Request = await stream.recv_message()
+        sandbox_id = "sb-v2-123"
+        task_id = "ta-v2-123"
+        servicer_self._sandbox_terminated = False
+        servicer_self.sandbox_app_id = request.app_id
+        servicer_self.sandbox_defs.append(request.definition)
+        servicer_self.sandbox_create_v2_requests.append(request)
+        servicer_self.sandbox_tags[sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
+        servicer_self.sandbox_task_ids[sandbox_id] = task_id
+        proc = await _spawn_entrypoint(request.definition.entrypoint_args)
+        servicer_self.task_command_router.register_entrypoint(task_id, proc)
+        await stream.send_message(
+            api_pb2.SandboxCreateV2Response(
+                sandbox_id=sandbox_id,
+                task_id=task_id,
+                metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
+                command_router_access=api_pb2.CommandRouterAccess(
+                    url=servicer_self.task_command_router_url, jwt="fake-jwt-token"
+                ),
             )
         )
 
@@ -626,6 +747,9 @@ def sandbox_subprocess_intercept(servicer):
         ctx.set_responder("SandboxWait", _SandboxWait)
         ctx.set_responder("SandboxTerminate", _SandboxTerminate)
         ctx.set_responder("SandboxStdinWrite", _SandboxStdinWrite)
+        ctx.set_responder("SandboxCreateV2", _SandboxCreateV2)
+        ctx.set_responder("SandboxWaitV2", _SandboxWait)
+        ctx.set_responder("SandboxTerminateV2", _SandboxTerminate)
         yield ctx
 
 
@@ -941,6 +1065,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # Set True to make SandboxCreateV2 omit command_router_access, as a scheduler
         # that could not mint a token does.
         self.sandbox_create_v2_omits_router_access = False
+        self.sandbox_create_v2_requests: list[api_pb2.SandboxCreateV2Request] = []
         self.sandbox_restore_v2_requests = []
         self.sandbox_result: api_pb2.GenericResult | None = None
         self._sandbox_terminated = False
@@ -3266,8 +3391,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxCreateV2(self, stream):
         request: api_pb2.SandboxCreateV2Request = await stream.recv_message()
+        self._sandbox_terminated = False
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
+        self.sandbox_create_v2_requests.append(request)
+        self.sandbox_tags["sb-v2-123"] = {tag.tag_name: tag.tag_value for tag in request.tags}
         self.sandbox_task_ids["sb-v2-123"] = "ta-v2-123"
 
         # Only encrypted tunnels are known at create time. Unencrypted
@@ -3577,8 +3705,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-modalcontainerexec"))
 
     async def SandboxGetTaskIdV2(self, stream):
-        _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
-        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-modalcontainerexec"))
+        request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
+        task_id = self.sandbox_task_ids.get(request.sandbox_id, "ta-modalcontainerexec")
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=task_id))
 
     async def SandboxStdinWrite(self, stream):
         _request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()

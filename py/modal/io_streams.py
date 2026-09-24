@@ -53,7 +53,27 @@ async def _sandbox_logs_iterator(
 T = TypeVar("T", str, bytes)
 
 
-class _StreamReaderThroughServer(Generic[T]):
+class _StreamReaderImpl(ABC, Generic[T]):
+    """Interface that `_StreamReader` delegates to."""
+
+    @property
+    @abstractmethod
+    def file_descriptor(self) -> int: ...
+
+    @abstractmethod
+    async def read(self) -> T: ...
+
+    @abstractmethod
+    def __aiter__(self) -> AsyncIterator[T]: ...
+
+    @abstractmethod
+    async def __anext__(self) -> T: ...
+
+    @abstractmethod
+    async def aclose(self) -> None: ...
+
+
+class _StreamReaderThroughServer(_StreamReaderImpl[T]):
     """A StreamReader implementation that reads sandbox logs from the server."""
 
     _stream: AsyncGenerator[T, None] | None
@@ -177,8 +197,10 @@ class _StreamReaderThroughServer(Generic[T]):
             self._stream = cast(AsyncGenerator[T, None], stream)
         return self._stream
 
-    async def aclose(self):
-        """mdmd:hidden"""
+    async def __anext__(self) -> T:
+        return await self.__aiter__().__anext__()
+
+    async def aclose(self) -> None:
         if self._stream:
             await self._stream.aclose()
 
@@ -263,39 +285,47 @@ _StreamReaderThroughCommandRouterParams = (
 
 async def _stdio_stream_from_sandbox_command_router(
     params: _StreamReaderThroughSandboxCommandRouterParams,
-) -> AsyncGenerator[bytes, None]:
-    """Stream raw bytes from a V2 sandbox's primary stdio via ``sandbox_stdio_read``."""
+    start_offset: int,
+) -> AsyncGenerator[tuple[bytes, int], None]:
+    """Stream ``(data, next_offset)`` pairs from a V2 sandbox's primary stdio
+    via ``sandbox_stdio_read``, starting at ``start_offset``."""
     task_id, command_router_client = await params.resolve_router()
-    first_chunk = True
-    async with aclosing(command_router_client.sandbox_stdio_read(task_id, params.file_descriptor)) as stream:
+    offset = start_offset
+    async with aclosing(
+        command_router_client.sandbox_stdio_read(task_id, params.file_descriptor, start_offset=start_offset)
+    ) as stream:
         async for item in stream:
             if len(item.data) == 0:
                 raise ValueError("Received empty message streaming stdio from sandbox.")
-            if first_chunk:
-                first_chunk = False
-                if item.starting_offset > 0:
-                    logger.warning(
-                        f"V2 sandbox {params.sandbox_id} stdio: dropped first "
-                        f"{item.starting_offset} bytes; only the most recent portion "
-                        f"of output is retained."
-                    )
-            yield item.data
+            if item.starting_offset > offset:
+                logger.warning(
+                    f"V2 sandbox {params.sandbox_id} stdio: dropped "
+                    f"{item.starting_offset - offset} bytes; only the most recent "
+                    f"portion of output is retained."
+                )
+                offset = item.starting_offset
+            offset += len(item.data)
+            yield item.data, offset
 
 
 async def _stdio_stream_from_sandbox_exec_command_router(
     params: _StreamReaderThroughSandboxExecCommandRouterParams,
-) -> AsyncGenerator[bytes, None]:
-    """Stream raw bytes from a V2 sandbox-exec'd process via ``exec_stdio_read``."""
+    start_offset: int,
+) -> AsyncGenerator[tuple[bytes, int], None]:
+    """Stream ``(data, next_offset)`` pairs from a V2 sandbox-exec'd process
+    via ``exec_stdio_read``, starting at ``start_offset``."""
+    offset = start_offset
     async with aclosing(
         params.command_router_client.exec_stdio_read(
-            params.task_id, params.object_id, params.file_descriptor, params.deadline
+            params.task_id, params.object_id, params.file_descriptor, params.deadline, start_offset=start_offset
         )
     ) as stream:
         try:
             async for item in stream:
                 if len(item.data) == 0:
                     raise ValueError("Received empty message streaming stdio from sandbox.")
-                yield item.data
+                offset += len(item.data)
+                yield item.data, offset
         except ExecTimeoutError:
             logger.debug(f"Deadline exceeded while streaming stdio for exec {params.object_id}")
             # TODO(saltzm): This is a weird API, but customers currently may rely on it. We
@@ -305,24 +335,74 @@ async def _stdio_stream_from_sandbox_exec_command_router(
 
 def _stdio_stream_from_command_router(
     params: _StreamReaderThroughCommandRouterParams,
-) -> AsyncGenerator[bytes, None]:
+    start_offset: int,
+) -> AsyncGenerator[tuple[bytes, int], None]:
     """Dispatch between the V2-sandbox primary stdio and the V2-sandbox-exec
-    stdio streams, both of which yield raw bytes."""
+    stdio streams, both of which yield ``(data, next_offset)`` pairs."""
     if isinstance(params, _StreamReaderThroughSandboxCommandRouterParams):
-        return _stdio_stream_from_sandbox_command_router(params)
-    return _stdio_stream_from_sandbox_exec_command_router(params)
+        return _stdio_stream_from_sandbox_command_router(params, start_offset)
+    return _stdio_stream_from_sandbox_exec_command_router(params, start_offset)
 
 
-class _BytesStreamReaderThroughCommandRouter:
-    """StreamReader that yields raw bytes from the router-backed stdio source
-    (either V2 sandbox top-level stdio or V2 sandbox-exec stdio)."""
+class _StreamReaderThroughCommandRouterBase(_StreamReaderImpl[T]):
+    """Shared stream position for router-backed readers.
+
+    All iterators and reads on the same reader draw from one underlying
+    stream, so each chunk is delivered exactly once. Pulls are serialized
+    with a lock so concurrent readers take turns instead of failing on an
+    already-running generator. Closing the underlying stream keeps the
+    offset, so a later read reopens it where the previous one stopped.
+    """
 
     def __init__(self, params: _StreamReaderThroughCommandRouterParams) -> None:
         self._params = params
+        self._stream: AsyncGenerator[T, None] | None = None
+        self._lock = asyncio.Lock()
+        self._offset = 0
+        self._eof = False
 
     @property
     def file_descriptor(self) -> int:
         return self._params.file_descriptor
+
+    def _iterate_stream(self) -> AsyncGenerator[T, None]:
+        """Open the underlying stream at the current offset."""
+        raise NotImplementedError
+
+    async def __anext__(self) -> T:
+        async with self._lock:
+            if self._stream is None:
+                self._stream = self._iterate_stream()
+            return await self._stream.__anext__()
+
+    async def _consume_stream(self) -> AsyncGenerator[T, None]:
+        try:
+            while True:
+                try:
+                    item = await self.__anext__()
+                except StopAsyncIteration:
+                    return
+                yield item
+        finally:
+            await self.aclose()
+
+    def __aiter__(self) -> AsyncGenerator[T, None]:
+        return self._consume_stream()
+
+    async def aclose(self) -> None:
+        """Close the underlying stream. A stream another reader is currently
+        pulling from is left open for that reader to close."""
+        if self._lock.locked():
+            return
+        async with self._lock:
+            stream, self._stream = self._stream, None
+            if stream is not None:
+                await stream.aclose()
+
+
+class _BytesStreamReaderThroughCommandRouter(_StreamReaderThroughCommandRouterBase[bytes]):
+    """StreamReader that yields raw bytes from the router-backed stdio source
+    (either V2 sandbox top-level stdio or V2 sandbox-exec stdio)."""
 
     async def read(self) -> bytes:
         buffer = io.BytesIO()
@@ -330,8 +410,18 @@ class _BytesStreamReaderThroughCommandRouter:
             buffer.write(part)
         return buffer.getvalue()
 
-    def __aiter__(self) -> AsyncGenerator[bytes, None]:
-        return _stdio_stream_from_command_router(self._params)
+    async def _iterate_stream(self) -> AsyncGenerator[bytes, None]:
+        if self._eof:
+            return
+        try:
+            async with aclosing(_stdio_stream_from_command_router(self._params, self._offset)) as stream:
+                async for data, next_offset in stream:
+                    self._offset = next_offset
+                    yield data
+        except BaseException:
+            self._stream = None
+            raise
+        self._eof = True
 
     async def _print_all(self, output_stream: TextIO) -> None:
         async for part in self:
@@ -339,17 +429,15 @@ class _BytesStreamReaderThroughCommandRouter:
             output_stream.buffer.flush()
 
 
-class _TextStreamReaderThroughCommandRouter:
+class _TextStreamReaderThroughCommandRouter(_StreamReaderThroughCommandRouterBase[str]):
     """StreamReader that yields UTF-8-decoded text from the router-backed
     stdio source."""
 
     def __init__(self, params: _StreamReaderThroughCommandRouterParams, by_line: bool) -> None:
-        self._params = params
+        super().__init__(params)
         self._by_line = by_line
-
-    @property
-    def file_descriptor(self) -> int:
-        return self._params.file_descriptor
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+        self._line_buffer = ""
 
     async def read(self) -> str:
         buffer = io.StringIO()
@@ -357,24 +445,38 @@ class _TextStreamReaderThroughCommandRouter:
             buffer.write(part)
         return buffer.getvalue()
 
-    async def __aiter__(self) -> AsyncGenerator[str, None]:
-        async with aclosing(_stdio_stream_from_command_router(self._params)) as bytes_stream:
-            if self._by_line:
-                stream = _decode_bytes_stream_to_str(_stream_by_line(bytes_stream))
-            else:
-                stream = _decode_bytes_stream_to_str(bytes_stream)
-
-            async with aclosing(stream):
-                async for part in stream:
-                    yield part
+    async def _iterate_stream(self) -> AsyncGenerator[str, None]:
+        if self._eof:
+            return
+        try:
+            async with aclosing(_stdio_stream_from_command_router(self._params, self._offset)) as stream:
+                async for data, next_offset in stream:
+                    self._offset = next_offset
+                    text = self._decoder.decode(data, final=False)
+                    if not text:
+                        continue
+                    if self._by_line:
+                        self._line_buffer += text
+                        while "\n" in self._line_buffer:
+                            line, self._line_buffer = self._line_buffer.split("\n", 1)
+                            yield line + "\n"
+                    else:
+                        yield text
+            remainder = self._line_buffer + self._decoder.decode(b"", final=True)
+        except BaseException:
+            self._stream = None
+            raise
+        self._line_buffer = ""
+        self._eof = True
+        if remainder:
+            yield remainder
 
     async def _print_all(self, output_stream: TextIO) -> None:
-        async with aclosing(self.__aiter__()) as stream:
-            async for part in stream:
-                output_stream.write(part)
+        async for part in self:
+            output_stream.write(part)
 
 
-class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
+class _StdoutPrintingStreamReaderThroughCommandRouter(_StreamReaderImpl[T]):
     """
     StreamReader implementation for StreamType.STDOUT when using the task command router.
 
@@ -415,7 +517,7 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     async def __anext__(self) -> T:
         raise InvalidError("Output can only be retrieved using the PIPE stream type.")
 
-    async def aclose(self):
+    async def aclose(self) -> None:
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -423,7 +525,7 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
             self._task = None
 
 
-class _DevnullStreamReader(Generic[T]):
+class _DevnullStreamReader(_StreamReaderImpl[T]):
     """StreamReader implementation for a stream configured with
     StreamType.DEVNULL. Throws an error if read or any other method is
     called.
@@ -445,8 +547,8 @@ class _DevnullStreamReader(Generic[T]):
     async def __anext__(self) -> T:
         raise ValueError("__anext__ is not supported for a stream configured with StreamType.DEVNULL")
 
-    async def aclose(self):
-        raise ValueError("aclose is not supported for a stream configured with StreamType.DEVNULL")
+    async def aclose(self) -> None:
+        pass
 
 
 class _StreamReader(Generic[T]):
@@ -456,14 +558,7 @@ class _StreamReader(Generic[T]):
     statements. Just loop over the object to read in chunks.
     """
 
-    _impl: (
-        _StreamReaderThroughServer
-        | _DevnullStreamReader
-        | _TextStreamReaderThroughCommandRouter
-        | _BytesStreamReaderThroughCommandRouter
-        | _StdoutPrintingStreamReaderThroughCommandRouter
-    )
-    _read_gen: AsyncGenerator[T, None] | None = None
+    _impl: _StreamReaderImpl[T]
 
     def __init__(
         self,
@@ -493,7 +588,7 @@ class _StreamReader(Generic[T]):
                 if stream_type == StreamType.STDOUT:
                     self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(reader)
                 else:
-                    self._impl = reader
+                    self._impl = cast(_StreamReaderImpl[T], reader)
         else:
             # Sandbox logs are read via the server.
             self._impl = _StreamReaderThroughServer(params, text, by_line)
@@ -508,9 +603,7 @@ class _StreamReader(Generic[T]):
         return cast(T, await self._impl.read())
 
     def __aiter__(self) -> AsyncGenerator[T, None]:
-        if not self._read_gen:
-            self._read_gen = cast(AsyncGenerator[T, None], self._impl.__aiter__())
-        return self._read_gen
+        return cast(AsyncGenerator[T, None], self._impl.__aiter__())
 
     async def __anext__(self) -> T:
         """Deprecated: This exists for backwards compatibility and will be removed in a future version of Modal
@@ -518,16 +611,11 @@ class _StreamReader(Generic[T]):
         Only use next/anext on the return value of iter/aiter on the StreamReader object (treat streamreader as
         an iterable, not an iterator).
         """
-        if not self._read_gen:
-            self.__aiter__()  # initialize the read generator
-        assert self._read_gen
-        return await self._read_gen.__anext__()
+        return await self._impl.__anext__()
 
     async def aclose(self):
         """mdmd:hidden"""
-        if self._read_gen:
-            await self._read_gen.aclose()
-            self._read_gen = None
+        await self._impl.aclose()
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
@@ -695,7 +783,10 @@ class _StreamWriterThroughCommandRouterSandbox(_StreamWriterThroughCommandRouter
 
     async def stdin_write(self, data: bytes, eof: bool) -> None:
         task_id, client = await self._resolve_router()
-        await client.sandbox_stdin_write_v2(task_id=task_id, offset=self._offset, data=data, eof=eof)
+        try:
+            await client.sandbox_stdin_write_v2(task_id=task_id, offset=self._offset, data=data, eof=eof)
+        except ConflictError as exc:
+            raise ValueError(str(exc))
 
 
 class _StreamWriter:

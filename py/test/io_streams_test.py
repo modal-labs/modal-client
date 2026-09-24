@@ -248,7 +248,7 @@ async def test_stream_reader_bytes_mode(servicer, client):
     """Test that the stream reader works in bytes mode."""
 
     class _BytesRouter:
-        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None):
+        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None, start_offset=0):
             yield sr_pb2.TaskExecStdioReadResponse(data=b"foo\n")
 
     router = _BytesRouter()
@@ -327,7 +327,7 @@ async def test_stream_reader_container_process_reads_all_messages():
     """Test that StreamReader reads all messages from the command router."""
 
     class _MultiMsgRouter:
-        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None):
+        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None, start_offset=0):
             for i in range(6):
                 yield sr_pb2.TaskExecStdioReadResponse(data=f"msg{i}\n".encode())
 
@@ -355,7 +355,7 @@ async def test_stream_reader_timeout():
     from modal.exception import ExecTimeoutError
 
     class _SlowRouter:
-        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None):
+        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None, start_offset=0):
             for i in range(3):
                 if i == 2:
                     # Simulate the router raising a timeout error when deadline is exceeded
@@ -485,6 +485,7 @@ class _TestV2SandboxRouter:
         self,
         task_id: str,
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        start_offset: int = 0,
     ) -> AsyncGenerator[sr_pb2.SandboxStdioReadV2Response, None]:
         self.calls.append({"task_id": task_id, "file_descriptor": file_descriptor})
         for frame in self._frames:
@@ -577,7 +578,7 @@ async def test_v2_stream_reader_warns_on_silent_advance_first_chunk(caplog):
     reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, sandbox_id="sb-evicted", text=False)
     with caplog.at_level("WARNING", logger="modal-client"):
         assert await reader.read.aio() == b"tail"
-    assert any("sb-evicted" in rec.message and "dropped first 1024 bytes" in rec.message for rec in caplog.records)
+    assert any("sb-evicted" in rec.message and "dropped 1024 bytes" in rec.message for rec in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -590,7 +591,7 @@ async def test_v2_stream_reader_no_warning_when_starting_offset_zero(caplog):
     reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
     with caplog.at_level("WARNING", logger="modal-client"):
         assert await reader.read.aio() == b"ok"
-    assert not any("dropped first" in rec.message for rec in caplog.records)
+    assert not any("dropped" in rec.message for rec in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -607,8 +608,107 @@ async def test_v2_stream_reader_warns_only_on_first_chunk(caplog):
     reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
     with caplog.at_level("WARNING", logger="modal-client"):
         assert await reader.read.aio() == b"abc"
-    drop_warnings = [rec for rec in caplog.records if "dropped first" in rec.message]
+    drop_warnings = [rec for rec in caplog.records if "dropped" in rec.message]
     assert len(drop_warnings) == 1
+
+
+class _FlakyV2SandboxRouter:
+    """Test fixture whose stdio stream fails once mid-read, then serves the rest."""
+
+    def __init__(self):
+        self.start_offsets: list[int] = []
+
+    async def sandbox_stdio_read(
+        self,
+        task_id: str,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        start_offset: int = 0,
+    ) -> AsyncGenerator[sr_pb2.SandboxStdioReadV2Response, None]:
+        self.start_offsets.append(start_offset)
+        if len(self.start_offsets) == 1:
+            yield sr_pb2.SandboxStdioReadV2Response(data=b"hello ", starting_offset=start_offset)
+            raise RuntimeError("injected stream failure")
+        yield sr_pb2.SandboxStdioReadV2Response(data=b"world", starting_offset=start_offset)
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_read_resumes_from_offset_after_failure():
+    router = _FlakyV2SandboxRouter()
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    with pytest.raises(RuntimeError, match="injected stream failure"):
+        await reader.read.aio()
+    assert await reader.read.aio() == b"world"
+    assert await reader.read.aio() == b""
+    assert router.start_offsets == [0, 6]
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_iteration_resumes_from_offset_after_failure():
+    router = _FlakyV2SandboxRouter()
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    received = []
+    with pytest.raises(RuntimeError, match="injected stream failure"):
+        async for chunk in reader:
+            received.append(chunk)
+    async for chunk in reader:
+        received.append(chunk)
+    assert received == [b"hello ", b"world"]
+    assert router.start_offsets == [0, 6]
+
+
+class _ClosableV2SandboxRouter:
+    """Test fixture that serves ``data`` from any offset and counts stream closes."""
+
+    def __init__(self, data: bytes, chunk_size: int):
+        self._data = data
+        self._chunk_size = chunk_size
+        self.start_offsets: list[int] = []
+        self.closes = 0
+
+    async def sandbox_stdio_read(
+        self,
+        task_id: str,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        start_offset: int = 0,
+    ) -> AsyncGenerator[sr_pb2.SandboxStdioReadV2Response, None]:
+        self.start_offsets.append(start_offset)
+        try:
+            for i in range(start_offset, len(self._data), self._chunk_size):
+                chunk = self._data[i : i + self._chunk_size]
+                yield sr_pb2.SandboxStdioReadV2Response(data=chunk, starting_offset=i)
+        finally:
+            self.closes += 1
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_aclose_closes_stream_and_resumes_from_offset():
+    router = _ClosableV2SandboxRouter(b"abcdefghi", chunk_size=3)
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    received = []
+    async for chunk in reader:
+        received.append(chunk)
+        break
+    await reader.aclose()
+    assert router.closes == 1
+    async for chunk in reader:
+        received.append(chunk)
+    assert received == [b"abc", b"def", b"ghi"]
+    assert router.start_offsets == [0, 3]
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_aclose_keeps_partial_line_for_resume():
+    router = _ClosableV2SandboxRouter(b"ab\ncd\nef", chunk_size=4)
+    reader: StreamReader[str] = await _make_v2_stream_reader.aio(router, text=True, by_line=True)
+    received = []
+    async for line in reader:
+        received.append(line)
+        break
+    await reader.aclose()
+    assert router.closes == 1
+    assert await reader.read.aio() == "cd\nef"
+    assert received == ["ab\n"]
+    assert router.start_offsets == [0, 4]
 
 
 @pytest.mark.asyncio
@@ -685,6 +785,7 @@ class _FakeCommandRouterClient:
         exec_id: str,
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
         deadline: float | None = None,
+        start_offset: int = 0,
     ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         yield sr_pb2.TaskExecStdioReadResponse(data=b"a")
         yield sr_pb2.TaskExecStdioReadResponse(data=b"b")
