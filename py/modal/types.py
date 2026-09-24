@@ -181,9 +181,11 @@ class FunctionStats:
     container_error_count: int
     container_creating_at_end_count: int
     container_percentile_stats: dict[str, StatsPercentileDistribution]
+    variant_count: int
+    all_variants: bool
 
     @classmethod
-    def _from_proto(cls, proto: api_pb2.FunctionGetTimeRangeStatsResponse) -> "FunctionStats":
+    def _from_proto(cls, proto: api_pb2.FunctionGetTimeRangeStatsResponse, all_variants: bool) -> "FunctionStats":
         return cls(
             since=proto.since.ToDatetime(tzinfo=timezone.utc),
             until=proto.until.ToDatetime(tzinfo=timezone.utc),
@@ -200,6 +202,83 @@ class FunctionStats:
             container_percentile_stats={
                 k: StatsPercentileDistribution._from_proto(v) for k, v in proto.container_percentile_stats.items()
             },
+            variant_count=proto.variant_count,
+            all_variants=all_variants,
+        )
+
+
+@dataclass(frozen=True)
+class ServerStats:
+    """Historical Server statistics for a time range."""
+
+    @dataclass(frozen=True)
+    class InferenceStats:
+        """Inference-engine statistics for a Server."""
+
+        engine: str
+        status: str
+        percentile_stats: dict[str, StatsPercentileDistribution]
+        scalar_stats: dict[str, float]
+
+        @classmethod
+        def _from_proto(
+            cls, proto: api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats
+        ) -> "ServerStats.InferenceStats":
+            engine_to_proto = {
+                api_pb2.LLMEngine.LLM_ENGINE_SGLANG: "sglang",
+                api_pb2.LLMEngine.LLM_ENGINE_VLLM: "vllm",
+                api_pb2.LLMEngine.LLM_ENGINE_UNSPECIFIED: "unspecified",
+            }
+
+            status_to_proto = {
+                api_pb2.ServerInferenceStatsStatus.SERVER_INFERENCE_STATS_STATUS_NO_DATA: "no_data",
+                api_pb2.ServerInferenceStatsStatus.SERVER_INFERENCE_STATS_STATUS_AVAILABLE: "available",
+                api_pb2.ServerInferenceStatsStatus.SERVER_INFERENCE_STATS_STATUS_UNAVAILABLE: "unavailable",
+                api_pb2.ServerInferenceStatsStatus.SERVER_INFERENCE_STATS_STATUS_UNSPECIFIED: "unspecified",
+            }
+
+            return cls(
+                engine=engine_to_proto.get(proto.engine, "unrecognized"),
+                status=status_to_proto.get(proto.status, "unrecognized"),
+                percentile_stats={
+                    name: StatsPercentileDistribution._from_proto(distribution)
+                    for name, distribution in proto.percentile_stats.items()
+                },
+                scalar_stats=dict(proto.scalar_stats),
+            )
+
+    since: datetime
+    until: datetime
+    request_count: int
+    request_count_by_status_code: dict[int, int]
+    request_rate_per_second: float
+    request_percentile_stats: dict[str, StatsPercentileDistribution]
+    container_started_count: int
+    container_error_count: int
+    container_creating_at_end_count: int
+    container_percentile_stats: dict[str, StatsPercentileDistribution]
+    inference: InferenceStats | None
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.ServerGetTimeRangeStatsResponse) -> "ServerStats":
+        return cls(
+            since=proto.since.ToDatetime(tzinfo=timezone.utc),
+            until=proto.until.ToDatetime(tzinfo=timezone.utc),
+            request_count=proto.request_count,
+            request_count_by_status_code={item.status_code: item.count for item in proto.request_count_by_status_code},
+            request_rate_per_second=proto.request_rate_per_second,
+            request_percentile_stats={
+                name: StatsPercentileDistribution._from_proto(distribution)
+                for name, distribution in proto.request_percentile_stats.items()
+            },
+            container_started_count=proto.container_started_count,
+            container_error_count=proto.container_error_count,
+            container_creating_at_end_count=proto.container_creating_at_end_count,
+            container_percentile_stats={
+                name: StatsPercentileDistribution._from_proto(distribution)
+                for name, distribution in proto.container_percentile_stats.items()
+            },
+            inference=ServerStats.InferenceStats._from_proto(proto.inference) if proto.HasField("inference") else None,
         )
 
 

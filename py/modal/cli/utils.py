@@ -300,6 +300,8 @@ async def _resolve_function_id(
 
     if function.is_server != (object_type == "Server"):
         actual_type = "Server" if function.is_server else "Function"
+        if function.is_server and command == "variants":
+            raise UsageError(f"'{function_identifier}' is a Server.")
         raise UsageError(f"'{function_identifier}' is a {actual_type}. Use `modal {actual_type.lower()} {command}`.")
 
     return function_id, metadata

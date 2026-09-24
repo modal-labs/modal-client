@@ -2892,6 +2892,7 @@ def test_function_stats(client, servicer):
             "cpu_usage": _stats_distribution("cores", 0.1, 0.4, 0.8),
             "memory_usage": _stats_distribution("GiB", 0.2, 0.5, 1.0),
         },
+        variant_count=4,
     )
     historical_response.since.FromDatetime(since)
     historical_response.until.FromDatetime(until)
@@ -2902,12 +2903,13 @@ def test_function_stats(client, servicer):
             api_pb2.FunctionGetResponse(function_id=function_id, function=EXAMPLE_FUNCTION),
         )
         ctx.add_response("FunctionGetTimeRangeStats", historical_response)
-        stats = f.stats(since=since, until=until)
+        stats = f.stats(since=since, until=until, all_variants=True)
 
     historical_request = ctx.pop_request("FunctionGetTimeRangeStats")
     assert historical_request.function_id == function_id
     assert historical_request.since.ToDatetime(tzinfo=timezone.utc) == since
     assert historical_request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert historical_request.rollup
     assert ctx.get_requests("FunctionGetCurrentStats") == []
 
     assert stats.since == since
@@ -2931,6 +2933,8 @@ def test_function_stats(client, servicer):
     assert stats.container_percentile_stats["startup_time"].unit == "seconds"
     assert stats.container_percentile_stats["cpu_usage"].unit == "cores"
     assert stats.container_percentile_stats["memory_usage"].unit == "GiB"
+    assert stats.variant_count == 4
+    assert stats.all_variants
 
 
 def test_function_stats_default_time_range(client, servicer):
@@ -2951,7 +2955,7 @@ def test_function_stats_default_time_range(client, servicer):
             ),
         )
         ctx.add_response("FunctionGetTimeRangeStats", response)
-        f.stats()
+        stats = f.stats()
     after = datetime.now(timezone.utc)
 
     request = ctx.pop_request("FunctionGetTimeRangeStats")
@@ -2959,6 +2963,9 @@ def test_function_stats_default_time_range(client, servicer):
     requested_until = request.until.ToDatetime(tzinfo=timezone.utc)
     assert before <= requested_until <= after
     assert requested_until - requested_since == timedelta(hours=1)
+    assert not request.rollup
+    assert stats.variant_count == 0
+    assert not stats.all_variants
     assert ctx.get_requests("FunctionGetCurrentStats") == []
 
 

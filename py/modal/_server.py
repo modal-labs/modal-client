@@ -2,6 +2,7 @@
 import inspect
 import json
 import typing
+from datetime import datetime, timedelta, timezone
 
 from modal_proto import api_pb2
 
@@ -21,7 +22,7 @@ from .client import _Client
 from .cls import is_parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError, ServiceError
-from .types import ServerAutoscalerSettings, ServerContainerInfo, ServerInfo, ServerSessionCredentials
+from .types import ServerAutoscalerSettings, ServerContainerInfo, ServerInfo, ServerSessionCredentials, ServerStats
 
 if typing.TYPE_CHECKING:
     import modal.app
@@ -413,6 +414,48 @@ class _Server:
                 f"Server class {user_cls.__name__} cannot have a custom __init__ method. "
                 "Use @modal.enter() for initialization logic instead."
             )
+
+    @live_method
+    async def stats(
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        container: str | None = None,
+    ) -> ServerStats:
+        """Return statistics for a modal Server.
+
+        The default time range is the most recent hour. The maximum time range is 7 days.
+
+        Args:
+            since: The beginning of the time range, inclusive. If omitted, this defaults to an hour before `until`.
+               Values without a timezone are interpeted as local time.
+            until: The end of the time range, exclusive. If omitted, this defaults to current time.
+                Values without a timezone are interpeted as local time.
+            container: If passed in, the stats are computed for only this container. Default None.
+
+        Returns:
+            A `ServerStats` object
+        """
+        until = until or datetime.now(timezone.utc)
+        if until.tzinfo is None:
+            until = until.astimezone()
+        until = until.astimezone(timezone.utc)
+
+        since = since or until - timedelta(hours=1)
+        if since.tzinfo is None:
+            since = since.astimezone()
+        since = since.astimezone(timezone.utc)
+        if since >= until:
+            raise InvalidError("`since` must be before `until`.")
+
+        request = api_pb2.ServerGetTimeRangeStatsRequest(function_id=self.object_id)
+        request.since.FromDatetime(since)
+        request.until.FromDatetime(until)
+        if container:
+            request.container_id = container
+        stats = await self._get_service_function().client.stub.ServerGetTimeRangeStats(request)
+        return ServerStats._from_proto(stats)
 
 
 @retry(n_attempts=5, base_delay=0.5, attempt_timeout=65, total_timeout=200)

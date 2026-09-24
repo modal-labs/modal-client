@@ -659,10 +659,12 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
         }
 
         def entries_with_info(entries: Mapping[str, str]) -> dict[str, dict]:
-            return {
-                name: {"id": function_id, "summary": summaries.get(function_id, {})}
-                for name, function_id in sorted(entries.items())
-            }
+            infos = {}
+            for name, function_id in sorted(entries.items()):
+                summary = summaries.get(function_id, {})
+                summary = {("authenticated" if k == "requires_proxy_auth" else k): v for k, v in summary.items()}
+                infos[name] = {"id": function_id, "summary": summary}
+            return infos
 
         output.print_json(
             dumps(

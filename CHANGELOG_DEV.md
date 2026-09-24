@@ -30,7 +30,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `Function.info` method that displays static information about a particular Function
 - Added `Server.info` method that displays static information about a particular Server
 - Added `modal function stats` to inspect performance metrics for a Function over a selected time window.
-- Added `Function.stats()` method to inspect performance metrics for a Function over a selected time window
+- Added `Function.stats()` and `Server.stats()` methods to inspect performance metrics for a Function or Server over a time window.
 - Renamed the return type of `Function.get_current_stats()` to `FunctionCurrentStats`.
 - Added an `--expires-in` option to `modal token new` for setting the lifetime of the new token (e.g. `12h`, `7d`).
 - Added `modal function logs` to fetch or stream logs from a modal function.

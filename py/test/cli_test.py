@@ -3120,8 +3120,8 @@ def test_app_info_summaries(servicer, set_env_client, authenticated, secondary_g
     server = data["servers"]["LongNamedFileServer"]
     assert server["id"] == "fu-server"
     assert not server["summary"].get("web_function", False)
-    assert server["summary"]["requires_proxy_auth"] is authenticated
-    assert "requires_proxy_auth" not in data["functions"]["alpha"]["summary"]
+    assert server["summary"]["authenticated"] is authenticated
+    assert "authenticated" not in data["functions"]["alpha"]["summary"]
 
 
 def test_app_info_with_servers(servicer, mock_dir, set_env_client):
@@ -4225,7 +4225,7 @@ def test_function_calls_cli(servicer, set_env_client, monkeypatch):
     assert "fc-1" in result.stdout
     assert "fc-2" in result.stdout
     assert "ta-123" in result.stdout
-    assert "Queue Time (s)" in result.stdout
+    assert "Queuing (s)" in result.stdout
     assert "Execution (s)" in result.stdout
     assert "1.00" in result.stdout
     assert "2.50" in result.stdout
@@ -4778,6 +4778,22 @@ def test_function_variants_cli_rejects_negative_limit(set_env_client):
     assert "--limit cannot be negative" in result.stderr
 
 
+def test_function_variants_cli_rejects_server(set_env_client, monkeypatch):
+    client = mock.Mock()
+    client._stub.FunctionGetById = mock.AsyncMock(
+        return_value=api_pb2.FunctionGetByIdResponse(function=api_pb2.FunctionData(is_server=True))
+    )
+    monkeypatch.setattr("modal.cli.function._Client.from_env", mock.AsyncMock(return_value=client))
+
+    result = run_cli_command(
+        ["function", "variants", "fu-server"],
+        expected_exit_code=2,
+    )
+
+    assert "'fu-server' is a Server." in result.stderr
+    client._stub.FunctionListVariants.assert_not_called()
+
+
 @pytest.mark.parametrize("reason", [None, 0, api_pb2.FunctionLookupError.REASON_CLASS_NAME_USED])
 def test_function_stats_cli_class_lookup_error_details(servicer, set_env_client, reason):
     message = "Lookup failed" if reason == 1 else "Object 'MyClass' is a Class, not a Function."
@@ -5083,8 +5099,8 @@ def test_server_stats_cli_json_preserves_unknown_inference_enums(servicer, set_e
         )
 
     assert json.loads(result.stdout)["inference"] == {
-        "engine": 123,
-        "status": 456,
+        "engine": "unrecognized",
+        "status": "unrecognized",
         "percentile_stats": {},
         "scalar_stats": {},
     }

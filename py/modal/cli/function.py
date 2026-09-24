@@ -55,7 +55,7 @@ _CONTAINER_METRIC_ORDER = (
     "Memory Usage (GiB)",
     "GPU Utilization (%)",
 )
-_DEFAULT_CALL_TAIL = 100
+_DEFAULT_CALL_TAIL = 10
 _MAX_CALL_TAIL = 1000
 _FAILURE_STATUSES = {
     api_pb2.FUNCTION_CALL_INPUT_STATUS_FAILURE: "Failure",
@@ -264,9 +264,11 @@ async def stats(
     output = OutputManager.get()
     output.print("")
     heading = f"Function stats for {function_id}"
-    if all_variants:
-        variant_label = "variant" if resp.variant_count == 1 else "variants"
-        heading += f" · all variants ({resp.variant_count:,} {variant_label})"
+    if resp.variant_count == 0 and not all_variants:
+        variant_label = ""
+    else:
+        variant_label = f" ({resp.variant_count:,} {'variant' + ('s' if resp.variant_count != 1 else '')})"
+    heading += f"{' · all variants' if all_variants else ''}{variant_label}"
     use_color = not no_color
     output.print(Text(heading, style=stats_style(STATS_HEADING_STYLE, use_color)))
     output.print("")
@@ -510,7 +512,7 @@ async def calls(
     output.print("")
     columns: list[str | Column] = [
         Column("Enqueued (UTC)", no_wrap=True, justify="right"),
-        Column("Queue Time (s)", justify="right"),
+        Column("Queuing (s)", justify="right"),
     ]
     if show_function_call_id:
         columns.append("Function Call ID")

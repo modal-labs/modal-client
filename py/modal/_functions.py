@@ -2284,7 +2284,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @live_method
     async def stats(
-        self, *, since: datetime | None = None, until: datetime | None = None, container: str | None = None
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        container: str | None = None,
+        all_variants: bool = False,
     ) -> FunctionStats:
         """Return statistics for a modal Function.
 
@@ -2296,6 +2301,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             until: The end of the time range, exclusive. If omitted, this defaults to current time.
                 Values without a timezone are interpeted as local time.
             container: If passed in, the stats are computed for only this container. Default None.
+            all_variants: If True, aggregate the base Function and its variants.
 
         Returns:
             A `FunctionStats` object
@@ -2312,13 +2318,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if since >= until:
             raise InvalidError("`since` must be before `until`.")
 
-        historical_request = api_pb2.FunctionGetTimeRangeStatsRequest(function_id=self.object_id)
-        historical_request.since.FromDatetime(since)
-        historical_request.until.FromDatetime(until)
+        request = api_pb2.FunctionGetTimeRangeStatsRequest(function_id=self.object_id, rollup=all_variants)
+        request.since.FromDatetime(since)
+        request.until.FromDatetime(until)
         if container:
-            historical_request.container_id = container
-        stats = await self.client._stub.FunctionGetTimeRangeStats(historical_request)
-        return FunctionStats._from_proto(stats)
+            request.container_id = container
+        stats = await self.client._stub.FunctionGetTimeRangeStats(request)
+        return FunctionStats._from_proto(stats, all_variants=all_variants)
 
     @live_method
     async def _get_schema(self) -> api_pb2.FunctionSchema:

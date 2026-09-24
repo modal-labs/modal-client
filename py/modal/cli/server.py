@@ -47,7 +47,7 @@ from .utils import (
 
 server_cli = ModalGroup(name="server", help="Manage Servers.")
 
-_DEFAULT_REQUEST_TAIL = 100
+_DEFAULT_REQUEST_TAIL = 10
 _MAX_REQUEST_TAIL = 1000
 
 
@@ -299,12 +299,12 @@ _INFERENCE_METRIC_ORDER = tuple(_INFERENCE_METRIC_FORMATS)
 _DISPLAYED_PERCENTILES = ((5000, "p50"), (9000, "p90"), (9900, "p99"))
 
 
-def _enum_value_name(value: int, enum_wrapper, prefix: str) -> str | int:
+def _enum_value_name(value: int, enum_wrapper, prefix: str) -> str:
     # Preserve unknown values so older clients can serialize enums added by newer servers.
     try:
         name = enum_wrapper.Name(value)
     except ValueError:
-        return value
+        return "unrecognized"
     return name.removeprefix(prefix).lower()
 
 

@@ -3,6 +3,7 @@ import contextlib
 import pytest
 import re
 import subprocess
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest import mock
 
@@ -1543,3 +1544,111 @@ def test_server_info_refresh(client):
 
     new_info = handle.info(refresh=True)  # type: ignore[attr-defined]
     assert new_info.http_info.proxy_regions == ["us-west"]
+
+
+def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb2.StatsPercentileDistribution:
+    return api_pb2.StatsPercentileDistribution(
+        unit=unit,
+        percentiles=[
+            api_pb2.StatsPercentile(percentile_basis_points=5000, value=p50),
+            api_pb2.StatsPercentile(percentile_basis_points=9000, value=p90),
+            api_pb2.StatsPercentile(percentile_basis_points=9900, value=p99),
+        ],
+    )
+
+
+def test_server_stats(client, servicer):
+    server_app.deploy(client=client)
+    server = Server.from_name("server-test-app", "BasicServer", client=client)
+    since = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    until = since + timedelta(hours=2)
+    response = api_pb2.ServerGetTimeRangeStatsResponse(
+        request_count=1284,
+        request_count_by_status_code=[
+            api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=200, count=1241),
+            api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=400, count=37),
+            api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=500, count=6),
+        ],
+        request_rate_per_second=0.36,
+        request_percentile_stats={
+            "request_latency": _stats_distribution("seconds", 1.18, 3.51, 5.72),
+        },
+        container_percentile_stats={
+            "startup_time": _stats_distribution("seconds", 5.484, 7.13, 8.25),
+            "cpu_usage": _stats_distribution("cores", 0.35, 0.72, 0.9),
+        },
+        inference=api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats(
+            engine=api_pb2.LLM_ENGINE_SGLANG,
+            status=api_pb2.SERVER_INFERENCE_STATS_STATUS_AVAILABLE,
+            percentile_stats={
+                "time_to_first_token": _stats_distribution("seconds", 0.121, 0.317, 0.5),
+            },
+            scalar_stats={"output_tokens_per_second": 585.0},
+        ),
+        container_started_count=10,
+        container_error_count=1,
+        container_creating_at_end_count=2,
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ServerGetTimeRangeStats", response)
+        stats = server.stats(since=since, until=until, container="ta-123")
+
+    request = ctx.pop_request("ServerGetTimeRangeStats")
+    assert request.function_id == server.object_id
+    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
+    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert request.container_id == "ta-123"
+
+    assert stats.since == since
+    assert stats.until == until
+    assert stats.request_count == 1284
+    assert stats.request_count_by_status_code == {200: 1241, 400: 37, 500: 6}
+    assert stats.request_rate_per_second == 0.36
+    assert stats.request_percentile_stats["request_latency"].unit == "seconds"
+    assert stats.container_percentile_stats["startup_time"].unit == "seconds"
+    assert stats.container_percentile_stats["cpu_usage"].unit == "cores"
+    assert stats.container_started_count == 10
+    assert stats.container_error_count == 1
+    assert stats.container_creating_at_end_count == 2
+    assert stats.inference is not None
+    assert stats.inference.engine == "sglang"
+    assert stats.inference.status == "available"
+    assert stats.inference.percentile_stats["time_to_first_token"].unit == "seconds"
+    assert stats.inference.scalar_stats == {"output_tokens_per_second": 585.0}
+
+
+def test_server_stats_default_time_range(client, servicer):
+    server_app.deploy(client=client)
+    server = Server.from_name("server-test-app", "BasicServer", client=client)
+    response_since = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    response_until = response_since + timedelta(hours=1)
+    response = api_pb2.ServerGetTimeRangeStatsResponse()
+    response.since.FromDatetime(response_since)
+    response.until.FromDatetime(response_until)
+
+    before = datetime.now(timezone.utc)
+    with servicer.intercept() as ctx:
+        ctx.add_response("ServerGetTimeRangeStats", response)
+        server.stats()
+    after = datetime.now(timezone.utc)
+
+    request = ctx.pop_request("ServerGetTimeRangeStats")
+    requested_since = request.since.ToDatetime(tzinfo=timezone.utc)
+    requested_until = request.until.ToDatetime(tzinfo=timezone.utc)
+    assert before <= requested_until <= after
+    assert requested_until - requested_since == timedelta(hours=1)
+
+
+def test_server_stats_rejects_invalid_time_range(client, servicer):
+    server_app.deploy(client=client)
+    server = Server.from_name("server-test-app", "BasicServer", client=client)
+    now = datetime.now(timezone.utc)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="must be before"):
+            server.stats(since=now, until=now)
+
+    assert ctx.get_requests("ServerGetTimeRangeStats") == []
