@@ -5,10 +5,9 @@ from typing import Any
 
 from modal_proto import api_pb2
 
-from .._clustered_functions import (
-    ClusterInfo,
-    get_cluster_info as _get_cluster_info,
-    get_fabric_peers as _get_fabric_peers,
+from .._cluster import (
+    ClusterContext as ClusterInfo,
+    get_current_cluster_context as _get_current_cluster_context,
 )
 from .._functions import _Function
 from .._image import (
@@ -61,11 +60,15 @@ def set_local_input_concurrency(concurrency: int):
 
 
 def get_cluster_info() -> ClusterInfo:
-    return _get_cluster_info()
+    return _get_current_cluster_context()
 
 
 def get_fabric_peers() -> list[int]:
-    return _get_fabric_peers()
+    context = _get_current_cluster_context()
+    if context.rank >= len(context.fabric_ids) or not context.fabric_ids[context.rank]:
+        return [context.rank]
+    own_fabric_id = context.fabric_ids[context.rank]
+    return [rank for rank, fabric_id in enumerate(context.fabric_ids) if fabric_id == own_fabric_id]
 
 
 def clustered(size: int, broadcast: bool = True, rdma: bool = False, fabric_size: int | None = None):

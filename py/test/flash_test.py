@@ -5,7 +5,7 @@ import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from modal._clustered_functions import ClusterInfo
+from modal._cluster import ClusterContext
 from modal.experimental._flash_container_entry import _FlashContainerEntry
 from modal.experimental.flash import _FlashManager
 from modal.experimental.flash_server import _ServerManager
@@ -559,14 +559,14 @@ class TestFlashClusteredEntry:
         container_ips = ["2001:db8::1", "2001:db8::2"]
         container_ipv4_ips = ["10.0.0.1", "10.0.0.2"]
 
-        cluster_zero = ClusterInfo(
+        cluster_zero = ClusterContext(
             rank=0,
             cluster_id="cluster",
             container_ips=container_ips,
             container_ipv4_ips=container_ipv4_ips,
             fabric_ids=[],
         )
-        monkeypatch.setattr("modal._clustered_functions.cluster_info", cluster_zero)
+        monkeypatch.setattr("modal._cluster.current_cluster_context", cluster_zero)
 
         entry = _FlashContainerEntry(http_config)
         entry.enter()
@@ -581,14 +581,14 @@ class TestFlashClusteredEntry:
 
         flash_forward_mock.reset_mock()
 
-        cluster_non_zero = ClusterInfo(
+        cluster_non_zero = ClusterContext(
             rank=1,
             cluster_id="cluster",
             container_ips=container_ips,
             container_ipv4_ips=container_ipv4_ips,
             fabric_ids=[],
         )
-        monkeypatch.setattr("modal._clustered_functions.cluster_info", cluster_non_zero)
+        monkeypatch.setattr("modal._cluster.current_cluster_context", cluster_non_zero)
 
         entry_non_zero = _FlashContainerEntry(http_config)
         entry_non_zero.enter()

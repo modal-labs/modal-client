@@ -16,6 +16,7 @@ try:
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls, parameter
+    from .cluster import Cluster
     from .dict import Dict
     from .environments import Environment
     from .exception import Error
@@ -63,6 +64,7 @@ __all__ = [
     "__version__",
     "App",
     "Client",
+    "Cluster",
     "Cls",
     "Cron",
     "Dict",

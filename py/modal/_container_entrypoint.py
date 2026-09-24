@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from google.protobuf.message import Message
 
-from modal._clustered_functions import initialize_clustered_function
+from modal._cluster import initialize_clustered_function
 from modal._runtime.user_code_event_loop import UserCodeEventLoop
 from modal._serialization import deserialize, deserialize_params
 from modal._utils.async_utils import TaskContext, aclosing, synchronizer
@@ -407,11 +407,7 @@ def run_server(container_args: api_pb2.ContainerArguments, client: Client):
     service: Service = hydrate_function(container_args, task_lifecycle_manager, function_def, _client)
     # Initialize clustered functions.
     if function_def._experimental_group_size > 0:
-        initialize_clustered_function(
-            client,
-            container_args.task_id,
-            function_def._experimental_group_size,
-        )
+        initialize_clustered_function(client, container_args.task_id)
 
     with UserCodeEventLoop() as event_loop:
         with service.lifecycle_context(
@@ -452,11 +448,7 @@ def run_function(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize clustered functions.
         if function_def._experimental_group_size > 0:
-            initialize_clustered_function(
-                client,
-                container_args.task_id,
-                function_def._experimental_group_size,
-            )
+            initialize_clustered_function(client, container_args.task_id)
 
         with service.function_execution_context(
             event_loop=event_loop,

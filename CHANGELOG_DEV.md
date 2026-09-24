@@ -6,6 +6,8 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## Python
 
+- Added `modal.Cluster` for inspecting clustered execution. Use `Cluster.from_context()` inside a cluster or `Cluster.from_id()` to inspect a cluster by ID. `container_ids()` fetches membership ordered by rank, `container_rank()` looks up a member's rank, and `container_ips()` returns addresses from within the cluster.
+
 - Added `modal.clustered` as a public API. `modal.experimental.clustered` is deprecated.
 - Classes decorated with `@app.cls()` can no longer define a custom `__init__` constructor (including one inherited from a base class); this now raises an `InvalidError` instead of a deprecation warning. Use [`modal.parameter()`](/docs/guide/parametrized-functions) to parameterize classes and `@modal.enter()` for initialization logic. Classes deployed by older clients with a custom constructor can still be looked up and called.
 - `modal shell` now respects the `MODAL_SANDBOX_V2` setting. V2 shells support Function references and `--add-local` mounts.

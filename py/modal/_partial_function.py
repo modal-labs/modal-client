@@ -871,8 +871,14 @@ def _clustered(*, size: int, rdma: bool = False) -> _ClusteredDecorator:
 
     Function inputs are broadcast to every container, and only rank 0's output
     is returned. Server requests are routed only to rank 0 and are not broadcast
-    to the other containers. Use `modal.experimental.get_cluster_info()` inside
-    the container to discover its rank and its peers.
+    to the other containers. Use `modal.Cluster.from_context()` inside a container
+    to discover its rank and the cluster's container IP addresses:
+
+    ```python notest
+    cluster = modal.Cluster.from_context()
+    rank = cluster.container_rank()
+    container_ips = cluster.container_ips()
+    ```
 
     `min_containers`, `max_containers`, and `buffer_containers` count individual
     containers and must be multiples of `size`. For example, `size=4` with

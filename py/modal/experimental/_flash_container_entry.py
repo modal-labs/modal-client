@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from modal._clustered_functions import get_cluster_info
+from modal._cluster import get_current_cluster_context
 from modal_proto import api_pb2
 
 from .._runtime.task_lifecycle_manager import UserException
@@ -41,7 +41,7 @@ class _FlashContainerEntry:
                     self.flash_manager = server_forward()
                 else:
                     try:
-                        rank = get_cluster_info().rank
+                        rank = get_current_cluster_context().rank
                         if rank != 0:
                             return
                     except InvalidError:
