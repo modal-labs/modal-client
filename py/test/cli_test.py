@@ -3088,7 +3088,7 @@ def test_app_info_summaries(servicer, set_env_client, authenticated, secondary_g
                 schedule=api_pb2.Schedule(cron=api_pb2.Schedule.Cron(cron_string="0 0 * * *", timezone="UTC")),
                 web_function=True,
             ),
-            "fu-server": summary(requires_proxy_auth=authenticated),
+            "fu-server": summary(requires_proxy_auth=authenticated, is_sessioned=True),
         },
     )
     with servicer.intercept() as ctx:
@@ -3105,8 +3105,10 @@ def test_app_info_summaries(servicer, set_env_client, authenticated, secondary_g
     assert "Every 15 minutes" in rendered
     if authenticated:
         assert "Unauthenticated" not in rendered
+        assert "CPU · Sessioned\n" in rendered
     else:
-        assert "CPU · Unauthenticated" in rendered
+        assert "CPU · Sessioned · Unauthenticated" in rendered
+    assert rendered.count("Sessioned") == 1
     assert " · Auth" not in rendered
     assert "No auth" not in rendered
     assert rendered.count("Web Function") == 1
@@ -3135,6 +3137,8 @@ def test_app_info_summaries(servicer, set_env_client, authenticated, secondary_g
     assert server["id"] == "fu-server"
     assert not server["summary"].get("web_function", False)
     assert server["summary"]["authenticated"] is authenticated
+    assert server["summary"]["is_sessioned"] is True
+    assert "is_sessioned" not in data["functions"]["alpha"]["summary"]
     assert "authenticated" not in data["functions"]["alpha"]["summary"]
 
 

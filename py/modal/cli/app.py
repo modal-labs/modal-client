@@ -729,6 +729,8 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
                 metadata.append(f" ({', '.join(hardware[1:])})", style=None if no_color else "bright_black")
             if summary.web_function:
                 metadata.append(" · Web Function")
+            if summary.is_sessioned:
+                metadata.append(" · Sessioned")
             if schedule := _app_function_schedule(summary.schedule):
                 metadata.append(" · ")
                 metadata.append(schedule)
