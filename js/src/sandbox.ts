@@ -794,8 +794,8 @@ export class SandboxService {
     image: Image,
     params: SandboxCreateParams = {},
   ): Promise<Sandbox> {
-    // Opt-in to the V2 backend. GPUs are not supported on V2, so those calls
-    // stay on V1 even when the flag is set.
+    // GPUs are not supported on V2, so those calls use the V1 backend
+    // regardless of the setting.
     if (this.#client.profile.sandboxV2 && !params.gpu) {
       return await this.experimentalCreate(app, image, params);
     }

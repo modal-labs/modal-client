@@ -29,8 +29,9 @@ test("GetProfile_MaxThrottleWaitInvalidValue", () => {
 });
 
 const sandboxV2Cases = [
-  { envVal: undefined, expected: false },
-  { envVal: "", expected: false },
+  // Unset (or empty) env falls back to the default, which is V2.
+  { envVal: undefined, expected: true },
+  { envVal: "", expected: true },
   { envVal: "0", expected: false },
   { envVal: "false", expected: false },
   { envVal: "False", expected: false },
@@ -87,6 +88,9 @@ sandbox_v2 = "false"
 
 [quoted-true]
 sandbox_v2 = "true"
+
+[bool-false]
+sandbox_v2 = false
 `,
   );
   vi.stubEnv("MODAL_CONFIG_PATH", configPath);
@@ -97,6 +101,8 @@ sandbox_v2 = "true"
     const { getProfile: getProfileFromConfig } = await import("../src/config");
     expect(getProfileFromConfig("quoted-false").sandboxV2).toBe(false);
     expect(getProfileFromConfig("quoted-true").sandboxV2).toBe(true);
+    // An explicit false in the config file overrides the V2 default.
+    expect(getProfileFromConfig("bool-false").sandboxV2).toBe(false);
   } finally {
     vi.unstubAllEnvs();
     vi.resetModules();

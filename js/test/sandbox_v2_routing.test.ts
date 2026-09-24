@@ -51,8 +51,12 @@ function makeRoutingStub(
   return stub;
 }
 
-function makeClient(stub: unknown, sandboxV2: boolean): ModalClient {
-  vi.stubEnv("MODAL_SANDBOX_V2", sandboxV2 ? "1" : undefined);
+function makeClient(stub: unknown, sandboxV2?: boolean): ModalClient {
+  // Undefined leaves the setting at its default (V2); false opts out.
+  vi.stubEnv(
+    "MODAL_SANDBOX_V2",
+    sandboxV2 === undefined ? undefined : sandboxV2 ? "1" : "0",
+  );
   return new ModalClient({
     cpClient: stub as any,
     tokenId: "test-id",
@@ -62,9 +66,20 @@ function makeClient(stub: unknown, sandboxV2: boolean): ModalClient {
 
 const app = new App("ap-1234");
 
-// The sandboxV2 profile flag (MODAL_SANDBOX_V2) routes create() calls
-// onto the V2 backend.
+// Sandboxes are created on the V2 backend unless the sandboxV2 setting
+// (MODAL_SANDBOX_V2) is disabled.
 describe("MODAL_SANDBOX_V2 routing for create", () => {
+  test("routes to the V2 backend by default", async () => {
+    const stub = makeRoutingStub();
+    const client = makeClient(stub);
+    const image = new Image(client, "im-123", "");
+
+    const sb = await client.sandboxes.create(app, image);
+    expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+    expect(stub.v2Creates).toBe(1);
+    expect(stub.v1Creates).toBe(0);
+  });
+
   test("routes to the V2 backend when the flag is set", async () => {
     const stub = makeRoutingStub();
     const client = makeClient(stub, true);
@@ -87,7 +102,7 @@ describe("MODAL_SANDBOX_V2 routing for create", () => {
     expect(stub.v2Creates).toBe(0);
   });
 
-  test("stays on V1 without the flag", async () => {
+  test("stays on V1 when the flag is disabled", async () => {
     const stub = makeRoutingStub();
     const client = makeClient(stub, false);
     const image = new Image(client, "im-123", "");
@@ -142,7 +157,17 @@ describe("MODAL_SANDBOX_V2 routing for fromName", () => {
     expect(stub.v1Lookups).toBe(0);
   });
 
-  test("stays on V1 without the flag", async () => {
+  test("resolves through the V2 backend by default", async () => {
+    const stub = makeRoutingStub();
+    const client = makeClient(stub);
+
+    const sb = await client.sandboxes.fromName("my-app", "my-sandbox");
+    expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+    expect(stub.v2Lookups).toBe(1);
+    expect(stub.v1Lookups).toBe(0);
+  });
+
+  test("stays on V1 when the flag is disabled", async () => {
     const stub = makeRoutingStub();
     const client = makeClient(stub, false);
 
@@ -173,7 +198,21 @@ describe("MODAL_SANDBOX_V2 routing for list", () => {
     expect(stub.listV2Req.tags).toEqual([{ tagName: "env", tagValue: "prod" }]);
   });
 
-  test("stays on V1 without the flag", async () => {
+  test("lists through the V2 backend by default", async () => {
+    const stub = makeRoutingStub();
+    const client = makeClient(stub);
+
+    let yielded = 0;
+    for await (const _ of client.sandboxes.list()) {
+      yielded++;
+    }
+
+    expect(yielded).toBe(0);
+    expect(stub.v2Lists).toBe(1);
+    expect(stub.v1Lists).toBe(0);
+  });
+
+  test("stays on V1 when the flag is disabled", async () => {
     const stub = makeRoutingStub();
     const client = makeClient(stub, false);
 

@@ -764,13 +764,12 @@ test("SandboxModalIdentityTokenUnsetByDefault", async () => {
   });
   const image = tc.images.fromRegistry("alpine:3.21");
 
-  const sb = await tc.sandboxes.create(app, image, {
-    command: ["sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"],
-  });
+  const sb = await tc.sandboxes.create(app, image);
   onTestFinished(async () => await sb.terminate());
 
-  expect((await sb.stdout.readText()).trim()).toBe("UNSET");
-  expect(await sb.wait()).toBe(0);
+  const p = await sb.exec(["sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"]);
+  expect((await p.stdout.readText()).trim()).toBe("UNSET");
+  expect(await p.wait()).toBe(0);
 });
 
 test("SandboxIncludeOidcIdentityTokenSetsModalIdentityTokenEnv", async () => {
@@ -780,15 +779,15 @@ test("SandboxIncludeOidcIdentityTokenSetsModalIdentityTokenEnv", async () => {
   const image = tc.images.fromRegistry("alpine:3.21");
 
   const sb = await tc.sandboxes.create(app, image, {
-    command: ["sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"],
     includeOidcIdentityToken: true,
   });
   onTestFinished(async () => await sb.terminate());
 
-  const token = (await sb.stdout.readText()).trim();
+  const p = await sb.exec(["sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"]);
+  const token = (await p.stdout.readText()).trim();
   expect(token).not.toBe("UNSET");
   expect(token.length).toBeGreaterThan(0);
-  expect(await sb.wait()).toBe(0);
+  expect(await p.wait()).toBe(0);
 });
 
 test("SandboxFromId", async () => {
@@ -946,7 +945,7 @@ test("NamedSandbox", async () => {
       name: sandboxName,
       command: ["sleep", "60"],
     }),
-  ).rejects.toThrow("already exists");
+  ).rejects.toThrow(/already (exists|in use)/);
 });
 
 test("NamedSandboxNotFound", async () => {
@@ -1331,12 +1330,14 @@ test("testSandboxExperimentalDockerMock", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   const options = { enable_docker: true };
-  mock.handleUnary("/SandboxCreate", (req: any): SandboxCreateResponse => {
+  mock.handleUnary("/SandboxCreateV2", (req: any) => {
     expect(req.definition?.experimentalOptionsV2).toMatchObject({
       enable_docker: "true",
     });
     return {
       sandboxId: "sb-1234",
+      taskId: "ta-1234",
+      tunnels: [],
       metadata: { result: undefined, appId: "app-123" },
     };
   });
@@ -1389,6 +1390,10 @@ test("testSandboxExperimentalDockerMock", async () => {
 });
 
 test("create deduces V2 from the returned Sandbox ID shape", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/AppGetOrCreate", (): AppGetOrCreateResponse => {
@@ -1444,6 +1449,10 @@ test("create deduces V2 from the returned Sandbox ID shape", async () => {
 });
 
 test("fromName deduces V2 from the returned Sandbox ID shape", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/SandboxGetFromName", (req: any) => {
@@ -1508,6 +1517,10 @@ test("experimentalFromName routes a mirrored V1 sandbox to the V1 backend", asyn
 });
 
 test("list deduces V2 from returned Sandbox ID shapes", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/SandboxList", () => {
@@ -3517,7 +3530,7 @@ test("create sends the outbound policy in the definition", async () => {
       metadata: undefined,
     };
   });
-  mock.handleUnary("/SandboxCreate", (req: any): SandboxCreateResponse => {
+  mock.handleUnary("/SandboxCreateV2", (req: any) => {
     const replacements =
       req.definition?.outboundPolicy?.headerReplacements ?? [];
     expect(replacements).toHaveLength(1);
@@ -3528,6 +3541,8 @@ test("create sends the outbound policy in the definition", async () => {
     });
     return {
       sandboxId: "sb-1234",
+      taskId: "ta-1234",
+      tunnels: [],
       metadata: { result: undefined, appId: "app-123" },
     };
   });

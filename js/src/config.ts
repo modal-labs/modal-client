@@ -44,7 +44,7 @@ export interface Profile {
   sandboxChannelIdleTimeoutMs: number;
   /**
    * Set by the MODAL_SANDBOX_V2 environment variable or the sandbox_v2
-   * profile key in .modal.toml.
+   * profile key in .modal.toml. Defaults to true when neither is set.
    */
   sandboxV2: boolean;
 }
@@ -197,7 +197,9 @@ export function getProfile(profileName?: string): Profile {
     })(),
     sandboxV2: process.env["MODAL_SANDBOX_V2"]
       ? parseBooleanFlag(process.env["MODAL_SANDBOX_V2"])
-      : parseBooleanFlag(profileData.sandbox_v2),
+      : profileData.sandbox_v2 !== undefined
+        ? parseBooleanFlag(profileData.sandbox_v2)
+        : true,
   };
   return profile as Profile; // safe to null-cast because of check above
 }

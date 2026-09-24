@@ -87,8 +87,9 @@ test("SecretFromObject", async () => {
   });
   onTestFinished(async () => await sb.terminate());
 
-  // Using the Secret in a Sandbox hydrates it into a server-side Secret.
-  expect(secret.secretId).toMatch(/^st-/);
+  // The Secret is inlined into the Sandbox as ephemeral env vars, so no
+  // server-side Secret is created even after use.
+  expect(secret.secretId).toBe("");
 
   const output = await sb.stdout.readText();
   expect(output).toBe("value\n");
@@ -242,6 +243,10 @@ test("hydrateSecrets skips already-hydrated secrets", () => {
 });
 
 test("SandboxCreate hydrates a fromObject Secret", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const { mockClient: mc, mockCpClient: mock } =
     createMockClientWithPinnedBuilder();
   registerSandboxCreateDeps(mock);

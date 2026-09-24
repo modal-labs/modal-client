@@ -57,6 +57,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 
 ## JS
 
+- Sandboxes are now created on the [next-generation Sandbox backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds) by default, which was previously opt-in via the `MODAL_SANDBOX_V2=1` environment variable. Compared to the V1 backend, it supports substantially higher Sandbox creation rates and concurrent Sandbox counts, and schedules sandboxes faster. No code changes are required, and Sandboxes that use features the new backend does not support (such as GPUs) are automatically created on the V1 backend.
 - Added a `logs` property to `Sandbox` objects for fetching entrypoint logs over a time range or tailing the most recent entries.
 - `SandboxCreateParams` allows specifying a virtual machine runtime via `runtime: "vm"`, which supersedes `experimentalOptions: { vm_runtime: true }`. Leaving `runtime` unset lets Modal pick the runtime, whilst setting `runtime: "gvisor"` explicitly opts-into the gVisor runtime.
 
