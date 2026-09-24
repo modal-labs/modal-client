@@ -50,7 +50,6 @@ from ._utils.async_utils import (
 )
 from ._utils.auth_token_manager import _AuthTokenManager
 from ._utils.blob_utils import MAX_ASYNC_OBJECT_SIZE_BYTES, MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation import with_deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -1216,7 +1215,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: list[str] = gpu if isinstance(gpu, list) else [gpu] if gpu else []
-        obj._build_args = dict(  # See get_build_def
+        obj._build_args = dict(
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
             network_file_systems=repr(network_file_systems),
@@ -1268,12 +1267,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
         return obj
-
-    from_local = with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.from_local` is deprecated and will be removed in `modal` version 1.6.0",
-    )(_from_local)
-    """mdmd:hidden"""
 
     async def _update_autoscaler(
         self,
@@ -1538,15 +1531,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
     @property
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.tag` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    def tag(self) -> str:
-        """mdmd:hidden"""
-        return self._tag_
-
-    @property
     def _tag_(self) -> str:
         assert self._tag
         return self._tag
@@ -1558,16 +1542,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise ExecutionError("The app has not been assigned on the function at this point")
 
         return self._app
-
-    @property
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.stub` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    def stub(self) -> "modal.app._App":
-        """mdmd:hidden"""
-        # Deprecated soon, only for backwards compatibility
-        return self.app
 
     async def info(self, *, refresh: bool = False) -> FunctionInfo:
         """Get an overview of a Function's resource requests, associated mounts, etc.
@@ -1614,15 +1588,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._source_info
 
     @property
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.spec` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    def spec(self) -> _FunctionSpec:
-        """mdmd:hidden"""
-        return self._spec_
-
-    @property
     def _spec_(self) -> _FunctionSpec:
         assert self._spec
         return self._spec
@@ -1637,12 +1602,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # hash. We can't use the cloudpickle hash because it's not very stable.
         assert hasattr(self, "_raw_f") and hasattr(self, "_build_args") and self._raw_f is not None
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
-
-    get_build_def = with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.get_build_def` is deprecated and will be removed in `modal` version 1.6.0",
-    )(_get_build_def)
-    """mdmd:hidden"""
 
     # Live handle methods
 
@@ -1902,15 +1861,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         options = _FunctionOptions.new(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
         return self._apply_dynamic_config(options, "with_batching")
-
-    @property
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.is_generator` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    async def is_generator(self) -> bool:
-        """mdmd:hidden"""
-        return await self._is_generator_
 
     @property
     async def _is_generator_(self) -> bool:
@@ -2246,18 +2196,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fc._app_id = self._app_id
         fc._function_id = self.object_id
         return fc
-
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`Function.get_raw_f` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    def get_raw_f(self) -> Callable[..., Any]:
-        """Return the inner Python object wrapped by this Modal Function.
-
-        Returns:
-            The original function object registered with Modal.
-        """
-        return self._raw_f_
 
     @property
     def _raw_f_(self) -> Callable[..., Any]:

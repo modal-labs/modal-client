@@ -26,7 +26,6 @@ from ._type_manager import parameter_serde_registry
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import (
     handle_deprecated_parameters,
-    with_deprecation_warning,
 )
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
@@ -608,12 +607,6 @@ More information on class parameterization can be found here: https://modal.com/
             except TypeError as exc:
                 raise InvalidError(f"Class parameter '{k}': {exc}")
 
-    validate_construction_mechanism = with_deprecation_warning(
-        (2026, 8, 26),
-        "`Cls.validate_construction_mechanism` is deprecated and will be removed in `modal` version 1.6.0",
-    )(_validate_construction_mechanism)
-    """mdmd:hidden"""
-
     @staticmethod
     def _from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
@@ -655,12 +648,6 @@ More information on class parameterization can be found here: https://modal.com/
         cls._callables = callables
         cls._name = user_cls.__name__
         return cls
-
-    from_local = with_deprecation_warning(
-        (2026, 8, 26),
-        "`Cls.from_local` is deprecated and will be removed in `modal` version 1.6.0",
-    )(_from_local)
-    """mdmd:hidden"""
 
     @classmethod
     def from_name(

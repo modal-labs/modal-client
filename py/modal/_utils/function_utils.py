@@ -347,7 +347,7 @@ class FunctionSourceInfo:
         # annotation parameters trigger strictly typed parametrization
         # which enables parameterized Web Functions
         signature = _get_class_constructor_signature(self.user_cls)
-        # at this point, the types in the signature should already have been validated (see Cls.from_local())
+        # at this point, the types in the signature should already have been validated (see Cls._from_local())
         parameter_specs = signature_to_parameter_specs(signature)
 
         return api_pb2.ClassParameterInfo(

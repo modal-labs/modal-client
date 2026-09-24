@@ -278,15 +278,6 @@ class _App:
         return self._name
 
     @property
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`App.is_interactive` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    def is_interactive(self) -> bool:
-        """mdmd:hidden"""
-        return self._is_interactive_
-
-    @property
     def _is_interactive_(self) -> bool:
         """mdmd:hidden
         Whether the current app for the app is running in interactive mode.
@@ -413,42 +404,9 @@ class _App:
             raise InvalidError("App is not running")
         return f"https://modal.com/id/{self._app_id}"
 
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`App.set_description` is deprecated and will be removed in `modal` version 1.6.0. "
-        "Set `App.description` directly instead",
-    )
-    def set_description(self, description: str):
-        """mdmd:hidden
-        Set the description of the App before it starts running.
-
-        Note: we don't recommend using the method and may deprecate it in the future.
-        """
-        self.description = description
-
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Object):
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
-
-    @property
-    @with_deprecation_warning(
-        (2026, 8, 26),
-        "`App.image` is deprecated and will be removed in `modal` version 1.6.0",
-    )
-    def image(self) -> _Image:
-        """mdmd:hidden
-        Retrieve the Image that will be used as the default for any Functions registered to the App.
-
-        Note: This property is only relevant in the build phase and won't be populated on a deployed
-        App that is retrieved via `modal.App.lookup`. It is likely to be deprecated in the future.
-
-        """
-        return self._local_state.image_default
-
-    @image.setter
-    def image(self, value):
-        """mdmd:hidden"""
-        self._local_state.image_default = value
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
@@ -709,7 +667,7 @@ class _App:
     @property
     @with_deprecation_warning(
         (2026, 8, 26),
-        "`App.registered_functions` is deprecated and will be removed in `modal` version 1.6.0",
+        "`App.registered_functions` is deprecated and will be removed in `modal` version 1.7.0",
     )
     def registered_functions(self) -> dict[str, _Function]:
         """mdmd:hidden
@@ -725,7 +683,7 @@ class _App:
     @property
     @with_deprecation_warning(
         (2026, 8, 26),
-        "`App.registered_classes` is deprecated and will be removed in `modal` version 1.6.0",
+        "`App.registered_classes` is deprecated and will be removed in `modal` version 1.7.0",
     )
     def registered_classes(self) -> dict[str, _Cls]:
         """mdmd:hidden
@@ -741,7 +699,7 @@ class _App:
     @property
     @with_deprecation_warning(
         (2026, 8, 26),
-        "`App.registered_entrypoints` is deprecated and will be removed in `modal` version 1.6.0",
+        "`App.registered_entrypoints` is deprecated and will be removed in `modal` version 1.7.0",
     )
     def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
         """mdmd:hidden
@@ -756,7 +714,7 @@ class _App:
     @property
     @with_deprecation_warning(
         (2026, 8, 26),
-        "`App.registered_web_endpoints` is deprecated and will be removed in `modal` version 1.6.0",
+        "`App.registered_web_endpoints` is deprecated and will be removed in `modal` version 1.7.0",
     )
     def registered_web_endpoints(self) -> list[str]:
         """mdmd:hidden

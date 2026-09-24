@@ -38,6 +38,11 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `modal function logs` to fetch or stream logs from a modal function.
 - Added `modal server logs` to fetch or stream logs from a modal server.
 - Added `modal server stats` to inspect performance metrics for a Server over a selected time window.
+- Removed the following deprecated public API:
+  - `Object.deps`, `Object.is_hydrated`, `Object.local_uuid`
+  - `Function.from_local`, `Function.get_build_def`, `Function.get_raw_f`, `Function.is_generator`, `Function.spec`, `Function.stub`, `Function.tag`
+  - `App.image`, `App.is_interactive`, `App.set_description`
+  - `Cls.validate_construction_mechanism`, `Cls.from_local`
 - Added SDK support for Sessioned Servers, a primitive built on top of Modal Servers for applications that need multiple HTTP requests to reach the same container. Includes `@modal.sessioned()` to mark a server as sessioned, as well as `Server.sessions.start()` and `Server.sessions.terminate()` to begin and end sessions for a given server.
 - We're removing the experimental `modal bootstrap` CLI; use `modal endpoint` to quickly stand up production-ready endpoints.
 - Added `modal function variants` to list the variants of a Function. It shows the 200 variants running the most containers by default; pass `-n`/`--limit` to show a different number, or `--limit 0` to list every variant, newest first.

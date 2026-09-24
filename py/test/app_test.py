@@ -516,7 +516,7 @@ def test_app_interactive_no_output(servicer, client):
     with pytest.raises(InvalidError, match=re.escape(msg)):
         with app.run(client=client, interactive=True):
             # Verify that interactive mode was disabled
-            assert not app.is_interactive
+            assert not app._is_interactive_
 
 
 @pytest.mark.asyncio
