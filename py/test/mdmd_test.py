@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import dataclasses
 import importlib
 import os
 from enum import IntEnum
@@ -323,6 +324,61 @@ __init__(self)
 constructy mcconstructorface
 """
     )
+
+
+def test_synchronicity_wrapped_dataclass_renders_attributes():
+    """A synchronicity wrapper drops `__dataclass_fields__`, so mdmd has to look at the impl class."""
+    from synchronicity import Synchronizer
+
+    @dataclasses.dataclass
+    class _Config:
+        """Config docs.
+
+        Args:
+            name: What to call it.
+            retries: How many times to retry.
+        """
+
+        name: str
+        retries: int | None = None
+
+    s = Synchronizer()
+    Config = s.create_blocking(_Config, "Config")
+
+    assert not dataclasses.is_dataclass(Config)
+
+    expected = """
+Config docs.
+
+**Attributes**
+
+<Parameter name="name" type="str" description="What to call it." />
+<Parameter name="retries" type="int | None" defaultValue="None" description="How many times to retry." />
+
+"""
+    assert mdmd.class_str("Config", Config) == expected
+    # The wrapper renders exactly like the dataclass it wraps.
+    assert mdmd.class_str("Config", _Config) == expected
+
+
+def test_subclass_of_synchronicity_wrapped_dataclass_renders_as_plain_class():
+    """A subclass inherits the wrapper's private markers but is not itself a wrapper."""
+    from synchronicity import Synchronizer
+
+    @dataclasses.dataclass
+    class _Base:
+        name: str
+
+    s = Synchronizer()
+    Base = s.create_blocking(_Base, "Base")
+
+    class Child(Base):  # type: ignore[misc, valid-type]  # create_blocking returns a value
+        """Child docs."""
+
+    doc = mdmd.class_str("Child", Child)
+    assert "class Child(" in doc
+    assert "Child docs." in doc
+    assert "**Attributes**" not in doc
 
 
 def test_get_all_signature_comments():

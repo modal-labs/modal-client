@@ -19,6 +19,22 @@ class _CloudBucketMount:
     [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md)
     for more information.
 
+    Args:
+        bucket_name: Name of the cloud bucket to mount.
+        bucket_endpoint_url: Endpoint URL of the bucket. Required for Cloudflare R2 and
+            Google Cloud Storage buckets, which are identified by their endpoint hostname.
+        key_prefix: Prefix prepended to every object path in the bucket. Must end in `/`.
+        secret: Credentials used to access the bucket. A private bucket requires a secret
+            containing `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; a publicly accessible
+            bucket needs none.
+        oidc_auth_role_arn: Role ARN to assume when accessing the bucket with OIDC
+            authentication instead of static credentials.
+        read_only: Mount the bucket read-only.
+        requester_pays: Whether the bucket is configured as Requester Pays, so that the
+            caller is billed for requests. Requires `secret`.
+        force_path_style: Address objects as `<endpoint>/<bucket>/<key>` rather than using
+            virtual-hosted-style bucket subdomains.
+
     Examples:
         S3:
 
@@ -103,19 +119,10 @@ class _CloudBucketMount:
     """
 
     bucket_name: str
-    # Endpoint URL is used to support Cloudflare R2 and Google Cloud Platform GCS.
     bucket_endpoint_url: str | None = None
-
     key_prefix: str | None = None
-
-    # Credentials used to access a cloud bucket.
-    # If the bucket is private, the secret **must** contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
-    # If the bucket is publicly accessible, the secret is unnecessary and can be omitted.
     secret: _Secret | None = None
-
-    # Role ARN used for using OIDC authentication to access a cloud bucket.
     oidc_auth_role_arn: str | None = None
-
     read_only: bool = False
     requester_pays: bool = False
     force_path_style: bool = False
