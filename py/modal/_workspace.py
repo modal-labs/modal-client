@@ -153,6 +153,26 @@ class _WorkspaceProxyTokenManager:
         resp = await self._workspace.client._stub.WebhookTokenCreate(api_pb2.WebhookTokenCreateRequest(name=name))
         return TokenData(token_id=resp.token_id, token_secret=resp.token_secret)
 
+    async def update(self, proxy_token_id: str, *, name: str) -> None:
+        """Update a proxy token in the Workspace.
+
+        An empty name removes the token's name.
+
+        Args:
+            proxy_token_id: The token ID (`wk-...`) to update.
+            name: The updated name for the token.
+
+        Examples:
+            ```python notest
+            ws = modal.Workspace.from_context()
+            ws.proxy_tokens.update(token_id, name="production-webhooks")
+            ```
+        """
+        await self._workspace.hydrate()
+        await self._workspace.client._stub.WebhookTokenUpdate(
+            api_pb2.WebhookTokenUpdateRequest(token_id=proxy_token_id, name=name)
+        )
+
     async def list(self, environment_name: Optional[str] = None) -> builtins.list[ProxyTokenInfo]:
         """List proxy tokens in the Workspace.
 

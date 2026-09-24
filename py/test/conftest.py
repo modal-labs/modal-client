@@ -3976,6 +3976,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.webhook_token_environments.pop(request.token_id, None)
         await stream.send_message(Empty())
 
+    async def WebhookTokenUpdate(self, stream):
+        request: api_pb2.WebhookTokenUpdateRequest = await stream.recv_message()
+        token = self.webhook_tokens[request.token_id]
+        token["name"] = request.name
+        await stream.send_message(
+            api_pb2.WebhookToken(
+                token_id=request.token_id,
+                created_at=token["created_at"],
+                scoped=token["scoped"],
+                name=token["name"],
+                created_by=token["created_by"],
+            )
+        )
+
     async def WebhookTokenList(self, stream):
         await stream.recv_message()
         tokens = [

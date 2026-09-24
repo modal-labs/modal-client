@@ -66,6 +66,17 @@ def test_workspace_proxy_tokens_create(servicer, client):
     assert token.token_secret == f"secret-{token.token_id}"
 
 
+def test_workspace_proxy_tokens_update(servicer, client):
+    workspace = Workspace.from_context(client=client)
+    token = workspace.proxy_tokens.create(name="production-webhooks")
+
+    workspace.proxy_tokens.update(token.token_id, name="staging-webhooks")
+    assert servicer.webhook_tokens[token.token_id]["name"] == "staging-webhooks"
+
+    workspace.proxy_tokens.update(token.token_id, name="")
+    assert servicer.webhook_tokens[token.token_id]["name"] == ""
+
+
 def test_workspace_proxy_tokens_list(servicer, client):
     servicer.webhook_tokens = {
         "wt-1": {

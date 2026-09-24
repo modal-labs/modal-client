@@ -14,7 +14,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added a `max_concurrency` parameter to `@app.server()` for limiting the number of concurrent requests handled by each container. This hard limit does not affect autoscaling; configure `target_concurrency` separately to scale based on request load.
 - Sandboxes now have experimental support for replacing headers in outbound HTTPS requests with secret values that are never visible to the workload, via the new `modal.experimental.OutboundPolicy` configuration object: pass `_experimental_outbound_policy=` to `Sandbox.create` and call `Sandbox._experimental_update_outbound_policy` on a running Sandbox. This API is experimental and may change in the future.
 - Constructing a `modal.NetworkFileSystem` now emits a deprecation warning. Use `modal.Volume` instead.
-- Proxy tokens can now be named when created, and proxy token listings include the token name and creator.
+- Proxy token names can now be set at creation time or updated later with `Workspace.proxy_tokens.update(...)` or `modal workspace proxy-tokens update TOKEN_ID name NAME`, and proxy token listings include the token name and creator.
 - Removed the deprecated legacy Sandbox filesystem API: `Sandbox.open()`, `Sandbox.ls()`, `Sandbox.mkdir()`, `Sandbox.rm()`, `Sandbox.watch()`, the `modal.file_io.FileIO` type, and `modal.exception.FilesystemExecutionError`. Use the [`Sandbox.filesystem`](/docs/sdk/py/latest/Sandbox#filesystem) APIs instead.
 - [`FunctionCall.get_call_graph()`](/docs/sdk/py/latest/FunctionCall#get_call_graph) now returns up to 5000
   nodes instead of 100.

@@ -143,6 +143,20 @@ def test_workspace_proxy_tokens_cli(servicer, set_env_client):
     assert "production-webhooks" in output
     assert servicer.default_username in output
 
+    # `update` changes the name shown by subsequent listings
+    update_output = run_cli_command(
+        ["workspace", "proxy-tokens", "update", token_id, "name", "staging-webhooks"]
+    ).stdout
+    assert "Updated proxy token" in update_output
+    listed = json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "--json"]).stdout)
+    assert listed[0]["name"] == "staging-webhooks"
+
+    invalid_update = run_cli_command(
+        ["workspace", "proxy-tokens", "update", token_id, "naem", "other-webhooks"],
+        expected_exit_code=2,
+    )
+    assert "Unknown proxy token setting 'naem'. Supported settings: name." in invalid_update.stderr
+
     # `delete` removes it (requires confirmation, bypassed with --yes)
     run_cli_command(["workspace", "proxy-tokens", "delete", token_id, "--yes"])
     assert token_id not in servicer.webhook_tokens

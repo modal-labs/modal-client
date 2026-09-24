@@ -146,6 +146,30 @@ def proxy_tokens_list(environment: str | None = None, json: bool = False):
     display_table(["Name", "Token ID", "Created at", "Created by", "Scoped"], rows, json=json)
 
 
+@proxy_tokens_cli.command("update", no_args_is_help=True)
+@click.argument("token_id")
+@click.argument("setting")
+@click.argument("value")
+def proxy_tokens_update(token_id: str, setting: str, value: str):
+    """Update a proxy token in the current Workspace.
+
+    The following settings can be updated:
+
+    - `name`: A name to help identify the token. Pass an empty value to remove it.
+
+    Example:
+
+    ```
+    modal workspace proxy-tokens update wk-123 name production-webhooks
+    ```
+    """
+    if setting == "name":
+        Workspace.from_context().proxy_tokens.update(token_id, name=value)
+    else:
+        raise click.UsageError(f"Unknown proxy token setting {setting!r}. Supported settings: name.")
+    rich.print(f"[green]✓[/green] Updated proxy token {token_id!r}")
+
+
 @proxy_tokens_cli.command("allow", no_args_is_help=True)
 @click.argument("token_id")
 @click.argument("environment_name")
