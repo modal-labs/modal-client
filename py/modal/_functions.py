@@ -1257,6 +1257,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             secrets=[repr(s) for s in secrets],
             _http_info=HttpInfo._from_proto(http_config) if http_config else None,
             web_info=FunctionInfo.WebInfo._from_proto(webhook_config) if webhook_config else None,
+            method_names=list(method_definitions.keys()) if method_definitions is not None else None,
+            method_details={
+                name: (FunctionInfo.WebInfo._from_proto(method_def.webhook_config))
+                for name, method_def in method_definitions.items()
+                if method_def.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
+            }
+            if method_definitions is not None
+            else None,
         )
 
         return obj

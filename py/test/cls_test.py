@@ -322,7 +322,10 @@ def test_with_options_from_name(servicer, client):
             api_pb2.FunctionGetResponse(
                 function_id="fu-123",
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
                 handle_metadata=api_pb2.FunctionHandleMetadata(
                     method_handle_metadata={
@@ -1337,7 +1340,10 @@ def test_class_can_use_073_schema_definition(servicer, client):
                     method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
                 ),
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
             ),
         )
@@ -1371,7 +1377,10 @@ def test_class_can_use_future_full_type_only_schema(servicer, client):
                     method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
                 ),
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
             ),
         )
@@ -1627,7 +1636,10 @@ def test_cls_with_options_creates_new_options_instance(client, servicer):
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
             ),
         )
@@ -1664,7 +1676,10 @@ def test_cls_duplicate_volume_mounts_with_options(client, servicer):
                     }
                 ),
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
             ),
         )
@@ -1706,7 +1721,10 @@ def test_cls_with_concurrency_creates_new_options_instance(client, servicer):
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
             ),
         )
@@ -1748,7 +1766,10 @@ def test_cls_with_batching_creates_new_options_instance(client, servicer):
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
             ),
         )
@@ -1771,7 +1792,10 @@ def test_cls_version(client, servicer):
                 function_id="fu-123",
                 handle_metadata=api_pb2.FunctionHandleMetadata(),
                 function=api_pb2.FunctionData(
-                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())]
+                    method_definitions={
+                        "some_method": api_pb2.MethodDefinition(),
+                    },
+                    ranked_functions=[api_pb2.FunctionData.RankedFunction(rank=1, function=api_pb2.Function())],
                 ),
             ),
         )
@@ -1814,3 +1838,53 @@ def test_function_info_cls_remote(client, servicer):
 
     assert instance.baz._is_hydrated
     assert info.cpu == 42
+
+
+method_def_info_app = App()
+
+
+@method_def_info_app.cls()
+class MethodDefInfoCls:
+    @modal.fastapi_endpoint(method="HEAD", requires_proxy_auth=False)
+    def web_function(self): ...
+
+    @modal.web_server(port=1234, requires_proxy_auth=True)
+    def web_server(self): ...
+
+    @modal.asgi_app(requires_proxy_auth=False)
+    def asgi_app_info(self): ...
+
+    @modal.wsgi_app(requires_proxy_auth=True)
+    def wsgi_app(self): ...
+
+    @modal.method()
+    def httpnt(self): ...
+
+
+def test_function_info_cls_method_defs():
+    instance = MethodDefInfoCls()
+
+    info = instance.web_function.info()
+
+    assert info == instance.web_server.info()
+    assert info == instance.asgi_app_info.info()
+    assert info == instance.wsgi_app.info()
+    assert info == instance.httpnt.info()
+
+    assert info.method_details is not None
+    assert info.method_names is not None
+
+    assert set(info.method_names) == {"web_function", "web_server", "asgi_app_info", "wsgi_app", "httpnt"}
+    assert set(info.method_details.keys()) == {"web_function", "web_server", "asgi_app_info", "wsgi_app"}
+
+    assert info.method_details["web_function"].method == "HEAD"
+    assert info.method_details["web_function"].unauthenticated
+
+    assert info.method_details["web_server"].method is None
+    assert not info.method_details["web_server"].unauthenticated
+
+    assert info.method_details["asgi_app_info"].method is None
+    assert info.method_details["asgi_app_info"].unauthenticated
+
+    assert info.method_details["wsgi_app"].method is None
+    assert not info.method_details["wsgi_app"].unauthenticated

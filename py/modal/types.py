@@ -595,6 +595,8 @@ class FunctionInfo:
     # `_http_info` is still stored here so that we push it through to `ServerInfo`
     _http_info: HttpInfo | None = field(repr=False)
     web_info: WebInfo | None
+    method_names: list[str] | None
+    method_details: dict[str, WebInfo] | None
 
     def _get_copy(self) -> "FunctionInfo":
         return FunctionInfo(
@@ -612,6 +614,8 @@ class FunctionInfo:
             secrets=[s for s in self.secrets],
             _http_info=self._http_info._get_copy() if self._http_info else None,
             web_info=self.web_info._get_copy() if self.web_info else None,
+            method_names=list(self.method_names) if self.method_names else None,
+            method_details={k: m._get_copy() for k, m in self.method_details.items()} if self.method_details else None,
         )
 
     @classmethod
@@ -699,6 +703,14 @@ class FunctionInfo:
         if function_data.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
             webhook_info = FunctionInfo.WebInfo._from_proto(function_data.webhook_config)
 
+        method_names: list[str] = []
+        method_details: dict[str, FunctionInfo.WebInfo] = {}
+        for name, method_def in function_data.method_definitions.items():
+            method_names.append(name)
+
+            if method_def.webhook_config != api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
+                method_details[name] = FunctionInfo.WebInfo._from_proto(method_def.webhook_config)
+
         return cls(
             cpu=cpu,
             memory_mib=memory_mib,
@@ -714,6 +726,8 @@ class FunctionInfo:
             secrets=list(first_function.secret_ids),
             _http_info=http_info,
             web_info=webhook_info,
+            method_names=method_names or None,
+            method_details=method_details if method_names else None,
         )
 
 
