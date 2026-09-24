@@ -1,6 +1,7 @@
 package test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -1402,7 +1403,7 @@ func TestNamedSandbox(t *testing.T) {
 		Command: []string{"sleep", "60"},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("already exists"))
+	g.Expect(errors.As(err, &modal.AlreadyExistsError{})).To(gomega.BeTrue(), "expected AlreadyExistsError, got %T: %v", err, err)
 }
 
 func TestNamedSandboxNotFound(t *testing.T) {
@@ -1644,11 +1645,11 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	mock := newGRPCMockClient(t)
 
 	grpcmock.HandleUnary(
-		mock, "SandboxCreate",
-		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
+		mock, "SandboxCreateV2",
+		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
 			g.Expect(req.GetDefinition().GetExperimentalOptionsV2()).Should(gomega.Equal(expectedOptions))
-			return pb.SandboxCreateResponse_builder{
-				SandboxId: validV1SandboxID,
+			return pb.SandboxCreateV2Response_builder{
+				SandboxId: validV2SandboxID,
 			}.Build(), nil
 		},
 	)
@@ -1695,7 +1696,7 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{ExperimentalOptions: options})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	g.Expect(sb.SandboxID).Should(gomega.Equal(validV1SandboxID))
+	g.Expect(sb.SandboxID).Should(gomega.Equal(validV2SandboxID))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
@@ -2780,7 +2781,7 @@ func TestSandboxCreateWithEnv(t *testing.T) {
 	g.Expect(string(output)).To(gomega.Equal("bar\n"))
 }
 
-func TestSandboxCreateHydratesEnv(t *testing.T) {
+func TestSandboxCreatePassesEnvAsEphemeralSecrets(t *testing.T) {
 	// Unset MODAL_IMAGE_BUILDER_VERSION so the build resolves it via EnvironmentGetOrCreate.
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
@@ -2789,18 +2790,13 @@ func TestSandboxCreateHydratesEnv(t *testing.T) {
 	mock := newGRPCMockClient(t)
 	registerSandboxCreateDeps(mock)
 
-	grpcmock.HandleUnary(mock, "SecretGetOrCreate",
-		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
-			// V1 has no env field, so the Env param is folded into an ephemeral Secret.
-			g.Expect(req.GetObjectCreationType()).To(gomega.Equal(pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL))
-			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
-			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-env"}.Build(), nil
-		},
-	)
-	grpcmock.HandleUnary(mock, "SandboxCreate",
-		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
-			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.ContainElement("st-env"))
-			return pb.SandboxCreateResponse_builder{SandboxId: validV1SandboxID}.Build(), nil
+	// No SecretGetOrCreate handler is registered: Create routes to V2, which
+	// passes env vars via ephemeral_secrets instead of a server-side Secret.
+	grpcmock.HandleUnary(mock, "SandboxCreateV2",
+		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
+			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
+			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.BeEmpty())
+			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},
 	)
 
@@ -2812,7 +2808,7 @@ func TestSandboxCreateHydratesEnv(t *testing.T) {
 		Env: map[string]string{"FOO": "bar"},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(sb.SandboxID).To(gomega.Equal(validV1SandboxID))
+	g.Expect(sb.SandboxID).To(gomega.Equal(validV2SandboxID))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
@@ -2831,12 +2827,12 @@ func TestSandboxCreateHydratesCloudBucketMountSecret(t *testing.T) {
 			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-bucket"}.Build(), nil
 		},
 	)
-	grpcmock.HandleUnary(mock, "SandboxCreate",
-		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
+	grpcmock.HandleUnary(mock, "SandboxCreateV2",
+		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
 			mounts := req.GetDefinition().GetCloudBucketMounts()
 			g.Expect(mounts).To(gomega.HaveLen(1))
 			g.Expect(mounts[0].GetCredentialsSecretId()).To(gomega.Equal("st-bucket"))
-			return pb.SandboxCreateResponse_builder{SandboxId: validV1SandboxID}.Build(), nil
+			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},
 	)
 
@@ -2855,7 +2851,7 @@ func TestSandboxCreateHydratesCloudBucketMountSecret(t *testing.T) {
 		CloudBucketMounts: map[string]*modal.CloudBucketMount{"/mnt/bucket": mount},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(sb.SandboxID).To(gomega.Equal(validV1SandboxID))
+	g.Expect(sb.SandboxID).To(gomega.Equal(validV2SandboxID))
 
 	// The mount's lazy Secret was hydrated in place.
 	g.Expect(bucketSecret.SecretID).To(gomega.Equal("st-bucket"))

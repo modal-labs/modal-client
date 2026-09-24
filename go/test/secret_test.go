@@ -66,8 +66,9 @@ func TestSecretFromMap(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb)
 
-	// Using the Secret in a Sandbox hydrates it into a server-side Secret.
-	g.Expect(secret.SecretID).Should(gomega.HavePrefix("st-"))
+	// The Secret is sent inline with the create request, so it is never
+	// hydrated into a server-side Secret.
+	g.Expect(secret.SecretID).Should(gomega.BeEmpty())
 
 	output, err := io.ReadAll(sb.Stdout)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -119,7 +120,7 @@ func TestSecretFromMapIsLazy(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxCreateHydratesFromMapSecret(t *testing.T) {
+func TestSandboxCreatePassesFromMapSecretAsEphemeralSecrets(t *testing.T) {
 	// Unset MODAL_IMAGE_BUILDER_VERSION so the build resolves it via EnvironmentGetOrCreate.
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
@@ -128,18 +129,13 @@ func TestSandboxCreateHydratesFromMapSecret(t *testing.T) {
 	mock := newGRPCMockClient(t)
 	registerSandboxCreateDeps(mock)
 
-	grpcmock.HandleUnary(mock, "SecretGetOrCreate",
-		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
-			// The lazy FromMap Secret is hydrated as an ephemeral Secret on create.
-			g.Expect(req.GetObjectCreationType()).To(gomega.Equal(pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL))
-			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
-			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-ephemeral"}.Build(), nil
-		},
-	)
-	grpcmock.HandleUnary(mock, "SandboxCreate",
-		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
-			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.ContainElement("st-ephemeral"))
-			return pb.SandboxCreateResponse_builder{SandboxId: validV1SandboxID}.Build(), nil
+	// No SecretGetOrCreate handler is registered: Create routes to V2, which
+	// folds FromMap Secrets into ephemeral_secrets instead of hydrating them.
+	grpcmock.HandleUnary(mock, "SandboxCreateV2",
+		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
+			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
+			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.BeEmpty())
+			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},
 	)
 
@@ -152,10 +148,10 @@ func TestSandboxCreateHydratesFromMapSecret(t *testing.T) {
 
 	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{Secrets: []*modal.Secret{secret}})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(sb.SandboxID).To(gomega.Equal(validV1SandboxID))
+	g.Expect(sb.SandboxID).To(gomega.Equal(validV2SandboxID))
 
-	// The Secret was hydrated in place.
-	g.Expect(secret.SecretID).To(gomega.Equal("st-ephemeral"))
+	// The Secret was sent inline, so it was never hydrated to a server-side ID.
+	g.Expect(secret.SecretID).To(gomega.BeEmpty())
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }

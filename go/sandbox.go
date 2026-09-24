@@ -565,8 +565,8 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 		params = &SandboxCreateParams{}
 	}
 
-	// Opt-in to the V2 backend. GPUs are not supported on V2, so those calls
-	// stay on V1 even when the flag is set.
+	// GPUs are not supported on V2, so those calls use the V1 backend
+	// regardless of the setting.
 	if s.client.profile.SandboxV2 && params.GPU == "" {
 		return s.ExperimentalCreate(ctx, app, image, params)
 	}

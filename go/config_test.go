@@ -165,7 +165,7 @@ func TestGetProfile_SandboxV2Parsing(t *testing.T) {
 		envVal   string
 		expected bool
 	}{
-		{"", false},
+		{"", true},
 		{"0", false},
 		{"false", false},
 		{"False", false},
@@ -188,15 +188,26 @@ func TestGetProfile_SandboxV2FromConfigFile(t *testing.T) {
 	g := gomega.NewWithT(t)
 	t.Setenv("MODAL_SANDBOX_V2", "")
 
-	profile := getProfile("v2-profile", config{"v2-profile": rawProfile{SandboxV2: true}})
+	enabled := true
+	profile := getProfile("v2-profile", config{"v2-profile": rawProfile{SandboxV2: &enabled}})
 	g.Expect(profile.SandboxV2).To(gomega.BeTrue())
+}
+
+func TestGetProfile_SandboxV2FalseInConfigFileOverridesDefault(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_SANDBOX_V2", "")
+
+	disabled := false
+	profile := getProfile("v1-profile", config{"v1-profile": rawProfile{SandboxV2: &disabled}})
+	g.Expect(profile.SandboxV2).To(gomega.BeFalse())
 }
 
 func TestGetProfile_SandboxV2EnvOverridesConfigFile(t *testing.T) {
 	g := gomega.NewWithT(t)
 	t.Setenv("MODAL_SANDBOX_V2", "0")
 
-	profile := getProfile("v2-profile", config{"v2-profile": rawProfile{SandboxV2: true}})
+	enabled := true
+	profile := getProfile("v2-profile", config{"v2-profile": rawProfile{SandboxV2: &enabled}})
 	g.Expect(profile.SandboxV2).To(gomega.BeFalse())
 }
 

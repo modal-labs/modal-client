@@ -1861,7 +1861,7 @@ func TestSandboxV2FlagRoutesCreate(t *testing.T) {
 		g.Expect(stub.v2Creates).To(gomega.Equal(0))
 	})
 
-	t.Run("stays on V1 without the flag", func(t *testing.T) {
+	t.Run("stays on V1 when the flag is disabled", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 
@@ -1911,7 +1911,7 @@ func TestSandboxV2FlagRoutesFromName(t *testing.T) {
 		g.Expect(stub.v1Lookups).To(gomega.Equal(0))
 	})
 
-	t.Run("stays on V1 without the flag", func(t *testing.T) {
+	t.Run("stays on V1 when the flag is disabled", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 
@@ -1951,7 +1951,7 @@ func TestSandboxV2FlagRoutesList(t *testing.T) {
 		g.Expect(stub.listV2Req.GetTags()).To(gomega.HaveLen(1))
 	})
 
-	t.Run("stays on V1 without the flag", func(t *testing.T) {
+	t.Run("stays on V1 when the flag is disabled", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 
