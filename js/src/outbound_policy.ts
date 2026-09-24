@@ -56,6 +56,8 @@ export type HeaderReplacement = {
  * Immutable configuration for replacing headers in outbound HTTPS requests
  * from a Sandbox.
  *
+ * EXPERIMENTAL: the API is subject to change.
+ *
  * Header values support templating with keys in a replacement's secret: a
  * `$`-prefixed key name in the secret is replaced with the secret value.
  * Literal `$` characters are written `$$`.
@@ -66,7 +68,7 @@ export type HeaderReplacement = {
  * ```ts
  * const secret = await modal.secrets.fromName("api-token");
  *
- * const outboundPolicy = new modal.OutboundPolicy()
+ * const outboundPolicy = new modal.ExperimentalOutboundPolicy()
  *   // Inject a secret-backed Authorization header.
  *   .withHeaderReplacement({
  *     domain: "example.com",
@@ -79,10 +81,12 @@ export type HeaderReplacement = {
  *     headers: { "X-Trace-Token": "trace_abcd" },
  *   });
  *
- * const sb = await modal.sandboxes.create(app, image, { outboundPolicy });
+ * const sb = await modal.sandboxes.create(app, image, {
+ *   experimentalOutboundPolicy: outboundPolicy,
+ * });
  * ```
  */
-export class OutboundPolicy {
+export class ExperimentalOutboundPolicy {
   /** @internal */
   readonly _replacements: readonly HeaderReplacement[];
 
@@ -92,7 +96,7 @@ export class OutboundPolicy {
   }
 
   /**
-   * Return a new {@link OutboundPolicy} with an added header replacement.
+   * Return a new {@link ExperimentalOutboundPolicy} with an added header replacement.
    *
    * @param params.domain Domain the replacements are scoped to. Supports `*.` wildcard
    *   prefixes (matching the apex domain and subdomains) and a bare `"*"`.
@@ -105,9 +109,9 @@ export class OutboundPolicy {
     domain: string;
     headers: Record<string, string>;
     secret?: Secret;
-  }): OutboundPolicy {
+  }): ExperimentalOutboundPolicy {
     const { domain, headers, secret } = params;
-    return new OutboundPolicy([
+    return new ExperimentalOutboundPolicy([
       ...this._replacements,
       { domain, headers: { ...headers }, secret },
     ]);

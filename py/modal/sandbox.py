@@ -29,6 +29,7 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from ._image import _Image
 from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
+from ._outbound_policy import _OutboundPolicy, _validate_compatible_network_access
 from ._output.pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -72,7 +73,6 @@ from .io_streams import (
     _StreamWriterThroughServerParams,
 )
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .outbound_policy import _OutboundPolicy, _validate_compatible_network_access
 from .proxy import _Proxy
 from .sandbox_fs import _SandboxFilesystem
 from .secret import _Secret
@@ -630,7 +630,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
-        outbound_policy: _OutboundPolicy | None = None,
+        _experimental_outbound_policy: _OutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -686,9 +686,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             inbound_cidr_allowlist:
                 List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens). If None,
                 all CIDRs are allowed.
-            outbound_policy: Configuration for replacing headers in outbound HTTPS requests from the Sandbox.
-                Secrets referenced by the policy are resolved outside the Sandbox and are never visible to
-                the workload. See `modal.OutboundPolicy`.
+            _experimental_outbound_policy: Configuration for replacing headers in outbound HTTPS requests from
+                the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never
+                visible to the workload. See `modal.experimental.OutboundPolicy`. This API is experimental and
+                may change in the future.
             volumes: Mount points for Modal Volumes and CloudBucketMounts.
             pty:
                 Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the
@@ -768,7 +769,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
-            outbound_policy=outbound_policy,
+            _experimental_outbound_policy=_experimental_outbound_policy,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,
@@ -810,7 +811,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
-        outbound_policy: _OutboundPolicy | None = None,
+        _experimental_outbound_policy: _OutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -855,7 +856,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 block_network=block_network,
                 outbound_cidr_allowlist=outbound_cidr_allowlist,
                 outbound_domain_allowlist=outbound_domain_allowlist,
-                outbound_policy=outbound_policy,
+                _experimental_outbound_policy=_experimental_outbound_policy,
                 inbound_cidr_allowlist=inbound_cidr_allowlist,
                 volumes=volumes,
                 pty=pty,
@@ -902,7 +903,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
-            outbound_policy=outbound_policy,
+            outbound_policy=_experimental_outbound_policy,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,
@@ -951,7 +952,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
-        outbound_policy: _OutboundPolicy | None = None,
+        _experimental_outbound_policy: _OutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         i6pn: bool = False,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
@@ -1016,9 +1017,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "public egress, use an empty outbound allowlist (`outbound_cidr_allowlist=[]`) instead."
             )
 
-        if outbound_policy is not None:
-            outbound_policy._validate()
-        _validate_compatible_network_access(outbound_policy, block_network, outbound_domain_allowlist)
+        if _experimental_outbound_policy is not None:
+            _experimental_outbound_policy._validate()
+        _validate_compatible_network_access(_experimental_outbound_policy, block_network, outbound_domain_allowlist)
 
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
@@ -1087,8 +1088,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 dep_tasks.append(resolver.load(mount, load_context))
             for secret in resolvable_secrets:
                 dep_tasks.append(resolver.load(secret, load_context))
-            if outbound_policy:
-                for secret in outbound_policy._secrets():
+            if _experimental_outbound_policy:
+                for secret in _experimental_outbound_policy._secrets():
                     dep_tasks.append(resolver.load(secret, load_context))
             for _, vol in validated_volumes:
                 dep_tasks.append(resolver.load(vol, load_context))
@@ -1125,7 +1126,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
-                outbound_policy=outbound_policy._to_proto() if outbound_policy else None,
+                outbound_policy=_experimental_outbound_policy._to_proto() if _experimental_outbound_policy else None,
                 proxy_id=(proxy.object_id if proxy else None),
                 verbose=verbose,
                 name=name,
@@ -1543,15 +1544,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskSetNetworkAccessRequest(task_id=task_id, network_access=network_access)
         await command_router_client.set_network_access(req)
 
-    async def update_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
+    async def _experimental_update_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
         """Replace the outbound policy of a running Sandbox.
+
+        This API is experimental and may change in the future.
 
         The new policy replaces all existing policy configuration on the
         Sandbox; build a policy including any existing rules you want to keep.
 
-        Only Sandboxes created with an `outbound_policy` can be updated this
-        way; for Sandboxes created without one this fails, since header
-        replacement is only set up at creation time.
+        Only Sandboxes created with an `_experimental_outbound_policy` can be
+        updated this way; for Sandboxes created without one this fails, since
+        header replacement is only set up at creation time.
 
         Args:
             outbound_policy: The new policy to apply.

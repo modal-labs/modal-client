@@ -37,11 +37,11 @@ var skipMethods = map[string]string{
 	// Returns a copy with straightforward mount options.
 	"Volume.WithMountOptions": "creates a copy with mount options, no config options needed",
 
-	// The OutboundPolicy argument is itself the configuration object.
-	"Sandbox.UpdateOutboundPolicy": "takes the policy value object directly, no wrapper params needed",
+	// The ExperimentalOutboundPolicy argument is itself the configuration object.
+	"Sandbox.ExperimentalUpdateOutboundPolicy": "takes the policy value object directly, no wrapper params needed",
 
-	// The OutboundPolicyHeaderReplacement argument is itself the configuration object.
-	"OutboundPolicy.WithHeaderReplacement": "value-object builder, the replacement is the configuration",
+	// The ExperimentalOutboundPolicyHeaderReplacement argument is itself the configuration object.
+	"ExperimentalOutboundPolicy.WithHeaderReplacement": "value-object builder, the replacement is the configuration",
 
 	// Lifecycle / cleanup signals; configuration-free by design.
 	"Volume.CloseEphemeral": "lifecycle signal, no config needed",
@@ -104,7 +104,7 @@ var typeRegistry = []typeEntry{
 	{name: "Function", typ: reflect.TypeOf((*Function)(nil)), isInterface: false},
 	{name: "FunctionCall", typ: reflect.TypeOf((*FunctionCall)(nil)), isInterface: false},
 	{name: "Image", typ: reflect.TypeOf((*Image)(nil)), isInterface: false},
-	{name: "OutboundPolicy", typ: reflect.TypeOf((*OutboundPolicy)(nil)), isInterface: false},
+	{name: "ExperimentalOutboundPolicy", typ: reflect.TypeOf((*ExperimentalOutboundPolicy)(nil)), isInterface: false},
 	{name: "Queue", typ: reflect.TypeOf((*Queue)(nil)), isInterface: false},
 	{name: "Sandbox", typ: reflect.TypeOf((*Sandbox)(nil)), isInterface: false},
 	{name: "Volume", typ: reflect.TypeOf((*Volume)(nil)), isInterface: false},
@@ -139,14 +139,14 @@ var excludedTypes = map[string]string{
 	"StdioBehavior":                   "string enum type",
 	"InternalFailure":                 "error type (name does not end in Error)",
 	"Allowlist":                       "configuration value type, no public methods",
-	"OutboundPolicyHeaderReplacement": "configuration value type, no public methods",
-	"FileType":                        "string enum, no public methods",
-	"FileInfo":                        "data type, no public methods",
-	"FileWatchEventType":              "string enum, no public methods",
-	"FileWatchEvent":                  "data type, no public methods",
-	"VolumeMountOptionsParams":        "configuration value type",
-	"LogEntry":                        "data type, no public methods",
-	"LogSource":                       "string enum, no public methods",
+	"ExperimentalOutboundPolicyHeaderReplacement": "configuration value type, no public methods",
+	"FileType":                 "string enum, no public methods",
+	"FileInfo":                 "data type, no public methods",
+	"FileWatchEventType":       "string enum, no public methods",
+	"FileWatchEvent":           "data type, no public methods",
+	"VolumeMountOptionsParams": "configuration value type",
+	"LogEntry":                 "data type, no public methods",
+	"LogSource":                "string enum, no public methods",
 }
 
 // isParamsType reports whether t is a pointer to a struct whose name ends with "Params".

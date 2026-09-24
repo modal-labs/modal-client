@@ -243,7 +243,7 @@ type SandboxCreateParams struct {
 	CustomDomain               string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
 	IncludeOidcIdentityToken   bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
 	ExperimentalEnableSnapshot bool                         // Enable memory snapshots.
-	OutboundPolicy             *OutboundPolicy              // Configuration for replacing headers in outbound HTTPS requests from the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never visible to the workload.
+	ExperimentalOutboundPolicy *ExperimentalOutboundPolicy  // EXPERIMENTAL: the API is subject to change. Configuration for replacing headers in outbound HTTPS requests from the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never visible to the workload.
 }
 
 // buildOutboundNetworkAccess builds the outbound network policy for the given
@@ -365,15 +365,15 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
 	}
-	if params.OutboundPolicy != nil {
-		if err := params.OutboundPolicy.validate(); err != nil {
+	if params.ExperimentalOutboundPolicy != nil {
+		if err := params.ExperimentalOutboundPolicy.validate(); err != nil {
 			return nil, err
 		}
 		if params.BlockNetwork {
-			return nil, fmt.Errorf("OutboundPolicy cannot be used when BlockNetwork is enabled")
+			return nil, fmt.Errorf("ExperimentalOutboundPolicy cannot be used when BlockNetwork is enabled")
 		}
 		if allowlist := params.OutboundDomainAllowlist; allowlist != nil && len(allowlist.Entries) > 0 {
-			return nil, fmt.Errorf("OutboundPolicy cannot be used with OutboundDomainAllowlist")
+			return nil, fmt.Errorf("ExperimentalOutboundPolicy cannot be used with OutboundDomainAllowlist")
 		}
 	}
 	networkAccess, err := buildOutboundNetworkAccess(params.BlockNetwork, params.OutboundCIDRAllowlist, params.OutboundDomainAllowlist)
@@ -511,7 +511,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			IdleTimeoutSecs:          idleTimeoutSecs,
 			Workdir:                  workdir,
 			NetworkAccess:            networkAccess,
-			OutboundPolicy:           params.OutboundPolicy.toProto(),
+			OutboundPolicy:           params.ExperimentalOutboundPolicy.toProto(),
 			Resources:                resourcesBuilder.Build(),
 			VolumeMounts:             volumeMounts,
 			CloudBucketMounts:        cloudBucketMounts,
@@ -583,7 +583,7 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 
 	// The SandboxCreate request only carries secret IDs, so any locally-created
 	// Secrets (and env vars) must be hydrated into server-side Secrets first.
-	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(mergedSecrets), params.OutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
+	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(mergedSecrets), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 
@@ -647,7 +647,7 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 		}
 		envDict[k] = v
 	}
-	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(resolvableSecrets), params.OutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
+	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(resolvableSecrets), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 
@@ -2118,15 +2118,17 @@ func (sb *Sandbox) UpdateNetworkPolicy(ctx context.Context, params *SandboxUpdat
 	return crClient.SetNetworkAccess(ctx, request)
 }
 
-// UpdateOutboundPolicy replaces the outbound policy of a running Sandbox.
+// ExperimentalUpdateOutboundPolicy replaces the outbound policy of a running Sandbox.
+//
+// EXPERIMENTAL: the API is subject to change.
 //
 // The new policy replaces all existing policy configuration on the Sandbox;
 // build a policy including any existing rules you want to keep.
 //
-// Only Sandboxes created with an OutboundPolicy can be updated this way.
-func (sb *Sandbox) UpdateOutboundPolicy(ctx context.Context, policy *OutboundPolicy) error {
+// Only Sandboxes created with an ExperimentalOutboundPolicy can be updated this way.
+func (sb *Sandbox) ExperimentalUpdateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
 	if policy == nil {
-		policy = &OutboundPolicy{}
+		policy = &ExperimentalOutboundPolicy{}
 	}
 	if err := policy.validate(); err != nil {
 		return err

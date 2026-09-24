@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2026
 import pytest
 
+from modal._outbound_policy import _OutboundPolicy, _template_references_key
 from modal.exception import InvalidError
-from modal.outbound_policy import _OutboundPolicy, _template_references_key
 from modal.secret import _Secret
 
 

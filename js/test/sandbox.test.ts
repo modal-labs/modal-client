@@ -49,7 +49,7 @@ import {
   Image,
   InvalidError,
   NotFoundError,
-  OutboundPolicy,
+  ExperimentalOutboundPolicy,
   Secret,
   SnapshotCreationError,
   TimeoutError,
@@ -3409,7 +3409,7 @@ test("experimentalGetExitSnapshot surfaces a rate limit without a retry policy",
 test("buildSandboxCreateRequestProto supports an outbound policy", async () => {
   const secret = new Secret("st-1", "my-secret");
   const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
-    outboundPolicy: new OutboundPolicy()
+    experimentalOutboundPolicy: new ExperimentalOutboundPolicy()
       .withHeaderReplacement({
         domain: "api.example.com",
         secret,
@@ -3432,43 +3432,49 @@ test("buildSandboxCreateRequestProto supports an outbound policy", async () => {
 });
 
 test("buildSandboxCreateRequestProto rejects outboundPolicy with blockNetwork", async () => {
-  const outboundPolicy = new OutboundPolicy().withHeaderReplacement({
-    domain: "example.com",
-    headers: { a: "b" },
-  });
+  const outboundPolicy = new ExperimentalOutboundPolicy().withHeaderReplacement(
+    {
+      domain: "example.com",
+      headers: { a: "b" },
+    },
+  );
   await expect(
     buildSandboxCreateRequestProto("app-123", "img-456", {
       blockNetwork: true,
-      outboundPolicy,
+      experimentalOutboundPolicy: outboundPolicy,
     }),
   ).rejects.toThrow(
-    "outboundPolicy cannot be used when blockNetwork is enabled",
+    "experimentalOutboundPolicy cannot be used when blockNetwork is enabled",
   );
 });
 
 test("buildSandboxCreateRequestProto rejects outboundPolicy with outboundDomainAllowlist", async () => {
-  const outboundPolicy = new OutboundPolicy().withHeaderReplacement({
-    domain: "example.com",
-    headers: { a: "b" },
-  });
+  const outboundPolicy = new ExperimentalOutboundPolicy().withHeaderReplacement(
+    {
+      domain: "example.com",
+      headers: { a: "b" },
+    },
+  );
   await expect(
     buildSandboxCreateRequestProto("app-123", "img-456", {
       outboundDomainAllowlist: ["example.com"],
-      outboundPolicy,
+      experimentalOutboundPolicy: outboundPolicy,
     }),
   ).rejects.toThrow(
-    "outboundPolicy cannot be used with outboundDomainAllowlist",
+    "experimentalOutboundPolicy cannot be used with outboundDomainAllowlist",
   );
 });
 
 test("buildSandboxCreateRequestProto allows outboundPolicy with CIDR-only allowlist", async () => {
-  const outboundPolicy = new OutboundPolicy().withHeaderReplacement({
-    domain: "example.com",
-    headers: { a: "b" },
-  });
+  const outboundPolicy = new ExperimentalOutboundPolicy().withHeaderReplacement(
+    {
+      domain: "example.com",
+      headers: { a: "b" },
+    },
+  );
   const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
     outboundCidrAllowlist: ["10.0.0.0/8"],
-    outboundPolicy,
+    experimentalOutboundPolicy: outboundPolicy,
   });
   expect(req.definition?.outboundPolicy).toBeDefined();
 });
@@ -3532,18 +3538,19 @@ test("create sends the outbound policy in the definition", async () => {
   const image = mc.images.fromRegistry("alpine:3.21");
 
   const sb = await mc.sandboxes.create(app, image, {
-    outboundPolicy: new OutboundPolicy().withHeaderReplacement({
-      domain: "api.example.com",
-      secret: new Secret("st-1", "my-secret"),
-      headers: { Authorization: "Bearer $API_KEY" },
-    }),
+    experimentalOutboundPolicy:
+      new ExperimentalOutboundPolicy().withHeaderReplacement({
+        domain: "api.example.com",
+        secret: new Secret("st-1", "my-secret"),
+        headers: { Authorization: "Bearer $API_KEY" },
+      }),
   });
   expect(sb.sandboxId).toEqual("sb-1234");
 
   mock.assertExhausted();
 });
 
-test("updateOutboundPolicy sends correct request via mocked command router", async () => {
+test("experimentalUpdateOutboundPolicy sends correct request via mocked command router", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, {
     taskId: "ta-v2-123",
@@ -3558,8 +3565,8 @@ test("updateOutboundPolicy sends correct request via mocked command router", asy
     } as unknown as TaskCommandRouterClientImpl);
   onTestFinished(() => tryInit.mockRestore());
 
-  await sb.updateOutboundPolicy(
-    new OutboundPolicy().withHeaderReplacement({
+  await sb.experimentalUpdateOutboundPolicy(
+    new ExperimentalOutboundPolicy().withHeaderReplacement({
       domain: "api.example.com",
       secret: new Secret("st-1", "my-secret"),
       headers: { Authorization: "Bearer $API_KEY" },

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { InvalidError, OutboundPolicy, Secret } from "modal";
+import { InvalidError, ExperimentalOutboundPolicy, Secret } from "modal";
 import { templateReferencesKey } from "../src/outbound_policy";
 
 test("templateReferencesKey", () => {
@@ -16,7 +16,7 @@ test("templateReferencesKey", () => {
 });
 
 test("withHeaderReplacement builds immutable policy", () => {
-  const policy = new OutboundPolicy();
+  const policy = new ExperimentalOutboundPolicy();
   const updated = policy.withHeaderReplacement({
     domain: "api.example.com",
     headers: { "X-Static": "plain" },
@@ -35,7 +35,7 @@ test("withHeaderReplacement builds immutable policy", () => {
 
 test("_toProto fans out replacements", () => {
   const secret = new Secret("st-1", "my-secret");
-  const policy = new OutboundPolicy()
+  const policy = new ExperimentalOutboundPolicy()
     .withHeaderReplacement({
       domain: "api.example.com",
       secret,
@@ -63,7 +63,7 @@ test("_toProto fans out replacements", () => {
 
 test("_validate rejects invalid domain", () => {
   for (const domain of ["not a domain", "example.com\n"]) {
-    const policy = new OutboundPolicy().withHeaderReplacement({
+    const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
       domain,
       headers: { a: "b" },
     });
@@ -72,7 +72,7 @@ test("_validate rejects invalid domain", () => {
 });
 
 test("withHeaderReplacement accepts wildcards", () => {
-  const policy = new OutboundPolicy()
+  const policy = new ExperimentalOutboundPolicy()
     .withHeaderReplacement({ domain: "*.example.com", headers: { a: "b" } })
     .withHeaderReplacement({ domain: "*", headers: { a: "b" } });
   expect(policy._replacements.map((s) => s.domain)).toEqual([
@@ -82,7 +82,7 @@ test("withHeaderReplacement accepts wildcards", () => {
 });
 
 test("_validate rejects empty headers", () => {
-  const policy = new OutboundPolicy().withHeaderReplacement({
+  const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
     domain: "example.com",
     headers: {},
   });
@@ -91,7 +91,7 @@ test("_validate rejects empty headers", () => {
 
 test("_validate rejects invalid header name", () => {
   for (const name of ["bad header", "X-Foo\n"]) {
-    const policy = new OutboundPolicy().withHeaderReplacement({
+    const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
       domain: "example.com",
       headers: { [name]: "x" },
     });
@@ -101,7 +101,7 @@ test("_validate rejects invalid header name", () => {
 
 test("_validate rejects control characters in header value", () => {
   for (const value of ["x\r\ninjected", "x\x00y", "x\x7fy"]) {
-    const policy = new OutboundPolicy().withHeaderReplacement({
+    const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
       domain: "example.com",
       headers: { a: value },
     });
@@ -110,7 +110,7 @@ test("_validate rejects control characters in header value", () => {
 });
 
 test("_validate allows tab in header value", () => {
-  const policy = new OutboundPolicy().withHeaderReplacement({
+  const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
     domain: "example.com",
     headers: { a: "x\ty" },
   });
@@ -119,7 +119,7 @@ test("_validate allows tab in header value", () => {
 });
 
 test("_validate rejects template without secret", () => {
-  const policy = new OutboundPolicy().withHeaderReplacement({
+  const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
     domain: "example.com",
     headers: { Authorization: "Bearer $API_KEY" },
   });
@@ -127,7 +127,7 @@ test("_validate rejects template without secret", () => {
 });
 
 test("_validate allows escaped dollar without secret", () => {
-  const policy = new OutboundPolicy().withHeaderReplacement({
+  const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
     domain: "example.com",
     headers: { a: "ca$$h", b: "$5", c: "$" },
   });
@@ -142,7 +142,7 @@ test("_validate allows escaped dollar without secret", () => {
 test("_validate rejects too many headers", () => {
   const headers: Record<string, string> = {};
   for (let i = 0; i < 26; i++) headers[`X-Header-${i}`] = "x";
-  const policy = new OutboundPolicy().withHeaderReplacement({
+  const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
     domain: "example.com",
     headers,
   });
@@ -151,7 +151,7 @@ test("_validate rejects too many headers", () => {
   // The limit counts headers across replacements.
   const full: Record<string, string> = {};
   for (let i = 0; i < 25; i++) full[`X-Header-${i}`] = "x";
-  const overLimit = new OutboundPolicy()
+  const overLimit = new ExperimentalOutboundPolicy()
     .withHeaderReplacement({ domain: "example.com", headers: full })
     .withHeaderReplacement({ domain: "other.com", headers: { a: "b" } });
   expect(() => overLimit._validate()).toThrow(
@@ -161,7 +161,7 @@ test("_validate rejects too many headers", () => {
 
 test("_secrets deduplicates", () => {
   const secret = new Secret("st-1", "my-secret");
-  const policy = new OutboundPolicy()
+  const policy = new ExperimentalOutboundPolicy()
     .withHeaderReplacement({
       domain: "a.example.com",
       secret,
@@ -179,7 +179,7 @@ test("_validate rejects ephemeral secrets", async () => {
   const { createMockModalClients } = await import("../test-support/grpc_mock");
   const { mockClient: mc } = createMockModalClients();
   const ephemeral = await mc.secrets.fromObject({ API_KEY: "k" });
-  const policy = new OutboundPolicy().withHeaderReplacement({
+  const policy = new ExperimentalOutboundPolicy().withHeaderReplacement({
     domain: "example.com",
     secret: ephemeral,
     headers: { Authorization: "Bearer $API_KEY" },

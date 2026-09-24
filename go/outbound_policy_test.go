@@ -35,8 +35,8 @@ func TestWithHeaderReplacementBuildsImmutablePolicy(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
-	var policy OutboundPolicy
-	updated := policy.WithHeaderReplacement(OutboundPolicyHeaderReplacement{
+	var policy ExperimentalOutboundPolicy
+	updated := policy.WithHeaderReplacement(ExperimentalOutboundPolicyHeaderReplacement{
 		Domain:  "api.example.com",
 		Headers: map[string]string{"X-Static": "plain"},
 	})
@@ -47,33 +47,33 @@ func TestWithHeaderReplacementBuildsImmutablePolicy(t *testing.T) {
 	g.Expect(updated.replacements[0].Secret).To(gomega.BeNil())
 }
 
-func TestNewOutboundPolicyMatchesChainedWith(t *testing.T) {
+func TestNewExperimentalOutboundPolicyMatchesChainedWith(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
-	replacements := []OutboundPolicyHeaderReplacement{
+	replacements := []ExperimentalOutboundPolicyHeaderReplacement{
 		{Domain: "api.example.com", Headers: map[string]string{"Authorization": "Bearer $API_KEY"}},
 		{Domain: "*.example.com", Headers: map[string]string{"X-Static": "plain"}},
 	}
-	declarative := NewOutboundPolicy(replacements...)
-	imperative := new(OutboundPolicy).
+	declarative := NewExperimentalOutboundPolicy(replacements...)
+	imperative := new(ExperimentalOutboundPolicy).
 		WithHeaderReplacement(replacements[0]).
 		WithHeaderReplacement(replacements[1])
 	g.Expect(declarative.replacements).To(gomega.Equal(imperative.replacements))
 }
 
-func TestOutboundPolicyToProtoFansOutReplacements(t *testing.T) {
+func TestExperimentalOutboundPolicyToProtoFansOutReplacements(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
 	secret := &Secret{SecretID: "st-1"}
-	policy := NewOutboundPolicy(
-		OutboundPolicyHeaderReplacement{
+	policy := NewExperimentalOutboundPolicy(
+		ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "api.example.com",
 			Secret:  secret,
 			Headers: map[string]string{"Authorization": "Bearer $API_KEY", "X-Key-Raw": "$API_KEY"},
 		},
-		OutboundPolicyHeaderReplacement{
+		ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "*.example.com",
 			Headers: map[string]string{"X-Static": "plain"},
 		},
@@ -94,11 +94,11 @@ func TestOutboundPolicyToProtoFansOutReplacements(t *testing.T) {
 
 // Builders perform no validation; invalid replacements are rejected by
 // validate(), called when the policy is used.
-func TestOutboundPolicyValidate(t *testing.T) {
+func TestExperimentalOutboundPolicyValidate(t *testing.T) {
 	t.Parallel()
 
-	validate := func(r OutboundPolicyHeaderReplacement) error {
-		p := NewOutboundPolicy(r)
+	validate := func(r ExperimentalOutboundPolicyHeaderReplacement) error {
+		p := NewExperimentalOutboundPolicy(r)
 		return p.validate()
 	}
 
@@ -106,7 +106,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 		for _, domain := range []string{"not a domain", "example.com\n"} {
-			err := validate(OutboundPolicyHeaderReplacement{
+			err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 				Domain:  domain,
 				Headers: map[string]string{"a": "b"},
 			})
@@ -117,9 +117,9 @@ func TestOutboundPolicyValidate(t *testing.T) {
 	t.Run("wildcards accepted", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
-		policy := NewOutboundPolicy(
-			OutboundPolicyHeaderReplacement{Domain: "*.example.com", Headers: map[string]string{"a": "b"}},
-			OutboundPolicyHeaderReplacement{Domain: "*", Headers: map[string]string{"a": "b"}},
+		policy := NewExperimentalOutboundPolicy(
+			ExperimentalOutboundPolicyHeaderReplacement{Domain: "*.example.com", Headers: map[string]string{"a": "b"}},
+			ExperimentalOutboundPolicyHeaderReplacement{Domain: "*", Headers: map[string]string{"a": "b"}},
 		)
 		g.Expect(policy.validate()).ToNot(gomega.HaveOccurred())
 	})
@@ -127,7 +127,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 	t.Run("empty headers", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
-		err := validate(OutboundPolicyHeaderReplacement{
+		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "example.com",
 			Headers: map[string]string{},
 		})
@@ -138,7 +138,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 		for _, name := range []string{"bad header", "X-Foo\n"} {
-			err := validate(OutboundPolicyHeaderReplacement{
+			err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 				Domain:  "example.com",
 				Headers: map[string]string{name: "x"},
 			})
@@ -150,7 +150,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 		for _, value := range []string{"x\r\ninjected", "x\x00y", "x\x7fy"} {
-			err := validate(OutboundPolicyHeaderReplacement{
+			err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 				Domain:  "example.com",
 				Headers: map[string]string{"a": value},
 			})
@@ -161,7 +161,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 	t.Run("tab in header value", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
-		err := validate(OutboundPolicyHeaderReplacement{
+		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "example.com",
 			Headers: map[string]string{"a": "x\ty"},
 		})
@@ -171,7 +171,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 	t.Run("template without secret", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
-		err := validate(OutboundPolicyHeaderReplacement{
+		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "example.com",
 			Headers: map[string]string{"Authorization": "Bearer $API_KEY"},
 		})
@@ -181,7 +181,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 	t.Run("escaped dollar without secret", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
-		err := validate(OutboundPolicyHeaderReplacement{
+		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "example.com",
 			Headers: map[string]string{"a": "ca$$h", "b": "$5", "c": "$"},
 		})
@@ -192,7 +192,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 		ephemeral := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"API_KEY": "k"}}}
-		err := validate(OutboundPolicyHeaderReplacement{
+		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "example.com",
 			Secret:  ephemeral,
 			Headers: map[string]string{"Authorization": "Bearer $API_KEY"},
@@ -207,7 +207,7 @@ func TestOutboundPolicyValidate(t *testing.T) {
 		for i := range maxOutboundPolicyHeaderReplacements + 1 {
 			headers[string(rune('a'+i))] = "x"
 		}
-		err := validate(OutboundPolicyHeaderReplacement{
+		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
 			Domain:  "example.com",
 			Headers: headers,
 		})
@@ -218,9 +218,9 @@ func TestOutboundPolicyValidate(t *testing.T) {
 		for i := range maxOutboundPolicyHeaderReplacements {
 			full[fmt.Sprintf("X-Header-%d", i)] = "x"
 		}
-		policy := NewOutboundPolicy(
-			OutboundPolicyHeaderReplacement{Domain: "example.com", Headers: map[string]string{"a": "b"}},
-			OutboundPolicyHeaderReplacement{Domain: "other.com", Headers: full},
+		policy := NewExperimentalOutboundPolicy(
+			ExperimentalOutboundPolicyHeaderReplacement{Domain: "example.com", Headers: map[string]string{"a": "b"}},
+			ExperimentalOutboundPolicyHeaderReplacement{Domain: "other.com", Headers: full},
 		)
 		err = policy.validate()
 		g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("more than 25 header replacements")))
@@ -229,23 +229,23 @@ func TestOutboundPolicyValidate(t *testing.T) {
 	t.Run("nil policy is valid", func(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
-		var empty *OutboundPolicy
+		var empty *ExperimentalOutboundPolicy
 		g.Expect(empty.validate()).ToNot(gomega.HaveOccurred())
 	})
 }
 
-func TestOutboundPolicySecretsDeduplicates(t *testing.T) {
+func TestExperimentalOutboundPolicySecretsDeduplicates(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
 	secret := &Secret{SecretID: "st-1"}
-	policy := NewOutboundPolicy(
-		OutboundPolicyHeaderReplacement{Domain: "a.example.com", Secret: secret, Headers: map[string]string{"a": "$K"}},
-		OutboundPolicyHeaderReplacement{Domain: "b.example.com", Secret: secret, Headers: map[string]string{"b": "$K"}},
+	policy := NewExperimentalOutboundPolicy(
+		ExperimentalOutboundPolicyHeaderReplacement{Domain: "a.example.com", Secret: secret, Headers: map[string]string{"a": "$K"}},
+		ExperimentalOutboundPolicyHeaderReplacement{Domain: "b.example.com", Secret: secret, Headers: map[string]string{"b": "$K"}},
 	)
 	g.Expect(policy.secrets()).To(gomega.Equal([]*Secret{secret}))
 
-	var empty *OutboundPolicy
+	var empty *ExperimentalOutboundPolicy
 	g.Expect(empty.secrets()).To(gomega.BeEmpty())
 	g.Expect(empty.toProto()).To(gomega.BeNil())
 }

@@ -50,6 +50,8 @@ class _OutboundPolicy:
     """Immutable configuration for replacing headers in outbound HTTPS requests
     from a Sandbox.
 
+    This API is experimental and may change in the future.
+
     Header values support templating with keys in a replacement's secret: a
     `$`-prefixed key name in the secret is replaced with the secret value.
     Literal `$` characters are written `$$`.
@@ -60,11 +62,12 @@ class _OutboundPolicy:
     Examples:
         ```python
         import modal
+        import modal.experimental
 
         secret = modal.Secret.from_name("api-token")
 
         outbound_policy = (
-            modal.OutboundPolicy()
+            modal.experimental.OutboundPolicy()
             # Inject a secret-backed Authorization header.
             .with_header_replacement(
                 domain="example.com",
@@ -78,7 +81,7 @@ class _OutboundPolicy:
             )
         )
 
-        sb = modal.Sandbox.create(outbound_policy=outbound_policy)
+        sb = modal.Sandbox.create(_experimental_outbound_policy=outbound_policy)
         ```
     """
 
@@ -159,9 +162,12 @@ def _validate_compatible_network_access(
     if outbound_policy is None:
         return
     if block_network:
-        raise InvalidError("`outbound_policy` cannot be used when `block_network` is enabled")
+        raise InvalidError("`_experimental_outbound_policy` cannot be used when `block_network` is enabled")
     if outbound_domain_allowlist:
-        raise InvalidError("`outbound_policy` cannot be used with `outbound_domain_allowlist`")
+        raise InvalidError("`_experimental_outbound_policy` cannot be used with `outbound_domain_allowlist`")
 
 
+# The public interface lives under `modal.experimental` (re-exported there), but
+# the synchronized class is defined here so that the generated type stub for this
+# module declares it as a class.
 OutboundPolicy = synchronize_api(_OutboundPolicy)

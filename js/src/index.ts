@@ -70,7 +70,7 @@ export {
   type ImagePublishParams,
 } from "./image";
 export { Retries } from "./retries";
-export { OutboundPolicy } from "./outbound_policy";
+export { ExperimentalOutboundPolicy } from "./outbound_policy";
 export type {
   ProbeParams,
   SandboxExecParams,

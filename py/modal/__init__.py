@@ -23,7 +23,6 @@ try:
     from .functions import Function, FunctionCall
     from .image import Image
     from .network_file_system import NetworkFileSystem
-    from .outbound_policy import OutboundPolicy
     from .output import enable_output
     from .partial_function import (
         asgi_app,
@@ -73,7 +72,6 @@ __all__ = [
     "FunctionCall",
     "Image",
     "NetworkFileSystem",
-    "OutboundPolicy",
     "Period",
     "Probe",
     "Proxy",
