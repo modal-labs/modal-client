@@ -25,7 +25,6 @@ from ._traceback import print_server_warnings
 from ._type_manager import parameter_serde_registry
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import (
-    deprecation_warning,
     handle_deprecated_parameters,
     with_deprecation_warning,
 )
@@ -582,27 +581,20 @@ class _Cls(_Object, type_prefix="cs"):
     def _validate_construction_mechanism(user_cls):
         """mdmd:hidden"""
         params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
-        has_custom_constructor = user_cls.__init__ != object.__init__
-        if params and has_custom_constructor:
+        # This also rejects constructors inherited from a base class
+        if user_cls.__init__ != object.__init__:
             raise InvalidError(
-                "A class can't have both a custom __init__ constructor "
-                "and dataclass-style modal.parameter() annotations"
-            )
-        elif has_custom_constructor:
-            deprecation_warning(
-                (2025, 4, 15),
                 f"""
-{user_cls} uses a non-default constructor (__init__) method.
-Custom constructors will not be supported in a a future version of Modal.
+Modal class {user_cls.__name__} cannot have a custom constructor (__init__) method.
 
-To parameterize classes, use dataclass-style modal.parameter() declarations instead,
-e.g.:\n
+Use @modal.enter() for initialization logic, and parameterize classes with
+dataclass-style modal.parameter() declarations, e.g.:
 
 class {user_cls.__name__}:
     model_name: str = modal.parameter()
 
 More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
-""",
+"""
             )
         annotations = inspect.get_annotations(user_cls)
         missing_annotations = params.keys() - annotations.keys()

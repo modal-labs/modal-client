@@ -1074,9 +1074,6 @@ class UsingAnnotationParameters:
         return self.a
 
 
-init_side_effects = []
-
-
 def test_implicit_constructor(client):
     c = UsingAnnotationParameters(a=10)
 
@@ -1100,58 +1097,31 @@ def test_implicit_constructor(client):
     assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
 
 
-def test_custom_constructor_has_deprecation_warning():
-    with pytest.warns(DeprecationError, match="non-default constructor"):
+def test_custom_constructor_is_invalid():
+    with pytest.raises(InvalidError, match="cannot have a custom constructor"):
 
         @app2.cls(serialized=True)
         class UsingCustomConstructor:
-            # might want to deprecate this soon
-            a: int
-
             def __init__(self, a: int):
                 self._a = a
-                init_side_effects.append("did_run")
 
             @method()
             def get_value(self):
                 return self._a
 
-    d = UsingCustomConstructor(10)
-    assert not init_side_effects
 
-    assert d._a == 10  # lazily run constructor when accessing non-method attributes (!)
-    assert init_side_effects == ["did_run"]
+def test_inherited_custom_constructor_is_invalid():
+    class Base:
+        def __init__(self):
+            pass
 
-    d2 = UsingCustomConstructor(11)
-    assert d2.get_value.local() == 11  # run constructor before running locally
-    # check that explicit constructors trigger pickle parametrization
-    function_info: FunctionSourceInfo = synchronizer._translate_in(
-        UsingCustomConstructor
-    )._class_service_function._source_info_  # type: ignore
-    assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE
+    with pytest.raises(InvalidError, match="cannot have a custom constructor"):
 
-
-class ParametrizedClass1:
-    def __init__(self, a):
-        pass
-
-
-class ParametrizedClass1Implicit:
-    a: int = modal.parameter()
-
-
-class ParametrizedClass2:
-    def __init__(self, a: int = 1):
-        pass
-
-
-class ParametrizedClass2Implicit:
-    a: int = modal.parameter(default=1)
-
-
-class ParametrizedClass3:
-    def __init__(self):
-        pass
+        @app2.cls(serialized=True)
+        class InheritsCustomConstructor(Base):
+            @method()
+            def get_value(self):
+                return 1
 
 
 app_batched = App(include_source=False)

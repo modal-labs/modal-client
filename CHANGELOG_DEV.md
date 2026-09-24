@@ -7,7 +7,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 ## Python
 
 - Added `modal.clustered` as a public API. `modal.experimental.clustered` is deprecated.
-
+- Classes decorated with `@app.cls()` can no longer define a custom `__init__` constructor (including one inherited from a base class); this now raises an `InvalidError` instead of a deprecation warning. Use [`modal.parameter()`](/docs/guide/parametrized-functions) to parameterize classes and `@modal.enter()` for initialization logic. Classes deployed by older clients with a custom constructor can still be looked up and called.
 - `modal shell` now respects the `MODAL_SANDBOX_V2` setting. V2 shells support Function references and `--add-local` mounts.
 - Added a `max_concurrency` parameter to `@app.server()` for limiting the number of concurrent requests handled by each container. This hard limit does not affect autoscaling; configure `target_concurrency` separately to scale based on request load.
 - Sandboxes now have experimental support for replacing headers in outbound HTTPS requests with secret values that are never visible to the workload, via the new `modal.experimental.OutboundPolicy` configuration object: pass `_experimental_outbound_policy=` to `Sandbox.create` and call `Sandbox._experimental_update_outbound_policy` on a running Sandbox. This API is experimental and may change in the future.
