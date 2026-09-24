@@ -717,6 +717,15 @@ class FunctionInfo:
         )
 
 
+@dataclass(frozen=True)
+class ServerContainerInfo:
+    """Information about a container serving requests for a Server."""
+
+    container_id: str
+    host: str
+    port: int
+
+
 @dataclass
 class ServerInfo:
     """A simple data structure containing static info about a Server handle."""

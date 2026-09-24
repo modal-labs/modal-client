@@ -2,6 +2,8 @@
 import inspect
 import typing
 
+from modal_proto import api_pb2
+
 from ._functions import _Function
 from ._load_context import LoadContext
 from ._logs_manager import _ServerLogsManager
@@ -15,7 +17,7 @@ from ._supports_logs import _LogQueryData
 from .client import _Client
 from .cls import is_parameter
 from .exception import InvalidError
-from .types import ServerAutoscalerSettings, ServerInfo
+from .types import ServerAutoscalerSettings, ServerContainerInfo, ServerInfo
 
 if typing.TYPE_CHECKING:
     import modal.app
@@ -137,6 +139,25 @@ class _Server:
         # since they only have one region.
         url = urls[0] if urls else None
         return url
+
+    @live_method
+    async def _experimental_list_containers(self) -> list[ServerContainerInfo]:
+        """List the containers currently registered to serve requests for this Server.
+
+        This interface is experimental and may change or be removed without warning.
+        """
+        service_function = self._get_service_function()
+        response = await service_function.client.stub.FlashContainerList(
+            api_pb2.FlashContainerListRequest(function_id=service_function.object_id)
+        )
+        return [
+            ServerContainerInfo(
+                container_id=container.task_id,
+                host=container.host,
+                port=container.port,
+            )
+            for container in response.containers
+        ]
 
     @live_method
     async def update_autoscaler(

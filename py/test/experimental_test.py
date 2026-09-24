@@ -28,6 +28,33 @@ class SimpleServer:
         pass
 
 
+def test_server_experimental_list_containers(client, servicer):
+    app.deploy(name="test", client=client)
+    function_id = servicer.app_objects[app.app_id]["SimpleServer"]
+    response_container = api_pb2.FlashContainerListResponse.Container(
+        task_id="ta-123",
+        host="server.example.com",
+        port=443,
+    )
+    server = modal.Server.from_name("test", "SimpleServer", client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FlashContainerList",
+            api_pb2.FlashContainerListResponse(containers=[response_container]),
+        )
+        containers = server._experimental_list_containers()
+
+    assert containers == [
+        modal.types.ServerContainerInfo(
+            container_id="ta-123",
+            host="server.example.com",
+            port=443,
+        )
+    ]
+    assert ctx.pop_request("FlashContainerList").function_id == function_id
+
+
 def test_app_get_objects(client, servicer):
     app.deploy(name="test", environment_name="dev", client=client)
     res = modal.experimental.get_app_objects("test", environment_name="dev", client=client)
