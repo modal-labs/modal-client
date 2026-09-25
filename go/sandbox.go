@@ -605,7 +605,11 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 	}
 
 	s.client.logger.DebugContext(ctx, "Created Sandbox", "sandbox_id", createResp.GetSandboxId())
-	return newSandbox(s.client, createResp.GetSandboxId()), nil
+	sb := newSandbox(s.client, createResp.GetSandboxId())
+	if err := sb.waitForScheduling(ctx, sandboxSchedulingTimeout); err != nil {
+		return nil, err
+	}
+	return sb, nil
 }
 
 // ExperimentalCreate creates a new Sandbox using the experimental V2 backend.
@@ -1401,36 +1405,105 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 	return &SandboxCreateConnectCredentials{URL: resp.GetUrl(), Token: resp.GetToken()}, nil
 }
 
-const maxGetTaskIDAttempts = 600 // 5 minutes at 500ms intervals
+// How long Create waits for capacity before giving up.
+const sandboxSchedulingTimeout = 21 * time.Minute
+
+// How long operations that need a running task wait for one.
+const getTaskIDTimeout = 5 * time.Minute
 
 func (sb *Sandbox) ensureTaskID(ctx context.Context) (string, error) {
+	return sb.waitForTaskID(ctx, getTaskIDTimeout, false)
+}
+
+// waitForScheduling blocks until the Sandbox has a task. If the wait fails for
+// any reason other than the Sandbox having already finished, it terminates the
+// Sandbox so a queued one cannot start later with no caller.
+func (sb *Sandbox) waitForScheduling(ctx context.Context, timeout time.Duration) error {
+	_, err := sb.waitForTaskID(ctx, timeout, true)
+	if err == nil {
+		return nil
+	}
+	var conflictErr ConflictError
+	if errors.As(err, &conflictErr) {
+		return err
+	}
+	// The caller's context may already be done, so terminate on a detached one.
+	if _, terminateErr := sb.Terminate(context.WithoutCancel(ctx), nil); terminateErr != nil {
+		sb.client.logger.DebugContext(ctx, "Failed to terminate unscheduled Sandbox", "sandbox_id", sb.SandboxID, "error", terminateErr)
+	}
+	var timeoutErr TimeoutError
+	if errors.As(err, &timeoutErr) {
+		return ResourceExhaustedError{Exception: "Insufficient capacity to create sandbox."}
+	}
+	return err
+}
+
+// waitForTaskID polls until the Sandbox has been assigned a task. It returns a
+// ConflictError if the Sandbox finished before that happened and a TimeoutError
+// once timeout elapses. With retryTransient, lookups that fail with a transient
+// error keep polling until the deadline instead of failing the wait.
+func (sb *Sandbox) waitForTaskID(ctx context.Context, timeout time.Duration, retryTransient bool) (string, error) {
 	sb.taskIDMu.Lock()
 	taskID := sb.taskID
 	sb.taskIDMu.Unlock()
 	if taskID != "" {
 		return taskID, nil
 	}
-	for range maxGetTaskIDAttempts {
-		resp, err := sb.sandboxGetTaskID(ctx)
-		if err != nil {
-			return "", err
+	pollCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	// The most recent lookup's server error, if it was Internal.
+	var lastInternalErr error
+	// A done caller context surfaces from the RPC as a gRPC status error, so check ctx directly.
+	waitErr := func(err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		if resp.GetTaskId() != "" {
+		if pollCtx.Err() != nil {
+			// A server error is not evidence of missing capacity, so surface it as is.
+			if lastInternalErr != nil {
+				return lastInternalErr
+			}
+			return TimeoutError{Exception: fmt.Sprintf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)}
+		}
+		return err
+	}
+	for {
+		resp, err := sb.sandboxGetTaskID(ctx)
+		lastInternalErr = nil
+		if status.Code(err) == codes.Internal {
+			lastInternalErr = err
+		}
+		if err != nil {
+			if !retryTransient || ctx.Err() != nil || pollCtx.Err() != nil || !isTransientTaskIDLookupError(err) {
+				return "", waitErr(err)
+			}
+			// A transient failure says nothing about scheduling; keep polling until the deadline.
+		} else if resp.GetTaskId() != "" {
 			sb.taskIDMu.Lock()
 			sb.taskID = resp.GetTaskId()
 			sb.taskIDMu.Unlock()
 			return resp.GetTaskId(), nil
-		}
-		if resp.GetTaskResult() != nil {
-			return "", fmt.Errorf("Sandbox %s has already completed with result: %v", sb.SandboxID, resp.GetTaskResult())
+		} else if result := resp.GetTaskResult(); result != nil {
+			msg := result.GetException()
+			if msg == "" {
+				msg = fmt.Sprintf("Sandbox %s has already finished", sb.SandboxID)
+			}
+			return "", ConflictError{Exception: msg}
 		}
 		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
+		case <-pollCtx.Done():
+			return "", waitErr(pollCtx.Err())
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	return "", fmt.Errorf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)
+}
+
+func isTransientTaskIDLookupError(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded, codes.Internal:
+		return true
+	}
+	return false
 }
 
 func (sb *Sandbox) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {

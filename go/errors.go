@@ -93,6 +93,16 @@ func (e QueueFullError) Error() string {
 	return "QueueFullError: " + e.Exception
 }
 
+// ResourceExhaustedError is returned when a server-side resource has been
+// exhausted, such as capacity, a quota, or a rate limit.
+type ResourceExhaustedError struct {
+	Exception string
+}
+
+func (e ResourceExhaustedError) Error() string {
+	return "ResourceExhaustedError: " + e.Exception
+}
+
 // SandboxFilesystemError is returned for unexpected or unclassified sandbox filesystem errors.
 type SandboxFilesystemError struct {
 	Exception string

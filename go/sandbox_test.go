@@ -1772,6 +1772,7 @@ type sandboxV2RoutingStub struct {
 	v1Creates, v2Creates int
 	v1Lookups, v2Lookups int
 	v1Lists, v2Lists     int
+	v1TaskLookups        int
 	fromNameV2Err        error // returned by SandboxGetFromNameV2 when set
 	listV2Req            *pb.SandboxListRequest
 }
@@ -1781,6 +1782,15 @@ func (m *sandboxV2RoutingStub) SandboxCreate(
 ) (*pb.SandboxCreateResponse, error) {
 	m.v1Creates++
 	return pb.SandboxCreateResponse_builder{SandboxId: testV1SandboxID}.Build(), nil
+}
+
+//nolint:staticcheck // name must match the generated ModalClientClient interface method.
+func (m *sandboxV2RoutingStub) SandboxGetTaskId(
+	_ context.Context, _ *pb.SandboxGetTaskIdRequest, _ ...grpc.CallOption,
+) (*pb.SandboxGetTaskIdResponse, error) {
+	m.v1TaskLookups++
+	taskID := "ta-v1-123"
+	return pb.SandboxGetTaskIdResponse_builder{TaskId: &taskID}.Build(), nil
 }
 
 func (m *sandboxV2RoutingStub) SandboxCreateV2(
@@ -1857,6 +1867,7 @@ func TestSandboxV2FlagRoutesCreate(t *testing.T) {
 			t.Context(), app, image, &SandboxCreateParams{GPU: "T4"})
 		g.Expect(err).ShouldNot(gomega.HaveOccurred())
 		g.Expect(sb.SandboxID).To(gomega.Equal(testV1SandboxID))
+		g.Expect(sb.taskID).To(gomega.Equal("ta-v1-123"))
 		g.Expect(stub.v1Creates).To(gomega.Equal(1))
 		g.Expect(stub.v2Creates).To(gomega.Equal(0))
 	})
@@ -1869,9 +1880,272 @@ func TestSandboxV2FlagRoutesCreate(t *testing.T) {
 		sb, err := newSandboxV2RoutingService(stub, false).Create(t.Context(), app, image, nil)
 		g.Expect(err).ShouldNot(gomega.HaveOccurred())
 		g.Expect(sb.SandboxID).To(gomega.Equal(testV1SandboxID))
+		g.Expect(sb.taskID).To(gomega.Equal("ta-v1-123"))
 		g.Expect(stub.v1Creates).To(gomega.Equal(1))
 		g.Expect(stub.v2Creates).To(gomega.Equal(0))
 	})
+}
+
+type mockSandboxV1CreateStub struct {
+	pb.ModalClientClient
+	getTaskID  func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error)
+	terminates atomic.Int32
+	// terminateCtxErr records ctx.Err() as seen by the last SandboxTerminate call.
+	terminateCtxErr atomic.Pointer[error]
+}
+
+func (m *mockSandboxV1CreateStub) SandboxCreate(
+	_ context.Context, _ *pb.SandboxCreateRequest, _ ...grpc.CallOption,
+) (*pb.SandboxCreateResponse, error) {
+	return pb.SandboxCreateResponse_builder{SandboxId: testV1SandboxID}.Build(), nil
+}
+
+//nolint:staticcheck // name must match the generated ModalClientClient interface method.
+func (m *mockSandboxV1CreateStub) SandboxGetTaskId(
+	_ context.Context, req *pb.SandboxGetTaskIdRequest, _ ...grpc.CallOption,
+) (*pb.SandboxGetTaskIdResponse, error) {
+	return m.getTaskID(req)
+}
+
+func (m *mockSandboxV1CreateStub) SandboxTerminate(
+	ctx context.Context, _ *pb.SandboxTerminateRequest, _ ...grpc.CallOption,
+) (*pb.SandboxTerminateResponse, error) {
+	m.terminates.Add(1)
+	ctxErr := ctx.Err()
+	m.terminateCtxErr.Store(&ctxErr)
+	return pb.SandboxTerminateResponse_builder{}.Build(), nil
+}
+
+func newSandboxV1CreateService(stub *mockSandboxV1CreateStub) *sandboxServiceImpl {
+	return &sandboxServiceImpl{client: &Client{
+		cpClient: &clientWithConn{ModalClientClient: stub},
+		profile:  Profile{SandboxV2: false},
+		logger:   slog.New(slog.DiscardHandler),
+	}}
+}
+
+func TestSandboxCreateV1WaitsForTaskID(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var lookups atomic.Int32
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(req *pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(testV1SandboxID))
+			if lookups.Add(1) == 1 {
+				return pb.SandboxGetTaskIdResponse_builder{}.Build(), nil
+			}
+			taskID := "ta-scheduled"
+			return pb.SandboxGetTaskIdResponse_builder{TaskId: &taskID}.Build(), nil
+		},
+	}
+
+	sb, err := newSandboxV1CreateService(stub).Create(
+		t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(sb.taskID).To(gomega.Equal("ta-scheduled"))
+	g.Expect(lookups.Load()).To(gomega.Equal(int32(2)))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(0)))
+}
+
+func TestSandboxCreateV1SchedulingTimeout(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			return pb.SandboxGetTaskIdResponse_builder{}.Build(), nil
+		},
+	}
+	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
+
+	err := sb.waitForScheduling(t.Context(), 0)
+	var exhausted ResourceExhaustedError
+	g.Expect(errors.As(err, &exhausted)).To(gomega.BeTrue(), "got %v", err)
+	g.Expect(exhausted.Exception).To(gomega.ContainSubstring("Insufficient capacity"))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
+}
+
+func TestSandboxCreateV1TaskIDLookupError(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			return nil, status.Error(codes.InvalidArgument, "lookup failed")
+		},
+	}
+
+	_, err := newSandboxV1CreateService(stub).Create(
+		t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.InvalidArgument))
+	g.Expect(err.Error()).To(gomega.ContainSubstring("lookup failed"))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
+}
+
+func TestSandboxCreateV1TaskIDTransientErrorThenScheduled(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []codes.Code{codes.Unavailable, codes.Internal} {
+		t.Run(code.String(), func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			var lookups atomic.Int32
+			stub := &mockSandboxV1CreateStub{
+				getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+					if lookups.Add(1) <= 2 {
+						return nil, status.Error(code, "server hiccup")
+					}
+					taskID := "ta-scheduled"
+					return pb.SandboxGetTaskIdResponse_builder{TaskId: &taskID}.Build(), nil
+				},
+			}
+
+			sb, err := newSandboxV1CreateService(stub).Create(
+				t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			g.Expect(sb.taskID).To(gomega.Equal("ta-scheduled"))
+			g.Expect(lookups.Load()).To(gomega.Equal(int32(3)))
+			g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(0)))
+		})
+	}
+}
+
+func TestSandboxCreateV1TaskIDUnavailableUntilDeadline(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var lookups atomic.Int32
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			lookups.Add(1)
+			return nil, status.Error(codes.Unavailable, "server hiccup")
+		},
+	}
+	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
+
+	err := sb.waitForScheduling(t.Context(), 1200*time.Millisecond)
+	var exhausted ResourceExhaustedError
+	g.Expect(errors.As(err, &exhausted)).To(gomega.BeTrue(), "got %v", err)
+	g.Expect(exhausted.Exception).To(gomega.ContainSubstring("Insufficient capacity"))
+	g.Expect(lookups.Load()).To(gomega.BeNumerically(">=", 2))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
+}
+
+func TestSandboxCreateV1TaskIDInternalUntilDeadline(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			return nil, status.Error(codes.Internal, "server bug")
+		},
+	}
+	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
+
+	err := sb.waitForScheduling(t.Context(), 1200*time.Millisecond)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.Internal), "got %v", err)
+	g.Expect(err.Error()).To(gomega.ContainSubstring("server bug"))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
+}
+
+func TestSandboxCreateV1TaskIDUnknownErrorIsNotRetried(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var lookups atomic.Int32
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			lookups.Add(1)
+			return nil, status.Error(codes.Unknown, "unexpected")
+		},
+	}
+
+	_, err := newSandboxV1CreateService(stub).Create(
+		t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.Unknown))
+	g.Expect(lookups.Load()).To(gomega.Equal(int32(1)))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
+}
+
+func TestEnsureTaskIDDoesNotRetryTransientErrors(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var lookups atomic.Int32
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			lookups.Add(1)
+			return nil, status.Error(codes.Unavailable, "server hiccup")
+		},
+	}
+	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
+
+	_, err := sb.ensureTaskID(t.Context())
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.Unavailable))
+	g.Expect(lookups.Load()).To(gomega.Equal(int32(1)))
+}
+
+func TestSandboxCreateV1TerminatedBeforeScheduled(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			return pb.SandboxGetTaskIdResponse_builder{
+				TaskResult: pb.GenericResult_builder{
+					Status:    pb.GenericResult_GENERIC_STATUS_TERMINATED,
+					Exception: "Sandbox was cancelled by user",
+				}.Build(),
+			}.Build(), nil
+		},
+	}
+
+	_, err := newSandboxV1CreateService(stub).Create(
+		t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+	var conflict ConflictError
+	g.Expect(errors.As(err, &conflict)).To(gomega.BeTrue(), "got %v", err)
+	g.Expect(conflict.Exception).To(gomega.Equal("Sandbox was cancelled by user"))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(0)))
+}
+
+func TestSandboxCreateV1CancelledWhileScheduling(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			cancel()
+			return pb.SandboxGetTaskIdResponse_builder{}.Build(), nil
+		},
+	}
+	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
+
+	err := sb.waitForScheduling(ctx, time.Minute)
+	g.Expect(err).To(gomega.MatchError(context.Canceled))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
+	g.Expect(*stub.terminateCtxErr.Load()).ShouldNot(gomega.HaveOccurred(),
+		"terminate must run on a context that outlives the cancelled caller")
+}
+
+func TestWaitForTaskIDRespectsCallerCancellation(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			cancel()
+			return pb.SandboxGetTaskIdResponse_builder{}.Build(), nil
+		},
+	}
+	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
+
+	_, err := sb.waitForTaskID(ctx, time.Minute, true)
+	g.Expect(err).To(gomega.MatchError(context.Canceled))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(0)))
 }
 
 func TestSandboxV2FlagRoutesFromName(t *testing.T) {

@@ -1924,8 +1924,9 @@ func TestSandboxGetTaskIdTerminated(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	_, err = sb.Exec(ctx, []string{"echo", "hello"}, nil)
-	g.Expect(err).Should(gomega.HaveOccurred())
-	g.Expect(err.Error()).Should(gomega.ContainSubstring("already completed"))
+	var conflictErr modal.ConflictError
+	g.Expect(errors.As(err, &conflictErr)).To(gomega.BeTrue(), "got %v", err)
+	g.Expect(conflictErr.Exception).Should(gomega.ContainSubstring("already finished"))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
