@@ -75,7 +75,7 @@ class _Server:
     _user_cls: type | None = None  # None if remote
     _service_function: _Function
     _app: "modal.app._App | None" = None  # None if remote
-    _is_sessioned: bool | None = None  # None if remote
+    _is_sessioned: bool | None = None  # None until known (via local set or remote hydration)
 
     def _get_user_cls(self) -> type:
         assert self._user_cls is not None
@@ -250,6 +250,8 @@ class _Server:
         # This is required since we want to support @livemethod() decorated methods
         service_function = self._get_service_function()
         await service_function.hydrate(client)
+        if service_function._function_info is not None:
+            self._is_sessioned = service_function._function_info._sessioned
         return self
 
     @classmethod
@@ -492,7 +494,7 @@ class _ServerSessionsManager:
         self._server = server
 
     def _validate(self) -> None:
-        if self._server._is_local() and self._server._is_sessioned is False:
+        if self._server._is_sessioned is False:
             raise InvalidError("`sessions` requires `@modal.sessioned()` on the Server.")
 
     async def start(self, idle_timeout: int = 600) -> ServerSessionCredentials:
@@ -518,12 +520,12 @@ class _ServerSessionsManager:
             server.sessions.terminate(session.token)
             ```
         """
-        self._validate()
         if not isinstance(idle_timeout, int) or idle_timeout <= 0:
             raise InvalidError("`idle_timeout` must be a positive integer.")
 
         fn = self._server._get_service_function()
         url = await self._server.get_url()
+        self._validate()
         assert url is not None, "Server has no URL."
 
         headers = {
@@ -559,10 +561,9 @@ class _ServerSessionsManager:
             server.sessions.terminate(session.token)
             ```
         """
-        self._validate()
-
         fn = self._server._get_service_function()
         url = await self._server.get_url()
+        self._validate()
         assert url is not None, "Server has no URL."
 
         headers = {

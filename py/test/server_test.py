@@ -801,6 +801,35 @@ def test_server_from_name_hydrates_service_function_app_id(client, servicer):
     assert service_function_impl._app_id == servicer.function_id_to_app_id[service_function.object_id]  # type: ignore[attr-defined]
 
 
+def test_hydrated_nonsessioned_server_rejects_session_start(client, servicer):
+    server_app.deploy(client=client)
+    server = Server.from_name("server-test-app", "BasicServer", client=client)
+    server.hydrate(client=client)
+
+    impl = synchronizer._translate_in(server)
+    assert impl._is_sessioned is False
+
+    with mock.patch("modal._server._post_session_control") as post:
+        with pytest.raises(InvalidError, match=r"requires `@modal\.sessioned\(\)`"):
+            server.sessions.start()
+        post.assert_not_called()
+
+
+@pytest.mark.parametrize("op", ["start", "terminate"])
+def test_lazy_nonsessioned_server_rejects_session_ops(client, servicer, op):
+    server_app.deploy(client=client)
+    server = Server.from_name("server-test-app", "BasicServer", client=client)
+    assert synchronizer._translate_in(server)._is_sessioned is None
+
+    with mock.patch("modal._server._post_session_control") as post:
+        with pytest.raises(InvalidError, match=r"requires `@modal\.sessioned\(\)`"):
+            if op == "start":
+                server.sessions.start()
+            else:
+                server.sessions.terminate("tok")
+        post.assert_not_called()
+
+
 def test_server_from_name_failed_lookup_error(client, servicer):
     """Test that Server.from_name() raises NotFoundError with helpful message."""
     with pytest.raises(NotFoundError, match="Lookup failed.*MyServer.*my-nonexistent-app"):
