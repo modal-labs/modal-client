@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import builtins
+import contextlib
 import enum
 import json
 import logging
@@ -16,6 +17,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from google.protobuf.message import Message
+from grpclib import Status
 
 from modal._logs_manager import _SandboxLogsManager
 from modal._supports_logs import LogsFilters, _LogQueryData
@@ -101,6 +103,9 @@ _EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES = 3
 # Pause between failed polls, so failures that reject instantly (e.g. a refused connection)
 # don't burn through the failure budget in milliseconds.
 _EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF = 1.0
+
+# How long `Sandbox.create` waits for capacity before giving up.
+_SANDBOX_SCHEDULING_TIMEOUT = 21 * 60
 
 
 async def _gather_load_with_timings(
@@ -601,6 +606,21 @@ class _Sandbox(_Object, type_prefix="sb"):
             rpc_elapsed = time.monotonic() - rpc_start
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, create_resp.metadata)
+            try:
+                await self._get_task_id(
+                    raise_if_task_complete=True, timeout=_SANDBOX_SCHEDULING_TIMEOUT, retry_transient=True
+                )
+            except TimeoutError:
+                # Don't leave a queued Sandbox that could start later without a caller.
+                await self.terminate()
+                raise ResourceExhaustedError("Insufficient capacity to create sandbox.") from None
+            except ConflictError:
+                raise
+            except BaseException:
+                # The caller never receives the Sandbox, so terminate it before propagating.
+                with contextlib.suppress(Exception):
+                    await asyncio.shield(self.terminate())
+                raise
 
             if logger.isEnabledFor(logging.DEBUG):
                 total_elapsed = time.monotonic() - load_start
@@ -2083,21 +2103,42 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self.returncode
 
-    async def _get_task_id(self, raise_if_task_complete=False) -> str:
+    async def _get_task_id(
+        self, raise_if_task_complete=False, timeout: float | None = None, retry_transient: bool = False
+    ) -> str:
+        deadline = time.monotonic() + timeout if timeout is not None else None
         while not self._task_id:
             req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
             stub = self._client._stub
-            if self._is_v2:
-                assert self._client._auth_token_manager
-                auth_token = await self._client._auth_token_manager.get_token()
-                resp = await stub.SandboxGetTaskIdV2(req, metadata=[("x-modal-auth-token", auth_token)])
-            else:
-                resp = await stub.SandboxGetTaskId(req)
+            try:
+                if self._is_v2:
+                    assert self._client._auth_token_manager
+                    auth_token = await self._client._auth_token_manager.get_token()
+                    resp = await stub.SandboxGetTaskIdV2(req, metadata=[("x-modal-auth-token", auth_token)])
+                else:
+                    resp = await stub.SandboxGetTaskId(req)
+            except (ServiceError, InternalError, ConnectionError) as exc:
+                # Keep polling through transient server or network errors until the deadline.
+                transient = isinstance(exc, (InternalError, ConnectionError)) or exc._grpc_status in (
+                    Status.UNAVAILABLE,
+                    Status.DEADLINE_EXCEEDED,
+                )
+                if not retry_transient or deadline is None or not transient:
+                    raise
+                if time.monotonic() >= deadline:
+                    # A server error is not evidence of missing capacity, so surface it as is.
+                    if isinstance(exc, InternalError):
+                        raise
+                    raise TimeoutError("Sandbox was not scheduled within the timeout.") from exc
+                await asyncio.sleep(0.5)
+                continue
             if not resp.task_id and raise_if_task_complete and resp.HasField("task_result"):
                 msg = resp.task_result.exception or "Sandbox already finished"
                 raise ConflictError(msg)
             self._task_id = resp.task_id
             if not self._task_id:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError("Sandbox was not scheduled within the timeout.")
                 await asyncio.sleep(0.5)
         return self._task_id
 

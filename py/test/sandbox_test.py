@@ -3062,6 +3062,8 @@ def test_exec_on_terminate_sandbox_raises(servicer, client, app, monkeypatch):
     sb = Sandbox.create(app=app)
     sb.terminate()
 
+    sb = Sandbox.from_id(sb.object_id, client=client)
+
     with servicer.intercept() as ctx:
         ctx.add_response(
             "SandboxGetTaskId",
@@ -3074,6 +3076,138 @@ def test_exec_on_terminate_sandbox_raises(servicer, client, app, monkeypatch):
         )
         with pytest.raises(ConflictError, match="Sandbox was cancelled by user"):
             sb.exec("echo", "hello")
+
+
+def test_sandbox_create_v1_waits_for_task_id(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.create(app=app)
+
+    assert synchronizer._translate_in(sb)._task_id == "ta-modalcontainerexec"
+    assert len(ctx.get_requests("SandboxGetTaskId")) == 1
+
+
+def test_sandbox_create_v1_scheduling_timeout(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+
+    async def never_scheduled(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", never_scheduled)
+        with pytest.raises(modal.exception.ResourceExhaustedError, match="Insufficient capacity"):
+            Sandbox.create(app=app)
+
+    assert len(ctx.get_requests("SandboxTerminate")) == 1
+
+
+@pytest.mark.asyncio
+async def test_sandbox_create_v1_cancelled_while_scheduling(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+
+    async def never_scheduled(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", never_scheduled)
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(Sandbox.create.aio(app=app), timeout=1)
+
+    assert len(ctx.get_requests("SandboxTerminate")) == 1
+
+
+def test_sandbox_create_v1_task_id_lookup_error(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+
+    async def lookup_fails(self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.INVALID_ARGUMENT, "lookup failed")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", lookup_fails)
+        with pytest.raises(InvalidError, match="lookup failed"):
+            Sandbox.create(app=app)
+
+    assert len(ctx.get_requests("SandboxTerminate")) == 1
+
+
+@pytest.mark.parametrize("transient_status", [Status.UNAVAILABLE, Status.INTERNAL])
+def test_sandbox_create_v1_task_id_transient_error_then_scheduled(servicer, app, monkeypatch, transient_status):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+
+    calls = 0
+
+    async def transient_error_then_scheduled(self, stream):
+        nonlocal calls
+        calls += 1
+        await stream.recv_message()
+        # Outlast the stub's own retries so the error reaches the polling loop.
+        if calls <= 4:
+            raise GRPCError(transient_status, "server hiccup")
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-123"))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", transient_error_then_scheduled)
+        sb = Sandbox.create(app=app)
+
+    assert synchronizer._translate_in(sb)._task_id == "ta-123"
+    assert len(ctx.get_requests("SandboxGetTaskId")) == 5
+    assert ctx.get_requests("SandboxTerminate") == []
+
+
+def test_sandbox_create_v1_task_id_unavailable_until_deadline(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+
+    async def always_unavailable(self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.UNAVAILABLE, "server hiccup")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", always_unavailable)
+        with pytest.raises(modal.exception.ResourceExhaustedError, match="Insufficient capacity"):
+            Sandbox.create(app=app)
+
+    assert len(ctx.get_requests("SandboxTerminate")) == 1
+
+
+def test_sandbox_create_v1_task_id_internal_until_deadline(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+
+    async def always_internal(self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.INTERNAL, "server bug")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", always_internal)
+        with pytest.raises(modal.exception.InternalError, match="server bug"):
+            Sandbox.create(app=app)
+
+    assert len(ctx.get_requests("SandboxTerminate")) == 1
+
+
+def test_sandbox_create_v1_terminated_before_scheduled(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetTaskId",
+            api_pb2.SandboxGetTaskIdResponse(
+                task_result=api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
+                    exception="Sandbox was cancelled by user",
+                ),
+            ),
+        )
+        with pytest.raises(ConflictError, match="Sandbox was cancelled by user"):
+            Sandbox.create(app=app)
+
+    assert ctx.get_requests("SandboxTerminate") == []
 
 
 # Values are None for deprecated methods
