@@ -147,7 +147,7 @@ async def logs(
     _validate_logs_args(follow=follow, since=since, until=until, tail=tail)
     client = await _Client.from_env()
 
-    function_id, metadata = await _resolve_function_id(client, server_ref, env, object_type="Server", command="logs")
+    function_id, metadata, _ = await _resolve_function_id(client, server_ref, env, object_type="Server", command="logs")
 
     prefix_fields: list[str] = []
     if show_server_id:
@@ -215,7 +215,7 @@ async def requests(
     """
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
-    function_id, _ = await _resolve_function_id(
+    function_id, _, _ = await _resolve_function_id(
         client,
         server_identifier,
         environment_name,
@@ -543,7 +543,7 @@ async def stats(
 
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
-    function_id, _ = await _resolve_function_id(
+    function_id, _, _ = await _resolve_function_id(
         client,
         server_identifier,
         environment_name,

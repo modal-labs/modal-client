@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -5245,3 +5246,85 @@ def test_function_stats_cli_rejects_invalid_time_options(option):
         expected_exit_code=2,
         expected_stderr="Use a relative duration",
     )
+
+
+def test_function_info_cli(set_env_client, mock_dir, servicer):
+    test_app_file = textwrap.dedent("""\
+    import time
+
+    import modal
+
+    app = modal.App("test-function-info")
+
+
+    @app.function(
+        cpu=(2, 16),
+        memory=(4 << 10, 32 << 10),
+        gpu=["H100:8", "B200:8"],
+        ephemeral_disk=512 << 10,
+        timeout=600,
+        cloud="aws",
+        region=["us", "eu"],
+    )
+    @modal.clustered(size=10, rdma=True)
+    def do_stuff(x: float):
+        start = time.monotonic()
+        while True:
+            elapsed = time.monotonic() - start
+            if elapsed > 500:
+                return x**2
+
+            x += 0.0001
+
+    """)
+
+    with mock_dir({"test_function_info_app.py": test_app_file}):
+        run_cli_command(["deploy", "test_function_info_app.py"])
+
+        json_output = run_cli_command(["function", "info", "test-function-info/do_stuff", "--json"])
+        loaded = json.loads(json_output.stdout)
+        assert loaded["cpu"] == [2.0, 16.0]
+        assert loaded["memory_mib"] == 32 * 1024
+        assert loaded["ephemeral_disk_mib"] == 512 * 1024
+        assert loaded["cloud"] == "aws"
+        assert loaded["regions"] == ["us", "eu"]
+        assert not loaded["nonpreemptible"]
+        assert loaded["cluster_info"] is not None
+        assert not loaded["block_network"]
+        assert not loaded["single_use_containers"]
+        assert not loaded["restrict_modal_access"]
+
+        human_output = run_cli_command(["function", "info", "test-function-info/do_stuff"])
+        deformatted = re.sub(r"\s+", " ", human_output.stdout)
+
+        print(deformatted)
+
+        assert "Function ID: fu-1" in deformatted
+        assert "App ID: ap-1" in deformatted
+        assert "Resources:" in deformatted
+        assert "CPU: 2.0 - 16.0 core(s)" in deformatted
+        assert "Memory: 32.0 GiB" in deformatted
+        assert "Ephemeral Disk: 512.0 GiB" in deformatted
+        assert "GPU(s): H100 x 8 | B200 x 8" in deformatted
+        assert "Scheduling:" in deformatted
+        assert "Compute Region(s): us | eu" in deformatted
+        assert "Nonpreemptible Capacity: -" in deformatted
+        assert "Cloud Provider: aws" in deformatted
+        assert "Routing Region: -" in deformatted
+        assert "Autoscaling:" in deformatted
+        assert "Min/Max/Buffer Containers: - / - / -" in deformatted
+        assert "Scaledown Window: -" in deformatted
+        assert "Security:" in deformatted
+        assert "Outbound Networking: Enabled" in deformatted
+        assert "Modal API Access: Enabled" in deformatted
+        assert "Container Reuse: Enabled" in deformatted
+        assert "Clustering:" in deformatted
+        assert "Cluster Size: 10" in deformatted
+        assert "RDMA: Enabled" in deformatted
+
+        # check that referring by function ID also works:
+        fn_id_json_res = run_cli_command(["function", "info", "fu-1", "--json"])
+        assert loaded == json.loads(fn_id_json_res.stdout)
+
+        fn_id_human_res = run_cli_command(["function", "info", "fu-1"])
+        assert human_output.stdout == fn_id_human_res.stdout

@@ -253,8 +253,8 @@ async def _resolve_function_id(
     environment_name: str,
     *,
     object_type: Literal["Function", "Server"] = "Function",
-    command: Literal["calls", "logs", "requests", "stats", "variants"],
-) -> tuple[str, api_pb2.FunctionHandleMetadata]:
+    command: Literal["info", "calls", "logs", "requests", "stats", "variants"],
+) -> tuple[str, api_pb2.FunctionHandleMetadata, api_pb2.FunctionData]:
     identifier_label = object_type.upper()
     usage = (
         f"{identifier_label} must be a Function ID (fu-…) "
@@ -304,4 +304,4 @@ async def _resolve_function_id(
             raise UsageError(f"'{function_identifier}' is a Server.")
         raise UsageError(f"'{function_identifier}' is a {actual_type}. Use `modal {actual_type.lower()} {command}`.")
 
-    return function_id, metadata
+    return function_id, metadata, function

@@ -2950,6 +2950,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await self.fc_data_out[req.function_call_id].put(chunk)
         await stream.send_message(Empty())
 
+    async def FunctionGetSchedulingParams(self, stream):
+        req: api_pb2.FunctionGetSchedulingParamsRequest = await stream.recv_message()
+        fn_definition: api_pb2.Function = self.app_functions[req.function_id]
+
+        await stream.send_message(
+            api_pb2.FunctionGetSchedulingParamsResponse(
+                autoscaler_configuration=api_pb2.AutoscalerConfiguration(settings=fn_definition.autoscaler_settings)
+            )
+        )
+
     async def FunctionUpdateSchedulingParams(self, stream):
         req: api_pb2.FunctionUpdateSchedulingParamsRequest = await stream.recv_message()
 

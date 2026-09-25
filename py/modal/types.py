@@ -692,7 +692,8 @@ class FunctionInfo:
 
         memory_mib: int | tuple[int, int] | None
         if resources.memory_mb_max > 0:
-            memory_mib = (resources.memory_mb, resources.memory_mb_max)
+            # todo(ayush): this should be `(resources.memory_mb, resources.memory_mb_max)`
+            memory_mib = resources.memory_mb_max
         elif resources.memory_mb > 0:
             memory_mib = resources.memory_mb
         else:
