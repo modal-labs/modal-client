@@ -1963,16 +1963,16 @@ def test_batch_function_invalid_error():
     app = App(include_source=False)
 
     with pytest.raises(InvalidError, match="must be a positive integer"):
-        app.function(batched(max_batch_size=0, wait_ms=1))(dummy)
+        app.function()(batched(max_batch_size=0, wait_ms=1)(dummy))
 
     with pytest.raises(InvalidError, match="must be a non-negative integer"):
-        app.function(batched(max_batch_size=1, wait_ms=-1))(dummy)
+        app.function()(batched(max_batch_size=1, wait_ms=-1)(dummy))
 
     with pytest.raises(InvalidError, match="cannot be greater than"):
-        app.function(batched(max_batch_size=1000 + 1, wait_ms=1))(dummy)
+        app.function()(batched(max_batch_size=1000 + 1, wait_ms=1)(dummy))
 
     with pytest.raises(InvalidError, match="cannot be greater than"):
-        app.function(batched(max_batch_size=1, wait_ms=10 * 60 * 1000 + 1))(dummy)
+        app.function()(batched(max_batch_size=1, wait_ms=10 * 60 * 1000 + 1)(dummy))
 
     with pytest.raises(InvalidError, match="cannot return generators"):
 

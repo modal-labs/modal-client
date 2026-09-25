@@ -399,13 +399,11 @@ def test_function_image_positional():
     app = App()
     image = Image.debian_slim()
 
-    with pytest.raises(InvalidError) as excinfo:
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.function(image)  # type: ignore
         def f():
             pass
-
-    assert "function(image=image)" in str(excinfo.value)
 
 
 def test_function_decorator_on_class():

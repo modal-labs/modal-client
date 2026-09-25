@@ -1,14 +1,14 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, asgi_app, fastapi_endpoint, method, wsgi_app
+from modal import App, asgi_app, fastapi_endpoint, method, sessioned, wsgi_app
 from modal.exception import InvalidError
 
 
 def test_local_entrypoint_forgot_parentheses():
     app = App()
 
-    with pytest.raises(InvalidError, match="local_entrypoint()"):
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.local_entrypoint  # type: ignore
         def f():
@@ -18,7 +18,7 @@ def test_local_entrypoint_forgot_parentheses():
 def test_function_forgot_parentheses():
     app = App()
 
-    with pytest.raises(InvalidError, match="function()"):
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.function  # type: ignore
         def f():
@@ -28,17 +28,17 @@ def test_function_forgot_parentheses():
 def test_cls_forgot_parentheses():
     app = App()
 
-    with pytest.raises(InvalidError, match="cls()"):
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.cls  # type: ignore
-        class XYZ:
+        class XYZ:  # type: ignore
             pass
 
 
 def test_method_forgot_parentheses():
     app = App()
 
-    with pytest.raises(InvalidError, match="method()"):
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.cls()
         class XYZ:
@@ -47,24 +47,35 @@ def test_method_forgot_parentheses():
                 pass
 
 
+def test_sessioned_forgot_parentheses():
+    app = App()
+
+    with pytest.raises(TypeError, match="positional argument"):
+
+        @app.server(port=8000)  # type: ignore
+        @sessioned  # type: ignore
+        class XYZ:  # type: ignore
+            pass
+
+
 def test_invalid_web_decorator_usage():
     app = App()
 
-    with pytest.raises(InvalidError, match="fastapi_endpoint()"):
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.function()  # type: ignore
         @fastapi_endpoint  # type: ignore
         def my_handle():
             pass
 
-    with pytest.raises(InvalidError, match="asgi_app()"):
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.function()  # type: ignore
         @asgi_app  # type: ignore
         def my_handle_asgi():
             pass
 
-    with pytest.raises(InvalidError, match="wsgi_app()"):
+    with pytest.raises(TypeError, match="positional argument"):
 
         @app.function()  # type: ignore
         @wsgi_app  # type: ignore

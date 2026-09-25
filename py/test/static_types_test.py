@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 import importlib
+import json
 import os
 import pkgutil
 import pytest
@@ -91,6 +92,29 @@ def _run_mypy(root: Path, target: str) -> subprocess.CompletedProcess:
     )
 
 
+def _run_pyright(root: Path, target: str) -> subprocess.CompletedProcess:
+    # Always runs in strict mode, so that an untyped parameter anywhere in a public signature is
+    # reported as "partially unknown" at the use site (as it would be for users of basedpyright).
+    # pyright resolves third-party imports through the interpreter given by --pythonpath, so the
+    # check doesn't depend on which `python` is on PATH (which differs under Bazel).
+    config = root / "pyrightconfig.json"
+    config.write_text(json.dumps({"typeCheckingMode": "strict", "include": [target]}))
+    env = _subprocess_env(root)
+    # Under Bazel, node comes from the rules_nodejs toolchain in the runfiles (see BUILD.bazel)
+    # rather than being downloaded by pyright-python, which can't write outside the sandbox.
+    if (node := os.environ.get("MODAL_TEST_NODE_PATH")) and (srcdir := os.environ.get("TEST_SRCDIR")):
+        node_bin = Path(srcdir) / node.removeprefix("external/")
+        env["PATH"] = os.pathsep.join([str(node_bin.parent), env.get("PATH", "")])
+    return subprocess.run(
+        [sys.executable, "-m", "pyright", "--pythonpath", sys.executable, "-p", str(config), target],
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf8",
+    )
+
+
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
 def test_remote_call_keeps_original_return_value(type_check_root):
@@ -150,3 +174,11 @@ assert_type(Service().run.remote(1), int)
     )
     p = _run_mypy(type_check_root, source.name)
     assert p.returncode == 0, p.stdout
+
+
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
+@skip_windows("Type tests fail on windows since they don't exclude non-windows features")
+def test_type_assertions_pyright(type_check_root):
+    p = _run_pyright(type_check_root, "test/supports/type_assertions.py")
+    print(p.stdout)
+    assert p.returncode == 0

@@ -282,7 +282,6 @@ class _MethodDecoratorType:
 
 # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
 def _method(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
@@ -300,10 +299,6 @@ def _method(
                 ...
         ```
     """
-    if _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.method()`."
-        )
 
     def wrapper(obj: Callable[..., Any] | _PartialFunction) -> _PartialFunction:
         flags = _PartialFunctionFlags.CALLABLE_INTERFACE
@@ -336,7 +331,6 @@ def _parse_custom_domains(custom_domains: Iterable[str] | None = None) -> list[a
 
 
 def _fastapi_endpoint(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     method: str = "GET",  # REST method for the created endpoint.
     label: str | None = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
@@ -362,15 +356,6 @@ def _fastapi_endpoint(
 
     *Added in v0.73.82*: This function replaces the deprecated `@web_endpoint` decorator.
     """
-    if isinstance(_warn_parentheses_missing, str):
-        # Probably passing the method string as a positional argument.
-        raise InvalidError(
-            f'Positional arguments are not allowed. Suggestion: `@modal.fastapi_endpoint(method="{method}")`.'
-        )
-    elif _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.fastapi_endpoint()`."
-        )
 
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_FUNCTION,
@@ -400,7 +385,6 @@ def _fastapi_endpoint(
 
 
 def _web_endpoint(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *args,
     **kwargs,
 ) -> None:
@@ -413,7 +397,6 @@ def _web_endpoint(
 
 
 def _asgi_app(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     label: str | None = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Iterable[str] | None = None,  # Deploy this endpoint on a custom domain.
@@ -437,12 +420,6 @@ def _asgi_app(
     To learn how to use Modal with popular web frameworks, see the
     [guide on Web Functions](https://modal.com/docs/guide/webhooks).
     """
-    if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError(f'Positional arguments are not allowed. Suggestion: `@modal.asgi_app(label="{label}")`.')
-    elif _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.asgi_app()`."
-        )
 
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
@@ -468,7 +445,6 @@ def _asgi_app(
 
 
 def _wsgi_app(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     label: str | None = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Iterable[str] | None = None,  # Deploy this endpoint on a custom domain.
@@ -494,12 +470,6 @@ def _wsgi_app(
     To learn how to use this decorator with popular web frameworks, see the
     [guide on Web Functions](https://modal.com/docs/guide/webhooks).
     """
-    if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError(f'Positional arguments are not allowed. Suggestion: `@modal.wsgi_app(label="{label}")`.')
-    elif _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.wsgi_app()`."
-        )
 
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
@@ -588,17 +558,12 @@ def _web_server(
 
 
 def _enter(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     snap: bool = False,
 ) -> Callable[[_PartialFunction | NullaryMethod], _PartialFunction]:
     """Decorator for methods which should be executed when a new container is started.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
-    if _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.enter()`."
-        )
 
     flags = _PartialFunctionFlags.ENTER_PRE_SNAPSHOT if snap else _PartialFunctionFlags.ENTER_POST_SNAPSHOT
     params = _PartialFunctionParams()
@@ -615,14 +580,10 @@ def _enter(
     return wrapper
 
 
-def _exit(_warn_parentheses_missing=None) -> Callable[[NullaryMethod], _PartialFunction]:
+def _exit() -> Callable[[NullaryMethod], _PartialFunction]:
     """Decorator for methods which should be executed when a container is about to exit.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
-    if _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.exit()`."
-        )
 
     flags = _PartialFunctionFlags.EXIT
     params = _PartialFunctionParams()
@@ -639,7 +600,6 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[NullaryMethod], _PartialF
 
 
 def _batched(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     max_batch_size: int,
     wait_ms: int,
@@ -670,10 +630,6 @@ def _batched(
 
     See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
     """
-    if _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.batched()`."
-        )
     if max_batch_size < 1:
         raise InvalidError("max_batch_size must be a positive integer.")
     if max_batch_size > MAX_MAX_BATCH_SIZE:
@@ -700,7 +656,6 @@ def _batched(
 
 
 def _concurrent(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     max_inputs: int | None = None,  # Hard limit on each container's input concurrency
     target_inputs: int | None = None,  # Input concurrency that Modal's autoscaler should target
@@ -749,10 +704,6 @@ def _concurrent(
     in `@app.function()` and `@app.cls()`.
 
     """
-    if _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.concurrent()`."
-        )
 
     if max_inputs is not None and target_inputs is not None and target_inputs > max_inputs:
         raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
@@ -777,9 +728,7 @@ def _concurrent(
     return wrapper
 
 
-def _sessioned(
-    _warn_parentheses_missing=None,  # mdmd:line-hidden
-) -> Callable[
+def _sessioned() -> Callable[
     [Callable[P, ReturnType] | _PartialFunction[P, ReturnType, ReturnType]],
     _PartialFunction[P, ReturnType, ReturnType],
 ]:
@@ -822,11 +771,6 @@ def _sessioned(
         server.sessions.terminate(session.token)
         ```
     """
-    if _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.sessioned()`."
-        )
-
     flags = _PartialFunctionFlags.SESSIONED
     params = _PartialFunctionParams()
 

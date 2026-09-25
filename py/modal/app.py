@@ -727,9 +727,7 @@ class _App:
         """
         return self._local_state.web_endpoints
 
-    def local_entrypoint(
-        self, _warn_parentheses_missing: Any = None, *, name: str | None = None
-    ) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
+    def local_entrypoint(self, *, name: str | None = None) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -784,8 +782,6 @@ class _App:
             Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported.
             Use `modal run app_module.py --help` for more information on usage.
         """
-        if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.local_entrypoint()`.")
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
@@ -804,7 +800,6 @@ class _App:
     @handle_deprecated_parameters
     def function(
         self,
-        _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: _Image | None = None,
         schedule: Schedule | None = None,
@@ -890,11 +885,6 @@ class _App:
         Returns:
             A decorator that registers the wrapped callable or partial as a Modal `Function`.
         """
-        if isinstance(_warn_parentheses_missing, _Image):
-            # Handle edge case where maybe (?) some users passed image as a positional arg
-            raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")
-        if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.function()`.")
 
         if image is None:
             image = self._get_default_image()
@@ -1063,7 +1053,6 @@ class _App:
     @handle_deprecated_parameters
     def cls(
         self,
-        _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: _Image | None = None,
         env: dict[str, str | None] | None = None,
@@ -1096,7 +1085,7 @@ class _App:
         experimental_options: dict[str, Any] | None = None,
         _experimental_restrict_output: bool = False,
         max_inputs: int | None = None,
-    ) -> Callable[[CLS_T | _PartialFunction], CLS_T]:
+    ) -> Callable[[CLS_T | _PartialFunction[..., Any, Any]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/sdk/py/latest/Cls) with this App.
 
@@ -1141,8 +1130,6 @@ class _App:
         Returns:
             A decorator that registers the wrapped class or partial as a Modal `Cls`.
         """
-        if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
         if max_inputs is not None:
             if not isinstance(max_inputs, int):
@@ -1161,7 +1148,7 @@ class _App:
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        def wrapper(wrapped_cls: CLS_T | _PartialFunction) -> CLS_T:
+        def wrapper(wrapped_cls: CLS_T | _PartialFunction[..., Any, Any]) -> CLS_T:
             local_state = self._local_state
             # Check if the decorated object is a class
             http_config = None
@@ -1306,7 +1293,6 @@ class _App:
 
     def server(
         self,
-        _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: _Image | None = None,  # The image to run as the container for the server
         env: dict[str, str | None] | None = None,  # Environment variables to set in the container
@@ -1342,7 +1328,7 @@ class _App:
         include_source: bool | None = None,  # Whether to add source to container
         # Experimental options
         experimental_options: dict[str, Any] | None = None,
-    ) -> Callable[[type[Any] | _PartialFunction], _Server]:
+    ) -> Callable[[type[Any] | _PartialFunction[..., Any, Any]], _Server]:
         """
         Decorator to register a new Modal Server with this App.
 
@@ -1407,8 +1393,6 @@ class _App:
                     self.proc.terminate()
             ```
         """
-        if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server()`.")
 
         # Validate HTTP server config
         validate_http_server_config(
@@ -1455,7 +1439,7 @@ class _App:
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_user_cls: type[Any] | _PartialFunction | Callable) -> _Server:
+        def wrapper(wrapped_user_cls: type[Any] | _PartialFunction[..., Any, Any] | Callable[..., Any]) -> _Server:
             _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             # Validate the server class

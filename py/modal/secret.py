@@ -2,6 +2,7 @@
 import builtins
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 from google.protobuf.message import Message
@@ -361,7 +362,9 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret.from_dict({})
 
     @staticmethod
-    def from_dotenv(path=None, *, filename=".env", client: _Client | None = None) -> "_Secret":
+    def from_dotenv(
+        path: str | Path | None = None, *, filename: str = ".env", client: _Client | None = None
+    ) -> "_Secret":
         """Load environment variables from a `.env` file into a Secret.
 
         With no `path`, searches from the current working directory (not the caller's file path).
@@ -400,7 +403,7 @@ class _Secret(_Object, type_prefix="st"):
 
             if path is not None:
                 # This basically implements the logic in find_dotenv
-                for dirname in _walk_to_root(path):
+                for dirname in _walk_to_root(os.fspath(path)):
                     check_path = os.path.join(dirname, filename)
                     if os.path.isfile(check_path):
                         dotenv_path = check_path

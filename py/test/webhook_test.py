@@ -199,12 +199,12 @@ async def test_asgi_wsgi(servicer, client):
 
 
 def test_positional_method(servicer, client):
-    with pytest.raises(InvalidError, match="method="):
-        fastapi_endpoint("GET")
-    with pytest.raises(InvalidError, match="label="):
-        asgi_app("baz")
-    with pytest.raises(InvalidError, match="label="):
-        wsgi_app("baz")
+    with pytest.raises(TypeError, match="positional argument"):
+        fastapi_endpoint("GET")  # type: ignore
+    with pytest.raises(TypeError, match="positional argument"):
+        asgi_app("baz")  # type: ignore
+    with pytest.raises(TypeError, match="positional argument"):
+        wsgi_app("baz")  # type: ignore
 
 
 @pytest.mark.asyncio
