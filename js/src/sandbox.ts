@@ -76,6 +76,7 @@ import {
   ExecutionError,
   InvalidError,
   NotFoundError,
+  ResourceExhaustedError,
   SandboxTimeoutError,
   SnapshotCreationError,
   TimeoutError,
@@ -98,6 +99,22 @@ const SB_LOGS_INITIAL_DELAY_MS = 10;
 const SB_LOGS_DELAY_FACTOR = 2;
 const SB_LOGS_MAX_RETRIES = 10;
 const SB_LOGS_TASK_ID_TIMEOUT_SECONDS = 0.5;
+
+// How long create() waits for capacity before giving up.
+const SANDBOX_SCHEDULING_TIMEOUT_MS = 21 * 60 * 1000;
+// How long operations that need a running task wait for one.
+const GET_TASK_ID_TIMEOUT_MS = 5 * 60 * 1000;
+
+function isTransientTaskIDLookupError(err: unknown): boolean {
+  if (!(err instanceof ClientError)) {
+    return false;
+  }
+  return (
+    err.code === Status.UNAVAILABLE ||
+    err.code === Status.DEADLINE_EXCEEDED ||
+    err.code === Status.INTERNAL
+  );
+}
 
 const TTL_NO_EXPIRY_SENTINEL = -1;
 const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16;
@@ -845,7 +862,9 @@ export class SandboxService {
       "sandbox_id",
       createResp.sandboxId,
     );
-    return new Sandbox(this.#client, createResp.sandboxId);
+    const sb = new Sandbox(this.#client, createResp.sandboxId);
+    await sb._waitForScheduling(SANDBOX_SCHEDULING_TIMEOUT_MS);
+    return sb;
   }
 
   /**
@@ -1969,15 +1988,15 @@ export class Sandbox {
     return this.#client.cpClient.sandboxWait(req);
   }
 
-  #sandboxGetTaskId(signal?: AbortSignal, timeout?: number) {
+  #sandboxGetTaskId(timeoutSecs?: number, options?: CallOptions) {
     const req = SandboxGetTaskIdRequest.create({
       sandboxId: this.sandboxId,
-      timeout,
+      timeout: timeoutSecs,
     });
     if (this.#isV2) {
-      return this.#client.cpClient.sandboxGetTaskIdV2(req, { signal });
+      return this.#client.cpClient.sandboxGetTaskIdV2(req, options);
     }
-    return this.#client.cpClient.sandboxGetTaskId(req, { signal });
+    return this.#client.cpClient.sandboxGetTaskId(req, options);
   }
 
   #sandboxGetTunnels(timeoutMs: number) {
@@ -2008,8 +2027,6 @@ export class Sandbox {
     await this.#client.cpClient.sandboxTerminate(req);
   }
 
-  static readonly #maxGetTaskIdAttempts = 600; // 5 minutes at 500ms intervals
-
   async #getAppId(): Promise<string> {
     if (this.#appId !== undefined) {
       return this.#appId;
@@ -2033,10 +2050,7 @@ export class Sandbox {
 
     let resp;
     try {
-      resp = await this.#sandboxGetTaskId(
-        undefined,
-        SB_LOGS_TASK_ID_TIMEOUT_SECONDS,
-      );
+      resp = await this.#sandboxGetTaskId(SB_LOGS_TASK_ID_TIMEOUT_SECONDS);
     } catch (error) {
       if (
         error instanceof ClientError &&
@@ -2055,32 +2069,105 @@ export class Sandbox {
   }
 
   async #getTaskId(signal?: AbortSignal): Promise<string> {
+    return await this.#waitForTaskId(GET_TASK_ID_TIMEOUT_MS, false, signal);
+  }
+
+  /**
+   * Blocks until the Sandbox has a task. If the wait fails, the Sandbox is
+   * terminated so a queued one cannot start later with no caller. A timeout
+   * surfaces as a ResourceExhaustedError.
+   *
+   * @internal
+   * @hidden
+   */
+  async _waitForScheduling(timeoutMs: number): Promise<void> {
+    try {
+      await this.#waitForTaskId(timeoutMs, true);
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        throw err;
+      }
+      try {
+        await this.#sandboxTerminate();
+      } catch (terminateErr) {
+        this.#client.logger.debug(
+          "Failed to terminate unscheduled Sandbox",
+          "sandbox_id",
+          this.sandboxId,
+          "error",
+          terminateErr,
+        );
+      }
+      if (err instanceof TimeoutError) {
+        throw new ResourceExhaustedError(
+          "Insufficient capacity to create sandbox.",
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Polls until the Sandbox has been assigned a task. Throws a ConflictError
+   * if the Sandbox finished before that happened and a TimeoutError once
+   * timeoutMs elapses. With retryTransient, lookups that fail with a
+   * transient error keep polling until the deadline instead of failing.
+   */
+  async #waitForTaskId(
+    timeoutMs: number,
+    retryTransient: boolean,
+    signal?: AbortSignal,
+  ): Promise<string> {
     if (this.#taskId !== undefined) {
       return this.#taskId;
     }
-    for (let i = 0; i < Sandbox.#maxGetTaskIdAttempts; i++) {
-      const resp = await this.#sandboxGetTaskId(signal);
+    const deadline = Date.now() + timeoutMs;
+    const timedOut = () =>
+      new TimeoutError(
+        `Timed out waiting for task ID for Sandbox ${this.sandboxId}`,
+      );
+    const backoff = () =>
+      setTimeout(Math.max(0, Math.min(500, deadline - Date.now())), undefined, {
+        signal,
+      });
+    while (true) {
+      if (Date.now() >= deadline) {
+        throw timedOut();
+      }
+      let resp;
+      try {
+        resp = await this.#sandboxGetTaskId(undefined, { signal });
+      } catch (err) {
+        if (signal?.aborted || !isTransientTaskIDLookupError(err)) {
+          throw err;
+        }
+        // A transient failure at the deadline says nothing about scheduling,
+        // so report the wait as timed out rather than the last hiccup. A
+        // server error is not evidence of missing capacity, so surface it.
+        if (Date.now() >= deadline) {
+          if (err instanceof ClientError && err.code === Status.INTERNAL) {
+            throw err;
+          }
+          throw timedOut();
+        }
+        if (!retryTransient) {
+          throw err;
+        }
+        await backoff();
+        continue;
+      }
       if (resp.taskId) {
         this.#taskId = resp.taskId;
         return this.#taskId;
       }
       if (resp.taskResult) {
-        if (
-          resp.taskResult.status ===
-            GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS ||
-          !resp.taskResult.exception
-        ) {
-          throw new Error(`Sandbox ${this.sandboxId} has already completed`);
-        }
-        throw new Error(
-          `Sandbox ${this.sandboxId} has already completed with result: exception:"${resp.taskResult.exception}"`,
+        throw new ConflictError(
+          resp.taskResult.exception ||
+            `Sandbox ${this.sandboxId} has already finished`,
         );
       }
-      await setTimeout(500, undefined, { signal });
+      await backoff();
     }
-    throw new Error(
-      `Timed out waiting for task ID for Sandbox ${this.sandboxId}`,
-    );
   }
 
   async #getOrCreateCommandRouterClient(

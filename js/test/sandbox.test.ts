@@ -44,12 +44,14 @@ import {
 } from "../proto/modal_proto/task_command_router";
 import {
   AlreadyExistsError,
+  App,
   ConflictError,
   ExecutionError,
   Image,
   InvalidError,
   NotFoundError,
   ExperimentalOutboundPolicy,
+  ResourceExhaustedError,
   Secret,
   SnapshotCreationError,
   TimeoutError,
@@ -1432,6 +1434,7 @@ test("create deduces V2 from the returned Sandbox ID shape", async () => {
       metadata: { result: undefined, appId: "ap-1234" },
     };
   });
+  mock.handleUnary("/SandboxGetTaskIdV2", () => ({ taskId: "ta-123" }));
   mock.handleUnary("/SandboxTerminateV2", (req: any) => {
     expect(req.sandboxId).toBe(V2_SANDBOX_ID);
     return {};
@@ -2495,7 +2498,243 @@ test("SandboxGetTaskIdTerminated", async () => {
   }));
 
   const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
-  await expect(sb.exec(["echo", "hello"])).rejects.toThrow(/already completed/);
+  const err = await sb.exec(["echo", "hello"]).catch((e) => e);
+  expect(err).toBeInstanceOf(ConflictError);
+  expect(err.message).toMatch(/already finished/);
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 waits for a task ID", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreate", () => ({ sandboxId: V1_SANDBOX_ID }));
+  mock.handleUnary("/SandboxGetTaskId", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+  mock.handleUnary("/SandboxGetTaskId", () => ({ taskId: "ta-scheduled" }));
+  // The cached task ID is reused rather than looked up again.
+  mock.handleUnary("/SandboxTerminate", () => ({}));
+
+  const app = new App("ap-1234");
+  const image = new Image(mc, "im-123", "");
+  const sb = await mc.sandboxes.create(app, image);
+  expect(sb.sandboxId).toBe(V1_SANDBOX_ID);
+  await sb.terminate();
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 scheduling timeout", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const err = await sb._waitForScheduling(0).catch((e) => e);
+  expect(err).toBeInstanceOf(ResourceExhaustedError);
+  expect(err.message).toContain("Insufficient capacity");
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 scheduling timeout cuts a long poll short", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  // The client-side call timeout fires mid-poll, after the deadline passes.
+  mock.handleUnary("/SandboxGetTaskId", async () => {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 30));
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.DEADLINE_EXCEEDED,
+      "Timed out after 20ms",
+    );
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const err = await sb._waitForScheduling(20).catch((e) => e);
+  expect(err).toBeInstanceOf(ResourceExhaustedError);
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 keeps polling through transient errors", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreate", () => ({ sandboxId: V1_SANDBOX_ID }));
+  // Any code the retry middleware treats as transient keeps the wait going.
+  mock.handleUnary("/SandboxGetTaskId", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.INTERNAL,
+      "server hiccup",
+    );
+  });
+  mock.handleUnary("/SandboxGetTaskId", () => ({ taskId: "ta-123" }));
+
+  const app = new App("ap-1234");
+  const image = new Image(mc, "im-123", "");
+  const sb = await mc.sandboxes.create(app, image);
+  expect(sb.sandboxId).toBe(V1_SANDBOX_ID);
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 transient error at the deadline is a timeout", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetTaskId", async () => {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 30));
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.UNAVAILABLE,
+      "server hiccup",
+    );
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const err = await sb._waitForScheduling(20).catch((e) => e);
+  expect(err).toBeInstanceOf(ResourceExhaustedError);
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 internal error at the deadline propagates", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetTaskId", async () => {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 30));
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.INTERNAL,
+      "server bug",
+    );
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const err = await sb._waitForScheduling(20).catch((e) => e);
+  expect(err).toBeInstanceOf(ClientError);
+  expect(err.code).toBe(Status.INTERNAL);
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 non-retryable error at the deadline propagates", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetTaskId", async () => {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 30));
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.INVALID_ARGUMENT,
+      "lookup failed",
+    );
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const err = await sb._waitForScheduling(20).catch((e) => e);
+  expect(err).toBeInstanceOf(ClientError);
+  expect(err.code).toBe(Status.INVALID_ARGUMENT);
+
+  mock.assertExhausted();
+});
+
+test("SandboxGetTaskId does not retry transient errors outside create", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetTaskId", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.UNAVAILABLE,
+      "server hiccup",
+    );
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const err = await sb.exec(["echo", "hello"]).catch((e) => e);
+  expect(err).toBeInstanceOf(ClientError);
+  expect(err.code).toBe(Status.UNAVAILABLE);
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 task ID lookup error", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreate", () => ({ sandboxId: V1_SANDBOX_ID }));
+  mock.handleUnary("/SandboxGetTaskId", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.INVALID_ARGUMENT,
+      "lookup failed",
+    );
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const app = new App("ap-1234");
+  const image = new Image(mc, "im-123", "");
+  const err = await mc.sandboxes.create(app, image).catch((e) => e);
+  expect(err).toBeInstanceOf(ClientError);
+  expect(err.message).toContain("lookup failed");
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 terminated before scheduled", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreate", () => ({ sandboxId: V1_SANDBOX_ID }));
+  mock.handleUnary("/SandboxGetTaskId", () => ({
+    taskResult: {
+      status: GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED,
+      exception: "Sandbox was cancelled by user",
+    },
+  }));
+
+  const app = new App("ap-1234");
+  const image = new Image(mc, "im-123", "");
+  const err = await mc.sandboxes.create(app, image).catch((e) => e);
+  expect(err).toBeInstanceOf(ConflictError);
+  expect(err.message).toBe("Sandbox was cancelled by user");
 
   mock.assertExhausted();
 });

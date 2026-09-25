@@ -3,10 +3,8 @@ import { ModalClient } from "../src/client";
 
 export class MockGrpcClient {
   // Map of short RPC name -> FIFO queue of handlers
-  private readonly methodHandlerQueues: Map<
-    string,
-    Array<(req: unknown) => unknown | Promise<unknown>>
-  > = new Map();
+  private readonly methodHandlerQueues: Map<string, Array<MockHandler>> =
+    new Map();
 
   constructor() {
     return new Proxy(this, {
@@ -33,7 +31,7 @@ export class MockGrpcClient {
     }
     const handler = queue.shift()!;
     try {
-      const response = await handler(actualRequest);
+      const response = await handler(actualRequest, options);
       return structuredClone(response);
     } catch (err) {
       // A mock error can carry a `trailer` for callers that read trailing
@@ -44,10 +42,7 @@ export class MockGrpcClient {
     }
   };
 
-  handleUnary(
-    rpcName: string,
-    handler: (req: unknown) => unknown | Promise<unknown>,
-  ) {
+  handleUnary(rpcName: string, handler: MockHandler) {
     const methodKey = rpcToClientMethodName(shortName(rpcName));
     const queue = this.methodHandlerQueues.get(methodKey) ?? [];
     queue.push(handler);
@@ -83,7 +78,14 @@ export function createMockModalClients(): {
 
 type MockCallOptions = {
   onTrailer?: (trailer: Metadata) => void;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 };
+
+type MockHandler = (
+  req: unknown,
+  options?: MockCallOptions,
+) => unknown | Promise<unknown>;
 
 function rpcToClientMethodName(name: string): string {
   return name.length ? name[0].toLowerCase() + name.slice(1) : name;

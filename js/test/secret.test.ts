@@ -263,6 +263,7 @@ test("SandboxCreate hydrates a fromObject Secret", async () => {
     expect(req.definition?.secretIds).toContain("st-ephemeral");
     return { sandboxId: V1_SANDBOX_ID };
   });
+  mock.handleUnary("/SandboxGetTaskId", () => ({ taskId: "ta-123" }));
 
   const app = await mc.apps.fromName("libmodal-test", {
     createIfMissing: true,

@@ -86,6 +86,14 @@ export class QueueFullError extends Error {
   }
 }
 
+/** A server-side resource has been exhausted, such as capacity, a quota, or a rate limit. */
+export class ResourceExhaustedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResourceExhaustedError";
+  }
+}
+
 /** Errors from invalid Sandbox FileSystem operations. */
 export class SandboxFilesystemError extends Error {
   constructor(message: string) {

@@ -19,10 +19,15 @@ function makeRoutingStub(
     v2Lookups: 0,
     v1Lists: 0,
     v2Lists: 0,
+    v1TaskLookups: 0,
     listV2Req: undefined as any,
     async sandboxCreate(_req: any) {
       stub.v1Creates++;
       return { sandboxId: V1_SANDBOX_ID };
+    },
+    async sandboxGetTaskId(_req: any) {
+      stub.v1TaskLookups++;
+      return { taskId: "ta-v1-123" };
     },
     async sandboxCreateV2(_req: any) {
       stub.v2Creates++;
@@ -99,6 +104,7 @@ describe("MODAL_SANDBOX_V2 routing for create", () => {
     const sb = await client.sandboxes.create(app, image, { gpu: "T4" });
     expect(sb.sandboxId).toBe(V1_SANDBOX_ID);
     expect(stub.v1Creates).toBe(1);
+    expect(stub.v1TaskLookups).toBe(1);
     expect(stub.v2Creates).toBe(0);
   });
 
@@ -110,6 +116,7 @@ describe("MODAL_SANDBOX_V2 routing for create", () => {
     const sb = await client.sandboxes.create(app, image);
     expect(sb.sandboxId).toBe(V1_SANDBOX_ID);
     expect(stub.v1Creates).toBe(1);
+    expect(stub.v1TaskLookups).toBe(1);
     expect(stub.v2Creates).toBe(0);
   });
 });

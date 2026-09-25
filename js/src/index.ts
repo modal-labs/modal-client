@@ -20,6 +20,7 @@ export {
   AlreadyExistsError,
   QueueEmptyError,
   QueueFullError,
+  ResourceExhaustedError,
   SandboxTimeoutError,
   ClientClosedError,
   SandboxFilesystemDirectoryNotEmptyError,
