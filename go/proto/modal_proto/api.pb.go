@@ -20991,7 +20991,7 @@ type EnvironmentBillingSummaryResponse_builder struct {
 	// not showing credits, reservations, etc as those are applied
 	// at the workspace level
 	MeteredCost string
-	// keyed by deployed, ephemeral, volume, notebook
+	// keyed by app type (deployed, ephemeral, notebook, endpoint, ...), volume, tokens, network egress
 	MeteredCostBreakdown map[string]string
 }
 

@@ -1721,7 +1721,7 @@ message EnvironmentBillingSummaryResponse {
   // at the workspace level
   string metered_cost = 3;
 
-  // keyed by deployed, ephemeral, volume, notebook
+  // keyed by app type (deployed, ephemeral, notebook, endpoint, ...), volume, tokens, network egress
   map<string, string> metered_cost_breakdown = 4;
 }
 
