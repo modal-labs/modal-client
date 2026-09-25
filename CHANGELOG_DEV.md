@@ -56,6 +56,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added a `--runtime vm|gvisor` option to `modal shell` for choosing the runtime of the shell's Sandbox.
 - Added a `modal function info` CLI which wraps and nicely formats the output of `Function.info()`.
 - Added a `modal server info` CLI which wraps and nicely formats the output of `Server.info()`.
+- Added `--limit` to `modal app list` to limit number of returned apps.
 
 ## JS
 

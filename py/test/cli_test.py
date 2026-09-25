@@ -2970,6 +2970,20 @@ def test_app_list(servicer, mock_dir, set_env_client):
     assert "my-vol" not in res.stdout
 
 
+def test_app_list_limit(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        for i in range(10):
+            run_cli_command(["deploy", "myapp.py", "--name", f"my_app_foo{i}"])
+
+    res = run_cli_command(["app", "list", "--limit", "5", "--json"])
+    assert len(json.loads(res.stdout)) == 5
+
+    res = run_cli_command(["app", "list", "--limit", "5"])
+    assert "(5 of 10)" in res.stdout
+    assert all(f"my_app_foo{i}" in res.stdout for i in range(5))
+    assert "my_app_foo6" not in res.stdout
+
+
 def test_app_history(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         run_cli_command(["deploy", "myapp.py", "--name", "my_app_foo"])

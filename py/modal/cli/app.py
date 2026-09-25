@@ -9,7 +9,7 @@ from typing import Literal, get_args
 
 import click
 import rich
-from click import UsageError
+from click import ClickException, UsageError
 from google.protobuf.json_format import MessageToDict
 from rich.table import Column, Table
 from rich.text import Text
@@ -29,6 +29,7 @@ from .._utils.time_utils import timestamp_to_localized_str
 from ._help import ModalGroup
 from ._logs import _run_logs_command, _validate_logs_args
 from .utils import (
+    HEADER_ONLY,
     confirm_or_suggest_yes,
     display_table,
     env_option,
@@ -97,10 +98,34 @@ async def resolve_app_identifier(
 
 @app_cli.command("list")
 @env_option
-@click.option("--json", is_flag=True, default=False)
+@click.option("--json", help="Output as JSON.", is_flag=True, default=False)
+@click.option(
+    "--limit",
+    default=0,
+    help="Show at most N results. Use 0 to list every result. Default is 0.",
+)
 @synchronizer.create_blocking
-async def list_(env: str | None = None, json: bool = False):
-    """List Apps that are running, deployed or recently stopped."""
+async def list_(env: str | None = None, json: bool = False, limit: int = 0):
+    """List Apps that are running, deployed or recently stopped.
+
+    Examples:
+
+    Limit output to 30 apps:
+
+    ```
+    modal app list --limit 30
+    ```
+
+    Display output in JSON:
+
+    ```
+    modal app list --json
+    ```
+
+    """
+    if not isinstance(limit, int) or limit < 0:
+        raise ClickException("--limit must be an integer value greater than or equal to 0.")
+
     env = ensure_env(env)
     client = await _Client.from_env()
 
@@ -108,14 +133,6 @@ async def list_(env: str | None = None, json: bool = False):
         api_pb2.AppListRequest(environment_name=_get_environment_name(env))
     )
 
-    columns: list[Column | str] = [
-        Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
-        "Description",
-        "State",
-        "Tasks",
-        "Created at",
-        "Stopped at",
-    ]
     rows: list[list[Text | str | None]] = []
     for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
@@ -129,9 +146,24 @@ async def list_(env: str | None = None, json: bool = False):
                 timestamp_to_localized_str(app_stats.stopped_at, json),
             ]
         )
+    rows.sort(key=lambda s: (int(s[3]), s[4]), reverse=True)  # type: ignore
+    rows_trunc = rows
+    if limit:
+        rows_trunc = rows[:limit]
+
+    app_id_width = max([len(r[0]) for r in rows]) if len(rows) else 25  # type: ignore
+    columns: list[Column | str] = [
+        Column("App ID", min_width=app_id_width, no_wrap=True),
+        Column("Description", min_width=1, overflow="fold"),
+        Column("State", min_width=1, overflow="fold"),
+        Column("Tasks", min_width=1, overflow="fold"),
+        Column("Created at", min_width=1, overflow="fold"),
+        Column("Stopped at", min_width=1, overflow="fold"),
+    ]
 
     env_part = f" in environment '{env}'" if env else ""
-    display_table(columns, rows, json, title=f"Apps{env_part}")
+    app_count_part = f" ({len(rows_trunc)} of {len(rows)})" if len(rows_trunc) < len(rows) else ""
+    display_table(columns, rows_trunc, json, title=f"Apps{env_part}{app_count_part}", table_box=HEADER_ONLY)
 
 
 @app_cli.command("logs", no_args_is_help=True)

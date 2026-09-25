@@ -201,13 +201,7 @@ def display_table(
         table = (
             Table(*columns, title=title, header_style=header_style, border_style=border_style)
             if table_box is None
-            else Table(
-                *columns,
-                title=title,
-                box=table_box,
-                header_style=header_style,
-                border_style=border_style,
-            )
+            else Table(*columns, title=title, box=table_box, header_style=header_style, border_style=border_style)
         )
         for row in rows:
             # rich can't render bare scalars like bools; stringify anything that isn't already
