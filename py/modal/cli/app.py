@@ -688,7 +688,11 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
         )
         return
 
+    name_width = max((Text(name).cell_len for name in [*app_info.functions, *app_info.servers]), default=0)
+    label_width = max(len("Deployment:"), name_width + 2)
     header = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
+    header.add_column(width=label_width)
+    header.add_column(overflow="fold")
     header.add_row(Text("App:"), Text(app_info.description))
     header.add_row(Text("App ID:"), Text(app_info.app_id))
     header.add_row(Text("State:"), Text(state.plain))
@@ -706,7 +710,6 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
     event("Created", lifecycle.created_at, lifecycle.created_by)
     output.print(header)
 
-    name_width = max((len(name) for name in [*app_info.functions, *app_info.servers]), default=0)
     for title, entries in (("Functions", app_info.functions), ("Servers", app_info.servers)):
         if not entries:
             continue
@@ -716,8 +719,8 @@ async def info(app_identifier: str, *, env: str | None = None, json: bool = Fals
             if index:
                 output.print("")
             identity = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
-            identity.add_column(width=name_width + 2)
-            identity.add_column(no_wrap=True)
+            identity.add_column(width=label_width)
+            identity.add_column(width=26, overflow="fold")
             identity.add_row(Text(f"  {name}"), Text(function_id))
             output.print(identity)
             if function_id not in resp.function_info_summaries:
