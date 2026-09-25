@@ -88,7 +88,10 @@ def run(output_dir: str | None = None):
         document = module_str(name, module, title_level=base_title_level, filter_items=default_filter)
         if document:
             document = (
-                f"<script>\n    import Parameter from '$lib/surfaces/docs/Parameter.svelte';\n</script>\n\n{document}"
+                "<script>\n"
+                "    import Parameter from '$lib/surfaces/docs/Parameter.svelte';\n"
+                "    import Collapsible from '$lib/surfaces/docs/Collapsible.svelte';\n"
+                f"</script>\n\n{document}"
             )
             ordered_doc_items.append(
                 validate_doc_item(
@@ -114,7 +117,12 @@ def run(output_dir: str | None = None):
         else:
             warnings.warn(f"Not sure how to document: {qual_name} ({item})")
             continue
-        content = f"<script>\n    import Parameter from '$lib/surfaces/docs/Parameter.svelte';\n</script>\n\n{content}"
+        content = (
+            "<script>\n"
+            "    import Parameter from '$lib/surfaces/docs/Parameter.svelte';\n"
+            "    import Collapsible from '$lib/surfaces/docs/Collapsible.svelte';\n"
+            f"</script>\n\n{content}"
+        )
         ordered_doc_items.append(
             validate_doc_item(
                 DocItem(

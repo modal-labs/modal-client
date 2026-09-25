@@ -2,11 +2,69 @@
 import dataclasses
 import importlib
 import os
+import re
 from enum import IntEnum
 from types import ModuleType
+from typing import Optional, Union
 
 from modal_docs.mdmd import mdmd
 from modal_docs.mdmd.signatures import parse_params_from_signature, strip_signature
+
+
+def test_nested_dataclass_fields_expand_inline():
+    @dataclasses.dataclass
+    class Config:
+        @dataclasses.dataclass
+        class Cpu:
+            cores: int
+
+        @dataclasses.dataclass
+        class Gpu:
+            count: int
+
+        direct: "Cpu"
+        optional: "Cpu | None"
+        union: "Cpu | Gpu"
+        mapping: "dict[str, Gpu] | None"
+        legacy: "Optional[Union[Cpu, Gpu]]"  # noqa: UP007
+        forward: "Cpu | None"
+        unknown: "Unresolved"  # type: ignore # noqa: F821
+
+    rendered = mdmd.class_str("Config", Config)
+    assert "Nested Class Definitions" not in rendered
+    assert "<Collapsible" not in rendered
+    for field in ("direct", "optional", "union", "mapping", "legacy", "forward"):
+        body = re.search(rf'<Parameter name="{field}"[^>]*>(.*?)\n</Parameter>', rendered, re.DOTALL)
+        assert body is not None
+        assert '<Parameter name="cores"' in body[1] or '<Parameter name="count"' in body[1]
+        if field in ("union", "legacy"):
+            assert "**Cpu**" in body[1] and "**Gpu**" in body[1]
+    assert 'name="optional" type="&quot;Cpu | None&quot;"' in rendered
+    assert 'name="mapping" type="&quot;dict[str, Gpu] | None&quot;"' in rendered
+    assert '<Parameter name="unknown" type="&quot;Unresolved&quot;" description="" />' in rendered
+
+
+def test_recursive_dataclass_does_not_expand_forever():
+    @dataclasses.dataclass
+    class Node:
+        child: "Node | None" = None
+
+    rendered = mdmd.class_str("Node", Node)
+    assert rendered.count('<Parameter name="child"') == 1
+    assert "</Parameter>" not in rendered
+
+
+def test_info_dataclasses_expand_nested_fields():
+    from modal.types import FunctionInfo, ServerInfo
+
+    for cls in (FunctionInfo, ServerInfo):
+        rendered = mdmd.class_str(cls.__name__, cls)
+        assert "Nested Class Definitions" not in rendered
+        assert '<Collapsible title="' not in rendered
+        assert '<Parameter name="cluster_info" type="ClusterInfo | None" description="">' in rendered
+        assert '<Parameter name="size"' in rendered
+        assert '<Parameter name="image_info" type="ImageInfo" description="">' in rendered
+        assert '<Parameter name="_http_info"' not in rendered
 
 
 def test_simple_function():
