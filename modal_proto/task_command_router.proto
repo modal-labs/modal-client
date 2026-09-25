@@ -83,6 +83,10 @@ message TaskContainerCreateRequest {
   optional modal.client.NetworkAccess network_access = 10;
   // Optional PTY info for sidecar.
   optional modal.client.PTYInfo pty_info = 11;
+  // Memory, in MiB, the sidecar consumes from the sandbox's sidecar memory
+  // reserve (experimental option vm_sidecar_memory_reserve_mib); unset
+  // consumes whatever is left of it. Ignored without a reserve.
+  optional uint32 memory_reserve_consume_mib = 12;
 }
 
 message TaskContainerCreateResponse {

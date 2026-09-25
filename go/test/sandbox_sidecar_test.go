@@ -138,6 +138,11 @@ func TestSidecarCreateRejectsMainName(t *testing.T) {
 	_, err = sb.ExperimentalSidecars.Get(ctx, "main", nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(errors.As(err, &invalid)).Should(gomega.BeTrue())
+
+	_, err = sb.ExperimentalSidecars.Create(ctx, "worker", image, &modal.SidecarCreateParams{Command: []string{"sleep", "100"}, ExperimentalMemoryReserveConsumeMiB: -1})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(errors.As(err, &invalid)).Should(gomega.BeTrue())
+	g.Expect(err.Error()).Should(gomega.ContainSubstring("ExperimentalMemoryReserveConsumeMiB"))
 }
 
 func TestSidecarCreateImageMustBeBuilt(t *testing.T) {

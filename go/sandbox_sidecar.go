@@ -13,6 +13,7 @@ import (
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // mainContainerName is the reserved name of a Sandbox's main container.
@@ -58,6 +59,11 @@ type SidecarCreateParams struct {
 	OutboundDomainAllowlist *Allowlist
 	// PTY sets whether to enable a PTY for the sidecar container.
 	PTY bool
+	// ExperimentalMemoryReserveConsumeMiB is the memory, in MiB, the sidecar consumes from
+	// the Sandbox's sidecar memory reserve (the vm_sidecar_memory_reserve_mib
+	// experimental option); zero consumes whatever is left of it. Ignored by
+	// Sandboxes without a reserve. Experimental.
+	ExperimentalMemoryReserveConsumeMiB int
 }
 
 // SidecarGetParams holds options for retrieving a sidecar by name.
@@ -164,6 +170,8 @@ type sidecarCreateInputs struct {
 	volumeMounts  []*pb.VolumeMount
 	networkAccess *pb.NetworkAccess
 	ptyInfo       *pb.PTYInfo
+	// nil when unset; otherwise MiB taken from the sandbox's sidecar reserve.
+	memoryReserveConsumeMib *uint32
 }
 
 // sidecarCreateResult is what either create path reports back.
@@ -199,6 +207,13 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 	}
 	if err := validateExecArgs(params.Command); err != nil {
 		return nil, err
+	}
+	if params.ExperimentalMemoryReserveConsumeMiB < 0 {
+		return nil, InvalidError{Exception: fmt.Sprintf("ExperimentalMemoryReserveConsumeMiB (%d) must be a positive number", params.ExperimentalMemoryReserveConsumeMiB)}
+	}
+	var memoryReserveConsumeMib *uint32
+	if params.ExperimentalMemoryReserveConsumeMiB > 0 {
+		memoryReserveConsumeMib = proto.Uint32(uint32(params.ExperimentalMemoryReserveConsumeMiB))
 	}
 
 	var ptyInfo *pb.PTYInfo
@@ -236,14 +251,15 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 	}
 
 	inputs := sidecarCreateInputs{
-		name:          name,
-		image:         image,
-		params:        params,
-		envDict:       envDict,
-		secretIds:     secretIds,
-		volumeMounts:  volumeMounts,
-		networkAccess: networkAccess,
-		ptyInfo:       ptyInfo,
+		name:                    name,
+		image:                   image,
+		params:                  params,
+		envDict:                 envDict,
+		secretIds:               secretIds,
+		volumeMounts:            volumeMounts,
+		networkAccess:           networkAccess,
+		ptyInfo:                 ptyInfo,
+		memoryReserveConsumeMib: memoryReserveConsumeMib,
 	}
 
 	var result sidecarCreateResult
@@ -282,6 +298,11 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 		ephemeralSecrets = pb.StringMap_builder{Contents: in.envDict}.Build()
 	}
 
+	var resources *pb.Resources
+	if in.memoryReserveConsumeMib != nil {
+		resources = pb.Resources_builder{MemoryMb: *in.memoryReserveConsumeMib}.Build()
+	}
+
 	req := pb.SandboxContainerCreateV2Request_builder{
 		SandboxId:     s.sandbox.SandboxID,
 		ContainerName: in.name,
@@ -293,6 +314,7 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 			VolumeMounts:   in.volumeMounts,
 			NetworkAccess:  in.networkAccess,
 			PtyInfo:        in.ptyInfo,
+			Resources:      resources,
 		}.Build(),
 		EphemeralSecrets: ephemeralSecrets,
 	}.Build()
@@ -311,16 +333,17 @@ func (s *sidecarServiceImpl) createViaCommandRouter(ctx context.Context, in side
 	}
 
 	req := pb.TaskContainerCreateRequest_builder{
-		TaskId:        taskID,
-		ContainerName: in.name,
-		ImageId:       in.image.ImageID,
-		Args:          in.params.Command,
-		Env:           in.envDict,
-		Workdir:       in.params.Workdir,
-		SecretIds:     in.secretIds,
-		VolumeMounts:  in.volumeMounts,
-		NetworkAccess: in.networkAccess,
-		PtyInfo:       in.ptyInfo,
+		TaskId:                  taskID,
+		ContainerName:           in.name,
+		ImageId:                 in.image.ImageID,
+		Args:                    in.params.Command,
+		Env:                     in.envDict,
+		Workdir:                 in.params.Workdir,
+		SecretIds:               in.secretIds,
+		VolumeMounts:            in.volumeMounts,
+		NetworkAccess:           in.networkAccess,
+		PtyInfo:                 in.ptyInfo,
+		MemoryReserveConsumeMib: in.memoryReserveConsumeMib,
 	}.Build()
 
 	resp, err := client.ContainerCreate(ctx, req)

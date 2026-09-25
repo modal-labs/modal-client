@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   GenericResult,
   GenericResult_GenericStatus,
+  Resources,
   Sandbox as SandboxDefinition,
   SandboxContainerCreateV2Request,
   StringMap,
@@ -138,6 +139,13 @@ export type SidecarCreateParams = {
   outboundDomainAllowlist?: string[];
   /** Enable a PTY for the sidecar. */
   pty?: boolean;
+  /**
+   * Memory, in MiB, the sidecar consumes from the Sandbox's sidecar memory
+   * reserve (the `vm_sidecar_memory_reserve_mib` experimental option); unset
+   * consumes whatever is left of it. Ignored by Sandboxes without a reserve.
+   * Experimental.
+   */
+  experimentalMemoryReserveConsumeMiB?: number;
 };
 
 /** Options for {@link SidecarService#get SidecarService.get()}. */
@@ -269,6 +277,15 @@ export class SidecarService {
     const command = params?.command ?? [];
     validateExecArgs(command);
     validateWorkdir(params?.workdir);
+    if (
+      params?.experimentalMemoryReserveConsumeMiB !== undefined &&
+      (!Number.isInteger(params.experimentalMemoryReserveConsumeMiB) ||
+        params.experimentalMemoryReserveConsumeMiB <= 0)
+    ) {
+      throw new InvalidError(
+        `experimentalMemoryReserveConsumeMiB must be a positive integer number of MiB, got: ${params.experimentalMemoryReserveConsumeMiB}`,
+      );
+    }
 
     // Sidecar containers support ephemeral env vars natively (passed via
     // ephemeralSecrets in the request), so locally-created Secrets (fromObject)
@@ -311,6 +328,12 @@ export class SidecarService {
               volumeMounts,
               networkAccess,
               ptyInfo,
+              resources:
+                params?.experimentalMemoryReserveConsumeMiB !== undefined
+                  ? Resources.create({
+                      memoryMb: params.experimentalMemoryReserveConsumeMiB,
+                    })
+                  : undefined,
             }),
             ephemeralSecrets,
           }),
@@ -329,6 +352,8 @@ export class SidecarService {
             volumeMounts,
             networkAccess,
             ptyInfo,
+            memoryReserveConsumeMib:
+              params?.experimentalMemoryReserveConsumeMiB,
           }),
         );
       }

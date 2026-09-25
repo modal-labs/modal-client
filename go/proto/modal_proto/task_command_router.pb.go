@@ -629,19 +629,22 @@ func (b0 SandboxWaitUntilReadyTcrResponse_builder) Build() *SandboxWaitUntilRead
 }
 
 type TaskContainerCreateRequest struct {
-	state                    protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
-	xxx_hidden_ContainerName string                 `protobuf:"bytes,2,opt,name=container_name,json=containerName,proto3"`
-	xxx_hidden_ImageId       string                 `protobuf:"bytes,3,opt,name=image_id,json=imageId,proto3"`
-	xxx_hidden_Args          []string               `protobuf:"bytes,5,rep,name=args,proto3"`
-	xxx_hidden_Env           map[string]string      `protobuf:"bytes,6,rep,name=env,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	xxx_hidden_Workdir       string                 `protobuf:"bytes,7,opt,name=workdir,proto3"`
-	xxx_hidden_SecretIds     []string               `protobuf:"bytes,8,rep,name=secret_ids,json=secretIds,proto3"`
-	xxx_hidden_VolumeMounts  *[]*VolumeMount        `protobuf:"bytes,9,rep,name=volume_mounts,json=volumeMounts,proto3"`
-	xxx_hidden_NetworkAccess *NetworkAccess         `protobuf:"bytes,10,opt,name=network_access,json=networkAccess,proto3,oneof"`
-	xxx_hidden_PtyInfo       *PTYInfo               `protobuf:"bytes,11,opt,name=pty_info,json=ptyInfo,proto3,oneof"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                              protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId                  string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_ContainerName           string                 `protobuf:"bytes,2,opt,name=container_name,json=containerName,proto3"`
+	xxx_hidden_ImageId                 string                 `protobuf:"bytes,3,opt,name=image_id,json=imageId,proto3"`
+	xxx_hidden_Args                    []string               `protobuf:"bytes,5,rep,name=args,proto3"`
+	xxx_hidden_Env                     map[string]string      `protobuf:"bytes,6,rep,name=env,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	xxx_hidden_Workdir                 string                 `protobuf:"bytes,7,opt,name=workdir,proto3"`
+	xxx_hidden_SecretIds               []string               `protobuf:"bytes,8,rep,name=secret_ids,json=secretIds,proto3"`
+	xxx_hidden_VolumeMounts            *[]*VolumeMount        `protobuf:"bytes,9,rep,name=volume_mounts,json=volumeMounts,proto3"`
+	xxx_hidden_NetworkAccess           *NetworkAccess         `protobuf:"bytes,10,opt,name=network_access,json=networkAccess,proto3,oneof"`
+	xxx_hidden_PtyInfo                 *PTYInfo               `protobuf:"bytes,11,opt,name=pty_info,json=ptyInfo,proto3,oneof"`
+	xxx_hidden_MemoryReserveConsumeMib uint32                 `protobuf:"varint,12,opt,name=memory_reserve_consume_mib,json=memoryReserveConsumeMib,proto3,oneof"`
+	XXX_raceDetectHookData             protoimpl.RaceDetectHookData
+	XXX_presence                       [1]uint32
+	unknownFields                      protoimpl.UnknownFields
+	sizeCache                          protoimpl.SizeCache
 }
 
 func (x *TaskContainerCreateRequest) Reset() {
@@ -741,6 +744,13 @@ func (x *TaskContainerCreateRequest) GetPtyInfo() *PTYInfo {
 	return nil
 }
 
+func (x *TaskContainerCreateRequest) GetMemoryReserveConsumeMib() uint32 {
+	if x != nil {
+		return x.xxx_hidden_MemoryReserveConsumeMib
+	}
+	return 0
+}
+
 func (x *TaskContainerCreateRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -781,6 +791,11 @@ func (x *TaskContainerCreateRequest) SetPtyInfo(v *PTYInfo) {
 	x.xxx_hidden_PtyInfo = v
 }
 
+func (x *TaskContainerCreateRequest) SetMemoryReserveConsumeMib(v uint32) {
+	x.xxx_hidden_MemoryReserveConsumeMib = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 11)
+}
+
 func (x *TaskContainerCreateRequest) HasNetworkAccess() bool {
 	if x == nil {
 		return false
@@ -795,12 +810,24 @@ func (x *TaskContainerCreateRequest) HasPtyInfo() bool {
 	return x.xxx_hidden_PtyInfo != nil
 }
 
+func (x *TaskContainerCreateRequest) HasMemoryReserveConsumeMib() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 10)
+}
+
 func (x *TaskContainerCreateRequest) ClearNetworkAccess() {
 	x.xxx_hidden_NetworkAccess = nil
 }
 
 func (x *TaskContainerCreateRequest) ClearPtyInfo() {
 	x.xxx_hidden_PtyInfo = nil
+}
+
+func (x *TaskContainerCreateRequest) ClearMemoryReserveConsumeMib() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 10)
+	x.xxx_hidden_MemoryReserveConsumeMib = 0
 }
 
 type TaskContainerCreateRequest_builder struct {
@@ -823,6 +850,10 @@ type TaskContainerCreateRequest_builder struct {
 	NetworkAccess *NetworkAccess
 	// Optional PTY info for sidecar.
 	PtyInfo *PTYInfo
+	// Memory, in MiB, the sidecar consumes from the sandbox's sidecar memory
+	// reserve (experimental option vm_sidecar_memory_reserve_mib); unset
+	// consumes whatever is left of it. Ignored without a reserve.
+	MemoryReserveConsumeMib *uint32
 }
 
 func (b0 TaskContainerCreateRequest_builder) Build() *TaskContainerCreateRequest {
@@ -839,6 +870,10 @@ func (b0 TaskContainerCreateRequest_builder) Build() *TaskContainerCreateRequest
 	x.xxx_hidden_VolumeMounts = &b.VolumeMounts
 	x.xxx_hidden_NetworkAccess = b.NetworkAccess
 	x.xxx_hidden_PtyInfo = b.PtyInfo
+	if b.MemoryReserveConsumeMib != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 11)
+		x.xxx_hidden_MemoryReserveConsumeMib = *b.MemoryReserveConsumeMib
+	}
 	return m0
 }
 
@@ -4456,7 +4491,7 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x18\n" +
 	"\atimeout\x18\x02 \x01(\x02R\atimeout\"=\n" +
 	" SandboxWaitUntilReadyTcrResponse\x12\x19\n" +
-	"\bready_at\x18\x01 \x01(\x01R\areadyAt\"\xae\x04\n" +
+	"\bready_at\x18\x01 \x01(\x01R\areadyAt\"\x8f\x05\n" +
 	"\x1aTaskContainerCreateRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12%\n" +
 	"\x0econtainer_name\x18\x02 \x01(\tR\rcontainerName\x12\x19\n" +
@@ -4469,12 +4504,14 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\rvolume_mounts\x18\t \x03(\v2\x19.modal.client.VolumeMountR\fvolumeMounts\x12G\n" +
 	"\x0enetwork_access\x18\n" +
 	" \x01(\v2\x1b.modal.client.NetworkAccessH\x00R\rnetworkAccess\x88\x01\x01\x125\n" +
-	"\bpty_info\x18\v \x01(\v2\x15.modal.client.PTYInfoH\x01R\aptyInfo\x88\x01\x01\x1a6\n" +
+	"\bpty_info\x18\v \x01(\v2\x15.modal.client.PTYInfoH\x01R\aptyInfo\x88\x01\x01\x12@\n" +
+	"\x1amemory_reserve_consume_mib\x18\f \x01(\rH\x02R\x17memoryReserveConsumeMib\x88\x01\x01\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x11\n" +
 	"\x0f_network_accessB\v\n" +
-	"\t_pty_info\"g\n" +
+	"\t_pty_infoB\x1d\n" +
+	"\x1b_memory_reserve_consume_mib\"g\n" +
 	"\x1bTaskContainerCreateResponse\x12!\n" +
 	"\fcontainer_id\x18\x01 \x01(\tR\vcontainerId\x12%\n" +
 	"\x0econtainer_name\x18\x02 \x01(\tR\rcontainerName\"\x88\x01\n" +

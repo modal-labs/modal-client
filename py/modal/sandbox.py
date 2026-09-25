@@ -3093,6 +3093,7 @@ class _SidecarManager:
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
         pty: bool = False,
+        experimental_memory_reserve_consume_mib: int | None = None,
     ) -> _SidecarContainer:
         """Create a sidecar container running alongside the Sandbox's main container.
 
@@ -3120,6 +3121,10 @@ class _SidecarManager:
             outbound_domain_allowlist: If set, restrict the sidecar's outbound TLS connections (port
                 443) to these SNI domains. Supports wildcards like ``*.example.com``.
             pty: Whether to enable PTY for the sidecar container.
+            experimental_memory_reserve_consume_mib: Memory, in MiB, this sidecar consumes from the Sandbox's
+                sidecar memory reserve (the experimental `vm_sidecar_memory_reserve_mib` option).
+                Unset consumes whatever is left of the reserve; creation fails if the request exceeds
+                what is left. Ignored by Sandboxes without a reserve.
 
         Returns:
             A `SidecarContainer` handle for the running container.
@@ -3129,6 +3134,11 @@ class _SidecarManager:
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
         _validate_exec_args(args)
+        if experimental_memory_reserve_consume_mib is not None and experimental_memory_reserve_consume_mib <= 0:
+            raise InvalidError(
+                "experimental_memory_reserve_consume_mib must be a positive number of MiB, "
+                f"got: {experimental_memory_reserve_consume_mib}"
+            )
 
         validated_volumes = validate_only_modal_volumes(volumes, "Sandbox._experimental_sidecars.create(volumes=...)")
 
@@ -3180,6 +3190,11 @@ class _SidecarManager:
                 volume_mounts=volume_mounts,
                 network_access=network_access,
                 pty_info=pty_info,
+                resources=(
+                    api_pb2.Resources(memory_mb=experimental_memory_reserve_consume_mib)
+                    if experimental_memory_reserve_consume_mib is not None
+                    else None
+                ),
             )
             create_req = api_pb2.SandboxContainerCreateV2Request(
                 sandbox_id=self._sandbox.object_id,
@@ -3207,6 +3222,7 @@ class _SidecarManager:
                     volume_mounts=volume_mounts,
                     network_access=network_access,
                     pty_info=pty_info,
+                    memory_reserve_consume_mib=experimental_memory_reserve_consume_mib,
                 )
             )
 

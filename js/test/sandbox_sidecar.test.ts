@@ -117,6 +117,24 @@ test("SidecarCreateRejectsMainName", async () => {
   await expect(sb.experimentalSidecars.get("main")).rejects.toThrow(
     InvalidError,
   );
+
+  for (const experimentalMemoryReserveConsumeMiB of [
+    0,
+    -1,
+    1.5,
+    NaN,
+    Infinity,
+    -Infinity,
+  ]) {
+    await expect(
+      sb.experimentalSidecars.create("worker", image, {
+        command: ["sleep", "100"],
+        experimentalMemoryReserveConsumeMiB,
+      }),
+    ).rejects.toThrow(
+      `experimentalMemoryReserveConsumeMiB must be a positive integer number of MiB, got: ${experimentalMemoryReserveConsumeMiB}`,
+    );
+  }
 });
 
 test("SidecarCreateImageMustBeBuilt", async () => {
