@@ -12845,6 +12845,7 @@ func (x *ContainerArguments) GetFunctionDef() *Function {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *ContainerArguments) GetProxyInfo() *ProxyInfo {
 	if x != nil {
 		return x.xxx_hidden_ProxyInfo
@@ -12920,6 +12921,7 @@ func (x *ContainerArguments) SetFunctionDef(v *Function) {
 	x.xxx_hidden_FunctionDef = v
 }
 
+// Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *ContainerArguments) SetProxyInfo(v *ProxyInfo) {
 	x.xxx_hidden_ProxyInfo = v
 }
@@ -12963,6 +12965,7 @@ func (x *ContainerArguments) HasFunctionDef() bool {
 	return x.xxx_hidden_FunctionDef != nil
 }
 
+// Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *ContainerArguments) HasProxyInfo() bool {
 	if x == nil {
 		return false
@@ -12988,6 +12991,7 @@ func (x *ContainerArguments) ClearFunctionDef() {
 	x.xxx_hidden_FunctionDef = nil
 }
 
+// Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *ContainerArguments) ClearProxyInfo() {
 	x.xxx_hidden_ProxyInfo = nil
 }
@@ -13004,10 +13008,11 @@ func (x *ContainerArguments) ClearAppLayout() {
 type ContainerArguments_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	TaskId              string
-	FunctionId          string
-	AppId               string
-	FunctionDef         *Function
+	TaskId      string
+	FunctionId  string
+	AppId       string
+	FunctionDef *Function
+	// Deprecated: Marked as deprecated in modal_proto/api.proto.
 	ProxyInfo           *ProxyInfo
 	TracingContext      map[string]string
 	SerializedParams    []byte
@@ -23973,7 +23978,6 @@ type Function struct {
 	xxx_hidden_XExperimentalFabricSize              uint32                       `protobuf:"varint,94,opt,name=_experimental_fabric_size,json=ExperimentalFabricSize,proto3"`
 	xxx_hidden_Untrusted                            bool                         `protobuf:"varint,68,opt,name=untrusted,proto3"`
 	xxx_hidden_XExperimentalBufferContainers        uint32                       `protobuf:"varint,69,opt,name=_experimental_buffer_containers,json=ExperimentalBufferContainers,proto3"`
-	xxx_hidden_XExperimentalProxyIp                 *string                      `protobuf:"bytes,70,opt,name=_experimental_proxy_ip,json=ExperimentalProxyIp,proto3,oneof"`
 	xxx_hidden_RuntimePerfRecord                    bool                         `protobuf:"varint,71,opt,name=runtime_perf_record,json=runtimePerfRecord,proto3"`
 	xxx_hidden_Schedule                             *Schedule                    `protobuf:"bytes,72,opt,name=schedule,proto3"`
 	xxx_hidden_SnapshotDebug                        bool                         `protobuf:"varint,73,opt,name=snapshot_debug,json=snapshotDebug,proto3"`
@@ -24433,17 +24437,6 @@ func (x *Function) GetXExperimentalBufferContainers() uint32 {
 	return 0
 }
 
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *Function) GetXExperimentalProxyIp() string {
-	if x != nil {
-		if x.xxx_hidden_XExperimentalProxyIp != nil {
-			return *x.xxx_hidden_XExperimentalProxyIp
-		}
-		return ""
-	}
-	return ""
-}
-
 func (x *Function) GetRuntimePerfRecord() bool {
 	if x != nil {
 		return x.xxx_hidden_RuntimePerfRecord
@@ -24665,7 +24658,7 @@ func (x *Function) SetSharedVolumeMounts(v []*SharedVolumeMount) {
 
 func (x *Function) SetProxyId(v string) {
 	x.xxx_hidden_ProxyId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 80)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 79)
 }
 
 func (x *Function) SetRetryPolicy(v *FunctionRetryPolicy) {
@@ -24697,7 +24690,7 @@ func (x *Function) SetTaskIdleTimeoutSecs(v uint32) {
 
 func (x *Function) SetCloudProvider(v CloudProvider) {
 	x.xxx_hidden_CloudProvider = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 80)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 79)
 }
 
 func (x *Function) SetWarmPoolSize(v uint32) {
@@ -24838,12 +24831,6 @@ func (x *Function) SetUntrusted(v bool) {
 
 func (x *Function) SetXExperimentalBufferContainers(v uint32) {
 	x.xxx_hidden_XExperimentalBufferContainers = v
-}
-
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *Function) SetXExperimentalProxyIp(v string) {
-	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 55, 80)
 }
 
 func (x *Function) SetRuntimePerfRecord(v bool) {
@@ -25019,14 +25006,6 @@ func (x *Function) HasClassParameterInfo() bool {
 	return x.xxx_hidden_ClassParameterInfo != nil
 }
 
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *Function) HasXExperimentalProxyIp() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[1]), 55)
-}
-
 func (x *Function) HasSchedule() bool {
 	if x == nil {
 		return false
@@ -25099,12 +25078,6 @@ func (x *Function) ClearSchedulerPlacement() {
 
 func (x *Function) ClearClassParameterInfo() {
 	x.xxx_hidden_ClassParameterInfo = nil
-}
-
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *Function) ClearXExperimentalProxyIp() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[1]), 55)
-	x.xxx_hidden_XExperimentalProxyIp = nil
 }
 
 func (x *Function) ClearSchedule() {
@@ -25191,14 +25164,9 @@ type Function_builder struct {
 	// If set, the function will be run in an untrusted environment.
 	Untrusted                     bool
 	XExperimentalBufferContainers uint32
-	// _experimental_proxy_ip -> ProxyInfo
-	// TODO: deprecate.
-	//
-	// Deprecated: Marked as deprecated in modal_proto/api.proto.
-	XExperimentalProxyIp *string
-	RuntimePerfRecord    bool
-	Schedule             *Schedule
-	SnapshotDebug        bool
+	RuntimePerfRecord             bool
+	Schedule                      *Schedule
+	SnapshotDebug                 bool
 	// Mapping of method names to method definitions, only non-empty for class service functions
 	MethodDefinitions              map[string]*MethodDefinition
 	MethodDefinitionsSet           bool
@@ -25248,7 +25216,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_SharedVolumeMounts = &b.SharedVolumeMounts
 	if b.ProxyId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 80)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 79)
 		x.xxx_hidden_ProxyId = b.ProxyId
 	}
 	x.xxx_hidden_RetryPolicy = b.RetryPolicy
@@ -25258,7 +25226,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_ClassSerialized = b.ClassSerialized
 	x.xxx_hidden_TaskIdleTimeoutSecs = b.TaskIdleTimeoutSecs
 	if b.CloudProvider != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 80)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 79)
 		x.xxx_hidden_CloudProvider = *b.CloudProvider
 	}
 	x.xxx_hidden_WarmPoolSize = b.WarmPoolSize
@@ -25296,10 +25264,6 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_XExperimentalFabricSize = b.XExperimentalFabricSize
 	x.xxx_hidden_Untrusted = b.Untrusted
 	x.xxx_hidden_XExperimentalBufferContainers = b.XExperimentalBufferContainers
-	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 55, 80)
-		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
-	}
 	x.xxx_hidden_RuntimePerfRecord = b.RuntimePerfRecord
 	x.xxx_hidden_Schedule = b.Schedule
 	x.xxx_hidden_SnapshotDebug = b.SnapshotDebug
@@ -27782,7 +27746,6 @@ type FunctionData struct {
 	xxx_hidden_WebUrlInfo                     *WebUrlInfo                     `protobuf:"bytes,10,opt,name=web_url_info,json=webUrlInfo,proto3"`
 	xxx_hidden_WebhookConfig                  *WebhookConfig                  `protobuf:"bytes,11,opt,name=webhook_config,json=webhookConfig,proto3"`
 	xxx_hidden_CustomDomainInfo               *[]*CustomDomainInfo            `protobuf:"bytes,12,rep,name=custom_domain_info,json=customDomainInfo,proto3"`
-	xxx_hidden_XExperimentalProxyIp           *string                         `protobuf:"bytes,24,opt,name=_experimental_proxy_ip,json=ExperimentalProxyIp,proto3,oneof"`
 	xxx_hidden_MethodDefinitions              map[string]*MethodDefinition    `protobuf:"bytes,25,rep,name=method_definitions,json=methodDefinitions,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	xxx_hidden_MethodDefinitionsSet           bool                            `protobuf:"varint,26,opt,name=method_definitions_set,json=methodDefinitionsSet,proto3"`
 	xxx_hidden_IsClass                        bool                            `protobuf:"varint,13,opt,name=is_class,json=isClass,proto3"`
@@ -27806,8 +27769,6 @@ type FunctionData struct {
 	xxx_hidden_IsServer                       bool                            `protobuf:"varint,41,opt,name=is_server,json=isServer,proto3"`
 	xxx_hidden_RoutingRegion                  string                          `protobuf:"bytes,42,opt,name=routing_region,json=routingRegion,proto3"`
 	xxx_hidden_IsSessioned                    bool                            `protobuf:"varint,44,opt,name=is_sessioned,json=isSessioned,proto3"`
-	XXX_raceDetectHookData                    protoimpl.RaceDetectHookData
-	XXX_presence                              [2]uint32
 	unknownFields                             protoimpl.UnknownFields
 	sizeCache                                 protoimpl.SizeCache
 }
@@ -27956,17 +27917,6 @@ func (x *FunctionData) GetCustomDomainInfo() []*CustomDomainInfo {
 		}
 	}
 	return nil
-}
-
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *FunctionData) GetXExperimentalProxyIp() string {
-	if x != nil {
-		if x.xxx_hidden_XExperimentalProxyIp != nil {
-			return *x.xxx_hidden_XExperimentalProxyIp
-		}
-		return ""
-	}
-	return ""
 }
 
 func (x *FunctionData) GetMethodDefinitions() map[string]*MethodDefinition {
@@ -28200,12 +28150,6 @@ func (x *FunctionData) SetCustomDomainInfo(v []*CustomDomainInfo) {
 	x.xxx_hidden_CustomDomainInfo = &v
 }
 
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *FunctionData) SetXExperimentalProxyIp(v string) {
-	x.xxx_hidden_XExperimentalProxyIp = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 41)
-}
-
 func (x *FunctionData) SetMethodDefinitions(v map[string]*MethodDefinition) {
 	x.xxx_hidden_MethodDefinitions = v
 }
@@ -28312,14 +28256,6 @@ func (x *FunctionData) HasWebhookConfig() bool {
 	return x.xxx_hidden_WebhookConfig != nil
 }
 
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *FunctionData) HasXExperimentalProxyIp() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 17)
-}
-
 func (x *FunctionData) HasClassParameterInfo() bool {
 	if x == nil {
 		return false
@@ -28361,12 +28297,6 @@ func (x *FunctionData) ClearWebUrlInfo() {
 
 func (x *FunctionData) ClearWebhookConfig() {
 	x.xxx_hidden_WebhookConfig = nil
-}
-
-// Deprecated: Marked as deprecated in modal_proto/api.proto.
-func (x *FunctionData) ClearXExperimentalProxyIp() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 17)
-	x.xxx_hidden_XExperimentalProxyIp = nil
 }
 
 func (x *FunctionData) ClearClassParameterInfo() {
@@ -28412,11 +28342,6 @@ type FunctionData_builder struct {
 	WebUrlInfo                     *WebUrlInfo
 	WebhookConfig                  *WebhookConfig
 	CustomDomainInfo               []*CustomDomainInfo
-	// _experimental_proxy_ip -> ProxyInfo
-	// TODO: deprecate.
-	//
-	// Deprecated: Marked as deprecated in modal_proto/api.proto.
-	XExperimentalProxyIp *string
 	// Mapping of method names to method definitions, only non-empty for class service functions
 	MethodDefinitions      map[string]*MethodDefinition
 	MethodDefinitionsSet   bool
@@ -28467,10 +28392,6 @@ func (b0 FunctionData_builder) Build() *FunctionData {
 	x.xxx_hidden_WebUrlInfo = b.WebUrlInfo
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_CustomDomainInfo = &b.CustomDomainInfo
-	if b.XExperimentalProxyIp != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 41)
-		x.xxx_hidden_XExperimentalProxyIp = b.XExperimentalProxyIp
-	}
 	x.xxx_hidden_MethodDefinitions = b.MethodDefinitions
 	x.xxx_hidden_MethodDefinitionsSet = b.MethodDefinitionsSet
 	x.xxx_hidden_IsClass = b.IsClass
@@ -42366,8 +42287,6 @@ type ProxyInfo struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_ElasticIp   string                 `protobuf:"bytes,1,opt,name=elastic_ip,json=elasticIp,proto3"`
 	xxx_hidden_ProxyKey    string                 `protobuf:"bytes,2,opt,name=proxy_key,json=proxyKey,proto3"`
-	xxx_hidden_RemoteAddr  string                 `protobuf:"bytes,3,opt,name=remote_addr,json=remoteAddr,proto3"`
-	xxx_hidden_RemotePort  int32                  `protobuf:"varint,4,opt,name=remote_port,json=remotePort,proto3"`
 	xxx_hidden_ProxyType   ProxyType              `protobuf:"varint,5,opt,name=proxy_type,json=proxyType,proto3,enum=modal.client.ProxyType"`
 	xxx_hidden_UseOidc     bool                   `protobuf:"varint,6,opt,name=use_oidc,json=useOidc,proto3"`
 	xxx_hidden_VproxNodeId string                 `protobuf:"bytes,7,opt,name=vprox_node_id,json=vproxNodeId,proto3"`
@@ -42414,20 +42333,6 @@ func (x *ProxyInfo) GetProxyKey() string {
 	return ""
 }
 
-func (x *ProxyInfo) GetRemoteAddr() string {
-	if x != nil {
-		return x.xxx_hidden_RemoteAddr
-	}
-	return ""
-}
-
-func (x *ProxyInfo) GetRemotePort() int32 {
-	if x != nil {
-		return x.xxx_hidden_RemotePort
-	}
-	return 0
-}
-
 func (x *ProxyInfo) GetProxyType() ProxyType {
 	if x != nil {
 		return x.xxx_hidden_ProxyType
@@ -42457,14 +42362,6 @@ func (x *ProxyInfo) SetProxyKey(v string) {
 	x.xxx_hidden_ProxyKey = v
 }
 
-func (x *ProxyInfo) SetRemoteAddr(v string) {
-	x.xxx_hidden_RemoteAddr = v
-}
-
-func (x *ProxyInfo) SetRemotePort(v int32) {
-	x.xxx_hidden_RemotePort = v
-}
-
 func (x *ProxyInfo) SetProxyType(v ProxyType) {
 	x.xxx_hidden_ProxyType = v
 }
@@ -42482,8 +42379,6 @@ type ProxyInfo_builder struct {
 
 	ElasticIp   string
 	ProxyKey    string
-	RemoteAddr  string
-	RemotePort  int32
 	ProxyType   ProxyType
 	UseOidc     bool
 	VproxNodeId string
@@ -42495,8 +42390,6 @@ func (b0 ProxyInfo_builder) Build() *ProxyInfo {
 	_, _ = b, x
 	x.xxx_hidden_ElasticIp = b.ElasticIp
 	x.xxx_hidden_ProxyKey = b.ProxyKey
-	x.xxx_hidden_RemoteAddr = b.RemoteAddr
-	x.xxx_hidden_RemotePort = b.RemotePort
 	x.xxx_hidden_ProxyType = b.ProxyType
 	x.xxx_hidden_UseOidc = b.UseOidc
 	x.xxx_hidden_VproxNodeId = b.VproxNodeId
@@ -69080,15 +68973,15 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vauthor_name\x18\x06 \x01(\tR\n" +
 	"authorName\x12!\n" +
 	"\fauthor_email\x18\a \x01(\tR\vauthorEmail\x12\x19\n" +
-	"\brepo_url\x18\b \x01(\tR\arepoUrl\"\x95\x05\n" +
+	"\brepo_url\x18\b \x01(\tR\arepoUrl\"\x99\x05\n" +
 	"\x12ContainerArguments\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vfunction_id\x18\x02 \x01(\tR\n" +
 	"functionId\x12\x15\n" +
 	"\x06app_id\x18\x04 \x01(\tR\x05appId\x129\n" +
-	"\ffunction_def\x18\a \x01(\v2\x16.modal.client.FunctionR\vfunctionDef\x126\n" +
+	"\ffunction_def\x18\a \x01(\v2\x16.modal.client.FunctionR\vfunctionDef\x12:\n" +
 	"\n" +
-	"proxy_info\x18\b \x01(\v2\x17.modal.client.ProxyInfoR\tproxyInfo\x12]\n" +
+	"proxy_info\x18\b \x01(\v2\x17.modal.client.ProxyInfoB\x02\x18\x01R\tproxyInfo\x12]\n" +
 	"\x0ftracing_context\x18\t \x03(\v24.modal.client.ContainerArguments.TracingContextEntryR\x0etracingContext\x12+\n" +
 	"\x11serialized_params\x18\n" +
 	" \x01(\fR\x10serializedParams\x12\x18\n" +
@@ -69651,7 +69544,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12!\n" +
 	"\ftarget_slots\x18\x02 \x01(\rR\vtargetSlots\"$\n" +
-	"\"FlashSetTargetSlotsMetricsResponse\"\xa7&\n" +
+	"\"FlashSetTargetSlotsMetricsResponse\"\xce%\n" +
 	"\bFunction\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -69715,8 +69608,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x18_experimental_group_size\x18C \x01(\rR\x15ExperimentalGroupSize\x129\n" +
 	"\x19_experimental_fabric_size\x18^ \x01(\rR\x16ExperimentalFabricSize\x12\x1c\n" +
 	"\tuntrusted\x18D \x01(\bR\tuntrusted\x12E\n" +
-	"\x1f_experimental_buffer_containers\x18E \x01(\rR\x1cExperimentalBufferContainers\x12<\n" +
-	"\x16_experimental_proxy_ip\x18F \x01(\tB\x02\x18\x01H\x03R\x13ExperimentalProxyIp\x88\x01\x01\x12.\n" +
+	"\x1f_experimental_buffer_containers\x18E \x01(\rR\x1cExperimentalBufferContainers\x12.\n" +
 	"\x13runtime_perf_record\x18G \x01(\bR\x11runtimePerfRecord\x122\n" +
 	"\bschedule\x18H \x01(\v2\x16.modal.client.ScheduleR\bschedule\x12%\n" +
 	"\x0esnapshot_debug\x18I \x01(\bR\rsnapshotDebug\x12\\\n" +
@@ -69735,7 +69627,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x14startup_timeout_secs\x18V \x01(\rR\x12startupTimeoutSecs\x12P\n" +
 	"\x17supported_input_formats\x18W \x03(\x0e2\x18.modal.client.DataFormatR\x15supportedInputFormats\x12R\n" +
 	"\x18supported_output_formats\x18X \x03(\x0e2\x18.modal.client.DataFormatR\x16supportedOutputFormats\x12>\n" +
-	"\vhttp_config\x18Y \x01(\v2\x18.modal.client.HTTPConfigH\x04R\n" +
+	"\vhttp_config\x18Y \x01(\v2\x18.modal.client.HTTPConfigH\x03R\n" +
 	"httpConfig\x88\x01\x01\x12/\n" +
 	"\x13implementation_name\x18Z \x01(\tR\x12implementationName\x122\n" +
 	"\x15single_use_containers\x18[ \x01(\bR\x13singleUseContainers\x12\x1b\n" +
@@ -69758,8 +69650,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x16FUNCTION_TYPE_FUNCTION\x10\x02B\v\n" +
 	"\t_proxy_idB\x11\n" +
 	"\x0f_cloud_providerB\x16\n" +
-	"\x14_scheduler_placementB\x19\n" +
-	"\x17X_experimental_proxy_ipB\x0e\n" +
+	"\x14_scheduler_placementB\x0e\n" +
 	"\f_http_configJ\x04\b\x14\x10\x15J\x04\b0\x101J\x04\b1\x102J\x04\b4\x105J\x04\b6\x107J\x04\b7\x108J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<\"\x98\x01\n" +
 	"\x1aFunctionAsyncInvokeRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
@@ -69879,7 +69770,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bfunction\x18\x04 \x01(\v2\x16.modal.client.FunctionR\bfunction\x12M\n" +
 	"\x0fhandle_metadata\x18\x05 \x01(\v2$.modal.client.FunctionHandleMetadataR\x0ehandleMetadata\x12>\n" +
 	"\x0fserver_warnings\x18\x06 \x03(\v2\x15.modal.client.WarningR\x0eserverWarnings\x12?\n" +
-	"\rfunction_data\x18\a \x01(\v2\x1a.modal.client.FunctionDataR\ffunctionData\"\xc9\x14\n" +
+	"\rfunction_data\x18\a \x01(\v2\x1a.modal.client.FunctionDataR\ffunctionData\"\xf0\x13\n" +
 	"\fFunctionData\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -69900,8 +69791,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	" \x01(\v2\x18.modal.client.WebUrlInfoR\n" +
 	"webUrlInfo\x12B\n" +
 	"\x0ewebhook_config\x18\v \x01(\v2\x1b.modal.client.WebhookConfigR\rwebhookConfig\x12L\n" +
-	"\x12custom_domain_info\x18\f \x03(\v2\x1e.modal.client.CustomDomainInfoR\x10customDomainInfo\x12<\n" +
-	"\x16_experimental_proxy_ip\x18\x18 \x01(\tB\x02\x18\x01H\x00R\x13ExperimentalProxyIp\x88\x01\x01\x12`\n" +
+	"\x12custom_domain_info\x18\f \x03(\v2\x1e.modal.client.CustomDomainInfoR\x10customDomainInfo\x12`\n" +
 	"\x12method_definitions\x18\x19 \x03(\v21.modal.client.FunctionData.MethodDefinitionsEntryR\x11methodDefinitions\x124\n" +
 	"\x16method_definitions_set\x18\x1a \x01(\bR\x14methodDefinitionsSet\x12\x19\n" +
 	"\bis_class\x18\r \x01(\bR\aisClass\x12R\n" +
@@ -69920,7 +69810,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x14startup_timeout_secs\x18$ \x01(\rR\x12startupTimeoutSecs\x12P\n" +
 	"\x17supported_input_formats\x18% \x03(\x0e2\x18.modal.client.DataFormatR\x15supportedInputFormats\x12R\n" +
 	"\x18supported_output_formats\x18& \x03(\x0e2\x18.modal.client.DataFormatR\x16supportedOutputFormats\x12>\n" +
-	"\vhttp_config\x18' \x01(\v2\x18.modal.client.HTTPConfigH\x01R\n" +
+	"\vhttp_config\x18' \x01(\v2\x18.modal.client.HTTPConfigH\x00R\n" +
 	"httpConfig\x88\x01\x01\x12/\n" +
 	"\x13implementation_name\x18( \x01(\tR\x12implementationName\x12\x1b\n" +
 	"\tis_server\x18) \x01(\bR\bisServer\x12%\n" +
@@ -69934,8 +69824,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bfunction\x18\x02 \x01(\v2\x16.modal.client.FunctionR\bfunction\x1aF\n" +
 	"\x18ExperimentalOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x19\n" +
-	"\x17X_experimental_proxy_ipB\x0e\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
 	"\f_http_configJ\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x15\x10\x16\"\xdc\x01\n" +
 	"\x10FunctionExtended\x12'\n" +
 	"\x0ftype_identifier\x18\x01 \x01(\rR\x0etypeIdentifier\x12G\n" +
@@ -70731,15 +70620,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12)\n" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\"=\n" +
 	"\x10ProxyGetResponse\x12)\n" +
-	"\x05proxy\x18\x01 \x01(\v2\x13.modal.client.ProxyR\x05proxy\"\x80\x02\n" +
+	"\x05proxy\x18\x01 \x01(\v2\x13.modal.client.ProxyR\x05proxy\"\xbe\x01\n" +
 	"\tProxyInfo\x12\x1d\n" +
 	"\n" +
 	"elastic_ip\x18\x01 \x01(\tR\telasticIp\x12\x1b\n" +
-	"\tproxy_key\x18\x02 \x01(\tR\bproxyKey\x12\x1f\n" +
-	"\vremote_addr\x18\x03 \x01(\tR\n" +
-	"remoteAddr\x12\x1f\n" +
-	"\vremote_port\x18\x04 \x01(\x05R\n" +
-	"remotePort\x126\n" +
+	"\tproxy_key\x18\x02 \x01(\tR\bproxyKey\x126\n" +
 	"\n" +
 	"proxy_type\x18\x05 \x01(\x0e2\x17.modal.client.ProxyTypeR\tproxyType\x12\x19\n" +
 	"\buse_oidc\x18\x06 \x01(\bR\auseOidc\x12\"\n" +

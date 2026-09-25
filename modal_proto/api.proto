@@ -1206,7 +1206,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string function_id = 2;
   string app_id = 4;
   Function function_def = 7;
-  ProxyInfo proxy_info = 8;
+  ProxyInfo proxy_info = 8 [deprecated=true];
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
   string runtime = 11;
@@ -2080,10 +2080,6 @@ message Function {
 
   uint32 _experimental_buffer_containers = 69;  // To be replaced by autoscaler_settings.buffer_containers
 
-  // _experimental_proxy_ip -> ProxyInfo
-  // TODO: deprecate.
-  optional string _experimental_proxy_ip = 70 [deprecated=true];
-
   bool runtime_perf_record = 71; // For internal debugging use only.
 
   Schedule schedule = 72;
@@ -2322,9 +2318,6 @@ message FunctionData {
   WebUrlInfo web_url_info = 10;
   WebhookConfig webhook_config = 11;
   repeated CustomDomainInfo custom_domain_info = 12;
-  // _experimental_proxy_ip -> ProxyInfo
-  // TODO: deprecate.
-  optional string _experimental_proxy_ip = 24 [deprecated=true];
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 25;
   bool method_definitions_set = 26;
@@ -3446,8 +3439,6 @@ message ProxyGetResponse {
 message ProxyInfo {
   string elastic_ip = 1;
   string proxy_key = 2;
-  string remote_addr = 3;
-  int32 remote_port = 4;
   ProxyType proxy_type = 5;
   bool use_oidc = 6;
   string vprox_node_id = 7;
