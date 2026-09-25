@@ -1,21 +1,28 @@
 # Copyright Modal Labs 2026
 from __future__ import annotations
 
+import dataclasses
 import json as json_lib
+import sys
 from datetime import datetime, timezone
-from typing import cast
+from typing import AsyncGenerator, cast
 
 import click
 from click import UsageError
-from rich.table import Column
+from rich.table import Column, Table
 from rich.text import Text
 
 from modal._environments import ensure_env
 from modal._object import _get_environment_name
-from modal._utils.async_utils import synchronizer
+from modal._server import _Server
+from modal._utils.async_utils import async_map_ordered, synchronizer
 from modal._utils.time_utils import parse_duration
+from modal.cli.utils import humanize_filesize
 from modal.client import _Client
+from modal.exception import NotFoundError
 from modal.output import OutputManager
+from modal.secret import _Secret
+from modal.types import ServerAutoscalerSettings
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
@@ -640,3 +647,305 @@ async def stats(
         output.print(_percentile_table(container_rows, use_color))
 
     _render_inference(history, use_color)
+
+
+@server_cli.command("info", no_args_is_help=True)
+@click.argument("server_identifier", metavar="SERVER")
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@env_option
+@synchronizer.create_blocking
+async def info(
+    server_identifier: str,
+    json: bool = False,
+    *,
+    env: str | None = None,
+):
+    """Show information about a given Modal Server.
+
+    SERVER can either be a Function ID (`fu-...`) or a deployed Server name in the format
+    `APP_NAME/SERVER_NAME`. The output of this command includes information about any resources
+    requested by this Server, any scheduling/autoscaling settings, any mounted Volumes or Buckets,
+    and any HTTP settings.
+
+    Examples:
+
+    Providing a Server ID directly:
+
+    ```
+    modal server info fu-0123456789abcdefghijkl
+    ```
+
+    Referring to a Server within a deployed App:
+
+    ```
+    modal server info hello-world-app/test_server
+    ```
+    """
+    client = await _Client.from_env()
+    environment_name = _get_environment_name(ensure_env(env))
+    tty = sys.stdout.isatty()
+
+    server_id, handle_metadata, _ = await _resolve_function_id(
+        client,
+        server_identifier,
+        environment_name,
+        object_type="Server",
+        command="info",
+    )
+
+    server = _Server._new_from_function(server_id, client, handle_metadata)
+    info = await server.info()
+
+    autoscaler_response = await client._stub.FunctionGetSchedulingParams(
+        api_pb2.FunctionGetSchedulingParamsRequest(function_id=server_id)
+    )
+    autoscaler_settings = ServerAutoscalerSettings._from_proto(autoscaler_response.autoscaler_configuration.settings)
+
+    web_url = await server.get_url()
+    output_manager = OutputManager.get()
+
+    if json:
+        info_dict = dataclasses.asdict(info)
+        info_dict = info_dict | dataclasses.asdict(autoscaler_settings)
+        info_dict["web_url"] = web_url
+
+        output_manager.print_json(json_lib.dumps(info_dict))
+        return
+
+    not_configured = "-"
+    enabled = "Enabled"
+    disabled = "Disabled"
+
+    rows: list[str | Text | tuple[str | Text, str | Text]] = []
+
+    rows.append(("Server Name:", handle_metadata.function_name))
+    rows.append(("Function ID:", server_id))
+    rows.append(("App ID:", handle_metadata.app_id))
+    rows.append(("Image ID:", str(info.image_info.image_id)))
+
+    # --- HTTP ---
+    rows.append("HTTP Info:")
+    if web_url:
+        rows.append(("  URL:", web_url))
+    rows.append(("  Port:", not_configured if not info.http_info.port else str(info.http_info.port)))
+    rows.append(("  Authentication:", disabled if info.http_info.unauthenticated else enabled))
+    rows.append(("  HTTP/2:", disabled if not info.http_info.h2_enabled else enabled))
+    rows.append(
+        (
+            "  Proxy Region(s):",
+            not_configured if len(info.http_info.proxy_regions) == 0 else " | ".join(info.http_info.proxy_regions),
+        )
+    )
+    rows.append(("  Sessioned:", not_configured if not info.sessioned else enabled))
+
+    # --- Resources ---
+    rows.append("Resources:")
+    rows.append(
+        (
+            "  CPU:",
+            not_configured
+            if info.cpu is None
+            else f"{info.cpu} core(s)"
+            if isinstance(info.cpu, (int, float))
+            else f"{info.cpu[0]} - {info.cpu[1]} core(s)",
+        )
+    )
+    rows.append(
+        (
+            "  Memory:",
+            not_configured
+            if info.memory_mib is None
+            else humanize_filesize(info.memory_mib << 20)
+            if isinstance(info.memory_mib, int)
+            else f"{humanize_filesize(info.memory_mib[0] << 20)} - {humanize_filesize(info.memory_mib[1] << 20)}",
+        )
+    )
+    rows.append(
+        (
+            "  Ephemeral Disk:",
+            not_configured if info.ephemeral_disk_mib is None else (humanize_filesize(info.ephemeral_disk_mib << 20)),
+        )
+    )
+    rows.append(
+        (
+            "  GPU(s):",
+            not_configured
+            if len(info.gpus) == 0
+            else " | ".join([f"{gpu_type} x {count}" for gpu_type, count in info.gpus]),
+        )
+    )
+
+    # --- Autoscaling ---
+    rows.append("Autoscaling:")
+    rows.append(
+        (
+            "  Min/Max/Buffer Containers:",
+            " / ".join(
+                [
+                    not_configured
+                    if autoscaler_settings.min_containers is None
+                    else str(autoscaler_settings.min_containers),
+                    not_configured
+                    if autoscaler_settings.max_containers is None
+                    else str(autoscaler_settings.max_containers),
+                    not_configured
+                    if autoscaler_settings.buffer_containers is None
+                    else str(autoscaler_settings.buffer_containers),
+                ]
+            ),
+        )
+    )
+
+    rows.append(
+        (
+            "  Scaleup Window:",
+            not_configured
+            if autoscaler_settings.scaleup_window is None
+            else f"{autoscaler_settings.scaleup_window} seconds",
+        )
+    )
+    rows.append(
+        (
+            "  Scaledown Window:",
+            not_configured
+            if autoscaler_settings.scaledown_window is None
+            else f"{autoscaler_settings.scaledown_window} seconds",
+        )
+    )
+    rows.append(
+        (
+            "  Target Concurrency:",
+            not_configured
+            if not autoscaler_settings.target_concurrency
+            else f"{autoscaler_settings.target_concurrency:.1f} requests / container",
+        )
+    )
+
+    rows.append("Execution:")
+    rows.append(("  Timeout:", f"{info.timeout} seconds"))
+    rows.append(("  Max Retries:", not_configured if info.max_retries is None else str(info.max_retries)))
+
+    if info.batching_info:
+        rows.append("Batching:")
+        rows.append(("  Max Batch Size:", str(info.batching_info.max_batch_size)))
+        rows.append(("  Wait Time:", f"{info.batching_info.wait_ms} milliseconds"))
+
+    # --- Scheduling ---
+    rows.append("Scheduling:")
+    rows.append(
+        ("  Compute Region(s):", not_configured if not info.compute_regions else " | ".join(info.compute_regions))
+    )
+    rows.append(("  Nonpreemptible Capacity:", not_configured if not info.nonpreemptible else enabled))
+    rows.append(("  Cloud Provider:", not_configured if info.cloud is None else (info.cloud)))
+
+    if info.cluster_info:
+        rows.append("Clustering:")
+        rows.append(("  Cluster Size:", str(info.cluster_info.size)))
+        rows.append(("  RDMA:", enabled if info.cluster_info.rdma else disabled))
+        if info.cluster_info.fabric_size is not None:
+            rows.append(("  Fabric Size:", str(info.cluster_info.fabric_size)))
+
+    # --- Mounts ---
+    if info.volumes:
+        rows.append("Volume Mounts:")
+        for mount_path, volume in info.volumes.items():
+            assert volume.volume_id is not None
+
+            extra = []
+            if volume.read_only:
+                extra.append("Read-Only")
+            if volume.sub_path:
+                extra.append(f"Sub-Path: {volume.sub_path}")
+
+            if extra:
+                volume_text = f"{volume.volume_id} ({', '.join(extra)})"
+            else:
+                volume_text = volume.volume_id
+
+            rows.append((f"  {mount_path}", volume_text))
+
+    if info.cloud_bucket_mounts:
+        rows.append("Cloud Bucket Mounts:")
+        for mount_path, cbm in info.cloud_bucket_mounts.items():
+            extra = []
+            if cbm.read_only:
+                extra.append("Read-Only")
+            if cbm.key_prefix:
+                extra.append(f"Prefix: {cbm.key_prefix}")
+
+            if extra:
+                cbm_text = f"{cbm.bucket_name} ({', '.join(extra)})"
+            else:
+                cbm_text = cbm.bucket_name
+
+            rows.append((f"  {mount_path}", cbm_text))
+
+    # --- Secrets ---
+    if info.secrets:
+        rows.append("Secrets:")
+
+        async def _hydrate(secret_id: str) -> tuple[str, _Secret | None]:
+            try:
+                s = _Secret._from_id(secret_id)
+                await s.hydrate()
+            except NotFoundError:
+                return secret_id, None
+
+            return secret_id, s
+
+        async def _secret_iter() -> AsyncGenerator[str, None]:
+            for secret_id in info.secrets:
+                yield secret_id
+
+        async for secret_id, secret in async_map_ordered(
+            _secret_iter(),
+            _hydrate,
+            10,
+        ):
+            if secret is None:
+                rows.append((f"  {secret_id}", "[DELETED]"))
+                continue
+
+            secret_identifier = secret.object_id
+            if secret._name:
+                secret_identifier = secret._name
+                secret_env = secret._get_metadata().environment_name
+
+                if secret_env != environment_name:
+                    secret_identifier = f"{secret._name} ({secret_env})"
+
+            keys = await secret._get_keys()
+            display_keys = sorted(keys)[:5]
+            if len(display_keys) < len(keys):
+                display_keys.append(f"({len(keys) - len(display_keys)} keys omitted)")
+
+            rows.append((f"  {secret_identifier}", ", ".join(display_keys)))
+
+    for row in rows:
+        t = Table().grid(padding=(0, 0, 3, 3), expand=True)
+
+        if not isinstance(row, tuple):
+            if isinstance(row, str):
+                row = Text(row)
+
+            if not tty:
+                output_manager.print(row)
+            else:
+                t.add_row(row)
+                output_manager.print(t)
+
+            continue
+
+        left, right = row
+
+        if not tty:
+            output_manager.print(Text(f"{left} {right}"))
+            continue
+
+        if isinstance(left, str):
+            left = Text(left, overflow="fold")
+        if isinstance(right, str):
+            right = Text(right, overflow="fold", justify="right")
+
+        t.add_row(left, right)
+        output_manager.print(t)

@@ -5248,6 +5248,69 @@ def test_function_stats_cli_rejects_invalid_time_options(option):
     )
 
 
+def test_server_info_cli(set_env_client, mock_dir, servicer):
+    test_app_file = textwrap.dedent("""\
+    import modal
+
+    app = modal.App("test-server-info")
+
+
+    @app.server(
+        cpu=(2, 16),
+        memory=(4 << 10, 32 << 10),
+        ephemeral_disk=512 << 10,
+        cloud="gcp",
+        compute_region=["apac"],
+        nonpreemptible=True,
+        target_concurrency=5.2,
+        port=5432,
+        h2_enabled=True,
+    )
+    class Server:
+        @modal.enter()
+        def enter(self):
+            pass
+
+    """)
+
+    with mock_dir({"test_server_info_app.py": test_app_file}):
+        run_cli_command(["deploy", "test_server_info_app.py"])
+
+        json_output = run_cli_command(["server", "info", "test-server-info/Server", "--json"])
+        loaded = json.loads(json_output.stdout)
+        assert loaded["cpu"] == [2.0, 16.0]
+        assert loaded["memory_mib"] == 32 * 1024
+        assert loaded["ephemeral_disk_mib"] == 512 * 1024
+        assert loaded["cloud"] == "gcp"
+        assert loaded["compute_regions"] == ["apac"]
+        assert loaded["nonpreemptible"]
+
+        human_output = run_cli_command(["server", "info", "test-server-info/Server"])
+        deformatted = re.sub(r"\s+", " ", human_output.stdout)
+
+        assert "Function ID: fu-1" in deformatted
+        assert "App ID: ap-1" in deformatted
+        assert "Resources:" in deformatted
+        assert "CPU: 2.0 - 16.0 core(s)" in deformatted
+        assert "Memory: 32.0 GiB" in deformatted
+        assert "Ephemeral Disk: 512.0 GiB" in deformatted
+        assert "GPU(s): -" in deformatted
+        assert "Scheduling:" in deformatted
+        assert "Compute Region(s): apac" in deformatted
+        assert "Nonpreemptible Capacity: Enabled" in deformatted
+        assert "Cloud Provider: gcp" in deformatted
+        assert "Autoscaling:" in deformatted
+        assert "Min/Max/Buffer Containers: - / - / -" in deformatted
+        assert "Scaledown Window: -" in deformatted
+
+        # check that referring by function ID also works:
+        fn_id_json_res = run_cli_command(["server", "info", "fu-1", "--json"])
+        assert loaded == json.loads(fn_id_json_res.stdout)
+
+        fn_id_human_res = run_cli_command(["server", "info", "fu-1"])
+        assert human_output.stdout == fn_id_human_res.stdout
+
+
 def test_function_info_cli(set_env_client, mock_dir, servicer):
     test_app_file = textwrap.dedent("""\
     import time
@@ -5296,8 +5359,6 @@ def test_function_info_cli(set_env_client, mock_dir, servicer):
 
         human_output = run_cli_command(["function", "info", "test-function-info/do_stuff"])
         deformatted = re.sub(r"\s+", " ", human_output.stdout)
-
-        print(deformatted)
 
         assert "Function ID: fu-1" in deformatted
         assert "App ID: ap-1" in deformatted

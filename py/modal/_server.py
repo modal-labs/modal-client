@@ -4,6 +4,8 @@ import json
 import typing
 from datetime import datetime, timedelta, timezone
 
+from typing_extensions import Self
+
 from modal_proto import api_pb2
 
 from ._functions import _Function
@@ -249,6 +251,18 @@ class _Server:
         service_function = self._get_service_function()
         await service_function.hydrate(client)
         return self
+
+    @classmethod
+    def _new_from_function(cls, object_id: str, client: _Client, metadata: api_pb2.FunctionHandleMetadata) -> Self:
+        """mdmd:hidden
+
+        Callers which already have handle metadata for a Server service function can use this method to
+        create a hydrated handle without having to do an unnecessary RPC.
+        """
+
+        obj = cls()
+        obj._service_function = _Function._new_hydrated(object_id, client, metadata)
+        return obj
 
     # ============ Construction ============
     @staticmethod

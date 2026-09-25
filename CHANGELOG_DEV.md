@@ -55,6 +55,7 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - `Sandbox.create` allows specifying a virtual machine runtime via `runtime="vm"`, which supersedes `experimental_options={"vm_runtime": True}`. Leaving `runtime` unset lets Modal pick the runtime, whilst setting `runtime="gvisor"` explicitly opts-into the gVisor runtime.
 - Added a `--runtime vm|gvisor` option to `modal shell` for choosing the runtime of the shell's Sandbox.
 - Added a `modal function info` CLI which wraps and nicely formats the output of `Function.info()`.
+- Added a `modal server info` CLI which wraps and nicely formats the output of `Server.info()`.
 
 ## JS
 

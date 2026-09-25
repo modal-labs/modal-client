@@ -847,6 +847,17 @@ class ServerInfo:
         image_name: str | None
         image_id: str | None  # None if the object has not yet been hydrated
 
+    @dataclass(frozen=True)
+    class ClusterInfo:
+        size: int
+        rdma: bool
+        fabric_size: int | None
+
+    @dataclass(frozen=True)
+    class BatchingInfo:
+        max_batch_size: int
+        wait_ms: int
+
     cpu: float | tuple[float, float] | None
     memory_mib: int | tuple[int, int] | None
     gpus: list[tuple[str, int]]
@@ -863,6 +874,8 @@ class ServerInfo:
 
     http_info: HttpInfo
     image_info: ImageInfo
+    cluster_info: ClusterInfo | None
+    batching_info: BatchingInfo | None
 
     @classmethod
     def _from_function_info(cls, info: FunctionInfo) -> "ServerInfo":
@@ -892,6 +905,19 @@ class ServerInfo:
                 image_name=info.image_info.image_name,
                 image_id=info.image_info.image_id,
             ),
+            cluster_info=ServerInfo.ClusterInfo(
+                size=info.cluster_info.size,
+                rdma=info.cluster_info.rdma,
+                fabric_size=info.cluster_info.fabric_size,
+            )
+            if info.cluster_info
+            else None,
+            batching_info=ServerInfo.BatchingInfo(
+                max_batch_size=info.batching_info.max_batch_size,
+                wait_ms=info.batching_info.wait_ms,
+            )
+            if info.batching_info
+            else None,
         )
 
 
