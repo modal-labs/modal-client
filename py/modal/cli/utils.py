@@ -156,7 +156,7 @@ def humanize_filesize(value: int) -> str:
     return f"{size:.1f} ZiB"
 
 
-def _plain(text: "Text | str | bool | None") -> "str | bool | None":
+def _plain(text: "Text | str | int | bool | None") -> "str | int | bool | None":
     return text.plain if isinstance(text, Text) else text
 
 
@@ -171,7 +171,7 @@ def is_tty() -> bool:
 
 def display_table(
     columns: Sequence[Column | str],
-    rows: Sequence[Sequence["Text | str | bool | None"]],
+    rows: Sequence[Sequence["Text | str | int | bool | None"]],
     json: bool = False,
     csv: bool = False,
     title: str = "",

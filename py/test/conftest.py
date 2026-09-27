@@ -4414,7 +4414,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         found_file = False  # empty directory detection is not handled here!
         for k, vol_file in self.volumes[req.volume_id].files.items():
             if not path or k == path or (k.startswith(path + "/") and (req.recursive or "/" not in k[len(path) + 1 :])):
-                entry = api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))
+                entry = api_pb2.FileEntry(
+                    path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data), mtime=1_700_000_000
+                )
                 await stream.send_message(make_resp([entry]))
                 found_file = True
 

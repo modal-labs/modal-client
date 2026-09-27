@@ -2635,6 +2635,10 @@ def test_volume_ls(servicer, set_env_client):
     for entry, fname in zip(res_dict, fnames):
         assert entry["filename"] == f"data/{fname}.txt"
         assert entry["type"] == "file"
+        assert entry["size"] == 5
+        created_modified = datetime.fromisoformat(entry["created_modified"])
+        assert created_modified.tzinfo is not None
+        assert created_modified.timestamp() == 1_700_000_000
 
 
 def test_volume_create_delete(servicer, server_url_env, set_env_client):

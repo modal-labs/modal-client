@@ -59,6 +59,11 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added a `modal server info` CLI which wraps and nicely formats the output of `Server.info()`.
 - Added `--limit` to `modal app list` to limit number of returned apps.
 
+Finally, the release includes the following breaking changes:
+
+- `modal volume ls --json` now gives `created_modified` as an ISO 8601 timestamp with a UTC offset (e.g. `2026-09-26 14:03:12+02:00`).
+- `modal volume ls --json` now gives `size` as an integer number of bytes rather than a human-readable string as before.
+
 ## JS
 
 - Sandboxes are now created on the [next-generation Sandbox backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds) by default, which was previously opt-in via the `MODAL_SANDBOX_V2=1` environment variable. Compared to the V1 backend, it supports substantially higher Sandbox creation rates and concurrent Sandbox counts, and schedules sandboxes faster. No code changes are required, and Sandboxes that use features the new backend does not support (such as GPUs) are automatically created on the V1 backend.

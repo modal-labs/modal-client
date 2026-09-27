@@ -150,8 +150,8 @@ async def ls(
                 (
                     entry.path.encode("unicode_escape").decode("utf-8"),
                     filetype,
-                    timestamp_to_localized_str(entry.mtime, False),
-                    humanize_filesize(entry.size),
+                    timestamp_to_localized_str(entry.mtime, json),
+                    entry.size if json else humanize_filesize(entry.size),
                 )
             )
         columns = ["Filename", "Type", "Created/Modified", "Size"]
