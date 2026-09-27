@@ -63,6 +63,7 @@ Finally, the release includes the following breaking changes:
 
 - `modal volume ls --json` now gives `created_modified` as an ISO 8601 timestamp with a UTC offset (e.g. `2026-09-26 14:03:12+02:00`).
 - `modal volume ls --json` now gives `size` as an integer number of bytes rather than a human-readable string as before.
+- `modal queue list --json` now gives `partitions` and `total_size` as integers, not strings. The reported `total_size` stops at 100,000 items. A new `total_size_truncated` field is `true` when the size reached that limit.
 
 ## JS
 

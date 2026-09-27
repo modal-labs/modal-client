@@ -3353,11 +3353,42 @@ def test_queue_create_list_delete(servicer, server_url_env, set_env_client):
     assert "foo-queue" in res.stdout
     assert "bar-queue" in res.stdout
 
+    res = run_cli_command(["queue", "list", "--json"])
+    for entry in json.loads(res.stdout):
+        assert entry["partitions"] == 0
+        assert entry["total_size"] == 0
+        assert entry["total_size_truncated"] is False
+
     run_cli_command(["queue", "delete", "bar-queue", "--yes"])
 
     res = run_cli_command(["queue", "list"])
     assert "foo-queue" in res.stdout
     assert "bar-queue" not in res.stdout
+
+
+@pytest.mark.parametrize(
+    ("num_items", "expected_table_size", "expected_json_size", "expected_truncated"),
+    [
+        (99_999, "99999", 99_999, False),
+        (100_000, ">=100000", 100_000, True),
+        (150_000, ">=100000", 100_000, True),
+    ],
+)
+def test_queue_list_total_size_limit(
+    servicer, server_url_env, set_env_client, num_items, expected_table_size, expected_json_size, expected_truncated
+):
+    run_cli_command(["queue", "create", "big-queue"])
+    windows_sleep()
+    servicer.queue = {b"": [b"x"] * num_items}
+
+    res = run_cli_command(["queue", "list"])
+    assert expected_table_size in res.stdout
+
+    res = run_cli_command(["queue", "list", "--json"])
+    (entry,) = json.loads(res.stdout)
+    assert entry["partitions"] == 1
+    assert entry["total_size"] == expected_json_size
+    assert entry["total_size_truncated"] is expected_truncated
 
 
 def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):

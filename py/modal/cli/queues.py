@@ -110,16 +110,27 @@ async def list_(*, json: bool = False, env: str | None = None):
     rows = []
     for obj, resp_data in zip(queues, items):
         info = await obj.info()
-        rows.append(
-            (
-                obj.name,
-                timestamp_to_localized_str(info.created_at.timestamp(), json),
-                info.created_by,
+        row: list[str | int | bool | None] = [
+            obj.name,
+            timestamp_to_localized_str(info.created_at.timestamp(), json),
+            info.created_by,
+        ]
+        if json:
+            row += [
+                resp_data.num_partitions,
+                resp_data.total_size,
+                resp_data.total_size >= max_total_size,
+            ]
+        else:
+            row += [
                 str(resp_data.num_partitions),
-                str(resp_data.total_size) if resp_data.total_size <= max_total_size else f">{max_total_size}",
-            )
-        )
-    display_table(["Name", "Created at", "Created by", "Partitions", "Total size"], rows, json)
+                str(resp_data.total_size) if resp_data.total_size < max_total_size else f">={max_total_size}",
+            ]
+        rows.append(row)
+    columns = ["Name", "Created at", "Created by", "Partitions", "Total size"]
+    if json:
+        columns.append("Total size truncated")
+    display_table(columns, rows, json)
 
 
 @queue_cli.command("clear", panel="Management", no_args_is_help=True)
