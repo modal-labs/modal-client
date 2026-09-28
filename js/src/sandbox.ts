@@ -2126,14 +2126,9 @@ export class Sandbox {
       new TimeoutError(
         `Timed out waiting for task ID for Sandbox ${this.sandboxId}`,
       );
-    const backoff = () =>
-      setTimeout(Math.max(0, Math.min(500, deadline - Date.now())), undefined, {
-        signal,
-      });
+    const pollIntervalMs = 500;
+    const noTimeLeft = () => deadline - Date.now() <= pollIntervalMs;
     while (true) {
-      if (Date.now() >= deadline) {
-        throw timedOut();
-      }
       let resp;
       try {
         resp = await this.#sandboxGetTaskId(undefined, { signal });
@@ -2141,19 +2136,19 @@ export class Sandbox {
         if (signal?.aborted || !isTransientTaskIDLookupError(err)) {
           throw err;
         }
+        if (!retryTransient && Date.now() < deadline) {
+          throw err;
+        }
         // A transient failure at the deadline says nothing about scheduling,
         // so report the wait as timed out rather than the last hiccup. A
         // server error is not evidence of missing capacity, so surface it.
-        if (Date.now() >= deadline) {
+        if (noTimeLeft()) {
           if (err instanceof ClientError && err.code === Status.INTERNAL) {
             throw err;
           }
           throw timedOut();
         }
-        if (!retryTransient) {
-          throw err;
-        }
-        await backoff();
+        await setTimeout(pollIntervalMs, undefined, { signal });
         continue;
       }
       if (resp.taskId) {
@@ -2166,7 +2161,10 @@ export class Sandbox {
             `Sandbox ${this.sandboxId} has already finished`,
         );
       }
-      await backoff();
+      if (noTimeLeft()) {
+        throw timedOut();
+      }
+      await setTimeout(pollIntervalMs, undefined, { signal });
     }
   }
 

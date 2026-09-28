@@ -3188,6 +3188,52 @@ def test_sandbox_create_v1_task_id_internal_until_deadline(servicer, app, monkey
     assert len(ctx.get_requests("SandboxTerminate")) == 1
 
 
+def test_sandbox_create_v1_task_id_internal_before_deadline(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+    timeout = modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT
+    now = 0.0
+    monkeypatch.setattr("modal.sandbox.time", SimpleNamespace(monotonic=lambda: now))
+
+    calls = 0
+
+    async def internal_then_unscheduled(self, stream):
+        nonlocal calls, now
+        calls += 1
+        await stream.recv_message()
+        if calls <= DEFAULT_MAX_RETRIES + 1:
+            # The deadline has not passed, but too little time remains for another poll.
+            now = timeout - modal.sandbox._TASK_ID_POLL_INTERVAL / 2
+            raise GRPCError(Status.INTERNAL, "server bug")
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", internal_then_unscheduled)
+        with pytest.raises(modal.exception.InternalError, match="server bug"):
+            Sandbox.create(app=app)
+
+    assert calls == DEFAULT_MAX_RETRIES + 1
+    assert len(ctx.get_requests("SandboxTerminate")) == 1
+
+
+def test_sandbox_create_v1_scheduling_timeout_terminate_fails(servicer, app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
+    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+
+    async def never_scheduled(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
+
+    async def terminate_fails(self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.INVALID_ARGUMENT, "terminate failed")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", never_scheduled)
+        ctx.set_responder("SandboxTerminate", terminate_fails)
+        with pytest.raises(modal.exception.ResourceExhaustedError, match="Insufficient capacity"):
+            Sandbox.create(app=app)
+
+
 def test_sandbox_create_v1_terminated_before_scheduled(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
 

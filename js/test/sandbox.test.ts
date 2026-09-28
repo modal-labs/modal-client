@@ -2542,6 +2542,7 @@ test("SandboxCreate V1 waits for a task ID", async () => {
 test("SandboxCreate V1 scheduling timeout", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
+  mock.handleUnary("/SandboxGetTaskId", () => ({}));
   mock.handleUnary("/SandboxTerminate", (req: any) => {
     expect(req.sandboxId).toBe(V1_SANDBOX_ID);
     return {};
@@ -2633,6 +2634,30 @@ test("SandboxCreate V1 internal error at the deadline propagates", async () => {
 
   mock.handleUnary("/SandboxGetTaskId", async () => {
     await new Promise((resolve) => globalThis.setTimeout(resolve, 30));
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTaskId",
+      Status.INTERNAL,
+      "server bug",
+    );
+  });
+  mock.handleUnary("/SandboxTerminate", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    return {};
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const err = await sb._waitForScheduling(20).catch((e) => e);
+  expect(err).toBeInstanceOf(ClientError);
+  expect(err.code).toBe(Status.INTERNAL);
+
+  mock.assertExhausted();
+});
+
+test("SandboxCreate V1 internal error just before the deadline propagates", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  // The deadline passes during the backoff, so no further lookup is made.
+  mock.handleUnary("/SandboxGetTaskId", () => {
     throw new ClientError(
       "/modal.client.ModalClient/SandboxGetTaskId",
       Status.INTERNAL,

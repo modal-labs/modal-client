@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import builtins
-import contextlib
 import enum
 import json
 import logging
@@ -97,7 +96,10 @@ _EXIT_SNAPSHOT_LONG_POLL_TIMEOUT = 10.0
 _EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN = 5.0
 
 # How long `Sandbox.create` waits for capacity before giving up.
-_SANDBOX_SCHEDULING_TIMEOUT = 21 * 60
+_SANDBOX_SCHEDULING_TIMEOUT: float = 21 * 60
+
+# How long to wait between task ID lookups.
+_TASK_ID_POLL_INTERVAL: float = 0.5
 
 
 async def _gather_load_with_timings(
@@ -602,16 +604,16 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await self._get_task_id(
                     raise_if_task_complete=True, timeout=_SANDBOX_SCHEDULING_TIMEOUT, retry_transient=True
                 )
-            except TimeoutError:
-                # Don't leave a queued Sandbox that could start later without a caller.
-                await self.terminate()
-                raise ResourceExhaustedError("Insufficient capacity to create sandbox.") from None
             except ConflictError:
                 raise
-            except BaseException:
-                # The caller never receives the Sandbox, so terminate it before propagating.
-                with contextlib.suppress(Exception):
+            except BaseException as exc:
+                # The caller never receives the Sandbox, so terminate it so it can't start later without a caller.
+                try:
                     await asyncio.shield(self.terminate())
+                except Exception as terminate_exc:
+                    logger.debug(f"Failed to terminate unscheduled Sandbox {sandbox_id}: {terminate_exc}")
+                if isinstance(exc, TimeoutError):
+                    raise ResourceExhaustedError("Insufficient capacity to create sandbox.") from None
                 raise
 
             if logger.isEnabledFor(logging.DEBUG):
@@ -2103,21 +2105,21 @@ class _Sandbox(_Object, type_prefix="sb"):
                 )
                 if not retry_transient or deadline is None or not transient:
                     raise
-                if time.monotonic() >= deadline:
+                if deadline - time.monotonic() <= _TASK_ID_POLL_INTERVAL:
                     # A server error is not evidence of missing capacity, so surface it as is.
                     if isinstance(exc, InternalError):
                         raise
                     raise TimeoutError("Sandbox was not scheduled within the timeout.") from exc
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(_TASK_ID_POLL_INTERVAL)
                 continue
             if not resp.task_id and raise_if_task_complete and resp.HasField("task_result"):
                 msg = resp.task_result.exception or "Sandbox already finished"
                 raise ConflictError(msg)
             self._task_id = resp.task_id
             if not self._task_id:
-                if deadline is not None and time.monotonic() >= deadline:
+                if deadline is not None and deadline - time.monotonic() <= _TASK_ID_POLL_INTERVAL:
                     raise TimeoutError("Sandbox was not scheduled within the timeout.")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(_TASK_ID_POLL_INTERVAL)
         return self._task_id
 
     async def _resolve_task_id_for_logs(self) -> str:

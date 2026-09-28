@@ -2063,6 +2063,24 @@ func TestSandboxCreateV1TaskIDInternalUntilDeadline(t *testing.T) {
 	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
 }
 
+func TestSandboxCreateV1NonRetryableErrorAtDeadlinePropagates(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &mockSandboxV1CreateStub{
+		getTaskID: func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+			return nil, status.Error(codes.InvalidArgument, "lookup failed")
+		},
+	}
+	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
+
+	// A zero timeout means the deadline has passed by the time the lookup fails.
+	err := sb.waitForScheduling(t.Context(), 0)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.InvalidArgument), "got %v", err)
+	g.Expect(err.Error()).To(gomega.ContainSubstring("lookup failed"))
+	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(1)))
+}
+
 func TestSandboxCreateV1TaskIDUnknownErrorIsNotRetried(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

@@ -1442,35 +1442,27 @@ func (sb *Sandbox) waitForTaskID(ctx context.Context, timeout time.Duration, ret
 	if taskID != "" {
 		return taskID, nil
 	}
-	pollCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	// The most recent lookup's server error, if it was Internal.
-	var lastInternalErr error
-	// A done caller context surfaces from the RPC as a gRPC status error, so check ctx directly.
-	waitErr := func(err error) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if pollCtx.Err() != nil {
-			// A server error is not evidence of missing capacity, so surface it as is.
-			if lastInternalErr != nil {
-				return lastInternalErr
-			}
-			return TimeoutError{Exception: fmt.Sprintf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)}
-		}
-		return err
-	}
+	const pollInterval = 500 * time.Millisecond
+	deadline := time.Now().Add(timeout)
+	noTimeLeft := func() bool { return time.Until(deadline) <= pollInterval }
+	timedOut := TimeoutError{Exception: fmt.Sprintf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)}
 	for {
 		resp, err := sb.sandboxGetTaskID(ctx)
-		lastInternalErr = nil
-		if status.Code(err) == codes.Internal {
-			lastInternalErr = err
-		}
 		if err != nil {
-			if !retryTransient || ctx.Err() != nil || pollCtx.Err() != nil || !isTransientTaskIDLookupError(err) {
-				return "", waitErr(err)
+			// A done caller context surfaces from the RPC as a gRPC status error, so check ctx directly.
+			if ctx.Err() != nil {
+				return "", ctx.Err()
 			}
-			// A transient failure says nothing about scheduling; keep polling until the deadline.
+			if !isTransientTaskIDLookupError(err) || (!retryTransient && time.Now().Before(deadline)) {
+				return "", err
+			}
+			if noTimeLeft() {
+				// A server error is not evidence of missing capacity, so surface it as is.
+				if status.Code(err) == codes.Internal {
+					return "", err
+				}
+				return "", timedOut
+			}
 		} else if resp.GetTaskId() != "" {
 			sb.taskIDMu.Lock()
 			sb.taskID = resp.GetTaskId()
@@ -1482,11 +1474,13 @@ func (sb *Sandbox) waitForTaskID(ctx context.Context, timeout time.Duration, ret
 				msg = fmt.Sprintf("Sandbox %s has already finished", sb.SandboxID)
 			}
 			return "", ConflictError{Exception: msg}
+		} else if noTimeLeft() {
+			return "", timedOut
 		}
 		select {
-		case <-pollCtx.Done():
-			return "", waitErr(pollCtx.Err())
-		case <-time.After(500 * time.Millisecond):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(pollInterval):
 		}
 	}
 }
