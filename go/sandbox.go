@@ -310,16 +310,9 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		}
 	}
 
-	var cloudBucketMounts []*pb.CloudBucketMount
-	if params.CloudBucketMounts != nil {
-		cloudBucketMounts = make([]*pb.CloudBucketMount, 0, len(params.CloudBucketMounts))
-		for mountPath, mount := range params.CloudBucketMounts {
-			proto, err := mount.toProto(mountPath)
-			if err != nil {
-				return nil, err
-			}
-			cloudBucketMounts = append(cloudBucketMounts, proto)
-		}
+	cloudBucketMounts, err := buildCloudBucketMountProtos(params.CloudBucketMounts)
+	if err != nil {
+		return nil, err
 	}
 
 	var ptyInfo *pb.PTYInfo

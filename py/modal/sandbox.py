@@ -40,7 +40,6 @@ from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import Retry, RetryTimeoutError
 from ._utils.mount_utils import (
     validate_network_file_systems,
-    validate_only_modal_volumes,
     validate_volumes,
     validate_volumes_by_object_id,
 )
@@ -3110,7 +3109,7 @@ class _SidecarManager:
         env: dict[str, str] | None = None,
         secrets: Collection[_Secret] | None = None,
         workdir: str | None = None,
-        volumes: dict[str | os.PathLike, _Volume] | None = None,
+        volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] | None = None,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
         pty: bool = False,
@@ -3135,7 +3134,8 @@ class _SidecarManager:
             env: Environment variables to set in the sidecar container.
             secrets: Secrets to inject as environment variables in the sidecar container.
             workdir: Working directory for the command; must be absolute if set.
-            volumes: Mapping of mount paths to `Volume` objects to mount in the sidecar container.
+            volumes: Mapping of mount paths to `Volume` or `CloudBucketMount` objects to mount in the
+                sidecar container. Cloud bucket mounts are not supported for GPU Sandboxes.
             outbound_cidr_allowlist: If set, restrict the sidecar's outbound traffic to these CIDR
                 blocks. An empty list blocks all external egress while preserving connectivity to the
                 main container.
@@ -3161,7 +3161,21 @@ class _SidecarManager:
                 f"got: {experimental_memory_reserve_consume_mib}"
             )
 
-        validated_volumes = validate_only_modal_volumes(volumes, "Sandbox._experimental_sidecars.create(volumes=...)")
+        via_control_plane = _use_control_plane_sidecar_create(self._sandbox._is_v2)
+        mounted_objects = validate_volumes(volumes if volumes is not None else {})
+        cloud_bucket_mounts = [(path, v) for path, v in mounted_objects if isinstance(v, _CloudBucketMount)]
+        validated_volumes = [(path, v) for path, v in mounted_objects if isinstance(v, _Volume)]
+        if cloud_bucket_mounts and not self._sandbox._is_v2:
+            raise InvalidError(
+                "CloudBucketMount is not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU, "
+                "network file systems or a PTY, or when MODAL_SANDBOX_V2=0 is set; contact Modal support for more "
+                "information."
+            )
+        if cloud_bucket_mounts and not via_control_plane:
+            raise InvalidError(
+                "CloudBucketMount is not supported in sidecars when MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE=0 is set; "
+                "unset it to use cloud bucket mounts."
+            )
 
         if image._mount_layers:
             raise InvalidError(
@@ -3187,9 +3201,16 @@ class _SidecarManager:
             env_dict |= env
         _validate_sandbox_env(env_dict)
 
-        hydrate_coros = [secret.hydrate(client=self._sandbox._client) for secret in resolvable_secrets] + [
-            volume.hydrate(client=self._sandbox._client) for _, volume in validated_volumes
+        bucket_credential_secrets = [
+            mount.secret
+            for _, mount in cloud_bucket_mounts
+            if mount.secret is not None and not mount.secret._is_ephemeral
         ]
+        hydrate_coros = (
+            [secret.hydrate(client=self._sandbox._client) for secret in resolvable_secrets]
+            + [volume.hydrate(client=self._sandbox._client) for _, volume in validated_volumes]
+            + [secret.hydrate(client=self._sandbox._client) for secret in bucket_credential_secrets]
+        )
         await TaskContext.gather(*hydrate_coros)
 
         # Validate that the same volume (by object_id) isn't mounted at multiple paths. This relies on
@@ -3202,13 +3223,17 @@ class _SidecarManager:
         network_access = _build_outbound_network_access(False, outbound_cidr_allowlist, outbound_domain_allowlist)
         pty_info = _Sandbox._default_pty_info() if pty else None
 
-        if _use_control_plane_sidecar_create(self._sandbox._is_v2):
+        if via_control_plane:
+            cloud_bucket_mount_protos, cloud_bucket_credentials = cloud_bucket_mounts_to_proto(
+                cloud_bucket_mounts, split_ephemeral_credentials=True
+            )
             definition = api_pb2.Sandbox(
                 entrypoint_args=list(args),
                 image_id=image.object_id,
                 secret_ids=[secret.object_id for secret in resolvable_secrets],
                 workdir=workdir,
                 volume_mounts=volume_mounts,
+                cloud_bucket_mounts=cloud_bucket_mount_protos,
                 network_access=network_access,
                 pty_info=pty_info,
                 resources=(
@@ -3222,6 +3247,7 @@ class _SidecarManager:
                 container_name=name,
                 definition=definition,
                 ephemeral_secrets=api_pb2.StringMap(contents=env_dict) if env_dict else None,
+                cloud_bucket_mount_credentials=cloud_bucket_credentials,
             )
             client = self._sandbox._client
             assert client._auth_token_manager

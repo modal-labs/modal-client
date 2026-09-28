@@ -109,3 +109,21 @@ func (c *CloudBucketMount) toProto(mountPath string) (*pb.CloudBucketMount, erro
 		OidcAuthRoleArn:     c.OidcAuthRoleArn,
 	}.Build(), nil
 }
+
+func buildCloudBucketMountProtos(mounts map[string]*CloudBucketMount) ([]*pb.CloudBucketMount, error) {
+	if mounts == nil {
+		return nil, nil
+	}
+	cloudBucketMounts := make([]*pb.CloudBucketMount, 0, len(mounts))
+	for mountPath, mount := range mounts {
+		if mount == nil {
+			return nil, InvalidError{Exception: fmt.Sprintf("CloudBucketMount mounted at %q must not be nil", mountPath)}
+		}
+		proto, err := mount.toProto(mountPath)
+		if err != nil {
+			return nil, err
+		}
+		cloudBucketMounts = append(cloudBucketMounts, proto)
+	}
+	return cloudBucketMounts, nil
+}

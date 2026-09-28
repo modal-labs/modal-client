@@ -132,6 +132,18 @@ func TestSandboxCreateV2RequestProto_WithProxy(t *testing.T) {
 	g.Expect(req.GetDefinition().GetProxyId()).To(gomega.Equal("pr-123"))
 }
 
+func TestSandboxCreateRejectsNilCloudBucketMount(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	_, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		CloudBucketMounts: map[string]*CloudBucketMount{"/mnt/s3": nil},
+	})
+	var invalidErr InvalidError
+	g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(`"/mnt/s3"`))
+}
+
 func TestSandboxExperimentalOptionsAcceptsStringValues(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -2354,6 +2366,86 @@ func TestSidecarCreateBuildsControlPlaneRequest(t *testing.T) {
 	g.Expect(definition.GetPtyInfo()).ShouldNot(gomega.BeNil())
 	g.Expect(definition.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_ALLOWLIST))
 	g.Expect(definition.GetNetworkAccess().GetAllowedCidrs()).To(gomega.Equal([]string{"10.0.0.0/8"}))
+}
+
+func TestSidecarCreateForwardsVolumesAndCloudBucketMounts(t *testing.T) {
+	useDefaultSidecarCreatePath(t)
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	bucketMount, err := newTestMount("my-bucket", &CloudBucketMountParams{
+		Secret:   &Secret{SecretID: "st-bucket"},
+		ReadOnly: true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	_, err = sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		Volumes:           map[string]*Volume{"/mnt/vol": {VolumeID: "vo-123"}},
+		CloudBucketMounts: map[string]*CloudBucketMount{"/mnt/s3": bucketMount},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	definition := mock.gotReq.GetDefinition()
+	volumeMounts := definition.GetVolumeMounts()
+	g.Expect(volumeMounts).To(gomega.HaveLen(1))
+	g.Expect(volumeMounts[0].GetMountPath()).To(gomega.Equal("/mnt/vol"))
+	g.Expect(volumeMounts[0].GetVolumeId()).To(gomega.Equal("vo-123"))
+
+	cloudBucketMounts := definition.GetCloudBucketMounts()
+	g.Expect(cloudBucketMounts).To(gomega.HaveLen(1))
+	g.Expect(cloudBucketMounts[0].GetMountPath()).To(gomega.Equal("/mnt/s3"))
+	g.Expect(cloudBucketMounts[0].GetBucketName()).To(gomega.Equal("my-bucket"))
+	g.Expect(cloudBucketMounts[0].GetReadOnly()).To(gomega.BeTrue())
+	g.Expect(cloudBucketMounts[0].GetCredentialsSecretId()).To(gomega.Equal("st-bucket"))
+}
+
+func TestSidecarCreateRejectsCloudBucketMountsOnV1Sandbox(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandboxWithID(mock, testV1SandboxID)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		CloudBucketMounts: map[string]*CloudBucketMount{"/mnt/s3": {BucketName: "my-bucket"}},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("V1 Sandboxes"))
+	g.Expect(mock.gotReq).To(gomega.BeNil())
+}
+
+func TestSidecarCreateRejectsCloudBucketMountsWhenOptedOut(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "0")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		CloudBucketMounts: map[string]*CloudBucketMount{"/mnt/s3": {BucketName: "my-bucket"}},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("=0"))
+	g.Expect(mock.gotReq).To(gomega.BeNil())
+}
+
+func TestSidecarCreateRejectsNilCloudBucketMount(t *testing.T) {
+	useDefaultSidecarCreatePath(t)
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		CloudBucketMounts: map[string]*CloudBucketMount{"/mnt/s3": nil},
+	})
+	var invalidErr InvalidError
+	g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(`"/mnt/s3"`))
+	g.Expect(mock.gotReq).To(gomega.BeNil())
 }
 
 func TestSidecarCreateOmitsEmptyOptionalFields(t *testing.T) {

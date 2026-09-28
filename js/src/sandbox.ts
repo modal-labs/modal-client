@@ -13,7 +13,6 @@ import {
   NetworkAccess,
   NetworkAccess_NetworkAccessType,
   VolumeMount,
-  CloudBucketMount as CloudBucketMountProto,
   SchedulerPlacement,
   TunnelType,
   PortSpec,
@@ -88,7 +87,10 @@ import { SandboxSnapshot } from "./sandbox_snapshot";
 import { checkObjectName } from "./name_utils";
 import { volumeToMountProto, type Volume } from "./volume";
 import type { Proxy } from "./proxy";
-import type { CloudBucketMount } from "./cloud_bucket_mount";
+import {
+  buildCloudBucketMountProtos,
+  type CloudBucketMount,
+} from "./cloud_bucket_mount";
 import type { App } from "./app";
 import { parseGpuConfig } from "./app";
 import { checkForRenamedParams } from "./validation";
@@ -560,11 +562,9 @@ export async function buildSandboxCreateRequestProto(
       )
     : [];
 
-  const cloudBucketMounts: CloudBucketMountProto[] = params.cloudBucketMounts
-    ? Object.entries(params.cloudBucketMounts).map(([mountPath, mount]) =>
-        mount.toProto(mountPath),
-      )
-    : [];
+  const cloudBucketMounts = buildCloudBucketMountProtos(
+    params.cloudBucketMounts,
+  );
 
   const openPorts: PortSpec[] = [];
   if (params.encryptedPorts) {

@@ -27,6 +27,7 @@ import {
   defaultSandboxPTYInfo,
   getReturnCode,
   getSandboxVersion,
+  hydrateSandboxSecrets,
   resolveMountImageId,
   resolveTtlSeconds,
   SandboxVersion,
@@ -46,10 +47,13 @@ import {
 } from "./errors";
 import { Image } from "./image";
 import type { ModalClient } from "./client";
+import {
+  buildCloudBucketMountProtos,
+  type CloudBucketMount,
+} from "./cloud_bucket_mount";
 import { parseBooleanFlag } from "./config";
 import {
   collectSecretIds,
-  hydrateSecrets,
   splitEnvDictAndResolvableSecrets,
   validateEnvVarKeys,
   type Secret,
@@ -130,6 +134,11 @@ export type SidecarCreateParams = {
   workdir?: string;
   /** Mount points for Modal {@link Volume}s. */
   volumes?: Record<string, Volume>;
+  /**
+   * Mount points for Modal {@link CloudBucketMount}s. Not supported for GPU
+   * Sandboxes.
+   */
+  cloudBucketMounts?: Record<string, CloudBucketMount>;
   /**
    * List of CIDRs the sidecar is allowed to access. Independent of the main
    * container; if not set, all CIDRs are allowed. An empty list blocks all
@@ -291,6 +300,25 @@ export class SidecarService {
       );
     }
 
+    const viaControlPlane = useControlPlaneSidecarCreate(
+      this.#access.sandboxId,
+    );
+    const cloudBucketMountEntries = Object.entries(
+      params?.cloudBucketMounts ?? {},
+    );
+    if (cloudBucketMountEntries.length > 0) {
+      if (getSandboxVersion(this.#access.sandboxId) !== SandboxVersion.V2) {
+        throw new InvalidError(
+          "cloudBucketMounts are not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU or MODAL_SANDBOX_V2=0 is set; contact Modal support for more information",
+        );
+      }
+      if (!viaControlPlane) {
+        throw new InvalidError(
+          `cloudBucketMounts are not supported in sidecars when ${CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use them`,
+        );
+      }
+    }
+
     // Sidecar containers support ephemeral env vars natively (passed via
     // ephemeralSecrets in the request), so locally-created Secrets (fromObject)
     // and params.env are sent directly rather than folded into a server-side
@@ -301,10 +329,17 @@ export class SidecarService {
       params?.secrets ?? [],
     );
     Object.assign(envDict, params?.env ?? {});
-    await hydrateSecrets(this.#access.client, resolvableSecrets);
+    await hydrateSandboxSecrets(
+      this.#access.client,
+      resolvableSecrets,
+      params?.cloudBucketMounts,
+    );
     const secretIds = collectSecretIds(resolvableSecrets);
 
     const volumeMounts = buildSidecarVolumeMounts(params?.volumes);
+    const cloudBucketMounts = buildCloudBucketMountProtos(
+      params?.cloudBucketMounts,
+    );
 
     const ptyInfo = params?.pty ? defaultSandboxPTYInfo() : undefined;
     const networkAccess = buildOutboundNetworkAccess(
@@ -315,7 +350,7 @@ export class SidecarService {
 
     let resp;
     try {
-      if (useControlPlaneSidecarCreate(this.#access.sandboxId)) {
+      if (viaControlPlane) {
         const ephemeralSecrets =
           Object.keys(envDict).length > 0
             ? StringMap.create({ contents: envDict })
@@ -330,6 +365,7 @@ export class SidecarService {
               workdir: params?.workdir ?? undefined,
               secretIds,
               volumeMounts,
+              cloudBucketMounts,
               networkAccess,
               ptyInfo,
               resources:

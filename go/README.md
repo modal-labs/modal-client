@@ -79,6 +79,7 @@ We also provide a number of examples:
 - [Run a Sidecar and snapshot its filesystem](./examples/sandbox-sidecar/main.go)
 - [Persist a workspace across Sidecars](./examples/sandbox-sidecar-directory-snapshot/main.go)
 - [Mount a Volume in a Sidecar](./examples/sandbox-sidecar-volume/main.go)
+- [Mount a cloud bucket in a Sidecar](./examples/sandbox-sidecar-cloud-bucket/main.go)
 - [Take a snapshot of the filesystem of a Sandbox](./examples/sandbox-filesystem-snapshot/main.go)
 - [Snapshot the filesystem of a Sandbox when it exits](./examples/sandbox-exit-snapshot/main.go)
 - [Snapshot a directory, and mount it in a running Sandbox](./examples/sandbox-directory-snapshot/main.go)

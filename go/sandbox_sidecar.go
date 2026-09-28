@@ -50,6 +50,9 @@ type SidecarCreateParams struct {
 	Workdir string
 	// Volumes to mount in the sidecar container, keyed by mount path.
 	Volumes map[string]*Volume
+	// CloudBucketMounts to mount in the sidecar container, keyed by mount path. Not
+	// supported for GPU Sandboxes.
+	CloudBucketMounts map[string]*CloudBucketMount
 	// OutboundCIDRAllowlist restricts the sidecar's outbound traffic to these CIDRs. Independent of the main
 	// container; nil means all CIDRs are allowed. A non-nil allowlist with empty Entries blocks all external
 	// egress while preserving connectivity to the main container.
@@ -170,14 +173,15 @@ func controlPlaneSidecarCreateEnabled(isV2 bool) bool {
 
 // sidecarCreateInputs is the definition shared by both create paths.
 type sidecarCreateInputs struct {
-	name          string
-	image         *Image
-	params        *SidecarCreateParams
-	envDict       map[string]string
-	secretIds     []string
-	volumeMounts  []*pb.VolumeMount
-	networkAccess *pb.NetworkAccess
-	ptyInfo       *pb.PTYInfo
+	name              string
+	image             *Image
+	params            *SidecarCreateParams
+	envDict           map[string]string
+	secretIds         []string
+	volumeMounts      []*pb.VolumeMount
+	cloudBucketMounts []*pb.CloudBucketMount
+	networkAccess     *pb.NetworkAccess
+	ptyInfo           *pb.PTYInfo
 	// nil when unset; otherwise MiB taken from the sandbox's sidecar reserve.
 	memoryReserveConsumeMib *uint32
 }
@@ -224,6 +228,19 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		memoryReserveConsumeMib = proto.Uint32(uint32(params.ExperimentalMemoryReserveConsumeMiB))
 	}
 
+	viaControlPlane := controlPlaneSidecarCreateEnabled(s.sandbox.isV2)
+	if len(params.CloudBucketMounts) > 0 {
+		if !s.sandbox.isV2 {
+			return nil, InvalidError{Exception: "CloudBucketMounts are not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU or MODAL_SANDBOX_V2=0 is set; contact Modal support for more information"}
+		}
+		if !viaControlPlane {
+			return nil, InvalidError{Exception: fmt.Sprintf(
+				"CloudBucketMounts are not supported in sidecars when %s=0 is set; unset it to use them",
+				controlPlaneSidecarCreateEnvVar,
+			)}
+		}
+	}
+
 	var ptyInfo *pb.PTYInfo
 	if params.PTY {
 		ptyInfo = defaultSandboxPTYInfo()
@@ -240,10 +257,15 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		}
 		envDict[k] = v
 	}
-	if err := hydrateSecrets(ctx, s.sandbox.client, resolvableSecrets); err != nil {
+	if err := hydrateSandboxSecrets(ctx, s.sandbox.client, resolvableSecrets, params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 	secretIds, err := collectSecretIDs(resolvableSecrets)
+	if err != nil {
+		return nil, err
+	}
+
+	cloudBucketMounts, err := buildCloudBucketMountProtos(params.CloudBucketMounts)
 	if err != nil {
 		return nil, err
 	}
@@ -265,13 +287,14 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		envDict:                 envDict,
 		secretIds:               secretIds,
 		volumeMounts:            volumeMounts,
+		cloudBucketMounts:       cloudBucketMounts,
 		networkAccess:           networkAccess,
 		ptyInfo:                 ptyInfo,
 		memoryReserveConsumeMib: memoryReserveConsumeMib,
 	}
 
 	var result sidecarCreateResult
-	if controlPlaneSidecarCreateEnabled(s.sandbox.isV2) {
+	if viaControlPlane {
 		result, err = s.createViaControlPlane(ctx, inputs)
 	} else {
 		result, err = s.createViaCommandRouter(ctx, inputs)
@@ -315,14 +338,15 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 		SandboxId:     s.sandbox.SandboxID,
 		ContainerName: in.name,
 		Definition: pb.Sandbox_builder{
-			ImageId:        in.image.ImageID,
-			EntrypointArgs: in.params.Command,
-			Workdir:        workdir,
-			SecretIds:      in.secretIds,
-			VolumeMounts:   in.volumeMounts,
-			NetworkAccess:  in.networkAccess,
-			PtyInfo:        in.ptyInfo,
-			Resources:      resources,
+			ImageId:           in.image.ImageID,
+			EntrypointArgs:    in.params.Command,
+			Workdir:           workdir,
+			SecretIds:         in.secretIds,
+			VolumeMounts:      in.volumeMounts,
+			CloudBucketMounts: in.cloudBucketMounts,
+			NetworkAccess:     in.networkAccess,
+			PtyInfo:           in.ptyInfo,
+			Resources:         resources,
 		}.Build(),
 		EphemeralSecrets: ephemeralSecrets,
 	}.Build()

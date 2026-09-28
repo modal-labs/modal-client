@@ -12,6 +12,8 @@ import {
 } from "../src/errors";
 import { Image } from "../src/image";
 import { Sandbox } from "../src/sandbox";
+import type { CloudBucketMount } from "../src/cloud_bucket_mount";
+import { Secret } from "../src/secret";
 import {
   NetworkAccess_NetworkAccessType,
   SandboxContainerCreateV2Request,
@@ -311,6 +313,103 @@ test("sidecar create sends SandboxContainerCreateV2 to the control plane", async
   expect(request?.ephemeralSecrets?.contents).toEqual({ PLAIN_ENV: "plain" });
   expect(request?.definition?.environmentVariables).toBeUndefined();
 
+  mock.assertExhausted();
+});
+
+test("sidecar create forwards volumes and cloud bucket mounts", async () => {
+  useDefaultSidecarCreatePath();
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  let request: SandboxContainerCreateV2Request | undefined;
+  mock.handleUnary("/SandboxContainerCreateV2", (req) => {
+    request = req as SandboxContainerCreateV2Request;
+    return SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+    });
+  });
+
+  const bucketMount = mc.cloudBucketMounts.create("my-bucket", {
+    secret: new Secret("st-bucket"),
+    readOnly: true,
+  });
+
+  await sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    {
+      command: ["sleep", "100"],
+      volumes: { "/mnt/vol": new Volume("vo-123") },
+      cloudBucketMounts: { "/mnt/s3": bucketMount },
+    },
+  );
+
+  expect(request?.definition?.volumeMounts).toHaveLength(1);
+  expect(request?.definition?.volumeMounts?.[0]?.mountPath).toBe("/mnt/vol");
+  expect(request?.definition?.volumeMounts?.[0]?.volumeId).toBe("vo-123");
+
+  expect(request?.definition?.cloudBucketMounts).toHaveLength(1);
+  const mount = request?.definition?.cloudBucketMounts?.[0];
+  expect(mount?.mountPath).toBe("/mnt/s3");
+  expect(mount?.bucketName).toBe("my-bucket");
+  expect(mount?.readOnly).toBe(true);
+  expect(mount?.credentialsSecretId).toBe("st-bucket");
+
+  mock.assertExhausted();
+});
+
+test("sidecar create rejects cloud bucket mounts for a V1 sandbox", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+
+  const bucketMount = mc.cloudBucketMounts.create("my-bucket");
+
+  const create = sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    {
+      cloudBucketMounts: { "/mnt/s3": bucketMount },
+    },
+  );
+  await expect(create).rejects.toThrow(InvalidError);
+  await expect(create).rejects.toThrow("V1 Sandboxes");
+});
+
+test("sidecar create rejects cloud bucket mounts when opted out", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const bucketMount = mc.cloudBucketMounts.create("my-bucket");
+
+  const create = sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    {
+      cloudBucketMounts: { "/mnt/s3": bucketMount },
+    },
+  );
+  await expect(create).rejects.toThrow(InvalidError);
+  await expect(create).rejects.toThrow("=0");
+});
+
+test("sidecar create rejects a null cloud bucket mount entry", async () => {
+  useDefaultSidecarCreatePath();
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const create = sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    {
+      cloudBucketMounts: { "/mnt/s3": null as unknown as CloudBucketMount },
+    },
+  );
+  await expect(create).rejects.toThrow(InvalidError);
+  await expect(create).rejects.toThrow('"/mnt/s3"');
   mock.assertExhausted();
 });
 

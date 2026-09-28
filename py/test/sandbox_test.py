@@ -3719,6 +3719,25 @@ def test_sandbox_container_create_rejects_mounts_kwarg(app):
 
 
 @skip_non_subprocess
+def test_sandbox_container_rejects_non_dict_volumes(app, servicer):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with pytest.raises(InvalidError, match="should be a dict"):
+        sb._experimental_sidecars.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="worker",
+            image=image,
+            volumes=[],  # type: ignore[arg-type]
+        )
+
+
+@skip_non_subprocess
 def test_sandbox_container_volume_mounts(app, servicer, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
@@ -3751,6 +3770,94 @@ def test_sandbox_container_volume_mounts(app, servicer, sidecar_create_path):
     rw_mount = mounts_by_id[writable_volume.object_id]
     assert rw_mount.mount_path == "/mnt/rw"
     assert rw_mount.read_only is False
+
+
+@skip_non_subprocess
+def test_sandbox_container_cloud_bucket_mounts(app, servicer, client, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    _use_default_sidecar_create_path(monkeypatch)
+
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    Secret.objects.create("sidecar-bucket-creds", {"AWS_ACCESS_KEY_ID": "named"}, client=client)
+    inline_credentials_mount = modal.CloudBucketMount(
+        bucket_name="inline-bucket",
+        secret=modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "inline"}),
+    )
+    named_credentials_mount = modal.CloudBucketMount(
+        bucket_name="named-bucket",
+        secret=modal.Secret.from_name("sidecar-bucket-creds"),
+    )
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.intercept() as ctx:
+        sb._experimental_sidecars.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="worker",
+            image=image,
+            volumes={"/mnt/inline": inline_credentials_mount, "/mnt/named": named_credentials_mount},
+        )
+        (req,) = ctx.get_requests("SandboxContainerCreateV2")
+
+    mounts = {mount.mount_path: mount for mount in req.definition.cloud_bucket_mounts}
+    assert len(mounts) == 2
+
+    # `from_dict` credentials are inlined out-of-band, keyed by mount path, with no secret id.
+    assert mounts["/mnt/inline"].bucket_name == "inline-bucket"
+    assert mounts["/mnt/inline"].credentials_secret_id == ""
+    assert dict(req.cloud_bucket_mount_credentials["/mnt/inline"].contents) == {"AWS_ACCESS_KEY_ID": "inline"}
+
+    # `from_name` credentials are resolved server-side and referenced by id.
+    assert mounts["/mnt/named"].bucket_name == "named-bucket"
+    assert mounts["/mnt/named"].credentials_secret_id != ""
+    assert "/mnt/named" not in req.cloud_bucket_mount_credentials
+
+
+@skip_non_subprocess
+def test_sandbox_container_cloud_bucket_mounts_require_a_v2_sandbox(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
+
+    with pytest.raises(InvalidError, match="V1 Sandboxes"):
+        sb._experimental_sidecars.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="worker",
+            image=image,
+            volumes={"/mnt": modal.CloudBucketMount(bucket_name="my-bucket")},
+        )
+
+
+@skip_non_subprocess
+def test_sandbox_container_cloud_bucket_mounts_rejected_when_opted_out(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    _opt_out_of_control_plane_sidecar_create(monkeypatch)
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with pytest.raises(InvalidError, match="SIDECAR_CREATE=0"):
+        sb._experimental_sidecars.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="worker",
+            image=image,
+            volumes={"/mnt": modal.CloudBucketMount(bucket_name="my-bucket")},
+        )
 
 
 @skip_non_subprocess

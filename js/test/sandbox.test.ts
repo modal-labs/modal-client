@@ -45,6 +45,7 @@ import {
 import {
   AlreadyExistsError,
   App,
+  CloudBucketMount,
   ConflictError,
   ExecutionError,
   Image,
@@ -518,6 +519,14 @@ test("CreateSandboxWithNetworkAccessParams", async () => {
   ).rejects.toThrow(
     "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
   );
+});
+
+test("buildSandboxCreateRequestProto rejects a null cloud bucket mount entry", async () => {
+  const build = buildSandboxCreateRequestProto("app-123", "img-456", {
+    cloudBucketMounts: { "/mnt/s3": null as unknown as CloudBucketMount },
+  });
+  await expect(build).rejects.toThrow(InvalidError);
+  await expect(build).rejects.toThrow('"/mnt/s3"');
 });
 
 test("CreateSandboxWithInboundCidrAllowlist", async () => {

@@ -3,6 +3,7 @@ import {
   CloudBucketMount as CloudBucketMountProto,
 } from "../proto/modal_proto/api";
 import { ModalClient } from "./client";
+import { InvalidError } from "./errors";
 import { Secret } from "./secret";
 
 export class CloudBucketMountService {
@@ -110,4 +111,18 @@ export class CloudBucketMount {
       oidcAuthRoleArn: this.oidcAuthRoleArn,
     });
   }
+}
+
+/** @internal @hidden */
+export function buildCloudBucketMountProtos(
+  mounts: Record<string, CloudBucketMount> | undefined,
+): CloudBucketMountProto[] {
+  return Object.entries(mounts ?? {}).map(([mountPath, mount]) => {
+    if (!mount) {
+      throw new InvalidError(
+        `CloudBucketMount mounted at "${mountPath}" must not be null or undefined`,
+      );
+    }
+    return mount.toProto(mountPath);
+  });
 }
