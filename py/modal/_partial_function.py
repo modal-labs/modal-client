@@ -741,7 +741,7 @@ def _sessioned() -> Callable[
     Only valid with `@app.server()`.
 
     Examples:
-        Define a sessioned Server:
+        Define a Server with the `@modal.sessioned()` decorator:
 
         ```python
         app = modal.App("my-app")
