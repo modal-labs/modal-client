@@ -5126,7 +5126,7 @@ def test_server_stats_cli_json(servicer, set_env_client):
         )
 
     payload = json.loads(result.stdout)
-    assert payload["function_id"] == "fu-server"
+    assert payload["object_id"] == "fu-server"
     assert payload["request_count_by_status_code"] == {"2xx": 1}
     assert payload["container_started_count"] == 4
     assert payload["container_error_count"] == 5

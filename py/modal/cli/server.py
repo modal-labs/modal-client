@@ -335,7 +335,7 @@ def _stats_json(
     history: api_pb2.ServerGetTimeRangeStatsResponse,
 ) -> dict[str, object]:
     return {
-        "function_id": function_id,
+        "object_id": function_id,
         "since": history.since.ToDatetime(tzinfo=timezone.utc).isoformat(),
         "until": history.until.ToDatetime(tzinfo=timezone.utc).isoformat(),
         "request_count": history.request_count,

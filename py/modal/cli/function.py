@@ -127,7 +127,7 @@ def _stats_json(
     all_variants: bool,
 ) -> dict[str, object]:
     return {
-        "function_id": function_id,
+        "object_id": function_id,
         "all_variants": all_variants,
         "variant_count": history.variant_count,
         **_time_range_stats_json(history),
