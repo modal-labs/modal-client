@@ -1082,6 +1082,71 @@ def test_image_docker_command_copy(
 
 
 @pytest.mark.parametrize("use_dockerfile", (True, False))
+def test_image_docker_command_eager_validation(builder_version, client, tmp_path, use_dockerfile):
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    (tmp_path / "outside.txt").write_text("outside")
+    docker_command = "COPY ../outside.txt /"
+
+    if use_dockerfile:
+        dockerfile = context_dir / "Dockerfile"
+        dockerfile.write_text(docker_command)
+        image = Image.from_dockerfile(dockerfile, context_dir=context_dir)
+    else:
+        image = Image.debian_slim().dockerfile_commands(docker_command, context_dir=context_dir)
+
+    with pytest.raises(InvalidError, match="outside the build context directory"):
+        build_image(image, client)
+
+
+@skip_windows("Creating symlinks requires additional privileges on Windows")
+@pytest.mark.parametrize("use_dockerfile", (True, False))
+def test_image_docker_command_eager_validation_symlink(builder_version, client, tmp_path, use_dockerfile):
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("outside")
+    (context_dir / "link.txt").symlink_to(outside_file)
+    docker_command = "COPY link.txt /"
+
+    if use_dockerfile:
+        dockerfile = context_dir / "Dockerfile"
+        dockerfile.write_text(docker_command)
+        image = Image.from_dockerfile(dockerfile, context_dir=context_dir)
+    else:
+        image = Image.debian_slim().dockerfile_commands(docker_command, context_dir=context_dir)
+
+    with pytest.raises(InvalidError, match="outside the build context directory"):
+        build_image(image, client)
+
+
+@skip_windows("Creating symlinks requires additional privileges on Windows")
+@pytest.mark.parametrize("use_dockerfile", (True, False))
+def test_image_docker_command_ignore_implicit_symlinks(builder_version, servicer, client, tmp_path, use_dockerfile):
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    (context_dir / "inside.txt").write_text("inside")
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("outside")
+    (context_dir / "link.txt").symlink_to(outside_file)
+    docker_command = "COPY . /"
+
+    if use_dockerfile:
+        dockerfile = tmp_path / "Dockerfile"
+        dockerfile.write_text(docker_command)
+        image = Image.from_dockerfile(dockerfile, context_dir=context_dir)
+        copy_layer_index = 1
+    else:
+        image = Image.debian_slim().dockerfile_commands(docker_command, context_dir=context_dir)
+        copy_layer_index = 0
+
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    mount_id = layers[copy_layer_index].context_mount_id
+    assert set(servicer.mount_contents[mount_id]) == {"/inside.txt"}
+
+
+@pytest.mark.parametrize("use_dockerfile", (True, False))
 @pytest.mark.usefixtures("tmp_cwd")
 def test_image_dockerfile_copy_auto_dockerignore(builder_version, servicer, client, use_dockerfile):
     rel_top_dir = Path("top")

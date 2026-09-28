@@ -354,6 +354,16 @@ def _create_context_mount(
     copy_patterns = extract_copy_command_patterns(docker_commands)
     if not copy_patterns:
         return None  # no mount needed
+
+    resolved_context_dir = context_dir.resolve()
+    for copy_pattern in copy_patterns:
+        # Docker treats leading slashes as relative to the build context root.
+        resolved_source = (resolved_context_dir / copy_pattern.lstrip("/")).resolve()
+        if not resolved_source.is_relative_to(resolved_context_dir):
+            raise InvalidError(
+                f"COPY source {copy_pattern!r} is outside the build context directory ({str(context_dir)!r})."
+            )
+
     include_fn = FilePatternMatcher(*copy_patterns)
 
     def ignore_with_include(source: Path) -> bool:
@@ -364,7 +374,12 @@ def _create_context_mount(
 
         return False
 
-    return _Mount._add_local_dir(context_dir, PurePosixPath("/"), ignore=ignore_with_include)
+    return _Mount._add_local_dir(
+        context_dir,
+        PurePosixPath("/"),
+        ignore=ignore_with_include,
+        filter_external_links=True,
+    )
 
 
 def _create_context_mount_function(

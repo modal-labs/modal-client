@@ -139,6 +139,7 @@ class _MountDir(_MountEntry):
     remote_path: PurePosixPath
     ignore: Callable[[Path], bool] | modal.file_pattern_matcher._AbstractPatternMatcher
     recursive: bool
+    filter_external_links: bool = False
 
     def description(self):
         return str(self.local_dir.expanduser().absolute())
@@ -171,6 +172,8 @@ class _MountDir(_MountEntry):
             msg = f"local dir {local_dir} is not a directory"
             raise NotADirectoryError(msg)
 
+        resolved_local_dir = local_dir.resolve() if self.filter_external_links else None
+
         if self.recursive:
             if (
                 isinstance(self.ignore, modal.file_pattern_matcher._AbstractPatternMatcher)
@@ -187,7 +190,10 @@ class _MountDir(_MountEntry):
             rel_local_path = local_path.relative_to(local_dir)
             if not self.ignore(rel_local_path):
                 mount_path = self.remote_path / rel_local_path.as_posix()
-                yield local_path.resolve(), mount_path
+                resolved_local_path = local_path.resolve()
+                if resolved_local_dir is not None and not resolved_local_path.is_relative_to(resolved_local_dir):
+                    continue
+                yield resolved_local_path, mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
@@ -371,6 +377,7 @@ class _Mount(_Object, type_prefix="mo"):
         local_path: Path,
         remote_path: PurePosixPath,
         ignore: Callable[[Path], bool] = modal.file_pattern_matcher._NOTHING,
+        filter_external_links: bool = False,
     ):
         return _Mount._new()._extend(
             _MountDir(
@@ -378,6 +385,7 @@ class _Mount(_Object, type_prefix="mo"):
                 remote_path=remote_path,
                 ignore=ignore,
                 recursive=True,
+                filter_external_links=filter_external_links,
             ),
         )
 
