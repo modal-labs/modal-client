@@ -45,8 +45,8 @@ func timeNowSeconds() float64 {
 	return float64(time.Now().UnixNano()) / 1e9
 }
 
-// FunctionStats represents statistics for a running Function.
-type FunctionStats struct {
+// FunctionCurrentStats represents statistics for a running Function.
+type FunctionCurrentStats struct {
 	Backlog         int
 	NumTotalRunners int
 }
@@ -807,8 +807,8 @@ func (f *Function) Spawn(ctx context.Context, args []any, kwargs map[string]any)
 	return functionCall, nil
 }
 
-// GetCurrentStats returns a FunctionStats object with statistics about the Function.
-func (f *Function) GetCurrentStats(ctx context.Context, params *FunctionGetCurrentStatsParams) (*FunctionStats, error) {
+// GetCurrentStats returns a FunctionCurrentStats object with statistics about the Function.
+func (f *Function) GetCurrentStats(ctx context.Context, params *FunctionGetCurrentStatsParams) (*FunctionCurrentStats, error) {
 	resp, err := f.client.cpClient.FunctionGetCurrentStats(ctx, pb.FunctionGetCurrentStatsRequest_builder{
 		FunctionId: f.FunctionID,
 	}.Build())
@@ -816,7 +816,7 @@ func (f *Function) GetCurrentStats(ctx context.Context, params *FunctionGetCurre
 		return nil, err
 	}
 
-	return &FunctionStats{
+	return &FunctionCurrentStats{
 		Backlog:         int(resp.GetBacklog()),
 		NumTotalRunners: int(resp.GetNumTotalTasks()),
 	}, nil

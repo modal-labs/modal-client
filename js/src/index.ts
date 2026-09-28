@@ -37,7 +37,7 @@ export {
   Function_,
   FunctionService,
   type FunctionFromNameParams,
-  type FunctionStats,
+  type FunctionCurrentStats,
   type FunctionUpdateAutoscalerParams,
   type FunctionWithOptionsParams,
   type FunctionWithBatchingParams,

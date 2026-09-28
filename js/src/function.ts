@@ -126,7 +126,7 @@ export class FunctionService {
 }
 
 /** Simple data structure storing stats for a running {@link Function_ Function}. */
-export interface FunctionStats {
+export interface FunctionCurrentStats {
   backlog: number;
   numTotalRunners: number;
 }
@@ -656,7 +656,7 @@ export class Function_ {
   }
 
   // Returns statistics about the Function.
-  async getCurrentStats(): Promise<FunctionStats> {
+  async getCurrentStats(): Promise<FunctionCurrentStats> {
     const resp = await this.#client.cpClient.functionGetCurrentStats(
       { functionId: this.functionId },
       { timeoutMs: 10000 },

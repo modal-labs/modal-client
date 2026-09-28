@@ -184,7 +184,7 @@ func TestFunctionGetCurrentStats(t *testing.T) {
 
 	stats, err := f.GetCurrentStats(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(stats).To(gomega.Equal(&modal.FunctionStats{Backlog: 3, NumTotalRunners: 7}))
+	g.Expect(stats).To(gomega.Equal(&modal.FunctionCurrentStats{Backlog: 3, NumTotalRunners: 7}))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
