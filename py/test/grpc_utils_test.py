@@ -17,12 +17,13 @@ from modal._utils.grpc_utils import (
     CustomProtoStatusDetailsCodec,
     ModalChannel,
     Retry,
+    RetryTimeoutError,
     create_channel,
     create_channel_config,
     create_channel_with_fallbacks,
     get_server_retry_policy,
 )
-from modal.exception import ClientClosed, ConnectionError, InvalidError
+from modal.exception import ClientClosed, ConnectionError, InvalidError, ServiceError, TimeoutError
 from modal_proto import api_grpc, api_pb2, task_command_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -51,6 +52,20 @@ async def test_http_channel(servicer, credentials):
     assert servicer.blob_create_metadata.get("x-modal-host") == host
 
     channel.close()
+
+
+def test_retry_timeout_error_message():
+    service_exc = RetryTimeoutError(ServiceError("server unavailable"))
+    assert "last error: ServiceError: server unavailable" in str(service_exc)
+    assert "contact Modal support" in str(service_exc)
+    assert isinstance(service_exc.final_exception, ServiceError)
+
+    other_exc = RetryTimeoutError(ConnectionError("connection closed"))
+    assert "last error: ConnectionError: connection closed" in str(other_exc)
+
+    timeout_exc = RetryTimeoutError(asyncio.TimeoutError("deadline exceeded"))
+    assert "last error: TimeoutError: deadline exceeded" in str(timeout_exc)
+    assert isinstance(timeout_exc.final_exception, asyncio.TimeoutError)
 
 
 @skip_windows_unix_socket
@@ -121,13 +136,24 @@ async def test_retry_transient_errors(servicer, client):
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "0"
 
-    # Make sure to respect total_timeout
+    # Make sure to respect total_timeout. Once the budget can't fit another attempt, any retryable error is
+    # reported as a timeout, chained to the underlying failure.
     t0 = time.time()
     servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 99)
-    with pytest.raises(GRPCError):
+    with pytest.raises(RetryTimeoutError) as exc_info:
         assert await wrapped_blob_create.aio(req, retry=Retry(max_retries=None, total_timeout=3))
     total_time = time.time() - t0
     assert total_time <= 3.1
+    assert isinstance(exc_info.value, TimeoutError)
+    assert isinstance(exc_info.value.__cause__, GRPCError)
+    assert isinstance(exc_info.value.final_exception, ServiceError)
+    assert exc_info.value.final_exception._grpc_status == Status.UNAVAILABLE
+    assert "contact Modal support" in str(exc_info.value)
+
+    # A retryable error with budget left keeps its own type when retries run out.
+    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 2)
+    with pytest.raises(GRPCError):
+        await wrapped_blob_create.aio(req, retry=Retry(max_retries=1, base_delay=0, total_timeout=30))
 
     # Check input_plane_region included
     servicer.fail_blob_create = []  # Reset to no failures
@@ -147,6 +173,65 @@ async def test_retry_transient_errors(servicer, client):
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") == "us-east"
+
+
+@pytest.mark.asyncio
+async def test_retry_total_timeout_drop_raises_timeout_error(servicer, client):
+    async def wedged(servicer, stream):
+        await stream.recv_message()
+        await asyncio.sleep(30)
+
+    req = api_pb2.BlobCreateRequest()
+    with servicer.intercept() as ctx:
+        ctx.set_responder("BlobCreate", wedged)
+
+        # An attempt dropped on the client side because total_timeout elapsed is final and identifiable.
+        with pytest.raises(RetryTimeoutError, match="contact Modal support"):
+            await client.stub.BlobCreate(req, retry=Retry(total_timeout=0.5, attempt_timeout_floor=0.0))
+        assert len(ctx.get_requests("BlobCreate")) == 1
+
+        # A per-attempt drop with budget left is still a plain transient failure that gets retried.
+        with pytest.raises((ConnectionError, ServiceError)):
+            await client.stub.BlobCreate(req, retry=Retry(attempt_timeout=0.05, max_retries=1, base_delay=0))
+        assert len(ctx.get_requests("BlobCreate")) == 3
+
+
+@pytest.mark.asyncio
+async def test_retry_max_retries_reached_before_total_timeout_keeps_original_error(servicer, client):
+    async def unavailable(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.UNAVAILABLE, "nope")
+
+    req = api_pb2.BlobCreateRequest()
+    with servicer.intercept() as ctx:
+        ctx.set_responder("BlobCreate", unavailable)
+
+        # The retry count, not the clock, ends the operation: the failure is reported as-is even though the
+        # remaining budget couldn't have fit another attempt anyway.
+        with pytest.raises(ServiceError, match="nope") as exc_info:
+            await client.stub.BlobCreate(
+                req, retry=Retry(max_retries=0, total_timeout=30.0, attempt_timeout=1.0, attempt_timeout_floor=60.0)
+            )
+        assert not isinstance(exc_info.value, RetryTimeoutError)
+        assert len(ctx.get_requests("BlobCreate")) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_last_attempt_failing_after_total_timeout_raises_timeout_error(servicer, client):
+    async def slow_unavailable(servicer, stream):
+        await stream.recv_message()
+        await asyncio.sleep(0.3)
+        raise GRPCError(Status.UNAVAILABLE, "nope")
+
+    req = api_pb2.BlobCreateRequest()
+    with servicer.intercept() as ctx:
+        ctx.set_responder("BlobCreate", slow_unavailable)
+
+        # No retries are permitted, but the deadline has passed by the time the attempt fails.
+        with pytest.raises(RetryTimeoutError) as exc_info:
+            await client.stub.BlobCreate(req, retry=Retry(max_retries=0, total_timeout=0.1))
+        assert isinstance(exc_info.value.final_exception, ServiceError)
+        assert len(ctx.get_requests("BlobCreate")) == 1
 
 
 @pytest.mark.asyncio

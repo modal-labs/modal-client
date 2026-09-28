@@ -26,7 +26,12 @@ from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 from h2.exceptions import ProtocolError as H2ProtocolError
 
-from modal.exception import ClientClosed, ConnectionError, NotFoundError
+from modal.exception import (
+    ClientClosed,
+    ConnectionError,
+    NotFoundError,
+    TimeoutError as ModalTimeoutError,
+)
 from modal_proto import api_pb2
 from modal_version import __version__
 
@@ -486,6 +491,26 @@ class Retry:
     warning_message: RetryWarningMessage | None = None
 
 
+class RetryTimeoutError(ModalTimeoutError):
+    """Raised by `_retry_transient_errors` when `Retry.total_timeout` is spent before an attempt succeeds.
+
+    Internal: callers with a user-supplied timeout should convert this into a plain `modal.exception.TimeoutError`
+    with a message referring to that timeout. `final_exception` is the failure of the last attempt (server errors
+    already converted to their `modal.exception` type), which the caller can inspect to decide how to report the
+    timeout.
+    """
+
+    final_exception: Exception
+
+    def __init__(self, final_exception: Exception):
+        super().__init__(
+            "The operation timed out after repeated failures "
+            f"(last error: {type(final_exception).__name__}: {final_exception}). "
+            "Please try again, and contact Modal support if the problem persists."
+        )
+        self.final_exception = final_exception
+
+
 async def retry_transient_errors(
     fn: "grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]",
     req: RequestType,
@@ -527,14 +552,22 @@ def process_exception_before_retry(
     delay: float,
     idempotency_key: str,
     rpc_elapsed: float,
+    total_deadline_reached: bool = False,
 ):
     """Process exception before retry, used by `_retry_transient_errors`."""
     with suppress_tb_frame():
         if final_attempt:
+            reason = "total deadline consumed" if total_deadline_reached else "max retries reached"
             logger.debug(
-                f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} {rpc_elapsed=:0.2f}s "
+                f"Final attempt failed ({reason}) with {repr(exc)} {n_retries=} {delay=} {rpc_elapsed=:0.2f}s "
                 f"for {fn_name} ({idempotency_key[:8]})"
             )
+            if total_deadline_reached:
+                import modal._grpc_client
+
+                if isinstance(exc, GRPCError):
+                    exc = modal._grpc_client.grpc_error_to_modal_exception(exc)
+                raise RetryTimeoutError(exc) from exc
             if isinstance(exc, OSError):
                 raise ConnectionError(str(exc))
             elif isinstance(exc, asyncio.TimeoutError):
@@ -664,6 +697,7 @@ async def _retry_transient_errors(
                         server_delay,
                         idempotency_key,
                         elapsed_time,
+                        total_deadline_reached=total_timeout_will_be_reached,
                     )
 
                 if last_server_retry_warning_time is None or (
@@ -687,12 +721,12 @@ async def _retry_transient_errors(
             # Client handles retry
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 raise exc
-            if retry.max_retries is not None and n_retries >= retry.max_retries:
-                final_attempt = True
-            elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:
-                final_attempt = True
-            else:
-                final_attempt = False
+            max_retries_reached = retry.max_retries is not None and n_retries >= retry.max_retries
+            total_deadline_reached = total_deadline is not None and (
+                time.time() >= total_deadline
+                or (not max_retries_reached and time.time() + delay + retry.attempt_timeout_floor >= total_deadline)
+            )
+            final_attempt = max_retries_reached or total_deadline_reached
 
             with suppress_tb_frame():
                 process_exception_before_retry(
@@ -703,6 +737,7 @@ async def _retry_transient_errors(
                     delay,
                     idempotency_key,
                     time.monotonic() - attempt_started_at,
+                    total_deadline_reached=total_deadline_reached,
                 )
 
             n_retries += 1

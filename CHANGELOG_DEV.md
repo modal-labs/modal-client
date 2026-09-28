@@ -55,6 +55,8 @@ During a release, the notes are moved to the language-specific `CHANGELOG.md` fi
 - Added `modal.Environment.apps` namespace with a `.list` method for listing all live apps in an environment.
 - `Sandbox.create` allows specifying a virtual machine runtime via `runtime="vm"`, which supersedes `experimental_options={"vm_runtime": True}`. Leaving `runtime` unset lets Modal pick the runtime, whilst setting `runtime="gvisor"` explicitly opts-into the gVisor runtime.
 - Added a `--runtime vm|gvisor` option to `modal shell` for choosing the runtime of the shell's Sandbox.
+- `Dict.ephemeral()`, `Function.get_current_stats()`, and `modal.experimental.stop_fetching_inputs()` now raise `modal.exception.TimeoutError` when their retry time budget runs out; other failures are raised as before. (a `ServiceError`, `InternalError`, or `ConnectionError`).
+- `Sandbox._experimental_get_exit_snapshot()` is more resilient to transient network issues while waiting for the snapshot.
 - Added a `modal function info` CLI which wraps and nicely formats the output of `Function.info()`.
 - Added a `modal server info` CLI which wraps and nicely formats the output of `Server.info()`.
 - Added `--limit` to `modal app list` to limit number of returned apps.

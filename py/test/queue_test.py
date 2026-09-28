@@ -4,8 +4,10 @@ import queue
 import sys
 import time
 
+from grpclib import GRPCError, Status
+
 from modal import Queue
-from modal.exception import AlreadyExistsError, InvalidError, NotFoundError
+from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, TimeoutError
 
 from .supports.skip import skip_windows
 
@@ -172,6 +174,30 @@ def test_queue_nonblocking_put(servicer, client):
 
     assert str(servicer.queue_max_len) in str(excinfo.value)
     assert i == servicer.queue_max_len
+
+
+def test_queue_blocking_put_full_until_timeout(servicer, client):
+    async def always_full(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.RESOURCE_EXHAUSTED, "queue is full")
+
+    with Queue.ephemeral(client=client) as q, servicer.intercept() as ctx:
+        ctx.set_responder("QueuePut", always_full)
+        with pytest.raises(queue.Full, match="queue is full"):
+            q.put(1, block=True, timeout=3.0)
+        assert len(ctx.get_requests("QueuePut")) >= 2
+
+
+def test_queue_blocking_put_transient_error_until_timeout(servicer, client):
+    async def always_unavailable(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.UNAVAILABLE, "try again later")
+
+    with Queue.ephemeral(client=client) as q, servicer.intercept() as ctx:
+        ctx.set_responder("QueuePut", always_unavailable)
+        with pytest.raises(TimeoutError, match="could not complete within the provided timeout of 3.0 seconds"):
+            q.put(1, block=True, timeout=3.0)
+        assert len(ctx.get_requests("QueuePut")) >= 2
 
 
 def test_queue_deploy(client):

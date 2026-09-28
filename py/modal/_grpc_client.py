@@ -44,6 +44,14 @@ _STATUS_TO_EXCEPTION: dict[Status, type[exception._GRPCErrorWrapper]] = {
 }
 
 
+def grpc_error_to_modal_exception(exc: GRPCError) -> exception._GRPCErrorWrapper:
+    modal_exc = _STATUS_TO_EXCEPTION[exc.status](exc.message)
+    modal_exc._grpc_message = exc.message or ""
+    modal_exc._grpc_status = exc.status
+    modal_exc._grpc_details = exc.details
+    return modal_exc
+
+
 class grpc_error_converter:
     def __enter__(self):
         pass
@@ -53,10 +61,7 @@ class grpc_error_converter:
         use_full_traceback = config.get("traceback")
         with suppress_tb_frame():
             if isinstance(exc, GRPCError):
-                modal_exc = _STATUS_TO_EXCEPTION[exc.status](exc.message)
-                modal_exc._grpc_message = exc.message or ""
-                modal_exc._grpc_status = exc.status
-                modal_exc._grpc_details = exc.details
+                modal_exc = grpc_error_to_modal_exception(exc)
                 if use_full_traceback:
                     raise modal_exc
                 else:

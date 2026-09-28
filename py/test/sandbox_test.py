@@ -29,6 +29,7 @@ from modal import (
     Volume,
 )
 from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES
 from modal._utils.task_command_router_client import _is_v2_task_id
 from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
 from modal.sandbox import SandboxVersion, SidecarContainer, _get_sandbox_version
@@ -1675,7 +1676,6 @@ def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures(
     app, servicer, monkeypatch, transient_status
 ):
     sb = Sandbox.create(app=app)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
 
     calls = 0
 
@@ -1705,7 +1705,6 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
     sb = Sandbox.create(app=app)
     monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
     monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -1719,7 +1718,7 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
         elapsed = time.monotonic() - started
 
     assert elapsed < 5
-    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 3
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == DEFAULT_MAX_RETRIES + 1
 
     sb.terminate()
 
@@ -1999,7 +1998,6 @@ def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures_
     client, servicer, monkeypatch, transient_status
 ):
     sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
 
     calls = 0
 
@@ -2031,7 +2029,6 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
     # Shrink the hold and the slack so a wedged poll trips the network deadline quickly.
     monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
     monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF", 0.01)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -2041,13 +2038,13 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
         ctx.set_responder("SandboxGetExitSnapshotV2", wedged)
         started = time.monotonic()
         # Polls that never answer fail on their own network deadline instead of stalling the loop,
-        # and the loop gives up after the consecutive-failure limit.
+        # and the standard RPC retry gives up after its retry budget.
         with pytest.raises(modal.exception.ConnectionError):
             sb._experimental_get_exit_snapshot()
         elapsed = time.monotonic() - started
 
     assert elapsed < 5
-    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == 3
+    assert len(ctx.get_requests("SandboxGetExitSnapshotV2")) == DEFAULT_MAX_RETRIES + 1
 
     sb.terminate()
 
