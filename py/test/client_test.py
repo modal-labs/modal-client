@@ -11,6 +11,7 @@ from google.protobuf.empty_pb2 import Empty
 import modal._traceback
 import modal._utils.grpc_utils
 from modal import Client
+from modal._utils.async_utils import synchronizer
 from modal.client import _OAuthCredentials
 from modal.exception import (
     AuthError,
@@ -96,6 +97,17 @@ async def test_container_client_type(servicer, container_client):
     assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], Empty)
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+
+
+@pytest.mark.asyncio
+async def test_get_stub_is_cached_per_server_url(servicer, client):
+    _client = synchronizer._translate_in(client)
+    stub = await _client._get_stub(servicer.client_addr)
+    assert await _client._get_stub(servicer.client_addr) is stub
+    assert await _client._get_stub(servicer.container_addr) is not stub
+
+    await stub.ClientHello(Empty())
+    assert isinstance(servicer.requests[-1], Empty)
 
 
 @pytest.fixture

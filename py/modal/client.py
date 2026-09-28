@@ -138,6 +138,7 @@ class _Client:
         self.version = version
         self._closed = False
         self._control_plane_stub = None
+        self._stubs: dict[str, modal_api_grpc.ModalClientModal] = {}
         self._auth_token_manager = None
         self._snapshotted = False
         self._owner_pid = None
@@ -163,12 +164,15 @@ class _Client:
         return self._control_plane_stub
 
     async def _get_stub(self, server_url: str) -> modal_api_grpc.ModalClientModal:
-        """Create a gRPC stub for a specific server URL.
+        """Get a gRPC stub for a specific server URL.
 
-        This function is O(n) where n is the number of RPCs in ModalClient.
+        Stubs are cached per server URL, since constructing one is O(n) in the number of RPCs in ModalClient.
         """
-        # TODO(michael): should we add some caching here?
-        return await modal_api_grpc.ModalClientModal._create(self, server_url)
+        stub = self._stubs.get(server_url)
+        if stub is None:
+            stub = await modal_api_grpc.ModalClientModal._create(self, server_url)
+            self._stubs[server_url] = stub
+        return stub
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
@@ -184,7 +188,7 @@ class _Client:
 
     async def get_stub(self, server_url: str) -> modal_api_grpc.ModalClientModal:
         """mdmd:hidden
-        Create a gRPC stub for a specific server URL.
+        Get a gRPC stub for a specific server URL.
 
         **This is not a supported interface.** Modal's gRPC API is internal and may change or be
         removed at any time, without notice or a deprecation period. Use the methods on Modal
@@ -502,6 +506,7 @@ class _Client:
             # just reset the internal state
             self._connection_manager = None
             self._control_plane_stub = None
+            self._stubs = {}
             self._owner_pid = None
 
             self.set_env_client(None)
