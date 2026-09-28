@@ -5438,3 +5438,75 @@ def test_function_info_cli(set_env_client, mock_dir, servicer):
 
         fn_id_human_res = run_cli_command(["function", "info", "fu-1"])
         assert human_output.stdout == fn_id_human_res.stdout
+
+
+_CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
+    "app": {
+        "Management": ["list", "rollover", "rollback", "stop"],
+        "Inspection": ["info", "history", "logs", "dashboard"],
+    },
+    "container": {"Commands": ["list", "logs", "exec", "stop"]},
+    "endpoint": {"Management": ["list", "create", "stop"]},
+    "function": {"Commands": ["info", "logs", "stats", "calls", "variants"]},
+    "server": {"Commands": ["info", "logs", "stats", "requests"]},
+    "image": {"Commands": ["logs", "names"]},
+    "image names": {"Commands": ["list"]},
+    "dict": {
+        "Management": ["list", "create", "clear", "delete"],
+        "Inspection": ["get", "items"],
+    },
+    "nfs": {
+        "Management": ["list", "create", "delete"],
+        "File operations": ["ls", "get", "put", "rm"],
+    },
+    "secret": {"Commands": ["list", "create", "delete"]},
+    "queue": {
+        "Management": ["list", "create", "clear", "delete"],
+        "Inspection": ["peek", "len"],
+    },
+    "volume": {
+        "Management": ["list", "create", "rename", "dashboard", "delete"],
+        "File operations": ["ls", "get", "put", "cp", "rm"],
+    },
+    "workspace": {"Commands": ["members", "proxy-tokens", "settings"]},
+    "workspace members": {"Commands": ["list"]},
+    "workspace proxy-tokens": {"Commands": ["list", "create", "update", "allow", "revoke", "delete"]},
+    "workspace settings": {"Commands": ["list", "set"]},
+    "environment": {
+        "Management": ["list", "create", "update", "delete", "roles"],
+        "Inspection": ["billing"],
+    },
+    "environment roles": {"Commands": ["list", "update"]},
+    "environment billing": {"Commands": ["summary", "report"]},
+    "profile": {"Commands": ["list", "current", "activate"]},
+    "config": {"Commands": ["show", "set-environment"]},
+    "token": {"Commands": ["info", "new", "set"]},
+    "skills": {"Commands": ["install", "update", "show"]},
+    "billing": {"Commands": ["summary", "report", "rates"]},
+}
+
+
+@pytest.mark.parametrize("group_path", list(_CLI_HELP_LAYOUT))
+def test_cli_help_subcommand_layout(group_path):
+    import click
+
+    from modal.cli._help import group_commands_by_panel
+    from modal.cli.entry_point import entrypoint_cli
+
+    group = entrypoint_cli
+    for name in group_path.split():
+        group = group.commands[name]  # type: ignore
+    assert isinstance(group, click.Group)
+
+    layout = {panel: [name for name, _ in items] for panel, items in group_commands_by_panel(group).items()}
+    assert layout == _CLI_HELP_LAYOUT[group_path]
+    # Dict equality ignores key order, but panel order is part of the layout.
+    assert list(layout) == list(_CLI_HELP_LAYOUT[group_path])
+
+
+def test_cli_help_top_level_commands_order():
+    from modal.cli._help import group_commands_by_panel
+    from modal.cli.entry_point import entrypoint_cli
+
+    commands = [name for name, _ in group_commands_by_panel(entrypoint_cli)["Commands"]]
+    assert commands == ["run", "serve", "deploy", "shell", "curl"]

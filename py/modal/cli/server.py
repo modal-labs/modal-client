@@ -52,7 +52,7 @@ from .utils import (
     grouped_utc_timestamp,
 )
 
-server_cli = ModalGroup(name="server", help="Manage Servers.")
+server_cli = ModalGroup(name="server", help="Inspect Modal Servers.")
 
 _DEFAULT_REQUEST_TAIL = 10
 _MAX_REQUEST_TAIL = 1000
@@ -60,6 +60,299 @@ _MAX_REQUEST_TAIL = 1000
 
 def _server_request_status_cell(status: int, no_color: bool = False) -> Text:
     return Text(str(status), style="red") if status >= 400 and not no_color else Text(str(status))
+
+
+@server_cli.command("info", no_args_is_help=True)
+@click.argument("server_identifier", metavar="SERVER")
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@env_option
+@synchronizer.create_blocking
+async def info(
+    server_identifier: str,
+    json: bool = False,
+    *,
+    env: str | None = None,
+):
+    """Show information about a given Modal Server.
+
+    SERVER can either be a Function ID (`fu-...`) or a deployed Server name in the format
+    `APP_NAME/SERVER_NAME`. The output of this command includes information about any resources
+    requested by this Server, any scheduling/autoscaling settings, any mounted Volumes or Buckets,
+    and any HTTP settings.
+
+    Examples:
+
+    Providing a Server ID directly:
+
+    ```
+    modal server info fu-0123456789abcdefghijkl
+    ```
+
+    Referring to a Server within a deployed App:
+
+    ```
+    modal server info hello-world-app/test_server
+    ```
+    """
+    client = await _Client.from_env()
+    environment_name = _get_environment_name(ensure_env(env))
+    tty = sys.stdout.isatty()
+
+    server_id, handle_metadata, function_proto = await _resolve_function_id(
+        client,
+        server_identifier,
+        environment_name,
+        object_type="Server",
+        command="info",
+    )
+
+    server = _Server._new_from_function(server_id, client, handle_metadata)
+    info = await server.info()
+
+    autoscaler_response = await client._stub.FunctionGetSchedulingParams(
+        api_pb2.FunctionGetSchedulingParamsRequest(function_id=server_id)
+    )
+    autoscaler_settings = ServerAutoscalerSettings._from_proto(autoscaler_response.autoscaler_configuration.settings)
+
+    output_manager = OutputManager.get()
+
+    if json:
+        info_dict = {
+            "name": function_proto.function_name,
+            "object_id": server.object_id,
+            "app_id": handle_metadata.app_id,
+        }
+        info_dict = info_dict | dataclasses.asdict(info)
+        info_dict = info_dict | dataclasses.asdict(autoscaler_settings)
+
+        output_manager.print_json(json_lib.dumps(info_dict))
+        return
+
+    not_configured = "-"
+    enabled = "Enabled"
+    disabled = "Disabled"
+
+    rows: list[str | Text | tuple[str | Text, str | Text]] = []
+
+    rows.append(("Server Name:", handle_metadata.function_name))
+    rows.append(("Object ID:", server_id))
+    rows.append(("App ID:", handle_metadata.app_id))
+    rows.append(("Image ID:", str(info.image_info.image_id)))
+
+    # --- HTTP ---
+    rows.append("HTTP Info:")
+    rows.append(("  URL:", info.server_url))
+    rows.append(("  Port:", not_configured if not info.port else str(info.port)))
+    rows.append(("  Authentication:", disabled if info.unauthenticated else enabled))
+    rows.append(("  HTTP/2:", disabled if not info.h2_enabled else enabled))
+    rows.append(("  Routing Region:", not_configured if not info.routing_region else info.routing_region))
+    rows.append(("  Sessioned:", not_configured if not info.sessioned else enabled))
+    rows.append(("  Startup Timeout:", f"{info.startup_timeout} seconds"))
+    rows.append(("  Exit Grace Period:", f"{info.exit_grace_period} seconds"))
+
+    # --- Resources ---
+    rows.append("Resources:")
+    rows.append(
+        (
+            "  CPU:",
+            not_configured
+            if info.cpu is None
+            else f"{info.cpu} core(s)"
+            if isinstance(info.cpu, (int, float))
+            else f"{info.cpu[0]} - {info.cpu[1]} core(s)",
+        )
+    )
+    rows.append(
+        (
+            "  Memory:",
+            not_configured
+            if info.memory_mib is None
+            else humanize_filesize(info.memory_mib << 20)
+            if isinstance(info.memory_mib, int)
+            else f"{humanize_filesize(info.memory_mib[0] << 20)} - {humanize_filesize(info.memory_mib[1] << 20)}",
+        )
+    )
+    rows.append(
+        (
+            "  Ephemeral Disk:",
+            not_configured if info.ephemeral_disk_mib is None else (humanize_filesize(info.ephemeral_disk_mib << 20)),
+        )
+    )
+    rows.append(
+        (
+            "  GPU(s):",
+            not_configured
+            if len(info.gpus) == 0
+            else " | ".join([f"{gpu_type} x {count}" for gpu_type, count in info.gpus]),
+        )
+    )
+
+    # --- Autoscaling ---
+    rows.append("Autoscaling:")
+    rows.append(
+        (
+            "  Min/Max/Buffer Containers:",
+            " / ".join(
+                [
+                    not_configured
+                    if autoscaler_settings.min_containers is None
+                    else str(autoscaler_settings.min_containers),
+                    not_configured
+                    if autoscaler_settings.max_containers is None
+                    else str(autoscaler_settings.max_containers),
+                    not_configured
+                    if autoscaler_settings.buffer_containers is None
+                    else str(autoscaler_settings.buffer_containers),
+                ]
+            ),
+        )
+    )
+
+    rows.append(
+        (
+            "  Scaleup Window:",
+            not_configured
+            if autoscaler_settings.scaleup_window is None
+            else f"{autoscaler_settings.scaleup_window} seconds",
+        )
+    )
+    rows.append(
+        (
+            "  Scaledown Window:",
+            not_configured
+            if autoscaler_settings.scaledown_window is None
+            else f"{autoscaler_settings.scaledown_window} seconds",
+        )
+    )
+    rows.append(
+        (
+            "  Target Concurrency:",
+            not_configured
+            if not autoscaler_settings.target_concurrency
+            else f"{autoscaler_settings.target_concurrency:.1f} requests / container",
+        )
+    )
+
+    # --- Scheduling ---
+    rows.append("Scheduling:")
+    rows.append(
+        ("  Compute Region(s):", not_configured if not info.compute_regions else " | ".join(info.compute_regions))
+    )
+    rows.append(("  Nonpreemptible Capacity:", not_configured if not info.nonpreemptible else enabled))
+    if info.cloud:
+        rows.append(("  Cloud Provider:", info.cloud))
+
+    if info.cluster_info:
+        rows.append("Clustering:")
+        rows.append(("  Cluster Size:", str(info.cluster_info.size)))
+        rows.append(("  RDMA:", enabled if info.cluster_info.rdma else disabled))
+        if info.cluster_info.fabric_size is not None:
+            rows.append(("  Fabric Size:", str(info.cluster_info.fabric_size)))
+
+    # --- Mounts ---
+    if info.volumes:
+        rows.append("Volume Mounts:")
+        for mount_path, volume in info.volumes.items():
+            assert volume.volume_id is not None
+
+            extra = []
+            if volume.read_only:
+                extra.append("Read-Only")
+            if volume.sub_path:
+                extra.append(f"Sub-Path: {volume.sub_path}")
+
+            if extra:
+                volume_text = f"{volume.volume_id} ({', '.join(extra)})"
+            else:
+                volume_text = volume.volume_id
+
+            rows.append((f"  {mount_path}", volume_text))
+
+    if info.cloud_bucket_mounts:
+        rows.append("Cloud Bucket Mounts:")
+        for mount_path, cbm in info.cloud_bucket_mounts.items():
+            extra = []
+            if cbm.read_only:
+                extra.append("Read-Only")
+            if cbm.key_prefix:
+                extra.append(f"Prefix: {cbm.key_prefix}")
+
+            if extra:
+                cbm_text = f"{cbm.bucket_name} ({', '.join(extra)})"
+            else:
+                cbm_text = cbm.bucket_name
+
+            rows.append((f"  {mount_path}", cbm_text))
+
+    # --- Secrets ---
+    if info.secrets:
+        rows.append("Secrets:")
+
+        async def _hydrate(secret_id: str) -> tuple[str, _Secret | None]:
+            try:
+                s = _Secret._from_id(secret_id)
+                await s.hydrate()
+            except NotFoundError:
+                return secret_id, None
+
+            return secret_id, s
+
+        async def _secret_iter() -> AsyncGenerator[str, None]:
+            for secret_id in info.secrets:
+                yield secret_id
+
+        async for secret_id, secret in async_map_ordered(
+            _secret_iter(),
+            _hydrate,
+            10,
+        ):
+            if secret is None:
+                rows.append((f"  {secret_id}", "[DELETED]"))
+                continue
+
+            secret_identifier = secret.object_id
+            if secret._name:
+                secret_identifier = secret._name
+                secret_env = secret._get_metadata().environment_name
+
+                if secret_env != environment_name:
+                    secret_identifier = f"{secret._name} ({secret_env})"
+
+            keys = await secret._get_keys()
+            display_keys = sorted(keys)[:5]
+            if len(display_keys) < len(keys):
+                display_keys.append(f"({len(keys) - len(display_keys)} keys omitted)")
+
+            rows.append((f"  {secret_identifier}", ", ".join(display_keys)))
+
+    for row in rows:
+        t = Table().grid(padding=(0, 0, 3, 3), expand=True)
+
+        if not isinstance(row, tuple):
+            if isinstance(row, str):
+                row = Text(row)
+
+            if not tty:
+                output_manager.print(row)
+            else:
+                t.add_row(row)
+                output_manager.print(t)
+
+            continue
+
+        left, right = row
+
+        if not tty:
+            output_manager.print(Text(f"{left} {right}"))
+            continue
+
+        if isinstance(left, str):
+            left = Text(left, overflow="fold")
+        if isinstance(right, str):
+            right = Text(right, overflow="fold", justify="right")
+
+        t.add_row(left, right)
+        output_manager.print(t)
 
 
 @server_cli.command("logs", no_args_is_help=True)
@@ -174,118 +467,6 @@ async def logs(
         source=source,
         timestamps=timestamps,
         prefix_fields=prefix_fields,
-    )
-
-
-@server_cli.command("requests", no_args_is_help=True)
-@click.argument("server_identifier", metavar="SERVER")
-@click.option(
-    "-n",
-    "--tail",
-    type=click.IntRange(min=1, max=_MAX_REQUEST_TAIL),
-    default=_DEFAULT_REQUEST_TAIL,
-    show_default=True,
-    help="Show up to the last N Server requests.",
-)
-@click.option("--json", "json_output", is_flag=True, default=False, help="Output requests as JSON.")
-@click.option("--no-color", "no_color", is_flag=True, default=False, help="Disable colors in the output.")
-@env_option
-@synchronizer.create_blocking
-async def requests(
-    server_identifier: str,
-    tail: int = _DEFAULT_REQUEST_TAIL,
-    json_output: bool = False,
-    no_color: bool = False,
-    *,
-    env: str | None = None,
-) -> None:
-    """Show recent requests handled by a Modal Server.
-
-    SERVER may be a Function ID or a deployed Server name in the form
-    ``APP_NAME/SERVER_NAME``.
-
-    Examples:
-
-    ```
-    modal server requests my-app/my-server
-    ```
-
-    ```
-    modal server requests my-app/my-server --tail 500
-    ```
-
-    Disable color in the output:
-
-    ```
-    modal server requests my-app/my-server --no-color
-    ```
-    """
-    environment_name = _get_environment_name(ensure_env(env))
-    client = await _Client.from_env()
-    function_id, _, _ = await _resolve_function_id(
-        client,
-        server_identifier,
-        environment_name,
-        object_type="Server",
-        command="requests",
-    )
-    response = await client._stub.ServerRequestFetch(
-        api_pb2.ServerRequestFetchRequest(
-            function_id=function_id, tail=api_pb2.ServerRequestFetchRequest.Tail(count=tail)
-        )
-    )
-
-    if json_output:
-        OutputManager.get().print_json(
-            json_lib.dumps(
-                [
-                    {
-                        "timestamp": request.timestamp.ToJsonString(),
-                        "route": request.route,
-                        "container_id": request.container_id,
-                        "duration_seconds": request.duration_seconds,
-                        "status": request.status,
-                    }
-                    for request in response.requests
-                ]
-            )
-        )
-        return
-
-    rows: list[list[Text | str]] = []
-    previous_request_date = None
-    for request in response.requests:
-        timestamp, previous_request_date = grouped_utc_timestamp(request.timestamp, previous_request_date)
-        rows.append(
-            [
-                Text(timestamp),
-                Text(request.route),
-                Text(request.container_id),
-                Text(f"{request.duration_seconds:.2f}"),
-                _server_request_status_cell(request.status, no_color=no_color),
-            ]
-        )
-    output = OutputManager.get()
-    output.print("")
-    output.print(Text(f"Server requests for {function_id}"))
-    output.print(
-        Text(
-            f"Displaying {len(rows):,} {'row' if len(rows) == 1 else 'rows'}",
-            style=STATS_METADATA_STYLE if not no_color else "",
-        )
-    )
-    output.print("")
-    display_table(
-        [
-            Column("Timestamp (UTC)", justify="right"),
-            "Route",
-            Column("Container", width=29),
-            Column("Duration (s)", justify="right"),
-            "Status",
-        ],
-        rows,
-        table_box=HEADER_ONLY,
-        border_style=STATS_METADATA_STYLE if not no_color else None,
     )
 
 
@@ -649,294 +830,113 @@ async def stats(
     _render_inference(history, use_color)
 
 
-@server_cli.command("info", no_args_is_help=True)
+@server_cli.command("requests", no_args_is_help=True)
 @click.argument("server_identifier", metavar="SERVER")
-@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@click.option(
+    "-n",
+    "--tail",
+    type=click.IntRange(min=1, max=_MAX_REQUEST_TAIL),
+    default=_DEFAULT_REQUEST_TAIL,
+    show_default=True,
+    help="Show up to the last N Server requests.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False, help="Output requests as JSON.")
+@click.option("--no-color", "no_color", is_flag=True, default=False, help="Disable colors in the output.")
 @env_option
 @synchronizer.create_blocking
-async def info(
+async def requests(
     server_identifier: str,
-    json: bool = False,
+    tail: int = _DEFAULT_REQUEST_TAIL,
+    json_output: bool = False,
+    no_color: bool = False,
     *,
     env: str | None = None,
-):
-    """Show information about a given Modal Server.
+) -> None:
+    """Show recent requests handled by a Modal Server.
 
-    SERVER can either be a Function ID (`fu-...`) or a deployed Server name in the format
-    `APP_NAME/SERVER_NAME`. The output of this command includes information about any resources
-    requested by this Server, any scheduling/autoscaling settings, any mounted Volumes or Buckets,
-    and any HTTP settings.
+    SERVER may be a Function ID or a deployed Server name in the form
+    ``APP_NAME/SERVER_NAME``.
 
     Examples:
 
-    Providing a Server ID directly:
-
     ```
-    modal server info fu-0123456789abcdefghijkl
+    modal server requests my-app/my-server
     ```
 
-    Referring to a Server within a deployed App:
+    ```
+    modal server requests my-app/my-server --tail 500
+    ```
+
+    Disable color in the output:
 
     ```
-    modal server info hello-world-app/test_server
+    modal server requests my-app/my-server --no-color
     ```
     """
-    client = await _Client.from_env()
     environment_name = _get_environment_name(ensure_env(env))
-    tty = sys.stdout.isatty()
-
-    server_id, handle_metadata, function_proto = await _resolve_function_id(
+    client = await _Client.from_env()
+    function_id, _, _ = await _resolve_function_id(
         client,
         server_identifier,
         environment_name,
         object_type="Server",
-        command="info",
+        command="requests",
+    )
+    response = await client._stub.ServerRequestFetch(
+        api_pb2.ServerRequestFetchRequest(
+            function_id=function_id, tail=api_pb2.ServerRequestFetchRequest.Tail(count=tail)
+        )
     )
 
-    server = _Server._new_from_function(server_id, client, handle_metadata)
-    info = await server.info()
-
-    autoscaler_response = await client._stub.FunctionGetSchedulingParams(
-        api_pb2.FunctionGetSchedulingParamsRequest(function_id=server_id)
-    )
-    autoscaler_settings = ServerAutoscalerSettings._from_proto(autoscaler_response.autoscaler_configuration.settings)
-
-    output_manager = OutputManager.get()
-
-    if json:
-        info_dict = {
-            "name": function_proto.function_name,
-            "object_id": server.object_id,
-            "app_id": handle_metadata.app_id,
-        }
-        info_dict = info_dict | dataclasses.asdict(info)
-        info_dict = info_dict | dataclasses.asdict(autoscaler_settings)
-
-        output_manager.print_json(json_lib.dumps(info_dict))
+    if json_output:
+        OutputManager.get().print_json(
+            json_lib.dumps(
+                [
+                    {
+                        "timestamp": request.timestamp.ToJsonString(),
+                        "route": request.route,
+                        "container_id": request.container_id,
+                        "duration_seconds": request.duration_seconds,
+                        "status": request.status,
+                    }
+                    for request in response.requests
+                ]
+            )
+        )
         return
 
-    not_configured = "-"
-    enabled = "Enabled"
-    disabled = "Disabled"
-
-    rows: list[str | Text | tuple[str | Text, str | Text]] = []
-
-    rows.append(("Server Name:", handle_metadata.function_name))
-    rows.append(("Object ID:", server_id))
-    rows.append(("App ID:", handle_metadata.app_id))
-    rows.append(("Image ID:", str(info.image_info.image_id)))
-
-    # --- HTTP ---
-    rows.append("HTTP Info:")
-    rows.append(("  URL:", info.server_url))
-    rows.append(("  Port:", not_configured if not info.port else str(info.port)))
-    rows.append(("  Authentication:", disabled if info.unauthenticated else enabled))
-    rows.append(("  HTTP/2:", disabled if not info.h2_enabled else enabled))
-    rows.append(("  Routing Region:", not_configured if not info.routing_region else info.routing_region))
-    rows.append(("  Sessioned:", not_configured if not info.sessioned else enabled))
-    rows.append(("  Startup Timeout:", f"{info.startup_timeout} seconds"))
-    rows.append(("  Exit Grace Period:", f"{info.exit_grace_period} seconds"))
-
-    # --- Resources ---
-    rows.append("Resources:")
-    rows.append(
-        (
-            "  CPU:",
-            not_configured
-            if info.cpu is None
-            else f"{info.cpu} core(s)"
-            if isinstance(info.cpu, (int, float))
-            else f"{info.cpu[0]} - {info.cpu[1]} core(s)",
+    rows: list[list[Text | str]] = []
+    previous_request_date = None
+    for request in response.requests:
+        timestamp, previous_request_date = grouped_utc_timestamp(request.timestamp, previous_request_date)
+        rows.append(
+            [
+                Text(timestamp),
+                Text(request.route),
+                Text(request.container_id),
+                Text(f"{request.duration_seconds:.2f}"),
+                _server_request_status_cell(request.status, no_color=no_color),
+            ]
+        )
+    output = OutputManager.get()
+    output.print("")
+    output.print(Text(f"Server requests for {function_id}"))
+    output.print(
+        Text(
+            f"Displaying {len(rows):,} {'row' if len(rows) == 1 else 'rows'}",
+            style=STATS_METADATA_STYLE if not no_color else "",
         )
     )
-    rows.append(
-        (
-            "  Memory:",
-            not_configured
-            if info.memory_mib is None
-            else humanize_filesize(info.memory_mib << 20)
-            if isinstance(info.memory_mib, int)
-            else f"{humanize_filesize(info.memory_mib[0] << 20)} - {humanize_filesize(info.memory_mib[1] << 20)}",
-        )
+    output.print("")
+    display_table(
+        [
+            Column("Timestamp (UTC)", justify="right"),
+            "Route",
+            Column("Container", width=29),
+            Column("Duration (s)", justify="right"),
+            "Status",
+        ],
+        rows,
+        table_box=HEADER_ONLY,
+        border_style=STATS_METADATA_STYLE if not no_color else None,
     )
-    rows.append(
-        (
-            "  Ephemeral Disk:",
-            not_configured if info.ephemeral_disk_mib is None else (humanize_filesize(info.ephemeral_disk_mib << 20)),
-        )
-    )
-    rows.append(
-        (
-            "  GPU(s):",
-            not_configured
-            if len(info.gpus) == 0
-            else " | ".join([f"{gpu_type} x {count}" for gpu_type, count in info.gpus]),
-        )
-    )
-
-    # --- Autoscaling ---
-    rows.append("Autoscaling:")
-    rows.append(
-        (
-            "  Min/Max/Buffer Containers:",
-            " / ".join(
-                [
-                    not_configured
-                    if autoscaler_settings.min_containers is None
-                    else str(autoscaler_settings.min_containers),
-                    not_configured
-                    if autoscaler_settings.max_containers is None
-                    else str(autoscaler_settings.max_containers),
-                    not_configured
-                    if autoscaler_settings.buffer_containers is None
-                    else str(autoscaler_settings.buffer_containers),
-                ]
-            ),
-        )
-    )
-
-    rows.append(
-        (
-            "  Scaleup Window:",
-            not_configured
-            if autoscaler_settings.scaleup_window is None
-            else f"{autoscaler_settings.scaleup_window} seconds",
-        )
-    )
-    rows.append(
-        (
-            "  Scaledown Window:",
-            not_configured
-            if autoscaler_settings.scaledown_window is None
-            else f"{autoscaler_settings.scaledown_window} seconds",
-        )
-    )
-    rows.append(
-        (
-            "  Target Concurrency:",
-            not_configured
-            if not autoscaler_settings.target_concurrency
-            else f"{autoscaler_settings.target_concurrency:.1f} requests / container",
-        )
-    )
-
-    # --- Scheduling ---
-    rows.append("Scheduling:")
-    rows.append(
-        ("  Compute Region(s):", not_configured if not info.compute_regions else " | ".join(info.compute_regions))
-    )
-    rows.append(("  Nonpreemptible Capacity:", not_configured if not info.nonpreemptible else enabled))
-    if info.cloud:
-        rows.append(("  Cloud Provider:", info.cloud))
-
-    if info.cluster_info:
-        rows.append("Clustering:")
-        rows.append(("  Cluster Size:", str(info.cluster_info.size)))
-        rows.append(("  RDMA:", enabled if info.cluster_info.rdma else disabled))
-        if info.cluster_info.fabric_size is not None:
-            rows.append(("  Fabric Size:", str(info.cluster_info.fabric_size)))
-
-    # --- Mounts ---
-    if info.volumes:
-        rows.append("Volume Mounts:")
-        for mount_path, volume in info.volumes.items():
-            assert volume.volume_id is not None
-
-            extra = []
-            if volume.read_only:
-                extra.append("Read-Only")
-            if volume.sub_path:
-                extra.append(f"Sub-Path: {volume.sub_path}")
-
-            if extra:
-                volume_text = f"{volume.volume_id} ({', '.join(extra)})"
-            else:
-                volume_text = volume.volume_id
-
-            rows.append((f"  {mount_path}", volume_text))
-
-    if info.cloud_bucket_mounts:
-        rows.append("Cloud Bucket Mounts:")
-        for mount_path, cbm in info.cloud_bucket_mounts.items():
-            extra = []
-            if cbm.read_only:
-                extra.append("Read-Only")
-            if cbm.key_prefix:
-                extra.append(f"Prefix: {cbm.key_prefix}")
-
-            if extra:
-                cbm_text = f"{cbm.bucket_name} ({', '.join(extra)})"
-            else:
-                cbm_text = cbm.bucket_name
-
-            rows.append((f"  {mount_path}", cbm_text))
-
-    # --- Secrets ---
-    if info.secrets:
-        rows.append("Secrets:")
-
-        async def _hydrate(secret_id: str) -> tuple[str, _Secret | None]:
-            try:
-                s = _Secret._from_id(secret_id)
-                await s.hydrate()
-            except NotFoundError:
-                return secret_id, None
-
-            return secret_id, s
-
-        async def _secret_iter() -> AsyncGenerator[str, None]:
-            for secret_id in info.secrets:
-                yield secret_id
-
-        async for secret_id, secret in async_map_ordered(
-            _secret_iter(),
-            _hydrate,
-            10,
-        ):
-            if secret is None:
-                rows.append((f"  {secret_id}", "[DELETED]"))
-                continue
-
-            secret_identifier = secret.object_id
-            if secret._name:
-                secret_identifier = secret._name
-                secret_env = secret._get_metadata().environment_name
-
-                if secret_env != environment_name:
-                    secret_identifier = f"{secret._name} ({secret_env})"
-
-            keys = await secret._get_keys()
-            display_keys = sorted(keys)[:5]
-            if len(display_keys) < len(keys):
-                display_keys.append(f"({len(keys) - len(display_keys)} keys omitted)")
-
-            rows.append((f"  {secret_identifier}", ", ".join(display_keys)))
-
-    for row in rows:
-        t = Table().grid(padding=(0, 0, 3, 3), expand=True)
-
-        if not isinstance(row, tuple):
-            if isinstance(row, str):
-                row = Text(row)
-
-            if not tty:
-                output_manager.print(row)
-            else:
-                t.add_row(row)
-                output_manager.print(t)
-
-            continue
-
-        left, right = row
-
-        if not tty:
-            output_manager.print(Text(f"{left} {right}"))
-            continue
-
-        if isinstance(left, str):
-            left = Text(left, overflow="fold")
-        if isinstance(right, str):
-            right = Text(right, overflow="fold", justify="right")
-
-        t.add_row(left, right)
-        output_manager.print(t)

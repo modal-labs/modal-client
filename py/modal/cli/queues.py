@@ -32,47 +32,6 @@ def partition_option(func):
     )(func)
 
 
-@queue_cli.command("create", panel="Management", no_args_is_help=True)
-@click.argument("name")
-@env_option
-@synchronizer.create_blocking
-async def create(name: str, *, env: str | None = None):
-    """Create a named Queue.
-
-    Note: This is a no-op when the Queue already exists.
-    """
-    q = _Queue.from_name(name, environment_name=env, create_if_missing=True)
-    client = await _Client.from_env()
-    resolver = Resolver()
-    async with TaskContext() as tc:
-        load_context = LoadContext(client=client, environment_name=env, task_context=tc)
-        await resolver.load(q, load_context)
-
-
-@queue_cli.command("delete", panel="Management", no_args_is_help=True)
-@click.argument("name")
-@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Queue doesn't exist.")
-@yes_option
-@env_option
-@synchronizer.create_blocking
-async def delete(
-    name: str,
-    *,
-    allow_missing: bool = False,
-    yes: bool = False,
-    env: str | None = None,
-):
-    """Delete a named Queue and all of its data."""
-    env = ensure_env(env)
-    if not yes:
-        click.confirm(
-            f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
-            default=False,
-            abort=True,
-        )
-    await _Queue.objects.delete(name, environment_name=env, allow_missing=allow_missing)
-
-
 @queue_cli.command("list", panel="Management")
 @click.option("--json", is_flag=True, default=False)
 @env_option
@@ -133,6 +92,23 @@ async def list_(*, json: bool = False, env: str | None = None):
     display_table(columns, rows, json)
 
 
+@queue_cli.command("create", panel="Management", no_args_is_help=True)
+@click.argument("name")
+@env_option
+@synchronizer.create_blocking
+async def create(name: str, *, env: str | None = None):
+    """Create a named Queue.
+
+    Note: This is a no-op when the Queue already exists.
+    """
+    q = _Queue.from_name(name, environment_name=env, create_if_missing=True)
+    client = await _Client.from_env()
+    resolver = Resolver()
+    async with TaskContext() as tc:
+        load_context = LoadContext(client=client, environment_name=env, task_context=tc)
+        await resolver.load(q, load_context)
+
+
 @queue_cli.command("clear", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @partition_option
@@ -148,7 +124,7 @@ async def clear(
     *,
     env: str | None = None,
 ):
-    """Clear the contents of a queue by removing all of its data."""
+    """Clear the contents of a Queue by removing all of its data."""
     q = _Queue.from_name(name, environment_name=env)
     if not yes:
         click.confirm(
@@ -157,6 +133,30 @@ async def clear(
             abort=True,
         )
     await q.clear(partition=partition, all=all)
+
+
+@queue_cli.command("delete", panel="Management", no_args_is_help=True)
+@click.argument("name")
+@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Queue doesn't exist.")
+@yes_option
+@env_option
+@synchronizer.create_blocking
+async def delete(
+    name: str,
+    *,
+    allow_missing: bool = False,
+    yes: bool = False,
+    env: str | None = None,
+):
+    """Delete a named Queue and all of its data."""
+    env = ensure_env(env)
+    if not yes:
+        click.confirm(
+            f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
+            default=False,
+            abort=True,
+        )
+    await _Queue.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 @queue_cli.command("peek", panel="Inspection", no_args_is_help=True)

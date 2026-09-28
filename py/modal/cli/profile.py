@@ -25,25 +25,6 @@ from ._help import ModalGroup
 profile_cli = ModalGroup(name="profile", help="Switch between Modal profiles.")
 
 
-@profile_cli.command("activate", help="Change the active Modal profile.", no_args_is_help=True)
-@click.argument("profile")
-def activate(profile: str):
-    config_set_active_profile(profile)
-    config = Config()
-    click.echo(f"Active profile: {profile}")
-    env = config.get("environment", profile=profile)
-    if not env:
-        with suppress(Exception):
-            env = Environment.from_context().hydrate().name
-    if env:
-        click.echo(f"Active environment: {env}")
-
-
-@profile_cli.command("current", help="Print the currently active Modal profile.")
-def current():
-    click.echo(config_module._profile)
-
-
 @profile_cli.command("list", help="Show all Modal profiles and highlight the active one.")
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
@@ -120,3 +101,22 @@ async def list_(json: bool | None = False):
         output.print(
             f"[yellow]Using [bold]{env_based_workspace}[/bold] workspace based on environment variables[/yellow]"
         )
+
+
+@profile_cli.command("current", help="Print the currently active Modal profile.")
+def current():
+    click.echo(config_module._profile)
+
+
+@profile_cli.command("activate", help="Change the active Modal profile.", no_args_is_help=True)
+@click.argument("profile")
+def activate(profile: str):
+    config_set_active_profile(profile)
+    config = Config()
+    click.echo(f"Active profile: {profile}")
+    env = config.get("environment", profile=profile)
+    if not env:
+        with suppress(Exception):
+            env = Environment.from_context().hydrate().name
+    if env:
+        click.echo(f"Active environment: {env}")

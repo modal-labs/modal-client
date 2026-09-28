@@ -25,16 +25,16 @@ from modal.output import OutputManager
 
 from ._help import ModalGroup
 
-ENVIRONMENT_HELP_TEXT = """Create and interact with Environments
+ENVIRONMENT_HELP_TEXT = """Create and interact with Environments.
 
-Environments are sub-divisions of workspaces, allowing you to deploy the same app
-in different namespaces. Each environment has their own set of Secrets and any
-lookups performed from an app in an environment will by default look for entities
-in the same environment.
+Environments are sub-divisions of Workspaces, allowing you to deploy the same App
+in different namespaces. Each Environment has their own set of Secrets and any
+lookups performed from an App in an Environment will by default look for entities
+in the same Environment.
 
-Typical use cases for environments include having one for development and one for
-production, to prevent overwriting production apps when developing new features
-while still being able to deploy changes to a live environment.
+Typical use cases for Environments include having one for development and one for
+production, to prevent overwriting production Apps when developing new features
+while still being able to deploy changes to a live Environment.
 """
 
 environment_cli = ModalGroup(name="environment", help=ENVIRONMENT_HELP_TEXT)
@@ -48,7 +48,7 @@ class RenderableBool(Text):
         return repr(self.value)
 
 
-@environment_cli.command("list", help="List all environments in the current workspace.")
+@environment_cli.command("list", panel="Management", help="List all Environments in the current Workspace.")
 @click.option("--json", is_flag=True, default=False)
 def list_(json: bool = False):
     envs = environments.list_environments()
@@ -69,9 +69,11 @@ def list_(json: bool = False):
     display_table(["name", "web suffix", "active"], table_data, json=json)
 
 
-@environment_cli.command("create", help="Create a new environment in the current workspace.", no_args_is_help=True)
+@environment_cli.command(
+    "create", panel="Management", help="Create a new Environment in the current Workspace.", no_args_is_help=True
+)
 @click.argument("name")
-@click.option("--restricted", is_flag=True, default=False, help="Enable RBAC restrictions on the new environment")
+@click.option("--restricted", is_flag=True, default=False, help="Enable RBAC restrictions on the new Environment.")
 @click.option(
     "--default-role",
     type=str,
@@ -96,13 +98,32 @@ def create(
     rich.print(f"[green]✓[/green] {prefix}Environment created: {name}")
 
 
-ENVIRONMENT_DELETE_HELP = """Delete an environment in the current workspace.
+ENVIRONMENT_DELETE_HELP = """Delete an Environment in the current Workspace.
 
-Deletes all apps in the selected environment and deletes the environment irrevocably.
+Deletes all Apps in the selected Environment and deletes the Environment irrevocably.
 """
 
 
-@environment_cli.command("delete", help=ENVIRONMENT_DELETE_HELP, no_args_is_help=True)
+@environment_cli.command("update", panel="Management", help="Update Environment-level settings.", no_args_is_help=True)
+@click.argument("current_name")
+@click.option("--set-name", default=None, help="New name of the Environment.")
+@click.option("--set-web-suffix", default=None, help="New web suffix of the Environment (empty string is no suffix).")
+def update(
+    current_name: str,
+    set_name: str | None = None,
+    set_web_suffix: str | None = None,
+):
+    if set_name is None and set_web_suffix is None:
+        raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
+
+    if set_name:
+        check_environment_name(set_name)
+
+    environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
+    rich.print("[green]✓[/green] Environment updated")
+
+
+@environment_cli.command("delete", panel="Management", help=ENVIRONMENT_DELETE_HELP, no_args_is_help=True)
 @click.argument("name")
 @yes_option
 def delete(
@@ -121,25 +142,6 @@ def delete(
 
     Environment.objects.delete(name)
     rich.print(f"[green]✓[/green] Environment deleted: {name}")
-
-
-@environment_cli.command("update", help="Update environment-level settings.", no_args_is_help=True)
-@click.argument("current_name")
-@click.option("--set-name", default=None, help="New name of the environment")
-@click.option("--set-web-suffix", default=None, help="New web suffix of environment (empty string is no suffix)")
-def update(
-    current_name: str,
-    set_name: str | None = None,
-    set_web_suffix: str | None = None,
-):
-    if set_name is None and set_web_suffix is None:
-        raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
-
-    if set_name:
-        check_environment_name(set_name)
-
-    environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
-    rich.print("[green]✓[/green] Environment updated")
 
 
 service_user_option = click.option(
@@ -195,10 +197,10 @@ which roles.
 """
 
 roles_cli = ModalGroup(name="roles", help=ROLES_HELP_TEXT)
-environment_cli.add_command(roles_cli)
+environment_cli.add_command(roles_cli, panel="Management")
 
 
-@roles_cli.command("list", help="List the roles of each user and service user in an Environment", no_args_is_help=True)
+@roles_cli.command("list", help="List the roles of each user and service user in an Environment.", no_args_is_help=True)
 @click.argument("environment")
 @click.option(
     "--exclude-default",
@@ -211,7 +213,7 @@ def roles_list(environment: str, json: bool = False, exclude_default: bool = Fal
     _render_roles_list(environment, json, exclude_default=exclude_default)
 
 
-@roles_cli.command("update", help="Update a user's or service user's role in an Environment", no_args_is_help=True)
+@roles_cli.command("update", help="Update a user's or service user's role in an Environment.", no_args_is_help=True)
 @click.argument("environment")
 @click.argument("principal")
 @click.option("--role", type=click.Choice(["contributor", "viewer", "no-access"]), required=True, help="Role to assign")
@@ -272,7 +274,102 @@ def members_remove(environment: str, principal: str, service_user: bool = False)
 
 
 billing_cli = ModalGroup(name="billing", help="View billing and usage info for the given Environment.")
-environment_cli.add_command(billing_cli)
+environment_cli.add_command(billing_cli, panel="Inspection")
+
+
+@billing_cli.command("summary")
+@click.argument(
+    "environment_name",
+    required=False,
+    default=None,
+)
+@click.option(
+    "--for",
+    "for_",
+    default=None,
+    type=str,
+    help=('What cycle to show a summary for. Accepts: "this month", "last month", and ISO 8601 months ("YYYY-MM").'),
+)
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@synchronizer.create_blocking
+async def environment_billing_summary(
+    environment_name: str | None,
+    for_: str | None,
+    json: bool,
+):
+    """Generate a billing summary for the specified Environment.
+
+    If no argument for `environment_name` is passed, the method returns a summary for the default
+    Environment.
+
+    The summary range can be provided by setting `--for` (e.g `--for 'last month'`). If not
+    provided, `--for` defaults to "this month".
+
+    Summaries are provided for single month intervals (aligned to the month boundary) only. To see
+    summaries for longer intervals, call `summary` for each month in the interval.
+
+    This command provides a CLI frontend for the
+    [`Environment.billing.summary`](https://modal.com/docs/sdk/py/latest/Environment#billingsummary)
+    API.
+
+    Examples:
+
+    ```bash
+    modal environment billing summary # defaults to --for "this month"
+
+    modal environment billing summary --for "last month" test_env
+
+    modal environment billing summary --for 2026-01
+    ```
+
+    """
+
+    # If called with no arguments, we default to the current billing cycle
+    if for_ is None:
+        for_ = "this month"
+
+    if environment_name is None:
+        env = _Environment.from_context()
+    else:
+        env = _Environment.from_name(environment_name)
+
+    try:
+        summary = await env.billing.summary(cycle=for_)
+    except (ValueError, InvalidError) as exc:
+        raise click.UsageError(str(exc))
+
+    output = OutputManager.get()
+
+    if json:
+        output.print_json(
+            json_mod.dumps(
+                {
+                    "metered_cost": str(summary.metered_cost),
+                    "metered_cost_breakdown": {
+                        _col_name_to_json_key(k): str(v) for k, v in summary.metered_cost_breakdown.items()
+                    },
+                }
+            )
+        )
+
+        return
+
+    # Calling .summary hydrates `env` so this is safe
+    output.print(
+        Text("Displaying billing summary for environment: ", style="dim italic")
+        + Text(str(env.name), style="dim italic green"),
+    )
+
+    t = Table(show_header=False, box=SIMPLE_HEAD)
+
+    t.add_row(Text("Metered Cost:"), Text(pretty_decimal(summary.metered_cost), justify="right"))
+    for k, v in sorted(summary.metered_cost_breakdown.items(), key=lambda pair: -pair[1]):
+        if v == 0:
+            continue
+
+        t.add_row(Text(f"  {k}:", style="dim"), Text(pretty_decimal(v), style="dim", justify="right"))
+
+    output.print(t)
 
 
 @billing_cli.command("report", no_args_is_help=True)
@@ -405,98 +502,3 @@ async def environment_billing_report(
         rows.extend(row_set)
 
     display_table(columns, rows, json=json, csv=csv)
-
-
-@billing_cli.command("summary")
-@click.argument(
-    "environment_name",
-    required=False,
-    default=None,
-)
-@click.option(
-    "--for",
-    "for_",
-    default=None,
-    type=str,
-    help=('What cycle to show a summary for. Accepts: "this month", "last month", and ISO 8601 months ("YYYY-MM").'),
-)
-@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
-@synchronizer.create_blocking
-async def environment_billing_summary(
-    environment_name: str | None,
-    for_: str | None,
-    json: bool,
-):
-    """Generate a billing summary for the specified Environment.
-
-    If no argument for `environment_name` is passed, the method returns a summary for the default
-    environment.
-
-    The summary range can be provided by setting `--for` (e.g `--for 'last month'`). If not
-    provided, `--for` defaults to "this month".
-
-    Summaries are provided for single month intervals (aligned to the month boundary) only. To see
-    summaries for longer intervals, call `summary` for each month in the interval.
-
-    This command provides a CLI frontend for the
-    [`Environment.billing.summary`](https://modal.com/docs/sdk/py/latest/Environment#billingsummary)
-    API.
-
-    Examples:
-
-    ```bash
-    modal environment billing summary # defaults to --for "this month"
-
-    modal environment billing summary --for "last month" test_env
-
-    modal environment billing summary --for 2026-01
-    ```
-
-    """
-
-    # If called with no arguments, we default to the current billing cycle
-    if for_ is None:
-        for_ = "this month"
-
-    if environment_name is None:
-        env = _Environment.from_context()
-    else:
-        env = _Environment.from_name(environment_name)
-
-    try:
-        summary = await env.billing.summary(cycle=for_)
-    except (ValueError, InvalidError) as exc:
-        raise click.UsageError(str(exc))
-
-    output = OutputManager.get()
-
-    if json:
-        output.print_json(
-            json_mod.dumps(
-                {
-                    "metered_cost": str(summary.metered_cost),
-                    "metered_cost_breakdown": {
-                        _col_name_to_json_key(k): str(v) for k, v in summary.metered_cost_breakdown.items()
-                    },
-                }
-            )
-        )
-
-        return
-
-    # Calling .summary hydrates `env` so this is safe
-    output.print(
-        Text("Displaying billing summary for environment: ", style="dim italic")
-        + Text(str(env.name), style="dim italic green"),
-    )
-
-    t = Table(show_header=False, box=SIMPLE_HEAD)
-
-    t.add_row(Text("Metered Cost:"), Text(pretty_decimal(summary.metered_cost), justify="right"))
-    for k, v in sorted(summary.metered_cost_breakdown.items(), key=lambda pair: -pair[1]):
-        if v == 0:
-            continue
-
-        t.add_row(Text(f"  {k}:", style="dim"), Text(pretty_decimal(v), style="dim", justify="right"))
-
-    output.print(t)

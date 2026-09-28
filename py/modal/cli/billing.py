@@ -90,6 +90,91 @@ def _validate_and_parse_interval(
     return _ParsedInterval(start_dt, end_dt, resolved_tz)
 
 
+# todo(ayush): mirror this in `modal workspace` and then deprecate this one
+@billing_cli.command("summary")
+@click.option(
+    "--for",
+    "for_",
+    default=None,
+    type=str,
+    help=('What cycle to show a summary for. Accepts: "this month", "last month", and ISO 8601 months ("YYYY-MM").'),
+)
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@synchronizer.create_blocking
+async def summary(for_: str | None, json: bool):
+    """Generate a billing summary for the workspace.
+
+    The summary range can be provided by setting `--for` (e.g `--for 'last month'`). If not
+    provided, `--for` defaults to "this month".
+
+    Summaries are provided for single month intervals (aligned to the month boundary) only. To see
+    summaries for longer intervals, call `summary` for each month in the interval.
+
+    This command provides a CLI frontend for the
+    [`Workspace.billing.summary`](https://modal.com/docs/sdk/py/latest/Workspace#billingsummary) API.
+
+    Examples:
+
+    ```bash
+    modal billing summary # defaults to --for "this month"
+
+    modal billing summary --for "last month"
+
+    modal billing summary --for 2026-01
+    ```
+
+    """
+    # If called with no arguments, we default to the current billing cycle
+    if for_ is None:
+        for_ = "this month"
+
+    try:
+        summary = await _Workspace.from_context().billing.summary(cycle=for_)
+    except (ValueError, InvalidError) as exc:
+        raise click.UsageError(str(exc))
+
+    output = OutputManager.get()
+    if json:
+        output.print_json(
+            dumps(
+                {
+                    "metered_cost": str(summary.metered_cost),
+                    "billed_cost": str(summary.billed_cost),
+                    "adjustments": {_col_name_to_json_key(k): str(v) for k, v in summary.adjustments.items()},
+                    "metered_cost_breakdown": {
+                        _col_name_to_json_key(k): str(v) for k, v in summary.metered_cost_breakdown.items()
+                    },
+                }
+            )
+        )
+
+        return
+
+    t = Table(show_header=False, box=SIMPLE_HEAD)
+
+    t.add_row(Text("Metered Cost:"), Text(pretty_decimal(summary.metered_cost), justify="right"))
+    for k, v in sorted(summary.metered_cost_breakdown.items(), key=lambda pair: -pair[1]):
+        if v == 0:
+            continue
+
+        t.add_row(Text(f"  {k}:", style="dim"), Text(pretty_decimal(v), style="dim", justify="right"))
+
+    for k, v in summary.adjustments.items():
+        if v == 0:
+            continue
+
+        # note: discounts are sent by the server as negative values, additional costs are sent as
+        # positive values
+        t.add_row(Text(f"{k}:"), Text(pretty_decimal(v), justify="right"))
+
+    t.add_row(
+        Text("Billed Cost:", style="bold"),
+        Text(f"${pretty_decimal(summary.billed_cost)}", justify="right", style="bold"),
+    )
+
+    output.print(t)
+
+
 @billing_cli.command("report", no_args_is_help=True)
 @click.option("--start", default=None, help=f"Start date. {DATE_HELP}")
 @click.option("--end", default=None, help=f"End date. {DATE_HELP} Defaults to now.")
@@ -212,91 +297,6 @@ async def report(
         rows.extend(row_set)
 
     display_table(columns, rows, json=json, csv=csv)
-
-
-# todo(ayush): mirror this in `modal workspace` and then deprecate this one
-@billing_cli.command("summary")
-@click.option(
-    "--for",
-    "for_",
-    default=None,
-    type=str,
-    help=('What cycle to show a summary for. Accepts: "this month", "last month", and ISO 8601 months ("YYYY-MM").'),
-)
-@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
-@synchronizer.create_blocking
-async def summary(for_: str | None, json: bool):
-    """Generate a billing summary for the workspace.
-
-    The summary range can be provided by setting `--for` (e.g `--for 'last month'`). If not
-    provided, `--for` defaults to "this month".
-
-    Summaries are provided for single month intervals (aligned to the month boundary) only. To see
-    summaries for longer intervals, call `summary` for each month in the interval.
-
-    This command provides a CLI frontend for the
-    [`Workspace.billing.summary`](https://modal.com/docs/sdk/py/latest/Workspace#billingsummary) API.
-
-    Examples:
-
-    ```bash
-    modal billing summary # defaults to --for "this month"
-
-    modal billing summary --for "last month"
-
-    modal billing summary --for 2026-01
-    ```
-
-    """
-    # If called with no arguments, we default to the current billing cycle
-    if for_ is None:
-        for_ = "this month"
-
-    try:
-        summary = await _Workspace.from_context().billing.summary(cycle=for_)
-    except (ValueError, InvalidError) as exc:
-        raise click.UsageError(str(exc))
-
-    output = OutputManager.get()
-    if json:
-        output.print_json(
-            dumps(
-                {
-                    "metered_cost": str(summary.metered_cost),
-                    "billed_cost": str(summary.billed_cost),
-                    "adjustments": {_col_name_to_json_key(k): str(v) for k, v in summary.adjustments.items()},
-                    "metered_cost_breakdown": {
-                        _col_name_to_json_key(k): str(v) for k, v in summary.metered_cost_breakdown.items()
-                    },
-                }
-            )
-        )
-
-        return
-
-    t = Table(show_header=False, box=SIMPLE_HEAD)
-
-    t.add_row(Text("Metered Cost:"), Text(pretty_decimal(summary.metered_cost), justify="right"))
-    for k, v in sorted(summary.metered_cost_breakdown.items(), key=lambda pair: -pair[1]):
-        if v == 0:
-            continue
-
-        t.add_row(Text(f"  {k}:", style="dim"), Text(pretty_decimal(v), style="dim", justify="right"))
-
-    for k, v in summary.adjustments.items():
-        if v == 0:
-            continue
-
-        # note: discounts are sent by the server as negative values, additional costs are sent as
-        # positive values
-        t.add_row(Text(f"{k}:"), Text(pretty_decimal(v), justify="right"))
-
-    t.add_row(
-        Text("Billed Cost:", style="bold"),
-        Text(f"${pretty_decimal(summary.billed_cost)}", justify="right", style="bold"),
-    )
-
-    output.print(t)
 
 
 @billing_cli.command("rates")

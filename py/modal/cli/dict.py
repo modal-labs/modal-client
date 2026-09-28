@@ -21,6 +21,22 @@ dict_cli = ModalGroup(
 )
 
 
+@dict_cli.command("list", panel="Management")
+@click.option("--json", is_flag=True, default=False)
+@env_option
+@synchronizer.create_blocking
+async def list_(*, json: bool = False, env: str | None = None):
+    """List all named Dicts."""
+    env = ensure_env(env)
+    dicts = await _Dict.objects.list(environment_name=env)
+    rows = []
+    for obj in dicts:
+        info = await obj.info()
+        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
+
+    display_table(["Name", "Created at", "Created by"], rows, json)
+
+
 @dict_cli.command("create", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @env_option
@@ -37,22 +53,6 @@ async def create(name: str, *, env: str | None = None):
     async with TaskContext() as tc:
         load_context = LoadContext(client=client, environment_name=env, task_context=tc)
         await resolver.load(d, load_context)
-
-
-@dict_cli.command("list", panel="Management")
-@click.option("--json", is_flag=True, default=False)
-@env_option
-@synchronizer.create_blocking
-async def list_(*, json: bool = False, env: str | None = None):
-    """List all named Dicts."""
-    env = ensure_env(env)
-    dicts = await _Dict.objects.list(environment_name=env)
-    rows = []
-    for obj in dicts:
-        info = await obj.info()
-        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
-
-    display_table(["Name", "Created at", "Created by"], rows, json)
 
 
 @dict_cli.command("clear", panel="Management", no_args_is_help=True)

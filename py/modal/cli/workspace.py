@@ -76,6 +76,40 @@ proxy_tokens_cli = ModalGroup(name="proxy-tokens", help=PROXY_TOKENS_HELP_TEXT)
 workspace_cli.add_command(proxy_tokens_cli)
 
 
+@proxy_tokens_cli.command("list")
+@click.option(
+    "-e",
+    "--environment",
+    default=None,
+    help="Only list tokens associated with this environment. Lists all tokens when omitted.",
+)
+@click.option("--json", is_flag=True, default=False)
+def proxy_tokens_list(environment: str | None = None, json: bool = False):
+    """List the proxy tokens of the current Workspace.
+
+    Examples:
+
+    ```
+    modal workspace proxy-tokens list
+    modal workspace proxy-tokens list --environment prod
+    modal workspace proxy-tokens list --json
+    ```
+    """
+    tokens = Workspace.from_context().proxy_tokens.list(environment_name=environment)
+    # Emit a real boolean for JSON output, but a string for the rich table (which can't render a bare bool).
+    rows = [
+        [
+            token.name,
+            token.token_id,
+            timestamp_to_localized_str(token.created_at.timestamp(), json),
+            token.created_by,
+            token.scoped if json else str(token.scoped),
+        ]
+        for token in tokens
+    ]
+    display_table(["Name", "Token ID", "Created at", "Created by", "Scoped"], rows, json=json)
+
+
 @proxy_tokens_cli.command("create")
 @click.option("--name", default="", help="Name to help identify the token.")
 @click.option("--json", is_flag=True, default=False)
@@ -110,40 +144,6 @@ def proxy_tokens_create(*, name: str = "", json: bool = False):
         table.add_row(f"Modal-Key: {token.token_id}\nModal-Secret: {token.token_secret}")
         table.add_row(f"Authorization: {bearer}")
         output_manager.print(table)
-
-
-@proxy_tokens_cli.command("list")
-@click.option(
-    "-e",
-    "--environment",
-    default=None,
-    help="Only list tokens associated with this environment. Lists all tokens when omitted.",
-)
-@click.option("--json", is_flag=True, default=False)
-def proxy_tokens_list(environment: str | None = None, json: bool = False):
-    """List the proxy tokens of the current Workspace.
-
-    Examples:
-
-    ```
-    modal workspace proxy-tokens list
-    modal workspace proxy-tokens list --environment prod
-    modal workspace proxy-tokens list --json
-    ```
-    """
-    tokens = Workspace.from_context().proxy_tokens.list(environment_name=environment)
-    # Emit a real boolean for JSON output, but a string for the rich table (which can't render a bare bool).
-    rows = [
-        [
-            token.name,
-            token.token_id,
-            timestamp_to_localized_str(token.created_at.timestamp(), json),
-            token.created_by,
-            token.scoped if json else str(token.scoped),
-        ]
-        for token in tokens
-    ]
-    display_table(["Name", "Token ID", "Created at", "Created by", "Scoped"], rows, json=json)
 
 
 @proxy_tokens_cli.command("update", no_args_is_help=True)

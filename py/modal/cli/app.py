@@ -36,7 +36,7 @@ from .utils import (
     yes_option,
 )
 
-app_cli = ModalGroup(name="app", help="Manage deployed and running apps.")
+app_cli = ModalGroup(name="app", help="Manage deployed and running Apps.")
 
 APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_DEPLOYED: Text("deployed", style="green"),
@@ -96,7 +96,7 @@ async def resolve_app_identifier(
             raise NotFoundError(msg)
 
 
-@app_cli.command("list")
+@app_cli.command("list", panel="Management")
 @env_option
 @click.option("--json", help="Output as JSON.", is_flag=True, default=False)
 @click.option(
@@ -166,7 +166,462 @@ async def list_(env: str | None = None, json: bool = False, limit: int = 0):
     display_table(columns, rows_trunc, json, title=f"Apps{env_part}{app_count_part}", table_box=HEADER_ONLY)
 
 
-@app_cli.command("logs", no_args_is_help=True)
+@app_cli.command("rollover", panel="Management", no_args_is_help=True)
+@click.argument("app_identifier")
+@click.option(
+    "--strategy",
+    default="rolling",
+    type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
+    help="Strategy for rollover",
+)
+@env_option
+@synchronizer.create_blocking
+async def rollover(
+    app_identifier: str,
+    strategy: str = "rolling",
+    *,
+    env: str | None = None,
+):
+    """Redeploy an App to get new containers without code changes.
+
+    A rollover replaces existing containers with fresh ones built from the same
+    App version — useful for refreshing containers without changing your code.
+    The rollover appears as a new entry in the App's deployment history.
+
+    Examples:
+
+    Rollover an App using a rolling deployment. Running containers are now considered
+    outdated and will be gracefully replaced by new ones.
+
+    ```
+    modal app rollover my-app
+    ```
+
+    Rollover an App by terminating any running containers. Inputs on the queue will
+    start new containers.
+
+    ```
+    modal app rollover my-app --strategy recreate
+    ```
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+
+    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
+    if lifecycle.app_state != api_pb2.APP_STATE_DEPLOYED:
+        env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
+        raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
+
+    output_mgr = OutputManager.get()
+    output_mgr.print(f"🔨 Starting app rollover with {strategy} strategy")
+    t0 = time.monotonic()
+
+    req = api_pb2.AppRolloverRequest(app_id=app_id)
+    response = await client._stub.AppRollover(req)
+    print_server_warnings(response.server_warnings)
+
+    if strategy == "recreate":
+        try:
+            await _stop_and_wait_for_containers(client, app_id, response.deployed_at, env)
+        except Exception as exc:
+            warnings.warn(f"App updated successfully, but containers did not all terminate. {exc}", UserWarning)
+            output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
+            sys.exit(1)
+
+    duration = time.monotonic() - t0
+    output_mgr.step_completed(f"Rollover completed in {duration:.3f}s with {strategy} strategy! 🎉")
+    output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
+
+
+@app_cli.command("promote", panel="Management", no_args_is_help=True, hidden=True)
+@click.argument("app_identifier")
+@click.argument("version")
+@env_option
+@synchronizer.create_blocking
+async def promote(
+    app_identifier: str,
+    version: str,
+    *,
+    env: str | None = None,
+):
+    """Deploy a staged version from an App's deployment history.
+
+    When a staged version gets promoted, the app is deployed with a new version that
+    refers back to the staged version.
+
+    Examples:
+
+    Promote an App to a specific version:
+
+    ```
+    modal app promote my-app v5
+    ```
+
+    Promote an App using its App ID instead of its name:
+
+    ```
+    modal app promote ap-abcdefghABCDEFGH123456 v5
+    ```
+
+    """
+    if m := re.fullmatch(r"v?([1-9]\d*)", version):
+        version_number = int(m.group(1))
+    else:
+        raise UsageError(f"Invalid version specifier: {version}. Expected a positive version number, e.g. 'v5' or '5'.")
+
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
+    if lifecycle.app_state != api_pb2.APP_STATE_DEPLOYED:
+        env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
+        raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
+
+    resp = await client._stub.AppPromote(api_pb2.AppPromoteRequest(app_id=app_id, version=version_number))
+    print_server_warnings(resp.server_warnings)
+
+    output_mgr = OutputManager.get()
+    output_mgr.print(f"[green]✓[/green] Promoted App to v{version_number}!")
+    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+
+
+@app_cli.command(
+    "rollback", panel="Management", no_args_is_help=True, context_settings={"ignore_unknown_options": True}
+)
+@click.argument("app_identifier")
+@click.argument("version", default="")
+@click.option(
+    "--strategy",
+    default="rolling",
+    type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
+    help="Strategy for rollback",
+)
+@env_option
+@synchronizer.create_blocking
+async def rollback(
+    app_identifier: str,
+    version: str = "",
+    strategy: Literal["recreate", "rolling"] = "rolling",
+    *,
+    env: str | None = None,
+):
+    """Redeploy a previous version of an App.
+
+    Note that the App must currently be in a "deployed" state.
+    Rollbacks will appear as a new deployment in the App history, although
+    the App state will be reset to the state at the time of the previous deployment.
+
+    Examples:
+
+    Rollback an App to its previous version:
+
+    ```
+    modal app rollback my-app
+    ```
+
+    Rollback an App to a specific version:
+
+    ```
+    modal app rollback my-app v3
+    ```
+
+    Rollback an App using its App ID instead of its name:
+
+    ```
+    modal app rollback ap-abcdefghABCDEFGH123456
+    ```
+
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
+    if lifecycle.app_state != api_pb2.APP_STATE_DEPLOYED:
+        env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
+        raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
+
+    if not version:
+        version_number = -1
+    else:
+        if m := re.match(r"v(\d+)", version):
+            version_number = int(m.group(1))
+        else:
+            raise UsageError(f"Invalid version specifier: {version}")
+    req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
+    resp = await client._stub.AppRollback(req)
+    print_server_warnings(resp.server_warnings)
+    output_mgr = OutputManager.get()
+    if strategy == "recreate":
+        try:
+            await _stop_and_wait_for_containers(client, app_id, resp.deployed_at, env)
+        except Exception as exc:
+            warnings.warn(
+                f"App rollback executed successfully, but containers did not all terminate. {exc}", UserWarning
+            )
+            output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+            sys.exit(1)
+    output_mgr.print("[green]✓[/green] Deployment rollback successful!")
+    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+
+
+@app_cli.command("stop", panel="Management", no_args_is_help=True)
+@click.argument("app_identifier")
+@yes_option
+@env_option
+@synchronizer.create_blocking
+async def stop(
+    app_identifier: str,
+    *,
+    yes: bool = False,
+    env: str | None = None,
+):
+    """Permanently stop an App and terminate its running containers."""
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
+
+    if lifecycle.app_state == api_pb2.APP_STATE_STOPPED:
+        msg = "App is already stopped."
+        if lifecycle.stopped_at:
+            stopped_at = timestamp_to_localized_str(lifecycle.stopped_at)
+            verb = "Stopped" if lifecycle.stopped_by else "Finished"
+            attribution = f" by '{lifecycle.stopped_by}'" if lifecycle.stopped_by else ""
+            msg += f" ({verb} at {stopped_at}{attribution})."
+        raise SystemExit(msg)
+
+    if not yes:
+        res = await client._stub.TaskList(api_pb2.TaskListRequest(app_id=app_id))
+        num_containers = len(res.tasks)
+
+        if environment_name:
+            msg = f"Are you sure you want to stop App '{app_identifier}' in the '{environment_name}' environment?"
+        else:
+            msg = f"Are you sure you want to stop App '{app_identifier}'?"
+
+        if num_containers:
+            msg += (
+                f" This will immediately terminate {num_containers} running"
+                f" container{'s' if num_containers != 1 else ''}."
+            )
+        else:
+            msg += " No containers are currently running."
+        confirm_or_suggest_yes(msg)
+    req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
+    await client._stub.AppStop(req)
+
+
+@app_cli.command("info", panel="Inspection", no_args_is_help=True)
+@click.argument("app_identifier")
+@env_option
+@click.option("--json", is_flag=True, default=False)
+@click.option("--no-color", is_flag=True, default=False, help="Disable colors in the output.")
+@synchronizer.create_blocking
+async def info(app_identifier: str, *, env: str | None = None, json: bool = False, no_color: bool = False):
+    """Show an App's lifecycle, Functions, and Servers.
+
+    Examples:
+
+    Get info based on an App ID:
+
+    ```
+    modal app info ap-123456
+    ```
+
+    Get info for a currently deployed App based on its name:
+
+    ```
+    modal app info my-app
+    ```
+
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
+    request = api_pb2.AppGetInfoRequest(app_id=app_id)
+    resp: api_pb2.AppGetInfoResponse = await client._stub.AppGetInfo(request)
+    app_info = resp.info
+    lifecycle = app_info.lifecycle
+    output = OutputManager.get()
+    state = APP_STATE_TO_MESSAGE.get(lifecycle.app_state, Text("unknown", style="gray"))
+
+    if json:
+        summaries = {
+            function_id: MessageToDict(summary, preserving_proto_field_name=True)
+            for function_id, summary in resp.function_info_summaries.items()
+        }
+
+        def entries_with_info(entries: Mapping[str, str]) -> dict[str, dict]:
+            infos = {}
+            for name, function_id in sorted(entries.items()):
+                summary = summaries.get(function_id, {})
+                summary = {("authenticated" if k == "requires_proxy_auth" else k): v for k, v in summary.items()}
+                infos[name] = {"id": function_id, "summary": summary}
+            return infos
+
+        output.print_json(
+            dumps(
+                {
+                    "description": app_info.description,
+                    "app_id": app_info.app_id,
+                    "lifecycle": {
+                        "state": state.plain,
+                        "created_at": timestamp_to_localized_str(lifecycle.created_at, json),
+                        "created_by": lifecycle.created_by or None,
+                        "deployed_at": timestamp_to_localized_str(lifecycle.deployed_at, json),
+                        "deployed_by": lifecycle.deployed_by or None,
+                        "version": lifecycle.version or None,
+                        "stopped_at": timestamp_to_localized_str(lifecycle.stopped_at, json),
+                        "stopped_by": lifecycle.stopped_by or None,
+                    },
+                    "functions": entries_with_info(app_info.functions),
+                    "servers": entries_with_info(app_info.servers),
+                }
+            )
+        )
+        return
+
+    name_width = max((Text(name).cell_len for name in [*app_info.functions, *app_info.servers]), default=0)
+    label_width = max(len("Deployment:"), name_width + 2)
+    header = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
+    header.add_column(width=label_width)
+    header.add_column(overflow="fold")
+    header.add_row(Text("App:"), Text(app_info.description))
+    header.add_row(Text("App ID:"), Text(app_info.app_id))
+    header.add_row(Text("State:"), Text(state.plain))
+
+    def event(label: str, timestamp: float, actor: str, version: int = 0) -> None:
+        parts = [timestamp_to_localized_str(timestamp, isotz=False), actor]
+        if version:
+            parts.insert(0, f"v{version}")
+        header.add_row(Text(label + ":"), Text(" · ".join(p for p in parts if p)))
+
+    if lifecycle.stopped_at:
+        event("Stopped", lifecycle.stopped_at, lifecycle.stopped_by)
+    if lifecycle.deployed_at:
+        event("Deployment", lifecycle.deployed_at, lifecycle.deployed_by, lifecycle.version)
+    event("Created", lifecycle.created_at, lifecycle.created_by)
+    output.print(header)
+
+    for title, entries in (("Functions", app_info.functions), ("Servers", app_info.servers)):
+        if not entries:
+            continue
+        output.print("")
+        output.print(Text(f"{title} ({len(entries)}):"))
+        for index, (name, function_id) in enumerate(sorted(entries.items())):
+            if index:
+                output.print("")
+            identity = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
+            identity.add_column(width=label_width)
+            identity.add_column(width=26, overflow="fold")
+            identity.add_row(Text(f"  {name}"), Text(function_id))
+            output.print(identity)
+            if function_id not in resp.function_info_summaries:
+                continue
+            summary = resp.function_info_summaries[function_id]
+            hardware = [f"{gpu.count} × {gpu.gpu_type} GPU" for gpu in summary.gpu_config]
+            metadata = Text(f"    {hardware[0] if hardware else 'CPU'}")
+            if len(hardware) > 1:
+                metadata.append(f" ({', '.join(hardware[1:])})", style=None if no_color else "bright_black")
+            if summary.web_function:
+                metadata.append(" · Web Function")
+            if summary.is_sessioned:
+                metadata.append(" · Sessioned")
+            if schedule := _app_function_schedule(summary.schedule):
+                metadata.append(" · ")
+                metadata.append(schedule)
+            if summary.HasField("requires_proxy_auth") and not summary.requires_proxy_auth:
+                metadata.append(" · ")
+                metadata.append("Unauthenticated", style=None if no_color else "yellow")
+            output.print(metadata)
+
+
+@app_cli.command("history", panel="Inspection", no_args_is_help=True)
+@click.argument("app_identifier")
+@env_option
+@click.option("--json", is_flag=True, default=False)
+@synchronizer.create_blocking
+async def history(
+    app_identifier: str,
+    *,
+    env: str | None = None,
+    json: bool = False,
+):
+    """Show an App's deployment history.
+
+    Examples:
+
+    Get the history based on an app ID:
+
+    ```
+    modal app history ap-123456
+    ```
+
+    Get the history for an App based on its name:
+
+    ```
+    modal app history my-app
+    ```
+
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
+    resp = await client._stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
+
+    columns = [
+        "Version",
+        "Time deployed",
+        "Client",
+        "Deployed by",
+        "Commit",
+        "Tag",
+    ]
+    rows = []
+    deployments_with_dirty_commit = False
+    for idx, app_stats in enumerate(resp.app_deployment_histories):
+        style = "bold green" if idx == 0 else ""
+
+        if app_stats.deployed_at:
+            ts = timestamp_to_localized_str(app_stats.deployed_at, json)
+            assert ts is not None
+            deployed_at = Text(ts, style=style)
+        else:
+            deployed_at = None
+
+        row = [
+            Text(f"v{app_stats.version}", style=style),
+            deployed_at,
+            Text(app_stats.client_version, style=style),
+            Text(app_stats.deployed_by, style=style),
+        ]
+
+        if app_stats.commit_info.commit_hash:
+            short_hash = app_stats.commit_info.commit_hash[:7]
+            if app_stats.commit_info.dirty:
+                deployments_with_dirty_commit = True
+                short_hash = f"{short_hash}*"
+            row.append(Text(short_hash, style=style))
+        else:
+            row.append(None)
+
+        if app_stats.tag:
+            row.append(Text(app_stats.tag, style=style))
+        else:
+            row.append(None)
+
+        rows.append(row)
+
+    # Suppress tag information when no deployments used one
+    if not any(row[-1] for row in rows):
+        rows = [row[:-1] for row in rows]
+        columns = columns[:-1]
+
+    rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
+    display_table(columns, rows, json)
+
+    if deployments_with_dirty_commit and not json:
+        rich.print("* - repo had uncommitted changes")
+
+
+@app_cli.command("logs", panel="Inspection", no_args_is_help=True)
 @click.argument("app_identifier")
 @click.option("-f", "--follow", is_flag=True, default=False, help="Stream log output until App stops")
 @click.option(
@@ -290,335 +745,7 @@ async def logs(
     )
 
 
-@app_cli.command("promote", no_args_is_help=True, hidden=True)
-@click.argument("app_identifier")
-@click.argument("version")
-@env_option
-@synchronizer.create_blocking
-async def promote(
-    app_identifier: str,
-    version: str,
-    *,
-    env: str | None = None,
-):
-    """Deploy a staged version from an App's deployment history.
-
-    When a staged version gets promoted, the app is deployed with a new version that
-    refers back to the staged version.
-
-    Examples:
-
-    Promote an App to a specific version:
-
-    ```
-    modal app promote my-app v5
-    ```
-
-    Promote an App using its App ID instead of its name:
-
-    ```
-    modal app promote ap-abcdefghABCDEFGH123456 v5
-    ```
-
-    """
-    if m := re.fullmatch(r"v?([1-9]\d*)", version):
-        version_number = int(m.group(1))
-    else:
-        raise UsageError(f"Invalid version specifier: {version}. Expected a positive version number, e.g. 'v5' or '5'.")
-
-    env = ensure_env(env)
-    client = await _Client.from_env()
-    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
-    if lifecycle.app_state != api_pb2.APP_STATE_DEPLOYED:
-        env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
-        raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
-
-    resp = await client._stub.AppPromote(api_pb2.AppPromoteRequest(app_id=app_id, version=version_number))
-    print_server_warnings(resp.server_warnings)
-
-    output_mgr = OutputManager.get()
-    output_mgr.print(f"[green]✓[/green] Promoted App to v{version_number}!")
-    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
-
-
-@app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
-@click.argument("app_identifier")
-@click.argument("version", default="")
-@click.option(
-    "--strategy",
-    default="rolling",
-    type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
-    help="Strategy for rollback",
-)
-@env_option
-@synchronizer.create_blocking
-async def rollback(
-    app_identifier: str,
-    version: str = "",
-    strategy: Literal["recreate", "rolling"] = "rolling",
-    *,
-    env: str | None = None,
-):
-    """Redeploy a previous version of an App.
-
-    Note that the App must currently be in a "deployed" state.
-    Rollbacks will appear as a new deployment in the App history, although
-    the App state will be reset to the state at the time of the previous deployment.
-
-    Examples:
-
-    Rollback an App to its previous version:
-
-    ```
-    modal app rollback my-app
-    ```
-
-    Rollback an App to a specific version:
-
-    ```
-    modal app rollback my-app v3
-    ```
-
-    Rollback an App using its App ID instead of its name:
-
-    ```
-    modal app rollback ap-abcdefghABCDEFGH123456
-    ```
-
-    """
-    env = ensure_env(env)
-    client = await _Client.from_env()
-    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
-    if lifecycle.app_state != api_pb2.APP_STATE_DEPLOYED:
-        env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
-        raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
-
-    if not version:
-        version_number = -1
-    else:
-        if m := re.match(r"v(\d+)", version):
-            version_number = int(m.group(1))
-        else:
-            raise UsageError(f"Invalid version specifier: {version}")
-    req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
-    resp = await client._stub.AppRollback(req)
-    print_server_warnings(resp.server_warnings)
-    output_mgr = OutputManager.get()
-    if strategy == "recreate":
-        try:
-            await _stop_and_wait_for_containers(client, app_id, resp.deployed_at, env)
-        except Exception as exc:
-            warnings.warn(
-                f"App rollback executed successfully, but containers did not all terminate. {exc}", UserWarning
-            )
-            output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
-            sys.exit(1)
-    output_mgr.print("[green]✓[/green] Deployment rollback successful!")
-    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
-
-
-@app_cli.command("rollover", no_args_is_help=True)
-@click.argument("app_identifier")
-@click.option(
-    "--strategy",
-    default="rolling",
-    type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
-    help="Strategy for rollover",
-)
-@env_option
-@synchronizer.create_blocking
-async def rollover(
-    app_identifier: str,
-    strategy: str = "rolling",
-    *,
-    env: str | None = None,
-):
-    """Redeploy an App to get new containers without code changes.
-
-    A rollover replaces existing containers with fresh ones built from the same
-    App version — useful for refreshing containers without changing your code.
-    The rollover appears as a new entry in the App's deployment history.
-
-    Examples:
-
-    Rollover an App using a rolling deployment. Running containers are now considered
-    outdated and will be gracefully replaced by new ones.
-
-    ```
-    modal app rollover my-app
-    ```
-
-    Rollover an App by terminating any running containers. Inputs on the queue will
-    start new containers.
-
-    ```
-    modal app rollover my-app --strategy recreate
-    ```
-    """
-    env = ensure_env(env)
-    client = await _Client.from_env()
-
-    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
-    if lifecycle.app_state != api_pb2.APP_STATE_DEPLOYED:
-        env_suffix = f" in the '{environment_name}' environment" if environment_name else ""
-        raise InvalidError(f"App '{app_identifier}' is not deployed{env_suffix}.")
-
-    output_mgr = OutputManager.get()
-    output_mgr.print(f"🔨 Starting app rollover with {strategy} strategy")
-    t0 = time.monotonic()
-
-    req = api_pb2.AppRolloverRequest(app_id=app_id)
-    response = await client._stub.AppRollover(req)
-    print_server_warnings(response.server_warnings)
-
-    if strategy == "recreate":
-        try:
-            await _stop_and_wait_for_containers(client, app_id, response.deployed_at, env)
-        except Exception as exc:
-            warnings.warn(f"App updated successfully, but containers did not all terminate. {exc}", UserWarning)
-            output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
-            sys.exit(1)
-
-    duration = time.monotonic() - t0
-    output_mgr.step_completed(f"Rollover completed in {duration:.3f}s with {strategy} strategy! 🎉")
-    output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
-
-
-@app_cli.command("stop", no_args_is_help=True)
-@click.argument("app_identifier")
-@yes_option
-@env_option
-@synchronizer.create_blocking
-async def stop(
-    app_identifier: str,
-    *,
-    yes: bool = False,
-    env: str | None = None,
-):
-    """Permanently stop an App and terminate its running containers."""
-    env = ensure_env(env)
-    client = await _Client.from_env()
-    app_id, environment_name, lifecycle = await resolve_app_identifier(app_identifier, env, client)
-
-    if lifecycle.app_state == api_pb2.APP_STATE_STOPPED:
-        msg = "App is already stopped."
-        if lifecycle.stopped_at:
-            stopped_at = timestamp_to_localized_str(lifecycle.stopped_at)
-            verb = "Stopped" if lifecycle.stopped_by else "Finished"
-            attribution = f" by '{lifecycle.stopped_by}'" if lifecycle.stopped_by else ""
-            msg += f" ({verb} at {stopped_at}{attribution})."
-        raise SystemExit(msg)
-
-    if not yes:
-        res = await client._stub.TaskList(api_pb2.TaskListRequest(app_id=app_id))
-        num_containers = len(res.tasks)
-
-        if environment_name:
-            msg = f"Are you sure you want to stop App '{app_identifier}' in the '{environment_name}' environment?"
-        else:
-            msg = f"Are you sure you want to stop App '{app_identifier}'?"
-
-        if num_containers:
-            msg += (
-                f" This will immediately terminate {num_containers} running"
-                f" container{'s' if num_containers != 1 else ''}."
-            )
-        else:
-            msg += " No containers are currently running."
-        confirm_or_suggest_yes(msg)
-    req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
-    await client._stub.AppStop(req)
-
-
-@app_cli.command("history", no_args_is_help=True)
-@click.argument("app_identifier")
-@env_option
-@click.option("--json", is_flag=True, default=False)
-@synchronizer.create_blocking
-async def history(
-    app_identifier: str,
-    *,
-    env: str | None = None,
-    json: bool = False,
-):
-    """Show an App's deployment history.
-
-    Examples:
-
-    Get the history based on an app ID:
-
-    ```
-    modal app history ap-123456
-    ```
-
-    Get the history for an App based on its name:
-
-    ```
-    modal app history my-app
-    ```
-
-    """
-    env = ensure_env(env)
-    client = await _Client.from_env()
-    app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
-    resp = await client._stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
-
-    columns = [
-        "Version",
-        "Time deployed",
-        "Client",
-        "Deployed by",
-        "Commit",
-        "Tag",
-    ]
-    rows = []
-    deployments_with_dirty_commit = False
-    for idx, app_stats in enumerate(resp.app_deployment_histories):
-        style = "bold green" if idx == 0 else ""
-
-        if app_stats.deployed_at:
-            ts = timestamp_to_localized_str(app_stats.deployed_at, json)
-            assert ts is not None
-            deployed_at = Text(ts, style=style)
-        else:
-            deployed_at = None
-
-        row = [
-            Text(f"v{app_stats.version}", style=style),
-            deployed_at,
-            Text(app_stats.client_version, style=style),
-            Text(app_stats.deployed_by, style=style),
-        ]
-
-        if app_stats.commit_info.commit_hash:
-            short_hash = app_stats.commit_info.commit_hash[:7]
-            if app_stats.commit_info.dirty:
-                deployments_with_dirty_commit = True
-                short_hash = f"{short_hash}*"
-            row.append(Text(short_hash, style=style))
-        else:
-            row.append(None)
-
-        if app_stats.tag:
-            row.append(Text(app_stats.tag, style=style))
-        else:
-            row.append(None)
-
-        rows.append(row)
-
-    # Suppress tag information when no deployments used one
-    if not any(row[-1] for row in rows):
-        rows = [row[:-1] for row in rows]
-        columns = columns[:-1]
-
-    rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
-    display_table(columns, rows, json)
-
-    if deployments_with_dirty_commit and not json:
-        rich.print("* - repo had uncommitted changes")
-
-
-@app_cli.command("dashboard", no_args_is_help=True)
+@app_cli.command("dashboard", panel="Inspection", no_args_is_help=True)
 @click.argument("app_identifier")
 @env_option
 @synchronizer.create_blocking
@@ -648,131 +775,6 @@ async def dashboard(
     app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
     url = f"https://modal.com/id/{app_id}"
     open_url_and_display(url, "App dashboard")
-
-
-@app_cli.command("info", no_args_is_help=True)
-@click.argument("app_identifier")
-@env_option
-@click.option("--json", is_flag=True, default=False)
-@click.option("--no-color", is_flag=True, default=False, help="Disable colors in the output.")
-@synchronizer.create_blocking
-async def info(app_identifier: str, *, env: str | None = None, json: bool = False, no_color: bool = False):
-    """Show an App's lifecycle, Functions, and Servers.
-
-    Examples:
-
-    Get info based on an App ID:
-
-    ```
-    modal app info ap-123456
-    ```
-
-    Get info for a currently deployed App based on its name:
-
-    ```
-    modal app info my-app
-    ```
-
-    """
-    env = ensure_env(env)
-    client = await _Client.from_env()
-    app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
-    request = api_pb2.AppGetInfoRequest(app_id=app_id)
-    resp: api_pb2.AppGetInfoResponse = await client._stub.AppGetInfo(request)
-    app_info = resp.info
-    lifecycle = app_info.lifecycle
-    output = OutputManager.get()
-    state = APP_STATE_TO_MESSAGE.get(lifecycle.app_state, Text("unknown", style="gray"))
-
-    if json:
-        summaries = {
-            function_id: MessageToDict(summary, preserving_proto_field_name=True)
-            for function_id, summary in resp.function_info_summaries.items()
-        }
-
-        def entries_with_info(entries: Mapping[str, str]) -> dict[str, dict]:
-            infos = {}
-            for name, function_id in sorted(entries.items()):
-                summary = summaries.get(function_id, {})
-                summary = {("authenticated" if k == "requires_proxy_auth" else k): v for k, v in summary.items()}
-                infos[name] = {"id": function_id, "summary": summary}
-            return infos
-
-        output.print_json(
-            dumps(
-                {
-                    "description": app_info.description,
-                    "app_id": app_info.app_id,
-                    "lifecycle": {
-                        "state": state.plain,
-                        "created_at": timestamp_to_localized_str(lifecycle.created_at, json),
-                        "created_by": lifecycle.created_by or None,
-                        "deployed_at": timestamp_to_localized_str(lifecycle.deployed_at, json),
-                        "deployed_by": lifecycle.deployed_by or None,
-                        "version": lifecycle.version or None,
-                        "stopped_at": timestamp_to_localized_str(lifecycle.stopped_at, json),
-                        "stopped_by": lifecycle.stopped_by or None,
-                    },
-                    "functions": entries_with_info(app_info.functions),
-                    "servers": entries_with_info(app_info.servers),
-                }
-            )
-        )
-        return
-
-    name_width = max((Text(name).cell_len for name in [*app_info.functions, *app_info.servers]), default=0)
-    label_width = max(len("Deployment:"), name_width + 2)
-    header = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
-    header.add_column(width=label_width)
-    header.add_column(overflow="fold")
-    header.add_row(Text("App:"), Text(app_info.description))
-    header.add_row(Text("App ID:"), Text(app_info.app_id))
-    header.add_row(Text("State:"), Text(state.plain))
-
-    def event(label: str, timestamp: float, actor: str, version: int = 0) -> None:
-        parts = [timestamp_to_localized_str(timestamp, isotz=False), actor]
-        if version:
-            parts.insert(0, f"v{version}")
-        header.add_row(Text(label + ":"), Text(" · ".join(p for p in parts if p)))
-
-    if lifecycle.stopped_at:
-        event("Stopped", lifecycle.stopped_at, lifecycle.stopped_by)
-    if lifecycle.deployed_at:
-        event("Deployment", lifecycle.deployed_at, lifecycle.deployed_by, lifecycle.version)
-    event("Created", lifecycle.created_at, lifecycle.created_by)
-    output.print(header)
-
-    for title, entries in (("Functions", app_info.functions), ("Servers", app_info.servers)):
-        if not entries:
-            continue
-        output.print("")
-        output.print(Text(f"{title} ({len(entries)}):"))
-        for index, (name, function_id) in enumerate(sorted(entries.items())):
-            if index:
-                output.print("")
-            identity = Table(show_header=False, box=None, pad_edge=False, padding=(0, 1))
-            identity.add_column(width=label_width)
-            identity.add_column(width=26, overflow="fold")
-            identity.add_row(Text(f"  {name}"), Text(function_id))
-            output.print(identity)
-            if function_id not in resp.function_info_summaries:
-                continue
-            summary = resp.function_info_summaries[function_id]
-            hardware = [f"{gpu.count} × {gpu.gpu_type} GPU" for gpu in summary.gpu_config]
-            metadata = Text(f"    {hardware[0] if hardware else 'CPU'}")
-            if len(hardware) > 1:
-                metadata.append(f" ({', '.join(hardware[1:])})", style=None if no_color else "bright_black")
-            if summary.web_function:
-                metadata.append(" · Web Function")
-            if summary.is_sessioned:
-                metadata.append(" · Sessioned")
-            if schedule := _app_function_schedule(summary.schedule):
-                metadata.append(" · ")
-                metadata.append(schedule)
-            if summary.HasField("requires_proxy_auth") and not summary.requires_proxy_auth:
-                metadata.append(" · ")
-                metadata.append("Unauthenticated", style=None if no_color else "yellow")
-            output.print(metadata)
 
 
 def _app_function_schedule(schedule: api_pb2.Schedule) -> str | None:

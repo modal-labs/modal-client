@@ -29,8 +29,6 @@ IMAGE_NAMES_HISTORY_PAGE_SIZE = 100
 IMAGE_NAMES_HISTORY_PAGE_DELAY_SECONDS = 1.0
 
 image_cli = ModalGroup(name="image", help="Manage Images.")
-image_names_cli = ModalGroup(name="names", help="Manage Modal Image names.")
-image_cli.add_command(image_names_cli)
 
 
 def _print_result_summary(count: int) -> None:
@@ -154,6 +152,10 @@ async def _iter_history_pages(
             return
         await asyncio.sleep(IMAGE_NAMES_HISTORY_PAGE_DELAY_SECONDS)
         response = await _fetch_history_page(client, name_tag, response.next_page_token)
+
+
+image_names_cli = ModalGroup(name="names", help="Manage Modal Image names.")
+image_cli.add_command(image_names_cli)
 
 
 @image_names_cli.command("list", help="List named Images.")

@@ -72,6 +72,30 @@ def create(
 
 
 @nfs_cli.command(
+    "delete", help="Delete a named, persistent modal.NetworkFileSystem.", panel="Management", no_args_is_help=True
+)
+@click.argument("nfs_name")
+@yes_option
+@env_option
+@synchronizer.create_blocking
+async def delete(
+    nfs_name: str,
+    yes: bool = False,
+    env: str | None = None,
+):
+    # Lookup first to validate the name, even though delete is a staticmethod
+    await _NetworkFileSystem.from_name(nfs_name, environment_name=env).hydrate()
+    if not yes:
+        click.confirm(
+            f"Are you sure you want to irrevocably delete the modal.NetworkFileSystem '{nfs_name}'?",
+            default=False,
+            abort=True,
+        )
+
+    await _NetworkFileSystem.delete(nfs_name, environment_name=env)
+
+
+@nfs_cli.command(
     "ls", help="List files and directories in a network file system.", panel="File operations", no_args_is_help=True
 )
 @click.argument("volume_name")
@@ -102,46 +126,6 @@ async def ls(
     else:
         for entry in entries:
             print(entry.path)  # noqa: T201
-
-
-@nfs_cli.command("put", panel="File operations", no_args_is_help=True)
-@click.argument("volume_name")
-@click.argument("local_path")
-@click.argument("remote_path", default="/")
-@env_option
-@synchronizer.create_blocking
-async def put(
-    volume_name: str,
-    local_path: str,
-    remote_path: str = "/",
-    env: str | None = None,
-):
-    """Upload a file or directory to a network file system.
-
-    Remote parent directories will be created as needed.
-
-    Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file
-    will be uploaded with its current name under that directory.
-    """
-    ensure_env(env)
-    volume = _NetworkFileSystem.from_name(volume_name)
-    if remote_path.endswith("/"):
-        remote_path = remote_path + os.path.basename(local_path)
-
-    output = OutputManager.get()
-    if Path(local_path).is_dir():
-        with output.transfer_progress("upload") as progress:
-            await volume.add_local_dir(local_path, remote_path, progress_cb=progress.progress)
-            progress.progress(complete=True)
-        output.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'")
-
-    elif "*" in local_path:
-        raise UsageError("Glob uploads are currently not supported")
-    else:
-        with output.transfer_progress("upload") as progress:
-            written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress.progress)
-            progress.progress(complete=True)
-        output.step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
 
 
 class CliError(Exception):
@@ -185,6 +169,46 @@ async def get(
     output.step_completed("Finished downloading files to local!")
 
 
+@nfs_cli.command("put", panel="File operations", no_args_is_help=True)
+@click.argument("volume_name")
+@click.argument("local_path")
+@click.argument("remote_path", default="/")
+@env_option
+@synchronizer.create_blocking
+async def put(
+    volume_name: str,
+    local_path: str,
+    remote_path: str = "/",
+    env: str | None = None,
+):
+    """Upload a file or directory to a network file system.
+
+    Remote parent directories will be created as needed.
+
+    Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file
+    will be uploaded with its current name under that directory.
+    """
+    ensure_env(env)
+    volume = _NetworkFileSystem.from_name(volume_name)
+    if remote_path.endswith("/"):
+        remote_path = remote_path + os.path.basename(local_path)
+
+    output = OutputManager.get()
+    if Path(local_path).is_dir():
+        with output.transfer_progress("upload") as progress:
+            await volume.add_local_dir(local_path, remote_path, progress_cb=progress.progress)
+            progress.progress(complete=True)
+        output.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'")
+
+    elif "*" in local_path:
+        raise UsageError("Glob uploads are currently not supported")
+    else:
+        with output.transfer_progress("upload") as progress:
+            written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress.progress)
+            progress.progress(complete=True)
+        output.step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
+
+
 @nfs_cli.command(
     "rm", help="Delete a file or directory from a network file system.", panel="File operations", no_args_is_help=True
 )
@@ -203,27 +227,3 @@ async def rm(
     volume = _NetworkFileSystem.from_name(volume_name)
     await volume.remove_file(remote_path, recursive=recursive)
     OutputManager.get().step_completed(f"{remote_path} was deleted successfully!")
-
-
-@nfs_cli.command(
-    "delete", help="Delete a named, persistent modal.NetworkFileSystem.", panel="Management", no_args_is_help=True
-)
-@click.argument("nfs_name")
-@yes_option
-@env_option
-@synchronizer.create_blocking
-async def delete(
-    nfs_name: str,
-    yes: bool = False,
-    env: str | None = None,
-):
-    # Lookup first to validate the name, even though delete is a staticmethod
-    await _NetworkFileSystem.from_name(nfs_name, environment_name=env).hydrate()
-    if not yes:
-        click.confirm(
-            f"Are you sure you want to irrevocably delete the modal.NetworkFileSystem '{nfs_name}'?",
-            default=False,
-            abort=True,
-        )
-
-    await _NetworkFileSystem.delete(nfs_name, environment_name=env)

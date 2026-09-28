@@ -30,6 +30,21 @@ volume_cli = ModalGroup(
 )
 
 
+@volume_cli.command("list", help="List the details of all modal.Volume volumes in an Environment.", panel="Management")
+@env_option
+@click.option("--json", is_flag=True, default=False)
+@synchronizer.create_blocking
+async def list_(env: str | None = None, json: bool = False):
+    env = ensure_env(env)
+    volumes = await _Volume.objects.list(environment_name=env)
+    rows = []
+    for obj in volumes:
+        info = await obj.info()
+        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
+
+    display_table(["Name", "Created at", "Created by"], rows, json)
+
+
 @volume_cli.command("create", help="Create a named, persistent modal.Volume.", panel="Management", no_args_is_help=True)
 @click.argument("name")
 @env_option
@@ -53,62 +68,77 @@ def some_func():
     output.print(usage)
 
 
-@volume_cli.command("get", panel="File operations", no_args_is_help=True)
-@click.argument("volume_name")
-@click.argument("remote_path")
-@click.argument("local_destination", default=".")
-@click.option("--force", is_flag=True, default=False)
+@volume_cli.command("rename", help="Rename a modal.Volume.", panel="Management", no_args_is_help=True)
+@click.argument("old_name")
+@click.argument("new_name")
+@yes_option
 @env_option
 @synchronizer.create_blocking
-async def get(
-    volume_name: str,
-    remote_path: str,
-    local_destination: str = ".",
-    force: bool = False,
+async def rename(
+    old_name: str,
+    new_name: str,
+    yes: bool = False,
     env: str | None = None,
 ):
-    """Download files from a modal.Volume object.
+    if not yes:
+        click.confirm(
+            f"Are you sure you want rename the modal.Volume '{old_name}'? This may break any Apps currently using it.",
+            default=False,
+            abort=True,
+        )
 
-    If a folder is passed for REMOTE_PATH, the contents of the folder will be downloaded
-    recursively, including all subdirectories.
+    await _Volume.rename(old_name, new_name, environment_name=env)
+
+
+@volume_cli.command(
+    "dashboard", help="Open the Volume's dashboard page in your web browser.", panel="Management", no_args_is_help=True
+)
+@click.argument("volume_name")
+@env_option
+@synchronizer.create_blocking
+async def dashboard(
+    volume_name: str,
+    env: str | None = None,
+):
+    """Open a Volume's dashboard page in your web browser.
 
     Examples:
 
     ```
-    modal volume get <volume_name> logs/april-12-1.txt
-    modal volume get <volume_name> / volume_data_dump
+    modal volume dashboard my-volume
     ```
-
-    Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
-    ensure_env(env)
-    destination = Path(local_destination)
-    volume = _Volume.from_name(volume_name, environment_name=env)
-    output = OutputManager.get()
-    with output.transfer_progress("download") as progress:
-        await _volume_download(
-            volume=volume,
-            remote_path=remote_path,
-            local_destination=destination,
-            overwrite=force,
-            progress_cb=progress.progress,
-        )
-    output.step_completed("Finished downloading files to local!")
-
-
-@volume_cli.command("list", help="List the details of all modal.Volume volumes in an Environment.", panel="Management")
-@env_option
-@click.option("--json", is_flag=True, default=False)
-@synchronizer.create_blocking
-async def list_(env: str | None = None, json: bool = False):
     env = ensure_env(env)
-    volumes = await _Volume.objects.list(environment_name=env)
-    rows = []
-    for obj in volumes:
-        info = await obj.info()
-        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
+    volume = await _Volume.from_name(volume_name, environment_name=env).hydrate()
 
-    display_table(["Name", "Created at", "Created by"], rows, json)
+    url = f"https://modal.com/id/{volume.object_id}"
+    open_url_and_display(url, "Volume dashboard")
+
+
+@volume_cli.command(
+    "delete", help="Delete a named Volume and all of its data.", panel="Management", no_args_is_help=True
+)
+@click.argument("name")
+@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Volume doesn't exist.")
+@yes_option
+@env_option
+@synchronizer.create_blocking
+async def delete(
+    name: str,
+    *,
+    allow_missing: bool = False,
+    yes: bool = False,
+    env: str | None = None,
+):
+    env = ensure_env(env)
+    if not yes:
+        click.confirm(
+            f"Are you sure you want to irrevocably delete the modal.Volume '{name}'?",
+            default=False,
+            abort=True,
+        )
+
+    await _Volume.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 @volume_cli.command(
@@ -157,6 +187,49 @@ async def ls(
         columns = ["Filename", "Type", "Created/Modified", "Size"]
         title = f"Directory listing of '{path}' in '{volume_name}'"
         display_table(columns, rows, json, title=title)
+
+
+@volume_cli.command("get", panel="File operations", no_args_is_help=True)
+@click.argument("volume_name")
+@click.argument("remote_path")
+@click.argument("local_destination", default=".")
+@click.option("--force", is_flag=True, default=False)
+@env_option
+@synchronizer.create_blocking
+async def get(
+    volume_name: str,
+    remote_path: str,
+    local_destination: str = ".",
+    force: bool = False,
+    env: str | None = None,
+):
+    """Download files from a modal.Volume object.
+
+    If a folder is passed for REMOTE_PATH, the contents of the folder will be downloaded
+    recursively, including all subdirectories.
+
+    Examples:
+
+    ```
+    modal volume get <volume_name> logs/april-12-1.txt
+    modal volume get <volume_name> / volume_data_dump
+    ```
+
+    Use "-" as LOCAL_DESTINATION to write file contents to standard output.
+    """
+    ensure_env(env)
+    destination = Path(local_destination)
+    volume = _Volume.from_name(volume_name, environment_name=env)
+    output = OutputManager.get()
+    with output.transfer_progress("download") as progress:
+        await _volume_download(
+            volume=volume,
+            remote_path=remote_path,
+            local_destination=destination,
+            overwrite=force,
+            progress_cb=progress.progress,
+        )
+    output.step_completed("Finished downloading files to local!")
 
 
 @volume_cli.command("put", panel="File operations", no_args_is_help=True)
@@ -221,26 +294,6 @@ async def put(
         output.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'")
 
 
-@volume_cli.command(
-    "rm", help="Delete a file or directory from a modal.Volume.", panel="File operations", no_args_is_help=True
-)
-@click.argument("volume_name")
-@click.argument("remote_path")
-@click.option("-r", "--recursive", is_flag=True, default=False, help="Delete directory recursively")
-@env_option
-@synchronizer.create_blocking
-async def rm(
-    volume_name: str,
-    remote_path: str,
-    recursive: bool = False,
-    env: str | None = None,
-):
-    ensure_env(env)
-    volume = _Volume.from_name(volume_name, environment_name=env)
-    await volume.remove_file(remote_path, recursive=recursive)
-    OutputManager.get().step_completed(f"{remote_path} was deleted successfully!")
-
-
 @volume_cli.command("cp", panel="File operations", no_args_is_help=True)
 @click.argument("volume_name")
 @click.argument("paths", nargs=-1, required=True)
@@ -264,73 +317,20 @@ async def cp(
 
 
 @volume_cli.command(
-    "delete", help="Delete a named Volume and all of its data.", panel="Management", no_args_is_help=True
-)
-@click.argument("name")
-@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Volume doesn't exist.")
-@yes_option
-@env_option
-@synchronizer.create_blocking
-async def delete(
-    name: str,
-    *,
-    allow_missing: bool = False,
-    yes: bool = False,
-    env: str | None = None,
-):
-    env = ensure_env(env)
-    if not yes:
-        click.confirm(
-            f"Are you sure you want to irrevocably delete the modal.Volume '{name}'?",
-            default=False,
-            abort=True,
-        )
-
-    await _Volume.objects.delete(name, environment_name=env, allow_missing=allow_missing)
-
-
-@volume_cli.command("rename", help="Rename a modal.Volume.", panel="Management", no_args_is_help=True)
-@click.argument("old_name")
-@click.argument("new_name")
-@yes_option
-@env_option
-@synchronizer.create_blocking
-async def rename(
-    old_name: str,
-    new_name: str,
-    yes: bool = False,
-    env: str | None = None,
-):
-    if not yes:
-        click.confirm(
-            f"Are you sure you want rename the modal.Volume '{old_name}'? This may break any Apps currently using it.",
-            default=False,
-            abort=True,
-        )
-
-    await _Volume.rename(old_name, new_name, environment_name=env)
-
-
-@volume_cli.command(
-    "dashboard", help="Open the Volume's dashboard page in your web browser.", panel="Management", no_args_is_help=True
+    "rm", help="Delete a file or directory from a modal.Volume.", panel="File operations", no_args_is_help=True
 )
 @click.argument("volume_name")
+@click.argument("remote_path")
+@click.option("-r", "--recursive", is_flag=True, default=False, help="Delete directory recursively")
 @env_option
 @synchronizer.create_blocking
-async def dashboard(
+async def rm(
     volume_name: str,
+    remote_path: str,
+    recursive: bool = False,
     env: str | None = None,
 ):
-    """Open a Volume's dashboard page in your web browser.
-
-    Examples:
-
-    ```
-    modal volume dashboard my-volume
-    ```
-    """
-    env = ensure_env(env)
-    volume = await _Volume.from_name(volume_name, environment_name=env).hydrate()
-
-    url = f"https://modal.com/id/{volume.object_id}"
-    open_url_and_display(url, "Volume dashboard")
+    ensure_env(env)
+    volume = _Volume.from_name(volume_name, environment_name=env)
+    await volume.remove_file(remote_path, recursive=recursive)
+    OutputManager.get().step_completed(f"{remote_path} was deleted successfully!")
