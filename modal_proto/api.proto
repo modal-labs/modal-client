@@ -1634,6 +1634,46 @@ message EndpointGetByNameResponse {
   string environment_name = 2;
 }
 
+message EndpointGetInfoRequest {
+  string endpoint_id = 1;
+}
+
+message EndpointGetInfoResponse {
+
+  enum EndpointStatus {
+    ENDPOINT_STATUS_UNSPECIFIED = 0;
+    ENDPOINT_STATUS_PROVISIONING = 1;
+    ENDPOINT_STATUS_LIVE = 2;
+    ENDPOINT_STATUS_FAILED = 3;
+    ENDPOINT_STATUS_CANCELLING = 4;
+    ENDPOINT_STATUS_CANCELLED = 5;
+    ENDPOINT_STATUS_STOPPED = 6;
+  }
+
+  message EndpointInfoSummary {
+    string name = 1;
+    string repo_id = 2;
+    string revision = 3;
+    string service_url = 4;
+    bool requires_proxy_auth = 5;
+    EndpointServingMode serving_mode = 6;
+    EndpointStatus status = 7;
+    EndpointLifecycle lifecycle = 8;
+    // set only when the model is served from a modal volume
+    string volume_id = 11;
+    string model_path = 12;
+  }
+
+  message EndpointHandleMetadata {
+    string app_id = 1;
+    string server_id = 2;
+    string environment_name = 3;
+  }
+
+  EndpointInfoSummary info = 1;
+  optional EndpointHandleMetadata metadata = 2;
+}
+
 message EndpointGetLifecycleRequest {
   string endpoint_id = 1;
 }
@@ -5177,6 +5217,7 @@ service ModalClient {
   // Endpoints
   rpc EndpointCreate(EndpointCreateRequest) returns (EndpointCreateResponse);
   rpc EndpointGetByName(EndpointGetByNameRequest) returns (EndpointGetByNameResponse);
+  rpc EndpointGetInfo(EndpointGetInfoRequest) returns (EndpointGetInfoResponse);
   rpc EndpointGetLifecycle(EndpointGetLifecycleRequest) returns (EndpointGetLifecycleResponse);
   rpc EndpointList(EndpointListRequest) returns (EndpointListResponse);
   rpc EndpointStop(EndpointStopRequest) returns (EndpointStopResponse);

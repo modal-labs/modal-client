@@ -92,6 +92,7 @@ const (
 	ModalClient_DomainList_FullMethodName                             = "/modal.client.ModalClient/DomainList"
 	ModalClient_EndpointCreate_FullMethodName                         = "/modal.client.ModalClient/EndpointCreate"
 	ModalClient_EndpointGetByName_FullMethodName                      = "/modal.client.ModalClient/EndpointGetByName"
+	ModalClient_EndpointGetInfo_FullMethodName                        = "/modal.client.ModalClient/EndpointGetInfo"
 	ModalClient_EndpointGetLifecycle_FullMethodName                   = "/modal.client.ModalClient/EndpointGetLifecycle"
 	ModalClient_EndpointList_FullMethodName                           = "/modal.client.ModalClient/EndpointList"
 	ModalClient_EndpointStop_FullMethodName                           = "/modal.client.ModalClient/EndpointStop"
@@ -363,6 +364,7 @@ type ModalClientClient interface {
 	// Endpoints
 	EndpointCreate(ctx context.Context, in *EndpointCreateRequest, opts ...grpc.CallOption) (*EndpointCreateResponse, error)
 	EndpointGetByName(ctx context.Context, in *EndpointGetByNameRequest, opts ...grpc.CallOption) (*EndpointGetByNameResponse, error)
+	EndpointGetInfo(ctx context.Context, in *EndpointGetInfoRequest, opts ...grpc.CallOption) (*EndpointGetInfoResponse, error)
 	EndpointGetLifecycle(ctx context.Context, in *EndpointGetLifecycleRequest, opts ...grpc.CallOption) (*EndpointGetLifecycleResponse, error)
 	EndpointList(ctx context.Context, in *EndpointListRequest, opts ...grpc.CallOption) (*EndpointListResponse, error)
 	EndpointStop(ctx context.Context, in *EndpointStopRequest, opts ...grpc.CallOption) (*EndpointStopResponse, error)
@@ -1272,6 +1274,16 @@ func (c *modalClientClient) EndpointGetByName(ctx context.Context, in *EndpointG
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EndpointGetByNameResponse)
 	err := c.cc.Invoke(ctx, ModalClient_EndpointGetByName_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) EndpointGetInfo(ctx context.Context, in *EndpointGetInfoRequest, opts ...grpc.CallOption) (*EndpointGetInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndpointGetInfoResponse)
+	err := c.cc.Invoke(ctx, ModalClient_EndpointGetInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3302,6 +3314,7 @@ type ModalClientServer interface {
 	// Endpoints
 	EndpointCreate(context.Context, *EndpointCreateRequest) (*EndpointCreateResponse, error)
 	EndpointGetByName(context.Context, *EndpointGetByNameRequest) (*EndpointGetByNameResponse, error)
+	EndpointGetInfo(context.Context, *EndpointGetInfoRequest) (*EndpointGetInfoResponse, error)
 	EndpointGetLifecycle(context.Context, *EndpointGetLifecycleRequest) (*EndpointGetLifecycleResponse, error)
 	EndpointList(context.Context, *EndpointListRequest) (*EndpointListResponse, error)
 	EndpointStop(context.Context, *EndpointStopRequest) (*EndpointStopResponse, error)
@@ -3718,6 +3731,9 @@ func (UnimplementedModalClientServer) EndpointCreate(context.Context, *EndpointC
 }
 func (UnimplementedModalClientServer) EndpointGetByName(context.Context, *EndpointGetByNameRequest) (*EndpointGetByNameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EndpointGetByName not implemented")
+}
+func (UnimplementedModalClientServer) EndpointGetInfo(context.Context, *EndpointGetInfoRequest) (*EndpointGetInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EndpointGetInfo not implemented")
 }
 func (UnimplementedModalClientServer) EndpointGetLifecycle(context.Context, *EndpointGetLifecycleRequest) (*EndpointGetLifecycleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EndpointGetLifecycle not implemented")
@@ -5457,6 +5473,24 @@ func _ModalClient_EndpointGetByName_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).EndpointGetByName(ctx, req.(*EndpointGetByNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_EndpointGetInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndpointGetInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).EndpointGetInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_EndpointGetInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).EndpointGetInfo(ctx, req.(*EndpointGetInfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -9025,6 +9059,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EndpointGetByName",
 			Handler:    _ModalClient_EndpointGetByName_Handler,
+		},
+		{
+			MethodName: "EndpointGetInfo",
+			Handler:    _ModalClient_EndpointGetInfo_Handler,
 		},
 		{
 			MethodName: "EndpointGetLifecycle",
