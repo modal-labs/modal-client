@@ -595,13 +595,17 @@ class FunctionInfo:
     """A simple data structure containing static info about a Function handle."""
 
     @dataclass(frozen=True)
-    class HttpInfo:
+    class _InnerServerInfo:
         """mdmd:hidden"""
 
+        server_url: str
         port: int
         unauthenticated: bool
         h2_enabled: bool
-        proxy_regions: list[str]
+        routing_region: str | None
+        sessioned: bool
+        startup_timeout: int
+        exit_grace_period: int
 
     @dataclass(frozen=True)
     class WebInfo:
@@ -644,30 +648,40 @@ class FunctionInfo:
     memory_mib: int | tuple[int, int] | None
     gpus: list[tuple[str, int]]
     ephemeral_disk_mib: int | None
+
+    image_info: ImageInfo
+
+    startup_timeout: int | None
     timeout: int
     max_retries: int | None
+
     nonpreemptible: bool
     regions: list[str] | None
     routing_region: str | None
     cloud: str | None
-    schedule: str | None
-    restrict_modal_access: bool
-    block_network: bool
-    single_use_containers: bool
-    volumes: dict[str, VolumeMountInfo]
-    cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
-    secrets: list[str]
-    web_info: WebInfo | None
-    method_names: list[str] | None
-    method_details: dict[str, WebInfo] | None
-    image_info: ImageInfo
+
     cluster_info: ClusterInfo | None
     batching_info: BatchingInfo | None
     concurrency_info: ConcurrencyInfo | None
 
-    # Private fields that are only stored here to pass to ServerInfo
-    _http_info: HttpInfo | None = field(repr=False)
-    _sessioned: bool = field(repr=False)
+    schedule: str | None
+
+    restrict_modal_access: bool
+    block_network: bool
+    single_use_containers: bool
+
+    volumes: dict[str, VolumeMountInfo]
+    cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
+    secrets: list[str]
+
+    web_info: WebInfo | None
+
+    method_names: list[str] | None
+    method_details: dict[str, WebInfo] | None
+
+    # If the calling Function is a Server's service function, this holds the private fields that we
+    # need to pass to ServerInfo
+    _inner_server_info: _InnerServerInfo | None = field(repr=False)
 
     @classmethod
     def _from_function_proto(cls, function_data: api_pb2.FunctionData) -> "FunctionInfo":
@@ -747,15 +761,6 @@ class FunctionInfo:
         for cbm in first_function.cloud_bucket_mounts:
             cloud_bucket_mounts[cbm.mount_path] = CloudBucketMountInfo._from_proto(cbm)
 
-        http_info: FunctionInfo.HttpInfo | None = None
-        if function_data.HasField("http_config"):
-            http_info = FunctionInfo.HttpInfo(
-                port=function_data.http_config.port,
-                unauthenticated=function_data.http_config.unauthenticated,
-                h2_enabled=function_data.http_config.h2_enabled,
-                proxy_regions=list(function_data.http_config.proxy_regions),
-            )
-
         webhook_info: FunctionInfo.WebInfo | None = None
         if function_data.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
             webhook_info = FunctionInfo.WebInfo._from_proto(function_data.web_url, function_data.webhook_config)
@@ -792,33 +797,59 @@ class FunctionInfo:
                 else None,
             )
 
+        inner_server_info: FunctionInfo._InnerServerInfo | None = None
+        if function_data.HasField("http_config"):
+            inner_server_info = FunctionInfo._InnerServerInfo(
+                port=function_data.http_config.port,
+                unauthenticated=function_data.http_config.unauthenticated,
+                h2_enabled=function_data.http_config.h2_enabled,
+                routing_region=function_data.http_config.proxy_regions[0]
+                if function_data.http_config.proxy_regions
+                else None,
+                server_url=function_data.flash_service_urls[0] if function_data.flash_service_urls else "",
+                sessioned=function_data.is_sessioned,
+                # different from the top level startup timeout (i.e. the one passed to app.function())
+                startup_timeout=function_data.http_config.startup_timeout,
+                exit_grace_period=function_data.http_config.exit_grace_period,
+            )
+
         return cls(
             cpu=cpu,
             memory_mib=memory_mib,
             gpus=gpus,
             ephemeral_disk_mib=ephemeral_disk_mib,
+            # ---
+            image_info=FunctionInfo.ImageInfo(None, first_function.image_id),
+            # ---
+            startup_timeout=function_data.http_config.startup_timeout,
             timeout=function_data.timeout_secs,
             max_retries=first_function.retry_policy.retries if first_function.HasField("retry_policy") else None,
+            # ---
             nonpreemptible=nonpreemptible,
             regions=regions,
             routing_region=function_data.routing_region,
             cloud=cloud,
-            schedule=schedule,
-            block_network=first_function.block_network,
-            restrict_modal_access=first_function.untrusted,
-            single_use_containers=first_function.single_use_containers,
-            volumes=volumes,
-            cloud_bucket_mounts=cloud_bucket_mounts,
-            secrets=list(first_function.secret_ids),
-            _http_info=http_info,
-            _sessioned=function_data.is_sessioned,
-            web_info=webhook_info,
-            method_names=method_names or None,
-            method_details=method_details if method_names else None,
-            image_info=FunctionInfo.ImageInfo(None, first_function.image_id),
+            # ---
             cluster_info=cluster_info,
             batching_info=batching_info,
             concurrency_info=concurrency_info,
+            # ---
+            schedule=schedule,
+            # ---
+            block_network=first_function.block_network,
+            restrict_modal_access=first_function.untrusted,
+            single_use_containers=first_function.single_use_containers,
+            # ---
+            volumes=volumes,
+            cloud_bucket_mounts=cloud_bucket_mounts,
+            secrets=list(first_function.secret_ids),
+            # ---
+            web_info=webhook_info,
+            # ---
+            method_names=method_names or None,
+            method_details=method_details if method_names else None,
+            # ---
+            _inner_server_info=inner_server_info,
         )
 
 
@@ -836,13 +867,6 @@ class ServerInfo:
     """A simple data structure containing static info about a Server handle."""
 
     @dataclass(frozen=True)
-    class HttpInfo:
-        port: int
-        unauthenticated: bool
-        h2_enabled: bool
-        proxy_regions: list[str]
-
-    @dataclass(frozen=True)
     class ImageInfo:
         image_name: str | None
         image_id: str | None  # None if the object has not yet been hydrated
@@ -853,58 +877,60 @@ class ServerInfo:
         rdma: bool
         fabric_size: int | None
 
-    @dataclass(frozen=True)
-    class BatchingInfo:
-        max_batch_size: int
-        wait_ms: int
+    server_url: str
+    port: int
+    unauthenticated: bool
+    h2_enabled: bool
+    routing_region: str | None
+    sessioned: bool
+    startup_timeout: int
+    exit_grace_period: int
+
+    image_info: ImageInfo
 
     cpu: float | tuple[float, float] | None
     memory_mib: int | tuple[int, int] | None
     gpus: list[tuple[str, int]]
     ephemeral_disk_mib: int | None
-    timeout: int
-    max_retries: int | None
+
     nonpreemptible: bool
-    sessioned: bool
     compute_regions: list[str] | None
     cloud: str | None
+
+    cluster_info: ClusterInfo | None
+
     volumes: dict[str, VolumeMountInfo]
     cloud_bucket_mounts: dict[str, CloudBucketMountInfo]
     secrets: list[str]
 
-    http_info: HttpInfo
-    image_info: ImageInfo
-    cluster_info: ClusterInfo | None
-    batching_info: BatchingInfo | None
-
     @classmethod
     def _from_function_info(cls, info: FunctionInfo) -> "ServerInfo":
-        assert info._http_info is not None
+        assert info._inner_server_info is not None
 
         return cls(
-            cpu=info.cpu,
-            memory_mib=info.memory_mib,
-            gpus=list(info.gpus),
-            ephemeral_disk_mib=info.ephemeral_disk_mib,
-            timeout=info.timeout,
-            max_retries=info.max_retries,
-            nonpreemptible=info.nonpreemptible,
-            sessioned=info._sessioned,
-            compute_regions=list(info.regions) if info.regions is not None else None,
-            cloud=info.cloud,
-            volumes=dict(info.volumes),
-            cloud_bucket_mounts=dict(info.cloud_bucket_mounts),
-            secrets=[s for s in info.secrets],
-            http_info=ServerInfo.HttpInfo(
-                port=info._http_info.port,
-                unauthenticated=info._http_info.unauthenticated,
-                h2_enabled=info._http_info.h2_enabled,
-                proxy_regions=list(info._http_info.proxy_regions),
-            ),
+            server_url=info._inner_server_info.server_url,
+            port=info._inner_server_info.port,
+            unauthenticated=info._inner_server_info.unauthenticated,
+            h2_enabled=info._inner_server_info.h2_enabled,
+            routing_region=info._inner_server_info.routing_region,
+            sessioned=info._inner_server_info.sessioned,
+            startup_timeout=info._inner_server_info.startup_timeout,
+            exit_grace_period=info._inner_server_info.exit_grace_period,
+            # ---
             image_info=ServerInfo.ImageInfo(
                 image_name=info.image_info.image_name,
                 image_id=info.image_info.image_id,
             ),
+            # ---
+            cpu=info.cpu,
+            memory_mib=info.memory_mib,
+            gpus=list(info.gpus),
+            ephemeral_disk_mib=info.ephemeral_disk_mib,
+            # ---
+            nonpreemptible=info.nonpreemptible,
+            compute_regions=list(info.regions) if info.regions is not None else None,
+            cloud=info.cloud,
+            # ---
             cluster_info=ServerInfo.ClusterInfo(
                 size=info.cluster_info.size,
                 rdma=info.cluster_info.rdma,
@@ -912,12 +938,10 @@ class ServerInfo:
             )
             if info.cluster_info
             else None,
-            batching_info=ServerInfo.BatchingInfo(
-                max_batch_size=info.batching_info.max_batch_size,
-                wait_ms=info.batching_info.wait_ms,
-            )
-            if info.batching_info
-            else None,
+            # ---
+            volumes=dict(info.volumes),
+            cloud_bucket_mounts=dict(info.cloud_bucket_mounts),
+            secrets=[s for s in info.secrets],
         )
 
 

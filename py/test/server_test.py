@@ -1476,12 +1476,10 @@ class InfoServer:
 def test_server_info_local():
     info: modal.types.ServerInfo = InfoServer.info()  # type: ignore[attr-defined]
     assert not info.sessioned
-    assert info.http_info.proxy_regions == ["us-east"]
-    assert info.http_info.port == 8000
-    assert info.http_info.unauthenticated == False
-    assert info.http_info.h2_enabled == False
-    assert info.timeout == 300
-    assert info.max_retries is None
+    assert info.routing_region == "us-east"
+    assert info.port == 8000
+    assert info.unauthenticated == False
+    assert info.h2_enabled == False
 
     assert not InfoServer._get_service_function()._is_hydrated  # type: ignore[attr-defined]
 
@@ -1552,10 +1550,10 @@ def test_server_info_remote(client, servicer):
             )
         }
 
-        assert info.http_info.h2_enabled
-        assert info.http_info.unauthenticated
-        assert info.http_info.proxy_regions == ["us-west-2"]
-        assert info.http_info.port == 1
+        assert info.h2_enabled
+        assert info.unauthenticated
+        assert info.routing_region == "us-west-2"
+        assert info.port == 1
 
 
 def test_server_info_refresh(client):
@@ -1572,14 +1570,14 @@ def test_server_info_refresh(client):
     handle = InfoServer
 
     info: ServerInfo = handle.info()  # type: ignore[attr-defined]
-    assert info.http_info.proxy_regions == ["us-east"]
+    assert info.routing_region == "us-east"
 
     _ = app.server(routing_region="us-west", serialized=True)(InfoServer._get_user_cls())  # type: ignore[attr-defined]
 
     deploy_app(app, "test_function_info_redeploy", client=client)
 
     new_info = handle.info(refresh=True)  # type: ignore[attr-defined]
-    assert new_info.http_info.proxy_regions == ["us-west"]
+    assert new_info.routing_region == "us-west"
 
 
 def test_image_info(client):

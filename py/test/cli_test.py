@@ -5337,7 +5337,7 @@ def test_server_info_cli(set_env_client, mock_dir, servicer):
         human_output = run_cli_command(["server", "info", "test-server-info/Server"])
         deformatted = re.sub(r"\s+", " ", human_output.stdout)
 
-        assert "Function ID: fu-1" in deformatted
+        assert "Object ID: fu-1" in deformatted
         assert "App ID: ap-1" in deformatted
         assert "Resources:" in deformatted
         assert "CPU: 2.0 - 16.0 core(s)" in deformatted
@@ -5409,7 +5409,7 @@ def test_function_info_cli(set_env_client, mock_dir, servicer):
         human_output = run_cli_command(["function", "info", "test-function-info/do_stuff"])
         deformatted = re.sub(r"\s+", " ", human_output.stdout)
 
-        assert "Function ID: fu-1" in deformatted
+        assert "Object ID: fu-1" in deformatted
         assert "App ID: ap-1" in deformatted
         assert "Resources:" in deformatted
         assert "CPU: 2.0 - 16.0 core(s)" in deformatted

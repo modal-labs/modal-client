@@ -930,10 +930,10 @@ async def info(
     output_manager = OutputManager.get()
 
     if json:
-        info_dict = dataclasses.asdict(info)
+        info_dict = {"name": function_proto.function_name, "object_id": f.object_id, "app_id": handle_metadata.app_id}
+        info_dict = info_dict | dataclasses.asdict(info)
         info_dict = info_dict | dataclasses.asdict(autoscaler_settings)
-        info_dict.pop("_http_info")
-        info_dict.pop("_sessioned")
+        info_dict.pop("_inner_server_info")
 
         output_manager.print_json(json_lib.dumps(info_dict))
         return
@@ -949,7 +949,7 @@ async def info(
     else:
         rows.append(("Function Name:", function_proto.function_name))
 
-    rows.append(("Function ID:", f.object_id))
+    rows.append(("Object ID:", f.object_id))
     rows.append(("App ID:", handle_metadata.app_id))
     rows.append(("Image ID:", str(info.image_info.image_id)))
 
@@ -1020,6 +1020,9 @@ async def info(
     )
 
     rows.append("Execution:")
+    if info.startup_timeout:
+        rows.append(("  Startup Timeout:", f"{info.startup_timeout} seconds"))
+
     rows.append(("  Timeout:", f"{info.timeout} seconds"))
     rows.append(("  Max Retries:", not_configured if info.max_retries is None else str(info.max_retries)))
 
@@ -1044,8 +1047,9 @@ async def info(
     rows.append("Scheduling:")
     rows.append(("  Compute Region(s):", not_configured if not info.regions else " | ".join(info.regions)))
     rows.append(("  Nonpreemptible Capacity:", not_configured if not info.nonpreemptible else enabled))
-    rows.append(("  Cloud Provider:", not_configured if info.cloud is None else (info.cloud)))
-    rows.append(("  Routing Region:", not_configured if not info.routing_region else (info.routing_region)))
+    if info.cloud:
+        rows.append(("  Cloud Provider:", info.cloud))
+    rows.append(("  Routing Region:", not_configured if not info.routing_region else info.routing_region))
 
     if info.cluster_info:
         rows.append("Clustering:")

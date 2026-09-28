@@ -1262,15 +1262,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             },
             # We don't have any secret IDs yet as we are dehydrated, so we return the reprs instead
             secrets=[repr(s) for s in secrets],
-            _http_info=FunctionInfo.HttpInfo(
+            startup_timeout=startup_timeout,
+            _inner_server_info=FunctionInfo._InnerServerInfo(
+                server_url="",
                 port=http_config.port,
                 unauthenticated=http_config.unauthenticated,
                 h2_enabled=http_config.h2_enabled,
-                proxy_regions=list(http_config.proxy_regions),
+                routing_region=http_config.proxy_regions[0] if http_config.proxy_regions else None,
+                sessioned=is_sessioned,
+                startup_timeout=http_config.startup_timeout,
+                exit_grace_period=http_config.exit_grace_period,
             )
             if http_config
             else None,
-            _sessioned=is_sessioned,
             web_info=FunctionInfo.WebInfo._from_proto("", webhook_config) if webhook_config else None,
             method_names=list(method_definitions.keys()) if method_definitions is not None else None,
             method_details={

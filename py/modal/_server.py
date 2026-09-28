@@ -250,8 +250,11 @@ class _Server:
         # This is required since we want to support @livemethod() decorated methods
         service_function = self._get_service_function()
         await service_function.hydrate(client)
-        if service_function._function_info is not None:
-            self._is_sessioned = service_function._function_info._sessioned
+        if (
+            service_function._function_info is not None
+            and service_function._function_info._inner_server_info is not None
+        ):
+            self._is_sessioned = service_function._function_info._inner_server_info.sessioned
         return self
 
     @classmethod

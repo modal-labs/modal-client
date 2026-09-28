@@ -685,7 +685,7 @@ async def info(
     environment_name = _get_environment_name(ensure_env(env))
     tty = sys.stdout.isatty()
 
-    server_id, handle_metadata, _ = await _resolve_function_id(
+    server_id, handle_metadata, function_proto = await _resolve_function_id(
         client,
         server_identifier,
         environment_name,
@@ -701,13 +701,16 @@ async def info(
     )
     autoscaler_settings = ServerAutoscalerSettings._from_proto(autoscaler_response.autoscaler_configuration.settings)
 
-    web_url = await server.get_url()
     output_manager = OutputManager.get()
 
     if json:
-        info_dict = dataclasses.asdict(info)
+        info_dict = {
+            "name": function_proto.function_name,
+            "object_id": server.object_id,
+            "app_id": handle_metadata.app_id,
+        }
+        info_dict = info_dict | dataclasses.asdict(info)
         info_dict = info_dict | dataclasses.asdict(autoscaler_settings)
-        info_dict["web_url"] = web_url
 
         output_manager.print_json(json_lib.dumps(info_dict))
         return
@@ -719,24 +722,20 @@ async def info(
     rows: list[str | Text | tuple[str | Text, str | Text]] = []
 
     rows.append(("Server Name:", handle_metadata.function_name))
-    rows.append(("Function ID:", server_id))
+    rows.append(("Object ID:", server_id))
     rows.append(("App ID:", handle_metadata.app_id))
     rows.append(("Image ID:", str(info.image_info.image_id)))
 
     # --- HTTP ---
     rows.append("HTTP Info:")
-    if web_url:
-        rows.append(("  URL:", web_url))
-    rows.append(("  Port:", not_configured if not info.http_info.port else str(info.http_info.port)))
-    rows.append(("  Authentication:", disabled if info.http_info.unauthenticated else enabled))
-    rows.append(("  HTTP/2:", disabled if not info.http_info.h2_enabled else enabled))
-    rows.append(
-        (
-            "  Proxy Region(s):",
-            not_configured if len(info.http_info.proxy_regions) == 0 else " | ".join(info.http_info.proxy_regions),
-        )
-    )
+    rows.append(("  URL:", info.server_url))
+    rows.append(("  Port:", not_configured if not info.port else str(info.port)))
+    rows.append(("  Authentication:", disabled if info.unauthenticated else enabled))
+    rows.append(("  HTTP/2:", disabled if not info.h2_enabled else enabled))
+    rows.append(("  Routing Region:", not_configured if not info.routing_region else info.routing_region))
     rows.append(("  Sessioned:", not_configured if not info.sessioned else enabled))
+    rows.append(("  Startup Timeout:", f"{info.startup_timeout} seconds"))
+    rows.append(("  Exit Grace Period:", f"{info.exit_grace_period} seconds"))
 
     # --- Resources ---
     rows.append("Resources:")
@@ -821,22 +820,14 @@ async def info(
         )
     )
 
-    rows.append("Execution:")
-    rows.append(("  Timeout:", f"{info.timeout} seconds"))
-    rows.append(("  Max Retries:", not_configured if info.max_retries is None else str(info.max_retries)))
-
-    if info.batching_info:
-        rows.append("Batching:")
-        rows.append(("  Max Batch Size:", str(info.batching_info.max_batch_size)))
-        rows.append(("  Wait Time:", f"{info.batching_info.wait_ms} milliseconds"))
-
     # --- Scheduling ---
     rows.append("Scheduling:")
     rows.append(
         ("  Compute Region(s):", not_configured if not info.compute_regions else " | ".join(info.compute_regions))
     )
     rows.append(("  Nonpreemptible Capacity:", not_configured if not info.nonpreemptible else enabled))
-    rows.append(("  Cloud Provider:", not_configured if info.cloud is None else (info.cloud)))
+    if info.cloud:
+        rows.append(("  Cloud Provider:", info.cloud))
 
     if info.cluster_info:
         rows.append("Clustering:")
