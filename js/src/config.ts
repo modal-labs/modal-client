@@ -204,7 +204,11 @@ export function getProfile(profileName?: string): Profile {
   return profile as Profile; // safe to null-cast because of check above
 }
 
-function parseBooleanFlag(value: string | boolean | undefined): boolean {
+/**
+ * @internal
+ * @hidden
+ */
+export function parseBooleanFlag(value: string | boolean | undefined): boolean {
   if (!value) return false;
   return !["0", "false"].includes(String(value).toLowerCase());
 }

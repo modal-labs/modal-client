@@ -388,7 +388,7 @@ _SETTINGS = {
     "function_runtime": _Setting(internal=True),
     "function_runtime_debug": _Setting(False, transform=_to_boolean, internal=True),
     "runtime_perf_record": _Setting(False, transform=_to_boolean, internal=True),
-    "use_control_plane_sidecar_create": _Setting(False, transform=_to_boolean, internal=True),
+    "use_control_plane_sidecar_create": _Setting(True, transform=_to_boolean, internal=True),
     "worker_id": _Setting(internal=True),
     "task_id": _Setting(internal=True),  # Read only -- unneeded?
     "image_id": _Setting(internal=True),  # Read only -- unneeded?

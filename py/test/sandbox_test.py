@@ -3417,20 +3417,28 @@ class SidecarCreatePath(enum.Enum):
     CONTROL_PLANE = "control_plane"
 
 
-def _opt_in_to_control_plane_sidecar_create(monkeypatch) -> None:
-    monkeypatch.setenv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1")
+def _opt_out_of_control_plane_sidecar_create(monkeypatch) -> None:
+    monkeypatch.setenv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "0")
+
+
+def _use_default_sidecar_create_path(monkeypatch) -> None:
+    """Clear an opt-out inherited from the developer's environment."""
+    monkeypatch.delenv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", raising=False)
 
 
 @pytest.fixture(params=list(SidecarCreatePath), ids=lambda path: path.value)
 def sidecar_create_path(request, monkeypatch) -> SidecarCreatePath:
     """Run a sidecar create test over both create paths.
 
-    Sending the create to the Modal server is opt-in and only applies to V2
-    Sandboxes, so selecting that path also switches the Sandbox under test to V2.
+    Only V2 Sandboxes send the create to the Modal server, so selecting that path
+    also switches the Sandbox under test to V2. The Sandbox connection path runs on
+    a V1 Sandbox, which always creates sidecars that way.
     """
     if request.param is SidecarCreatePath.CONTROL_PLANE:
         monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
-        _opt_in_to_control_plane_sidecar_create(monkeypatch)
+        _use_default_sidecar_create_path(monkeypatch)
+    else:
+        monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     return request.param
 
 
@@ -3625,26 +3633,46 @@ def test_sandbox_container_create_empty_cidr_allowlist_blocks_egress(app, servic
 @skip_non_subprocess
 def test_sandbox_container_create_targets_the_sandbox(app, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
-    _opt_in_to_control_plane_sidecar_create(monkeypatch)
+    _use_default_sidecar_create_path(monkeypatch)
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V2
 
-    with servicer.intercept() as ctx:
+    with _intercept_sidecar_create(servicer) as ctx:
         sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
 
-    (req,) = ctx.get_requests("SandboxContainerCreateV2")
+    (req,) = ctx.control_plane.get_requests("SandboxContainerCreateV2")
     assert req.sandbox_id == sb.object_id
+    assert ctx.command_router.get_requests("TaskContainerCreate") == []
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_v1_sandbox_ignores_opt_in(app, servicer, monkeypatch):
-    # The opt-in only applies to V2 Sandboxes; a V1 Sandbox always creates sidecars
-    # over the Sandbox connection.
+def test_sandbox_container_create_opt_out_uses_sandbox_connection(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    _opt_out_of_control_plane_sidecar_create(monkeypatch)
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V2
+
+    with _intercept_sidecar_create(servicer) as ctx:
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+    assert ctx.control_plane.get_requests("SandboxContainerCreateV2") == []
+    (req,) = ctx.command_router.get_requests("TaskContainerCreate")
+    assert req.container_name == "worker"
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_v1_sandbox_uses_sandbox_connection(app, servicer, monkeypatch):
+    # Only V2 Sandboxes create sidecars through the Modal server; a V1 Sandbox
+    # always creates them over the Sandbox connection.
     monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
-    _opt_in_to_control_plane_sidecar_create(monkeypatch)
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []

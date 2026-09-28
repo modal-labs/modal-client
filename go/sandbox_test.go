@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -2294,8 +2295,20 @@ func newSidecarCreateSandboxWithID(mock *mockSandboxContainerCreateV2Client, san
 	}, sandboxID)
 }
 
+// useDefaultSidecarCreatePath clears an opt-out inherited from the developer's
+// environment so the test exercises the default create path. t.Setenv restores
+// the original value on cleanup, but an empty value still counts as an opt-out,
+// so the variable is removed outright.
+func useDefaultSidecarCreatePath(t *testing.T) {
+	t.Helper()
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "")
+	if err := os.Unsetenv(controlPlaneSidecarCreateEnvVar); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSidecarCreateBuildsControlPlaneRequest(t *testing.T) {
-	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	useDefaultSidecarCreatePath(t)
 	g := gomega.NewWithT(t)
 
 	mock := &mockSandboxContainerCreateV2Client{
@@ -2344,7 +2357,7 @@ func TestSidecarCreateBuildsControlPlaneRequest(t *testing.T) {
 }
 
 func TestSidecarCreateOmitsEmptyOptionalFields(t *testing.T) {
-	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	useDefaultSidecarCreatePath(t)
 	g := gomega.NewWithT(t)
 
 	mock := &mockSandboxContainerCreateV2Client{
@@ -2375,7 +2388,7 @@ func volumeMountsByPath(mounts []*pb.VolumeMount) map[string]*pb.VolumeMount {
 }
 
 func TestSidecarCreateForwardsVolumeMountsToControlPlane(t *testing.T) {
-	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	useDefaultSidecarCreatePath(t)
 	g := gomega.NewWithT(t)
 
 	mock := &mockSandboxContainerCreateV2Client{
@@ -2434,6 +2447,7 @@ func (m *mockContainerCreateStub) TaskContainerCreate(
 }
 
 func TestSidecarCreateForwardsVolumeMountsOverCommandRouter(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "0")
 	g := gomega.NewWithT(t)
 
 	stub := &mockContainerCreateStub{}
@@ -2488,7 +2502,7 @@ func TestSidecarCreateRejectsInvalidVolumes(t *testing.T) {
 		useControlPlane string
 	}{
 		{"control plane", "1"},
-		{"command router", ""},
+		{"command router", "0"},
 	}
 	for _, tc := range cases {
 		for _, createPath := range createPaths {
@@ -2513,7 +2527,7 @@ func TestSidecarCreateRejectsInvalidVolumes(t *testing.T) {
 }
 
 func TestSidecarCreateMapsGRPCErrors(t *testing.T) {
-	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	useDefaultSidecarCreatePath(t)
 
 	cases := []struct {
 		name    string
@@ -2545,35 +2559,56 @@ func TestSidecarCreateMapsGRPCErrors(t *testing.T) {
 	}
 }
 
-func TestSidecarCreateSkipsControlPlaneByDefault(t *testing.T) {
+func TestSidecarCreateUsesControlPlaneByDefault(t *testing.T) {
+	useDefaultSidecarCreatePath(t)
 	g := gomega.NewWithT(t)
 
-	mock := &mockSandboxContainerCreateV2Client{}
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
 	sb := newSidecarCreateSandbox(mock)
 
-	// Without the opt-in the call goes over the Sandbox connection, which fails on
-	// the stubbed task ID lookup; what matters is that nothing reached the Modal server.
-	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
-	g.Expect(err).To(gomega.MatchError(errNoTaskIDInTest), "it should have gone over the Sandbox connection")
-	g.Expect(mock.gotReq).To(gomega.BeNil(), "and it should not have called the Modal server")
+	// The Sandbox connection is not stubbed here, so the create can only succeed
+	// by reaching the Modal server.
+	container, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(container.ContainerID).To(gomega.Equal("sb-test-ctr-SIDECAR123"))
+	g.Expect(mock.gotReq).ShouldNot(gomega.BeNil(), "it should have called the Modal server")
+}
+
+func TestSidecarCreateSkipsControlPlaneWhenOptedOut(t *testing.T) {
+	for _, optOut := range []string{"0", "false"} {
+		t.Run(optOut, func(t *testing.T) {
+			t.Setenv(controlPlaneSidecarCreateEnvVar, optOut)
+			g := gomega.NewWithT(t)
+
+			mock := &mockSandboxContainerCreateV2Client{}
+			sb := newSidecarCreateSandbox(mock)
+
+			// Opted out, the call goes over the Sandbox connection, which fails on the
+			// stubbed task ID lookup; what matters is that nothing reached the Modal server.
+			_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+			g.Expect(err).To(gomega.MatchError(errNoTaskIDInTest), "it should have gone over the Sandbox connection")
+			g.Expect(mock.gotReq).To(gomega.BeNil(), "and it should not have called the Modal server")
+		})
+	}
 }
 
 func TestSidecarCreateSkipsControlPlaneForV1Sandbox(t *testing.T) {
-	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
 	g := gomega.NewWithT(t)
 
 	mock := &mockSandboxContainerCreateV2Client{}
 	sb := newSidecarCreateSandboxWithID(mock, testV1SandboxID)
 
-	// The opt-in only applies to V2 Sandboxes; a V1 Sandbox always creates sidecars
-	// over the Sandbox connection.
+	// Only V2 Sandboxes create sidecars through the Modal server; a V1 Sandbox
+	// always creates them over the Sandbox connection.
 	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
 	g.Expect(err).To(gomega.MatchError(errNoTaskIDInTest), "it should have gone over the Sandbox connection")
 	g.Expect(mock.gotReq).To(gomega.BeNil(), "and it should not have called the Modal server")
 }
 
 func TestSidecarCreateRejectsDetachedSandbox(t *testing.T) {
-	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	useDefaultSidecarCreatePath(t)
 	g := gomega.NewWithT(t)
 
 	mock := &mockSandboxContainerCreateV2Client{}

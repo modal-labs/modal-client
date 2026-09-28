@@ -3083,8 +3083,9 @@ _MAIN_CONTAINER_NAME: str = "main"
 def _use_control_plane_sidecar_create(is_v2: bool) -> bool:
     """Whether a sidecar create request goes to the Modal server rather than over the Sandbox connection.
 
-    Opt-in via the `use_control_plane_sidecar_create` config setting. Only V2
-    Sandboxes can; V1 Sandboxes always create sidecars over the Sandbox connection.
+    V2 Sandboxes do unless opted out via the `use_control_plane_sidecar_create` config
+    setting (`MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE=0`). V1 Sandboxes always create
+    sidecars over the Sandbox connection.
     """
     return is_v2 and config.get("use_control_plane_sidecar_create")
 

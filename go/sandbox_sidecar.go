@@ -149,15 +149,23 @@ func buildSidecarVolumeMounts(volumes map[string]*Volume) ([]*pb.VolumeMount, er
 	return volumeMounts, nil
 }
 
-// controlPlaneSidecarCreateEnvVar opts a client in to sending sidecar create
-// requests to the Modal server rather than over the Sandbox connection.
+// controlPlaneSidecarCreateEnvVar opts a client out of sending sidecar create
+// requests to the Modal server: set it to "0" or "false" to create sidecars
+// over the Sandbox connection instead.
 const controlPlaneSidecarCreateEnvVar = "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE"
 
 // controlPlaneSidecarCreateEnabled reports whether Create sends its request to
-// the Modal server. Only V2 Sandboxes can; V1 Sandboxes always create sidecars
-// over the Sandbox connection.
+// the Modal server, which V2 Sandboxes do unless opted out. V1 Sandboxes always
+// create sidecars over the Sandbox connection.
 func controlPlaneSidecarCreateEnabled(isV2 bool) bool {
-	return isV2 && os.Getenv(controlPlaneSidecarCreateEnvVar) == "1"
+	if !isV2 {
+		return false
+	}
+	value, isSet := os.LookupEnv(controlPlaneSidecarCreateEnvVar)
+	if !isSet {
+		return true
+	}
+	return parseBooleanFlag(value)
 }
 
 // sidecarCreateInputs is the definition shared by both create paths.

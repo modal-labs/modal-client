@@ -229,11 +229,17 @@ test("SidecarFilesystem", async () => {
   );
 });
 
-test("sidecar create sends SandboxContainerCreateV2 to the control plane", async () => {
-  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+// Clears an opt-out inherited from the developer's environment so the test
+// exercises the default create path.
+function useDefaultSidecarCreatePath() {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", undefined);
   onTestFinished(() => {
     vi.unstubAllEnvs();
   });
+}
+
+test("sidecar create sends SandboxContainerCreateV2 to the control plane", async () => {
+  useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
 
@@ -309,10 +315,7 @@ test("sidecar create sends SandboxContainerCreateV2 to the control plane", async
 });
 
 test("sidecar create omits ephemeral secrets when no env vars are set", async () => {
-  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
-  onTestFinished(() => {
-    vi.unstubAllEnvs();
-  });
+  useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
 
@@ -335,6 +338,10 @@ test("sidecar create omits ephemeral secrets when no env vars are set", async ()
 });
 
 test("sidecar create sends volume mounts over the command router", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
 
@@ -407,7 +414,7 @@ test("sidecar create rejects invalid volume entries", async () => {
     ],
   ];
   for (const [volumes, expectedMessage] of cases) {
-    for (const useControlPlane of ["1", ""]) {
+    for (const useControlPlane of ["1", "0"]) {
       vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", useControlPlane);
       const create = sb.experimentalSidecars.create(
         "worker",
@@ -423,11 +430,36 @@ test("sidecar create rejects invalid volume entries", async () => {
   mock.assertExhausted();
 });
 
+test("sidecar create uses the control plane by default", async () => {
+  useDefaultSidecarCreatePath();
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  mock.handleUnary("/SandboxContainerCreateV2", () =>
+    SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+    }),
+  );
+
+  // The Sandbox connection is not mocked here, so the create can only succeed
+  // by reaching the Modal server.
+  const container = await sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+  );
+  expect(container.containerId).toBe("sb-test-ctr-SIDECAR123");
+  mock.assertExhausted();
+});
+
 // The three tests below register a Modal server create handler they expect
 // never to fire, so they deliberately skip mock.assertExhausted(). If a guard
 // ever inverts, the create succeeds and usedControlPlane flips, failing the test.
 
-test("sidecar create uses the command router by default", async () => {
+test("sidecar create uses the command router when opted out", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
 
@@ -439,19 +471,15 @@ test("sidecar create uses the command router by default", async () => {
     });
   });
 
-  // Without the opt-in this goes over the Sandbox connection, which is not
-  // mocked here; what matters is that nothing reached the Modal server.
+  // Opted out, this goes over the Sandbox connection, which is not mocked
+  // here; what matters is that nothing reached the Modal server.
   await expect(
     sb.experimentalSidecars.create("worker", new Image(mc, "im-built", "")),
   ).rejects.toThrow();
   expect(usedControlPlane).toBe(false);
 });
 
-test("sidecar create ignores the opt-in for a V1 sandbox", async () => {
-  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
-  onTestFinished(() => {
-    vi.unstubAllEnvs();
-  });
+test("sidecar create always uses the command router for a V1 sandbox", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
 
@@ -463,8 +491,8 @@ test("sidecar create ignores the opt-in for a V1 sandbox", async () => {
     });
   });
 
-  // The opt-in only applies to V2 Sandboxes; a V1 Sandbox always creates
-  // sidecars over the Sandbox connection.
+  // Only V2 Sandboxes create sidecars through the Modal server; a V1 Sandbox
+  // always creates them over the Sandbox connection.
   await expect(
     sb.experimentalSidecars.create("worker", new Image(mc, "im-built", "")),
   ).rejects.toThrow();
@@ -472,10 +500,6 @@ test("sidecar create ignores the opt-in for a V1 sandbox", async () => {
 });
 
 test("sidecar create rejects a detached sandbox", async () => {
-  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
-  onTestFinished(() => {
-    vi.unstubAllEnvs();
-  });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
 
@@ -499,10 +523,7 @@ test("sidecar create rejects a detached sandbox", async () => {
 });
 
 test("sidecar create maps control plane errors", async () => {
-  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
-  onTestFinished(() => {
-    vi.unstubAllEnvs();
-  });
+  useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
 

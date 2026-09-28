@@ -46,6 +46,7 @@ import {
 } from "./errors";
 import { Image } from "./image";
 import type { ModalClient } from "./client";
+import { parseBooleanFlag } from "./config";
 import {
   collectSecretIds,
   hydrateSecrets,
@@ -65,21 +66,24 @@ const MAIN_CONTAINER_NAME = "main";
 const CONTAINER_WAIT_POLL_TIMEOUT_SECONDS = 10;
 
 /**
- * Opts a client in to sending sidecar create requests to the Modal server
- * rather than over the Sandbox connection.
+ * Opts a client out of sending sidecar create requests to the Modal server:
+ * set it to "0" or "false" to create sidecars over the Sandbox connection
+ * instead.
  */
 const CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR =
   "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE";
 
 /**
- * Whether create sends its request to the Modal server. Only V2 Sandboxes
- * can; V1 Sandboxes always create sidecars over the Sandbox connection.
+ * Whether create sends its request to the Modal server, which V2 Sandboxes do
+ * unless opted out. V1 Sandboxes always create sidecars over the Sandbox
+ * connection.
  */
 function useControlPlaneSidecarCreate(sandboxId: string): boolean {
-  return (
-    getSandboxVersion(sandboxId) === SandboxVersion.V2 &&
-    process.env[CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR] === "1"
-  );
+  if (getSandboxVersion(sandboxId) !== SandboxVersion.V2) {
+    return false;
+  }
+  const value = process.env[CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR];
+  return value === undefined || parseBooleanFlag(value);
 }
 
 type SandboxSidecarCommandRouter = Pick<

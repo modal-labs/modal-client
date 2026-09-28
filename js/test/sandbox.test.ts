@@ -3247,7 +3247,7 @@ test("updateNetworkPolicy sends correct request via mocked command router", asyn
 });
 
 test("sidecar snapshotFilesystem targets its container", async () => {
-  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", undefined);
   onTestFinished(() => {
     vi.unstubAllEnvs();
   });
