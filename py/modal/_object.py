@@ -4,10 +4,10 @@ import typing
 import uuid
 from collections.abc import Awaitable, Callable, Hashable, Sequence
 from functools import wraps
-from typing import ClassVar
+from typing import Any, AsyncContextManager, AsyncGenerator, AsyncIterator, ClassVar, ParamSpec, TypeVar
 
 from google.protobuf.message import Message
-from typing_extensions import Self
+from typing_extensions import Concatenate, Self
 
 from ._load_context import LoadContext
 from ._resolver import Resolver
@@ -38,18 +38,24 @@ def _get_environment_name(
         return config.get("environment") or ""
 
 
-def live_method(method):
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+def live_method(method: Callable[Concatenate[Any, P], Awaitable[T]]) -> Callable[Concatenate[Any, P], Awaitable[T]]:
     @wraps(method)
-    async def wrapped(self, *args, **kwargs):
+    async def wrapped(self, *args: P.args, **kwargs: P.kwargs) -> T:
         await self.hydrate()
         return await method(self, *args, **kwargs)
 
     return wrapped
 
 
-def live_method_gen(method):
+def live_method_gen(
+    method: Callable[Concatenate[Any, P], AsyncGenerator[T, None]],
+) -> Callable[Concatenate[Any, P], AsyncIterator[T]]:
     @wraps(method)
-    async def wrapped(self, *args, **kwargs):
+    async def wrapped(self, *args: P.args, **kwargs: P.kwargs) -> AsyncIterator[T]:
         await self.hydrate()
         async with aclosing(method(self, *args, **kwargs)) as stream:
             async for item in stream:
@@ -58,14 +64,16 @@ def live_method_gen(method):
     return wrapped
 
 
-def live_method_contextmanager(method):
+def live_method_contextmanager(
+    method: Callable[Concatenate[Any, P], AsyncContextManager[T]],
+) -> Callable[Concatenate[Any, P], AsyncContextManager[T]]:
     # make sure a wrapped function returning an async context manager
     # will not require both an `await func.aio()` and `async with`
     # which would have been the case if it was wrapped in live_method
 
     @wraps(method)
     @contextlib.asynccontextmanager
-    async def wrapped(self, *args, **kwargs):
+    async def wrapped(self, *args: P.args, **kwargs: P.kwargs):
         await self.hydrate()
         async with method(self, *args, **kwargs) as ctx:
             yield ctx
@@ -75,7 +83,7 @@ def live_method_contextmanager(method):
 
 class _Object:
     _type_prefix: ClassVar[str | None] = None
-    _prefix_to_type: ClassVar[dict[str, type]] = {}
+    _prefix_to_type: ClassVar[dict[str, type["_Object"]]] = {}
 
     # For constructors
     _load: Callable[[Self, Resolver, LoadContext, str | None], Awaitable[None]] | None = None

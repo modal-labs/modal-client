@@ -2,7 +2,7 @@
 import functools
 import os
 import time
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
@@ -276,7 +276,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return data_size  # might be better if this is returned from the server
 
     @live_method_gen
-    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+    async def read_file(self, path: str) -> AsyncGenerator[bytes, None]:
         """Read a file from the network file system"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
         try:
@@ -291,7 +291,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 yield data
 
     @live_method_gen
-    async def iterdir(self, path: str) -> AsyncIterator[FileEntry]:
+    async def iterdir(self, path: str) -> AsyncGenerator[FileEntry, None]:
         """Iterate over all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)

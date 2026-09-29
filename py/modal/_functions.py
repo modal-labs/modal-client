@@ -7,7 +7,7 @@ import time
 import typing
 import warnings
 from collections import OrderedDict
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Collection, Sequence
+from collections.abc import AsyncGenerator, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
@@ -2405,7 +2405,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return await self._invocation().poll_function(timeout=timeout, index=index)
 
     @live_method_gen
-    async def iter(self, *, start: int = 0, end: int | None = None) -> AsyncIterator[ReturnType]:
+    async def iter(self, *, start: int = 0, end: int | None = None) -> AsyncGenerator[ReturnType, None]:
         """Iterate in-order over the results of the function call.
 
         Optionally, specify a range [start, end) to iterate over.

@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import builtins
-from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -610,7 +610,7 @@ class _Dict(_Object, type_prefix="di"):
         return await self.contains(key)
 
     @live_method_gen
-    async def keys(self) -> AsyncIterator[Any]:
+    async def keys(self) -> AsyncGenerator[Any, None]:
         """Return an iterator over the keys in this Dict.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,
@@ -621,7 +621,7 @@ class _Dict(_Object, type_prefix="di"):
             yield _deserialize_dict_key(self, resp.key)
 
     @live_method_gen
-    async def values(self) -> AsyncIterator[Any]:
+    async def values(self) -> AsyncGenerator[Any, None]:
         """Return an iterator over the values in this Dict.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,
@@ -636,7 +636,7 @@ class _Dict(_Object, type_prefix="di"):
             yield _deserialize_dict_value(self, resp.value, key_deser)
 
     @live_method_gen
-    async def items(self) -> AsyncIterator[tuple[Any, Any]]:
+    async def items(self) -> AsyncGenerator[tuple[Any, Any], None]:
         """Return an iterator over the (key, value) tuples in this Dict.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,

@@ -12,7 +12,7 @@ import re
 import sys
 import time
 import typing
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine, Generator, Sequence
+from collections.abc import AsyncGenerator, Callable, Coroutine, Generator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
@@ -930,7 +930,7 @@ class _Volume(_Object, type_prefix="vo"):
             raise RuntimeError(message)
 
     @live_method_gen
-    async def iterdir(self, path: str, *, recursive: bool = True) -> AsyncIterator[FileEntry]:
+    async def iterdir(self, path: str, *, recursive: bool = True) -> AsyncGenerator[FileEntry, None]:
         """Iterate over all files in a directory in the volume.
 
         Passing a directory path lists all files in the directory. For a file path, return only that

@@ -1151,15 +1151,15 @@ def _map_sync(
     )
 
 
-async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> "modal._functions._FunctionCall":
+async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> "modal.functions.FunctionCall":
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
     return await _spawn_map_helper(self, async_input_gen, kwargs)
 
 
 async def _spawn_map_helper(
     self: "modal.functions.Function", async_input_gen, kwargs={}
-) -> "modal._functions._FunctionCall":
-    raw_input_queue: Any = SynchronizedQueue()  # type: ignore
+) -> "modal.functions.FunctionCall":
+    raw_input_queue: Any = SynchronizedQueue()
     await raw_input_queue.init.aio()
 
     async def feed_queue():
@@ -1172,7 +1172,7 @@ async def _spawn_map_helper(
     return fc
 
 
-def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal._functions._FunctionCall":
+def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.functions.FunctionCall":
     """mdmd:hidden
     Spawn parallel execution over a set of inputs, returning as soon as the inputs are created.
 
