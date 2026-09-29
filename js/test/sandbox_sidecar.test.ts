@@ -680,3 +680,66 @@ test("sidecar create maps control plane errors", async () => {
 
   mock.assertExhausted();
 });
+
+test("sidecar create forwards includeOidcIdentityToken to the control plane", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const requests: SandboxContainerCreateV2Request[] = [];
+  for (const containerId of ["sb-test-ctr-WITHTOKEN", "sb-test-ctr-WITHOUT"]) {
+    mock.handleUnary("/SandboxContainerCreateV2", (req) => {
+      requests.push(req as SandboxContainerCreateV2Request);
+      return SandboxContainerCreateV2Response.create({ containerId });
+    });
+  }
+
+  await sb.experimentalSidecars.create(
+    "with-token",
+    new Image(mc, "im-built", ""),
+    { includeOidcIdentityToken: true },
+  );
+  await sb.experimentalSidecars.create(
+    "without-token",
+    new Image(mc, "im-built", ""),
+  );
+
+  expect(requests).toHaveLength(2);
+  expect(requests[0]?.definition?.includeOidcIdentityToken).toBe(true);
+  expect(requests[1]?.definition?.includeOidcIdentityToken).toBe(false);
+
+  mock.assertExhausted();
+});
+
+test("sidecar create rejects includeOidcIdentityToken when opted out", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const create = sb.experimentalSidecars.create(
+    "with-token",
+    new Image(mc, "im-built", ""),
+    {
+      includeOidcIdentityToken: true,
+    },
+  );
+  await expect(create).rejects.toThrow(InvalidError);
+  await expect(create).rejects.toThrow("=0");
+});
+
+test("sidecar create rejects includeOidcIdentityToken for a V1 sandbox", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+
+  const create = sb.experimentalSidecars.create(
+    "with-token",
+    new Image(mc, "im-built", ""),
+    {
+      includeOidcIdentityToken: true,
+    },
+  );
+  await expect(create).rejects.toThrow(InvalidError);
+  await expect(create).rejects.toThrow("GPU Sandboxes");
+});

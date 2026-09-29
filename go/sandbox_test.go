@@ -2730,3 +2730,61 @@ func TestSidecarCreateRejectsDetachedSandbox(t *testing.T) {
 	g.Expect(errors.As(err, &clientClosed)).To(gomega.BeTrue(), "unexpected error type %T: %v", err, err)
 	g.Expect(mock.gotReq).To(gomega.BeNil())
 }
+
+func TestSidecarCreateForwardsIncludeOidcIdentityToken(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		IncludeOidcIdentityToken: true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(mock.gotReq.GetDefinition().GetIncludeOidcIdentityToken()).To(gomega.BeTrue())
+}
+
+func TestSidecarCreateLeavesIncludeOidcIdentityTokenUnsetByDefault(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(mock.gotReq.GetDefinition().GetIncludeOidcIdentityToken()).To(gomega.BeFalse())
+}
+
+func TestSidecarCreateRejectsIncludeOidcIdentityTokenWhenOptedOut(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "0")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		IncludeOidcIdentityToken: true,
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(controlPlaneSidecarCreateEnvVar))
+	g.Expect(mock.gotReq).To(gomega.BeNil())
+}
+
+func TestSidecarCreateRejectsIncludeOidcIdentityTokenOnV1Sandbox(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandboxWithID(mock, testV1SandboxID)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		IncludeOidcIdentityToken: true,
+	})
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	g.Expect(err.Error()).To(gomega.ContainSubstring("GPU Sandboxes"))
+	g.Expect(mock.gotReq).To(gomega.BeNil())
+}

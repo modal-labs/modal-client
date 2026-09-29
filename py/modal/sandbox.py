@@ -3084,6 +3084,8 @@ class _SidecarContainer:
 
 _MAIN_CONTAINER_NAME: str = "main"
 
+_CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR = "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE"
+
 
 def _use_control_plane_sidecar_create(is_v2: bool) -> bool:
     """Whether a sidecar create request goes to the Modal server rather than over the Sandbox connection.
@@ -3118,6 +3120,7 @@ class _SidecarManager:
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] | None = None,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
+        include_oidc_identity_token: bool = False,
         pty: bool = False,
         experimental_memory_reserve_consume_mib: int | None = None,
     ) -> _SidecarContainer:
@@ -3147,6 +3150,9 @@ class _SidecarManager:
                 main container.
             outbound_domain_allowlist: If set, restrict the sidecar's outbound TLS connections (port
                 443) to these SNI domains. Supports wildcards like ``*.example.com``.
+            include_oidc_identity_token: If True, the sidecar receives a MODAL_IDENTITY_TOKEN env var for
+                OIDC-based auth (e.g. to AWS, GCP). The token identifies the sidecar container itself,
+                not the main container. Not supported for GPU Sandboxes.
             pty: Whether to enable PTY for the sidecar container.
             experimental_memory_reserve_consume_mib: Memory, in MiB, this sidecar consumes from the Sandbox's
                 sidecar memory reserve (the experimental `vm_sidecar_memory_reserve_mib` option).
@@ -3181,6 +3187,14 @@ class _SidecarManager:
             raise InvalidError(
                 "CloudBucketMount is not supported in sidecars when MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE=0 is set; "
                 "unset it to use cloud bucket mounts."
+            )
+
+        if include_oidc_identity_token and not self._sandbox._is_v2:
+            raise InvalidError("include_oidc_identity_token is not supported for GPU Sandboxes.")
+        if include_oidc_identity_token and not via_control_plane:
+            raise InvalidError(
+                f"include_oidc_identity_token is not supported when {_CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; "
+                "unset it to use it."
             )
 
         if image._mount_layers:
@@ -3242,6 +3256,7 @@ class _SidecarManager:
                 volume_mounts=volume_mounts,
                 cloud_bucket_mounts=cloud_bucket_mount_protos,
                 network_access=network_access,
+                include_oidc_identity_token=include_oidc_identity_token,
                 pty_info=pty_info,
                 resources=(
                     api_pb2.Resources(memory_mb=experimental_memory_reserve_consume_mib)

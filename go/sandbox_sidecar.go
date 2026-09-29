@@ -60,6 +60,10 @@ type SidecarCreateParams struct {
 	// OutboundDomainAllowlist restricts the sidecar's outbound TLS connections (port 443) to these SNI domains.
 	// Supports wildcard prefixes (*.example.com). Independent of the main container.
 	OutboundDomainAllowlist *Allowlist
+	// IncludeOidcIdentityToken gives the sidecar a MODAL_IDENTITY_TOKEN env var for OIDC-based auth
+	// (e.g. to AWS, GCP). The token identifies the sidecar container itself, not the main container.
+	// Not supported for GPU Sandboxes; Create returns an InvalidError for them.
+	IncludeOidcIdentityToken bool
 	// PTY sets whether to enable a PTY for the sidecar container.
 	PTY bool
 	// ExperimentalMemoryReserveConsumeMiB is the memory, in MiB, the sidecar consumes from
@@ -241,6 +245,18 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		}
 	}
 
+	if params.IncludeOidcIdentityToken {
+		if !s.sandbox.isV2 {
+			return nil, InvalidError{Exception: "IncludeOidcIdentityToken is not supported for GPU Sandboxes"}
+		}
+		if !viaControlPlane {
+			return nil, InvalidError{Exception: fmt.Sprintf(
+				"IncludeOidcIdentityToken is not supported when %s=0 is set; unset it to use it",
+				controlPlaneSidecarCreateEnvVar,
+			)}
+		}
+	}
+
 	var ptyInfo *pb.PTYInfo
 	if params.PTY {
 		ptyInfo = defaultSandboxPTYInfo()
@@ -338,15 +354,16 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 		SandboxId:     s.sandbox.SandboxID,
 		ContainerName: in.name,
 		Definition: pb.Sandbox_builder{
-			ImageId:           in.image.ImageID,
-			EntrypointArgs:    in.params.Command,
-			Workdir:           workdir,
-			SecretIds:         in.secretIds,
-			VolumeMounts:      in.volumeMounts,
-			CloudBucketMounts: in.cloudBucketMounts,
-			NetworkAccess:     in.networkAccess,
-			PtyInfo:           in.ptyInfo,
-			Resources:         resources,
+			ImageId:                  in.image.ImageID,
+			EntrypointArgs:           in.params.Command,
+			Workdir:                  workdir,
+			SecretIds:                in.secretIds,
+			VolumeMounts:             in.volumeMounts,
+			CloudBucketMounts:        in.cloudBucketMounts,
+			NetworkAccess:            in.networkAccess,
+			IncludeOidcIdentityToken: in.params.IncludeOidcIdentityToken,
+			PtyInfo:                  in.ptyInfo,
+			Resources:                resources,
 		}.Build(),
 		EphemeralSecrets: ephemeralSecrets,
 	}.Build()

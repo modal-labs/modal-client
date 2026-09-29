@@ -52,6 +52,7 @@ We also provide a number of examples:
 - [Persist a workspace across Sidecars](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-sidecar-directory-snapshot.ts)
 - [Mount a Volume in a Sidecar](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-sidecar-volume.ts)
 - [Mount a cloud bucket in a Sidecar](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-sidecar-cloud-bucket.ts)
+- [Give a Sidecar its own identity token](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-sidecar-identity-token.ts)
 - [Take a snapshot of the filesystem of a Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-filesystem-snapshot.ts)
 - [Snapshot the filesystem of a Sandbox when it exits](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-exit-snapshot.ts)
 - [Snapshot a directory, and mount it in a running Sandbox](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-directory-snapshot.ts)

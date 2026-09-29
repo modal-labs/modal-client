@@ -150,6 +150,13 @@ export type SidecarCreateParams = {
    * prefixes (`*.example.com`). Independent of the main container.
    */
   outboundDomainAllowlist?: string[];
+  /**
+   * If true, the sidecar receives a MODAL_IDENTITY_TOKEN env var for
+   * OIDC-based auth (e.g. to AWS, GCP). The token identifies the sidecar
+   * container itself, not the main container. Not supported for GPU
+   * Sandboxes.
+   */
+  includeOidcIdentityToken?: boolean;
   /** Enable a PTY for the sidecar. */
   pty?: boolean;
   /**
@@ -319,6 +326,19 @@ export class SidecarService {
       }
     }
 
+    if (params?.includeOidcIdentityToken) {
+      if (getSandboxVersion(this.#access.sandboxId) !== SandboxVersion.V2) {
+        throw new InvalidError(
+          "includeOidcIdentityToken is not supported for GPU Sandboxes",
+        );
+      }
+      if (!viaControlPlane) {
+        throw new InvalidError(
+          `includeOidcIdentityToken is not supported when ${CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use it`,
+        );
+      }
+    }
+
     // Sidecar containers support ephemeral env vars natively (passed via
     // ephemeralSecrets in the request), so locally-created Secrets (fromObject)
     // and params.env are sent directly rather than folded into a server-side
@@ -367,6 +387,8 @@ export class SidecarService {
               volumeMounts,
               cloudBucketMounts,
               networkAccess,
+              includeOidcIdentityToken:
+                params?.includeOidcIdentityToken ?? false,
               ptyInfo,
               resources:
                 params?.experimentalMemoryReserveConsumeMiB !== undefined

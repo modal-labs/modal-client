@@ -1,0 +1,65 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log"
+
+	modal "github.com/modal-labs/modal-client/go"
+)
+
+func main() {
+	ctx := context.Background()
+	mc, err := modal.NewClient()
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	app, err := mc.Apps.FromName(ctx, "libmodal-example", &modal.AppFromNameParams{CreateIfMissing: true})
+	if err != nil {
+		log.Fatalf("Failed to get or create App: %v", err)
+	}
+
+	image, err := mc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app, nil)
+	if err != nil {
+		log.Fatalf("Failed to build Image: %v", err)
+	}
+
+	sb, err := mc.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+		Command: []string{"sleep", "infinity"},
+	})
+	if err != nil {
+		log.Fatalf("Failed to create Sandbox: %v", err)
+	}
+	fmt.Printf("Started Sandbox: %s\n", sb.SandboxID)
+	defer func() {
+		if _, err := sb.Terminate(context.Background(), nil); err != nil {
+			log.Fatalf("Failed to terminate Sandbox %s: %v", sb.SandboxID, err)
+		}
+	}()
+
+	// The token identifies this sidecar container, not the main container, and
+	// can be exchanged for cloud credentials with OIDC federation.
+	sidecar, err := sb.ExperimentalSidecars.Create(ctx, "worker", image, &modal.SidecarCreateParams{
+		Command:                  []string{"sleep", "100"},
+		IncludeOidcIdentityToken: true,
+	})
+	if err != nil {
+		log.Fatalf("Failed to create sidecar: %v", err)
+	}
+	fmt.Printf("Started sidecar: %s\n", sidecar.ContainerID)
+
+	proc, err := sidecar.Exec(ctx, []string{"sh", "-c", `test -n "$MODAL_IDENTITY_TOKEN" && echo "MODAL_IDENTITY_TOKEN is set in the sidecar"`}, nil)
+	if err != nil {
+		log.Fatalf("Failed to exec in sidecar: %v", err)
+	}
+	output, err := io.ReadAll(proc.Stdout)
+	if err != nil {
+		log.Fatalf("Failed to read stdout: %v", err)
+	}
+	if _, err := proc.Wait(ctx, nil); err != nil {
+		log.Fatalf("Failed to wait for exec: %v", err)
+	}
+	fmt.Print(string(output))
+}

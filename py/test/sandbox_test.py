@@ -3993,6 +3993,74 @@ def test_sandbox_container_cloud_bucket_mounts_rejected_when_opted_out(app, serv
 
 
 @skip_non_subprocess
+def test_sandbox_container_create_forwards_include_oidc_identity_token(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    _use_default_sidecar_create_path(monkeypatch)
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.intercept() as ctx:
+        sb._experimental_sidecars.create(
+            "bash", "-c", "sleep 100", name="with-token", image=image, include_oidc_identity_token=True
+        )
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="without-token", image=image)
+
+    with_token_req, without_token_req = ctx.get_requests("SandboxContainerCreateV2")
+    assert with_token_req.container_name == "with-token"
+    assert with_token_req.definition.include_oidc_identity_token is True
+    assert without_token_req.container_name == "without-token"
+    assert without_token_req.definition.include_oidc_identity_token is False
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_include_oidc_identity_token_requires_a_v2_sandbox(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
+
+    with (
+        _intercept_sidecar_create(servicer) as ctx,
+        pytest.raises(InvalidError, match="GPU Sandboxes"),
+    ):
+        sb._experimental_sidecars.create(
+            "bash", "-c", "sleep 100", name="with-token", image=image, include_oidc_identity_token=True
+        )
+
+    assert ctx.command_router.get_requests("TaskContainerCreate") == []
+    assert ctx.control_plane.get_requests("SandboxContainerCreateV2") == []
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_include_oidc_identity_token_rejected_when_opted_out(app, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    _opt_out_of_control_plane_sidecar_create(monkeypatch)
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V2
+
+    with (
+        _intercept_sidecar_create(servicer) as ctx,
+        pytest.raises(InvalidError, match="SIDECAR_CREATE=0"),
+    ):
+        sb._experimental_sidecars.create(
+            "bash", "-c", "sleep 100", name="with-token", image=image, include_oidc_identity_token=True
+        )
+
+    assert ctx.command_router.get_requests("TaskContainerCreate") == []
+    assert ctx.control_plane.get_requests("SandboxContainerCreateV2") == []
+
+
+@skip_non_subprocess
 def test_sandbox_container_pty(app, servicer, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
