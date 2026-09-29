@@ -2,6 +2,18 @@
 
 ## Latest
 
+### 0.11.0 (2026-09-28)
+
+- Sandboxes now use our [next-generation backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds), affording substantially higher creation rates and concurrency limits for CPU Sandboxes. No code changes are required, but there are some semantic differences to be aware of:
+  - The [`Sandboxes.Create()`](/docs/sdk/go/latest/Sandbox#create) method now blocks until the Sandbox is scheduled instead of returning immediately.
+  - If a Sandbox is unable to be scheduled (e.g. due to unsatisfiable resource or placement requests), creation will time out and return a [`ResourceExhaustedError`](/docs/sdk/go/latest/Errors#resourceexhaustederror).
+- Sandboxes can now use a full virtual machine as the runtime, providing better support for workflows like running Docker:
+  - Set `Runtime: modal.SandboxRuntimeVM` in the `SandboxCreateParams` passed to [`Sandboxes.Create()`](/docs/sdk/go/latest/Sandbox#create) to enable.
+  - To force continued use of the gVisor runtime, set `Runtime: modal.SandboxRuntimeGVisor`. This is the current default behavior, but the default may change in the future.
+- We've added a [`Sandbox.Logs`](/docs/sdk/go/latest/Sandbox#sandboxlogs) namespace with methods for fetching logs from the entrypoint process of a Sandbox.
+
+## 0.10
+
 ### 0.10.1 (2026-09-10)
 
 - It's now possible to opt into a [more performant Sandbox backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds) by setting a `MODAL_SANDBOX_V2=1` environment variable or a `sandbox_v2 = true` profile configuration in `.modal.toml`. Sandboxes will then use the new backend without any code changes. This will become the default behavior in an upcoming release; setting the flag lets you opt in early.
