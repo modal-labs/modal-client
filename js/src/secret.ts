@@ -77,7 +77,7 @@ export class SecretService {
         "secret_name",
         name,
       );
-      return new Secret(resp.secretId, name);
+      return new Secret(resp.secretId, name, undefined, resp.metadata?.keys);
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(err.details);
@@ -220,6 +220,10 @@ export class Secret {
   // once secretId is set.
   readonly #hydrator?: SecretHydrator;
 
+  // Names of the env vars a server-side Secret defines, as reported by the
+  // control plane on fromName. Undefined when unknown.
+  readonly #keys?: ReadonlySet<string>;
+
   // Caches the single in-flight (or successfully completed) hydration so the
   // ephemeral Secret is created at most once, even if multiple callers hydrate
   // the same Secret concurrently. Cleared on failure so a transient error
@@ -227,10 +231,16 @@ export class Secret {
   #hydratePromise?: Promise<void>;
 
   /** @ignore */
-  constructor(secretId: string, name?: string, hydrator?: SecretHydrator) {
+  constructor(
+    secretId: string,
+    name?: string,
+    hydrator?: SecretHydrator,
+    keys?: readonly string[],
+  ) {
     this.#secretId = secretId;
     this.name = name;
     this.#hydrator = hydrator;
+    this.#keys = keys !== undefined ? new Set(keys) : undefined;
   }
 
   /** The ID of the server-side Secret, or an empty string if not yet hydrated. */
@@ -247,6 +257,17 @@ export class Secret {
    */
   get _hydrator(): SecretHydrator | undefined {
     return this.#hydrator;
+  }
+
+  /**
+   * Names of the env vars this server-side Secret defines, or `undefined` if
+   * unknown (e.g. for lazy fromObject Secrets or Secrets constructed by id).
+   *
+   * @internal
+   * @hidden
+   */
+  get _keys(): ReadonlySet<string> | undefined {
+    return this.#keys;
   }
 
   /**
@@ -365,10 +386,10 @@ export function collectSecretIds(secrets: Secret[]): string[] {
  * {@link SecretService#fromName}).
  *
  * Locally-created Secrets can be passed directly to the worker as environment
- * variables, avoiding a SecretGetOrCreate round-trip. Local Secrets are merged
- * in list order (so later ones win on key collisions). This function does not
- * validate its input: null/undefined Secrets are placed in the resolvable list
- * rather than dropped, leaving it to {@link hydrateSecrets} to reject them.
+ * variables, avoiding a SecretGetOrCreate round-trip. Secrets apply in list
+ * order with later ones winning on key collisions. This function does not validate its input:
+ * null/undefined Secrets are placed in the resolvable list rather than
+ * dropped, leaving it to {@link hydrateSecrets} to reject them.
  *
  * @internal
  * @hidden
@@ -383,6 +404,10 @@ export function splitEnvDictAndResolvableSecrets(
     if (hydrator !== undefined) {
       Object.assign(envDict, hydrator.envDict);
     } else {
+      // Drop this Secret's keys from envDict so it overrides earlier local Secrets.
+      for (const key of secret?._keys ?? []) {
+        delete envDict[key];
+      }
       resolvable.push(secret);
     }
   }

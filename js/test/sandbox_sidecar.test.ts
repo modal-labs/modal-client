@@ -316,6 +316,36 @@ test("sidecar create sends SandboxContainerCreateV2 to the control plane", async
   mock.assertExhausted();
 });
 
+test("sidecar create lets a later fromName Secret override a fromObject Secret", async () => {
+  useDefaultSidecarCreatePath();
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  let request: SandboxContainerCreateV2Request | undefined;
+  mock.handleUnary("/SandboxContainerCreateV2", (req) => {
+    request = req as SandboxContainerCreateV2Request;
+    return SandboxContainerCreateV2Response.create({
+      containerId: "sb-test-ctr-SIDECAR123",
+    });
+  });
+
+  const local = await mc.secrets.fromObject({ K: "local", LOCAL_ONLY: "yes" });
+  const named = new Secret("st-named", "named", undefined, ["K"]);
+  await sb.experimentalSidecars.create(
+    "worker",
+    new Image(mc, "im-built", ""),
+    {
+      command: ["sleep", "100"],
+      secrets: [local, named],
+    },
+  );
+
+  expect(request?.ephemeralSecrets?.contents).toEqual({ LOCAL_ONLY: "yes" });
+  expect(request?.definition?.secretIds).toEqual(["st-named"]);
+
+  mock.assertExhausted();
+});
+
 test("sidecar create forwards volumes and cloud bucket mounts", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();

@@ -225,6 +225,44 @@ test("splitEnvDictAndResolvableSecrets with no local secrets", () => {
   expect(resolvable).toEqual([named]);
 });
 
+test("splitEnvDictAndResolvableSecrets drops keys overridden by a later named secret", () => {
+  const local = new Secret(
+    "",
+    undefined,
+    new SecretFromObjectHydrator({ K: "local", LOCAL_ONLY: "yes" }),
+  );
+  const named = new Secret("st-named", "named", undefined, ["K", "NAMED_ONLY"]);
+
+  const [envDict, resolvable] = splitEnvDictAndResolvableSecrets([
+    local,
+    named,
+  ]);
+  expect(envDict).toEqual({ LOCAL_ONLY: "yes" });
+  expect(resolvable).toEqual([named]);
+
+  const [envDict2] = splitEnvDictAndResolvableSecrets([named, local]);
+  expect(envDict2).toEqual({ K: "local", LOCAL_ONLY: "yes" });
+
+  const last = new Secret(
+    "",
+    undefined,
+    new SecretFromObjectHydrator({ K: "last" }),
+  );
+  const [envDict3] = splitEnvDictAndResolvableSecrets([local, named, last]);
+  expect(envDict3).toEqual({ LOCAL_ONLY: "yes", K: "last" });
+});
+
+test("splitEnvDictAndResolvableSecrets keeps local keys when named keys are unknown", () => {
+  const local = new Secret(
+    "",
+    undefined,
+    new SecretFromObjectHydrator({ K: "local" }),
+  );
+  const named = new Secret("st-named");
+  const [envDict] = splitEnvDictAndResolvableSecrets([local, named]);
+  expect(envDict).toEqual({ K: "local" });
+});
+
 test("hydrateSecrets rejects null secrets", async () => {
   await expect(
     // @ts-expect-error testing runtime validation
@@ -362,6 +400,45 @@ test("ExperimentalCreate passes a fromObject Secret as ephemeral secrets", async
 
   // The fromObject Secret was never hydrated into a server-side Secret.
   expect(secret.secretId).toBe("");
+
+  mock.assertExhausted();
+});
+
+test("ExperimentalCreate lets a later fromName Secret override a fromObject Secret", async () => {
+  const { mockClient: mc, mockCpClient: mock } =
+    createMockClientWithPinnedBuilder();
+  registerSandboxCreateDeps(mock);
+
+  mock.handleUnary("/SecretGetOrCreate", (req: any) => {
+    expect(req.deploymentName).toBe("my-secret");
+    return {
+      secretId: "st-named",
+      metadata: { name: "my-secret", keys: ["K", "NAMED_ONLY"] },
+    };
+  });
+  mock.handleUnary("/SandboxCreateV2", (req: any) => {
+    expect(req.ephemeralSecrets?.contents).toEqual({
+      LOCAL_ONLY: "yes",
+      ENV_ONLY: "env",
+    });
+    expect(req.definition?.secretIds).toEqual(["st-named"]);
+    return { sandboxId: V2_SANDBOX_ID, taskId: "ta-v2-123", tunnels: [] };
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = mc.images.fromRegistry("alpine:3.21");
+
+  const local = await mc.secrets.fromObject({ K: "local", LOCAL_ONLY: "yes" });
+  const named = await mc.secrets.fromName("my-secret");
+  expect(named._keys).toEqual(new Set(["K", "NAMED_ONLY"]));
+
+  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+    secrets: [local, named],
+    env: { ENV_ONLY: "env" },
+  });
+  expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
 
   mock.assertExhausted();
 });
