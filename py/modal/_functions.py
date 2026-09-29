@@ -1749,14 +1749,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return list(self._experimental_flash_urls) if self._experimental_flash_urls else None
 
     async def _fetch_flash_auth_token(self, retry: Retry) -> str:
-        resp = await self.client.stub.FunctionGetFlashAuthToken(
+        resp = await self.client._stub.FunctionGetFlashAuthToken(
             api_pb2.FunctionGetFlashAuthTokenRequest(function_id=self.object_id), retry=retry
         )
         return resp.token
 
     async def _get_flash_auth_token(self) -> str:
         if self._flash_token_manager is None:
-            self._flash_token_manager = _AuthTokenManager(self.client.stub, fetch=self._fetch_flash_auth_token)
+            self._flash_token_manager = _AuthTokenManager(self.client._stub, fetch=self._fetch_flash_auth_token)
         return await self._flash_token_manager.get_token()
 
     def _apply_dynamic_config(

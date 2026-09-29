@@ -732,7 +732,7 @@ def _sessioned() -> Callable[
     [Callable[P, ReturnType] | _PartialFunction[P, ReturnType, ReturnType]],
     _PartialFunction[P, ReturnType, ReturnType],
 ]:
-    """Decorator that enables sessions on a Server.
+    """Decorator that enables sticky sessions on a Server.
 
     Every request must carry a session token obtained from a session start request; requests with the same token are
     routed to the same container until the session is idle for `idle_timeout` seconds or explicitly terminated. A

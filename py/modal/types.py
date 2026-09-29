@@ -947,7 +947,10 @@ class ServerInfo:
 
 @dataclass(frozen=True)
 class ServerSessionCredentials:
-    """Credentials for a session on a Server. Requests carrying `token` are routed to the same container."""
+    """Credentials for a sticky session on a Server.
+
+    Requests carrying `token` are routed to the same container.
+    """
 
     session_id: str  # Identifier of this session, for display and logging
     token: str  # Session token to send with every request

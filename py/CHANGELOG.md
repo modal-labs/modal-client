@@ -2,6 +2,53 @@
 
 ## Latest
 
+### 1.6.0 (2026-09-28)
+
+Sandboxes now use our [next-generation backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds), affording substantially higher creation rates and concurrency limits for CPU Sandboxes. No code changes are required, but there are some semantic differences to be aware of:
+- The [`modal.Sandbox.create()`](/docs/sdk/py/latest/Sandbox#create) method now blocks until the Sandbox is scheduled instead of returning immediately.
+- If a Sandbox is unable to be scheduled (e.g. due to unsatisfiable resource or placement requests), creation will time out and raise a [`ResourceExhaustedError`](/docs/sdk/py/latest/exception#resourceexhaustederror).
+
+Functions and Servers can now run on [ephemeral multi-node clusters](/docs/guide/multi-node-training) for large-scale training or inference workloads:
+- Add the [`@modal.clustered()`](/docs/sdk/py/latest/clustered) decorator to your function or class.
+- Use the new [`modal.Cluster`](/docs/sdk/py/latest/Cluster) object within each process to determine the rank and private IPs of containers in the cluster.
+
+Servers now support sticky sessions with strong affinity guarantees, which is useful for workloads that require WebSockets to connect or reconnect to the same container:
+- Add the [`@modal.sessioned()`](/docs/sdk/py/latest/sessioned) decorator to the class defining the Server.
+- Use the new [`Server.sessions.start()`](/docs/sdk/py/latest/Server#sessionsstart) method to retrieve a token that you can pass in a `Modal-Authorization` header.
+- Use the new [`Server.sessions.terminate()`](/docs/sdk/py/latest/Server#sessionsterminate) method to terminate a session, or else it will remain active until its idle timeout.
+
+The CLI and SDK have a number of new features to support programmatic observability, oriented towards both coding agents and scalable scripted workflows:
+- We've added [`modal function`](/docs/cli/latest/function) and [`modal server`](/docs/cli/latest/server) CLI surfaces for inspecting specific Function or Server entities. Commands include `info`, `stats`, `logs`, and `calls`/`requests`.
+- We've added corresponding methods to the [`modal.Function`](/docs/sdk/py/latest/Function) and [`modal.Server`](/docs/sdk/py/latest/Server) objects in the SDK.
+- Apps can also be inspected using the new [`modal app info`](/docs/cli/latest/app#modal-app-info) CLI and [`modal.App.info()`](/docs/sdk/py/latest/App#info) method.
+- The "variants" of a Function (i.e. specific parameterizations or dynamic configurations) can be listed via the [`modal function variants`](/docs/cli/latest/function#modal-function-variants) CLI.
+
+Sandboxes can now use a full virtual machine as the runtime, providing better support for workflows like running Docker:
+- Set `runtime="vm"` in [`modal.Sandbox.create()`](/docs/sdk/py/latest/Sandbox#create) to enable.
+- To force continued use of the gVisor runtime, set `runtime="gvisor"`. This is the current default behavior, but the default may change in the future.
+- The [`modal shell`](/docs/cli/latest/shell) command also now supports a `--runtime` option.
+
+This release includes numerous other enhancements:
+- It's now possible to set a strict concurrency limit on a Server by setting `max_concurrency=` in the [`@app.server()`](/docs/sdk/py/latest/App#server) decorator. Requests will be rejected with a 503 status when a Server is at its limit.
+- A client's connection to a Sandbox is now dropped automatically after a period of inactivity and reconnected if the Sandbox is used again. This makes [`Sandbox.detach()`](/docs/sdk/py/latest/Sandbox#detach) optional.
+- You can now programmatically list Apps via the [`modal.Environment.apps.list()`](/docs/sdk/py/latest/Environment#appslist) method.
+- The [`modal token new`](/docs/cli/latest/token#modal-token-new) CLI now supports `--expires-in` to set a TTL for the token.
+- Proxy tokens can now be named via [`modal workspace proxy-tokens`](/docs/cli/latest/workspace#modal-workspace-proxy-tokens) or [`modal.Workspace.proxy_tokens`](/docs/sdk/py/latest/Workspace#proxy_tokens).
+- The [`modal app list`](/docs/cli/latest/app#modal-app-list) CLI now orders Apps by recency and supports a `--limit` option.
+- The [`FunctionCall.get_call_graph()`](/docs/sdk/py/latest/FunctionCall#get_call_graph) method now returns up to 5,000 nodes (previously 100).
+- Large file downloads via the [`modal volume`](/docs/cli/latest/volume) CLI are now more resilient to transient errors.
+
+Finally, we've made a small number of breaking changes:
+- Classes decorated with [`@app.cls()`](/docs/sdk/py/latest/App#cls) can no longer define a custom `__init__` constructor. Use [`modal.parameter()`](/docs/sdk/py/latest/parameter) for [parameters](/docs/guide/parametrized-functions) and [`@modal.enter()`](/docs/sdk/py/latest/enter) for initialization logic.
+- We've removed legacy APIs for interacting with a Sandbox's filesystem, including `Sandbox.open()`, `Sandbox.ls()`, `Sandbox.mkdir()`, `Sandbox.rm()`, `Sandbox.watch()`, the `modal.file_io.FileIO` type, and the `modal.exception.FilesystemExecutionError` exception. Use the [`Sandbox.filesystem`](/docs/sdk/py/latest/Sandbox#filesystem) APIs instead.
+- We've removed the experimental `modal bootstrap` CLI; use [`modal endpoint create`](/docs/cli/latest/endpoint#modal-endpoint-create) to quickly stand up production-ready endpoints.
+- We've removed several undocumented properties and methods that had no intended user-facing functionality.
+- We've made minor changes to JSON output in the CLI:
+  - [`modal volume ls`](/docs/cli/latest/volume#modal-volume-ls) now shows `created_modified` as an ISO 8601 timestamp and `size` as an integer number of bytes.
+  - [`modal queue list`](/docs/cli/latest/queue#modal-queue-list) now shows `partitions` and `total_size` as integers and includes a boolean `total_size_truncated` field.
+
+## 1.5
+
 ### 1.5.5 (2026-08-28)
 
 - We've added a [`modal.Sandbox.logs`](/docs/sdk/py/latest/Sandbox#logs) API, allowing you to `fetch()` logs from a specific date/time range or to `tail()` the most recent logs. Note that only logs from the entrypoint process of a Sandbox are currently stored, and streaming logs via this interface is not currently supported.

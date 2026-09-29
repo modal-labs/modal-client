@@ -113,7 +113,7 @@ class _Server:
 
     @property
     def sessions(self) -> "_ServerSessionsManager":
-        """Start and terminate sessions on a Server decorated with `@modal.sessioned()`."""
+        """Start and terminate sticky sessions on a Server decorated with `@modal.sessioned()`."""
         return _ServerSessionsManager(self)
 
     async def info(self, *, refresh: bool = False) -> ServerInfo:
@@ -160,7 +160,7 @@ class _Server:
         This interface is experimental and may change or be removed without warning.
         """
         service_function = self._get_service_function()
-        response = await service_function.client.stub.FlashContainerList(
+        response = await service_function.client._stub.FlashContainerList(
             api_pb2.FlashContainerListRequest(function_id=service_function.object_id)
         )
         return [
@@ -473,13 +473,13 @@ class _Server:
         request.until.FromDatetime(until)
         if container:
             request.container_id = container
-        stats = await self._get_service_function().client.stub.ServerGetTimeRangeStats(request)
+        stats = await self._get_service_function().client._stub.ServerGetTimeRangeStats(request)
         return ServerStats._from_proto(stats)
 
 
 @retry(n_attempts=5, base_delay=0.5, attempt_timeout=65, total_timeout=200)
 async def _post_session_control(url: str, headers: dict[str, str]) -> tuple[int, str, str]:
-    """POST to a session control endpoint, retrying connection errors and 5xx. Returns (status, reason, body)."""
+    """POST to a sticky session control endpoint, retrying connection errors and 5xx. Returns (status, reason, body)."""
     async with ClientSessionRegistry.get_session().post(url, headers=headers) as resp:
         body = await resp.text()
         if resp.status >= 400:
@@ -501,11 +501,11 @@ class _ServerSessionsManager:
             raise InvalidError("`sessions` requires `@modal.sessioned()` on the Server.")
 
     async def start(self, idle_timeout: int = 600) -> ServerSessionCredentials:
-        """Start a session and return its ID and token.
+        """Start a sticky session and return its ID and token.
 
-        Requests to the server URL that carry the returned token are routed to the same container until the session
-        has had no connections for `idle_timeout` seconds or is terminated. A container won't be scaled down for as long
-        as it holds a live session.
+        Requests to the server URL that carry the returned token are routed to the same container until the
+        session has had no connections for `idle_timeout` seconds or is terminated. A container won't be scaled down
+        for as long as it holds a live session.
 
         Args:
             idle_timeout: Seconds without an in-flight request before the session ends.
@@ -550,7 +550,9 @@ class _ServerSessionsManager:
             raise ExecutionError("Failed to start session: unexpected response from server") from None
 
     async def terminate(self, token: str) -> None:
-        """Terminate a session. New requests to it will be rejected. Container will continue serving other sessions.
+        """Terminate a sticky session.
+
+        New requests to it will be rejected. The container continues serving other sessions.
 
         Args:
             token: The `token` of the `ServerSessionCredentials` to terminate.
