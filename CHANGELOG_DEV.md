@@ -10,4 +10,8 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## JS
 
+- Added `client.Functions.FromID()` to look up a Function by ID.
+
 ## Go
+
+- Added `client.Functions.FromID` to look up a Function by ID.

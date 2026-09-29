@@ -11,6 +11,8 @@ import (
 	"github.com/modal-labs/modal-client/go/internal/grpcmock"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestFunctionCall(t *testing.T) {
@@ -718,4 +720,44 @@ func TestInstanceUsesBoundHandleMetadataThresholds(t *testing.T) {
 	_, err = inst.Remote(ctx, []any{"hello"}, nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("missing upload URL in BlobCreate response"))
+}
+
+func TestFunctionFromID(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"function", "class", "server", "missing", "denied"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			mc := grpcmock.NewMockClient()
+			defer mc.Close()
+			grpcmock.HandleUnary(mc, "/FunctionGetById", func(req *pb.FunctionGetByIdRequest) (*pb.FunctionGetByIdResponse, error) {
+				g.Expect(req.GetFunctionId()).To(gomega.Equal("fu-test"))
+				if kind == "missing" {
+					return nil, status.Error(codes.NotFound, "missing")
+				}
+				if kind == "denied" {
+					return nil, status.Error(codes.PermissionDenied, "denied")
+				}
+				return pb.FunctionGetByIdResponse_builder{
+					Function:       pb.FunctionData_builder{IsClass: kind == "class", IsServer: kind == "server"}.Build(),
+					HandleMetadata: pb.FunctionHandleMetadata_builder{WebUrl: "https://test.modal.run", AppId: "ap-test"}.Build(),
+				}.Build(), nil
+			})
+			fn, err := mc.Functions.FromID(t.Context(), "fu-test")
+			switch kind {
+			case "function":
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(fn.FunctionID).To(gomega.Equal("fu-test"))
+				g.Expect(fn.GetWebURL()).To(gomega.Equal("https://test.modal.run"))
+				g.Expect(fn.Logs).NotTo(gomega.BeNil())
+			case "class", "server":
+				g.Expect(err).To(gomega.BeAssignableToTypeOf(modal.InvalidError{}))
+			case "missing":
+				g.Expect(err).To(gomega.BeAssignableToTypeOf(modal.NotFoundError{}))
+			case "denied":
+				g.Expect(status.Code(err)).To(gomega.Equal(codes.PermissionDenied))
+			}
+			g.Expect(mc.AssertExhausted()).To(gomega.Succeed())
+		})
+	}
 }

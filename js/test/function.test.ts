@@ -1,3 +1,4 @@
+import { ClientError, Status } from "nice-grpc";
 import { tc } from "../test-support/test-client";
 import { InvalidError, NotFoundError } from "modal";
 import { expect, test } from "vitest";
@@ -451,3 +452,45 @@ test("InstanceUsesBoundHandleMetadataThresholds", async () => {
     "Missing upload URL in BlobCreate response",
   );
 });
+
+test("FunctionFromId", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mock.handleUnary("/FunctionGetById", (req) => {
+    expect(req).toMatchObject({ functionId: "fu-test" });
+    return {
+      handleMetadata: { webUrl: "https://test.modal.run", appId: "ap-test" },
+    };
+  });
+  const fn = await mc.functions.fromId("fu-test");
+  expect(fn.functionId).toBe("fu-test");
+  expect(await fn.getWebUrl()).toBe("https://test.modal.run");
+  mock.assertExhausted();
+  mc.close();
+});
+
+test.each(["isClass", "isServer"])(
+  "FunctionFromId rejects %s",
+  async (kind) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    mock.handleUnary("/FunctionGetById", () => ({
+      function: { [kind]: true },
+    }));
+    await expect(mc.functions.fromId("fu-test")).rejects.toThrow(InvalidError);
+    mc.close();
+  },
+);
+
+test.each([Status.NOT_FOUND, Status.PERMISSION_DENIED])(
+  "FunctionFromId error %s",
+  async (code) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    const error = new ClientError("/FunctionGetById", code, "lookup failed");
+    mock.handleUnary("/FunctionGetById", () => {
+      throw error;
+    });
+    await expect(mc.functions.fromId("fu-test")).rejects.toThrow(
+      code === Status.NOT_FOUND ? NotFoundError : ClientError,
+    );
+    mc.close();
+  },
+);

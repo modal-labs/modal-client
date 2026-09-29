@@ -8,6 +8,7 @@ import {
   FunctionBindParamsResponse,
   FunctionCallInvocationType,
   FunctionHandleMetadata,
+  FunctionGetByIdRequest,
   FunctionInput,
   FunctionOptions as FunctionOptionsProto,
   FunctionRetryPolicy,
@@ -79,6 +80,43 @@ export class FunctionService {
   readonly #client: ModalClient;
   constructor(client: ModalClient) {
     this.#client = client;
+  }
+
+  /**
+   * Reference a {@link Function_ Function} by its ID.
+   *
+   * ```typescript
+   * const client = new ModalClient();
+   * const fn = await client.functions.fromId("fu-***");
+   * console.log(await fn.getWebUrl());
+   * ```
+   */
+  async fromId(functionId: string): Promise<Function_> {
+    try {
+      const resp = await this.#client.cpClient.functionGetById(
+        FunctionGetByIdRequest.create({ functionId }),
+      );
+      if (resp.function?.isServer) {
+        throw new InvalidError(
+          `${functionId} is a Server and cannot be loaded with functions.fromId().`,
+        );
+      }
+      if (resp.function?.isClass) {
+        throw new InvalidError(
+          `${functionId} is a Cls and cannot be loaded with functions.fromId().`,
+        );
+      }
+      return new Function_(
+        this.#client,
+        functionId,
+        undefined,
+        resp.handleMetadata,
+      );
+    } catch (err) {
+      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+        throw new NotFoundError(`Function '${functionId}' not found`);
+      throw err;
+    }
   }
 
   /**

@@ -31,6 +31,7 @@ import (
 // *XxxParams rule. These implement standard interfaces or are simple accessors
 // that would gain no benefit from an options struct.
 var skipMethods = map[string]string{
+	"FunctionService.FromID": "looks up a Function by ID with no configuration options",
 	// Simple value accessors.
 	"Function.GetWebURL": "returns cached URL string",
 

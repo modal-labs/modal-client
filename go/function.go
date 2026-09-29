@@ -19,6 +19,7 @@ import (
 
 // FunctionService provides Function related operations.
 type FunctionService interface {
+	FromID(ctx context.Context, functionID string) (*Function, error)
 	FromName(ctx context.Context, appName string, name string, params *FunctionFromNameParams) (*Function, error)
 }
 
@@ -89,6 +90,35 @@ func newFunction(
 		client:         client,
 		options:        options,
 	}
+}
+
+// FromID references a Function by its ID.
+//
+//	client, err := modal.NewClient()
+//	if err != nil {
+//		return err
+//	}
+//	defer client.Close()
+//	fn, err := client.Functions.FromID(ctx, "fu-***")
+//	if err != nil {
+//		return err
+//	}
+//	fmt.Println(fn.getWebURL())
+func (s *functionServiceImpl) FromID(ctx context.Context, functionID string) (*Function, error) {
+	resp, err := s.client.cpClient.FunctionGetById(ctx, pb.FunctionGetByIdRequest_builder{FunctionId: functionID}.Build())
+	if status.Code(err) == codes.NotFound {
+		return nil, NotFoundError{fmt.Sprintf("Function '%s' not found", functionID)}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if resp.GetFunction().GetIsServer() {
+		return nil, InvalidError{fmt.Sprintf("%s is a Server and cannot be loaded with Functions.FromID().", functionID)}
+	}
+	if resp.GetFunction().GetIsClass() {
+		return nil, InvalidError{fmt.Sprintf("%s is a Cls and cannot be loaded with Functions.FromID().", functionID)}
+	}
+	return newFunction(s.client, functionID, resp.GetHandleMetadata(), &functionOptions{}), nil
 }
 
 // FunctionFromNameParams are options for client.Functions.FromName.
