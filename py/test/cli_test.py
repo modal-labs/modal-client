@@ -991,6 +991,316 @@ def test_endpoint_create_custom_volume_requires_path(servicer, set_env_client):
     assert servicer.endpoint_create_requests == []
 
 
+_TEST_ENDPOINT_ID = "ep-abcdefghABCDEFGH012345"
+
+
+def _endpoint_info_response(
+    *,
+    dedicated: bool = True,
+    requires_proxy_auth: bool = True,
+    status: api_pb2.EndpointGetInfoResponse.EndpointStatus.ValueType = (
+        api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_LIVE
+    ),
+    include_metadata: bool | None = None,
+    volume_id: str = "",
+    model_path: str = "",
+) -> api_pb2.EndpointGetInfoResponse:
+    response = api_pb2.EndpointGetInfoResponse(
+        info=api_pb2.EndpointGetInfoResponse.EndpointInfoSummary(
+            name="qwen-chat",
+            repo_id="Qwen/Qwen3.6-27B-FP8",
+            revision="abc123456789",
+            service_url="https://qwen-chat.modal.run",
+            requires_proxy_auth=requires_proxy_auth,
+            serving_mode=(
+                api_pb2.ENDPOINT_SERVING_MODE_DEDICATED if dedicated else api_pb2.ENDPOINT_SERVING_MODE_SHARED
+            ),
+            status=status,
+            volume_id=volume_id,
+            model_path=model_path,
+            lifecycle=api_pb2.EndpointLifecycle(
+                status=(
+                    api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED
+                    if status == api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_STOPPED
+                    else api_pb2.ENDPOINT_LIFECYCLE_STATUS_ACTIVE
+                ),
+                created_at=1_700_000_000,
+                created_by="test-user",
+                stopped_at=(1_700_000_100 if status == api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_STOPPED else 0),
+                stopped_by=("test-user" if status == api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_STOPPED else ""),
+                environment_name="main",
+            ),
+        )
+    )
+    if include_metadata is None:
+        include_metadata = dedicated
+    if include_metadata:
+        response.metadata.CopyFrom(
+            api_pb2.EndpointGetInfoResponse.EndpointHandleMetadata(
+                app_id="ap-endpoint",
+                server_id="fu-endpoint-server",
+                environment_name="main",
+            )
+        )
+    return response
+
+
+def _mock_endpoint_client(
+    monkeypatch,
+    *,
+    dedicated: bool = True,
+    requires_proxy_auth: bool = True,
+    status: api_pb2.EndpointGetInfoResponse.EndpointStatus.ValueType = (
+        api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_LIVE
+    ),
+    include_metadata: bool | None = None,
+    volume_id: str = "",
+    model_path: str = "",
+):
+    client = mock.Mock()
+    client.stub = mock.Mock()
+    client._stub = client.stub
+    client.stub.EndpointGetByName = mock.AsyncMock(
+        return_value=api_pb2.EndpointGetByNameResponse(
+            endpoint_id=_TEST_ENDPOINT_ID,
+            environment_name="main",
+        )
+    )
+    client.stub.EndpointGetInfo = mock.AsyncMock(
+        return_value=_endpoint_info_response(
+            dedicated=dedicated,
+            requires_proxy_auth=requires_proxy_auth,
+            status=status,
+            include_metadata=include_metadata,
+            volume_id=volume_id,
+            model_path=model_path,
+        )
+    )
+    monkeypatch.setattr("modal.cli.endpoint._Client.from_env", mock.AsyncMock(return_value=client))
+    return client
+
+
+def test_endpoint_info_displays_name_status_and_lifecycle(set_env_client, monkeypatch):
+    client = _mock_endpoint_client(monkeypatch)
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID])
+    assert "Endpoint:" in result.stdout
+    assert "qwen-chat · Dedicated" in result.stdout
+    assert _TEST_ENDPOINT_ID in result.stdout
+    assert "live" in result.stdout
+    assert "Qwen/Qwen3.6-27B-FP8@abc1234" in result.stdout
+    assert "Served From:" not in result.stdout
+    assert "https://qwen-chat.modal.run" in result.stdout
+    assert "Serving mode:" not in result.stdout
+    assert "Revision:" not in result.stdout
+    assert "Authentication:" not in result.stdout
+    assert "Unauthenticated" not in result.stdout
+    assert "Deployment:" not in result.stdout
+    assert "Created:" in result.stdout
+    request = client.stub.EndpointGetInfo.await_args.args[0]
+    assert request.endpoint_id == _TEST_ENDPOINT_ID
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID, "--json"])
+    data = json.loads(result.stdout)
+    assert data["name"] == "qwen-chat"
+    assert data["endpoint_id"] == _TEST_ENDPOINT_ID
+    assert data["serving_mode"] == "dedicated"
+    assert data["status"] == "live"
+    assert data["service_url"] == "https://qwen-chat.modal.run"
+    assert data["volume_id"] is None
+    assert data["model_path"] is None
+    assert data["lifecycle"]["created_by"] == "test-user"
+    assert data["app_id"] == "ap-endpoint"
+    assert data["server_id"] == "fu-endpoint-server"
+    assert data["revision"] == "abc123456789"
+    client.stub.EndpointGetByName.assert_not_awaited()
+
+
+def test_endpoint_info_displays_modal_volume_source(set_env_client, monkeypatch):
+    _mock_endpoint_client(monkeypatch, volume_id="vo-123", model_path="/models/qwen/")
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID])
+
+    assert "Model:" in result.stdout
+    assert "Qwen/Qwen3.6-27B-FP8@abc123" in result.stdout
+    assert "Served From:" in result.stdout
+    assert "vo-123:/models/qwen" in result.stdout
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID, "--json"])
+    data = json.loads(result.stdout)
+    assert data["volume_id"] == "vo-123"
+    assert data["model_path"] == "/models/qwen/"
+
+
+def test_endpoint_info_displays_modal_volume_root_path(set_env_client, monkeypatch):
+    _mock_endpoint_client(monkeypatch, volume_id="vo-123", model_path="/")
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID])
+
+    assert "Served From:" in result.stdout
+    assert "vo-123:/" in result.stdout
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID, "--json"])
+    data = json.loads(result.stdout)
+    assert data["volume_id"] == "vo-123"
+    assert data["model_path"] == "/"
+
+
+def test_endpoint_info_resolves_name_without_lifecycle_rpc(set_env_client, monkeypatch):
+    client = _mock_endpoint_client(monkeypatch)
+
+    result = run_cli_command(["endpoint", "info", "qwen-chat"])
+
+    assert "qwen-chat · Dedicated" in result.stdout
+    client.stub.EndpointGetByName.assert_awaited_once()
+    client.stub.EndpointGetInfo.assert_awaited_once_with(api_pb2.EndpointGetInfoRequest(endpoint_id=_TEST_ENDPOINT_ID))
+
+
+def test_endpoint_info_resolves_id_shaped_name(set_env_client, monkeypatch):
+    client = _mock_endpoint_client(monkeypatch)
+    client.stub.EndpointGetInfo.side_effect = [NotFoundError("Endpoint not found"), _endpoint_info_response()]
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID])
+
+    assert "qwen-chat · Dedicated" in result.stdout
+    client.stub.EndpointGetByName.assert_awaited_once_with(
+        api_pb2.EndpointGetByNameRequest(name=_TEST_ENDPOINT_ID, environment_name="")
+    )
+    assert client.stub.EndpointGetInfo.await_count == 2
+
+
+def test_endpoint_info_marks_unauthenticated_url(set_env_client, monkeypatch):
+    _mock_endpoint_client(monkeypatch, requires_proxy_auth=False)
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID, "--no-color"])
+
+    assert "https://qwen-chat.modal.run · Unauthenticated" in result.stdout
+
+
+def test_endpoint_logs_uses_server_log_runner(set_env_client, monkeypatch):
+    _mock_endpoint_client(monkeypatch)
+    run_server_logs = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.endpoint._run_server_logs", run_server_logs)
+
+    run_cli_command(
+        [
+            "endpoint",
+            "logs",
+            _TEST_ENDPOINT_ID,
+            "--since",
+            "2h",
+            "--tail",
+            "25",
+            "--search",
+            "ready",
+            "--show-server-id",
+        ]
+    )
+
+    run_server_logs.assert_awaited_once_with(
+        "ap-endpoint",
+        "fu-endpoint-server",
+        follow=False,
+        since="2h",
+        until=None,
+        tail=25,
+        search="ready",
+        container_id="",
+        source=None,
+        timestamps=False,
+        show_server_id=True,
+        show_container_id=False,
+    )
+
+
+def test_endpoint_stats_uses_server_stats_runner(set_env_client, monkeypatch):
+    _mock_endpoint_client(monkeypatch)
+    run_server_stats = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.endpoint._run_server_stats", run_server_stats)
+
+    run_cli_command(["endpoint", "stats", _TEST_ENDPOINT_ID, "--since", "2h", "--container-id", "ta-123"])
+
+    run_server_stats.assert_awaited_once()
+    args, kwargs = run_server_stats.await_args
+    assert args[1] == "fu-endpoint-server"
+    assert kwargs["history_duration"] == timedelta(hours=2)
+    assert kwargs["container_id"] == "ta-123"
+    assert kwargs["heading"] == f"Endpoint stats for qwen-chat ({_TEST_ENDPOINT_ID})"
+    assert kwargs["endpoint_id"] == _TEST_ENDPOINT_ID
+
+
+def test_endpoint_stats_includes_endpoint_id_in_json_output(set_env_client, monkeypatch):
+    client = _mock_endpoint_client(monkeypatch)
+    since = datetime(2026, 9, 25, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 9, 25, 13, tzinfo=timezone.utc)
+    response = api_pb2.ServerGetTimeRangeStatsResponse()
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+    client.stub.ServerGetTimeRangeStats = mock.AsyncMock(return_value=response)
+
+    result = run_cli_command(
+        [
+            "endpoint",
+            "stats",
+            _TEST_ENDPOINT_ID,
+            "--since",
+            since.isoformat(),
+            "--until",
+            until.isoformat(),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["endpoint_id"] == _TEST_ENDPOINT_ID
+    assert "object_id" not in payload
+    assert "function_id" not in payload
+
+
+@pytest.mark.parametrize("command", ["logs", "stats"])
+def test_shared_endpoint_rejects_server_observability_commands(set_env_client, monkeypatch, command):
+    _mock_endpoint_client(monkeypatch, dedicated=False)
+    run_server_logs = mock.AsyncMock()
+    run_server_stats = mock.AsyncMock()
+    monkeypatch.setattr("modal.cli.endpoint._run_server_logs", run_server_logs)
+    monkeypatch.setattr("modal.cli.endpoint._run_server_stats", run_server_stats)
+
+    result = run_cli_command(["endpoint", command, _TEST_ENDPOINT_ID], expected_exit_code=1)
+
+    assert "shared Endpoint" in result.stderr
+    assert f"modal endpoint {command}" in result.stderr
+    run_server_logs.assert_not_awaited()
+    run_server_stats.assert_not_awaited()
+
+
+@pytest.mark.parametrize("command", ["logs", "stats"])
+def test_stopped_endpoint_without_metadata_reports_expired_backing_server(set_env_client, monkeypatch, command):
+    _mock_endpoint_client(
+        monkeypatch,
+        status=api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_STOPPED,
+        include_metadata=False,
+    )
+
+    result = run_cli_command(["endpoint", command, _TEST_ENDPOINT_ID], expected_exit_code=1)
+
+    assert f"{command.capitalize()} cannot be retrieved" in result.stderr
+    assert "information about its backing server has expired" in result.stderr
+
+
+@pytest.mark.parametrize("command", ["logs", "stats"])
+def test_endpoint_without_metadata_reports_missing_backing_server(set_env_client, monkeypatch, command):
+    _mock_endpoint_client(
+        monkeypatch,
+        status=api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_PROVISIONING,
+        include_metadata=False,
+    )
+
+    result = run_cli_command(["endpoint", command, _TEST_ENDPOINT_ID], expected_exit_code=1)
+
+    assert f"{command.capitalize()} cannot be retrieved" in result.stderr
+    assert "does not have a backing server" in result.stderr
+
+
 def _add_endpoint_list_item(
     servicer,
     *,
@@ -4569,6 +4879,34 @@ def test_function_stats_cli(servicer, set_env_client):
     assert result.stdout.index("CPU Usage (cores)") < result.stdout.index("Memory Usage (GiB)")
 
 
+def test_function_stats_cli_json_uses_object_id(servicer, set_env_client):
+    servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
+    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    response = api_pb2.FunctionGetTimeRangeStatsResponse()
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGetTimeRangeStats", response)
+        result = run_cli_command(
+            [
+                "function",
+                "stats",
+                "fu-test",
+                "--since",
+                since.isoformat(),
+                "--until",
+                until.isoformat(),
+                "--json",
+            ]
+        )
+
+    payload = json.loads(result.stdout)
+    assert payload["object_id"] == "fu-test"
+    assert "function_id" not in payload
+
+
 def _run_variants_cli_with_ctx(
     servicer,
     variant_infos: list[api_pb2.FunctionVariantInfo],
@@ -5446,7 +5784,10 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
         "Inspection": ["info", "history", "logs", "dashboard"],
     },
     "container": {"Commands": ["list", "logs", "exec", "stop"]},
-    "endpoint": {"Management": ["list", "create", "stop"]},
+    "endpoint": {
+        "Management": ["list", "create", "stop"],
+        "Inspection": ["info", "logs", "stats"],
+    },
     "function": {"Commands": ["info", "logs", "stats", "calls", "variants"]},
     "server": {"Commands": ["info", "logs", "stats", "requests"]},
     "image": {"Commands": ["logs", "names"]},

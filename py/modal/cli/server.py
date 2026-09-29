@@ -4,7 +4,7 @@ from __future__ import annotations
 import dataclasses
 import json as json_lib
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, cast
 
 import click
@@ -60,6 +60,44 @@ _MAX_REQUEST_TAIL = 1000
 
 def _server_request_status_cell(status: int, no_color: bool = False) -> Text:
     return Text(str(status), style="red") if status >= 400 and not no_color else Text(str(status))
+
+
+async def _run_server_logs(
+    app_id: str,
+    function_id: str,
+    *,
+    follow: bool = False,
+    since: str | None = None,
+    until: str | None = None,
+    tail: int | None = None,
+    search: str | None = None,
+    container_id: str = "",
+    source: str | None = None,
+    timestamps: bool = False,
+    show_server_id: bool = False,
+    show_container_id: bool = False,
+) -> None:
+    _validate_logs_args(follow=follow, since=since, until=until, tail=tail)
+
+    prefix_fields: list[str] = []
+    if show_server_id:
+        prefix_fields.append("fu")
+    if show_container_id:
+        prefix_fields.append("ta")
+
+    await _run_logs_command(
+        app_id,
+        follow=follow,
+        since=since,
+        until=until,
+        tail=tail,
+        search=search,
+        function_id=function_id,
+        container_id=container_id,
+        source=source,
+        timestamps=timestamps,
+        prefix_fields=prefix_fields,
+    )
 
 
 @server_cli.command("info", no_args_is_help=True)
@@ -449,24 +487,19 @@ async def logs(
 
     function_id, metadata, _ = await _resolve_function_id(client, server_ref, env, object_type="Server", command="logs")
 
-    prefix_fields: list[str] = []
-    if show_server_id:
-        prefix_fields.append("fu")
-    if show_container_id:
-        prefix_fields.append("ta")
-
-    await _run_logs_command(
+    await _run_server_logs(
         metadata.app_id,
+        function_id,
         follow=follow,
         since=since,
         until=until,
         tail=tail,
         search=search,
-        function_id=function_id,
         container_id=container_id,
         source=source,
         timestamps=timestamps,
-        prefix_fields=prefix_fields,
+        show_server_id=show_server_id,
+        show_container_id=show_container_id,
     )
 
 
@@ -512,11 +545,11 @@ def _inference_json(inference: api_pb2.ServerGetTimeRangeStatsResponse.ServerInf
 
 
 def _stats_json(
-    function_id: str,
-    history: api_pb2.ServerGetTimeRangeStatsResponse,
+    function_id: str, history: api_pb2.ServerGetTimeRangeStatsResponse, endpoint_id: str | None = None
 ) -> dict[str, object]:
+    id_dict = {"object_id": function_id} if not endpoint_id else {"endpoint_id": endpoint_id}
     return {
-        "object_id": function_id,
+        **id_dict,
         "since": history.since.ToDatetime(tzinfo=timezone.utc).isoformat(),
         "until": history.until.ToDatetime(tzinfo=timezone.utc).isoformat(),
         "request_count": history.request_count,
@@ -633,6 +666,127 @@ def _render_inference(history: api_pb2.ServerGetTimeRangeStatsResponse, use_colo
         output.print(_percentile_table(percentile_rows, use_color))
 
 
+def _server_stats_time_range(since: str | None, until: str | None) -> tuple[datetime, datetime, timedelta]:
+    now = datetime.now(timezone.utc)
+    until_dt = _parse_time_arg(until, default=now)
+    since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW)
+    if since_dt >= until_dt:
+        raise UsageError("--since must be before --until.")
+
+    history_duration = until_dt - since_dt
+    if since is not None and until is None:
+        try:
+            history_duration = parse_duration(since)
+        except ValueError:
+            pass
+    return since_dt, until_dt, history_duration
+
+
+async def _run_server_stats(
+    client: _Client,
+    function_id: str,
+    *,
+    since_dt: datetime,
+    until_dt: datetime,
+    history_duration: timedelta,
+    container_id: str | None = None,
+    no_color: bool = False,
+    json_output: bool = False,
+    heading: str | None = None,
+    endpoint_id: str | None = None,
+) -> None:
+    req = api_pb2.ServerGetTimeRangeStatsRequest(
+        function_id=function_id,
+        since=_timestamp(since_dt),
+        until=_timestamp(until_dt),
+    )
+    if container_id:
+        req.container_id = container_id
+
+    history = await client._stub.ServerGetTimeRangeStats(req)
+
+    if json_output:
+        OutputManager.get().print_json(json_lib.dumps(_stats_json(function_id, history, endpoint_id)))
+        return
+
+    output = OutputManager.get()
+    output.print("")
+    use_color = not no_color
+    output.print(Text(heading or f"Server stats for {function_id}", style=stats_style(STATS_HEADING_STYLE, use_color)))
+    output.print("")
+    since_label = history.since.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    until_label = history.until.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    range_heading = f"Duration {str(history_duration)} · "
+    output.print(
+        Text(
+            f"{range_heading}{since_label} to {until_label} UTC",
+            style=stats_style(STATS_METADATA_STYLE, use_color),
+        )
+    )
+    output.print("")
+
+    request_heading = Text("Requests", style=stats_style(STATS_SECTION_STYLE, use_color))
+    request_heading.append(" " * (46 - len("Requests")))
+    request_heading.append(f"{history.request_count:,} total ({history.request_rate_per_second:,.2f} req/s)")
+    output.print(request_heading)
+    if history.request_count_by_status_code:
+        status_counts = Text("  ")
+        for index, item in enumerate(sorted(history.request_count_by_status_code, key=lambda item: item.status_code)):
+            if index:
+                status_counts.append(" · ")
+            status_family = item.status_code // 100
+            style = None
+            if status_family == 2:
+                style = success_style(item.count, history.request_count, use_color)
+            elif status_family in (4, 5):
+                style = problem_style(item.count, history.request_count, use_color)
+            status_counts.append(f"{status_family}xx: {item.count:,}", style=style)
+        output.print(status_counts)
+
+    request_rows = _metric_rows(
+        cast(dict[str, api_pb2.StatsPercentileDistribution], history.request_percentile_stats),
+        _REQUEST_METRIC_ORDER,
+        use_color,
+    )
+    if request_rows:
+        output.print("")
+        output.print(_percentile_table(request_rows, use_color))
+
+    output.print("")
+    container_count = history.container_started_count + history.container_error_count
+    container_heading = Text("Containers", style=stats_style(STATS_SECTION_STYLE, use_color))
+    container_heading.append(" " * (46 - len("Containers")))
+    container_heading.append(f"{container_count:,} total (")
+    container_heading.append(
+        f"{history.container_creating_at_end_count:,} creating",
+        style=progress_style(history.container_creating_at_end_count, use_color),
+    )
+    container_heading.append(")")
+    output.print(container_heading)
+
+    container_counts = Text("  ")
+    container_counts.append(
+        _count_with_percentage(history.container_started_count, container_count, "started"),
+        style=success_style(history.container_started_count, container_count, use_color),
+    )
+    container_counts.append(" · ")
+    container_counts.append(
+        _count_with_percentage(history.container_error_count, container_count, "errored"),
+        style=problem_style(history.container_error_count, container_count, use_color),
+    )
+    output.print(container_counts)
+    container_rows = _metric_rows(
+        cast(dict[str, api_pb2.StatsPercentileDistribution], history.container_percentile_stats),
+        _CONTAINER_METRIC_ORDER,
+        use_color,
+    )
+    if container_rows:
+        output.print("")
+        output.print(_percentile_table(container_rows, use_color))
+
+    _render_inference(history, use_color)
+
+
 @server_cli.command("stats", no_args_is_help=True)
 @click.argument("server_identifier", metavar="SERVER")
 @click.option(
@@ -716,18 +870,7 @@ async def stats(
     modal server stats my-app/my-server --container-id ta-12345
     ```
     """
-    now = datetime.now(timezone.utc)
-    until_dt = _parse_time_arg(until, default=now)
-    since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW)
-    if since_dt >= until_dt:
-        raise UsageError("--since must be before --until.")
-
-    history_duration = until_dt - since_dt
-    if since is not None and until is None:
-        try:
-            history_duration = parse_duration(since)
-        except ValueError:
-            pass
+    since_dt, until_dt, history_duration = _server_stats_time_range(since, until)
 
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
@@ -738,96 +881,16 @@ async def stats(
         object_type="Server",
         command="stats",
     )
-    req = api_pb2.ServerGetTimeRangeStatsRequest(
-        function_id=function_id,
-        since=_timestamp(since_dt),
-        until=_timestamp(until_dt),
+    await _run_server_stats(
+        client,
+        function_id,
+        since_dt=since_dt,
+        until_dt=until_dt,
+        history_duration=history_duration,
+        container_id=container_id,
+        no_color=no_color,
+        json_output=json_output,
     )
-    if container_id:
-        req.container_id = container_id
-
-    history = await client._stub.ServerGetTimeRangeStats(req)
-
-    if json_output:
-        OutputManager.get().print_json(json_lib.dumps(_stats_json(function_id, history)))
-        return
-
-    output = OutputManager.get()
-    output.print("")
-    use_color = not no_color
-    output.print(Text(f"Server stats for {function_id}", style=stats_style(STATS_HEADING_STYLE, use_color)))
-    output.print("")
-    since_label = history.since.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    until_label = history.until.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    range_heading = f"Duration {str(history_duration)} · "
-    output.print(
-        Text(
-            f"{range_heading}{since_label} to {until_label} UTC",
-            style=stats_style(STATS_METADATA_STYLE, use_color),
-        )
-    )
-    output.print("")
-
-    request_heading = Text("Requests", style=stats_style(STATS_SECTION_STYLE, use_color))
-    request_heading.append(" " * (46 - len("Requests")))
-    request_heading.append(f"{history.request_count:,} total ({history.request_rate_per_second:,.2f} req/s)")
-    output.print(request_heading)
-    if history.request_count_by_status_code:
-        status_counts = Text("  ")
-        for index, item in enumerate(sorted(history.request_count_by_status_code, key=lambda item: item.status_code)):
-            if index:
-                status_counts.append(" · ")
-            status_family = item.status_code // 100
-            style = None
-            if status_family == 2:
-                style = success_style(item.count, history.request_count, use_color)
-            elif status_family in (4, 5):
-                style = problem_style(item.count, history.request_count, use_color)
-            status_counts.append(f"{status_family}xx: {item.count:,}", style=style)
-        output.print(status_counts)
-
-    request_rows = _metric_rows(
-        cast(dict[str, api_pb2.StatsPercentileDistribution], history.request_percentile_stats),
-        _REQUEST_METRIC_ORDER,
-        use_color,
-    )
-    if request_rows:
-        output.print("")
-        output.print(_percentile_table(request_rows, use_color))
-
-    output.print("")
-    container_count = history.container_started_count + history.container_error_count
-    container_heading = Text("Containers", style=stats_style(STATS_SECTION_STYLE, use_color))
-    container_heading.append(" " * (46 - len("Containers")))
-    container_heading.append(f"{container_count:,} total (")
-    container_heading.append(
-        f"{history.container_creating_at_end_count:,} creating",
-        style=progress_style(history.container_creating_at_end_count, use_color),
-    )
-    container_heading.append(")")
-    output.print(container_heading)
-
-    container_counts = Text("  ")
-    container_counts.append(
-        _count_with_percentage(history.container_started_count, container_count, "started"),
-        style=success_style(history.container_started_count, container_count, use_color),
-    )
-    container_counts.append(" · ")
-    container_counts.append(
-        _count_with_percentage(history.container_error_count, container_count, "errored"),
-        style=problem_style(history.container_error_count, container_count, use_color),
-    )
-    output.print(container_counts)
-    container_rows = _metric_rows(
-        cast(dict[str, api_pb2.StatsPercentileDistribution], history.container_percentile_stats),
-        _CONTAINER_METRIC_ORDER,
-        use_color,
-    )
-    if container_rows:
-        output.print("")
-        output.print(_percentile_table(container_rows, use_color))
-
-    _render_inference(history, use_color)
 
 
 @server_cli.command("requests", no_args_is_help=True)
