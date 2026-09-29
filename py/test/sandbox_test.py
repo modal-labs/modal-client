@@ -2704,6 +2704,55 @@ def test_experimental_sandbox_create_secret_from_dict_and_from_name(app, service
     assert len(req.definition.secret_ids) == 1
 
 
+def test_experimental_sandbox_create_secret_ordering_named_after_local(app, servicer, client):
+    Secret.objects.create("my-secret", {"K": "named", "NAMED_ONLY": "yes"}, client=client)
+    secrets = [Secret.from_dict({"K": "local", "LOCAL_ONLY": "yes"}), Secret.from_name("my-secret")]
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert dict(req.ephemeral_secrets.contents) == {"LOCAL_ONLY": "yes"}
+    assert len(req.definition.secret_ids) == 1
+
+
+def test_experimental_sandbox_create_secret_ordering_local_after_named(app, servicer, client):
+    Secret.objects.create("my-secret", {"K": "named"}, client=client)
+    secrets = [Secret.from_name("my-secret"), Secret.from_dict({"K": "local"})]
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert dict(req.ephemeral_secrets.contents) == {"K": "local"}
+    assert len(req.definition.secret_ids) == 1
+
+
+def test_experimental_sandbox_create_secret_ordering_interleaved(app, servicer, client):
+    Secret.objects.create("my-secret", {"K": "named", "J": "named"}, client=client)
+    secrets = [
+        Secret.from_dict({"K": "first", "J": "first"}),
+        Secret.from_name("my-secret"),
+        Secret.from_dict({"K": "last"}),
+    ]
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert dict(req.ephemeral_secrets.contents) == {"K": "last"}
+    assert len(req.definition.secret_ids) == 1
+
+
+def test_experimental_sandbox_create_env_overrides_named_secret(app, servicer, client):
+    Secret.objects.create("my-secret", {"K": "named"}, client=client)
+    secrets = [Secret.from_dict({"K": "local"}), Secret.from_name("my-secret")]
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, env={"K": "env"}, secrets=secrets)
+        req = ctx.pop_request("SandboxCreateV2")
+
+    # `env` always takes precedence over Secrets, regardless of list order.
+    assert dict(req.ephemeral_secrets.contents) == {"K": "env"}
+    assert len(req.definition.secret_ids) == 1
+
+
 def test_experimental_sandbox_create_no_env_omits_ephemeral_secrets(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app)
@@ -2803,6 +2852,18 @@ def test_sandbox_exec_env_routing_named_secret(app, servicer, client):
     (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
     assert dict(exec_start_request.env) == {"PLAIN": "plain"}
     # The named secret will be hydreated
+    assert list(exec_start_request.secret_ids) == [secret.object_id]
+
+
+@skip_non_subprocess
+def test_sandbox_exec_secret_ordering_named_after_local(app, servicer, client):
+    Secret.objects.create("my-secret", {"K": "named"}, client=client)
+    secret = Secret.from_name("my-secret")
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb.exec("echo", "hello", secrets=[Secret.from_dict({"K": "local", "LOCAL_ONLY": "yes"}), secret])
+    (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
+    assert dict(exec_start_request.env) == {"LOCAL_ONLY": "yes"}
     assert list(exec_start_request.secret_ids) == [secret.object_id]
 
 
@@ -3577,6 +3638,31 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, cli
     assert list(container_create_request.definition.secret_ids) == [named_secret.object_id]
     (secret_request,) = ctx.control_plane.get_requests("SecretGetOrCreate")
     assert secret_request.deployment_name == "sidecar-secret"
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_secret_ordering_named_after_local(app, servicer, client, sidecar_create_path):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+    Secret.objects.create("sidecar-secret", {"K": "named"}, client=client)
+    named_secret = Secret.from_name("sidecar-secret")
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with _intercept_sidecar_create(servicer) as ctx:
+        sb._experimental_sidecars.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="worker",
+            image=image,
+            secrets=[Secret.from_dict({"K": "local", "LOCAL_ONLY": "yes"}), named_secret],
+        )
+
+    container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
+    assert container_create_request.env == {"LOCAL_ONLY": "yes"}
+    assert list(container_create_request.definition.secret_ids) == [named_secret.object_id]
 
 
 def test_sandbox_container_create_rejects_invalid_local_secret_key(app, servicer, sidecar_create_path):

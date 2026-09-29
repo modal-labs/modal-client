@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import builtins
 import os
+from collections.abc import Collection
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -585,20 +586,22 @@ class _Secret(_Object, type_prefix="st"):
         self._keys = self._keys | set(env_dict.keys())
 
 
-def _split_env_dict_and_resolvable_secrets(secrets: list[_Secret]) -> tuple[dict[str, str], list[_Secret]]:
-    """Split secrets into secrets that can be resolved locally and secrets that are remote.
+def _resolvable_secrets(secrets: Collection[_Secret]) -> list[_Secret]:
+    """Secrets that must be resolved server-side and referenced by id, e.g. `Secret.from_name`."""
+    return [secret for secret in secrets if not secret._load_env_dict]
 
-    Locally resolvable secrets include: `Secret.from_dict`, `Secret.from_dotenv`
-    Remote secrets include: `Secret.from_name`
-    """
+
+def _local_secret_env(secrets: Collection[_Secret]) -> dict[str, str]:
+    """Env vars from locally resolvable Secrets (`Secret.from_dict`, `Secret.from_dotenv`, ...)."""
     env_dict: dict[str, str] = {}
-    resolvable_secrets: list[_Secret] = []
     for secret in secrets:
         if secret._load_env_dict:
             env_dict |= secret._load_env_dict()
-        else:
-            resolvable_secrets.append(secret)
-    return env_dict, resolvable_secrets
+        elif secret._keys:
+            # Inlined values override named Secrets regardless of order, so drop keys a later named Secret sets.
+            for key in secret._keys:
+                env_dict.pop(key, None)
+    return env_dict
 
 
 Secret = synchronize_api(_Secret)

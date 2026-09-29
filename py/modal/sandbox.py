@@ -23,7 +23,7 @@ from modal._supports_logs import LogsFilters, _LogQueryData
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.mount import _Mount
-from modal.secret import _split_env_dict_and_resolvable_secrets
+from modal.secret import _local_secret_env, _resolvable_secrets
 from modal.volume import _Volume, _volume_to_mount_proto
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -1043,7 +1043,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         secrets = secrets or []
 
-        env_dict, resolvable_secrets = _split_env_dict_and_resolvable_secrets(secrets)
+        resolvable_secrets = _resolvable_secrets(secrets)
+        ephemeral_env: dict[str, str] = {}
         if env:
             env_type_err = "the env argument to Sandbox must be a dict[str, str | None]"
             if not isinstance(env, dict):
@@ -1054,8 +1055,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             ):
                 raise InvalidError(env_type_err)
             _validate_sandbox_env(ephemeral_env)
-            # `env` has a higher precedience over environment variables from secrets
-            env_dict |= ephemeral_env
 
         image = image or _default_image
 
@@ -1116,6 +1115,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             if proxy:
                 dep_tasks.append(resolver.load(proxy, load_context))
             dep_timings = await _gather_load_with_timings(dep_tasks) if dep_tasks else []
+
+            # `env` takes precedence over environment variables from secrets
+            env_dict = _local_secret_env(secrets) | ephemeral_env
 
             validate_volumes_by_object_id(validated_volumes)
 
@@ -2312,12 +2314,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         _validate_exec_args(args)
 
         secrets = list(secrets or [])
-        env_dict, resolvable_secrets = _split_env_dict_and_resolvable_secrets(secrets)
-        env_dict |= {k: v for k, v in (env or {}).items() if v is not None}
+        resolvable_secrets = _resolvable_secrets(secrets)
 
         # Force explicit secret resolution so we can pass the secret IDs to the backend.
         secret_coros = [secret.hydrate(client=self._client) for secret in resolvable_secrets]
         await TaskContext.gather(*secret_coros)
+
+        env_dict = _local_secret_env(secrets)
+        env_dict |= {k: v for k, v in (env or {}).items() if v is not None}
 
         task_id = await self._get_task_id(raise_if_task_complete=True)
 
@@ -3197,11 +3201,9 @@ class _SidecarManager:
                 "or `.snapshot_filesystem()`\n"
             )
 
-        env_dict, resolvable_secrets = _split_env_dict_and_resolvable_secrets(list(secrets or []))
-        if env:
-            # `env` takes precedence over environment variables from secrets
-            env_dict |= env
-        _validate_sandbox_env(env_dict)
+        secrets = list(secrets or [])
+        resolvable_secrets = _resolvable_secrets(secrets)
+        _validate_sandbox_env(_local_secret_env(secrets) | (env or {}))
 
         bucket_credential_secrets = [
             mount.secret
@@ -3214,6 +3216,9 @@ class _SidecarManager:
             + [secret.hydrate(client=self._sandbox._client) for secret in bucket_credential_secrets]
         )
         await TaskContext.gather(*hydrate_coros)
+
+        # `env` takes precedence over environment variables from secrets
+        env_dict = _local_secret_env(secrets) | (env or {})
 
         # Validate that the same volume (by object_id) isn't mounted at multiple paths. This relies on
         # the volumes being hydrated above, since it compares object_ids.
