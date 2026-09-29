@@ -228,6 +228,50 @@ func TestSandboxExperimentalCreatePassesFromMapSecretAsEphemeralSecrets(t *testi
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestSandboxExperimentalCreateLaterFromNameSecretOverridesFromMap(t *testing.T) {
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+	registerSandboxCreateDeps(mock)
+
+	grpcmock.HandleUnary(mock, "/SecretGetOrCreate",
+		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
+			g.Expect(req.GetDeploymentName()).To(gomega.Equal("my-secret"))
+			return pb.SecretGetOrCreateResponse_builder{
+				SecretId: "st-named",
+				Metadata: pb.SecretMetadata_builder{Name: "my-secret", Keys: []string{"K", "NAMED_ONLY"}}.Build(),
+			}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "SandboxCreateV2",
+		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
+			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"LOCAL_ONLY": "yes", "ENV_ONLY": "env"}))
+			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.Equal([]string{"st-named"}))
+			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
+		},
+	)
+
+	app, err := mock.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+
+	local, err := mock.Secrets.FromMap(ctx, map[string]string{"K": "local", "LOCAL_ONLY": "yes"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	named, err := mock.Secrets.FromName(ctx, "my-secret", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+		Secrets: []*modal.Secret{local, named},
+		Env:     map[string]string{"ENV_ONLY": "env"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(sb.SandboxID).To(gomega.Equal(validV2SandboxID))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestSandboxExperimentalCreateRejectsInvalidEnvVarName(t *testing.T) {
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)

@@ -139,6 +139,34 @@ func TestSplitEnvDictAndResolvableSecrets(t *testing.T) {
 	g.Expect(resolvable).To(gomega.Equal([]*Secret{named, nil}))
 }
 
+func TestSplitEnvDictAndResolvableSecretsLaterNamedSecretWins(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	local := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"K": "local", "LOCAL_ONLY": "yes"}}}
+	named := &Secret{SecretID: "st-named", Name: "named", keys: []string{"K", "NAMED_ONLY"}}
+
+	envDict, resolvable := splitEnvDictAndResolvableSecrets([]*Secret{local, named})
+	g.Expect(envDict).To(gomega.Equal(map[string]string{"LOCAL_ONLY": "yes"}))
+	g.Expect(resolvable).To(gomega.Equal([]*Secret{named}))
+
+	envDict, _ = splitEnvDictAndResolvableSecrets([]*Secret{named, local})
+	g.Expect(envDict).To(gomega.Equal(map[string]string{"K": "local", "LOCAL_ONLY": "yes"}))
+
+	last := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"K": "last"}}}
+	envDict, _ = splitEnvDictAndResolvableSecrets([]*Secret{local, named, last})
+	g.Expect(envDict).To(gomega.Equal(map[string]string{"K": "last", "LOCAL_ONLY": "yes"}))
+}
+
+func TestSplitEnvDictAndResolvableSecretsUnknownNamedKeys(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	local := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"K": "local"}}}
+	named := &Secret{SecretID: "st-named"}
+
+	envDict, _ := splitEnvDictAndResolvableSecrets([]*Secret{local, named})
+	g.Expect(envDict).To(gomega.Equal(map[string]string{"K": "local"}))
+}
+
 func TestSplitEnvDictAndResolvableSecretsNoLocalSecrets(t *testing.T) {
 	g := gomega.NewWithT(t)
 

@@ -51,6 +51,9 @@ type Secret struct {
 	// hydrator resolves SecretID lazily. It is nil for Secrets constructed
 	// already-hydrated, and is not consulted again once SecretID is set.
 	hydrator secretHydrator
+	// keys are the env var names a server-side Secret defines, as reported by
+	// the control plane on FromName. Nil when unknown.
+	keys []string
 	// hydrateMu serializes hydrate so the SecretID is resolved at most once even
 	// if multiple goroutines hydrate the same Secret concurrently. A failed
 	// attempt is not cached, so callers may retry after a transient error.
@@ -138,7 +141,7 @@ func (s *secretServiceImpl) FromName(ctx context.Context, name string, params *S
 	}
 
 	s.client.logger.DebugContext(ctx, "Retrieved Secret", "secret_id", resp.GetSecretId(), "secret_name", name)
-	return &Secret{SecretID: resp.GetSecretId(), Name: name}, nil
+	return &Secret{SecretID: resp.GetSecretId(), Name: name, keys: resp.GetMetadata().GetKeys()}, nil
 }
 
 // SecretFromMapParams are options for creating a Secret from a key/value map.
@@ -198,9 +201,11 @@ func hydrateSecrets(ctx context.Context, client *Client, secrets []*Secret) erro
 // Secrets that must be hydrated to a SecretID before use (e.g. from FromName).
 //
 // Locally-created Secrets can be passed directly to the worker as environment
-// variables, avoiding a SecretGetOrCreate round-trip. This function does not
-// validate its input: nil Secrets are placed in the resolvable list rather than
-// dropped, leaving it to hydrateSecrets to reject them with an error.
+// variables, avoiding a SecretGetOrCreate round-trip. Secrets apply in slice
+// order with later ones winning on key collisions.
+// This function does not validate its input: nil Secrets are placed in the
+// resolvable list rather than dropped, leaving it to hydrateSecrets to reject
+// them with an error.
 func splitEnvDictAndResolvableSecrets(secrets []*Secret) (map[string]string, []*Secret) {
 	envDict := map[string]string{}
 	var resolvable []*Secret
@@ -210,6 +215,12 @@ func splitEnvDictAndResolvableSecrets(secrets []*Secret) (map[string]string, []*
 				envDict[k] = v
 			}
 		} else {
+			if secret != nil {
+				// A later Secret wins, so drop keys it redefines from earlier env-dict Secrets.
+				for _, k := range secret.keys {
+					delete(envDict, k)
+				}
+			}
 			resolvable = append(resolvable, secret)
 		}
 	}
