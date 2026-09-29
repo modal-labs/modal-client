@@ -1183,15 +1183,15 @@ async def test_volume_read_file_into_fileobj_cancels_siblings(monkeypatch, servi
             assert output.late_writes == 0
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.asyncio
 async def test_volume_read_file_into_fileobj_read_timeout(monkeypatch, servicer, client, version):
     """A block that makes no progress hits the inactivity timeout instead of hanging."""
     monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
-    monkeypatch.setenv("MODAL_VOLUME_BLOCK_READ_TIMEOUT", "0.5")
+    monkeypatch.setenv("MODAL_VOLUME_BLOCK_READ_TIMEOUT", "0.1")
 
     with servicer.intercept() as ctx:
-        url = f"{servicer.blob_host}/block/test-get-request:stall:10"
+        url = f"{servicer.blob_host}/block/test-get-request:stall:0.5"
         response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
         ctx.add_response("VolumeGetFile2", response)
 

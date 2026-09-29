@@ -1292,7 +1292,7 @@ def _run_watch_with_trigger(
     *,
     recursive: bool = False,
     filter: Optional[list[FileWatchEventType]] = None,
-    timeout: int = 2,
+    timeout: float = 0.5,
 ) -> list[FileWatchEvent]:
     """Run watch() while trigger(i) fires every 50ms in the background."""
     stop = threading.Event()
@@ -1310,7 +1310,14 @@ def _run_watch_with_trigger(
     thread = threading.Thread(target=_runner, daemon=True)
     thread.start()
     try:
-        return list(sandbox.filesystem.watch(path, recursive=recursive, filter=filter, timeout=timeout))
+        return list(
+            sandbox.filesystem.watch(
+                path,
+                recursive=recursive,
+                filter=filter,
+                timeout=timeout,  # type: ignore
+            )
+        )
     finally:
         stop.set()
         thread.join(timeout=2)
