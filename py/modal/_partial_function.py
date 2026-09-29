@@ -828,7 +828,7 @@ def _clustered(*, size: int, rdma: bool = False) -> _ClusteredDecorator:
     containers and must be multiples of `size`. For example, `size=4` with
     `min_containers=8` keeps two clusters warm.
 
-    See the [multi-node clusters guide](https://modal.com/docs/guide/multi-node-training)
+    See the [multi-node clusters guide](https://modal.com/docs/guide/multi-node-clusters)
     for hardware requirements and networking details.
 
     Parameters:
