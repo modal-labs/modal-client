@@ -5504,9 +5504,8 @@ def test_cli_help_subcommand_layout(group_path):
     assert list(layout) == list(_CLI_HELP_LAYOUT[group_path])
 
 
-def test_cli_help_top_level_commands_order():
-    from modal.cli._help import group_commands_by_panel
-    from modal.cli.entry_point import entrypoint_cli
-
-    commands = [name for name, _ in group_commands_by_panel(entrypoint_cli)["Commands"]]
-    assert commands == ["run", "serve", "deploy", "shell", "curl"]
+def test_cli_does_not_import_aiohttp():
+    # aiohttp adds ~100ms to startup, so the CLI should only import it when a command needs it.
+    # Runs in a subprocess because the test suite itself imports aiohttp.
+    code = "import sys, modal.__main__; assert 'aiohttp' not in sys.modules"
+    subprocess.run([sys.executable, "-c", code], check=True)

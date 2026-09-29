@@ -3,7 +3,6 @@ import itertools
 import os
 from collections.abc import AsyncGenerator
 
-import aiohttp.web
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -26,6 +25,8 @@ class _TokenFlow:
         self, utm_source: str | None = None, next_url: str | None = None, expires_in_seconds: int | None = None
     ) -> AsyncGenerator[tuple[str, str, str], None]:
         """mdmd:hidden"""
+        import aiohttp.web  # Deferred because aiohttp is a heavy dependency
+
         # Run a temporary http server returning the token id on /
         # This helps us add direct validation later
         # TODO(erikbern): handle failure launching server
