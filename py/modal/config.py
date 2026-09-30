@@ -422,6 +422,9 @@ class Config:
 
         Returns:
             The transformed configuration value (type depends on the setting).
+
+        Raises:
+            KeyError: If ``key`` is not the name of a setting.
         """
         if profile is None:
             profile = _profile
@@ -472,12 +475,23 @@ class Config:
         return repr(self.to_dict())
 
     def to_dict(self, *, include_internal: bool = False):
+        """Return every public setting along with its current value."""
         return {
             key: self.get(key) for key, setting in sorted(_SETTINGS.items()) if include_internal or not setting.internal
         }
 
 
 config = Config()
+
+__doc__config = """The process-wide `Config` instance the Modal client reads its settings from.
+
+```python
+from modal.config import config
+
+log_level = config.get("loglevel")
+```
+
+"""
 
 # Logging
 
