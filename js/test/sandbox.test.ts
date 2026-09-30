@@ -509,7 +509,7 @@ test("CreateSandboxWithNetworkAccessParams", async () => {
       blockNetwork: false,
       outboundCidrAllowlist: ["not-an-ip/8"],
     }),
-  ).rejects.toThrow("Invalid CIDR: not-an-ip/8");
+  ).rejects.toThrow("Invalid CIDR (outbound IPv4): not-an-ip/8");
 
   await expect(
     tc.sandboxes.create(app, image, {

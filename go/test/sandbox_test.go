@@ -582,7 +582,7 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"not-an-ip/8"}},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
-	g.Expect(err.Error()).Should(gomega.ContainSubstring("Invalid CIDR: not-an-ip/8"))
+	g.Expect(err.Error()).Should(gomega.ContainSubstring("Invalid CIDR (outbound IPv4): not-an-ip/8"))
 
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		BlockNetwork:          true,
