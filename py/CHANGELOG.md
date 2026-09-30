@@ -8,7 +8,7 @@ Sandboxes now use our [next-generation backend](/blog/scaling-to-1-million-concu
 - The [`modal.Sandbox.create()`](/docs/sdk/py/latest/Sandbox#create) method now blocks until the Sandbox is scheduled instead of returning immediately.
 - If a Sandbox is unable to be scheduled (e.g. due to unsatisfiable resource or placement requests), creation will time out and raise a [`ResourceExhaustedError`](/docs/sdk/py/latest/exception#resourceexhaustederror).
 
-Functions and Servers can now run on [ephemeral multi-node clusters](/docs/guide/multi-node-training) for large-scale training or inference workloads:
+Functions and Servers can now run on [ephemeral multi-node clusters](/docs/guide/multi-node-clusters) for large-scale training or inference workloads:
 - Add the [`@modal.clustered()`](/docs/sdk/py/latest/clustered) decorator to your function or class.
 - Use the new [`modal.Cluster`](/docs/sdk/py/latest/Cluster) object within each process to determine the rank and private IPs of containers in the cluster.
 
