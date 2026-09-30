@@ -53,9 +53,21 @@ if [ ! -x "$PROTOC" ]; then
     echo "proto_toolchain.sh: protoc checksum mismatch: got $got, want $protoc_sha256" >&2
     exit 1
   fi
-  rm -rf "$cache_dir/protoc-$PROTOC_VERSION"
-  unzip -oq "$tmp/protoc.zip" -d "$cache_dir/protoc-$PROTOC_VERSION"
-  rm -rf "$tmp"
+  # Unpack beside the final location and rename into place, so concurrent
+  # callers never see (or clobber) a partially extracted tree.
+  protoc_dir="$cache_dir/protoc-$PROTOC_VERSION"
+  staged="$(mktemp -d "$cache_dir/.protoc-$PROTOC_VERSION.XXXXXX")"
+  trap 'rm -rf "$tmp" "$staged"' EXIT
+  unzip -oq "$tmp/protoc.zip" -d "$staged"
+  chmod 755 "$staged"
+  if [ -e "$protoc_dir" ] && [ ! -x "$PROTOC" ]; then
+    rm -rf "$protoc_dir"
+  fi
+  # If another caller renamed its copy into place first, this nests ours
+  # inside it instead; discard that copy below.
+  mv "$staged" "$protoc_dir" 2>/dev/null || true
+  rm -rf "${protoc_dir:?}/$(basename "$staged")"
+  rm -rf "$tmp" "$staged"
   trap - EXIT
 fi
 
