@@ -396,8 +396,8 @@ def test_channel_config():
     assert config.http2_stream_window_size == 64 * 1024 * 1024
 
 
-def _keepalive_probes_sent(config, num_probe_intervals: int, monkeypatch) -> int:
-    """Count the probes grpclib sends on a connection that only awaits a response.
+def _keepalive_probes_sent(config, num_probe_intervals: int, monkeypatch, sending_requests: bool = False) -> int:
+    """Count the probes grpclib sends on a connection that either only awaits a response or keeps sending requests.
 
     Replays its probe schedule against `_is_need_send_ping`, one tick per probe
     interval.
@@ -408,6 +408,8 @@ def _keepalive_probes_sent(config, num_probe_intervals: int, monkeypatch) -> int
     connection = grpclib.protocol.Connection(mock.MagicMock(), mock.MagicMock(), config=config)
     probes = 0
     for _ in range(num_probe_intervals):
+        if sending_requests:
+            connection.headers_send_process()
         if connection._is_need_send_ping():
             connection.last_ping_sent = now
             connection.ping_count_in_sequence += 1
@@ -418,6 +420,10 @@ def _keepalive_probes_sent(config, num_probe_intervals: int, monkeypatch) -> int
 
 def test_channel_config_keepalive_probing_stops_without_data(monkeypatch):
     assert _keepalive_probes_sent(create_channel_config(), 20, monkeypatch) == 2
+
+
+def test_channel_config_keepalive_probes_while_sending_requests(monkeypatch):
+    assert _keepalive_probes_sent(create_channel_config(), 20, monkeypatch, sending_requests=True) == 20
 
 
 def test_channel_config_sustained_keepalive_probes_for_connection_lifetime(monkeypatch):

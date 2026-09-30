@@ -307,20 +307,19 @@ def create_channel_config(*, sustained_keepalive: bool = False) -> grpclib.confi
     HTTP/2 keepalive probes keep idle transports warm through stateful
     middleboxes and surface dead connections before retries reuse them.
 
-    `sustained_keepalive` clears the two grpclib defaults such that a probe
-    actually goes out every `_keepalive_time`, for as long as the connection is
-    open.
+    A probe goes out every `_keepalive_time` while the connection keeps sending
+    requests. `sustained_keepalive` also keeps probing a connection that only
+    awaits responses, for as long as it is open.
     """
-    ping_throttle_overrides: dict[str, Any] = {}
+    ping_throttle_overrides: dict[str, Any] = {
+        # Default 300s floor between probes, applied regardless of data
+        # despite the name, so it has to stay under `_keepalive_time`.
+        "_http2_min_sent_ping_interval_without_data": GRPC_KEEPALIVE_TIME_SECS / 2,
+    }
     if sustained_keepalive:
-        ping_throttle_overrides = {
-            # Default 2: probing stops after two probes with no request sent in
-            # between. Requests reset the count, acks don't. 0 = no cap.
-            "_http2_max_pings_without_data": 0,
-            # Default 300s floor between probes, applied regardless of data
-            # despite the name, so it has to stay under `_keepalive_time`.
-            "_http2_min_sent_ping_interval_without_data": GRPC_KEEPALIVE_TIME_SECS / 2,
-        }
+        # Default 2: probing stops after two probes with no request sent in
+        # between. Requests reset the count, acks don't. 0 = no cap.
+        ping_throttle_overrides["_http2_max_pings_without_data"] = 0
 
     return grpclib.config.Configuration(
         _keepalive_time=GRPC_KEEPALIVE_TIME_SECS,
