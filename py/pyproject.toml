@@ -44,7 +44,7 @@ dev = [
     "grpclib==0.4.9",
     "invoke~=2.2",
     "httpx~=0.28.1",
-    "pyjwt~=2.13.0",
+    "pyjwt~=2.14.0",
     "pre-commit>=2.21,<4",
     "mypy~=1.18.2",
     "packaging>=23.1",
