@@ -3802,6 +3802,8 @@ message SandboxContainerCreateV2Request {
   Sandbox definition = 3;
   StringMap ephemeral_secrets = 4;
   map<string, StringMap> cloud_bucket_mount_credentials = 5;
+  // Applied in order. Cannot be combined with ephemeral_secrets. If definition.secret_ids is set, it must match the secret_id entries here.
+  repeated SecretSource secret_sources = 6;
 }
 
 message SandboxContainerCreateV2Response {
@@ -3839,6 +3841,8 @@ message SandboxCreateV2Request {
   StringMap ephemeral_secrets = 3;
   repeated SandboxTag tags = 4;
   map<string, StringMap> cloud_bucket_mount_credentials = 5;
+  // Applied in order. Cannot be combined with ephemeral_secrets. If definition.secret_ids is set, it must match the secret_id entries here.
+  repeated SecretSource secret_sources = 6;
 }
 
 message SandboxCreateV2Response {
@@ -4233,6 +4237,16 @@ message SecretMetadata {
   CreationInfo creation_info = 2;
   repeated string keys = 3;
   string environment_name = 4;
+}
+
+// One source of environment variables for a Sandbox container or exec.
+message SecretSource {
+  oneof source {
+    // Server-side Secret, resolved on the worker.
+    string secret_id = 1;
+    // Plaintext values sent directly to the worker. Must not be persisted.
+    StringMap env = 2;
+  }
 }
 
 message SecretUpdateRequest {
