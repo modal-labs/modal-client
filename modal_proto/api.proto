@@ -1866,6 +1866,7 @@ message EnvironmentListItem {
   EnvironmentType environment_type = 15;
   optional EnvironmentRole default_member_role = 16;
   optional bool block_unauthenticated_resources = 17;
+  optional EnvironmentRole effective_role = 18;
 }
 
 message EnvironmentListResponse {
