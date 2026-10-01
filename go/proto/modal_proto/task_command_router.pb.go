@@ -868,8 +868,7 @@ type TaskContainerCreateRequest_builder struct {
 	// reserve (experimental option vm_sidecar_memory_reserve_mib); unset
 	// consumes whatever is left of it. Ignored without a reserve.
 	MemoryReserveConsumeMib *uint32
-	// Ordered environment sources, applied before `env`. When non-empty,
-	// replaces `secret_ids`, which must be left empty.
+	// Applied in order. Cannot be combined with secret_ids or env.
 	SecretSources []*SecretSource
 }
 
@@ -2134,8 +2133,7 @@ type TaskExecStartRequest_builder struct {
 	ContainerId string
 	// Environment variables to set directly for the exec'd command.
 	Env map[string]string
-	// Ordered environment sources, applied before `env`. When non-empty,
-	// replaces `secret_ids`, which must be left empty.
+	// Applied in order. Cannot be combined with secret_ids or env.
 	SecretSources []*SecretSource
 }
 
