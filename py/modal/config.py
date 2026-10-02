@@ -134,13 +134,9 @@ def _agent_environment() -> str | None:
 
     Returns the agent name if detected, or None otherwise.
 
-    Checks the emerging `AGENT` standard variable first, then falls back to
-    tool-specific environment variables used by known agent harnesses.
+    Checks tool-specific environment variables used by known agent harnesses
+    first, then falls back to the emerging `AGENT` and `AI_AGENT` standards.
     """
-    # Emerging standard: AGENT=<name>
-    if agent := os.environ.get("AGENT"):
-        return agent
-
     # Tool-specific environment variables
     _TOOL_SPECIFIC_ENV_VARS: list[tuple[str, str]] = [
         ("CLAUDECODE", "claude-code"),
@@ -152,10 +148,22 @@ def _agent_environment() -> str | None:
         ("OPENCODE_CLIENT", "opencode"),
         ("GOOSE_TERMINAL", "goose"),  # honk
         ("TRAE_AI_SHELL_ID", "trae"),
+        ("PI_CODING_AGENT", "pi"),
+        ("COPILOT_AGENT_SESSION_ID", "copilot"),
+        ("ANTIGRAVITY_AGENT", "antigravity"),
+        ("JUNIE_SHIM_PATH", "junie"),
     ]
     for env_var, agent_name in _TOOL_SPECIFIC_ENV_VARS:
         if os.environ.get(env_var):
             return agent_name
+
+    # Emerging standards, checked last because neither value is normalized.
+    # `AGENT` may be a bare `1` rather than a name (opencode), and `AI_AGENT`
+    # may embed a version or suffix (e.g. `claude-code_2-1-268_agent`).
+    if agent := os.environ.get("AGENT"):
+        return agent
+    if agent := os.environ.get("AI_AGENT"):
+        return agent
 
     return None
 
