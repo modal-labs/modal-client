@@ -1,7 +1,10 @@
 # Copyright Modal Labs 2025
+import asyncio
 import inspect
 import json
+import time
 import typing
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from typing_extensions import Self
@@ -477,9 +480,8 @@ class _Server:
         return ServerStats._from_proto(stats)
 
 
-@retry(n_attempts=5, base_delay=0.5, attempt_timeout=65, total_timeout=200)
 async def _post_session_control(url: str, headers: dict[str, str]) -> tuple[int, str, str]:
-    """POST to a sticky session control endpoint, retrying connection errors and 5xx. Returns (status, reason, body)."""
+    """POST to a sticky session control endpoint, raising on 5xx."""
     async with ClientSessionRegistry.get_session().post(url, headers=headers) as resp:
         body = await resp.text()
         if resp.status >= 400:
@@ -487,6 +489,28 @@ async def _post_session_control(url: str, headers: dict[str, str]) -> tuple[int,
         if resp.status >= 500:
             raise ServiceError(f"status {resp.status} {resp.reason}")
         return resp.status, resp.reason or "", body
+
+
+async def _post_session_start(base_url: str, fn: _Function, idle_timeout: int) -> tuple[int, str, str]:
+    idempotency_key = str(uuid.uuid4())
+    start_timestamp = str(time.time())
+
+    @retry(n_attempts=5, base_delay=0.5, attempt_timeout=None, total_timeout=1515)
+    async def attempt() -> tuple[int, str, str]:
+        headers = {
+            "Modal-Authorization": f"Bearer {await fn._get_flash_auth_token()}",
+            "x-idempotency-key": idempotency_key,
+            "x-modal-timestamp": start_timestamp,
+            "x-modal-server-session-idle-timeout": str(idle_timeout),
+        }
+        return await _post_session_control(f"{base_url}/_modal/sessions/start", headers)
+
+    return await attempt()
+
+
+@retry(n_attempts=3, base_delay=0.5, attempt_timeout=None, total_timeout=60)
+async def _post_session_terminate(base_url: str, headers: dict[str, str]) -> tuple[int, str, str]:
+    return await _post_session_control(f"{base_url}/_modal/sessions/terminate", headers)
 
 
 class _ServerSessionsManager:
@@ -506,6 +530,10 @@ class _ServerSessionsManager:
         Requests to the server URL that carry the returned token are routed to the same container until the
         session has had no connections for `idle_timeout` seconds or is terminated. A container won't be scaled down
         for as long as it holds a live session.
+
+        If no container has room for the session, the call waits for additional capacity. It will block for
+        up to 25 minutes before giving up. To control the wait per call, use the HTTP API and apply your own retry
+        policy.
 
         Args:
             idle_timeout: Seconds without an in-flight request before the session ends.
@@ -531,13 +559,10 @@ class _ServerSessionsManager:
         self._validate()
         assert url is not None, "Server has no URL."
 
-        headers = {
-            "Modal-Authorization": f"Bearer {await fn._get_flash_auth_token()}",
-            "x-modal-server-session-idle-timeout": str(idle_timeout),
-        }
-
         try:
-            status, reason, body = await _post_session_control(f"{url}/_modal/sessions/start", headers)
+            status, reason, body = await _post_session_start(url, fn, idle_timeout)
+        except asyncio.TimeoutError:
+            raise asyncio.TimeoutError("Failed to start session: timed out") from None
         except ServiceError as exc:
             raise ExecutionError(f"Failed to start session: {exc}") from None
         if status >= 400:
@@ -576,7 +601,7 @@ class _ServerSessionsManager:
             "x-modal-server-session-token": token,
         }
         try:
-            status, reason, _body = await _post_session_control(f"{url}/_modal/sessions/terminate", headers)
+            status, reason, _body = await _post_session_terminate(url, headers)
         except ServiceError as exc:
             raise ExecutionError(f"Failed to terminate session: {exc}") from None
         if status == 404:

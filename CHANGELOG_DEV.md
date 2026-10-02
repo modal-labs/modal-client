@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Improved reliability of Sticky Session lifecycle operations by retrying transient failures and allowing session starts to wait up to 25 minutes.
 - Added `modal endpoint info` command for displaying information such as an endpoint's deployment status, URL, and model id. We've also added `modal endpoint stats` to inspect performance metrics for an Endpoint over a selected time window and `modal endpoint logs` for displaying logs for an Endpoint.
 - Added `container_total_count` to the output returned by the `stats` command of Function, Server, and Endpoint CLI groups. This field is also returned in the `.stats` method on `Server` and `Function` objects.
 
