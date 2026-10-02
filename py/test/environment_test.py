@@ -175,16 +175,8 @@ def test_environment_apps_list_returns_remote_handles_without_lookup(servicer, c
             ),
         ]
     )
-    info_response = api_pb2.AppGetInfoResponse(
-        info=api_pb2.AppHandleMetadata(
-            description="stopped app",
-            lifecycle=api_pb2.AppLifecycle(app_state=api_pb2.APP_STATE_STOPPED),
-        )
-    )
-
     with servicer.intercept() as ctx:
         ctx.add_response("AppList", response)
-        ctx.add_response("AppGetInfo", info_response)
         apps = env.apps.list()
         info = apps[1].info()
 
@@ -202,7 +194,41 @@ def test_environment_apps_list_returns_remote_handles_without_lookup(servicer, c
     app_list_request = ctx.pop_request("AppList")
     assert app_list_request.environment_name == "main"
     assert ctx.get_requests("AppGetOrCreate") == []
-    assert ctx.pop_request("AppGetInfo").app_id == "ap-ephemeral"
+    assert ctx.get_requests("AppGetInfo") == []
+
+
+def test_environment_apps_list_filter_by_functions_without_info_rpc(servicer, client):
+    env = Environment.from_name("main", client=client)
+    response = api_pb2.AppListResponse(
+        apps=[
+            api_pb2.AppListResponse.AppListItem(
+                app_id="ap-functions",
+                state=api_pb2.APP_STATE_DEPLOYED,
+                metadata=api_pb2.AppHandleMetadata(functions={"hello": "fu-hello"}),
+            ),
+            api_pb2.AppListResponse.AppListItem(
+                app_id="ap-servers",
+                state=api_pb2.APP_STATE_DEPLOYED,
+                metadata=api_pb2.AppHandleMetadata(servers={"web": "fu-web"}),
+            ),
+            api_pb2.AppListResponse.AppListItem(
+                app_id="ap-empty",
+                state=api_pb2.APP_STATE_EPHEMERAL,
+                metadata=api_pb2.AppHandleMetadata(),
+            ),
+        ]
+    )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppList", response)
+        apps_with_funs = []
+        for app in env.apps.list():
+            if app.info().functions:
+                apps_with_funs.append(app)
+
+    assert [app.app_id for app in apps_with_funs] == ["ap-functions"]
+    assert len(ctx.get_requests("AppList")) == 1
+    assert ctx.get_requests("AppGetInfo") == []
 
 
 def test_environment_get_roles(servicer, client):

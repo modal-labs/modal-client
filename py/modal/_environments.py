@@ -22,7 +22,7 @@ from ._utils.time_utils import is_utc_month_aligned, parse_billing_cycle
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, WorkspaceManagementError
-from .types import BillingReportItem, EnvironmentBillingSummary
+from .types import AppInfo, BillingReportItem, EnvironmentBillingSummary
 
 if TYPE_CHECKING:
     import modal
@@ -346,6 +346,7 @@ class _EnvironmentAppsManager:
                 self._environment.name,
                 self._environment.client,
                 description=item.description or None,
+                info=AppInfo._from_proto(item.metadata, item.app_id),
             )
             for item in response.apps
             if item.state not in stopped_app_states
