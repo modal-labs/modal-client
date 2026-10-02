@@ -665,6 +665,7 @@ message AppListResponse {
     double stopped_at = 6;
     int32 n_running_tasks = 8;
     string name = 10;
+    AppHandleMetadata metadata = 11;
   }
   repeated AppListItem apps = 1;
 }
