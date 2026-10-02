@@ -46913,6 +46913,7 @@ type SandboxCreateV2Response struct {
 	xxx_hidden_TaskId              string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3"`
 	xxx_hidden_Metadata            *SandboxHandleMetadata `protobuf:"bytes,4,opt,name=metadata,proto3"`
 	xxx_hidden_CommandRouterAccess *CommandRouterAccess   `protobuf:"bytes,5,opt,name=command_router_access,json=commandRouterAccess,proto3"`
+	xxx_hidden_SandboxToken        string                 `protobuf:"bytes,6,opt,name=sandbox_token,json=sandboxToken,proto3"`
 	unknownFields                  protoimpl.UnknownFields
 	sizeCache                      protoimpl.SizeCache
 }
@@ -46979,6 +46980,13 @@ func (x *SandboxCreateV2Response) GetCommandRouterAccess() *CommandRouterAccess 
 	return nil
 }
 
+func (x *SandboxCreateV2Response) GetSandboxToken() string {
+	if x != nil {
+		return x.xxx_hidden_SandboxToken
+	}
+	return ""
+}
+
 func (x *SandboxCreateV2Response) SetSandboxId(v string) {
 	x.xxx_hidden_SandboxId = v
 }
@@ -46997,6 +47005,10 @@ func (x *SandboxCreateV2Response) SetMetadata(v *SandboxHandleMetadata) {
 
 func (x *SandboxCreateV2Response) SetCommandRouterAccess(v *CommandRouterAccess) {
 	x.xxx_hidden_CommandRouterAccess = v
+}
+
+func (x *SandboxCreateV2Response) SetSandboxToken(v string) {
+	x.xxx_hidden_SandboxToken = v
 }
 
 func (x *SandboxCreateV2Response) HasMetadata() bool {
@@ -47029,6 +47041,8 @@ type SandboxCreateV2Response_builder struct {
 	TaskId              string
 	Metadata            *SandboxHandleMetadata
 	CommandRouterAccess *CommandRouterAccess
+	// Signed app and workspace id of the sandbox. Sent as the x-modal-sandbox-token metadata header.
+	SandboxToken string
 }
 
 func (b0 SandboxCreateV2Response_builder) Build() *SandboxCreateV2Response {
@@ -47040,6 +47054,7 @@ func (b0 SandboxCreateV2Response_builder) Build() *SandboxCreateV2Response {
 	x.xxx_hidden_TaskId = b.TaskId
 	x.xxx_hidden_Metadata = b.Metadata
 	x.xxx_hidden_CommandRouterAccess = b.CommandRouterAccess
+	x.xxx_hidden_SandboxToken = b.SandboxToken
 	return m0
 }
 
@@ -71690,14 +71705,15 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0esecret_sources\x18\x06 \x03(\v2\x1a.modal.client.SecretSourceR\rsecretSources\x1ag\n" +
 	" CloudBucketMountCredentialsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
-	"\x05value\x18\x02 \x01(\v2\x17.modal.client.StringMapR\x05value:\x028\x01\"\x9d\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.modal.client.StringMapR\x05value:\x028\x01\"\xc2\x02\n" +
 	"\x17SandboxCreateV2Response\x12\x1d\n" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x122\n" +
 	"\atunnels\x18\x02 \x03(\v2\x18.modal.client.TunnelDataR\atunnels\x12\x17\n" +
 	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12?\n" +
 	"\bmetadata\x18\x04 \x01(\v2#.modal.client.SandboxHandleMetadataR\bmetadata\x12U\n" +
-	"\x15command_router_access\x18\x05 \x01(\v2!.modal.client.CommandRouterAccessR\x13commandRouterAccess\"l\n" +
+	"\x15command_router_access\x18\x05 \x01(\v2!.modal.client.CommandRouterAccessR\x13commandRouterAccess\x12#\n" +
+	"\rsandbox_token\x18\x06 \x01(\tR\fsandboxToken\"l\n" +
 	"$SandboxGetCommandRouterAccessRequest\x12\x1f\n" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tH\x00R\tsandboxId\x12\x19\n" +

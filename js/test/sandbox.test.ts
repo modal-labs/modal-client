@@ -1716,6 +1716,7 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
       tunnels: [],
       metadata: { result: undefined, appId: "ap-1234" },
       commandRouterAccess: undefined,
+      sandboxToken: "",
     };
   });
   mock.handleUnary("/SandboxWaitV2", (req: any) => {
