@@ -13,9 +13,7 @@ from .manager import OutputManager
 
 
 def _get_annotation_for_web_url(url_info: api_pb2.WebUrlInfo) -> str:
-    if url_info.truncated:
-        suffix = " [grey70](label truncated)[/grey70]"
-    elif url_info.label_stolen:
+    if url_info.label_stolen:
         suffix = " [grey70](label stolen)[/grey70]"
     else:
         suffix = ""
