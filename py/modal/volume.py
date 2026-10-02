@@ -888,6 +888,8 @@ class _Volume(_Object, type_prefix="vo"):
     async def commit(self):
         """Commit changes to a mounted volume.
 
+        Must be called inside a container that mounts the Volume.
+
         If successful, the changes made are now persisted in durable storage and available to other containers accessing
         the volume.
         """
@@ -905,6 +907,8 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def reload(self):
         """Make latest committed state of volume available in the running container.
+
+        Must be called inside a container that mounts the Volume.
 
         Any uncommitted changes to the volume, such as new or modified files, may implicitly be committed when
         reloading.
