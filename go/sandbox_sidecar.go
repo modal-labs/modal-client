@@ -64,6 +64,10 @@ type SidecarCreateParams struct {
 	// (e.g. to AWS, GCP). The token identifies the sidecar container itself, not the main container.
 	// Not supported for GPU Sandboxes; Create returns an InvalidError for them.
 	IncludeOidcIdentityToken bool
+	// Proxy routes the sidecar's outbound traffic through a Modal Proxy, giving it a static outbound
+	// IP of its own, independent of the main container. Not supported for GPU Sandboxes; Create
+	// returns an InvalidError for them.
+	Proxy *Proxy
 	// PTY sets whether to enable a PTY for the sidecar container.
 	PTY bool
 	// ExperimentalMemoryReserveConsumeMiB is the memory, in MiB, the sidecar consumes from
@@ -185,6 +189,7 @@ type sidecarCreateInputs struct {
 	volumeMounts      []*pb.VolumeMount
 	cloudBucketMounts []*pb.CloudBucketMount
 	networkAccess     *pb.NetworkAccess
+	proxyID           *string
 	ptyInfo           *pb.PTYInfo
 	// nil when unset; otherwise MiB taken from the sandbox's sidecar reserve.
 	memoryReserveConsumeMib *uint32
@@ -257,6 +262,22 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		}
 	}
 
+	if params.Proxy != nil {
+		if !s.sandbox.isV2 {
+			return nil, InvalidError{Exception: "Proxy is not supported for GPU Sandboxes"}
+		}
+		if !viaControlPlane {
+			return nil, InvalidError{Exception: fmt.Sprintf(
+				"Proxy is not supported when %s=0 is set; unset it to use a proxy",
+				controlPlaneSidecarCreateEnvVar,
+			)}
+		}
+	}
+	var proxyID *string
+	if params.Proxy != nil {
+		proxyID = &params.Proxy.ProxyID
+	}
+
 	var ptyInfo *pb.PTYInfo
 	if params.PTY {
 		ptyInfo = defaultSandboxPTYInfo()
@@ -305,6 +326,7 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		volumeMounts:            volumeMounts,
 		cloudBucketMounts:       cloudBucketMounts,
 		networkAccess:           networkAccess,
+		proxyID:                 proxyID,
 		ptyInfo:                 ptyInfo,
 		memoryReserveConsumeMib: memoryReserveConsumeMib,
 	}
@@ -362,6 +384,7 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 			CloudBucketMounts:        in.cloudBucketMounts,
 			NetworkAccess:            in.networkAccess,
 			IncludeOidcIdentityToken: in.params.IncludeOidcIdentityToken,
+			ProxyId:                  in.proxyID,
 			PtyInfo:                  in.ptyInfo,
 			Resources:                resources,
 		}.Build(),

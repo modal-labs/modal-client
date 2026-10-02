@@ -11,6 +11,7 @@ import {
   SandboxFilesystemNotFoundError,
 } from "../src/errors";
 import { Image } from "../src/image";
+import { Proxy } from "../src/proxy";
 import { Sandbox } from "../src/sandbox";
 import type { CloudBucketMount } from "../src/cloud_bucket_mount";
 import { Secret } from "../src/secret";
@@ -738,6 +739,70 @@ test("sidecar create rejects includeOidcIdentityToken for a V1 sandbox", async (
     new Image(mc, "im-built", ""),
     {
       includeOidcIdentityToken: true,
+    },
+  );
+  await expect(create).rejects.toThrow(InvalidError);
+  await expect(create).rejects.toThrow("GPU Sandboxes");
+});
+
+test("sidecar create forwards the proxy to the control plane", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "1");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const requests: SandboxContainerCreateV2Request[] = [];
+  for (const containerId of ["sb-test-ctr-PROXIED", "sb-test-ctr-DIRECT"]) {
+    mock.handleUnary("/SandboxContainerCreateV2", (req) => {
+      requests.push(req as SandboxContainerCreateV2Request);
+      return SandboxContainerCreateV2Response.create({ containerId });
+    });
+  }
+
+  await sb.experimentalSidecars.create(
+    "proxied",
+    new Image(mc, "im-built", ""),
+    { proxy: new Proxy("pr-123") },
+  );
+  await sb.experimentalSidecars.create("direct", new Image(mc, "im-built", ""));
+
+  expect(requests).toHaveLength(2);
+  expect(requests[0]?.definition?.proxyId).toBe("pr-123");
+  expect(requests[1]?.definition?.proxyId).toBeUndefined();
+
+  mock.assertExhausted();
+});
+
+test("sidecar create rejects a proxy when opted out of the control plane", async () => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+
+  const create = sb.experimentalSidecars.create(
+    "proxied",
+    new Image(mc, "im-built", ""),
+    {
+      proxy: new Proxy("pr-123"),
+    },
+  );
+  await expect(create).rejects.toThrow(InvalidError);
+  await expect(create).rejects.toThrow("=0");
+});
+
+test("sidecar create rejects a proxy for a V1 sandbox", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+
+  const create = sb.experimentalSidecars.create(
+    "proxied",
+    new Image(mc, "im-built", ""),
+    {
+      proxy: new Proxy("pr-123"),
     },
   );
   await expect(create).rejects.toThrow(InvalidError);

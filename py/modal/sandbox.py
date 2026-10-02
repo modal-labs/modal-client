@@ -3121,6 +3121,7 @@ class _SidecarManager:
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
         include_oidc_identity_token: bool = False,
+        proxy: _Proxy | None = None,
         pty: bool = False,
         experimental_memory_reserve_consume_mib: int | None = None,
     ) -> _SidecarContainer:
@@ -3153,6 +3154,8 @@ class _SidecarManager:
             include_oidc_identity_token: If True, the sidecar receives a MODAL_IDENTITY_TOKEN env var for
                 OIDC-based auth (e.g. to AWS, GCP). The token identifies the sidecar container itself,
                 not the main container. Not supported for GPU Sandboxes.
+            proxy: Reference to a Modal Proxy to use in front of this sidecar. Not supported for GPU
+                Sandboxes.
             pty: Whether to enable PTY for the sidecar container.
             experimental_memory_reserve_consume_mib: Memory, in MiB, this sidecar consumes from the Sandbox's
                 sidecar memory reserve (the experimental `vm_sidecar_memory_reserve_mib` option).
@@ -3187,6 +3190,13 @@ class _SidecarManager:
             raise InvalidError(
                 "CloudBucketMount is not supported in sidecars when MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE=0 is set; "
                 "unset it to use cloud bucket mounts."
+            )
+        if proxy is not None and not self._sandbox._is_v2:
+            raise InvalidError("Sandbox._experimental_sidecars.create(proxy=...) is not supported for GPU Sandboxes.")
+        if proxy is not None and not via_control_plane:
+            raise InvalidError(
+                "Sandbox._experimental_sidecars.create(proxy=...) is not supported when "
+                f"{_CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use a proxy."
             )
 
         if include_oidc_identity_token and not self._sandbox._is_v2:
@@ -3224,12 +3234,18 @@ class _SidecarManager:
             for _, mount in cloud_bucket_mounts
             if mount.secret is not None and not mount.secret._is_ephemeral
         ]
-        hydrate_coros = (
-            [secret.hydrate(client=self._sandbox._client) for secret in resolvable_secrets]
-            + [volume.hydrate(client=self._sandbox._client) for _, volume in validated_volumes]
-            + [secret.hydrate(client=self._sandbox._client) for secret in bucket_credential_secrets]
-        )
-        await TaskContext.gather(*hydrate_coros)
+        resolver = Resolver()
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=self._sandbox._client, task_context=tc)
+            dependencies = [
+                *resolvable_secrets,
+                *(volume for _, volume in validated_volumes),
+                *bucket_credential_secrets,
+                *([proxy] if proxy is not None else []),
+            ]
+            await asyncio.gather(
+                *(resolver.load(dependency, load_context) for dependency in dependencies if not dependency._is_hydrated)
+            )
 
         # `env` takes precedence over environment variables from secrets
         env_dict = _local_secret_env(secrets) | (env or {})
@@ -3257,6 +3273,7 @@ class _SidecarManager:
                 cloud_bucket_mounts=cloud_bucket_mount_protos,
                 network_access=network_access,
                 include_oidc_identity_token=include_oidc_identity_token,
+                proxy_id=(proxy.object_id if proxy else None),
                 pty_info=pty_info,
                 resources=(
                     api_pb2.Resources(memory_mb=experimental_memory_reserve_consume_mib)

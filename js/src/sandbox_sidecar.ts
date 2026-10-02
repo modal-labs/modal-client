@@ -58,6 +58,7 @@ import {
   validateEnvVarKeys,
   type Secret,
 } from "./secret";
+import type { Proxy } from "./proxy";
 import { volumeToMountProto, type Volume } from "./volume";
 
 /** Reserved name of a Sandbox's main container. */
@@ -157,6 +158,12 @@ export type SidecarCreateParams = {
    * Sandboxes.
    */
   includeOidcIdentityToken?: boolean;
+  /**
+   * {@link Proxy} to route the sidecar's outbound traffic through, giving it
+   * a static outbound IP of its own, independent of the main container. Not
+   * supported for GPU Sandboxes.
+   */
+  proxy?: Proxy;
   /** Enable a PTY for the sidecar. */
   pty?: boolean;
   /**
@@ -339,6 +346,17 @@ export class SidecarService {
       }
     }
 
+    if (params?.proxy) {
+      if (getSandboxVersion(this.#access.sandboxId) !== SandboxVersion.V2) {
+        throw new InvalidError("proxy is not supported for GPU Sandboxes");
+      }
+      if (!viaControlPlane) {
+        throw new InvalidError(
+          `proxy is not supported when ${CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use a proxy`,
+        );
+      }
+    }
+
     // Sidecar containers support ephemeral env vars natively (passed via
     // ephemeralSecrets in the request), so locally-created Secrets (fromObject)
     // and params.env are sent directly rather than folded into a server-side
@@ -389,6 +407,7 @@ export class SidecarService {
               networkAccess,
               includeOidcIdentityToken:
                 params?.includeOidcIdentityToken ?? false,
+              proxyId: params?.proxy?.proxyId,
               ptyInfo,
               resources:
                 params?.experimentalMemoryReserveConsumeMiB !== undefined

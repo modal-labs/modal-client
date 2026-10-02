@@ -2788,3 +2788,66 @@ func TestSidecarCreateRejectsIncludeOidcIdentityTokenOnV1Sandbox(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring("GPU Sandboxes"))
 	g.Expect(mock.gotReq).To(gomega.BeNil())
 }
+
+func TestSidecarCreateForwardsProxy(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		Proxy: &Proxy{ProxyID: "pr-123"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	definition := mock.gotReq.GetDefinition()
+	g.Expect(definition.HasProxyId()).To(gomega.BeTrue())
+	g.Expect(definition.GetProxyId()).To(gomega.Equal("pr-123"))
+}
+
+func TestSidecarCreateLeavesProxyUnsetByDefault(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "1")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{
+		resp: pb.SandboxContainerCreateV2Response_builder{ContainerId: "sb-test-ctr-SIDECAR123"}.Build(),
+	}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(mock.gotReq.GetDefinition().HasProxyId()).To(gomega.BeFalse())
+}
+
+func TestSidecarCreateRejectsProxyWhenOptedOut(t *testing.T) {
+	t.Setenv(controlPlaneSidecarCreateEnvVar, "0")
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandbox(mock)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		Proxy: &Proxy{ProxyID: "pr-123"},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(controlPlaneSidecarCreateEnvVar))
+	g.Expect(mock.gotReq).To(gomega.BeNil())
+}
+
+func TestSidecarCreateRejectsProxyOnV1Sandbox(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	mock := &mockSandboxContainerCreateV2Client{}
+	sb := newSidecarCreateSandboxWithID(mock, testV1SandboxID)
+
+	_, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &Image{ImageID: "im-123"}, &SidecarCreateParams{
+		Proxy: &Proxy{ProxyID: "pr-123"},
+	})
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	g.Expect(err.Error()).To(gomega.ContainSubstring("GPU Sandboxes"))
+	g.Expect(mock.gotReq).To(gomega.BeNil())
+}
