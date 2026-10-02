@@ -112,6 +112,7 @@ def _time_range_stats_json(response: api_pb2.FunctionGetTimeRangeStatsResponse) 
         "input_percentile_stats": _distribution_map_json(
             cast(dict[str, api_pb2.StatsPercentileDistribution], response.input_percentile_stats)
         ),
+        "container_total_count": response.container_total_count,
         "container_started_count": response.container_started_count,
         "container_error_count": response.container_error_count,
         "container_creating_at_end_count": response.container_creating_at_end_count,
@@ -794,9 +795,10 @@ async def stats(
 
     output.print("")
     container_count = resp.container_started_count + resp.container_error_count
+    total_containers = resp.container_total_count
     container_heading = Text("Containers", style=stats_style(STATS_SECTION_STYLE, use_color))
     container_heading.append(" " * (46 - len("Containers")))
-    container_heading.append(f"{container_count:,} total (")
+    container_heading.append(f"{total_containers:,} Total (")
     container_heading.append(
         f"{resp.container_creating_at_end_count:,} creating",
         style=progress_style(resp.container_creating_at_end_count, use_color),
@@ -806,12 +808,12 @@ async def stats(
 
     container_counts = Text("  ")
     container_counts.append(
-        _count_with_percentage(resp.container_started_count, container_count, "started"),
+        f"{resp.container_started_count:,} started",
         style=success_style(resp.container_started_count, container_count, use_color),
     )
     container_counts.append(" · ")
     container_counts.append(
-        _count_with_percentage(resp.container_error_count, container_count, "errored"),
+        f"{resp.container_error_count:,} errored",
         style=problem_style(resp.container_error_count, container_count, use_color),
     )
     output.print(container_counts)

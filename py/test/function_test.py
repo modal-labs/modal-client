@@ -2870,7 +2870,8 @@ EXAMPLE_FUNCTION = api_pb2.FunctionData(
 )
 
 
-def test_function_stats(client, servicer):
+@pytest.mark.parametrize("active_count", [0, 37])
+def test_function_stats(client, servicer, active_count):
     f = Function.from_name("dummy-app", "func", client=client)
     function_id = "fu-1"
     since = datetime(2026, 8, 20, 12, tzinfo=timezone.utc)
@@ -2884,6 +2885,7 @@ def test_function_stats(client, servicer):
             "execution_time": _stats_distribution("seconds", 1.0, 2.0, 4.0),
             "end_to_end_latency": _stats_distribution("seconds", 1.5, 3.0, 6.0),
         },
+        container_total_count=active_count,
         container_started_count=20,
         container_error_count=4,
         container_creating_at_end_count=2,
@@ -2926,6 +2928,7 @@ def test_function_stats(client, servicer):
         (90.0, 2.0),
         (99.0, 4.0),
     ]
+    assert stats.container_total_count == active_count
     assert stats.container_started_count == 20
     assert stats.container_error_count == 4
     assert stats.container_creating_at_end_count == 2

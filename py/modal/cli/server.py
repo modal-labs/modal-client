@@ -33,7 +33,6 @@ from ._stats import (
     STATS_METADATA_STYLE,
     STATS_PROBLEM_STYLE,
     STATS_SECTION_STYLE,
-    _count_with_percentage,
     _distribution_map_json,
     _metric_rows,
     _percentile_table,
@@ -560,6 +559,7 @@ def _stats_json(
         "request_rate_per_second": history.request_rate_per_second,
         "container_started_count": history.container_started_count,
         "container_error_count": history.container_error_count,
+        "container_total_count": history.container_total_count,
         "container_creating_at_end_count": history.container_creating_at_end_count,
         "request_percentile_stats": _distribution_map_json(
             cast(dict[str, api_pb2.StatsPercentileDistribution], history.request_percentile_stats)
@@ -754,9 +754,10 @@ async def _run_server_stats(
 
     output.print("")
     container_count = history.container_started_count + history.container_error_count
+    container_total_count = history.container_total_count
     container_heading = Text("Containers", style=stats_style(STATS_SECTION_STYLE, use_color))
     container_heading.append(" " * (46 - len("Containers")))
-    container_heading.append(f"{container_count:,} total (")
+    container_heading.append(f"{container_total_count:,} Total (")
     container_heading.append(
         f"{history.container_creating_at_end_count:,} creating",
         style=progress_style(history.container_creating_at_end_count, use_color),
@@ -766,12 +767,12 @@ async def _run_server_stats(
 
     container_counts = Text("  ")
     container_counts.append(
-        _count_with_percentage(history.container_started_count, container_count, "started"),
+        f"{history.container_started_count:,} started",
         style=success_style(history.container_started_count, container_count, use_color),
     )
     container_counts.append(" · ")
     container_counts.append(
-        _count_with_percentage(history.container_error_count, container_count, "errored"),
+        f"{history.container_error_count:,} errored",
         style=problem_style(history.container_error_count, container_count, use_color),
     )
     output.print(container_counts)

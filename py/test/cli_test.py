@@ -4818,6 +4818,7 @@ def test_function_stats_cli(servicer, set_env_client):
             "Execution time (s)": _stats_distribution("seconds", 0.0003, 0.0008, 0.0016),
             "End-to-end latency (s)": _stats_distribution("seconds", 4.881, 19.816, 28.403),
         },
+        container_total_count=1234,
         container_started_count=23,
         container_error_count=1,
         container_creating_at_end_count=1,
@@ -4861,9 +4862,10 @@ def test_function_stats_cli(servicer, set_env_client):
     assert "17 failed (1.3%)" in result.stdout
     assert "3 timed out (0.2%)" in result.stdout
     assert "Containers" in result.stdout
-    assert "24 total (1 creating)" in result.stdout
-    assert "23 started (95.8%)" in result.stdout
-    assert "1 errored (4.2%)" in result.stdout
+    assert "1,234 Total (1 creating)" in result.stdout
+    assert "23 started · 1 errored" in result.stdout
+    assert "23 started (" not in result.stdout
+    assert "1 errored (" not in result.stdout
     assert "Execution time (s)" in result.stdout
     assert "0.00" in result.stdout
     assert "End-to-end latency (s)" in result.stdout
@@ -4879,11 +4881,12 @@ def test_function_stats_cli(servicer, set_env_client):
     assert result.stdout.index("CPU Usage (cores)") < result.stdout.index("Memory Usage (GiB)")
 
 
-def test_function_stats_cli_json_uses_object_id(servicer, set_env_client):
+@pytest.mark.parametrize("live_count", [0, 17])
+def test_function_stats_cli_json_uses_object_id(servicer, set_env_client, live_count):
     servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
-    response = api_pb2.FunctionGetTimeRangeStatsResponse()
+    response = api_pb2.FunctionGetTimeRangeStatsResponse(container_total_count=live_count)
     response.since.FromDatetime(since)
     response.until.FromDatetime(until)
 
@@ -4904,6 +4907,7 @@ def test_function_stats_cli_json_uses_object_id(servicer, set_env_client):
 
     payload = json.loads(result.stdout)
     assert payload["object_id"] == "fu-test"
+    assert payload["container_total_count"] == live_count
     assert "function_id" not in payload
 
 
@@ -5341,6 +5345,7 @@ def test_server_stats_cli(servicer, set_env_client):
             api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=500, count=6),
         ],
         request_rate_per_second=0.3566666667,
+        container_total_count=2345,
         container_started_count=3,
         container_error_count=2,
         container_creating_at_end_count=1,
@@ -5402,8 +5407,10 @@ def test_server_stats_cli(servicer, set_env_client):
     assert "2xx: 1,241 · 4xx: 37 · 5xx: 6" in result.stdout
     assert "Request latency 2xx (s)" in result.stdout
     assert "Request latency 5xx (s)" in result.stdout
-    assert "5 total (1 creating)" in result.stdout
-    assert "3 started (60.0%) · 2 errored (40.0%)" in result.stdout
+    assert "2,345 Total (1 creating)" in result.stdout
+    assert "3 started · 2 errored" in result.stdout
+    assert "3 started (" not in result.stdout
+    assert "2 errored (" not in result.stdout
     assert "Startup time (s)" in result.stdout
     assert "CPU usage (cores)" in result.stdout
     assert "Memory usage (GiB)" in result.stdout
@@ -5424,7 +5431,8 @@ def test_server_stats_cli(servicer, set_env_client):
     assert "output_tokens_per_second" not in result.stdout
 
 
-def test_server_stats_cli_json(servicer, set_env_client):
+@pytest.mark.parametrize("live_count", [0, 17])
+def test_server_stats_cli_json(servicer, set_env_client, live_count):
     servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
     since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
     until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
@@ -5434,6 +5442,7 @@ def test_server_stats_cli_json(servicer, set_env_client):
             api_pb2.ServerGetTimeRangeStatsResponse.ServerStatusCodeCount(status_code=200, count=1)
         ],
         request_rate_per_second=1 / 3600,
+        container_total_count=live_count,
         container_started_count=4,
         container_error_count=5,
         container_creating_at_end_count=6,
@@ -5466,6 +5475,7 @@ def test_server_stats_cli_json(servicer, set_env_client):
     payload = json.loads(result.stdout)
     assert payload["object_id"] == "fu-server"
     assert payload["request_count_by_status_code"] == {"2xx": 1}
+    assert payload["container_total_count"] == live_count
     assert payload["container_started_count"] == 4
     assert payload["container_error_count"] == 5
     assert payload["container_creating_at_end_count"] == 6

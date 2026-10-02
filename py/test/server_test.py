@@ -1632,7 +1632,8 @@ def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb
     )
 
 
-def test_server_stats(client, servicer):
+@pytest.mark.parametrize("active_count", [0, 37])
+def test_server_stats(client, servicer, active_count):
     server_app.deploy(client=client)
     server = Server.from_name("server-test-app", "BasicServer", client=client)
     since = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
@@ -1660,6 +1661,7 @@ def test_server_stats(client, servicer):
             },
             scalar_stats={"output_tokens_per_second": 585.0},
         ),
+        container_total_count=active_count,
         container_started_count=10,
         container_error_count=1,
         container_creating_at_end_count=2,
@@ -1685,6 +1687,7 @@ def test_server_stats(client, servicer):
     assert stats.request_percentile_stats["request_latency"].unit == "seconds"
     assert stats.container_percentile_stats["startup_time"].unit == "seconds"
     assert stats.container_percentile_stats["cpu_usage"].unit == "cores"
+    assert stats.container_total_count == active_count
     assert stats.container_started_count == 10
     assert stats.container_error_count == 1
     assert stats.container_creating_at_end_count == 2

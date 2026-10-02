@@ -181,6 +181,7 @@ class FunctionStats:
     container_error_count: int
     container_creating_at_end_count: int
     container_percentile_stats: dict[str, StatsPercentileDistribution]
+    container_total_count: int
     variant_count: int
     all_variants: bool
 
@@ -198,6 +199,7 @@ class FunctionStats:
             },
             container_started_count=proto.container_started_count,
             container_error_count=proto.container_error_count,
+            container_total_count=proto.container_total_count,
             container_creating_at_end_count=proto.container_creating_at_end_count,
             container_percentile_stats={
                 k: StatsPercentileDistribution._from_proto(v) for k, v in proto.container_percentile_stats.items()
@@ -256,6 +258,7 @@ class ServerStats:
     container_started_count: int
     container_error_count: int
     container_creating_at_end_count: int
+    container_total_count: int
     container_percentile_stats: dict[str, StatsPercentileDistribution]
     inference: InferenceStats | None
 
@@ -274,6 +277,7 @@ class ServerStats:
             container_started_count=proto.container_started_count,
             container_error_count=proto.container_error_count,
             container_creating_at_end_count=proto.container_creating_at_end_count,
+            container_total_count=proto.container_total_count,
             container_percentile_stats={
                 name: StatsPercentileDistribution._from_proto(distribution)
                 for name, distribution in proto.container_percentile_stats.items()
