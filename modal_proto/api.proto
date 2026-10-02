@@ -2605,6 +2605,9 @@ message FunctionGetTimeRangeStatsResponse {
   // Number of direct non-version-pinned variants included in the roll-up.
   // Zero when roll-up is disabled or the base Function has no variants.
   uint32 variant_count = 12;
+
+  // Number of containers that were active (published heartbeats) in the time range.
+  uint64 container_total_count = 13;
 }
 
 
@@ -4310,6 +4313,9 @@ message ServerGetTimeRangeStatsResponse {
   uint64 container_started_count = 9;
   uint64 container_error_count = 10;
   uint64 container_creating_at_end_count = 11;
+
+  // Number of containers that were active (published heartbeats) in the time range.
+  uint64 container_total_count = 12;
 }
 
 message ServerRequestFetchRequest {

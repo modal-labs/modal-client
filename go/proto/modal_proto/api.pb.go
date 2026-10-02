@@ -31049,6 +31049,7 @@ type FunctionGetTimeRangeStatsResponse struct {
 	xxx_hidden_ContainerCreatingAtEndCount uint64                                  `protobuf:"varint,10,opt,name=container_creating_at_end_count,json=containerCreatingAtEndCount,proto3"`
 	xxx_hidden_ContainerPercentileStats    map[string]*StatsPercentileDistribution `protobuf:"bytes,11,rep,name=container_percentile_stats,json=containerPercentileStats,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	xxx_hidden_VariantCount                uint32                                  `protobuf:"varint,12,opt,name=variant_count,json=variantCount,proto3"`
+	xxx_hidden_ContainerTotalCount         uint64                                  `protobuf:"varint,13,opt,name=container_total_count,json=containerTotalCount,proto3"`
 	unknownFields                          protoimpl.UnknownFields
 	sizeCache                              protoimpl.SizeCache
 }
@@ -31162,6 +31163,13 @@ func (x *FunctionGetTimeRangeStatsResponse) GetVariantCount() uint32 {
 	return 0
 }
 
+func (x *FunctionGetTimeRangeStatsResponse) GetContainerTotalCount() uint64 {
+	if x != nil {
+		return x.xxx_hidden_ContainerTotalCount
+	}
+	return 0
+}
+
 func (x *FunctionGetTimeRangeStatsResponse) SetSince(v *timestamppb.Timestamp) {
 	x.xxx_hidden_Since = v
 }
@@ -31208,6 +31216,10 @@ func (x *FunctionGetTimeRangeStatsResponse) SetContainerPercentileStats(v map[st
 
 func (x *FunctionGetTimeRangeStatsResponse) SetVariantCount(v uint32) {
 	x.xxx_hidden_VariantCount = v
+}
+
+func (x *FunctionGetTimeRangeStatsResponse) SetContainerTotalCount(v uint64) {
+	x.xxx_hidden_ContainerTotalCount = v
 }
 
 func (x *FunctionGetTimeRangeStatsResponse) HasSince() bool {
@@ -31258,6 +31270,8 @@ type FunctionGetTimeRangeStatsResponse_builder struct {
 	// Number of direct non-version-pinned variants included in the roll-up.
 	// Zero when roll-up is disabled or the base Function has no variants.
 	VariantCount uint32
+	// Number of containers that were active (published heartbeats) in the time range.
+	ContainerTotalCount uint64
 }
 
 func (b0 FunctionGetTimeRangeStatsResponse_builder) Build() *FunctionGetTimeRangeStatsResponse {
@@ -31276,6 +31290,7 @@ func (b0 FunctionGetTimeRangeStatsResponse_builder) Build() *FunctionGetTimeRang
 	x.xxx_hidden_ContainerCreatingAtEndCount = b.ContainerCreatingAtEndCount
 	x.xxx_hidden_ContainerPercentileStats = b.ContainerPercentileStats
 	x.xxx_hidden_VariantCount = b.VariantCount
+	x.xxx_hidden_ContainerTotalCount = b.ContainerTotalCount
 	return m0
 }
 
@@ -52837,6 +52852,7 @@ type ServerGetTimeRangeStatsResponse struct {
 	xxx_hidden_ContainerStartedCount       uint64                                                    `protobuf:"varint,9,opt,name=container_started_count,json=containerStartedCount,proto3"`
 	xxx_hidden_ContainerErrorCount         uint64                                                    `protobuf:"varint,10,opt,name=container_error_count,json=containerErrorCount,proto3"`
 	xxx_hidden_ContainerCreatingAtEndCount uint64                                                    `protobuf:"varint,11,opt,name=container_creating_at_end_count,json=containerCreatingAtEndCount,proto3"`
+	xxx_hidden_ContainerTotalCount         uint64                                                    `protobuf:"varint,12,opt,name=container_total_count,json=containerTotalCount,proto3"`
 	unknownFields                          protoimpl.UnknownFields
 	sizeCache                              protoimpl.SizeCache
 }
@@ -52945,6 +52961,13 @@ func (x *ServerGetTimeRangeStatsResponse) GetContainerCreatingAtEndCount() uint6
 	return 0
 }
 
+func (x *ServerGetTimeRangeStatsResponse) GetContainerTotalCount() uint64 {
+	if x != nil {
+		return x.xxx_hidden_ContainerTotalCount
+	}
+	return 0
+}
+
 func (x *ServerGetTimeRangeStatsResponse) SetSince(v *timestamppb.Timestamp) {
 	x.xxx_hidden_Since = v
 }
@@ -52987,6 +53010,10 @@ func (x *ServerGetTimeRangeStatsResponse) SetContainerErrorCount(v uint64) {
 
 func (x *ServerGetTimeRangeStatsResponse) SetContainerCreatingAtEndCount(v uint64) {
 	x.xxx_hidden_ContainerCreatingAtEndCount = v
+}
+
+func (x *ServerGetTimeRangeStatsResponse) SetContainerTotalCount(v uint64) {
+	x.xxx_hidden_ContainerTotalCount = v
 }
 
 func (x *ServerGetTimeRangeStatsResponse) HasSince() bool {
@@ -53043,6 +53070,8 @@ type ServerGetTimeRangeStatsResponse_builder struct {
 	ContainerStartedCount       uint64
 	ContainerErrorCount         uint64
 	ContainerCreatingAtEndCount uint64
+	// Number of containers that were active (published heartbeats) in the time range.
+	ContainerTotalCount uint64
 }
 
 func (b0 ServerGetTimeRangeStatsResponse_builder) Build() *ServerGetTimeRangeStatsResponse {
@@ -53060,6 +53089,7 @@ func (b0 ServerGetTimeRangeStatsResponse_builder) Build() *ServerGetTimeRangeSta
 	x.xxx_hidden_ContainerStartedCount = b.ContainerStartedCount
 	x.xxx_hidden_ContainerErrorCount = b.ContainerErrorCount
 	x.xxx_hidden_ContainerCreatingAtEndCount = b.ContainerCreatingAtEndCount
+	x.xxx_hidden_ContainerTotalCount = b.ContainerTotalCount
 	return m0
 }
 
@@ -70740,7 +70770,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\x12\x16\n" +
 	"\x06rollup\x18\x04 \x01(\bR\x06rollup\x12&\n" +
 	"\fcontainer_id\x18\x05 \x01(\tH\x00R\vcontainerId\x88\x01\x01B\x0f\n" +
-	"\r_container_id\"\xa5\b\n" +
+	"\r_container_id\"\xd9\b\n" +
 	"!FunctionGetTimeRangeStatsResponse\x120\n" +
 	"\x05since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x120\n" +
 	"\x05until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\x12.\n" +
@@ -70754,7 +70784,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1fcontainer_creating_at_end_count\x18\n" +
 	" \x01(\x04R\x1bcontainerCreatingAtEndCount\x12\x8b\x01\n" +
 	"\x1acontainer_percentile_stats\x18\v \x03(\v2M.modal.client.FunctionGetTimeRangeStatsResponse.ContainerPercentileStatsEntryR\x18containerPercentileStats\x12#\n" +
-	"\rvariant_count\x18\f \x01(\rR\fvariantCount\x1ar\n" +
+	"\rvariant_count\x18\f \x01(\rR\fvariantCount\x122\n" +
+	"\x15container_total_count\x18\r \x01(\x04R\x13containerTotalCount\x1ar\n" +
 	"\x19InputPercentileStatsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12?\n" +
 	"\x05value\x18\x02 \x01(\v2).modal.client.StatsPercentileDistributionR\x05value:\x028\x01\x1av\n" +
@@ -71975,7 +72006,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05since\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x120\n" +
 	"\x05until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\x12&\n" +
 	"\fcontainer_id\x18\x04 \x01(\tH\x00R\vcontainerId\x88\x01\x01B\x0f\n" +
-	"\r_container_id\"\x83\x0e\n" +
+	"\r_container_id\"\xb7\x0e\n" +
 	"\x1fServerGetTimeRangeStatsResponse\x120\n" +
 	"\x05since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x120\n" +
 	"\x05until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\x12#\n" +
@@ -71988,7 +72019,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x17container_started_count\x18\t \x01(\x04R\x15containerStartedCount\x122\n" +
 	"\x15container_error_count\x18\n" +
 	" \x01(\x04R\x13containerErrorCount\x12D\n" +
-	"\x1fcontainer_creating_at_end_count\x18\v \x01(\x04R\x1bcontainerCreatingAtEndCount\x1a\xb5\x04\n" +
+	"\x1fcontainer_creating_at_end_count\x18\v \x01(\x04R\x1bcontainerCreatingAtEndCount\x122\n" +
+	"\x15container_total_count\x18\f \x01(\x04R\x13containerTotalCount\x1a\xb5\x04\n" +
 	"\x14ServerInferenceStats\x12/\n" +
 	"\x06engine\x18\x01 \x01(\x0e2\x17.modal.client.LLMEngineR\x06engine\x12@\n" +
 	"\x06status\x18\x02 \x01(\x0e2(.modal.client.ServerInferenceStatsStatusR\x06status\x12\x82\x01\n" +
