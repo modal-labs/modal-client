@@ -2,6 +2,15 @@
 
 ## Latest
 
+### 1.6.1 (2026-10-03)
+
+- We've added CLI commands for observability over Modal Endpoints:
+  - [`modal endpoint info`](/docs/cli/latest/endpoint#modal-endpoint-info) displays basic metadata.
+  - [`modal endpoint stats`](/docs/cli/latest/endpoint#modal-endpoint-stats) reports aggregate performance metrics.
+  - [`modal endpoint logs`](/docs/cli/latest/endpoint#modal-endpoint-logs) fetches or streams logs.
+- The [`modal function stats`](/docs/cli/latest/function#modal-function-stats) and [`modal server stats`](/docs/cli/latest/server#modal-server-stats) commands (along with the [`Function.stats()`](/docs/sdk/py/latest/Function#stats) and [`Server.stats()`](/docs/sdk/py/latest/Server#stats) methods) now include a `container_total_count` value, reporting the number of containers that were live at any point in the interval.
+- The [`Server.sessions.start()`](/docs/sdk/py/latest/Server#sessionsstart) method will now wait up to 25 minutes if no container is available to place the session. Add timeouts in user code where queuing is not desired.
+
 ### 1.6.0 (2026-09-28)
 
 Sandboxes now use our [next-generation backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds), affording substantially higher creation rates and concurrency limits for CPU Sandboxes. No code changes are required, but there are some semantic differences to be aware of:
