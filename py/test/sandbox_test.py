@@ -1504,6 +1504,21 @@ def test_sandbox_v2_uses_command_router_access_from_create(app, servicer):
     sb.terminate()
 
 
+def test_sandbox_v2_sends_sandbox_token_from_create(app, servicer):
+    servicer.sandbox_create_v2_omits_router_access = True
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+
+    sb.reload_volumes()
+    sb.poll()
+    sb.terminate()
+
+    assert servicer.sandbox_token_metadata == {
+        "SandboxGetCommandRouterAccess": "sandbox-token-sb-v2-123",
+        "SandboxWaitV2": "sandbox-token-sb-v2-123",
+        "SandboxTerminateV2": "sandbox-token-sb-v2-123",
+    }
+
+
 def test_sandbox_v2_fetches_command_router_access_when_create_omits_it(app, servicer):
     """A scheduler that could not mint a token omits the field, so we ask for it."""
     servicer.sandbox_create_v2_omits_router_access = True

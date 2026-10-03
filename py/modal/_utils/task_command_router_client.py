@@ -226,6 +226,7 @@ async def fetch_command_router_access_v2(
     *,
     sandbox_id: str | None = None,
     task_id: str | None = None,
+    sandbox_token: str | None = None,
 ) -> api_pb2.SandboxGetCommandRouterAccessResponse:
     """Fetch direct command router access info from Modal server for a V2 sandbox."""
     if sandbox_id is not None:
@@ -236,10 +237,10 @@ async def fetch_command_router_access_v2(
         raise ValueError("Either sandbox_id or task_id must be provided")
     assert server_client._auth_token_manager
     auth_token = await server_client._auth_token_manager.get_token()
-    return await server_client._stub.SandboxGetCommandRouterAccess(
-        request,
-        metadata=[("x-modal-auth-token", auth_token)],
-    )
+    metadata = [("x-modal-auth-token", auth_token)]
+    if sandbox_token:
+        metadata.append(("x-modal-sandbox-token", sandbox_token))
+    return await server_client._stub.SandboxGetCommandRouterAccess(request, metadata=metadata)
 
 
 def _finalize_channel(loop, channel):
@@ -267,6 +268,7 @@ class TaskCommandRouterClient:
         jwt: str,
         *,
         sandbox_id: str | None = None,
+        sandbox_token: str | None = None,
     ) -> "TaskCommandRouterClient":
         """Build a connected client from a jwt and url."""
         o = urllib.parse.urlparse(url)
@@ -315,7 +317,17 @@ class TaskCommandRouterClient:
         loop = asyncio.get_running_loop()
         jwt_refresh_lock = asyncio.Lock()
 
-        client = cls(server_client, task_id, url, jwt, channel, loop, jwt_refresh_lock, sandbox_id=sandbox_id)
+        client = cls(
+            server_client,
+            task_id,
+            url,
+            jwt,
+            channel,
+            loop,
+            jwt_refresh_lock,
+            sandbox_id=sandbox_id,
+            sandbox_token=sandbox_token,
+        )
         # An unused client releases its connection too.
         client._arm_idle_release()
         return client
@@ -337,6 +349,8 @@ class TaskCommandRouterClient:
         sandbox_id: str,
         task_id: str,
         access: api_pb2.CommandRouterAccess | None = None,
+        *,
+        sandbox_token: str | None = None,
     ) -> "TaskCommandRouterClient":
         """Initialize a TaskCommandRouterClient for a V2 sandbox.
 
@@ -348,10 +362,12 @@ class TaskCommandRouterClient:
         if access is not None:
             url, jwt = access.url, access.jwt
         else:
-            resp = await fetch_command_router_access_v2(server_client, sandbox_id=sandbox_id)
+            resp = await fetch_command_router_access_v2(
+                server_client, sandbox_id=sandbox_id, sandbox_token=sandbox_token
+            )
             url, jwt = resp.url, resp.jwt
         logger.debug(f"Using command router access for sandbox {sandbox_id}")
-        return await cls._connect(server_client, task_id, url, jwt, sandbox_id=sandbox_id)
+        return await cls._connect(server_client, task_id, url, jwt, sandbox_id=sandbox_id, sandbox_token=sandbox_token)
 
     @classmethod
     async def init_v2_by_task_id(
@@ -375,6 +391,7 @@ class TaskCommandRouterClient:
         jwt_refresh_lock: asyncio.Lock,
         *,
         sandbox_id: str | None = None,
+        sandbox_token: str | None = None,
         stream_stdio_retry_delay_secs: float = 0.01,
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
@@ -388,6 +405,7 @@ class TaskCommandRouterClient:
         self._server_client = server_client
         self._task_id = task_id
         self._sandbox_id = sandbox_id
+        self._sandbox_token = sandbox_token
         self._server_url = server_url
         self._jwt = jwt
         self._channel = channel
@@ -902,7 +920,10 @@ class TaskCommandRouterClient:
             if self._is_v2_sandbox:
                 logger.debug(f"Refreshing JWT for V2 exec with task ID {self._task_id}")
                 v2_resp = await fetch_command_router_access_v2(
-                    self._server_client, sandbox_id=self._sandbox_id, task_id=self._task_id
+                    self._server_client,
+                    sandbox_id=self._sandbox_id,
+                    task_id=self._task_id,
+                    sandbox_token=self._sandbox_token,
                 )
                 logger.debug(f"Finished refreshing JWT for V2 exec with task ID {self._task_id}")
                 jwt, url = v2_resp.jwt, v2_resp.url

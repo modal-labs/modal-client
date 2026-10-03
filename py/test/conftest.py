@@ -1066,6 +1066,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # that could not mint a token does.
         self.sandbox_create_v2_omits_router_access = False
         self.sandbox_create_v2_requests: list[api_pb2.SandboxCreateV2Request] = []
+        self.sandbox_token_metadata: dict[str, str | None] = {}
         self.sandbox_restore_v2_requests = []
         self.sandbox_result: api_pb2.GenericResult | None = None
         self._sandbox_terminated = False
@@ -3429,6 +3430,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.SandboxCreateV2Response(
                 sandbox_id="sb-v2-123",
                 task_id="ta-v2-123",
+                sandbox_token="sandbox-token-sb-v2-123",
                 tunnels=tunnels,
                 metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
                 command_router_access=(
@@ -3542,6 +3544,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxWaitV2(self, stream):
         _request: api_pb2.SandboxWaitRequest = await stream.recv_message()
+        self.sandbox_token_metadata["SandboxWaitV2"] = stream.metadata.get("x-modal-sandbox-token")
         if self._sandbox_terminated:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exitcode=-1)
         else:
@@ -3640,6 +3643,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
     async def SandboxTerminateV2(self, stream):
+        self.sandbox_token_metadata["SandboxTerminateV2"] = stream.metadata.get("x-modal-sandbox-token")
         self._sandbox_terminated = True
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
@@ -3695,6 +3699,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxGetCommandRouterAccess(self, stream):
         _request: api_pb2.SandboxGetCommandRouterAccessRequest = await stream.recv_message()
+        self.sandbox_token_metadata["SandboxGetCommandRouterAccess"] = stream.metadata.get("x-modal-sandbox-token")
         await stream.send_message(
             api_pb2.SandboxGetCommandRouterAccessResponse(url=self.task_command_router_url, jwt="fake-jwt-token")
         )
@@ -3725,6 +3730,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxGetTaskIdV2(self, stream):
         request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
+        self.sandbox_token_metadata["SandboxGetTaskIdV2"] = stream.metadata.get("x-modal-sandbox-token")
         task_id = self.sandbox_task_ids.get(request.sandbox_id, "ta-modalcontainerexec")
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=task_id))
 

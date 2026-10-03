@@ -1180,6 +1180,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._hydrate(sandbox_id, load_context.client, create_resp.metadata)
             self._is_v2 = True
             self._task_id = create_resp.task_id
+            self._sandbox_token = create_resp.sandbox_token or None
             # An unset proto message reads as an empty one rather than None, so the
             # presence check is what distinguishes "no access" from "empty access".
             if create_resp.HasField("command_router_access"):
@@ -1207,6 +1208,15 @@ class _Sandbox(_Object, type_prefix="sb"):
             load_context = LoadContext(client=client, app_id=app_id, task_context=tc)
             await resolver.load(obj, load_context)
         return obj
+
+    async def _v2_metadata(self, client: _Client | None = None) -> list[tuple[str, str]]:
+        client = client if client is not None else self._client
+        assert client._auth_token_manager
+        auth_token = await client._auth_token_manager.get_token()
+        metadata = [("x-modal-auth-token", auth_token)]
+        if self._sandbox_token:
+            metadata.append(("x-modal-sandbox-token", self._sandbox_token))
+        return metadata
 
     def _get_metadata(self) -> api_pb2.SandboxHandleMetadata:
         metadata = api_pb2.SandboxHandleMetadata(app_id=self._app_id or "")
@@ -1242,6 +1252,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         self._stdin = StreamWriter(_StreamWriterThroughServerParams(object_id=self.object_id, client=self._client))
         self._task_id = None
+        self._sandbox_token = None
         self._tunnels = None
         self._enable_snapshot = False
         self._command_router_client = None
@@ -1463,9 +1474,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
         stub = self._client._stub
         if self._is_v2:
-            assert self._client._auth_token_manager
-            auth_token = await self._client._auth_token_manager.get_token()
-            resp = await stub.SandboxTagsGetV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            resp = await stub.SandboxTagsGetV2(req, metadata=await self._v2_metadata())
         else:
             resp = await stub.SandboxTagsGet(req)
 
@@ -1491,10 +1500,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
         stub = self._client._stub
         if self._is_v2:
-            assert self._client._auth_token_manager
-            auth_token = await self._client._auth_token_manager.get_token()
             req = api_pb2.SandboxTagsSetRequest(sandbox_id=self.object_id, tags=tags_list)
-            await stub.SandboxTagsSetV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            await stub.SandboxTagsSetV2(req, metadata=await self._v2_metadata())
         else:
             req = api_pb2.SandboxTagsSetRequest(
                 environment_name=_get_environment_name(),
@@ -1526,9 +1533,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         check_object_name(name, "Sandbox")
 
         req = api_pb2.SandboxSetNameRequest(sandbox_id=self.object_id, name=name)
-        assert self._client._auth_token_manager
-        auth_token = await self._client._auth_token_manager.get_token()
-        await self._client._stub.SandboxSetName(req, metadata=[("x-modal-auth-token", auth_token)])
+        await self._client._stub.SandboxSetName(req, metadata=await self._v2_metadata())
 
     async def _experimental_set_outbound_network_policy(
         self,
@@ -1643,13 +1648,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 total_timeout=remaining,
             )
             resp: api_pb2.SandboxGetExitSnapshotResponse
-            if self._is_v2:
-                assert client._auth_token_manager
-                auth_token = await client._auth_token_manager.get_token()
             try:
                 if self._is_v2:
                     resp = await client._stub.SandboxGetExitSnapshotV2(
-                        req, retry=poll_retry, metadata=[("x-modal-auth-token", auth_token)]
+                        req, retry=poll_retry, metadata=await self._v2_metadata(client)
                     )
                 else:
                     resp = await client._stub.SandboxGetExitSnapshot(req, retry=poll_retry)
@@ -1876,9 +1878,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             # Use the private __client to allow `wait` to work with a detached sandbox
             stub = self.__client._stub
             if self._is_v2:
-                assert self.__client._auth_token_manager
-                auth_token = await self.__client._auth_token_manager.get_token()
-                resp = await stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+                resp = await stub.SandboxWaitV2(req, metadata=await self._v2_metadata(self.__client))
             else:
                 resp = await stub.SandboxWait(req)
             if resp.result.status:
@@ -1947,9 +1947,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxGetTunnelsRequest(sandbox_id=self.object_id, timeout=timeout)
         stub = self._client._stub
         if self._is_v2:
-            assert self._client._auth_token_manager
-            auth_token = await self._client._auth_token_manager.get_token()
-            resp = await stub.SandboxGetTunnelsV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            resp = await stub.SandboxGetTunnelsV2(req, metadata=await self._v2_metadata())
         else:
             resp = await stub.SandboxGetTunnels(req)
 
@@ -1993,11 +1991,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_id=self.object_id, user_metadata=user_metadata, port=port
         )
         if self._is_v2:
-            assert self._client._auth_token_manager
-            auth_token = await self._client._auth_token_manager.get_token()
-            resp = await self._client._stub.SandboxCreateConnectTokenV2(
-                req, metadata=[("x-modal-auth-token", auth_token)]
-            )
+            resp = await self._client._stub.SandboxCreateConnectTokenV2(req, metadata=await self._v2_metadata())
         else:
             resp = await self._client._stub.SandboxCreateConnectToken(req)
         return SandboxConnectCredentials(resp.url, resp.token)
@@ -2055,9 +2049,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
         stub = self._client._stub
         if self._is_v2:
-            assert self._client._auth_token_manager
-            auth_token = await self._client._auth_token_manager.get_token()
-            await stub.SandboxTerminateV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            await stub.SandboxTerminateV2(req, metadata=await self._v2_metadata())
         else:
             await stub.SandboxTerminate(req)
         if wait:
@@ -2074,9 +2066,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
         stub = self._client._stub
         if self._is_v2:
-            assert self._client._auth_token_manager
-            auth_token = await self._client._auth_token_manager.get_token()
-            resp = await stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            resp = await stub.SandboxWaitV2(req, metadata=await self._v2_metadata())
         else:
             resp = await stub.SandboxWait(req)
 
@@ -2094,9 +2084,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             stub = self._client._stub
             try:
                 if self._is_v2:
-                    assert self._client._auth_token_manager
-                    auth_token = await self._client._auth_token_manager.get_token()
-                    resp = await stub.SandboxGetTaskIdV2(req, metadata=[("x-modal-auth-token", auth_token)])
+                    resp = await stub.SandboxGetTaskIdV2(req, metadata=await self._v2_metadata())
                 else:
                     resp = await stub.SandboxGetTaskId(req)
             except (ServiceError, InternalError, ConnectionError) as exc:
@@ -2136,9 +2124,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
         stub = self.__client._stub
         if self._is_v2:
-            assert self.__client._auth_token_manager
-            auth_token = await self.__client._auth_token_manager.get_token()
-            resp = await stub.SandboxGetTaskIdV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            resp = await stub.SandboxGetTaskIdV2(req, metadata=await self._v2_metadata(self.__client))
         else:
             resp = await stub.SandboxGetTaskId(req)
         if not resp.task_id:
@@ -2165,7 +2151,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     # re-trying the same credentials forever.
                     access, self._init_command_router_access = self._init_command_router_access, None
                     command_router_client = await TaskCommandRouterClient.init_v2_by_sandbox_id(
-                        self._client, self.object_id, task_id, access
+                        self._client, self.object_id, task_id, access, sandbox_token=self._sandbox_token
                     )
                 else:
                     command_router_client = await TaskCommandRouterClient.init(self._client, task_id)
@@ -3289,10 +3275,8 @@ class _SidecarManager:
                 cloud_bucket_mount_credentials=cloud_bucket_credentials,
             )
             client = self._sandbox._client
-            assert client._auth_token_manager
-            auth_token = await client._auth_token_manager.get_token()
             create_resp = await client._stub.SandboxContainerCreateV2(
-                create_req, metadata=[("x-modal-auth-token", auth_token)]
+                create_req, metadata=await self._sandbox._v2_metadata(client)
             )
         else:
             task_id, command_router_client = await self._get_command_router()
