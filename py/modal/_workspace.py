@@ -495,7 +495,8 @@ class _WorkspaceSettingsManager:
     """mdmd:namespace"""
 
     @classmethod
-    def valid_settings(cls):
+    def _valid_settings(cls):
+        """mdmd:hidden"""
         return ("default-environment", "image-builder-version")
 
     def __init__(self, workspace: _Workspace):
@@ -554,4 +555,4 @@ class _WorkspaceSettingsManager:
             case "default-environment":
                 await self._set_default_environment(value)
             case _:
-                raise ValueError(f"Unknown setting {name!r}. Valid settings: {', '.join(self.valid_settings())}")
+                raise ValueError(f"Unknown setting {name!r}. Valid settings: {', '.join(self._valid_settings())}")
