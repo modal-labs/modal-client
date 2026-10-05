@@ -297,6 +297,12 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		return nil, err
 	}
 
+	if params.Name != "" {
+		if err := checkObjectName(params.Name, "Sandbox"); err != nil {
+			return nil, err
+		}
+	}
+
 	runtime, err := params.Runtime.toProto()
 	if err != nil {
 		return nil, err

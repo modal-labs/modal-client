@@ -8,6 +8,7 @@ import (
 	"iter"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -984,6 +985,16 @@ func TestSandboxCreateRequestProto_InvalidRuntime(t *testing.T) {
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.Equal(`invalid Runtime "runc": must be "gvisor" or "vm"`))
+}
+
+func TestSandboxCreateRequestProto_InvalidName(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	_, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		Name: strings.Repeat("a", 65),
+	})
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
 }
 
 func TestSandboxCreateRequestProto_WithMemoryAndMemoryLimit(t *testing.T) {

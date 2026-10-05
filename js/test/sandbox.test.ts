@@ -529,6 +529,13 @@ test("buildSandboxCreateRequestProto rejects a null cloud bucket mount entry", a
   await expect(build).rejects.toThrow('"/mnt/s3"');
 });
 
+test("buildSandboxCreateRequestProto rejects an invalid name", async () => {
+  const build = buildSandboxCreateRequestProto("app-123", "img-456", {
+    name: "a".repeat(65),
+  });
+  await expect(build).rejects.toThrow(InvalidError);
+});
+
 test("CreateSandboxWithInboundCidrAllowlist", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,

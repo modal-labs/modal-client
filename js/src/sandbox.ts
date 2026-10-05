@@ -554,6 +554,10 @@ export async function buildSandboxCreateRequestProto(
     throw new Error(`workdir must be an absolute path, got: ${params.workdir}`);
   }
 
+  if (params.name) {
+    checkObjectName(params.name, "Sandbox");
+  }
+
   const runtime = sandboxRuntimeToProto(params.runtime);
 
   const volumeMounts: VolumeMount[] = params.volumes
