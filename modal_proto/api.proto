@@ -3920,6 +3920,9 @@ message SandboxGetFromNameRequest {
   string sandbox_name = 1;
   string environment_name = 2;
   string app_name = 3;
+  // When set, the lookup also considers sandboxes that have already stopped and
+  // returns the most recently created sandbox with the given name.
+  bool include_terminated = 4;
 }
 
 message SandboxGetFromNameResponse {

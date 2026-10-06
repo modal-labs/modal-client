@@ -47614,12 +47614,13 @@ func (*sandboxGetExitSnapshotResponse_Pending_) isSandboxGetExitSnapshotResponse
 func (*sandboxGetExitSnapshotResponse_Error_) isSandboxGetExitSnapshotResponse_Outcome() {}
 
 type SandboxGetFromNameRequest struct {
-	state                      protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_SandboxName     string                 `protobuf:"bytes,1,opt,name=sandbox_name,json=sandboxName,proto3"`
-	xxx_hidden_EnvironmentName string                 `protobuf:"bytes,2,opt,name=environment_name,json=environmentName,proto3"`
-	xxx_hidden_AppName         string                 `protobuf:"bytes,3,opt,name=app_name,json=appName,proto3"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state                        protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_SandboxName       string                 `protobuf:"bytes,1,opt,name=sandbox_name,json=sandboxName,proto3"`
+	xxx_hidden_EnvironmentName   string                 `protobuf:"bytes,2,opt,name=environment_name,json=environmentName,proto3"`
+	xxx_hidden_AppName           string                 `protobuf:"bytes,3,opt,name=app_name,json=appName,proto3"`
+	xxx_hidden_IncludeTerminated bool                   `protobuf:"varint,4,opt,name=include_terminated,json=includeTerminated,proto3"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *SandboxGetFromNameRequest) Reset() {
@@ -47668,6 +47669,13 @@ func (x *SandboxGetFromNameRequest) GetAppName() string {
 	return ""
 }
 
+func (x *SandboxGetFromNameRequest) GetIncludeTerminated() bool {
+	if x != nil {
+		return x.xxx_hidden_IncludeTerminated
+	}
+	return false
+}
+
 func (x *SandboxGetFromNameRequest) SetSandboxName(v string) {
 	x.xxx_hidden_SandboxName = v
 }
@@ -47680,12 +47688,19 @@ func (x *SandboxGetFromNameRequest) SetAppName(v string) {
 	x.xxx_hidden_AppName = v
 }
 
+func (x *SandboxGetFromNameRequest) SetIncludeTerminated(v bool) {
+	x.xxx_hidden_IncludeTerminated = v
+}
+
 type SandboxGetFromNameRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	SandboxName     string
 	EnvironmentName string
 	AppName         string
+	// When set, the lookup also considers sandboxes that have already stopped and
+	// returns the most recently created sandbox with the given name.
+	IncludeTerminated bool
 }
 
 func (b0 SandboxGetFromNameRequest_builder) Build() *SandboxGetFromNameRequest {
@@ -47695,6 +47710,7 @@ func (b0 SandboxGetFromNameRequest_builder) Build() *SandboxGetFromNameRequest {
 	x.xxx_hidden_SandboxName = b.SandboxName
 	x.xxx_hidden_EnvironmentName = b.EnvironmentName
 	x.xxx_hidden_AppName = b.AppName
+	x.xxx_hidden_IncludeTerminated = b.IncludeTerminated
 	return m0
 }
 
@@ -71777,11 +71793,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12ERROR_CODE_TIMEOUT\x10\x01\x12\x17\n" +
 	"\x13ERROR_CODE_INTERNAL\x10\x02\x12&\n" +
 	"\"ERROR_CODE_FILESYSTEM_INCONSISTENT\x10\x03B\t\n" +
-	"\aoutcome\"\x84\x01\n" +
+	"\aoutcome\"\xb3\x01\n" +
 	"\x19SandboxGetFromNameRequest\x12!\n" +
 	"\fsandbox_name\x18\x01 \x01(\tR\vsandboxName\x12)\n" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\x12\x19\n" +
-	"\bapp_name\x18\x03 \x01(\tR\aappName\"|\n" +
+	"\bapp_name\x18\x03 \x01(\tR\aappName\x12-\n" +
+	"\x12include_terminated\x18\x04 \x01(\bR\x11includeTerminated\"|\n" +
 	"\x1aSandboxGetFromNameResponse\x12\x1d\n" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\x12?\n" +
