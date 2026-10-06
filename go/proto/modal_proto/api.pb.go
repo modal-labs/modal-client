@@ -19286,6 +19286,7 @@ type EndpointCreateResponse struct {
 	xxx_hidden_EndpointId      string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointId,proto3"`
 	xxx_hidden_EndpointPageUrl string                 `protobuf:"bytes,2,opt,name=endpoint_page_url,json=endpointPageUrl,proto3"`
 	xxx_hidden_Name            string                 `protobuf:"bytes,3,opt,name=name,proto3"`
+	xxx_hidden_ModelName       string                 `protobuf:"bytes,4,opt,name=model_name,json=modelName,proto3"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -19336,6 +19337,13 @@ func (x *EndpointCreateResponse) GetName() string {
 	return ""
 }
 
+func (x *EndpointCreateResponse) GetModelName() string {
+	if x != nil {
+		return x.xxx_hidden_ModelName
+	}
+	return ""
+}
+
 func (x *EndpointCreateResponse) SetEndpointId(v string) {
 	x.xxx_hidden_EndpointId = v
 }
@@ -19348,12 +19356,18 @@ func (x *EndpointCreateResponse) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
 
+func (x *EndpointCreateResponse) SetModelName(v string) {
+	x.xxx_hidden_ModelName = v
+}
+
 type EndpointCreateResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	EndpointId      string
 	EndpointPageUrl string
 	Name            string
+	// Model name to send in requests to the endpoint.
+	ModelName string
 }
 
 func (b0 EndpointCreateResponse_builder) Build() *EndpointCreateResponse {
@@ -19363,6 +19377,7 @@ func (b0 EndpointCreateResponse_builder) Build() *EndpointCreateResponse {
 	x.xxx_hidden_EndpointId = b.EndpointId
 	x.xxx_hidden_EndpointPageUrl = b.EndpointPageUrl
 	x.xxx_hidden_Name = b.Name
+	x.xxx_hidden_ModelName = b.ModelName
 	return m0
 }
 
@@ -66059,6 +66074,7 @@ type EndpointGetInfoResponse_EndpointInfoSummary struct {
 	xxx_hidden_Lifecycle         *EndpointLifecycle                     `protobuf:"bytes,8,opt,name=lifecycle,proto3"`
 	xxx_hidden_VolumeId          string                                 `protobuf:"bytes,11,opt,name=volume_id,json=volumeId,proto3"`
 	xxx_hidden_ModelPath         string                                 `protobuf:"bytes,12,opt,name=model_path,json=modelPath,proto3"`
+	xxx_hidden_ModelName         string                                 `protobuf:"bytes,13,opt,name=model_name,json=modelName,proto3"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
@@ -66158,6 +66174,13 @@ func (x *EndpointGetInfoResponse_EndpointInfoSummary) GetModelPath() string {
 	return ""
 }
 
+func (x *EndpointGetInfoResponse_EndpointInfoSummary) GetModelName() string {
+	if x != nil {
+		return x.xxx_hidden_ModelName
+	}
+	return ""
+}
+
 func (x *EndpointGetInfoResponse_EndpointInfoSummary) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -66198,6 +66221,10 @@ func (x *EndpointGetInfoResponse_EndpointInfoSummary) SetModelPath(v string) {
 	x.xxx_hidden_ModelPath = v
 }
 
+func (x *EndpointGetInfoResponse_EndpointInfoSummary) SetModelName(v string) {
+	x.xxx_hidden_ModelName = v
+}
+
 func (x *EndpointGetInfoResponse_EndpointInfoSummary) HasLifecycle() bool {
 	if x == nil {
 		return false
@@ -66223,6 +66250,8 @@ type EndpointGetInfoResponse_EndpointInfoSummary_builder struct {
 	// set only when the model is served from a modal volume
 	VolumeId  string
 	ModelPath string
+	// Model name to send in requests to the endpoint.
+	ModelName string
 }
 
 func (b0 EndpointGetInfoResponse_EndpointInfoSummary_builder) Build() *EndpointGetInfoResponse_EndpointInfoSummary {
@@ -66239,6 +66268,7 @@ func (b0 EndpointGetInfoResponse_EndpointInfoSummary_builder) Build() *EndpointG
 	x.xxx_hidden_Lifecycle = b.Lifecycle
 	x.xxx_hidden_VolumeId = b.VolumeId
 	x.xxx_hidden_ModelPath = b.ModelPath
+	x.xxx_hidden_ModelName = b.ModelName
 	return m0
 }
 
@@ -70056,12 +70086,14 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0funauthenticated\x18\t \x01(\bR\x0funauthenticated\x12D\n" +
 	"\fserving_mode\x18\n" +
 	" \x01(\x0e2!.modal.client.EndpointServingModeR\vservingMode\x12M\n" +
-	"#shared_endpoint_notice_acknowledged\x18\v \x01(\bR sharedEndpointNoticeAcknowledged\"y\n" +
+	"#shared_endpoint_notice_acknowledged\x18\v \x01(\bR sharedEndpointNoticeAcknowledged\"\x98\x01\n" +
 	"\x16EndpointCreateResponse\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
 	"endpointId\x12*\n" +
 	"\x11endpoint_page_url\x18\x02 \x01(\tR\x0fendpointPageUrl\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\"\xf9\x01\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1d\n" +
+	"\n" +
+	"model_name\x18\x04 \x01(\tR\tmodelName\"\xf9\x01\n" +
 	"\x19EndpointCustomModelSource\x12+\n" +
 	"\x12base_model_repo_id\x18\x01 \x01(\tR\x0fbaseModelRepoId\x12P\n" +
 	"\vhuggingface\x18\x02 \x01(\v2,.modal.client.EndpointHuggingFaceModelSourceH\x00R\vhuggingface\x12Q\n" +
@@ -70077,10 +70109,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\"9\n" +
 	"\x16EndpointGetInfoRequest\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
-	"endpointId\"\xf6\a\n" +
+	"endpointId\"\x95\b\n" +
 	"\x17EndpointGetInfoResponse\x12M\n" +
 	"\x04info\x18\x01 \x01(\v29.modal.client.EndpointGetInfoResponse.EndpointInfoSummaryR\x04info\x12]\n" +
-	"\bmetadata\x18\x02 \x01(\v2<.modal.client.EndpointGetInfoResponse.EndpointHandleMetadataH\x00R\bmetadata\x88\x01\x01\x1a\xbe\x03\n" +
+	"\bmetadata\x18\x02 \x01(\v2<.modal.client.EndpointGetInfoResponse.EndpointHandleMetadataH\x00R\bmetadata\x88\x01\x01\x1a\xdd\x03\n" +
 	"\x13EndpointInfoSummary\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
 	"\arepo_id\x18\x02 \x01(\tR\x06repoId\x12\x1a\n" +
@@ -70093,7 +70125,9 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\tlifecycle\x18\b \x01(\v2\x1f.modal.client.EndpointLifecycleR\tlifecycle\x12\x1b\n" +
 	"\tvolume_id\x18\v \x01(\tR\bvolumeId\x12\x1d\n" +
 	"\n" +
-	"model_path\x18\f \x01(\tR\tmodelPath\x1aw\n" +
+	"model_path\x18\f \x01(\tR\tmodelPath\x12\x1d\n" +
+	"\n" +
+	"model_name\x18\r \x01(\tR\tmodelName\x1aw\n" +
 	"\x16EndpointHandleMetadata\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1b\n" +
 	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12)\n" +
