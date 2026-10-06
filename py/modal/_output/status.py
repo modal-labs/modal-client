@@ -20,6 +20,11 @@ def _get_annotation_for_web_url(url_info: api_pb2.WebUrlInfo) -> str:
     return suffix
 
 
+def _format_url(url: str) -> str:
+    # OSC 8 hyperlinks stay clickable when the URL wraps across lines
+    return f"[dim underline][link={url}]{url}[/link][/dim underline]"
+
+
 class FunctionCreationStatus:
     """Context manager for tracking and displaying function creation progress."""
 
@@ -58,9 +63,9 @@ class FunctionCreationStatus:
             suffix = _get_annotation_for_web_url(url_info)
 
             self.status_row.finish(f"Created {self.type} [green]{self.name}[/green]")
-            self.status_row.details(f"[dim underline]{web_url}[/dim underline]{auth_suffix}{suffix}")
+            self.status_row.details(f"{_format_url(web_url)}{auth_suffix}{suffix}")
             for custom_domain in self.response.function.custom_domain_info:
-                self.status_row.details(f"Custom domain: [dim underline]{custom_domain.url}[/dim underline]")
+                self.status_row.details(f"Custom domain: {_format_url(custom_domain.url)}")
 
         elif self.response.function.flash_service_urls:
             # Despite the gRPC API types, Servers only have one URL
@@ -68,7 +73,7 @@ class FunctionCreationStatus:
             auth_suffix = " 🔑" if authenticated else " [yellow](unauthenticated)[/yellow]"
             self.status_row.finish(f"Created {self.type} [green]{self.name}[/green]")
             url = self.response.function.flash_service_urls[0]
-            self.status_row.details(f"[dim underline]{url}[/dim underline]{auth_suffix}")
+            self.status_row.details(f"{_format_url(url)}{auth_suffix}")
 
         else:
             self.status_row.finish(f"Created {self.type} [green]{self.name}[/green].")
@@ -81,10 +86,8 @@ class FunctionCreationStatus:
                         auth_suffix = " 🔑" if authenticated else " [yellow](unauthenticated)[/yellow]"
                         self.status_row.details(
                             f"{method_definition.function_name} -> "
-                            f"[dim underline]{method_definition.web_url}[/dim underline]{auth_suffix}{suffix}"
+                            f"{_format_url(method_definition.web_url)}{auth_suffix}{suffix}"
                         )
                         for custom_domain in method_definition.custom_domain_info:
                             indent = len(method_definition.function_name) * " "
-                            self.status_row.details(
-                                f"{indent} -> [dim underline]{custom_domain.url}[/dim underline]{auth_suffix}"
-                            )
+                            self.status_row.details(f"{indent} -> {_format_url(custom_domain.url)}{auth_suffix}")

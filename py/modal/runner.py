@@ -697,7 +697,7 @@ async def _deploy_app(
     else:
         output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉")
 
-    output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
+    output_mgr.print(f"\nView Deployment: [magenta][link={app_url}]{app_url}[/link][/magenta]")
     return DeployResult(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,

@@ -225,12 +225,12 @@ async def rollover(
             await _stop_and_wait_for_containers(client, app_id, response.deployed_at, env)
         except Exception as exc:
             warnings.warn(f"App updated successfully, but containers did not all terminate. {exc}", UserWarning)
-            output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
+            output_mgr.print(f"\nView Deployment: [magenta][link={response.url}]{response.url}[/link][/magenta]")
             sys.exit(1)
 
     duration = time.monotonic() - t0
     output_mgr.step_completed(f"Rollover completed in {duration:.3f}s with {strategy} strategy! 🎉")
-    output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
+    output_mgr.print(f"\nView Deployment: [magenta][link={response.url}]{response.url}[/link][/magenta]")
 
 
 @app_cli.command("promote", panel="Management", no_args_is_help=True, hidden=True)
@@ -281,7 +281,7 @@ async def promote(
 
     output_mgr = OutputManager.get()
     output_mgr.print(f"[green]✓[/green] Promoted App to v{version_number}!")
-    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+    output_mgr.print(f"\nView Deployment: [magenta][link={resp.url}]{resp.url}[/link][/magenta]")
 
 
 @app_cli.command(
@@ -356,10 +356,10 @@ async def rollback(
             warnings.warn(
                 f"App rollback executed successfully, but containers did not all terminate. {exc}", UserWarning
             )
-            output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+            output_mgr.print(f"\nView Deployment: [magenta][link={resp.url}]{resp.url}[/link][/magenta]")
             sys.exit(1)
     output_mgr.print("[green]✓[/green] Deployment rollback successful!")
-    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+    output_mgr.print(f"\nView Deployment: [magenta][link={resp.url}]{resp.url}[/link][/magenta]")
 
 
 @app_cli.command("stop", panel="Management", no_args_is_help=True)
