@@ -41,6 +41,7 @@ class _FlashContainerEntry:
                     self.flash_manager = server_forward()
                 else:
                     try:
+                        # Only rank 0 of a clustered replica exposes the HTTP endpoint through Flash.
                         rank = get_current_cluster_context().rank
                         if rank != 0:
                             return
