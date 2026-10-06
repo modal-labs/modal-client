@@ -124,6 +124,9 @@ var typeRegistry = []typeEntry{
 // Types whose names end in "Params" or "Error" are automatically excluded and
 // do not need to appear here.
 var excludedTypes = map[string]string{
+	"FunctionStats":                   "data type",
+	"StatsPercentile":                 "data type",
+	"StatsPercentileDistribution":     "data type",
 	"App":                             "data type, no public methods",
 	"Client":                          "main client; Close and Version are intentionally parameter-free",
 	"CloudBucketMount":                "data type, no public methods",

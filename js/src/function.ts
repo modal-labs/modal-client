@@ -6,6 +6,8 @@ import {
   ClassParameterValue,
   DataFormat,
   FunctionBindParamsResponse,
+  FunctionGetTimeRangeStatsRequest,
+  StatsPercentileDistribution as StatsPercentileDistributionProto,
   FunctionCallInvocationType,
   FunctionHandleMetadata,
   FunctionGetByIdRequest,
@@ -167,6 +169,60 @@ export class FunctionService {
 export interface FunctionCurrentStats {
   backlog: number;
   numTotalRunners: number;
+}
+
+export interface StatsPercentile {
+  percentile: number;
+  value: number;
+}
+
+export interface StatsPercentileDistribution {
+  unit: string;
+  percentiles: StatsPercentile[];
+}
+
+export interface FunctionStats {
+  since: Date;
+  until: Date;
+  inputSuccessCount: number;
+  inputFailureCount: number;
+  inputTimeoutCount: number;
+  inputRunningAtEndCount: number;
+  containerStartedCount: number;
+  containerErrorCount: number;
+  containerCreatingAtEndCount: number;
+  variantCount: number;
+  inputPercentileStats: Record<string, StatsPercentileDistribution>;
+  containerPercentileStats: Record<string, StatsPercentileDistribution>;
+  allVariants: boolean;
+}
+
+export interface FunctionStatsParams {
+  /** Inclusive start; defaults to one hour before until. */
+  since?: Date;
+  /** Exclusive end; defaults to the current time. */
+  until?: Date;
+  /** Restrict statistics to this container ID. */
+  container?: string;
+  /** Aggregate the base Function and its variants. Defaults to false. */
+  allVariants?: boolean;
+}
+
+function statsDistributions(
+  stats: Record<string, StatsPercentileDistributionProto>,
+): Record<string, StatsPercentileDistribution> {
+  return Object.fromEntries(
+    Object.entries(stats).map(([key, distribution]) => [
+      key,
+      {
+        unit: distribution.unit,
+        percentiles: distribution.percentiles.map((p) => ({
+          percentile: p.percentileBasisPoints / 100,
+          value: p.value,
+        })),
+      },
+    ]),
+  );
 }
 
 /** Optional parameters for {@link Function_#updateAutoscaler Function_.updateAutoscaler()}. */
@@ -691,6 +747,69 @@ export class Function_ {
       this.#handleMetadata?.appId ?? "",
       this.functionId,
     );
+  }
+
+  /**
+   * Return historical statistics. Defaults to the last hour; the maximum range is 7 days.
+   *
+   * @example Read statistics for the last hour.
+   * ```ts
+   * const fn = await modal.functions.fromName("libmodal-test-support", "echo_string");
+   * const stats = await fn.stats();
+   * console.log(stats.inputSuccessCount, stats.inputFailureCount);
+   * ```
+   *
+   * @example Include all variants over the last 24 hours.
+   * ```ts
+   * const until = new Date();
+   * const since = new Date(until.getTime() - 24 * 60 * 60 * 1000);
+   * const variantStats = await fn.stats({ since, until, allVariants: true });
+   * for (const [metric, distribution] of Object.entries(variantStats.inputPercentileStats)) {
+   *   console.log(metric, distribution.unit, distribution.percentiles);
+   * }
+   * ```
+   *
+   * Set `container` to a container ID to restrict statistics to that container.
+   */
+  async stats(params: FunctionStatsParams = {}): Promise<FunctionStats> {
+    const until = params.until ?? new Date();
+    const since = params.since ?? new Date(until.getTime() - 60 * 60 * 1000);
+    if (
+      !Number.isFinite(since.getTime()) ||
+      !Number.isFinite(until.getTime())
+    ) {
+      throw new InvalidError("`since` and `until` must be valid dates.");
+    }
+    if (since >= until) {
+      throw new InvalidError("`since` must be before `until`.");
+    }
+    const allVariants = params.allVariants ?? false;
+    const resp = await this.#client.cpClient.functionGetTimeRangeStats(
+      FunctionGetTimeRangeStatsRequest.create({
+        functionId: this.functionId,
+        since,
+        until,
+        containerId: params.container || undefined,
+        rollup: allVariants,
+      }),
+    );
+    return {
+      since: resp.since ?? new Date(0),
+      until: resp.until ?? new Date(0),
+      inputSuccessCount: resp.inputSuccessCount,
+      inputFailureCount: resp.inputFailureCount,
+      inputTimeoutCount: resp.inputTimeoutCount,
+      inputRunningAtEndCount: resp.inputRunningAtEndCount,
+      containerStartedCount: resp.containerStartedCount,
+      containerErrorCount: resp.containerErrorCount,
+      containerCreatingAtEndCount: resp.containerCreatingAtEndCount,
+      variantCount: resp.variantCount,
+      inputPercentileStats: statsDistributions(resp.inputPercentileStats),
+      containerPercentileStats: statsDistributions(
+        resp.containerPercentileStats,
+      ),
+      allVariants,
+    };
   }
 
   // Returns statistics about the Function.

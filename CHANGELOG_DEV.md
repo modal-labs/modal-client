@@ -9,7 +9,9 @@ Draft releases notes should be added as part of the PR introducing the change. D
 ## JS
 
 - Added `client.Functions.FromID()` to look up a Function by ID.
+- Added [`Function_.stats()`](/docs/sdk/js/latest/Function#stats) to retrieve historical Function statistics over a time range.
 
 ## Go
 
-- Added `client.Functions.FromID` to look up a Function by ID.
+- Added `client.Functions.FromID()` to look up a Function by ID.
+- Added [`Function.Stats()`](/docs/sdk/go/latest/Function#stats)  to retrieve historical Function statistics over a time range.

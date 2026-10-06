@@ -5,6 +5,9 @@ import { expect, test } from "vitest";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { Function_ } from "../src/function";
 import {
+  FunctionGetTimeRangeStatsRequest,
+  FunctionGetTimeRangeStatsResponse,
+  StatsPercentileDistribution,
   AutoscalerSettings,
   DataFormat,
   FunctionUpdateSchedulingParamsRequest,
@@ -494,3 +497,110 @@ test.each([Status.NOT_FOUND, Status.PERMISSION_DENIED])(
     mc.close();
   },
 );
+
+test("FunctionStats maps historical results and filters", async () => {
+  const { mockClient, mockCpClient } = createMockModalClients();
+  const since = new Date("2026-09-01T00:00:00Z");
+  const until = new Date("2026-09-01T01:00:00Z");
+  const distribution = StatsPercentileDistribution.create({
+    unit: "seconds",
+    percentiles: [{ percentileBasisPoints: 9990, value: 1.5 }],
+  });
+  mockCpClient.handleUnary("FunctionGetTimeRangeStats", (request) => {
+    expect(request).toEqual(
+      FunctionGetTimeRangeStatsRequest.create({
+        functionId: "fu-stats",
+        since,
+        until,
+        containerId: "ta-container",
+        rollup: true,
+      }),
+    );
+    return FunctionGetTimeRangeStatsResponse.create({
+      since,
+      until,
+      inputSuccessCount: 10,
+      inputFailureCount: 2,
+      inputTimeoutCount: 3,
+      inputRunningAtEndCount: 4,
+      containerStartedCount: 5,
+      containerErrorCount: 6,
+      containerCreatingAtEndCount: 7,
+      variantCount: 8,
+      inputPercentileStats: { execution_time: distribution },
+      containerPercentileStats: { custom_metric: distribution },
+    });
+  });
+  const result = await new Function_(mockClient, "fu-stats").stats({
+    since,
+    until,
+    container: "ta-container",
+    allVariants: true,
+  });
+  expect(result).toEqual({
+    since,
+    until,
+    inputSuccessCount: 10,
+    inputFailureCount: 2,
+    inputTimeoutCount: 3,
+    inputRunningAtEndCount: 4,
+    containerStartedCount: 5,
+    containerErrorCount: 6,
+    containerCreatingAtEndCount: 7,
+    variantCount: 8,
+    allVariants: true,
+    inputPercentileStats: {
+      execution_time: {
+        unit: "seconds",
+        percentiles: [{ percentile: 99.9, value: 1.5 }],
+      },
+    },
+    containerPercentileStats: {
+      custom_metric: {
+        unit: "seconds",
+        percentiles: [{ percentile: 99.9, value: 1.5 }],
+      },
+    },
+  });
+  mockCpClient.assertExhausted();
+});
+
+test("FunctionStats defaults and empty results", async () => {
+  for (const params of [{}, { until: new Date("2026-09-01T00:00:00Z") }]) {
+    const { mockClient, mockCpClient } = createMockModalClients();
+    const before = Date.now();
+    mockCpClient.handleUnary("FunctionGetTimeRangeStats", (request) => {
+      const req = request as FunctionGetTimeRangeStatsRequest;
+      expect(req.until!.getTime() - req.since!.getTime()).toBe(3600000);
+      expect(req.rollup).toBe(false);
+      expect(req.containerId).toBeUndefined();
+      if (params.until) expect(req.until).toEqual(params.until);
+      else expect(req.until!.getTime()).toBeGreaterThanOrEqual(before);
+      return FunctionGetTimeRangeStatsResponse.create({
+        since: req.since,
+        until: req.until,
+      });
+    });
+    const result = await new Function_(mockClient, "fu-stats").stats(params);
+    expect(result.inputPercentileStats).toEqual({});
+    expect(result.containerPercentileStats).toEqual({});
+    expect(result.inputSuccessCount).toBe(0);
+    expect(result.allVariants).toBe(false);
+    mockCpClient.assertExhausted();
+  }
+});
+
+test("FunctionStats rejects invalid ranges and propagates RPC errors", async () => {
+  const { mockClient, mockCpClient } = createMockModalClients();
+  const f = new Function_(mockClient, "fu-stats");
+  const until = new Date("2026-09-01T00:00:00Z");
+  for (const since of [until, new Date(until.getTime() + 1), new Date(NaN)]) {
+    await expect(f.stats({ since, until })).rejects.toThrow(InvalidError);
+  }
+  await expect(f.stats({ until: new Date(NaN) })).rejects.toThrow(InvalidError);
+  mockCpClient.handleUnary("FunctionGetTimeRangeStats", () => {
+    throw new Error("stats unavailable");
+  });
+  await expect(f.stats()).rejects.toThrow("stats unavailable");
+  mockCpClient.assertExhausted();
+});

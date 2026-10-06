@@ -15,6 +15,7 @@ import (
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // FunctionService provides Function related operations.
@@ -925,4 +926,129 @@ func (f *Function) UpdateAutoscaler(ctx context.Context, params *FunctionUpdateA
 // Returns empty string if this Function is not a Web Function.
 func (f *Function) GetWebURL() string {
 	return f.getWebURL()
+}
+
+// StatsPercentile is a percentile measurement, with percentile expressed from 0 to 100.
+type StatsPercentile struct {
+	Percentile float64
+	Value      float64
+}
+
+// StatsPercentileDistribution contains a metric's unit and percentile measurements.
+type StatsPercentileDistribution struct {
+	Unit        string
+	Percentiles []StatsPercentile
+}
+
+func statsDistributions(stats map[string]*pb.StatsPercentileDistribution) map[string]StatsPercentileDistribution {
+	result := make(map[string]StatsPercentileDistribution, len(stats))
+	for key, distribution := range stats {
+		percentiles := make([]StatsPercentile, 0, len(distribution.GetPercentiles()))
+		for _, p := range distribution.GetPercentiles() {
+			percentiles = append(percentiles, StatsPercentile{Percentile: float64(p.GetPercentileBasisPoints()) / 100, Value: p.GetValue()})
+		}
+		result[key] = StatsPercentileDistribution{Unit: distribution.GetUnit(), Percentiles: percentiles}
+	}
+	return result
+}
+
+// FunctionStats contains historical Function statistics for a time range.
+type FunctionStats struct {
+	Since                       time.Time
+	Until                       time.Time
+	InputSuccessCount           uint64
+	InputFailureCount           uint64
+	InputTimeoutCount           uint64
+	InputRunningAtEndCount      uint64
+	ContainerStartedCount       uint64
+	ContainerErrorCount         uint64
+	ContainerCreatingAtEndCount uint64
+	VariantCount                uint32
+	InputPercentileStats        map[string]StatsPercentileDistribution
+	ContainerPercentileStats    map[string]StatsPercentileDistribution
+	AllVariants                 bool
+}
+
+// FunctionStatsParams contains options for Function.Stats.
+type FunctionStatsParams struct {
+	// Since is inclusive and defaults to one hour before Until.
+	Since *time.Time
+	// Until is exclusive and defaults to the current time.
+	Until *time.Time
+	// Container restricts statistics to this container ID.
+	Container string
+	// AllVariants aggregates the base Function and its variants.
+	AllVariants bool
+}
+
+// Stats returns historical statistics. The default range is the last hour; the maximum range is 7 days.
+//
+// Read statistics for the last hour:
+//
+//	fn, err := client.Functions.FromName(ctx, "libmodal-test-support", "echo_string", nil)
+//	if err != nil {
+//		return err
+//	}
+//	stats, err := fn.Stats(ctx, nil)
+//	if err != nil {
+//		return err
+//	}
+//	fmt.Println(stats.InputSuccessCount, stats.InputFailureCount)
+//
+// Include all variants over the last 24 hours:
+//
+//	until := time.Now()
+//	since := until.Add(-24 * time.Hour)
+//	variantStats, err := fn.Stats(ctx, &modal.FunctionStatsParams{
+//		Since:       &since,
+//		Until:       &until,
+//		AllVariants: true,
+//	})
+//	if err != nil {
+//		return err
+//	}
+//	for metric, distribution := range variantStats.InputPercentileStats {
+//		fmt.Println(metric, distribution.Unit, distribution.Percentiles)
+//	}
+//
+// Set Container to a container ID to restrict statistics to that container.
+func (f *Function) Stats(ctx context.Context, params *FunctionStatsParams) (*FunctionStats, error) {
+	if params == nil {
+		params = &FunctionStatsParams{}
+	}
+	until := time.Now().UTC()
+	if params.Until != nil {
+		until = params.Until.UTC()
+	}
+	since := until.Add(-time.Hour)
+	if params.Since != nil {
+		since = params.Since.UTC()
+	}
+	if !since.Before(until) {
+		return nil, InvalidError{Exception: "`since` must be before `until`."}
+	}
+	req := pb.FunctionGetTimeRangeStatsRequest_builder{
+		FunctionId: f.FunctionID, Since: timestamppb.New(since), Until: timestamppb.New(until), Rollup: params.AllVariants,
+	}.Build()
+	if params.Container != "" {
+		req.SetContainerId(params.Container)
+	}
+	resp, err := f.client.cpClient.FunctionGetTimeRangeStats(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &FunctionStats{
+		Since: resp.GetSince().AsTime(), Until: resp.GetUntil().AsTime(),
+		InputSuccessCount:           resp.GetInputSuccessCount(),
+		InputFailureCount:           resp.GetInputFailureCount(),
+		InputTimeoutCount:           resp.GetInputTimeoutCount(),
+		InputRunningAtEndCount:      resp.GetInputRunningAtEndCount(),
+		ContainerStartedCount:       resp.GetContainerStartedCount(),
+		ContainerErrorCount:         resp.GetContainerErrorCount(),
+		ContainerCreatingAtEndCount: resp.GetContainerCreatingAtEndCount(),
+		VariantCount:                resp.GetVariantCount(),
+		InputPercentileStats:        statsDistributions(resp.GetInputPercentileStats()),
+		ContainerPercentileStats:    statsDistributions(resp.GetContainerPercentileStats()),
+		AllVariants:                 params.AllVariants,
+	}, nil
 }
