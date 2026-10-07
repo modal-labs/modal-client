@@ -57,3 +57,13 @@ Changelog updates are not needed in the following cases:
 For multiple changes to the same feature within a single release cycle, edit an existing changelog entry rather than treating each update as a distinct change.
 
 During development, updates are made to `client/CHANGELOG_DEV.md`. When making a release, changelog entries are moved to the language-specific changelogs (`client/py/CHANGELOG.md`, etc.) and edited for publication.
+
+## Cursor Cloud specific instructions
+
+This checkout is the public client repository. Work from `py/`, `js/`, and `go/` (there is no `client/` prefix here).
+
+- Python development uses the Python 3.11 virtualenv at `py/.venv`. Activate it before `inv` commands (`source py/.venv/bin/activate` from the repo root, or run them from `py/`). `inv protoc` finds grpclib's protoc plugins on `PATH`, so the venv must be active. The system `python3` is not that interpreter.
+- From `py/`: `inv lint`, `inv type-check`, and `inv test`. Python tests use an in-process mock gRPC server and do not need Modal credentials.
+- From `js/`: `npm ci`, `npm run check`, `npm run lint`, `npm run build`, and `npm test`. Node 22 is on `PATH`.
+- `go` on `PATH` is Go 1.25 (`/usr/local/bin/go`). From `go/`, `go test ./...`.
+- Many JS and Go tests call the live Modal API (the `libmodal-test-support` app). They need `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. Tests that only use the in-repo gRPC mocks do not.
