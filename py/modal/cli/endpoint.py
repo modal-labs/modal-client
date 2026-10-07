@@ -260,7 +260,7 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
 @click.option(
     "--name",
     default=None,
-    help="Endpoint name. If not provided, a default will be derived from the model name.",
+    help="Endpoint name. Defaults to inference-{number} if not provided.",
 )
 @click.option(
     "--model",
