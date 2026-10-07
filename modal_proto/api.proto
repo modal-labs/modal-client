@@ -1612,6 +1612,8 @@ message EndpointCreateRequest {
   bool unauthenticated = 9;
   EndpointServingMode serving_mode = 10;
   bool shared_endpoint_notice_acknowledged = 11;
+  // Requires Modal admin access. Dedicated endpoints only; must match model.
+  optional string recipe_id = 12;
 }
 
 message EndpointCreateResponse {

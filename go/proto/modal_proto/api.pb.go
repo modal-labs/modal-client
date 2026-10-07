@@ -19080,6 +19080,9 @@ type EndpointCreateRequest struct {
 	xxx_hidden_Unauthenticated                  bool                       `protobuf:"varint,9,opt,name=unauthenticated,proto3"`
 	xxx_hidden_ServingMode                      EndpointServingMode        `protobuf:"varint,10,opt,name=serving_mode,json=servingMode,proto3,enum=modal.client.EndpointServingMode"`
 	xxx_hidden_SharedEndpointNoticeAcknowledged bool                       `protobuf:"varint,11,opt,name=shared_endpoint_notice_acknowledged,json=sharedEndpointNoticeAcknowledged,proto3"`
+	xxx_hidden_RecipeId                         *string                    `protobuf:"bytes,12,opt,name=recipe_id,json=recipeId,proto3,oneof"`
+	XXX_raceDetectHookData                      protoimpl.RaceDetectHookData
+	XXX_presence                                [1]uint32
 	unknownFields                               protoimpl.UnknownFields
 	sizeCache                                   protoimpl.SizeCache
 }
@@ -19186,6 +19189,16 @@ func (x *EndpointCreateRequest) GetSharedEndpointNoticeAcknowledged() bool {
 	return false
 }
 
+func (x *EndpointCreateRequest) GetRecipeId() string {
+	if x != nil {
+		if x.xxx_hidden_RecipeId != nil {
+			return *x.xxx_hidden_RecipeId
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *EndpointCreateRequest) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -19230,6 +19243,11 @@ func (x *EndpointCreateRequest) SetSharedEndpointNoticeAcknowledged(v bool) {
 	x.xxx_hidden_SharedEndpointNoticeAcknowledged = v
 }
 
+func (x *EndpointCreateRequest) SetRecipeId(v string) {
+	x.xxx_hidden_RecipeId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 12)
+}
+
 func (x *EndpointCreateRequest) HasComputeRegion() bool {
 	if x == nil {
 		return false
@@ -19244,12 +19262,24 @@ func (x *EndpointCreateRequest) HasModel() bool {
 	return x.xxx_hidden_Model != nil
 }
 
+func (x *EndpointCreateRequest) HasRecipeId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 11)
+}
+
 func (x *EndpointCreateRequest) ClearComputeRegion() {
 	x.xxx_hidden_ComputeRegion = nil
 }
 
 func (x *EndpointCreateRequest) ClearModel() {
 	x.xxx_hidden_Model = nil
+}
+
+func (x *EndpointCreateRequest) ClearRecipeId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 11)
+	x.xxx_hidden_RecipeId = nil
 }
 
 type EndpointCreateRequest_builder struct {
@@ -19266,6 +19296,8 @@ type EndpointCreateRequest_builder struct {
 	Unauthenticated                  bool
 	ServingMode                      EndpointServingMode
 	SharedEndpointNoticeAcknowledged bool
+	// Requires Modal admin access. Dedicated endpoints only; must match model.
+	RecipeId *string
 }
 
 func (b0 EndpointCreateRequest_builder) Build() *EndpointCreateRequest {
@@ -19283,6 +19315,10 @@ func (b0 EndpointCreateRequest_builder) Build() *EndpointCreateRequest {
 	x.xxx_hidden_Unauthenticated = b.Unauthenticated
 	x.xxx_hidden_ServingMode = b.ServingMode
 	x.xxx_hidden_SharedEndpointNoticeAcknowledged = b.SharedEndpointNoticeAcknowledged
+	if b.RecipeId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 12)
+		x.xxx_hidden_RecipeId = b.RecipeId
+	}
 	return m0
 }
 
@@ -70094,7 +70130,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bexplicit\x18\x03 \x01(\v27.modal.client.EndpointComputeRegionSpec.ExplicitRegionsH\x00R\bexplicit\x1a+\n" +
 	"\x0fExplicitRegions\x12\x18\n" +
 	"\aregions\x18\x01 \x03(\tR\aregionsB\v\n" +
-	"\tplacement\"\xfa\x04\n" +
+	"\tplacement\"\xaa\x05\n" +
 	"\x15EndpointCreateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12#\n" +
@@ -70107,7 +70143,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0funauthenticated\x18\t \x01(\bR\x0funauthenticated\x12D\n" +
 	"\fserving_mode\x18\n" +
 	" \x01(\x0e2!.modal.client.EndpointServingModeR\vservingMode\x12M\n" +
-	"#shared_endpoint_notice_acknowledged\x18\v \x01(\bR sharedEndpointNoticeAcknowledged\"\x98\x01\n" +
+	"#shared_endpoint_notice_acknowledged\x18\v \x01(\bR sharedEndpointNoticeAcknowledged\x12 \n" +
+	"\trecipe_id\x18\f \x01(\tH\x00R\brecipeId\x88\x01\x01B\f\n" +
+	"\n" +
+	"_recipe_id\"\x98\x01\n" +
 	"\x16EndpointCreateResponse\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
 	"endpointId\x12*\n" +
@@ -75215,6 +75254,7 @@ func file_modal_proto_api_proto_init() {
 		(*endpointComputeRegionSpec_Colocated)(nil),
 		(*endpointComputeRegionSpec_Explicit)(nil),
 	}
+	file_modal_proto_api_proto_msgTypes[156].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[158].OneofWrappers = []any{
 		(*endpointCustomModelSource_Huggingface)(nil),
 		(*endpointCustomModelSource_ModalVolume)(nil),
