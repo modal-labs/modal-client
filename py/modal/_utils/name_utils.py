@@ -27,13 +27,15 @@ def is_valid_object_name(name: str) -> bool:
     )
 
 
-def is_valid_environment_name(name: str) -> bool:
+def is_valid_environment_name(name: str, *, allow_periods: bool) -> bool:
     # first char is alnum, the rest allows other chars
     # The "en-" prefix is reserved for environment IDs, so that references
     # to environments can be resolved by either name or ID unambiguously.
+    # New names cannot contain periods, but some existing Environments have them and must stay resolvable.
+    rest_chars = r"a-zA-Z0-9-_." if allow_periods else r"a-zA-Z0-9-_"
     return (
         len(name) <= 64
-        and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.]+$", name) is not None
+        and re.match(rf"^[a-zA-Z0-9][{rest_chars}]*$", name) is not None
         and not name.lower().startswith("en-")
     )
 
@@ -67,12 +69,12 @@ def check_object_name(name: str, object_type: str) -> None:
         raise InvalidError(message)
 
 
-def check_environment_name(name: str) -> None:
+def check_environment_name(name: str, *, allow_periods: bool) -> None:
     message = (
         f"Invalid Environment name: '{name}'."
-        "\n\nEnvironment names can only start with alphanumeric characters,"
-        " may contain only alphanumeric characters, dashes, periods, and underscores,"
-        " must be shorter than 64 characters, and cannot start with 'en-'."
+        "\n\nEnvironment names must be 1-64 characters, can only start with alphanumeric characters,"
+        " may contain only alphanumeric characters, dashes, and underscores,"
+        " and cannot start with 'en-'."
     )
-    if not is_valid_environment_name(name):
+    if not is_valid_environment_name(name, allow_periods=allow_periods):
         raise InvalidError(message)

@@ -6,6 +6,8 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- New Environment names (via `modal environment create`, `modal environment update --set-name`, or `modal.Environment.objects.create`) can no longer contain periods.
+
 ## JS
 
 - Added `client.Functions.FromID()` to look up a Function by ID.

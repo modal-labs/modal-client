@@ -87,7 +87,7 @@ def create(
     default_role: str | None = None,
     public: bool = False,
 ):
-    check_environment_name(name)
+    check_environment_name(name, allow_periods=False)
     Environment.objects.create(
         name,
         restricted=restricted,
@@ -116,8 +116,8 @@ def update(
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
 
-    if set_name:
-        check_environment_name(set_name)
+    if set_name and set_name != current_name:
+        check_environment_name(set_name, allow_periods=False)
 
     environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
     rich.print("[green]✓[/green] Environment updated")

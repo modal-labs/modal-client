@@ -3727,7 +3727,7 @@ def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
     assert run_cli_command(["queue", "peek", name, "--partition", "alt"]).stdout == ""
 
 
-@pytest.mark.parametrize("name", [".main", "_main", "'-main'", "main/main", "main:main"])
+@pytest.mark.parametrize("name", [".main", "_main", "'-main'", "main/main", "main:main", "main_-123.", "main.dev"])
 def test_create_environment_name_invalid(servicer, set_env_client, name):
     assert isinstance(
         run_cli_command(
@@ -3738,7 +3738,7 @@ def test_create_environment_name_invalid(servicer, set_env_client, name):
     )
 
 
-@pytest.mark.parametrize("name", ["main", "main_-123."])
+@pytest.mark.parametrize("name", ["main", "main_-123", "m"])
 def test_create_environment_name_valid(servicer, set_env_client, name):
     assert (
         "Environment created"
@@ -3801,7 +3801,7 @@ def test_create_public_environment(servicer, set_env_client):
         assert req.environment_type == api_pb2.ENVIRONMENT_TYPE_PUBLIC
 
 
-@pytest.mark.parametrize(("name", "set_name"), (("main", "main/main"), ("main", "'-main'")))
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main/main"), ("main", "'-main'"), ("main", "main.dev")))
 def test_update_environment_name_invalid(servicer, set_env_client, name, set_name):
     assert isinstance(
         run_cli_command(
@@ -3812,7 +3812,7 @@ def test_update_environment_name_invalid(servicer, set_env_client, name, set_nam
     )
 
 
-@pytest.mark.parametrize(("name", "set_name"), (("main", "main_-123."), ("main:main", "main2")))
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main_-123"), ("main:main", "main2"), ("old.env", "old.env")))
 def test_update_environment_name_valid(servicer, set_env_client, name, set_name):
     assert (
         "Environment updated"

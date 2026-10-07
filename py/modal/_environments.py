@@ -54,7 +54,7 @@ class _EnvironmentManager:
         modal.Environment.objects.create("my-environment")
         ```
         """
-        check_environment_name(name)
+        check_environment_name(name, allow_periods=False)
 
         client = await _Client.from_env() if client is None else client
         request = api_pb2.EnvironmentCreateRequest(name=name, is_managed=restricted)
@@ -464,7 +464,7 @@ class _Environment(_Object, type_prefix="en"):
         client: _Client | None = None,
     ) -> "_Environment":
         """Look up an Environment object using its name."""
-        check_environment_name(name)
+        check_environment_name(name, allow_periods=True)
         return _Environment._get_or_create(
             name=name,
             repr=f"Environment.from_name({name!r})",
