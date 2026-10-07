@@ -1120,6 +1120,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.flash_container_registrations = {}
         self.flash_rpc_calls: list[str] = []  # Track Flash RPC calls in order
         self.endpoint_create_requests: list[api_pb2.EndpointCreateRequest] = []
+        self.endpoint_create_model_name = ""
         self.endpoint_list_requests: list[api_pb2.EndpointListRequest] = []
         self.endpoint_list_items: list[api_pb2.EndpointListItem] = []
         self.endpoint_list_item_environments: dict[str, str] = {}
@@ -2104,6 +2105,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 endpoint_id=endpoint_id,
                 endpoint_page_url=endpoint_page_url,
                 name=endpoint_name,
+                model_name=self.endpoint_create_model_name,
             )
         )
 

@@ -746,9 +746,18 @@ def test_endpoint_create_shows_url(servicer, set_env_client):
     assert "View progress at" in normalized_stdout
     assert "https://modal.com/endpoints/test-user/main/ep-0000000000000000000001" in normalized_stdout
     assert "modal endpoint list" in normalized_stdout
+    assert '"model":' not in normalized_stdout
     (request,) = servicer.endpoint_create_requests
     assert list(request.proxy_regions) == ["us-west"]
     assert request.compute_region.WhichOneof("placement") == "auto"
+
+
+def test_endpoint_create_shows_model_name(servicer, set_env_client):
+    servicer.endpoint_create_model_name = "qwen-chat"
+
+    res = run_cli_command(["endpoint", "create", "--name=qwen-chat", "--model=Qwen/Qwen3.6-27B-FP8"])
+
+    assert 'Send "model": "qwen-chat" in requests to the Endpoint.' in " ".join(res.stdout.split())
 
 
 def test_endpoint_create_rejects_multiple_routing_regions(servicer, set_env_client):
@@ -1004,6 +1013,7 @@ def _endpoint_info_response(
     include_metadata: bool | None = None,
     volume_id: str = "",
     model_path: str = "",
+    model_name: str = "",
 ) -> api_pb2.EndpointGetInfoResponse:
     response = api_pb2.EndpointGetInfoResponse(
         info=api_pb2.EndpointGetInfoResponse.EndpointInfoSummary(
@@ -1018,6 +1028,7 @@ def _endpoint_info_response(
             status=status,
             volume_id=volume_id,
             model_path=model_path,
+            model_name=model_name,
             lifecycle=api_pb2.EndpointLifecycle(
                 status=(
                     api_pb2.ENDPOINT_LIFECYCLE_STATUS_STOPPED
@@ -1056,6 +1067,7 @@ def _mock_endpoint_client(
     include_metadata: bool | None = None,
     volume_id: str = "",
     model_path: str = "",
+    model_name: str = "",
 ):
     client = mock.Mock()
     client.stub = mock.Mock()
@@ -1074,6 +1086,7 @@ def _mock_endpoint_client(
             include_metadata=include_metadata,
             volume_id=volume_id,
             model_path=model_path,
+            model_name=model_name,
         )
     )
     monkeypatch.setattr("modal.cli.endpoint._Client.from_env", mock.AsyncMock(return_value=client))
@@ -1090,6 +1103,7 @@ def test_endpoint_info_displays_name_status_and_lifecycle(set_env_client, monkey
     assert "live" in result.stdout
     assert "Qwen/Qwen3.6-27B-FP8@abc1234" in result.stdout
     assert "Served From:" not in result.stdout
+    assert "Model name:" not in result.stdout
     assert "https://qwen-chat.modal.run" in result.stdout
     assert "Serving mode:" not in result.stdout
     assert "Revision:" not in result.stdout
@@ -1113,7 +1127,22 @@ def test_endpoint_info_displays_name_status_and_lifecycle(set_env_client, monkey
     assert data["app_id"] == "ap-endpoint"
     assert data["server_id"] == "fu-endpoint-server"
     assert data["revision"] == "abc123456789"
+    assert data["model_name"] is None
     client.stub.EndpointGetByName.assert_not_awaited()
+
+
+def test_endpoint_info_displays_model_name(set_env_client, monkeypatch):
+    _mock_endpoint_client(monkeypatch, model_name="qwen-chat")
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID])
+
+    assert re.search(r"Model name:\s+qwen-chat", result.stdout)
+    assert "Qwen/Qwen3.6-27B-FP8@abc1234" in result.stdout
+
+    result = run_cli_command(["endpoint", "info", _TEST_ENDPOINT_ID, "--json"])
+    data = json.loads(result.stdout)
+    assert data["model_name"] == "qwen-chat"
+    assert data["repo_id"] == "Qwen/Qwen3.6-27B-FP8"
 
 
 def test_endpoint_info_displays_modal_volume_source(set_env_client, monkeypatch):

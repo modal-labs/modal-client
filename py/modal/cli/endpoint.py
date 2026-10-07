@@ -410,6 +410,8 @@ async def create(
 
     output = OutputManager.get()
     output.print(f"[green]✓[/green] Endpoint '{resp.name}' ({resp.endpoint_id}) was created and started provisioning.")
+    if resp.model_name:
+        output.print(f'  → Send [cyan]"model": "{resp.model_name}"[/cyan] in requests to the Endpoint.')
     if resp.endpoint_page_url:
         output.print(f"  → View progress at [magenta]{resp.endpoint_page_url}[/magenta].")
         output.print("  → The Endpoint will also appear in [cyan]modal endpoint list[/cyan].")
@@ -517,6 +519,7 @@ async def info(
                 {
                     "name": endpoint_info.name,
                     "endpoint_id": endpoint_id,
+                    "model_name": endpoint_info.model_name or None,
                     "repo_id": endpoint_info.repo_id,
                     "revision": endpoint_info.revision or None,
                     "volume_id": endpoint_info.volume_id or None,
@@ -547,6 +550,8 @@ async def info(
     header.add_row(Text("Endpoint:"), endpoint_text)
     header.add_row(Text("Endpoint ID:"), Text(endpoint_id))
     header.add_row(Text("State:"), Text(status))
+    if endpoint_info.model_name:
+        header.add_row(Text("Model name:"), Text(endpoint_info.model_name))
     model_text = Text(endpoint_info.repo_id)
     if endpoint_info.revision:
         model_text.append(f"@{endpoint_info.revision[:7]}")
