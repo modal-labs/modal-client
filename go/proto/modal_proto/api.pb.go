@@ -1121,13 +1121,16 @@ func (x EnvironmentRole) Number() protoreflect.EnumNumber {
 }
 
 // Creation-time environment classification. Captures whether an environment
-// is public. is_managed and machine_generated may be folded in as future
-// values.
+// is public or administered by Modal. is_managed and machine_generated may be
+// folded in as future values.
 type EnvironmentType int32
 
 const (
 	EnvironmentType_ENVIRONMENT_TYPE_UNSPECIFIED EnvironmentType = 0
 	EnvironmentType_ENVIRONMENT_TYPE_PUBLIC      EnvironmentType = 1
+	// Restricted environment whose roles are administered by Modal admins rather
+	// than the workspace's own managers.
+	EnvironmentType_ENVIRONMENT_TYPE_MODAL_ADMINISTERED EnvironmentType = 2
 )
 
 // Enum value maps for EnvironmentType.
@@ -1135,10 +1138,12 @@ var (
 	EnvironmentType_name = map[int32]string{
 		0: "ENVIRONMENT_TYPE_UNSPECIFIED",
 		1: "ENVIRONMENT_TYPE_PUBLIC",
+		2: "ENVIRONMENT_TYPE_MODAL_ADMINISTERED",
 	}
 	EnvironmentType_value = map[string]int32{
-		"ENVIRONMENT_TYPE_UNSPECIFIED": 0,
-		"ENVIRONMENT_TYPE_PUBLIC":      1,
+		"ENVIRONMENT_TYPE_UNSPECIFIED":        0,
+		"ENVIRONMENT_TYPE_PUBLIC":             1,
+		"ENVIRONMENT_TYPE_MODAL_ADMINISTERED": 2,
 	}
 )
 
@@ -72825,10 +72830,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1cENVIRONMENT_ROLE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17ENVIRONMENT_ROLE_VIEWER\x10\x01\x12 \n" +
 	"\x1cENVIRONMENT_ROLE_CONTRIBUTOR\x10\x02\x12\x1e\n" +
-	"\x1aENVIRONMENT_ROLE_NO_ACCESS\x10\x03*P\n" +
+	"\x1aENVIRONMENT_ROLE_NO_ACCESS\x10\x03*y\n" +
 	"\x0fEnvironmentType\x12 \n" +
 	"\x1cENVIRONMENT_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
-	"\x17ENVIRONMENT_TYPE_PUBLIC\x10\x01*\x92\x01\n" +
+	"\x17ENVIRONMENT_TYPE_PUBLIC\x10\x01\x12'\n" +
+	"#ENVIRONMENT_TYPE_MODAL_ADMINISTERED\x10\x02*\x92\x01\n" +
 	"\x10ExecOutputOption\x12\"\n" +
 	"\x1eEXEC_OUTPUT_OPTION_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aEXEC_OUTPUT_OPTION_DEVNULL\x10\x01\x12\x1b\n" +

@@ -207,11 +207,14 @@ enum EnvironmentRole {
 }
 
 // Creation-time environment classification. Captures whether an environment
-// is public. is_managed and machine_generated may be folded in as future
-// values.
+// is public or administered by Modal. is_managed and machine_generated may be
+// folded in as future values.
 enum EnvironmentType {
   ENVIRONMENT_TYPE_UNSPECIFIED = 0;
   ENVIRONMENT_TYPE_PUBLIC = 1;
+  // Restricted environment whose roles are administered by Modal admins rather
+  // than the workspace's own managers.
+  ENVIRONMENT_TYPE_MODAL_ADMINISTERED = 2;
 }
 
 enum ExecOutputOption {
