@@ -19,7 +19,7 @@ import {
   Resources,
   PortSpecs,
   Probe as ProbeProto,
-  StringMap,
+  SecretSource,
   SandboxGetExitSnapshotResponse_ErrorCode,
   SandboxGetTaskIdRequest,
   SandboxRestoreRequest_SandboxNameOverrideType,
@@ -67,7 +67,8 @@ import {
   type Secret,
   mergeEnvIntoSecrets,
   hydrateSecrets,
-  splitEnvDictAndResolvableSecrets,
+  resolvableSecrets,
+  secretSources,
   validateEnvVarKeys,
 } from "./secret";
 import {
@@ -770,6 +771,7 @@ export async function buildSandboxCreateV2RequestProto(
   appId: string,
   imageId: string,
   params: SandboxCreateParams = {},
+  secretSources: SecretSource[] = [],
 ): Promise<SandboxCreateV2Request> {
   if (params.gpu) {
     throw new Error("GPUs are not supported by experimentalCreate");
@@ -777,17 +779,10 @@ export async function buildSandboxCreateV2RequestProto(
 
   const req = await buildSandboxCreateRequestProto(appId, imageId, params);
 
-  // V2 sandboxes support ephemeral env vars natively, so env vars are passed
-  // directly rather than via a server-side Secret.
-  const ephemeralSecrets =
-    params.env && Object.keys(params.env).length > 0
-      ? StringMap.create({ contents: params.env })
-      : undefined;
-
   return SandboxCreateV2Request.create({
     appId: req.appId,
     definition: req.definition,
-    ephemeralSecrets,
+    secretSources,
     tags: req.tags,
   });
 }
@@ -900,37 +895,25 @@ export class SandboxService {
   ): Promise<Sandbox> {
     await image.build(app);
 
-    // V2 supports ephemeral env vars natively (passed via ephemeralSecrets in
-    // the request), so unlike create() we don't fold env vars into a server-side
-    // Secret. Locally-created Secrets (fromObject) and params.env are sent
-    // directly as ephemeral env vars, avoiding a SecretGetOrCreate round-trip;
-    // params.env takes precedence on key collisions. Only the remaining
-    // resolvable Secrets (e.g. from fromName) need hydrating to secret IDs.
+    // Secrets and params.env are sent as ordered secret sources, so unlike
+    // create() we don't fold env vars into a server-side Secret. Locally-created
+    // Secrets (fromObject) are inlined, avoiding a SecretGetOrCreate round-trip;
+    // only the remaining resolvable Secrets (e.g. from fromName) need hydrating
+    // to secret IDs, which are also recorded on the definition.
     validateEnvVarKeys(params.env ?? {});
-    const [envDict, resolvableSecrets] = splitEnvDictAndResolvableSecrets(
-      params.secrets ?? [],
-    );
-    Object.assign(envDict, params.env ?? {});
+    const resolvable = resolvableSecrets(params.secrets ?? []);
 
     await hydrateSandboxSecrets(
       this.#client,
-      [
-        ...resolvableSecrets,
-        ...(params.experimentalOutboundPolicy?._secrets() ?? []),
-      ],
+      [...resolvable, ...(params.experimentalOutboundPolicy?._secrets() ?? [])],
       params.cloudBucketMounts,
     );
-
-    const mergedParams = {
-      ...params,
-      secrets: resolvableSecrets,
-      env: envDict,
-    };
 
     const createReq = await buildSandboxCreateV2RequestProto(
       app.appId,
       image.imageId,
-      mergedParams,
+      { ...params, secrets: resolvable },
+      secretSources(params.secrets ?? [], params.env),
     );
     let createResp;
     try {
@@ -1532,8 +1515,6 @@ export function buildTaskExecStartRequestProto(
   }
   validateWorkdir(params?.workdir);
 
-  const secretIds = (params?.secrets || []).map((secret) => secret.secretId);
-
   const stdout = params?.stdout ?? "pipe";
   const stderr = params?.stderr ?? "pipe";
 
@@ -1568,8 +1549,7 @@ export function buildTaskExecStartRequestProto(
     stderrConfig,
     timeoutSecs: params?.timeoutMs ? params.timeoutMs / 1000 : undefined,
     workdir: params?.workdir,
-    secretIds,
-    env: params?.env ?? {},
+    secretSources: secretSources(params?.secrets ?? [], params?.env),
     ptyInfo,
     runtimeDebug: false,
     containerId: containerId ?? "",
@@ -1909,21 +1889,14 @@ export class Sandbox {
     this.#ensureAttached();
     validateExecArgs(command);
 
-    // Locally-created Secrets (fromObject) are passed directly to the worker as
-    // environment variables, so only the remaining Secrets need hydrating. This
-    // avoids a SecretGetOrCreate round-trip for env-dict Secrets.
+    // Locally-created Secrets (fromObject) are inlined into the request's
+    // secret sources, so only the remaining Secrets need hydrating. This avoids
+    // a SecretGetOrCreate round-trip for env-dict Secrets.
     validateEnvVarKeys(params?.env ?? {});
-    const [envDict, resolvableSecrets] = splitEnvDictAndResolvableSecrets(
-      params?.secrets ?? [],
+    await hydrateSecrets(
+      this.#client,
+      resolvableSecrets(params?.secrets ?? []),
     );
-    Object.assign(envDict, params?.env ?? {});
-    await hydrateSecrets(this.#client, resolvableSecrets);
-
-    const execParams: SandboxExecParams = {
-      ...params,
-      env: envDict,
-      secrets: resolvableSecrets,
-    };
 
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
@@ -1932,7 +1905,7 @@ export class Sandbox {
       taskId,
       execId,
       command,
-      execParams,
+      params,
       containerId,
     );
 

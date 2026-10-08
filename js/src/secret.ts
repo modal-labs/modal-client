@@ -1,7 +1,11 @@
 import { type ModalClient } from "./client";
 import { ClientError, Status } from "nice-grpc";
 import { InvalidError, NotFoundError } from "./errors";
-import { ObjectCreationType } from "../proto/modal_proto/api";
+import {
+  ObjectCreationType,
+  SecretSource,
+  StringMap,
+} from "../proto/modal_proto/api";
 
 // Environment variable names must consist of letters, numbers, and
 // underscores, and may not start with a number. Mirrors the server-side
@@ -77,7 +81,7 @@ export class SecretService {
         "secret_name",
         name,
       );
-      return new Secret(resp.secretId, name, undefined, resp.metadata?.keys);
+      return new Secret(resp.secretId, name);
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(err.details);
@@ -220,10 +224,6 @@ export class Secret {
   // once secretId is set.
   readonly #hydrator?: SecretHydrator;
 
-  // Names of the env vars a server-side Secret defines, as reported by the
-  // control plane on fromName. Undefined when unknown.
-  readonly #keys?: ReadonlySet<string>;
-
   // Caches the single in-flight (or successfully completed) hydration so the
   // ephemeral Secret is created at most once, even if multiple callers hydrate
   // the same Secret concurrently. Cleared on failure so a transient error
@@ -231,16 +231,10 @@ export class Secret {
   #hydratePromise?: Promise<void>;
 
   /** @ignore */
-  constructor(
-    secretId: string,
-    name?: string,
-    hydrator?: SecretHydrator,
-    keys?: readonly string[],
-  ) {
+  constructor(secretId: string, name?: string, hydrator?: SecretHydrator) {
     this.#secretId = secretId;
     this.name = name;
     this.#hydrator = hydrator;
-    this.#keys = keys !== undefined ? new Set(keys) : undefined;
   }
 
   /** The ID of the server-side Secret, or an empty string if not yet hydrated. */
@@ -257,17 +251,6 @@ export class Secret {
    */
   get _hydrator(): SecretHydrator | undefined {
     return this.#hydrator;
-  }
-
-  /**
-   * Names of the env vars this server-side Secret defines, or `undefined` if
-   * unknown (e.g. for lazy fromObject Secrets or Secrets constructed by id).
-   *
-   * @internal
-   * @hidden
-   */
-  get _keys(): ReadonlySet<string> | undefined {
-    return this.#keys;
   }
 
   /**
@@ -380,36 +363,57 @@ export function collectSecretIds(secrets: Secret[]): string[] {
 }
 
 /**
- * Partition secrets into a merged env dict (from Secrets created locally via
- * {@link SecretService#fromObject}) and the remaining "resolvable" Secrets that
- * must be hydrated to a secretId before use (e.g. from
- * {@link SecretService#fromName}).
- *
- * Locally-created Secrets can be passed directly to the worker as environment
- * variables, avoiding a SecretGetOrCreate round-trip. Secrets apply in list
- * order with later ones winning on key collisions. This function does not validate its input:
- * null/undefined Secrets are placed in the resolvable list rather than
+ * Return the Secrets that must be hydrated to a secretId before use (e.g. from
+ * {@link SecretService#fromName}), skipping those created locally via
+ * {@link SecretService#fromObject}. null/undefined Secrets are kept rather than
  * dropped, leaving it to {@link hydrateSecrets} to reject them.
  *
  * @internal
  * @hidden
  */
-export function splitEnvDictAndResolvableSecrets(
+export function resolvableSecrets(secrets: Secret[]): Secret[] {
+  return secrets.filter(
+    (secret) => secret == null || secretEnvDictHydrator(secret) === undefined,
+  );
+}
+
+/**
+ * Return secrets as ordered env var sources, with `env` last. fromObject
+ * Secrets are inlined; the rest are referenced by secretId and must already be
+ * hydrated.
+ *
+ * @internal
+ * @hidden
+ */
+export function secretSources(
   secrets: Secret[],
-): [Record<string, string>, Secret[]] {
-  const envDict: Record<string, string> = {};
-  const resolvable: Secret[] = [];
-  for (const secret of secrets) {
+  env?: Record<string, string>,
+): SecretSource[] {
+  const sources: SecretSource[] = [];
+  secrets.forEach((secret, i) => {
     const hydrator = secret != null ? secretEnvDictHydrator(secret) : undefined;
     if (hydrator !== undefined) {
-      Object.assign(envDict, hydrator.envDict);
-    } else {
-      // Drop this Secret's keys from envDict so it overrides earlier local Secrets.
-      for (const key of secret?._keys ?? []) {
-        delete envDict[key];
+      if (Object.keys(hydrator.envDict).length > 0) {
+        sources.push(
+          SecretSource.create({
+            env: StringMap.create({ contents: hydrator.envDict }),
+          }),
+        );
       }
-      resolvable.push(secret);
+      return;
     }
+    if (secret == null) {
+      throw new InvalidError(`secret at index ${i} must not be null`);
+    }
+    if (secret.secretId === "") {
+      throw new InvalidError(`secret at index ${i} has not been hydrated`);
+    }
+    sources.push(SecretSource.create({ secretId: secret.secretId }));
+  });
+  if (env && Object.keys(env).length > 0) {
+    sources.push(
+      SecretSource.create({ env: StringMap.create({ contents: env }) }),
+    );
   }
-  return [envDict, resolvable];
+  return sources;
 }

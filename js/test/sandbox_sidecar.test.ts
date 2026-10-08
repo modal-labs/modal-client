@@ -19,6 +19,7 @@ import {
   NetworkAccess_NetworkAccessType,
   SandboxContainerCreateV2Request,
   SandboxContainerCreateV2Response,
+  type SecretSource,
 } from "../proto/modal_proto/api";
 import { TaskContainerCreateRequest } from "../proto/modal_proto/task_command_router";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
@@ -310,8 +311,11 @@ test("sidecar create sends SandboxContainerCreateV2 to the control plane", async
   expect(request?.definition?.networkAccess?.allowedDomains).toEqual([
     "example.com",
   ]);
-  // Env vars travel as ephemeral secrets, not on the definition.
-  expect(request?.ephemeralSecrets?.contents).toEqual({ PLAIN_ENV: "plain" });
+  // Env vars travel as secret sources, not on the definition.
+  expect(request?.ephemeralSecrets).toBeUndefined();
+  expect(secretSourceValues(request?.secretSources ?? [])).toEqual([
+    { PLAIN_ENV: "plain" },
+  ]);
   expect(request?.definition?.environmentVariables).toBeUndefined();
 
   mock.assertExhausted();
@@ -331,7 +335,7 @@ test("sidecar create lets a later fromName Secret override a fromObject Secret",
   });
 
   const local = await mc.secrets.fromObject({ K: "local", LOCAL_ONLY: "yes" });
-  const named = new Secret("st-named", "named", undefined, ["K"]);
+  const named = new Secret("st-named", "named");
   await sb.experimentalSidecars.create(
     "worker",
     new Image(mc, "im-built", ""),
@@ -341,7 +345,10 @@ test("sidecar create lets a later fromName Secret override a fromObject Secret",
     },
   );
 
-  expect(request?.ephemeralSecrets?.contents).toEqual({ LOCAL_ONLY: "yes" });
+  expect(secretSourceValues(request?.secretSources ?? [])).toEqual([
+    { K: "local", LOCAL_ONLY: "yes" },
+    "st-named",
+  ]);
   expect(request?.definition?.secretIds).toEqual(["st-named"]);
 
   mock.assertExhausted();
@@ -461,6 +468,7 @@ test("sidecar create omits ephemeral secrets when no env vars are set", async ()
   await sb.experimentalSidecars.create("worker", new Image(mc, "im-built", ""));
 
   expect(request?.ephemeralSecrets).toBeUndefined();
+  expect(request?.secretSources).toEqual([]);
   expect(request?.definition?.workdir).toBeUndefined();
   expect(request?.definition?.volumeMounts).toEqual([]);
   expect(request?.definition?.ptyInfo).toBeUndefined();
@@ -808,3 +816,7 @@ test("sidecar create rejects a proxy for a V1 sandbox", async () => {
   await expect(create).rejects.toThrow(InvalidError);
   await expect(create).rejects.toThrow("GPU Sandboxes");
 });
+
+function secretSourceValues(sources: SecretSource[]) {
+  return sources.map((source) => source.secretId ?? source.env?.contents);
+}

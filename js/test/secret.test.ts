@@ -2,7 +2,8 @@ import { tc } from "../test-support/test-client";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import {
   mergeEnvIntoSecrets,
-  splitEnvDictAndResolvableSecrets,
+  resolvableSecrets,
+  secretSources,
   hydrateSecrets,
   secretEnvDictHydrator,
   Secret,
@@ -17,6 +18,7 @@ import { ClientError, Status } from "nice-grpc";
 import {
   GenericResult_GenericStatus,
   ObjectCreationType,
+  type SecretSource,
 } from "../proto/modal_proto/api";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
@@ -192,75 +194,60 @@ test("mergeEnvIntoSecrets with no env and no secrets returns empty array", async
   expect(result).toEqual([]);
 });
 
-test("splitEnvDictAndResolvableSecrets partitions local and resolvable secrets", () => {
-  const local1 = new Secret(
+test("resolvableSecrets skips local secrets", () => {
+  const local = new Secret(
     "",
     undefined,
-    new SecretFromObjectHydrator({ A: "1", B: "2" }),
-  );
-  const local2 = new Secret(
-    "",
-    undefined,
-    new SecretFromObjectHydrator({ B: "override", C: "3" }),
+    new SecretFromObjectHydrator({ A: "1" }),
   );
   const named = new Secret("st-named");
 
-  // Local Secrets are merged in list order (so local2's B wins); the named
-  // Secret is kept in the resolvable list.
-  const [envDict, resolvable] = splitEnvDictAndResolvableSecrets([
-    local1,
-    named,
-    local2,
-  ]);
-
-  expect(envDict).toEqual({ A: "1", B: "override", C: "3" });
-  expect(resolvable).toEqual([named]);
+  // fromObject Secrets are skipped; named and null Secrets are kept for hydration.
+  // @ts-expect-error testing runtime validation
+  expect(resolvableSecrets([local, named, null])).toEqual([named, null]);
+  expect(resolvableSecrets([local])).toEqual([]);
 });
 
-test("splitEnvDictAndResolvableSecrets with no local secrets", () => {
-  const named = new Secret("st-named");
-  const [envDict, resolvable] = splitEnvDictAndResolvableSecrets([named]);
-
-  expect(envDict).toEqual({});
-  expect(resolvable).toEqual([named]);
-});
-
-test("splitEnvDictAndResolvableSecrets drops keys overridden by a later named secret", () => {
+test("secretSources keeps list order with env last", () => {
   const local = new Secret(
     "",
     undefined,
     new SecretFromObjectHydrator({ K: "local", LOCAL_ONLY: "yes" }),
   );
-  const named = new Secret("st-named", "named", undefined, ["K", "NAMED_ONLY"]);
-
-  const [envDict, resolvable] = splitEnvDictAndResolvableSecrets([
-    local,
-    named,
-  ]);
-  expect(envDict).toEqual({ LOCAL_ONLY: "yes" });
-  expect(resolvable).toEqual([named]);
-
-  const [envDict2] = splitEnvDictAndResolvableSecrets([named, local]);
-  expect(envDict2).toEqual({ K: "local", LOCAL_ONLY: "yes" });
-
+  const named = new Secret("st-named", "named");
   const last = new Secret(
     "",
     undefined,
     new SecretFromObjectHydrator({ K: "last" }),
   );
-  const [envDict3] = splitEnvDictAndResolvableSecrets([local, named, last]);
-  expect(envDict3).toEqual({ LOCAL_ONLY: "yes", K: "last" });
+
+  expect(
+    secretSourceValues(secretSources([local, named, last], { K: "env" })),
+  ).toEqual([
+    { K: "local", LOCAL_ONLY: "yes" },
+    "st-named",
+    { K: "last" },
+    { K: "env" },
+  ]);
+  expect(secretSourceValues(secretSources([named, local]))).toEqual([
+    "st-named",
+    { K: "local", LOCAL_ONLY: "yes" },
+  ]);
 });
 
-test("splitEnvDictAndResolvableSecrets keeps local keys when named keys are unknown", () => {
-  const local = new Secret(
-    "",
-    undefined,
-    new SecretFromObjectHydrator({ K: "local" }),
+test("secretSources omits empty sources", () => {
+  const empty = new Secret("", undefined, new SecretFromObjectHydrator({}));
+  expect(secretSources([empty], {})).toEqual([]);
+});
+
+test("secretSources rejects null and unhydrated secrets", () => {
+  // @ts-expect-error testing runtime validation
+  expect(() => secretSources([null])).toThrow(
+    /secret at index 0 must not be null/,
   );
-  const named = new Secret("st-named");
-  const [envDict] = splitEnvDictAndResolvableSecrets([local, named]);
-  expect(envDict).toEqual({ K: "local" });
+  expect(() =>
+    secretSources([new Secret("st-ok"), new Secret("", "unhydrated")]),
+  ).toThrow(/secret at index 1 has not been hydrated/);
 });
 
 test("hydrateSecrets rejects null secrets", async () => {
@@ -318,16 +305,17 @@ test("SandboxCreate hydrates a fromObject Secret", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalCreate passes env as ephemeral secrets", async () => {
+test("ExperimentalCreate passes env as secret sources", async () => {
   const { mockClient: mc, mockCpClient: mock } =
     createMockClientWithPinnedBuilder();
   registerSandboxCreateDeps(mock);
 
   // Note: no SecretGetOrCreate handler is registered. The V2 path must pass env
-  // vars via ephemeralSecrets rather than creating a Secret for them, so no
+  // vars via secretSources rather than creating a Secret for them, so no
   // SecretGetOrCreate RPC should occur.
   mock.handleUnary("/SandboxCreateV2", (req: any) => {
-    expect(req.ephemeralSecrets?.contents).toEqual({ FOO: "bar" });
+    expect(req.ephemeralSecrets).toBeUndefined();
+    expect(secretSourceValues(req.secretSources)).toEqual([{ FOO: "bar" }]);
     expect(req.definition?.secretIds ?? []).toEqual([]);
     return { sandboxId: V2_SANDBOX_ID, taskId: "ta-v2-123", tunnels: [] };
   });
@@ -365,20 +353,21 @@ test("ExperimentalCreate rejects invalid env var keys", async () => {
   ).rejects.toThrow(/is invalid for environment variables/);
 });
 
-test("ExperimentalCreate passes a fromObject Secret as ephemeral secrets", async () => {
+test("ExperimentalCreate passes a fromObject Secret as secret sources", async () => {
   const { mockClient: mc, mockCpClient: mock } =
     createMockClientWithPinnedBuilder();
   registerSandboxCreateDeps(mock);
 
   // No SecretGetOrCreate handler is registered. Locally-created fromObject
-  // Secrets must be folded into ephemeralSecrets in the V2 path rather than
+  // Secrets must be inlined into secretSources in the V2 path rather than
   // hydrated into a server-side Secret, so no SecretGetOrCreate RPC should occur.
   mock.handleUnary("/SandboxCreateV2", (req: any) => {
-    // params.env takes precedence over the fromObject value on key collisions.
-    expect(req.ephemeralSecrets?.contents).toEqual({
-      FOO: "from-env",
-      BAZ: "qux",
-    });
+    // params.env is applied last, so it takes precedence over the fromObject value.
+    expect(req.ephemeralSecrets).toBeUndefined();
+    expect(secretSourceValues(req.secretSources)).toEqual([
+      { FOO: "from-secret", BAZ: "qux" },
+      { FOO: "from-env" },
+    ]);
     expect(req.definition?.secretIds ?? []).toEqual([]);
     return { sandboxId: V2_SANDBOX_ID, taskId: "ta-v2-123", tunnels: [] };
   });
@@ -417,10 +406,11 @@ test("ExperimentalCreate lets a later fromName Secret override a fromObject Secr
     };
   });
   mock.handleUnary("/SandboxCreateV2", (req: any) => {
-    expect(req.ephemeralSecrets?.contents).toEqual({
-      LOCAL_ONLY: "yes",
-      ENV_ONLY: "env",
-    });
+    expect(secretSourceValues(req.secretSources)).toEqual([
+      { K: "local", LOCAL_ONLY: "yes" },
+      "st-named",
+      { ENV_ONLY: "env" },
+    ]);
     expect(req.definition?.secretIds).toEqual(["st-named"]);
     return { sandboxId: V2_SANDBOX_ID, taskId: "ta-v2-123", tunnels: [] };
   });
@@ -432,7 +422,6 @@ test("ExperimentalCreate lets a later fromName Secret override a fromObject Secr
 
   const local = await mc.secrets.fromObject({ K: "local", LOCAL_ONLY: "yes" });
   const named = await mc.secrets.fromName("my-secret");
-  expect(named._keys).toEqual(new Set(["K", "NAMED_ONLY"]));
 
   const sb = await mc.sandboxes.experimentalCreate(app, image, {
     secrets: [local, named],
@@ -500,3 +489,7 @@ test("SecretDelete with allowMissing=false throws", async () => {
     mc.secrets.delete("missing", { allowMissing: false }),
   ).rejects.toThrow(NotFoundError);
 });
+
+function secretSourceValues(sources: SecretSource[]) {
+  return sources.map((source) => source.secretId ?? source.env?.contents);
+}

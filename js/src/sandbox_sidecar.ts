@@ -7,7 +7,6 @@ import {
   Resources,
   Sandbox as SandboxDefinition,
   SandboxContainerCreateV2Request,
-  StringMap,
   VolumeMount,
 } from "../proto/modal_proto/api";
 import {
@@ -54,7 +53,8 @@ import {
 import { parseBooleanFlag } from "./config";
 import {
   collectSecretIds,
-  splitEnvDictAndResolvableSecrets,
+  resolvableSecrets,
+  secretSources,
   validateEnvVarKeys,
   type Secret,
 } from "./secret";
@@ -357,22 +357,20 @@ export class SidecarService {
       }
     }
 
-    // Sidecar containers support ephemeral env vars natively (passed via
-    // ephemeralSecrets in the request), so locally-created Secrets (fromObject)
-    // and params.env are sent directly rather than folded into a server-side
-    // Secret; params.env takes precedence on key collisions. Only the remaining
-    // resolvable Secrets (e.g. from fromName) need hydrating to secret IDs.
+    // Secrets and params.env are sent as ordered secret sources rather than
+    // folded into a server-side Secret. Locally-created Secrets (fromObject)
+    // are inlined, avoiding a SecretGetOrCreate round-trip; only the remaining
+    // resolvable Secrets (e.g. from fromName) need hydrating to secret IDs,
+    // which are also recorded on the definition.
     validateEnvVarKeys(params?.env ?? {});
-    const [envDict, resolvableSecrets] = splitEnvDictAndResolvableSecrets(
-      params?.secrets ?? [],
-    );
-    Object.assign(envDict, params?.env ?? {});
+    const resolvable = resolvableSecrets(params?.secrets ?? []);
     await hydrateSandboxSecrets(
       this.#access.client,
-      resolvableSecrets,
+      resolvable,
       params?.cloudBucketMounts,
     );
-    const secretIds = collectSecretIds(resolvableSecrets);
+    const secretIds = collectSecretIds(resolvable);
+    const sources = secretSources(params?.secrets ?? [], params?.env);
 
     const volumeMounts = buildSidecarVolumeMounts(params?.volumes);
     const cloudBucketMounts = buildCloudBucketMountProtos(
@@ -389,10 +387,6 @@ export class SidecarService {
     let resp;
     try {
       if (viaControlPlane) {
-        const ephemeralSecrets =
-          Object.keys(envDict).length > 0
-            ? StringMap.create({ contents: envDict })
-            : undefined;
         resp = await this.#access.client.cpClient.sandboxContainerCreateV2(
           SandboxContainerCreateV2Request.create({
             sandboxId: this.#access.sandboxId,
@@ -416,7 +410,7 @@ export class SidecarService {
                     })
                   : undefined,
             }),
-            ephemeralSecrets,
+            secretSources: sources,
           }),
         );
       } else {
@@ -427,9 +421,8 @@ export class SidecarService {
             containerName: name,
             imageId: image.imageId,
             args: command,
-            env: envDict,
             workdir: params?.workdir ?? "",
-            secretIds,
+            secretSources: sources,
             volumeMounts,
             networkAccess,
             ptyInfo,

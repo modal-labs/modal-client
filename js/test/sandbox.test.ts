@@ -33,6 +33,7 @@ import {
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
+import { SecretFromObjectHydrator } from "../src/secret";
 import { SandboxSnapshot } from "../src/sandbox_snapshot";
 import {
   SandboxStdioReadV2Response,
@@ -2912,6 +2913,7 @@ test("buildTaskExecStartRequestProto defaults", () => {
   expect(req.workdir).toBeUndefined();
   expect(req.secretIds).toEqual([]);
   expect(req.env).toEqual({});
+  expect(req.secretSources).toEqual([]);
   expect(req.ptyInfo).toBeUndefined();
   expect(req.runtimeDebug).toBe(false);
 });
@@ -2992,7 +2994,31 @@ test("buildTaskExecStartRequestProto with env", () => {
     env: { FOO: "bar" },
   });
 
-  expect(req.env).toEqual({ FOO: "bar" });
+  // Env travels as the last secret source rather than in the legacy env field.
+  expect(req.env).toEqual({});
+  expect(req.secretSources.map((s) => s.env?.contents)).toEqual([
+    { FOO: "bar" },
+  ]);
+});
+
+test("buildTaskExecStartRequestProto keeps secret source order", () => {
+  const local = new Secret(
+    "",
+    undefined,
+    new SecretFromObjectHydrator({ K: "local", LOCAL_ONLY: "yes" }),
+  );
+  const req = buildTaskExecStartRequestProto("task-123", "exec-456", ["env"], {
+    secrets: [local, new Secret("st-named")],
+    env: { K: "env" },
+  });
+
+  expect(req.secretIds).toEqual([]);
+  expect(req.env).toEqual({});
+  expect(req.secretSources.map((s) => s.secretId ?? s.env?.contents)).toEqual([
+    { K: "local", LOCAL_ONLY: "yes" },
+    "st-named",
+    { K: "env" },
+  ]);
 });
 
 test.each([
