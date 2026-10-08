@@ -127,3 +127,54 @@ def test_get_app_lifecycle_running(client, servicer):
     assert lifecycle.deployed_by is None
     assert lifecycle.stopped_at is None
     assert lifecycle.stopped_by is None
+
+
+def test_list_cluster_reservations(client, servicer):
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "ClusterReservationList",
+            api_pb2.ClusterReservationListResponse(
+                reservations=[
+                    api_pb2.ClusterReservation(
+                        name="b300s austin",
+                        gpu_type="B300",
+                        region="austin",
+                        min_reserved_workers=64,
+                        reserved_workers=62,
+                        active_workers=61,
+                        idle_workers=1,
+                        unfulfilled_workers=2,
+                        tasks=[
+                            api_pb2.ClusterReservation.Task(
+                                task_id="ta-1",
+                                cluster_rank=0,
+                                app_id="ap-1",
+                                function_id="fu-1",
+                            )
+                        ],
+                    )
+                ]
+            ),
+        )
+        reservations = modal.experimental.list_cluster_reservations(client=client)
+
+    assert ctx.pop_request("ClusterReservationList") is not None
+    assert len(reservations) == 1
+    reservation = reservations[0]
+    assert isinstance(reservation, modal.experimental.ClusterReservation)
+    assert reservation.name == "b300s austin"
+    assert reservation.gpu_type == "B300"
+    assert reservation.min_reserved_workers == 64
+    assert reservation.reserved_workers == 62
+    assert reservation.active_workers == 61
+    assert reservation.idle_workers == 1
+    assert reservation.unfulfilled_workers == 2
+    assert reservation.tasks == [
+        modal.experimental.ClusterReservationTask(task_id="ta-1", cluster_rank=0, app_id="ap-1", function_id="fu-1")
+    ]
+
+
+def test_list_cluster_reservations_empty(client, servicer):
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClusterReservationList", api_pb2.ClusterReservationListResponse())
+        assert modal.experimental.list_cluster_reservations(client=client) == []

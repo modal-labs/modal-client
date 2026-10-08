@@ -1182,6 +1182,32 @@ message ClusterListResponse {
   repeated ClusterStats clusters = 1;
 }
 
+message ClusterReservation {
+  // A container running on a worker reserved for this reservation.
+  message Task {
+    string task_id = 1;
+    int32 cluster_rank = 2;
+    string app_id = 3;
+    string function_id = 4;
+  }
+
+  string name = 1;  // reservation name, as configured by Modal
+  string gpu_type = 2;  // e.g. "B300"
+  string region = 3;
+  int32 min_reserved_workers = 4;  // workers Modal has committed to keep reserved
+  int32 reserved_workers = 5;  // healthy reserved workers currently present (active + idle)
+  int32 active_workers = 6;  // reserved workers running this workspace's containers
+  int32 idle_workers = 7;  // reserved workers available for new clusters
+  int32 unfulfilled_workers = 8;  // max(0, min_reserved_workers - reserved_workers)
+  repeated Task tasks = 9;  // containers on reserved workers, ordered by cluster then rank
+}
+
+message ClusterReservationListRequest {}
+
+message ClusterReservationListResponse {
+  repeated ClusterReservation reservations = 1;
+}
+
 message ClusterStats {
   string app_id = 1;
   repeated string task_ids = 2;
@@ -5212,6 +5238,7 @@ service ModalClient {
   // Clusters
   rpc ClusterGet(ClusterGetRequest) returns (ClusterGetResponse);
   rpc ClusterList(ClusterListRequest) returns (ClusterListResponse);
+  rpc ClusterReservationList(ClusterReservationListRequest) returns (ClusterReservationListResponse);
 
   // Container
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);

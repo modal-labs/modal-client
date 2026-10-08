@@ -61,6 +61,7 @@ const (
 	ModalClient_ClientHello_FullMethodName                            = "/modal.client.ModalClient/ClientHello"
 	ModalClient_ClusterGet_FullMethodName                             = "/modal.client.ModalClient/ClusterGet"
 	ModalClient_ClusterList_FullMethodName                            = "/modal.client.ModalClient/ClusterList"
+	ModalClient_ClusterReservationList_FullMethodName                 = "/modal.client.ModalClient/ClusterReservationList"
 	ModalClient_ContainerCheckpoint_FullMethodName                    = "/modal.client.ModalClient/ContainerCheckpoint"
 	ModalClient_ContainerExec_FullMethodName                          = "/modal.client.ModalClient/ContainerExec"
 	ModalClient_ContainerExecGetOutput_FullMethodName                 = "/modal.client.ModalClient/ContainerExecGetOutput"
@@ -328,6 +329,7 @@ type ModalClientClient interface {
 	// Clusters
 	ClusterGet(ctx context.Context, in *ClusterGetRequest, opts ...grpc.CallOption) (*ClusterGetResponse, error)
 	ClusterList(ctx context.Context, in *ClusterListRequest, opts ...grpc.CallOption) (*ClusterListResponse, error)
+	ClusterReservationList(ctx context.Context, in *ClusterReservationListRequest, opts ...grpc.CallOption) (*ClusterReservationListResponse, error)
 	// Container
 	ContainerCheckpoint(ctx context.Context, in *ContainerCheckpointRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContainerExec(ctx context.Context, in *ContainerExecRequest, opts ...grpc.CallOption) (*ContainerExecResponse, error)
@@ -937,6 +939,16 @@ func (c *modalClientClient) ClusterList(ctx context.Context, in *ClusterListRequ
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ClusterListResponse)
 	err := c.cc.Invoke(ctx, ModalClient_ClusterList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) ClusterReservationList(ctx context.Context, in *ClusterReservationListRequest, opts ...grpc.CallOption) (*ClusterReservationListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClusterReservationListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ClusterReservationList_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3278,6 +3290,7 @@ type ModalClientServer interface {
 	// Clusters
 	ClusterGet(context.Context, *ClusterGetRequest) (*ClusterGetResponse, error)
 	ClusterList(context.Context, *ClusterListRequest) (*ClusterListResponse, error)
+	ClusterReservationList(context.Context, *ClusterReservationListRequest) (*ClusterReservationListResponse, error)
 	// Container
 	ContainerCheckpoint(context.Context, *ContainerCheckpointRequest) (*emptypb.Empty, error)
 	ContainerExec(context.Context, *ContainerExecRequest) (*ContainerExecResponse, error)
@@ -3638,6 +3651,9 @@ func (UnimplementedModalClientServer) ClusterGet(context.Context, *ClusterGetReq
 }
 func (UnimplementedModalClientServer) ClusterList(context.Context, *ClusterListRequest) (*ClusterListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ClusterList not implemented")
+}
+func (UnimplementedModalClientServer) ClusterReservationList(context.Context, *ClusterReservationListRequest) (*ClusterReservationListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClusterReservationList not implemented")
 }
 func (UnimplementedModalClientServer) ContainerCheckpoint(context.Context, *ContainerCheckpointRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method ContainerCheckpoint not implemented")
@@ -4936,6 +4952,24 @@ func _ModalClient_ClusterList_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).ClusterList(ctx, req.(*ClusterListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_ClusterReservationList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClusterReservationListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ClusterReservationList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ClusterReservationList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ClusterReservationList(ctx, req.(*ClusterReservationListRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -8947,6 +8981,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ClusterList",
 			Handler:    _ModalClient_ClusterList_Handler,
+		},
+		{
+			MethodName: "ClusterReservationList",
+			Handler:    _ModalClient_ClusterReservationList_Handler,
 		},
 		{
 			MethodName: "ContainerCheckpoint",

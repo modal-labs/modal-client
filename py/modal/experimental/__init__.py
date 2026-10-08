@@ -94,6 +94,72 @@ def clustered(size: int, broadcast: bool = True, rdma: bool = False, fabric_size
 
 
 @dataclass
+class ClusterReservationTask:
+    """A container running on a worker that belongs to a cluster reservation."""
+
+    task_id: str
+    cluster_rank: int
+    app_id: str
+    function_id: str
+
+
+@dataclass
+class ClusterReservation:
+    """Current state of reserved multi-node cluster capacity in a Workspace."""
+
+    name: str  # Reservation name, as configured by Modal
+    gpu_type: str  # e.g. "B300"
+    region: str
+    min_reserved_workers: int  # Number of workers Modal has committed to keep reserved
+    reserved_workers: int  # Healthy reserved workers currently present (active + idle)
+    active_workers: int  # Reserved workers running this Workspace's containers
+    idle_workers: int  # Reserved workers available for new clusters
+    unfulfilled_workers: int  # max(0, min_reserved_workers - reserved_workers)
+    tasks: list[ClusterReservationTask]  # Containers on reserved workers, ordered by cluster then rank
+
+
+@synchronizer.create_blocking
+async def list_cluster_reservations(*, client: _Client | None = None) -> list[ClusterReservation]:
+    """List reserved multi-node cluster capacity for the current Workspace.
+
+    Returns one entry per reservation Modal has configured for the Workspace, with how many of the
+    reserved workers are currently present, in use, idle or missing. Only Workspaces with reserved
+    cluster capacity (or explicitly allowlisted by Modal) may call this; others get a
+    `modal.exception.PermissionDeniedError`.
+
+    This interface is experimental. This information will continue to be available in the future,
+    but it may be accessed via a different interface, and the return value may have a different shape.
+    """
+    client = client or await _Client.from_env()
+
+    resp: api_pb2.ClusterReservationListResponse = await client._stub.ClusterReservationList(
+        api_pb2.ClusterReservationListRequest()
+    )
+    return [
+        ClusterReservation(
+            name=reservation.name,
+            gpu_type=reservation.gpu_type,
+            region=reservation.region,
+            min_reserved_workers=reservation.min_reserved_workers,
+            reserved_workers=reservation.reserved_workers,
+            active_workers=reservation.active_workers,
+            idle_workers=reservation.idle_workers,
+            unfulfilled_workers=reservation.unfulfilled_workers,
+            tasks=[
+                ClusterReservationTask(
+                    task_id=task.task_id,
+                    cluster_rank=task.cluster_rank,
+                    app_id=task.app_id,
+                    function_id=task.function_id,
+                )
+                for task in reservation.tasks
+            ],
+        )
+        for reservation in resp.reservations
+    ]
+
+
+@dataclass
 class AppInfo:
     app_id: str
     name: str
