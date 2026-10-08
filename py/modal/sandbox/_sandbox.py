@@ -23,7 +23,7 @@ from modal._supports_logs import LogsFilters, _LogQueryData
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.mount import _Mount
-from modal.secret import _local_secret_env, _resolvable_secrets
+from modal.secret import _local_secret_env, _resolvable_secrets, _secret_sources
 from modal.volume import _Volume, _volume_to_mount_proto
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -1116,9 +1116,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                 dep_tasks.append(resolver.load(proxy, load_context))
             dep_timings = await _gather_load_with_timings(dep_tasks) if dep_tasks else []
 
-            # `env` takes precedence over environment variables from secrets
-            env_dict = _local_secret_env(secrets) | ephemeral_env
-
             validate_volumes_by_object_id(validated_volumes)
 
             volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
@@ -1165,7 +1162,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             create_req = api_pb2.SandboxCreateV2Request(
                 app_id=load_context.app_id,
                 definition=definition,
-                ephemeral_secrets=api_pb2.StringMap(contents=env_dict) if env_dict else None,
+                secret_sources=_secret_sources(secrets, ephemeral_env),
                 tags=tag_protos,
                 cloud_bucket_mount_credentials=cloud_bucket_credientials,
             )
@@ -2306,8 +2303,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secret_coros = [secret.hydrate(client=self._client) for secret in resolvable_secrets]
         await TaskContext.gather(*secret_coros)
 
-        env_dict = _local_secret_env(secrets)
-        env_dict |= {k: v for k, v in (env or {}).items() if v is not None}
+        env_dict = {k: v for k, v in (env or {}).items() if v is not None}
 
         task_id = await self._get_task_id(raise_if_task_complete=True)
 
@@ -2324,8 +2320,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             stderr=stderr,
             timeout=timeout,
             workdir=workdir,
-            secret_ids=[secret.object_id for secret in resolvable_secrets],
-            env=env_dict,
+            secret_sources=_secret_sources(secrets, env_dict),
             text=text,
             bufsize=bufsize,
             runtime_debug=config.get("function_runtime_debug"),
@@ -2342,8 +2337,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: int | None = None,
         workdir: str | None = None,
-        secret_ids: Collection[str] | None = None,
-        env: dict[str, str] | None = None,
+        secret_sources: Collection[api_pb2.SecretSource] | None = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
         runtime_debug: bool = False,
@@ -2382,11 +2376,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             stderr_config=stderr_config,
             timeout_secs=timeout,
             workdir=workdir,
-            secret_ids=secret_ids,
+            secret_sources=secret_sources,
             pty_info=pty_info,
             runtime_debug=runtime_debug,
             container_id=container_id or "",
-            env=env or {},
         )
         _ = await command_router_client.exec_start(start_req)
 
@@ -3233,8 +3226,7 @@ class _SidecarManager:
                 *(resolver.load(dependency, load_context) for dependency in dependencies if not dependency._is_hydrated)
             )
 
-        # `env` takes precedence over environment variables from secrets
-        env_dict = _local_secret_env(secrets) | (env or {})
+        secret_sources = _secret_sources(secrets, env)
 
         # Validate that the same volume (by object_id) isn't mounted at multiple paths. This relies on
         # the volumes being hydrated above, since it compares object_ids.
@@ -3271,7 +3263,7 @@ class _SidecarManager:
                 sandbox_id=self._sandbox.object_id,
                 container_name=name,
                 definition=definition,
-                ephemeral_secrets=api_pb2.StringMap(contents=env_dict) if env_dict else None,
+                secret_sources=secret_sources,
                 cloud_bucket_mount_credentials=cloud_bucket_credentials,
             )
             client = self._sandbox._client
@@ -3286,9 +3278,8 @@ class _SidecarManager:
                     container_name=name,
                     image_id=image.object_id,
                     args=list(args),
-                    env=env_dict,
                     workdir=workdir or "",
-                    secret_ids=[secret.object_id for secret in resolvable_secrets],
+                    secret_sources=secret_sources,
                     volume_mounts=volume_mounts,
                     network_access=network_access,
                     pty_info=pty_info,

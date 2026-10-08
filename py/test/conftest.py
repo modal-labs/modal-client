@@ -23,7 +23,7 @@ import time
 import traceback
 import uuid
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterable, Iterator, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any, get_args
@@ -87,6 +87,14 @@ class TaskCommandRouterTaskState:
     # Set (and replaced) whenever an entrypoint buffer grows or reaches EOF.
     entrypoint_changed: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
     entrypoint_stdin_offset: int = 0
+
+
+def _inline_secret_env(secret_sources: Iterable[api_pb2.SecretSource]) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for source in secret_sources:
+        if source.WhichOneof("source") == "env":
+            env |= dict(source.env.contents)
+    return env
 
 
 @patch_mock_servicer
@@ -230,7 +238,7 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
             cwd=(request.workdir or None),
-            env={**os.environ, **dict(request.env)},
+            env={**os.environ, **dict(request.env), **_inline_secret_env(request.secret_sources)},
         )
         task_state = self._task_state(request.task_id)
         task_state.procs[request.exec_id] = proc

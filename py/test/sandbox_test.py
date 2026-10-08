@@ -243,12 +243,22 @@ def test_sandbox_image(app, servicer, tmpdir):
     assert all(c in last_image.dockerfile_commands[-1] for c in ["foo", "bar", "potato"])
 
 
+def _secret_sources(sources) -> list[str | dict[str, str]]:
+    """Each source as its Secret id or its inline env dict, in the order they are applied."""
+    return [
+        source.secret_id if source.WhichOneof("source") == "secret_id" else dict(source.env.contents)
+        for source in sources
+    ]
+
+
 def test_sandbox_secret(app, servicer, tmpdir):
     sb = Sandbox.create("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})], app=app)
     sb.wait()
 
     assert len(servicer.sandbox_defs[0].secret_ids) == 0
-    assert servicer.sandbox_create_v2_requests[0].ephemeral_secrets.contents == {"FOO": "BAR"}
+    req = servicer.sandbox_create_v2_requests[0]
+    assert _secret_sources(req.secret_sources) == [{"FOO": "BAR"}]
+    assert not req.HasField("ephemeral_secrets")
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
@@ -2658,12 +2668,13 @@ def test_experimental_sandbox_create_cloud_bucket_mount_oidc_auth_role_arn(app, 
         assert req.definition.cloud_bucket_mounts[0].oidc_auth_role_arn == "arn:aws:iam::123456789012:role/r"
 
 
-def test_experimental_sandbox_create_env_uses_ephemeral_secrets(app, servicer):
+def test_experimental_sandbox_create_env_uses_secret_sources(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar", "BAZ": "qux"})
         req = ctx.pop_request("SandboxCreateV2")
 
-    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar", "BAZ": "qux"}
+    assert _secret_sources(req.secret_sources) == [{"FOO": "bar", "BAZ": "qux"}]
+    assert not req.HasField("ephemeral_secrets")
     assert ctx.get_requests("SecretGetOrCreate") == []
     assert list(req.definition.secret_ids) == []
 
@@ -2673,29 +2684,29 @@ def test_experimental_sandbox_create_env_drops_none_values(app, servicer):
         Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar", "SKIP": None})
         req = ctx.pop_request("SandboxCreateV2")
 
-    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar"}
+    assert _secret_sources(req.secret_sources) == [{"FOO": "bar"}]
 
 
-def test_experimental_sandbox_create_secret_from_dict_uses_ephemeral_secrets(app, servicer):
+def test_experimental_sandbox_create_secret_from_dict_is_inlined(app, servicer):
     secret = Secret.from_dict({"DB_PASSWORD": "hunter2"})
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, secrets=[secret])
         req = ctx.pop_request("SandboxCreateV2")
 
     # `Secret.from_dict` is resolvable locally, so its contents are inlined into the request
-    # as ephemeral secrets rather than being created server-side and referenced by id.
-    assert dict(req.ephemeral_secrets.contents) == {"DB_PASSWORD": "hunter2"}
+    # rather than being created server-side and referenced by id.
+    assert _secret_sources(req.secret_sources) == [{"DB_PASSWORD": "hunter2"}]
     assert ctx.get_requests("SecretGetOrCreate") == []
     assert list(req.definition.secret_ids) == []
 
 
-def test_experimental_sandbox_create_multiple_secrets_from_dict_merge(app, servicer):
+def test_experimental_sandbox_create_multiple_secrets_from_dict_keep_order(app, servicer):
     secrets = [Secret.from_dict({"FOO": "bar"}), Secret.from_dict({"BAZ": "qux"})]
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
-    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar", "BAZ": "qux"}
+    assert _secret_sources(req.secret_sources) == [{"FOO": "bar"}, {"BAZ": "qux"}]
     assert ctx.get_requests("SecretGetOrCreate") == []
     assert list(req.definition.secret_ids) == []
 
@@ -2706,8 +2717,8 @@ def test_experimental_sandbox_create_env_and_secrets_coexist(app, servicer):
         Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar"}, secrets=[secret])
         req = ctx.pop_request("SandboxCreateV2")
 
-    # Both the `env` argument and `Secret.from_dict` contents are merged into ephemeral secrets.
-    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar", "DB_PASSWORD": "hunter2"}
+    # `env` is applied after all Secrets.
+    assert _secret_sources(req.secret_sources) == [{"DB_PASSWORD": "hunter2"}, {"FOO": "bar"}]
     assert ctx.get_requests("SecretGetOrCreate") == []
     assert list(req.definition.secret_ids) == []
 
@@ -2719,10 +2730,9 @@ def test_experimental_sandbox_create_secret_from_dict_and_from_name(app, service
         Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
-    # `from_dict` is inlined as an ephemeral secret; `from_name` is resolved server-side
-    # and referenced by id.
-    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar"}
-    assert len(req.definition.secret_ids) == 1
+    # `from_dict` is inlined; `from_name` is resolved server-side and referenced by id.
+    (secret_id,) = req.definition.secret_ids
+    assert _secret_sources(req.secret_sources) == [{"FOO": "bar"}, secret_id]
 
 
 def test_experimental_sandbox_create_secret_ordering_named_after_local(app, servicer, client):
@@ -2732,8 +2742,8 @@ def test_experimental_sandbox_create_secret_ordering_named_after_local(app, serv
         Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
-    assert dict(req.ephemeral_secrets.contents) == {"LOCAL_ONLY": "yes"}
-    assert len(req.definition.secret_ids) == 1
+    (secret_id,) = req.definition.secret_ids
+    assert _secret_sources(req.secret_sources) == [{"K": "local", "LOCAL_ONLY": "yes"}, secret_id]
 
 
 def test_experimental_sandbox_create_secret_ordering_local_after_named(app, servicer, client):
@@ -2743,8 +2753,8 @@ def test_experimental_sandbox_create_secret_ordering_local_after_named(app, serv
         Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
-    assert dict(req.ephemeral_secrets.contents) == {"K": "local"}
-    assert len(req.definition.secret_ids) == 1
+    (secret_id,) = req.definition.secret_ids
+    assert _secret_sources(req.secret_sources) == [secret_id, {"K": "local"}]
 
 
 def test_experimental_sandbox_create_secret_ordering_interleaved(app, servicer, client):
@@ -2758,8 +2768,8 @@ def test_experimental_sandbox_create_secret_ordering_interleaved(app, servicer, 
         Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
-    assert dict(req.ephemeral_secrets.contents) == {"K": "last"}
-    assert len(req.definition.secret_ids) == 1
+    (secret_id,) = req.definition.secret_ids
+    assert _secret_sources(req.secret_sources) == [{"K": "first", "J": "first"}, secret_id, {"K": "last"}]
 
 
 def test_experimental_sandbox_create_env_overrides_named_secret(app, servicer, client):
@@ -2769,16 +2779,17 @@ def test_experimental_sandbox_create_env_overrides_named_secret(app, servicer, c
         Sandbox._experimental_create("echo", "hi", app=app, env={"K": "env"}, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
-    # `env` always takes precedence over Secrets, regardless of list order.
-    assert dict(req.ephemeral_secrets.contents) == {"K": "env"}
-    assert len(req.definition.secret_ids) == 1
+    # `env` is applied last, so it takes precedence over Secrets regardless of list order.
+    (secret_id,) = req.definition.secret_ids
+    assert _secret_sources(req.secret_sources) == [{"K": "local"}, secret_id, {"K": "env"}]
 
 
-def test_experimental_sandbox_create_no_env_omits_ephemeral_secrets(app, servicer):
+def test_experimental_sandbox_create_no_env_omits_secret_sources(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
 
+    assert list(req.secret_sources) == []
     assert not req.HasField("ephemeral_secrets")
 
 
@@ -2853,7 +2864,11 @@ def test_sandbox_exec_env_routing(app, servicer):
 
         assert cp.stdout.read() == "value|plain|missing"
     (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
-    assert dict(exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain", "SECRET_ONLY": "present"}
+    assert _secret_sources(exec_start_request.secret_sources) == [
+        {"KEEP": "secret", "SECRET_ONLY": "present"},
+        {"KEEP": "value", "PLAIN": "plain"},
+    ]
+    assert dict(exec_start_request.env) == {}
     assert list(exec_start_request.secret_ids) == []
 
 
@@ -2871,9 +2886,9 @@ def test_sandbox_exec_env_routing_named_secret(app, servicer, client):
             secrets=[secret],
         )
     (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
-    assert dict(exec_start_request.env) == {"PLAIN": "plain"}
-    # The named secret will be hydreated
-    assert list(exec_start_request.secret_ids) == [secret.object_id]
+    assert _secret_sources(exec_start_request.secret_sources) == [secret.object_id, {"PLAIN": "plain"}]
+    assert dict(exec_start_request.env) == {}
+    assert list(exec_start_request.secret_ids) == []
 
 
 @skip_non_subprocess
@@ -2884,8 +2899,7 @@ def test_sandbox_exec_secret_ordering_named_after_local(app, servicer, client):
     with servicer.task_command_router.intercept() as tcr_ctx:
         sb.exec("echo", "hello", secrets=[Secret.from_dict({"K": "local", "LOCAL_ONLY": "yes"}), secret])
     (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
-    assert dict(exec_start_request.env) == {"LOCAL_ONLY": "yes"}
-    assert list(exec_start_request.secret_ids) == [secret.object_id]
+    assert _secret_sources(exec_start_request.secret_sources) == [{"K": "local", "LOCAL_ONLY": "yes"}, secret.object_id]
 
 
 def test_mount_image(servicer, client, app):
@@ -3587,27 +3601,28 @@ def _sidecar_create_request(ctx, path: SidecarCreatePath):
     if path is SidecarCreatePath.CONTROL_PLANE:
         (req,) = ctx.control_plane.get_requests("SandboxContainerCreateV2")
         assert ctx.command_router.get_requests("TaskContainerCreate") == []
+        assert not req.HasField("ephemeral_secrets")
         return SimpleNamespace(
             container_name=req.container_name,
             definition=req.definition,
-            env=dict(req.ephemeral_secrets.contents),
-            has_env=req.HasField("ephemeral_secrets"),
+            secret_sources=_secret_sources(req.secret_sources),
         )
 
     (req,) = ctx.command_router.get_requests("TaskContainerCreate")
     assert ctx.control_plane.get_requests("SandboxContainerCreateV2") == []
+    assert list(req.secret_ids) == []
+    assert dict(req.env) == {}
     return SimpleNamespace(
         container_name=req.container_name,
         definition=api_pb2.Sandbox(
             image_id=req.image_id,
             entrypoint_args=list(req.args),
-            secret_ids=list(req.secret_ids),
+            secret_ids=[source.secret_id for source in req.secret_sources if source.HasField("secret_id")],
             volume_mounts=req.volume_mounts,
             network_access=req.network_access,
             pty_info=req.pty_info if req.HasField("pty_info") else None,
         ),
-        env=dict(req.env),
-        has_env=bool(req.env),
+        secret_sources=_secret_sources(req.secret_sources),
     )
 
 
@@ -3627,10 +3642,11 @@ def test_sandbox_container_create_accepts_prebuilt_image(app, servicer, sidecar_
     assert container_create_request.definition.image_id == image.object_id
     assert list(container_create_request.definition.entrypoint_args) == ["bash", "-c", "sleep 100"]
     assert list(container_create_request.definition.secret_ids) == []
+    assert container_create_request.secret_sources == []
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, client, sidecar_create_path):
+def test_sandbox_container_create_forwards_secrets_and_env(app, servicer, client, sidecar_create_path):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
@@ -3653,9 +3669,13 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, cli
 
     container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
     assert container_create_request.definition.image_id == image.object_id
-    # `from_dict` secrets travel as ephemeral env vars, with `env` winning on key collisions;
-    # `from_name` secrets are resolved server-side and referenced by id.
-    assert container_create_request.env == {"API_KEY": "override", "FROM_DICT": "yes", "PLAIN_ENV": "plain"}
+    # `from_dict` secrets are inlined and `from_name` secrets are referenced by id, in list order;
+    # `env` is applied last so it wins on key collisions.
+    assert container_create_request.secret_sources == [
+        {"API_KEY": "secret-value", "FROM_DICT": "yes"},
+        named_secret.object_id,
+        {"API_KEY": "override", "PLAIN_ENV": "plain"},
+    ]
     assert list(container_create_request.definition.secret_ids) == [named_secret.object_id]
     (secret_request,) = ctx.control_plane.get_requests("SecretGetOrCreate")
     assert secret_request.deployment_name == "sidecar-secret"
@@ -3682,7 +3702,7 @@ def test_sandbox_container_create_secret_ordering_named_after_local(app, service
         )
 
     container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
-    assert container_create_request.env == {"LOCAL_ONLY": "yes"}
+    assert container_create_request.secret_sources == [{"K": "local", "LOCAL_ONLY": "yes"}, named_secret.object_id]
     assert list(container_create_request.definition.secret_ids) == [named_secret.object_id]
 
 
@@ -3718,7 +3738,7 @@ def test_sandbox_container_create_defaults_to_open_network_access(app, servicer,
     container_create_request = _sidecar_create_request(ctx, sidecar_create_path)
     network_access = container_create_request.definition.network_access
     assert network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
-    assert not container_create_request.has_env
+    assert container_create_request.secret_sources == []
 
 
 @skip_non_subprocess

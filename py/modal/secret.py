@@ -597,11 +597,20 @@ def _local_secret_env(secrets: Collection[_Secret]) -> dict[str, str]:
     for secret in secrets:
         if secret._load_env_dict:
             env_dict |= secret._load_env_dict()
-        elif secret._keys:
-            # Inlined values override named Secrets regardless of order, so drop keys a later named Secret sets.
-            for key in secret._keys:
-                env_dict.pop(key, None)
     return env_dict
+
+
+def _secret_sources(secrets: Collection[_Secret], env: dict[str, str] | None = None) -> list[api_pb2.SecretSource]:
+    sources: list[api_pb2.SecretSource] = []
+    for secret in secrets:
+        if secret._load_env_dict:
+            if env_dict := secret._load_env_dict():
+                sources.append(api_pb2.SecretSource(env=api_pb2.StringMap(contents=env_dict)))
+        else:
+            sources.append(api_pb2.SecretSource(secret_id=secret.object_id))
+    if env:
+        sources.append(api_pb2.SecretSource(env=api_pb2.StringMap(contents=env)))
+    return sources
 
 
 Secret = synchronize_api(_Secret)
