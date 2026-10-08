@@ -43,7 +43,7 @@ from .exception import (
 )
 from .output import OutputManager
 from .running_app import RunningApp, running_app_from_layout
-from .sandbox import _Sandbox
+from .sandbox._sandbox import _Sandbox
 from .secret import _Secret
 from .stream_type import StreamType
 

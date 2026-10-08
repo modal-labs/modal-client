@@ -33,7 +33,8 @@ from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES
 from modal._utils.task_command_router_client import _is_v2_task_id
 from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
-from modal.sandbox import SandboxVersion, SidecarContainer, _get_sandbox_version
+from modal.sandbox import SidecarContainer
+from modal.sandbox._sandbox import SandboxVersion, _get_sandbox_version
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -1719,8 +1720,8 @@ def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures(
 
 def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failures(app, servicer, monkeypatch):
     sb = Sandbox.create(app=app)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -1729,7 +1730,9 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
     with servicer.intercept() as ctx:
         ctx.set_responder("SandboxGetExitSnapshotV2", wedged)
         started = time.monotonic()
-        with pytest.raises(modal.exception.ConnectionError):
+        # Depending on whether the client or the mock server enforces the deadline first, the final
+        # attempt surfaces as a client timeout (ConnectionError) or DEADLINE_EXCEEDED (ServiceError).
+        with pytest.raises((modal.exception.ConnectionError, modal.exception.ServiceError)):
             sb._experimental_get_exit_snapshot()
         elapsed = time.monotonic() - started
 
@@ -1741,8 +1744,8 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
 
 def test_sandbox_experimental_get_exit_snapshot_expired_poll_deadline_maps_to_timeout(app, servicer, monkeypatch):
     sb = Sandbox.create(app=app)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -2043,8 +2046,8 @@ def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures_
 def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failures_v2(client, servicer, monkeypatch):
     sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
     # Shrink the hold and the slack so a wedged poll trips the network deadline quickly.
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -2055,7 +2058,9 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
         started = time.monotonic()
         # Polls that never answer fail on their own network deadline instead of stalling the loop,
         # and the standard RPC retry gives up after its retry budget.
-        with pytest.raises(modal.exception.ConnectionError):
+        # Depending on whether the client or the mock server enforces the deadline first, the final
+        # attempt surfaces as a client timeout (ConnectionError) or DEADLINE_EXCEEDED (ServiceError).
+        with pytest.raises((modal.exception.ConnectionError, modal.exception.ServiceError)):
             sb._experimental_get_exit_snapshot()
         elapsed = time.monotonic() - started
 
@@ -2067,8 +2072,8 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
 
 def test_sandbox_experimental_get_exit_snapshot_expired_poll_deadline_maps_to_timeout_v2(client, servicer, monkeypatch):
     sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -3164,7 +3169,7 @@ def test_sandbox_create_v1_waits_for_task_id(servicer, app, monkeypatch):
 
 def test_sandbox_create_v1_scheduling_timeout(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def never_scheduled(self, stream):
         await stream.recv_message()
@@ -3235,7 +3240,7 @@ def test_sandbox_create_v1_task_id_transient_error_then_scheduled(servicer, app,
 
 def test_sandbox_create_v1_task_id_unavailable_until_deadline(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def always_unavailable(self, stream):
         await stream.recv_message()
@@ -3251,7 +3256,7 @@ def test_sandbox_create_v1_task_id_unavailable_until_deadline(servicer, app, mon
 
 def test_sandbox_create_v1_task_id_internal_until_deadline(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def always_internal(self, stream):
         await stream.recv_message()
@@ -3267,9 +3272,9 @@ def test_sandbox_create_v1_task_id_internal_until_deadline(servicer, app, monkey
 
 def test_sandbox_create_v1_task_id_internal_before_deadline(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    timeout = modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT
+    timeout = modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT
     now = 0.0
-    monkeypatch.setattr("modal.sandbox.time", SimpleNamespace(monotonic=lambda: now))
+    monkeypatch.setattr("modal.sandbox._sandbox.time", SimpleNamespace(monotonic=lambda: now))
 
     calls = 0
 
@@ -3279,7 +3284,7 @@ def test_sandbox_create_v1_task_id_internal_before_deadline(servicer, app, monke
         await stream.recv_message()
         if calls <= DEFAULT_MAX_RETRIES + 1:
             # The deadline has not passed, but too little time remains for another poll.
-            now = timeout - modal.sandbox._TASK_ID_POLL_INTERVAL / 2
+            now = timeout - modal.sandbox._sandbox._TASK_ID_POLL_INTERVAL / 2
             raise GRPCError(Status.INTERNAL, "server bug")
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
 
@@ -3294,7 +3299,7 @@ def test_sandbox_create_v1_task_id_internal_before_deadline(servicer, app, monke
 
 def test_sandbox_create_v1_scheduling_timeout_terminate_fails(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def never_scheduled(self, stream):
         await stream.recv_message()
@@ -3366,8 +3371,8 @@ ALLOW_AFTER_DETACH = {"detach", "returncode", "wait", "_experimental_get_exit_sn
 def test_func_map_covers_all_public_methods_and_properties():
     attributes_to_raise_on_detached = {
         attr.name
-        for attr in inspect.classify_class_attrs(modal.sandbox._Sandbox)
-        if attr.defining_class == modal.sandbox._Sandbox
+        for attr in inspect.classify_class_attrs(modal.sandbox._sandbox._Sandbox)
+        if attr.defining_class == modal.sandbox._sandbox._Sandbox
         and (
             not (attr.name.startswith("_") or attr.name in ALLOW_AFTER_DETACH)
             or (attr.name.startswith("_experimental") and attr.name not in ALLOW_AFTER_DETACH)
@@ -4278,7 +4283,7 @@ def test_sandbox_create_reuses_hydrated_image(app, servicer):
 def test_sandbox_create_timing_log_caps_dependency_list():
     """The formatter caps the per-dep list at 10 entries (slowest first) and
     appends a `+N more` suffix for the remainder."""
-    from modal.sandbox import _format_sandbox_create_timing_log
+    from modal.sandbox._sandbox import _format_sandbox_create_timing_log
 
     deps = [(f"im-{i:03d}", float(i)) for i in range(15)]
     line = _format_sandbox_create_timing_log("sb-abc", 12.34, 0.5, deps)

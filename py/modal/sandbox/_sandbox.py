@@ -27,27 +27,27 @@ from modal.secret import _local_secret_env, _resolvable_secrets
 from modal.volume import _Volume, _volume_to_mount_proto
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
-from ._image import _Image
-from ._load_context import LoadContext
-from ._object import _get_environment_name, _Object
-from ._outbound_policy import _OutboundPolicy, _validate_compatible_network_access
-from ._output.pty import get_pty_info
-from ._resolver import Resolver
-from ._resources import convert_fn_config_to_resources_config
-from ._utils.async_utils import TaskContext, synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning
-from ._utils.grpc_utils import Retry, RetryTimeoutError
-from ._utils.mount_utils import (
+from .._image import _Image
+from .._load_context import LoadContext
+from .._object import _get_environment_name, _Object
+from .._outbound_policy import _OutboundPolicy, _validate_compatible_network_access
+from .._output.pty import get_pty_info
+from .._resolver import Resolver
+from .._resources import convert_fn_config_to_resources_config
+from .._utils.async_utils import TaskContext, synchronize_api, synchronizer
+from .._utils.deprecation import deprecation_warning
+from .._utils.grpc_utils import Retry, RetryTimeoutError
+from .._utils.mount_utils import (
     validate_network_file_systems,
     validate_volumes,
     validate_volumes_by_object_id,
 )
-from ._utils.name_utils import check_object_name
-from ._utils.task_command_router_client import TaskCommandRouterClient, _is_v2_task_id
-from .client import _Client
-from .config import config, logger
-from .container_process import _ContainerProcess
-from .exception import (
+from .._utils.name_utils import check_object_name
+from .._utils.task_command_router_client import TaskCommandRouterClient, _is_v2_task_id
+from ..client import _Client
+from ..config import config, logger
+from ..container_process import _ContainerProcess
+from ..exception import (
     ClientClosed,
     ConflictError,
     ExecutionError,
@@ -61,7 +61,7 @@ from .exception import (
     SnapshotCreationError,
     TimeoutError,
 )
-from .io_streams import (
+from ..io_streams import (
     StreamReader,
     StreamWriter,
     _StreamReader,
@@ -71,13 +71,13 @@ from .io_streams import (
     _StreamWriterThroughCommandRouterSandboxParams,
     _StreamWriterThroughServerParams,
 )
-from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .proxy import _Proxy
-from .sandbox_fs import _SandboxFilesystem
-from .secret import _Secret
-from .snapshot import _SandboxSnapshot
-from .stream_type import StreamType
-from .types import SandboxConnectCredentials, SandboxRuntime
+from ..network_file_system import _NetworkFileSystem, network_file_system_mount_protos
+from ..proxy import _Proxy
+from ..sandbox_fs import _SandboxFilesystem
+from ..secret import _Secret
+from ..snapshot import _SandboxSnapshot
+from ..stream_type import StreamType
+from ..types import SandboxConnectCredentials, SandboxRuntime
 
 _default_image: _Image = _Image.debian_slim()
 _EXIT_SNAPSHOT_NOT_FOUND_ERROR_CODES = frozenset(
@@ -386,7 +386,7 @@ def _resolve_app_id_and_client(
     client: "_Client | None",
 ) -> "tuple[str | None, _Client | None]":
     """Resolve the App id and client for Sandbox creation, validating that an App is available."""
-    from .app import _App
+    from ..app import _App
 
     if app is not None:
         if app.app_id is None:

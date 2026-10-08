@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, BinaryIO, Optional, Union, cast
 
 if TYPE_CHECKING:
-    import modal.sandbox
+    import modal.sandbox._sandbox
 
 from ._utils.async_utils import synchronize_api
 from ._utils.logger import logger
@@ -68,11 +68,13 @@ def _expand_watch_filter(filter: list[FileWatchEventType]) -> list[str]:
 class _SandboxFilesystem:
     """mdmd:namespace"""
 
-    _container: Union["modal.sandbox._Sandbox", "modal.sandbox._SidecarContainer"]
+    _container: Union["modal.sandbox._sandbox._Sandbox", "modal.sandbox._sandbox._SidecarContainer"]
 
-    def __init__(self, container: Union["modal.sandbox._Sandbox", "modal.sandbox._SidecarContainer"]) -> None:
+    def __init__(
+        self, container: Union["modal.sandbox._sandbox._Sandbox", "modal.sandbox._sandbox._SidecarContainer"]
+    ) -> None:
         """mdmd:hidden"""
-        from modal.sandbox import _Sandbox, _SidecarContainer
+        from modal.sandbox._sandbox import _Sandbox, _SidecarContainer
 
         # Use a weakref proxy to avoid circular references between Sandbox/SidecarContainer and SandboxFilesystem.
         self._container = cast(_Sandbox | _SidecarContainer, weakref.proxy(container))

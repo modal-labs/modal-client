@@ -247,6 +247,6 @@ exclude = [
     "modal/mount.py",  # 23 errors together with stub
     "modal/mount.pyi",
     "modal/parallel_map.py",  # 18 errors, needs some thought around implementation / interface types
-    "modal/sandbox.py",  # 31 errors together with stub
-    "modal/sandbox.pyi",
+    "modal/sandbox/_sandbox.py",  # 31 errors together with stub
+    "modal/sandbox/_sandbox.pyi",
 ]

@@ -603,7 +603,7 @@ def test_shell_v2_function_mounts(servicer, set_env_client, mock_shell_pty, tmp_
 @skip_windows("modal shell not supported on Windows.")
 def test_shell_v2_timeout_checks_v2_status(servicer, set_env_client, monkeypatch, v2_shell_args):
     monkeypatch.setattr(
-        "modal.sandbox._Sandbox._exec", AsyncMock(side_effect=InteractiveTimeoutError("exec timed out"))
+        "modal.sandbox._sandbox._Sandbox._exec", AsyncMock(side_effect=InteractiveTimeoutError("exec timed out"))
     )
 
     with servicer.intercept() as ctx:

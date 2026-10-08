@@ -27,7 +27,7 @@ from modal.cli.utils import (
 )
 from modal.client import _Client
 from modal.exception import ConflictError, InvalidError
-from modal.sandbox import SandboxVersion, _container_exec, _get_sandbox_version, _Sandbox
+from modal.sandbox._sandbox import SandboxVersion, _container_exec, _get_sandbox_version, _Sandbox
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
