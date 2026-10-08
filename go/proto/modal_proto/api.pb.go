@@ -1076,10 +1076,11 @@ func (x EnvironmentBlockUnauthenticatedResources) Number() protoreflect.EnumNumb
 type EnvironmentRole int32
 
 const (
-	EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED EnvironmentRole = 0
-	EnvironmentRole_ENVIRONMENT_ROLE_VIEWER      EnvironmentRole = 1
-	EnvironmentRole_ENVIRONMENT_ROLE_CONTRIBUTOR EnvironmentRole = 2
-	EnvironmentRole_ENVIRONMENT_ROLE_NO_ACCESS   EnvironmentRole = 3
+	EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED                 EnvironmentRole = 0
+	EnvironmentRole_ENVIRONMENT_ROLE_VIEWER                      EnvironmentRole = 1
+	EnvironmentRole_ENVIRONMENT_ROLE_CONTRIBUTOR                 EnvironmentRole = 2
+	EnvironmentRole_ENVIRONMENT_ROLE_NO_ACCESS                   EnvironmentRole = 3
+	EnvironmentRole_ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER EnvironmentRole = 4
 )
 
 // Enum value maps for EnvironmentRole.
@@ -1089,12 +1090,14 @@ var (
 		1: "ENVIRONMENT_ROLE_VIEWER",
 		2: "ENVIRONMENT_ROLE_CONTRIBUTOR",
 		3: "ENVIRONMENT_ROLE_NO_ACCESS",
+		4: "ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER",
 	}
 	EnvironmentRole_value = map[string]int32{
-		"ENVIRONMENT_ROLE_UNSPECIFIED": 0,
-		"ENVIRONMENT_ROLE_VIEWER":      1,
-		"ENVIRONMENT_ROLE_CONTRIBUTOR": 2,
-		"ENVIRONMENT_ROLE_NO_ACCESS":   3,
+		"ENVIRONMENT_ROLE_UNSPECIFIED":                 0,
+		"ENVIRONMENT_ROLE_VIEWER":                      1,
+		"ENVIRONMENT_ROLE_CONTRIBUTOR":                 2,
+		"ENVIRONMENT_ROLE_NO_ACCESS":                   3,
+		"ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER": 4,
 	}
 )
 
@@ -73256,12 +73259,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"7ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_UNSPECIFIED\x10\x00\x127\n" +
 	"3ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_INHERIT\x10\x01\x125\n" +
 	"1ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_BLOCK\x10\x02\x125\n" +
-	"1ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_ALLOW\x10\x03*\x92\x01\n" +
+	"1ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_ALLOW\x10\x03*\xc4\x01\n" +
 	"\x0fEnvironmentRole\x12 \n" +
 	"\x1cENVIRONMENT_ROLE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17ENVIRONMENT_ROLE_VIEWER\x10\x01\x12 \n" +
 	"\x1cENVIRONMENT_ROLE_CONTRIBUTOR\x10\x02\x12\x1e\n" +
-	"\x1aENVIRONMENT_ROLE_NO_ACCESS\x10\x03*y\n" +
+	"\x1aENVIRONMENT_ROLE_NO_ACCESS\x10\x03\x120\n" +
+	",ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER\x10\x04*y\n" +
 	"\x0fEnvironmentType\x12 \n" +
 	"\x1cENVIRONMENT_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17ENVIRONMENT_TYPE_PUBLIC\x10\x01\x12'\n" +
