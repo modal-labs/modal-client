@@ -533,7 +533,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	}.Build(), nil
 }
 
-func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreateParams) (*pb.SandboxCreateV2Request, error) {
+func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreateParams, secretSources []*pb.SecretSource) (*pb.SandboxCreateV2Request, error) {
 	if params.GPU != "" {
 		return nil, fmt.Errorf("GPUs are not supported by ExperimentalCreate")
 	}
@@ -543,18 +543,11 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 		return nil, err
 	}
 
-	// V2 sandboxes support ephemeral env vars natively, so env vars are passed
-	// directly rather than via a server-side Secret.
-	var ephemeralSecrets *pb.StringMap
-	if len(params.Env) > 0 {
-		ephemeralSecrets = pb.StringMap_builder{Contents: params.Env}.Build()
-	}
-
 	return pb.SandboxCreateV2Request_builder{
-		AppId:            req.GetAppId(),
-		Definition:       req.GetDefinition(),
-		EphemeralSecrets: ephemeralSecrets,
-		Tags:             req.GetTags(),
+		AppId:         req.GetAppId(),
+		Definition:    req.GetDefinition(),
+		SecretSources: secretSources,
+		Tags:          req.GetTags(),
 	}.Build(), nil
 }
 
@@ -637,28 +630,29 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 		return nil, err
 	}
 
-	// V2 supports ephemeral env vars natively (passed via ephemeral_secrets in
-	// the request), so unlike Create we don't fold env vars into a server-side
-	// Secret. Locally-created Secrets (FromMap) and params.Env are sent directly
-	// as ephemeral env vars, avoiding a SecretGetOrCreate round-trip; params.Env
-	// takes precedence on key collisions. Only the remaining resolvable Secrets
-	// (e.g. from FromName) need hydrating to secret IDs.
-	envDict, resolvableSecrets := splitEnvDictAndResolvableSecrets(params.Secrets)
-	for k, v := range params.Env {
+	// V2 takes Secrets and env vars as ordered secret_sources, so unlike Create
+	// we don't fold env vars into a server-side Secret. Locally-created Secrets
+	// (FromMap) are inlined, avoiding a SecretGetOrCreate round-trip; only the
+	// remaining resolvable Secrets (e.g. from FromName) need hydrating to secret
+	// IDs, which are also recorded on the definition.
+	for k := range params.Env {
 		if err := validateEnvVarName(k); err != nil {
 			return nil, err
 		}
-		envDict[k] = v
 	}
-	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(resolvableSecrets), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
+	resolvable := resolvableSecrets(params.Secrets)
+	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(resolvable), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
+		return nil, err
+	}
+	sources, err := secretSources(params.Secrets, params.Env)
+	if err != nil {
 		return nil, err
 	}
 
-	mergedParams := *params
-	mergedParams.Secrets = resolvableSecrets
-	mergedParams.Env = envDict
+	definitionParams := *params
+	definitionParams.Secrets = resolvable
 
-	req, err := buildSandboxCreateV2RequestProto(app.AppID, image.ImageID, mergedParams)
+	req, err := buildSandboxCreateV2RequestProto(app.AppID, image.ImageID, definitionParams, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -1227,7 +1221,7 @@ func buildTaskExecStartRequestProto(taskID, execID string, command []string, par
 		return nil, err
 	}
 
-	secretIds, err := collectSecretIDs(params.Secrets)
+	sources, err := secretSources(params.Secrets, params.Env)
 	if err != nil {
 		return nil, err
 	}
@@ -1258,17 +1252,16 @@ func buildTaskExecStartRequestProto(taskID, execID string, command []string, par
 	}
 
 	builder := pb.TaskExecStartRequest_builder{
-		TaskId:       taskID,
-		ExecId:       execID,
-		CommandArgs:  command,
-		StdoutConfig: stdoutConfig,
-		StderrConfig: stderrConfig,
-		Workdir:      nil,
-		SecretIds:    secretIds,
-		PtyInfo:      ptyInfo,
-		RuntimeDebug: false,
-		Env:          params.Env,
-		ContainerId:  containerID,
+		TaskId:        taskID,
+		ExecId:        execID,
+		CommandArgs:   command,
+		StdoutConfig:  stdoutConfig,
+		StderrConfig:  stderrConfig,
+		Workdir:       nil,
+		SecretSources: sources,
+		PtyInfo:       ptyInfo,
+		RuntimeDebug:  false,
+		ContainerId:   containerID,
 	}
 
 	if params.Workdir != "" {
@@ -1304,23 +1297,17 @@ func (sb *Sandbox) execInternal(ctx context.Context, command []string, params *S
 		return nil, err
 	}
 
-	// Locally-created Secrets (FromMap) are passed directly to the worker as
-	// environment variables, so only the remaining Secrets need hydrating. This
-	// avoids a SecretGetOrCreate round-trip for env-dict Secrets.
-	envDict, resolvableSecrets := splitEnvDictAndResolvableSecrets(params.Secrets)
-	for k, v := range params.Env {
+	// Locally-created Secrets (FromMap) are inlined into the request's
+	// secret_sources, so only the remaining Secrets need hydrating. This avoids
+	// a SecretGetOrCreate round-trip for env-dict Secrets.
+	for k := range params.Env {
 		if err := validateEnvVarName(k); err != nil {
 			return nil, err
 		}
-		envDict[k] = v
 	}
-	if err := hydrateSecrets(ctx, sb.client, resolvableSecrets); err != nil {
+	if err := hydrateSecrets(ctx, sb.client, resolvableSecrets(params.Secrets)); err != nil {
 		return nil, err
 	}
-
-	execParams := *params
-	execParams.Env = envDict
-	execParams.Secrets = resolvableSecrets
 
 	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
@@ -1328,7 +1315,7 @@ func (sb *Sandbox) execInternal(ctx context.Context, command []string, params *S
 	}
 
 	execID := uuid.New().String()
-	req, err := buildTaskExecStartRequestProto(taskID, execID, command, execParams, containerID)
+	req, err := buildTaskExecStartRequestProto(taskID, execID, command, *params, containerID)
 	if err != nil {
 		return nil, err
 	}

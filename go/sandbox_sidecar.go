@@ -184,7 +184,7 @@ type sidecarCreateInputs struct {
 	name              string
 	image             *Image
 	params            *SidecarCreateParams
-	envDict           map[string]string
+	secretSources     []*pb.SecretSource
 	secretIds         []string
 	volumeMounts      []*pb.VolumeMount
 	cloudBucketMounts []*pb.CloudBucketMount
@@ -283,21 +283,24 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		ptyInfo = defaultSandboxPTYInfo()
 	}
 
-	// Locally-created Secrets (FromMap) and params.Env are sent directly as
-	// ephemeral env vars, avoiding a SecretGetOrCreate round-trip; params.Env
-	// takes precedence on key collisions. Only the remaining resolvable Secrets
-	// (e.g. from FromName) need hydrating to secret IDs.
-	envDict, resolvableSecrets := splitEnvDictAndResolvableSecrets(params.Secrets)
-	for k, v := range params.Env {
+	// Secrets and params.Env are sent as ordered secret_sources. Locally-created
+	// Secrets (FromMap) are inlined, avoiding a SecretGetOrCreate round-trip;
+	// only the remaining resolvable Secrets (e.g. from FromName) need hydrating
+	// to secret IDs, which are also recorded on the definition.
+	for k := range params.Env {
 		if err := validateEnvVarName(k); err != nil {
 			return nil, err
 		}
-		envDict[k] = v
 	}
-	if err := hydrateSandboxSecrets(ctx, s.sandbox.client, resolvableSecrets, params.CloudBucketMounts); err != nil {
+	resolvable := resolvableSecrets(params.Secrets)
+	if err := hydrateSandboxSecrets(ctx, s.sandbox.client, resolvable, params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
-	secretIds, err := collectSecretIDs(resolvableSecrets)
+	secretIds, err := collectSecretIDs(resolvable)
+	if err != nil {
+		return nil, err
+	}
+	sources, err := secretSources(params.Secrets, params.Env)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +324,7 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		name:                    name,
 		image:                   image,
 		params:                  params,
-		envDict:                 envDict,
+		secretSources:           sources,
 		secretIds:               secretIds,
 		volumeMounts:            volumeMounts,
 		cloudBucketMounts:       cloudBucketMounts,
@@ -362,11 +365,6 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 		workdir = &in.params.Workdir
 	}
 
-	var ephemeralSecrets *pb.StringMap
-	if len(in.envDict) > 0 {
-		ephemeralSecrets = pb.StringMap_builder{Contents: in.envDict}.Build()
-	}
-
 	var resources *pb.Resources
 	if in.memoryReserveConsumeMib != nil {
 		resources = pb.Resources_builder{MemoryMb: *in.memoryReserveConsumeMib}.Build()
@@ -388,7 +386,7 @@ func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidec
 			PtyInfo:                  in.ptyInfo,
 			Resources:                resources,
 		}.Build(),
-		EphemeralSecrets: ephemeralSecrets,
+		SecretSources: in.secretSources,
 	}.Build()
 
 	resp, err := s.sandbox.client.cpClient.SandboxContainerCreateV2(ctx, req)
@@ -409,9 +407,8 @@ func (s *sidecarServiceImpl) createViaCommandRouter(ctx context.Context, in side
 		ContainerName:           in.name,
 		ImageId:                 in.image.ImageID,
 		Args:                    in.params.Command,
-		Env:                     in.envDict,
 		Workdir:                 in.params.Workdir,
-		SecretIds:               in.secretIds,
+		SecretSources:           in.secretSources,
 		VolumeMounts:            in.volumeMounts,
 		NetworkAccess:           in.networkAccess,
 		PtyInfo:                 in.ptyInfo,

@@ -2782,7 +2782,7 @@ func TestSandboxCreateWithEnv(t *testing.T) {
 	g.Expect(string(output)).To(gomega.Equal("bar\n"))
 }
 
-func TestSandboxCreatePassesEnvAsEphemeralSecrets(t *testing.T) {
+func TestSandboxCreatePassesEnvAsSecretSources(t *testing.T) {
 	// Unset MODAL_IMAGE_BUILDER_VERSION so the build resolves it via EnvironmentGetOrCreate.
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
@@ -2792,10 +2792,11 @@ func TestSandboxCreatePassesEnvAsEphemeralSecrets(t *testing.T) {
 	registerSandboxCreateDeps(mock)
 
 	// No SecretGetOrCreate handler is registered: Create routes to V2, which
-	// passes env vars via ephemeral_secrets instead of a server-side Secret.
+	// passes env vars via secret_sources instead of a server-side Secret.
 	grpcmock.HandleUnary(mock, "SandboxCreateV2",
 		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
-			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
+			g.Expect(req.GetEphemeralSecrets()).To(gomega.BeNil())
+			g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{map[string]string{"FOO": "bar"}}))
 			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.BeEmpty())
 			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},

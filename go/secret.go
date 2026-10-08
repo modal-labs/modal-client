@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // envVarNameRegex matches valid environment variable names: letters, numbers,
@@ -51,9 +52,6 @@ type Secret struct {
 	// hydrator resolves SecretID lazily. It is nil for Secrets constructed
 	// already-hydrated, and is not consulted again once SecretID is set.
 	hydrator secretHydrator
-	// keys are the env var names a server-side Secret defines, as reported by
-	// the control plane on FromName. Nil when unknown.
-	keys []string
 	// hydrateMu serializes hydrate so the SecretID is resolved at most once even
 	// if multiple goroutines hydrate the same Secret concurrently. A failed
 	// attempt is not cached, so callers may retry after a transient error.
@@ -141,7 +139,7 @@ func (s *secretServiceImpl) FromName(ctx context.Context, name string, params *S
 	}
 
 	s.client.logger.DebugContext(ctx, "Retrieved Secret", "secret_id", resp.GetSecretId(), "secret_name", name)
-	return &Secret{SecretID: resp.GetSecretId(), Name: name, keys: resp.GetMetadata().GetKeys()}, nil
+	return &Secret{SecretID: resp.GetSecretId(), Name: name}, nil
 }
 
 // SecretFromMapParams are options for creating a Secret from a key/value map.
@@ -196,35 +194,44 @@ func hydrateSecrets(ctx context.Context, client *Client, secrets []*Secret) erro
 	return g.Wait()
 }
 
-// splitEnvDictAndResolvableSecrets partitions secrets into a merged env dict
-// (from Secrets created locally via FromMap) and the remaining "resolvable"
-// Secrets that must be hydrated to a SecretID before use (e.g. from FromName).
-//
-// Locally-created Secrets can be passed directly to the worker as environment
-// variables, avoiding a SecretGetOrCreate round-trip. Secrets apply in slice
-// order with later ones winning on key collisions.
-// This function does not validate its input: nil Secrets are placed in the
-// resolvable list rather than dropped, leaving it to hydrateSecrets to reject
-// them with an error.
-func splitEnvDictAndResolvableSecrets(secrets []*Secret) (map[string]string, []*Secret) {
-	envDict := map[string]string{}
+// resolvableSecrets returns the Secrets that must be hydrated to a SecretID
+// before use (e.g. from FromName), skipping those created locally via FromMap.
+// nil Secrets are kept rather than dropped, leaving it to hydrateSecrets to
+// reject them with an error.
+func resolvableSecrets(secrets []*Secret) []*Secret {
 	var resolvable []*Secret
 	for _, secret := range secrets {
-		if h, ok := secretEnvDictHydrator(secret); ok {
-			for k, v := range h.envDict {
-				envDict[k] = v
-			}
-		} else {
-			if secret != nil {
-				// A later Secret wins, so drop keys it redefines from earlier env-dict Secrets.
-				for _, k := range secret.keys {
-					delete(envDict, k)
-				}
-			}
+		if _, ok := secretEnvDictHydrator(secret); !ok {
 			resolvable = append(resolvable, secret)
 		}
 	}
-	return envDict, resolvable
+	return resolvable
+}
+
+// secretSources returns secrets as ordered env var sources, with env last.
+// FromMap Secrets are inlined; the rest are referenced by SecretID and must
+// already be hydrated.
+func secretSources(secrets []*Secret, env map[string]string) ([]*pb.SecretSource, error) {
+	var sources []*pb.SecretSource
+	for i, secret := range secrets {
+		if h, ok := secretEnvDictHydrator(secret); ok {
+			if len(h.envDict) > 0 {
+				sources = append(sources, pb.SecretSource_builder{Env: pb.StringMap_builder{Contents: h.envDict}.Build()}.Build())
+			}
+			continue
+		}
+		if secret == nil {
+			return nil, InvalidError{fmt.Sprintf("secret at index %d must not be nil", i)}
+		}
+		if secret.SecretID == "" {
+			return nil, InvalidError{fmt.Sprintf("secret at index %d has not been hydrated", i)}
+		}
+		sources = append(sources, pb.SecretSource_builder{SecretId: proto.String(secret.SecretID)}.Build())
+	}
+	if len(env) > 0 {
+		sources = append(sources, pb.SecretSource_builder{Env: pb.StringMap_builder{Contents: env}.Build()}.Build())
+	}
+	return sources, nil
 }
 
 // Delete deletes a named Secret.

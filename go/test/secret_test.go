@@ -120,7 +120,7 @@ func TestSecretFromMapIsLazy(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxCreatePassesFromMapSecretAsEphemeralSecrets(t *testing.T) {
+func TestSandboxCreatePassesFromMapSecretAsSecretSources(t *testing.T) {
 	// Unset MODAL_IMAGE_BUILDER_VERSION so the build resolves it via EnvironmentGetOrCreate.
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
@@ -130,10 +130,11 @@ func TestSandboxCreatePassesFromMapSecretAsEphemeralSecrets(t *testing.T) {
 	registerSandboxCreateDeps(mock)
 
 	// No SecretGetOrCreate handler is registered: Create routes to V2, which
-	// folds FromMap Secrets into ephemeral_secrets instead of hydrating them.
+	// inlines FromMap Secrets into secret_sources instead of hydrating them.
 	grpcmock.HandleUnary(mock, "SandboxCreateV2",
 		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
-			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
+			g.Expect(req.GetEphemeralSecrets()).To(gomega.BeNil())
+			g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{map[string]string{"FOO": "bar"}}))
 			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.BeEmpty())
 			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},
@@ -156,7 +157,7 @@ func TestSandboxCreatePassesFromMapSecretAsEphemeralSecrets(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxExperimentalCreatePassesEnvAsEphemeralSecrets(t *testing.T) {
+func TestSandboxExperimentalCreatePassesEnvAsSecretSources(t *testing.T) {
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -165,11 +166,12 @@ func TestSandboxExperimentalCreatePassesEnvAsEphemeralSecrets(t *testing.T) {
 	registerSandboxCreateDeps(mock)
 
 	// Note: no SecretGetOrCreate handler is registered. The V2 path must pass
-	// env vars via ephemeral_secrets rather than creating a Secret for them, so
+	// env vars via secret_sources rather than creating a Secret for them, so
 	// no SecretGetOrCreate RPC should occur.
 	grpcmock.HandleUnary(mock, "SandboxCreateV2",
 		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
-			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
+			g.Expect(req.GetEphemeralSecrets()).To(gomega.BeNil())
+			g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{map[string]string{"FOO": "bar"}}))
 			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.BeEmpty())
 			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},
@@ -188,7 +190,7 @@ func TestSandboxExperimentalCreatePassesEnvAsEphemeralSecrets(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxExperimentalCreatePassesFromMapSecretAsEphemeralSecrets(t *testing.T) {
+func TestSandboxExperimentalCreatePassesFromMapSecretAsSecretSources(t *testing.T) {
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -197,12 +199,15 @@ func TestSandboxExperimentalCreatePassesFromMapSecretAsEphemeralSecrets(t *testi
 	registerSandboxCreateDeps(mock)
 
 	// No SecretGetOrCreate handler is registered. Locally-created FromMap Secrets
-	// must be folded into ephemeral_secrets in the V2 path rather than hydrated
+	// must be inlined into secret_sources in the V2 path rather than hydrated
 	// into a server-side Secret, so no SecretGetOrCreate RPC should occur.
 	grpcmock.HandleUnary(mock, "SandboxCreateV2",
 		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
-			// params.Env takes precedence over the FromMap value on key collisions.
-			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"FOO": "from-env", "BAZ": "qux"}))
+			// params.Env is applied last, so it takes precedence over the FromMap value.
+			g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{
+				map[string]string{"FOO": "from-secret", "BAZ": "qux"},
+				map[string]string{"FOO": "from-env"},
+			}))
 			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.BeEmpty())
 			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},
@@ -247,7 +252,11 @@ func TestSandboxExperimentalCreateLaterFromNameSecretOverridesFromMap(t *testing
 	)
 	grpcmock.HandleUnary(mock, "SandboxCreateV2",
 		func(req *pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
-			g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{"LOCAL_ONLY": "yes", "ENV_ONLY": "env"}))
+			g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{
+				map[string]string{"K": "local", "LOCAL_ONLY": "yes"},
+				"st-named",
+				map[string]string{"ENV_ONLY": "env"},
+			}))
 			g.Expect(req.GetDefinition().GetSecretIds()).To(gomega.Equal([]string{"st-named"}))
 			return pb.SandboxCreateV2Response_builder{SandboxId: validV2SandboxID}.Build(), nil
 		},
@@ -392,4 +401,18 @@ func TestSecretDeleteWithAllowMissingFalseThrows(t *testing.T) {
 	g.Expect(err).Should(gomega.BeAssignableToTypeOf(notFoundErr))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+// secretSourceValues returns each source as its SecretID or its inline env
+// map, in the order they are applied.
+func secretSourceValues(sources []*pb.SecretSource) []any {
+	values := make([]any, 0, len(sources))
+	for _, source := range sources {
+		if source.HasSecretId() {
+			values = append(values, source.GetSecretId())
+		} else {
+			values = append(values, source.GetEnv().GetContents())
+		}
+	}
+	return values
 }

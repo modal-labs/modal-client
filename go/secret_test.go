@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
 )
 
@@ -124,57 +125,69 @@ func TestFromMapRejectsInvalidEnvVarNames(t *testing.T) {
 	}
 }
 
-func TestSplitEnvDictAndResolvableSecrets(t *testing.T) {
-	g := gomega.NewWithT(t)
-
-	local1 := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"A": "1", "B": "2"}}}
-	local2 := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"B": "override", "C": "3"}}}
-	named := &Secret{SecretID: "st-named"}
-
-	// Local Secrets are merged in slice order (so local2's B wins); named and
-	// nil Secrets are kept in the resolvable list.
-	envDict, resolvable := splitEnvDictAndResolvableSecrets([]*Secret{local1, named, local2, nil})
-
-	g.Expect(envDict).To(gomega.Equal(map[string]string{"A": "1", "B": "override", "C": "3"}))
-	g.Expect(resolvable).To(gomega.Equal([]*Secret{named, nil}))
+// secretSourceValues returns each source as its SecretID or its inline env
+// map, in the order they are applied.
+func secretSourceValues(sources []*pb.SecretSource) []any {
+	values := make([]any, 0, len(sources))
+	for _, source := range sources {
+		if source.HasSecretId() {
+			values = append(values, source.GetSecretId())
+		} else {
+			values = append(values, source.GetEnv().GetContents())
+		}
+	}
+	return values
 }
 
-func TestSplitEnvDictAndResolvableSecretsLaterNamedSecretWins(t *testing.T) {
+func TestResolvableSecrets(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	local := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"A": "1"}}}
+	named := &Secret{SecretID: "st-named"}
+
+	// FromMap Secrets are skipped; named and nil Secrets are kept for hydration.
+	g.Expect(resolvableSecrets([]*Secret{local, named, nil})).To(gomega.Equal([]*Secret{named, nil}))
+	g.Expect(resolvableSecrets([]*Secret{local})).To(gomega.BeEmpty())
+}
+
+func TestSecretSourcesKeepOrder(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	local := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"K": "local", "LOCAL_ONLY": "yes"}}}
-	named := &Secret{SecretID: "st-named", Name: "named", keys: []string{"K", "NAMED_ONLY"}}
-
-	envDict, resolvable := splitEnvDictAndResolvableSecrets([]*Secret{local, named})
-	g.Expect(envDict).To(gomega.Equal(map[string]string{"LOCAL_ONLY": "yes"}))
-	g.Expect(resolvable).To(gomega.Equal([]*Secret{named}))
-
-	envDict, _ = splitEnvDictAndResolvableSecrets([]*Secret{named, local})
-	g.Expect(envDict).To(gomega.Equal(map[string]string{"K": "local", "LOCAL_ONLY": "yes"}))
-
+	named := &Secret{SecretID: "st-named", Name: "named"}
 	last := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"K": "last"}}}
-	envDict, _ = splitEnvDictAndResolvableSecrets([]*Secret{local, named, last})
-	g.Expect(envDict).To(gomega.Equal(map[string]string{"K": "last", "LOCAL_ONLY": "yes"}))
+
+	sources, err := secretSources([]*Secret{local, named, last}, map[string]string{"K": "env"})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(secretSourceValues(sources)).To(gomega.Equal([]any{
+		map[string]string{"K": "local", "LOCAL_ONLY": "yes"},
+		"st-named",
+		map[string]string{"K": "last"},
+		map[string]string{"K": "env"},
+	}))
+
+	sources, err = secretSources([]*Secret{named, local}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(secretSourceValues(sources)).To(gomega.Equal([]any{"st-named", map[string]string{"K": "local", "LOCAL_ONLY": "yes"}}))
 }
 
-func TestSplitEnvDictAndResolvableSecretsUnknownNamedKeys(t *testing.T) {
+func TestSecretSourcesOmitsEmpty(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	local := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"K": "local"}}}
-	named := &Secret{SecretID: "st-named"}
-
-	envDict, _ := splitEnvDictAndResolvableSecrets([]*Secret{local, named})
-	g.Expect(envDict).To(gomega.Equal(map[string]string{"K": "local"}))
+	empty := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{}}}
+	sources, err := secretSources([]*Secret{empty}, map[string]string{})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(sources).To(gomega.BeEmpty())
 }
 
-func TestSplitEnvDictAndResolvableSecretsNoLocalSecrets(t *testing.T) {
+func TestSecretSourcesRejectsNilAndUnhydrated(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	named := &Secret{SecretID: "st-named"}
-	envDict, resolvable := splitEnvDictAndResolvableSecrets([]*Secret{named})
+	_, err := secretSources([]*Secret{nil}, nil)
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("secret at index 0 must not be nil")))
 
-	g.Expect(envDict).To(gomega.BeEmpty())
-	g.Expect(resolvable).To(gomega.Equal([]*Secret{named}))
+	_, err = secretSources([]*Secret{{SecretID: "st-ok"}, {Name: "unhydrated"}}, nil)
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("secret at index 1 has not been hydrated")))
 }
 
 func TestHydrateSecretsRejectsNil(t *testing.T) {

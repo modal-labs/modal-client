@@ -98,7 +98,7 @@ func TestSandboxCreateV2RequestProto(t *testing.T) {
 	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
 		Command: []string{"sleep", "60"},
 		Timeout: 10 * time.Minute,
-	})
+	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(req.GetAppId()).To(gomega.Equal("app-123"))
 	g.Expect(req.GetDefinition().GetImageId()).To(gomega.Equal("img-456"))
@@ -112,7 +112,7 @@ func TestSandboxCreateV2RequestProto_WithTags(t *testing.T) {
 
 	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
 		Tags: map[string]string{"env": "prod", "team": "infra"},
-	})
+	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	got := map[string]string{}
@@ -128,7 +128,7 @@ func TestSandboxCreateV2RequestProto_WithProxy(t *testing.T) {
 
 	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
 		Proxy: &Proxy{ProxyID: "pr-123"},
-	})
+	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(req.GetDefinition().GetProxyId()).To(gomega.Equal("pr-123"))
 }
@@ -204,7 +204,7 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			t.Parallel()
 			g := gomega.NewWithT(t)
 
-			_, err := buildSandboxCreateV2RequestProto("app-123", "img-456", tt.params)
+			_, err := buildSandboxCreateV2RequestProto("app-123", "img-456", tt.params, nil)
 			g.Expect(err).Should(gomega.HaveOccurred())
 			g.Expect(err.Error()).To(gomega.ContainSubstring(tt.wantErr))
 		})
@@ -217,7 +217,7 @@ func TestSandboxCreateV2RequestProto_CustomDomain(t *testing.T) {
 
 	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
 		CustomDomain: "sandboxes.example.com",
-	})
+	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(req.GetDefinition().GetCustomDomain()).To(gomega.Equal("sandboxes.example.com"))
 }
@@ -229,7 +229,7 @@ func TestSandboxCreateV2RequestProto_VolumesAndCloudBucketMounts(t *testing.T) {
 	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
 		Volumes:           map[string]*Volume{"/mnt/vol": {VolumeID: "vo-123"}},
 		CloudBucketMounts: map[string]*CloudBucketMount{"/mnt/s3": {BucketName: "my-bucket"}},
-	})
+	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	volumeMounts := req.GetDefinition().GetVolumeMounts()
@@ -251,7 +251,7 @@ func TestSandboxCreateV2RequestProto_OidcIdentityToken(t *testing.T) {
 	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
 		IncludeOidcIdentityToken: true,
 		CloudBucketMounts:        map[string]*CloudBucketMount{"/mnt/s3": {BucketName: "my-bucket", OidcAuthRoleArn: &role}},
-	})
+	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(req.GetDefinition().GetIncludeOidcIdentityToken()).To(gomega.BeTrue())
 
@@ -700,6 +700,7 @@ func TestTaskExecStartRequestProto_DefaultValues(t *testing.T) {
 	g.Expect(req.HasTimeoutSecs()).To(gomega.BeFalse())
 	g.Expect(req.GetSecretIds()).To(gomega.BeEmpty())
 	g.Expect(req.GetEnv()).To(gomega.BeEmpty())
+	g.Expect(req.GetSecretSources()).To(gomega.BeEmpty())
 	g.Expect(req.GetPtyInfo()).To(gomega.BeNil())
 	g.Expect(req.GetStdoutConfig()).To(gomega.Equal(pb.TaskExecStdoutConfig_TASK_EXEC_STDOUT_CONFIG_PIPE))
 	g.Expect(req.GetStderrConfig()).To(gomega.Equal(pb.TaskExecStderrConfig_TASK_EXEC_STDERR_CONFIG_PIPE))
@@ -788,7 +789,28 @@ func TestTaskExecStartRequestProto_WithEnv(t *testing.T) {
 	}, "")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
-	g.Expect(req.GetEnv()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
+	g.Expect(req.GetEnv()).To(gomega.BeEmpty())
+	g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{map[string]string{"FOO": "bar"}}))
+}
+
+func TestTaskExecStartRequestProto_SecretSourcesKeepOrder(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	local := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"K": "local", "LOCAL_ONLY": "yes"}}}
+	named := &Secret{SecretID: "st-named"}
+	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"env"}, SandboxExecParams{
+		Secrets: []*Secret{local, named},
+		Env:     map[string]string{"K": "env"},
+	}, "")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	g.Expect(req.GetSecretIds()).To(gomega.BeEmpty())
+	g.Expect(req.GetEnv()).To(gomega.BeEmpty())
+	g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{
+		map[string]string{"K": "local", "LOCAL_ONLY": "yes"},
+		"st-named",
+		map[string]string{"K": "env"},
+	}))
 }
 
 func TestTaskExecStartRequestProto_InvalidTimeoutNegative(t *testing.T) {
@@ -969,7 +991,7 @@ func TestSandboxCreateRequestProto_Runtime(t *testing.T) {
 			g.Expect(err).ShouldNot(gomega.HaveOccurred())
 			g.Expect(req.GetDefinition().GetRuntime()).To(gomega.Equal(want))
 
-			v2Req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{Runtime: runtime})
+			v2Req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{Runtime: runtime}, nil)
 			g.Expect(err).ShouldNot(gomega.HaveOccurred())
 			g.Expect(v2Req.GetDefinition().GetRuntime()).To(gomega.Equal(want))
 		})
@@ -2380,10 +2402,13 @@ func TestSidecarCreateBuildsControlPlaneRequest(t *testing.T) {
 	g.Expect(req.GetSandboxId()).To(gomega.Equal(testV2SandboxID))
 	g.Expect(req.GetContainerName()).To(gomega.Equal("worker"))
 
-	// Env-dict Secrets and Env travel as ephemeral secrets rather than in the
-	// definition, with Env winning on key collisions.
-	g.Expect(req.GetEphemeralSecrets().GetContents()).To(gomega.Equal(map[string]string{
-		"API_KEY": "override", "FROM_MAP": "yes",
+	// Secrets and Env travel as ordered secret sources rather than in the
+	// definition, with Env applied last.
+	g.Expect(req.GetEphemeralSecrets()).To(gomega.BeNil())
+	g.Expect(secretSourceValues(req.GetSecretSources())).To(gomega.Equal([]any{
+		map[string]string{"API_KEY": "local", "FROM_MAP": "yes"},
+		"st-named",
+		map[string]string{"API_KEY": "override"},
 	}))
 
 	definition := req.GetDefinition()
@@ -2493,6 +2518,7 @@ func TestSidecarCreateOmitsEmptyOptionalFields(t *testing.T) {
 
 	definition := mock.gotReq.GetDefinition()
 	g.Expect(mock.gotReq.GetEphemeralSecrets()).To(gomega.BeNil())
+	g.Expect(mock.gotReq.GetSecretSources()).To(gomega.BeEmpty())
 	g.Expect(definition.HasWorkdir()).To(gomega.BeFalse())
 	g.Expect(definition.GetPtyInfo()).To(gomega.BeNil())
 	g.Expect(definition.GetVolumeMounts()).To(gomega.BeEmpty())
