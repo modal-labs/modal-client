@@ -146,6 +146,9 @@ module = [
     "modal/_vendor/cloudpickle",
     "modal/_vendor/tblib",
     "modal/_vendor/a2wsgi_wsgi",
+    # TODO: fix the type errors in the Sandbox implementation. It was previously only
+    # type-checked through its generated stub (see the pyright exclude below).
+    "modal.sandbox._sandbox",
 ]
 ignore_errors = true
 
@@ -248,5 +251,5 @@ exclude = [
     "modal/mount.pyi",
     "modal/parallel_map.py",  # 18 errors, needs some thought around implementation / interface types
     "modal/sandbox/_sandbox.py",  # 31 errors together with stub
-    "modal/sandbox/_sandbox.pyi",
+    "modal/sandbox/sandbox.pyi",
 ]

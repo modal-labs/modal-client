@@ -34,7 +34,7 @@ from .._outbound_policy import _OutboundPolicy, _validate_compatible_network_acc
 from .._output.pty import get_pty_info
 from .._resolver import Resolver
 from .._resources import convert_fn_config_to_resources_config
-from .._utils.async_utils import TaskContext, synchronize_api, synchronizer
+from .._utils.async_utils import TaskContext
 from .._utils.deprecation import deprecation_warning
 from .._utils.grpc_utils import Retry, RetryTimeoutError
 from .._utils.mount_utils import (
@@ -307,11 +307,11 @@ class DefaultSandboxNameOverride(str):
     """
 
     def __repr__(self) -> str:
-        # NOTE: this must match the instance var name below in order for type stubs to work 😬
-        return "_DEFAULT_SANDBOX_NAME_OVERRIDE"
+        # NOTE: this must match the qualified instance var name below in order for type stubs to work 😬
+        return "modal.sandbox._sandbox._DEFAULT_SANDBOX_NAME_OVERRIDE"
 
 
-_DEFAULT_SANDBOX_NAME_OVERRIDE = DefaultSandboxNameOverride()
+_DEFAULT_SANDBOX_NAME_OVERRIDE: DefaultSandboxNameOverride = DefaultSandboxNameOverride()
 
 
 @dataclass(frozen=True)
@@ -3328,7 +3328,6 @@ class _SidecarManager:
         ]
 
 
-@synchronizer.create_blocking
 async def _container_exec(
     pty: bool,
     container_id: str = "",
@@ -3386,8 +3385,3 @@ async def _container_exec(
             stdout=StreamType.STDOUT,
             stderr=StreamType.STDOUT,
         ).wait()
-
-
-SidecarContainer = synchronize_api(_SidecarContainer)
-SidecarManager = synchronize_api(_SidecarManager)
-Sandbox = synchronize_api(_Sandbox)
