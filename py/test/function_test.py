@@ -897,10 +897,17 @@ def test_function_disk_request(client):
     app.function(ephemeral_disk=1_000_000)(dummy)
 
 
-def test_scaledown_window_must_be_positive():
+@pytest.mark.parametrize("scaledown_window", [0, 1])
+def test_scaledown_window_below_minimum(scaledown_window):
     app = App(include_source=False)
-    with pytest.raises(InvalidError, match="must be > 0"):
-        app.function(scaledown_window=0)(dummy)
+    with pytest.raises(InvalidError, match="must be between 2 and 3600"):
+        app.function(scaledown_window=scaledown_window)(dummy)
+
+
+def test_scaledown_window_above_maximum():
+    app = App(include_source=False)
+    with pytest.raises(InvalidError, match="must be between 2 and 3600"):
+        app.function(scaledown_window=3601)(dummy)
 
 
 def test_scaleup_window_accepted_as_experimental_option():

@@ -819,8 +819,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(
                 f"`min_containers` ({min_containers}) cannot be greater than `max_containers` ({max_containers})"
             )
-        if scaledown_window is not None and scaledown_window <= 0:
-            raise InvalidError("`scaledown_window` must be > 0")
+        if scaledown_window is not None and not (2 <= scaledown_window <= 3600):
+            raise InvalidError("`scaledown_window` must be between 2 and 3600 (inclusive)")
 
         autoscaler_settings = api_pb2.AutoscalerSettings(
             min_containers=min_containers,
