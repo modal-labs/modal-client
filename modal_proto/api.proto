@@ -3428,6 +3428,120 @@ message ObjectDependency {
   string object_id = 1;
 }
 
+// Route-based policy for outbound network traffic. A sandbox applies it to
+// its main container.
+//
+// Routes are evaluated in order and the first match decides what happens to
+// a connection or packet. The last route must be the policy's only
+// `any` route, which decides what happens to traffic no other route
+// matches. Traffic a route matches without a redirect goes to its original
+// destination.
+message OutboundPolicy {
+  enum Transport {
+    // The route type's default, described on each route's transport field.
+    TRANSPORT_UNSPECIFIED = 0;
+    TRANSPORT_ANY = 1;
+    TRANSPORT_TCP = 2;
+    TRANSPORT_UDP = 3;
+  }
+
+  // An inclusive range of ports. A single port has start == end.
+  message PortRange {
+    uint32 start = 1;
+    uint32 end = 2;
+  }
+
+  // Traffic to these CIDRs.
+  message IPRoute {
+    // Unspecified means any transport.
+    Transport transport = 1;
+    // Empty means every port.
+    repeated PortRange ports = 2;
+    repeated string cidrs = 3;
+
+    Redirect redirect = 20;
+  }
+
+  // Connections that carry TLS from the first byte to these domains. Never
+  // decrypted.
+  message TLSRoute {
+    // Unspecified means TCP.
+    Transport transport = 1;
+    // Empty means port 443.
+    repeated PortRange ports = 2;
+    // Supports `*.` wildcard prefixes and a bare `*`.
+    repeated string domains = 3;
+
+    Redirect redirect = 20;
+  }
+
+  // HTTPS connections to these domains. Always decrypted, which requires TLS
+  // decryption to be allowed.
+  message HTTPSRoute {
+    // Unspecified means TCP.
+    Transport transport = 1;
+    // Empty means port 443.
+    repeated PortRange ports = 2;
+    // Supports `*.` wildcard prefixes and a bare `*`.
+    repeated string domains = 3;
+
+    repeated HeaderReplacement header_replacements = 10;
+
+    Redirect redirect = 20;
+  }
+
+  // Everything earlier routes didn't match.
+  message AnyRoute {
+    Redirect redirect = 20;
+  }
+
+  message HeaderReplacement {
+    // Secret whose keys the header value templates may reference. Empty for
+    // static values.
+    string secret_id = 1;
+    // Header name -> value template. A $-prefixed key name in the secret is
+    // replaced with the secret value; `$$` is a literal `$`.
+    map<string, string> headers = 2;
+  }
+
+  message Redirect {
+    message Block {}
+
+    message ViaProxy {
+      string proxy_id = 1;
+    }
+
+    message ViaSidecar {
+      string sidecar_name = 1;
+    }
+
+    oneof redirect {
+      Block block = 1;
+      ViaProxy via_proxy = 2;
+      ViaSidecar via_sidecar = 3;
+    }
+  }
+
+  message Route {
+    oneof route {
+      IPRoute ip = 1;
+      TLSRoute tls = 2;
+      HTTPSRoute https = 3;
+      AnyRoute any = 4;
+    }
+  }
+
+  message TLSDecryption {
+    // Generate a certificate authority for the sandbox and attempt to make the
+    // sandbox trust it, so that routes that need to can decrypt its TLS traffic.
+    // Decrypts nothing on its own. Required by HTTPS routes. Fixed at creation.
+    bool allowed = 1;
+  }
+
+  TLSDecryption tls_decryption = 1;
+  repeated Route routes = 2;
+}
+
 message PTYInfo {
   bool enabled = 1;  // Soon deprecated
   uint32 winsz_rows = 2;
@@ -3874,6 +3988,11 @@ message Sandbox {
   // certificate federates into a cloud account (AWS IAM Roles Anywhere).
   // Sidecars are not served one.
   bool include_x509_svid = 43;
+
+  // Route-based outbound policy. Mutually exclusive with
+  // experimental_outbound_policy (superseded, experimental API) and with any
+  // network_access other than OPEN.
+  optional OutboundPolicy outbound_policy = 44;
 }
 
 message SandboxContainerCreateV2Request {
