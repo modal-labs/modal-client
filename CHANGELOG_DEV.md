@@ -10,6 +10,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Improved the performance of Sandbox filesystem writes (`write_bytes`, `write_text`, `copy_from_local`).
 
 - Added an `include_terminated` parameter to `Sandbox.from_name()`. If set to `True` and no Sandbox with the name is currently running, the most recent terminated Sandbox will be returned instead.
+- Added `--since` and `--until` to `modal function calls` and `modal server requests` to fetch all records in a time range.
 
 ## JS
 

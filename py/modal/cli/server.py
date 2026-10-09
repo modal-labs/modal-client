@@ -5,7 +5,7 @@ import dataclasses
 import json as json_lib
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator, cast
+from typing import AsyncGenerator, Sequence, cast
 
 import click
 from click import UsageError
@@ -13,20 +13,21 @@ from rich.table import Column, Table
 from rich.text import Text
 
 from modal._environments import ensure_env
+from modal._logs import _fetch_time_range, _seconds_to_timestamp, _timestamp_to_seconds
 from modal._object import _get_environment_name
 from modal._server import _Server
 from modal._utils.async_utils import async_map_ordered, synchronizer
 from modal._utils.time_utils import parse_duration
 from modal.cli.utils import humanize_filesize
 from modal.client import _Client
-from modal.exception import NotFoundError
+from modal.exception import LogsFetchError, NotFoundError
 from modal.output import OutputManager
 from modal.secret import _Secret
 from modal.types import ServerAutoscalerSettings
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
-from ._logs import _parse_time_arg, _run_logs_command, _validate_logs_args
+from ._logs import _parse_fetch_range, _parse_time_arg, _run_logs_command, _validate_logs_args
 from ._stats import (
     _DEFAULT_STATS_WINDOW,
     STATS_HEADING_STYLE,
@@ -55,6 +56,7 @@ server_cli = ModalGroup(name="server", help="Inspect Modal Servers.")
 
 _DEFAULT_REQUEST_TAIL = 10
 _MAX_REQUEST_TAIL = 1000
+_MAX_REQUEST_FETCH = 1_000_000
 
 
 def _server_request_status_cell(status: int, no_color: bool = False) -> Text:
@@ -900,26 +902,36 @@ async def stats(
     "-n",
     "--tail",
     type=click.IntRange(min=1, max=_MAX_REQUEST_TAIL),
-    default=_DEFAULT_REQUEST_TAIL,
-    show_default=True,
-    help="Show up to the last N Server requests.",
+    default=None,
+    help="Show up to the last N Server requests. Defaults to 10. Cannot be combined with --since or --until.",
 )
+@click.option("--since", help="Fetch requests at or after this time (e.g. '2h' or an ISO 8601 datetime).")
+@click.option("--until", help="Fetch requests before this time (e.g. '1h' or an ISO 8601 datetime).")
 @click.option("--json", "json_output", is_flag=True, default=False, help="Output requests as JSON.")
 @click.option("--no-color", "no_color", is_flag=True, default=False, help="Disable colors in the output.")
 @env_option
 @synchronizer.create_blocking
 async def requests(
     server_identifier: str,
-    tail: int = _DEFAULT_REQUEST_TAIL,
+    tail: int | None = None,
     json_output: bool = False,
     no_color: bool = False,
     *,
     env: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
 ) -> None:
     """Show recent requests handled by a Modal Server.
 
     SERVER may be a Function ID or a deployed Server name in the form
     ``APP_NAME/SERVER_NAME``.
+
+    Use ``--since`` and/or ``--until`` to fetch all inputs in the time range,
+    oldest first. ``--until`` defaults to now. If ``--since`` is omitted, the preceeding hour
+    is fetched. If timezones are omitted, the time is interpreted as local time.
+
+    ``--tail`` cannot be combined with either date option.
+    By default, ``--tail`` returns the latest 10 inputs, newest first.
 
     Examples:
 
@@ -931,12 +943,21 @@ async def requests(
     modal server requests my-app/my-server --tail 500
     ```
 
+    ```
+    modal server requests my-app/my-server --since 2h --until 1h
+    ```
+
     Disable color in the output:
 
     ```
     modal server requests my-app/my-server --no-color
     ```
     """
+    fetch_range = None
+    if since is not None or until is not None:
+        if tail is not None:
+            raise UsageError("--tail cannot be combined with --since or --until.")
+        fetch_range = _parse_fetch_range(since, until)
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
     function_id, _, _ = await _resolve_function_id(
@@ -946,11 +967,63 @@ async def requests(
         object_type="Server",
         command="requests",
     )
-    response = await client._stub.ServerRequestFetch(
-        api_pb2.ServerRequestFetchRequest(
-            function_id=function_id, tail=api_pb2.ServerRequestFetchRequest.Tail(count=tail)
+    if fetch_range is None:
+        response = await client._stub.ServerRequestFetch(
+            api_pb2.ServerRequestFetchRequest(
+                function_id=function_id,
+                tail=api_pb2.ServerRequestFetchRequest.Tail(count=tail if tail is not None else _DEFAULT_REQUEST_TAIL),
+            )
         )
-    )
+        request_infos: Sequence[api_pb2.ServerRequestInfo] = response.requests
+    else:
+        since_dt, until_dt = fetch_range
+
+        async def count_ranges(start: float, end: float, bucket_secs: int) -> list[tuple[float, float, int]]:
+            counted = await client._stub.ServerCountRequests(
+                api_pb2.ServerCountRequestsRequest(
+                    function_id=function_id,
+                    since=_seconds_to_timestamp(start),
+                    until=_seconds_to_timestamp(end),
+                    bucket_secs=bucket_secs,
+                )
+            )
+            if sum(bucket.count for bucket in counted.buckets) > _MAX_REQUEST_FETCH:
+                raise UsageError(
+                    f"Cannot fetch more than {_MAX_REQUEST_FETCH:,} requests. Consider narrowing the range."
+                )
+            return [
+                (
+                    _timestamp_to_seconds(b.bucket_start_at),
+                    _timestamp_to_seconds(b.bucket_start_at) + bucket_secs,
+                    b.count,
+                )
+                for b in counted.buckets
+            ]
+
+        async def fetch_interval(start: float, end: float, limit: int) -> Sequence[api_pb2.ServerRequestInfo]:
+            fetched = await client._stub.ServerRequestFetch(
+                api_pb2.ServerRequestFetchRequest(
+                    function_id=function_id,
+                    range=api_pb2.ServerRequestFetchRequest.Range(
+                        since=_seconds_to_timestamp(start), until=_seconds_to_timestamp(end), limit=limit
+                    ),
+                )
+            )
+            return fetched.requests
+
+        try:
+            request_infos = [
+                item
+                async for item in _fetch_time_range(
+                    since_dt,
+                    until_dt,
+                    count_ranges,
+                    fetch_interval,
+                    max_concurrent_counts=10,
+                )
+            ]
+        except LogsFetchError:
+            raise UsageError("Too many requests to fetch in time range. Consider narrowing the range.")
 
     if json_output:
         OutputManager.get().print_json(
@@ -963,7 +1036,7 @@ async def requests(
                         "duration_seconds": request.duration_seconds,
                         "status": request.status,
                     }
-                    for request in response.requests
+                    for request in request_infos
                 ]
             )
         )
@@ -971,7 +1044,7 @@ async def requests(
 
     rows: list[list[Text | str]] = []
     previous_request_date = None
-    for request in response.requests:
+    for request in request_infos:
         timestamp, previous_request_date = grouped_utc_timestamp(request.timestamp, previous_request_date)
         rows.append(
             [
@@ -984,7 +1057,13 @@ async def requests(
         )
     output = OutputManager.get()
     output.print("")
-    output.print(Text(f"Server requests for {function_id}"))
+    title = f"Server requests for {function_id}"
+    if fetch_range is not None:
+        since_dt, until_dt = fetch_range
+        since_label = since_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        until_label = until_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        title += f" · fetch [{since_label}, {until_label}) UTC"
+    output.print(Text(title))
     output.print(
         Text(
             f"Displaying {len(rows):,} {'row' if len(rows) == 1 else 'rows'}",

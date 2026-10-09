@@ -627,6 +627,93 @@ async def test_fetch_logs_trims_leading_trailing_zeros():
 
 
 @pytest.mark.asyncio
+async def test_fetch_time_range_bounds_concurrency_and_orders_results():
+    from modal._logs import _fetch_time_range
+
+    since = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    active = 0
+    max_active = 0
+    started = [asyncio.Event() for _ in range(12)]
+    release = [asyncio.Event() for _ in range(12)]
+    finished = [asyncio.Event() for _ in range(12)]
+    completion_order = []
+
+    async def count(start, end, bucket_secs):
+        return [(start + i * 2, start + (i + 1) * 2, 2000) for i in range(12)]
+
+    async def fetch(start, end, limit):
+        nonlocal active, max_active
+        i = int((start - since.timestamp()) / 2)
+        active += 1
+        max_active = max(max_active, active)
+        started[i].set()
+        try:
+            await release[i].wait()
+            completion_order.append(i)
+            return [i]
+        finally:
+            active -= 1
+            finished[i].set()
+
+    async def collect():
+        return [item async for item in _fetch_time_range(since, since + timedelta(seconds=24), count, fetch)]
+
+    collector = asyncio.create_task(collect())
+    expected_completion_order = [9, 10, 11, *reversed(range(9))]
+    try:
+        await asyncio.gather(*(event.wait() for event in started[:10]))
+        assert active == 10
+        assert not started[10].is_set()
+        assert not started[11].is_set()
+        # Free a slot for each queued fetch, then finish the earlier intervals last.
+        for i in expected_completion_order:
+            await started[i].wait()
+            release[i].set()
+            await finished[i].wait()
+        results = await collector
+    finally:
+        collector.cancel()
+        await asyncio.gather(collector, return_exceptions=True)
+
+    assert completion_order == expected_completion_order
+    assert results == list(range(12))
+    assert max_active == 10
+    assert active == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_time_range_cancels_pending_fetches_on_close():
+    from modal._logs import _fetch_time_range
+
+    since = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    started = asyncio.Event()
+    active = 0
+
+    async def count(start, end, bucket_secs):
+        return [(start + i * 2, start + (i + 1) * 2, 2000) for i in range(4)]
+
+    async def fetch(start, end, limit):
+        nonlocal active
+        if start == since.timestamp():
+            await started.wait()
+            return [0]
+        active += 1
+        if active == 3:
+            started.set()
+        try:
+            await asyncio.Event().wait()
+            return []
+        finally:
+            active -= 1
+
+    generator = _fetch_time_range(since, since + timedelta(seconds=8), count, fetch)
+    assert await generator.__anext__() == 0
+    assert active == 3
+    await generator.aclose()
+    assert active == 0
+
+
+@pytest.mark.asyncio
 async def test_tail_logs_single_rpc():
     """tail_logs should issue a single AppFetchLogs when the first lookback returns enough rows."""
     from modal._logs import tail_logs

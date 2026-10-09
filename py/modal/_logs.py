@@ -3,15 +3,18 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence, TypeVar
 
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from modal._utils.async_utils import TaskContext
 from modal.exception import LogsFetchError
 from modal_proto import api_pb2
+
+_T = TypeVar("_T")
+_CountRanges = Callable[[float, float, int], Awaitable[list[tuple[float, float, int]]]]
 
 if TYPE_CHECKING:
     from modal.client import _Client
@@ -194,6 +197,32 @@ def _next_smaller_bucket_secs(current_bucket_secs: int) -> int | None:
     return None
 
 
+async def _count_log_ranges(
+    client: _Client,
+    app_id: str,
+    since: float,
+    until: float,
+    bucket_secs: int,
+    filters: LogsFilters,
+) -> list[tuple[float, float, int]]:
+    count_req = api_pb2.AppCountLogsRequest(
+        app_id=app_id,
+        since=_seconds_to_timestamp(since),
+        until=_seconds_to_timestamp(until),
+        bucket_secs=bucket_secs,
+        source=filters.source,
+        function_id=filters.function_id,
+        parametrized_function_id=filters.parametrized_function_id,
+        function_call_id=filters.function_call_id,
+        task_id=filters.task_id,
+        sandbox_id=filters.sandbox_id,
+        search_text=filters.search_text,
+    )
+    count_resp: api_pb2.AppCountLogsResponse = await client._stub.AppCountLogs(count_req)
+
+    return _buckets_to_ranges(list(count_resp.buckets), bucket_secs)
+
+
 async def _refine_dense_ranges(
     client: _Client,
     app_id: str,
@@ -201,6 +230,19 @@ async def _refine_dense_ranges(
     filters: LogsFilters,
     max_ranges: int,
     max_iterations: int,
+) -> list[tuple[float, float, int]]:
+    async def count_ranges(start: float, end: float, bucket_secs: int) -> list[tuple[float, float, int]]:
+        return await _count_log_ranges(client, app_id, start, end, bucket_secs, filters)
+
+    return await _refine_ranges(ranges, count_ranges, max_ranges, max_iterations)
+
+
+async def _refine_ranges(
+    ranges: list[tuple[float, float, int]],
+    count_ranges: _CountRanges,
+    max_ranges: int,
+    max_iterations: int,
+    max_concurrent_counts: int = _MAX_CONCURRENT_COUNTS,
 ) -> list[tuple[float, float, int]]:
     """Refine ranges exceeding _FETCH_LIMIT by subdividing with smaller buckets.
 
@@ -239,25 +281,11 @@ async def _refine_dense_ranges(
             break
 
         # Fire off all re-count RPCs in parallel with bounded concurrency
-        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_COUNTS)
+        semaphore = asyncio.Semaphore(max_concurrent_counts)
 
         async def _recount(start: float, end: float, smaller_secs: int) -> list[tuple[float, float, int]]:
             async with semaphore:
-                sub_req = api_pb2.AppCountLogsRequest(
-                    app_id=app_id,
-                    since=_seconds_to_timestamp(start),
-                    until=_seconds_to_timestamp(end),
-                    bucket_secs=smaller_secs,
-                    source=filters.source,
-                    function_id=filters.function_id,
-                    parametrized_function_id=filters.parametrized_function_id,
-                    function_call_id=filters.function_call_id,
-                    task_id=filters.task_id,
-                    sandbox_id=filters.sandbox_id,
-                    search_text=filters.search_text,
-                )
-                sub_resp = await client._stub.AppCountLogs(sub_req)
-                sub_ranges = _buckets_to_ranges(list(sub_resp.buckets), smaller_secs)
+                sub_ranges = await count_ranges(start, end, smaller_secs)
                 # Clamp the edge sub-ranges to the parent boundaries. Bucket
                 # alignment can make the first bucket begin before the parent
                 # (e.g. parent (6,12) with 4s buckets produces (4,8)) or make
@@ -418,26 +446,34 @@ async def fetch_logs(
 
     if until - since > _MAX_FETCH_RANGE:
         raise LogsFetchError(f"Time range cannot exceed {_MAX_FETCH_RANGE.days} days.")
-    # Phase 1: Count logs per bucket
-    bucket_secs = _pick_bucket_secs(since, until)
-    count_req = api_pb2.AppCountLogsRequest(
-        app_id=app_id,
-        since=_datetime_to_timestamp(since),
-        until=_datetime_to_timestamp(until),
-        bucket_secs=bucket_secs,
-        source=filters.source,
-        function_id=filters.function_id,
-        parametrized_function_id=filters.parametrized_function_id,
-        function_call_id=filters.function_call_id,
-        task_id=filters.task_id,
-        sandbox_id=filters.sandbox_id,
-        search_text=filters.search_text,
-    )
-    count_resp: api_pb2.AppCountLogsResponse = await client._stub.AppCountLogs(count_req)
 
-    ranges = _buckets_to_ranges(list(count_resp.buckets), bucket_secs)
-    total_logs = sum(count for _, _, count in ranges)
-    if total_logs == 0:
+    async def count_ranges(start: float, end: float, bucket_secs: int) -> list[tuple[float, float, int]]:
+        return await _count_log_ranges(client, app_id, start, end, bucket_secs, filters)
+
+    async def fetch_interval(start: float, end: float, limit: int) -> list[api_pb2.TaskLogsBatch]:
+        return await _fetch_interval(client, app_id, start, end, limit, filters)
+
+    async for batch in _fetch_time_range(
+        since,
+        until,
+        count_ranges,
+        fetch_interval,
+    ):
+        yield batch
+
+
+async def _fetch_time_range(
+    since: datetime,
+    until: datetime,
+    count_ranges: _CountRanges,
+    fetch_interval: Callable[[float, float, int], Awaitable[Sequence[_T]]],
+    *,
+    max_concurrent_counts: int = _MAX_CONCURRENT_COUNTS,
+) -> AsyncGenerator[_T]:
+    """Count, refine, and fetch time intervals with bounded concurrency and ordered results."""
+    ranges = await count_ranges(since.timestamp(), until.timestamp(), _pick_bucket_secs(since, until))
+    total_records = sum(count for _, _, count in ranges)
+    if total_records == 0:
         return
 
     # Trim leading/trailing empty buckets so they don't consume refinement
@@ -449,19 +485,17 @@ async def fetch_logs(
 
     # Phase 1b: Refine any ranges that exceed the per-fetch limit.
     # Budget: at most _MAX_FETCHES intervals, each fetching up to _FETCH_LIMIT entries.
-    ranges = await _refine_dense_ranges(
-        client,
-        app_id,
+    ranges = await _refine_ranges(
         ranges,
-        filters,
+        count_ranges,
         max_ranges=_MAX_FETCHES,
         max_iterations=_MAX_REFINE_ITERATIONS,
+        max_concurrent_counts=max_concurrent_counts,
     )
-    fetch_error_message = "Too many logs to fetch in time range. Consider narrowing the range or adding filters."
     # Check that all ranges fit within the per-fetch limit.
     over_limit = [r for r in ranges if r[2] > _FETCH_LIMIT]
     if over_limit:
-        raise LogsFetchError(fetch_error_message)
+        raise LogsFetchError("Too many logs to fetch in time range. Consider narrowing the range or adding filters.")
 
     # Phase 2: Build intervals from non-empty ranges and fetch in parallel
     since_secs = since.timestamp()
@@ -476,24 +510,17 @@ async def fetch_logs(
         return
 
     if len(intervals) > _MAX_FETCHES:
-        raise LogsFetchError(fetch_error_message)
+        raise LogsFetchError("Too many logs to fetch in time range. Consider narrowing the range or adding filters.")
 
     # Fetch all intervals concurrently (bounded by semaphore), but yield
-    # results in interval order so logs stay chronological. Awaiting each
+    # results in interval order so records stay chronological. Awaiting each
     # task in sequence lets us stream batches to the caller as soon as all
     # preceding intervals have completed.
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
 
-    async def _bounded_fetch(since_s: float, until_s: float) -> list[api_pb2.TaskLogsBatch]:
+    async def _bounded_fetch(since_s: float, until_s: float) -> Sequence[_T]:
         async with semaphore:
-            return await _fetch_interval(
-                client,
-                app_id,
-                since_s,
-                until_s,
-                _FETCH_LIMIT,
-                filters,
-            )
+            return await fetch_interval(since_s, until_s, _FETCH_LIMIT)
 
     tasks = [asyncio.create_task(_bounded_fetch(s, u)) for s, u in intervals]
 
@@ -504,3 +531,4 @@ async def fetch_logs(
     finally:
         for task in tasks:
             task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

@@ -4786,6 +4786,210 @@ def test_server_requests_cli(servicer, set_env_client, monkeypatch):
     assert "─" in result.stdout
 
 
+@pytest.mark.parametrize("is_server", [False, True])
+@pytest.mark.parametrize("mode", ["range", "until", "empty", "dense"])
+def test_invocation_cli_fetch_range(servicer, set_env_client, is_server, mode):
+    base = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    command = ["server", "requests"] if is_server else ["function", "calls"]
+    count_rpc = "ServerCountRequests" if is_server else "FunctionCallCount"
+    fetch_rpc = "ServerRequestFetch" if is_server else "FunctionCallFetch"
+    count_type = api_pb2.ServerCountRequestsResponse if is_server else api_pb2.FunctionCallCountResponse
+    fetch_type = api_pb2.ServerRequestFetchResponse if is_server else api_pb2.FunctionCallFetchResponse
+    command += ["my-app/my-object", "--json", "--until", (base + timedelta(seconds=7)).isoformat()]
+    if mode != "until":
+        command += ["--since", (base + timedelta(seconds=1)).isoformat()]
+    if not is_server:
+        command += ["--all-variants"]
+
+    counted = count_type()
+    for offset in (0, 2, 4, 6):
+        bucket = counted.buckets.add(count=0 if mode == "empty" else (20_001 if mode == "dense" else 2000))
+        bucket.bucket_start_at.FromDatetime(base + timedelta(seconds=offset))
+
+    async def fetch(self, stream):
+        request = await stream.recv_message()
+        start = request.range.since.ToDatetime(tzinfo=timezone.utc)
+        # Complete later intervals first to verify output order.
+        await asyncio.sleep(0.001 * (7 - (start - base).total_seconds()))
+        response = fetch_type()
+        for i in range(3):
+            if is_server:
+                request_info = cast(api_pb2.ServerRequestFetchResponse, response).requests.add(
+                    route=f"/{start.second}-{i}", status=200
+                )
+                request_info.timestamp.FromDatetime(start + timedelta(microseconds=i))
+            else:
+                call = cast(api_pb2.FunctionCallFetchResponse, response).function_call_inputs.add(
+                    function_call_id=f"fc-{start.second}-{i}"
+                )
+                call.enqueued_at.FromDatetime(start + timedelta(microseconds=i))
+        await stream.send_message(response)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(function_id="fu-test", function=api_pb2.FunctionData(is_server=is_server)),
+        )
+        ctx.add_response(count_rpc, counted)
+        ctx.set_responder(fetch_rpc, fetch)
+        result = run_cli_command(command, expected_exit_code=2 if mode == "dense" else 0)
+
+    count_request = ctx.pop_request(count_rpc)
+    assert count_request.function_id == "fu-test"
+    assert count_request.until.ToDatetime(tzinfo=timezone.utc) == base + timedelta(seconds=7)
+    expected_since = (
+        base + timedelta(seconds=7) - timedelta(hours=1) if mode == "until" else base + timedelta(seconds=1)
+    )
+    assert count_request.since.ToDatetime(tzinfo=timezone.utc) == expected_since
+    if not is_server:
+        assert count_request.all_variants
+    fetch_requests = ctx.get_requests(fetch_rpc)
+    if mode in ("empty", "dense"):
+        assert fetch_requests == []
+        if mode == "empty":
+            assert json.loads(result.stdout) == []
+        else:
+            assert "Too many inputs" in result.stderr or "Too many requests" in result.stderr
+        return
+    assert fetch_requests
+    for request in fetch_requests:
+        assert request.WhichOneof("query_oneof") == "range"
+        assert request.range.limit == 20_000
+        assert request.range.since.ToDatetime(tzinfo=timezone.utc) >= expected_since
+        assert request.range.until.ToDatetime(tzinfo=timezone.utc) <= base + timedelta(seconds=7)
+        if not is_server:
+            assert request.all_variants
+    key = "route" if is_server else "function_call_id"
+    identifiers = [item[key] for item in json.loads(result.stdout)]
+    prefix = "/" if is_server else "fc-"
+    assert len(fetch_requests) == 4
+    offsets = (0, 2, 4, 6) if mode == "until" else (1, 2, 4, 6)
+    assert identifiers == [f"{prefix}{offset}-{i}" for offset in offsets for i in range(3)]
+
+
+@pytest.mark.parametrize("command", [["function", "calls", "fu-test"], ["server", "requests", "fu-test"]])
+@pytest.mark.parametrize(
+    "args,message",
+    [
+        (["--tail", "10", "--since", "30m"], "--tail cannot be combined with --since or --until"),
+        (["--tail", "10", "--until", "1h"], "--tail cannot be combined with --since or --until"),
+        (
+            ["--tail", "10", "--since", "2h", "--until", "1h"],
+            "--tail cannot be combined with --since or --until",
+        ),
+        (["--since", "2026-09-15T12:00:00.123456+00:00"], "--since must have whole-second precision"),
+        (["--until", "2026-09-15T12:00:00.001+00:00"], "--until must have whole-second precision"),
+        (["--since", "invalid"], "Invalid time format"),
+        (["--until", "invalid"], "Invalid time format"),
+        (["--since", "2026-09-16", "--until", "2026-09-15"], "--since must be before --until"),
+        (["--since", "2026-08-01T00:00:00+00:00", "--until", "2026-09-01T00:00:01+00:00"], "cannot exceed 7 days"),
+    ],
+)
+def test_invocation_cli_validates_range(command, args, message):
+    result = run_cli_command(command + args, expected_exit_code=2)
+    assert message in result.stderr
+
+
+@pytest.mark.parametrize("is_server", [False, True])
+def test_invocation_cli_refines_dense_ranges(servicer, set_env_client, is_server):
+    base = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    count_rpc = "ServerCountRequests" if is_server else "FunctionCallCount"
+    fetch_rpc = "ServerRequestFetch" if is_server else "FunctionCallFetch"
+    count_type = api_pb2.ServerCountRequestsResponse if is_server else api_pb2.FunctionCallCountResponse
+    fetch_type = api_pb2.ServerRequestFetchResponse if is_server else api_pb2.FunctionCallFetchResponse
+
+    async def count(self, stream):
+        request = await stream.recv_message()
+        response = count_type()
+        offsets = [0] if request.bucket_secs == 60 else [0, 30]
+        for offset in offsets:
+            bucket = response.buckets.add(count=20_001 if len(offsets) == 1 else 10_001)
+            bucket.bucket_start_at.FromDatetime(base + timedelta(seconds=offset))
+        await stream.send_message(response)
+
+    async def fetch(self, stream):
+        await stream.recv_message()
+        await stream.send_message(fetch_type())
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGetById", api_pb2.FunctionGetByIdResponse(function=api_pb2.FunctionData(is_server=is_server))
+        )
+        ctx.set_responder(count_rpc, count)
+        ctx.set_responder(fetch_rpc, fetch)
+        command = ["server", "requests"] if is_server else ["function", "calls"]
+        result = run_cli_command(
+            command
+            + ["fu-test", "--since", base.isoformat(), "--until", (base + timedelta(hours=1)).isoformat(), "--json"]
+        )
+    assert json.loads(result.stdout) == []
+    assert [request.bucket_secs for request in ctx.get_requests(count_rpc)] == [60, 30]
+    assert len(ctx.get_requests(fetch_rpc)) == 2
+
+
+@pytest.mark.parametrize("is_server", [False, True])
+def test_invocation_cli_relative_range(servicer, set_env_client, is_server):
+    count_rpc = "ServerCountRequests" if is_server else "FunctionCallCount"
+    response = api_pb2.ServerCountRequestsResponse() if is_server else api_pb2.FunctionCallCountResponse()
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGetById", api_pb2.FunctionGetByIdResponse(function=api_pb2.FunctionData(is_server=is_server))
+        )
+        ctx.add_response(count_rpc, response)
+        command = ["server", "requests"] if is_server else ["function", "calls"]
+        result = run_cli_command(command + ["fu-test", "--since", "2h", "--until", "1h", "--json"])
+    assert json.loads(result.stdout) == []
+    request = ctx.pop_request(count_rpc)
+    duration = request.until.ToDatetime(tzinfo=timezone.utc) - request.since.ToDatetime(tzinfo=timezone.utc)
+    assert duration.total_seconds() == 3600
+    assert request.since.nanos == request.until.nanos == 0
+
+
+@pytest.mark.parametrize("is_server", [False, True])
+@pytest.mark.parametrize("since", [None, "2026-09-15T08:30:00-04:00"])
+def test_invocation_cli_fetch_range_heading(servicer, set_env_client, monkeypatch, is_server, since):
+    monkeypatch.setenv("COLUMNS", "160")
+    count_rpc = "ServerCountRequests" if is_server else "FunctionCallCount"
+    response = api_pb2.ServerCountRequestsResponse() if is_server else api_pb2.FunctionCallCountResponse()
+    command = ["server", "requests"] if is_server else ["function", "calls"]
+    command += ["fu-test", "--until", "2026-09-15T10:00:00-04:00"]
+    if since is not None:
+        command += ["--since", since]
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGetById", api_pb2.FunctionGetByIdResponse(function=api_pb2.FunctionData(is_server=is_server))
+        )
+        ctx.add_response(count_rpc, response)
+        result = run_cli_command(command)
+    request = ctx.pop_request(count_rpc)
+    start = request.since.ToJsonString()
+    end = request.until.ToJsonString()
+    assert start == ("2026-09-15T13:00:00Z" if since is None else "2026-09-15T12:30:00Z")
+    assert end == "2026-09-15T14:00:00Z"
+    label = "Server requests" if is_server else "Function calls"
+    start_label = "2026-09-15 13:00:00" if since is None else "2026-09-15 12:30:00"
+    assert f"[{start_label}, 2026-09-15 14:00:00) UTC" in result.stdout
+
+
+@pytest.mark.parametrize("is_server", [False, True])
+def test_invocation_cli_accepts_max_range(servicer, set_env_client, is_server):
+    count_rpc = "ServerCountRequests" if is_server else "FunctionCallCount"
+    response = api_pb2.ServerCountRequestsResponse() if is_server else api_pb2.FunctionCallCountResponse()
+    command = ["server", "requests"] if is_server else ["function", "calls"]
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGetById", api_pb2.FunctionGetByIdResponse(function=api_pb2.FunctionData(is_server=is_server))
+        )
+        ctx.add_response(count_rpc, response)
+        result = run_cli_command(
+            command
+            + ["fu-test", "--since", "2026-08-01T00:00:00+00:00", "--until", "2026-08-08T00:00:00+00:00", "--json"]
+        )
+    assert json.loads(result.stdout) == []
+    request = ctx.pop_request(count_rpc)
+    assert request.until.seconds - request.since.seconds == 7 * 86400
+
+
 def test_invocation_status_styles():
     from modal.cli.function import _function_call_status_cell
     from modal.cli.server import _server_request_status_cell
@@ -5889,3 +6093,36 @@ def test_cli_does_not_import_aiohttp():
     # Runs in a subprocess because the test suite itself imports aiohttp.
     code = "import sys, modal.__main__; assert 'aiohttp' not in sys.modules"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.parametrize("count", [1_000_000, 1_000_001])
+def test_function_calls_total_input_limit(servicer, set_env_client, monkeypatch, count):
+    # Isolate the total-input limit from per-bucket refinement.
+    monkeypatch.setattr("modal._logs._FETCH_LIMIT", 2_000_000)
+    base = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    counted = api_pb2.FunctionCallCountResponse()
+    counted.buckets.add(count=count).bucket_start_at.FromDatetime(base)
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGetById", api_pb2.FunctionGetByIdResponse(function=api_pb2.FunctionData()))
+        ctx.add_response("FunctionCallCount", counted)
+        if count <= 1_000_000:
+            ctx.add_response("FunctionCallFetch", api_pb2.FunctionCallFetchResponse())
+        result = run_cli_command(
+            [
+                "function",
+                "calls",
+                "fu-test",
+                "--since",
+                base.isoformat(),
+                "--until",
+                (base + timedelta(hours=1)).isoformat(),
+                "--json",
+            ],
+            expected_exit_code=2 if count > 1_000_000 else 0,
+        )
+    if count > 1_000_000:
+        assert "Cannot fetch more than 1,000,000 inputs" in result.stderr
+        assert not ctx.get_requests("FunctionCallFetch")
+    else:
+        assert json.loads(result.stdout) == []
+        assert len(ctx.get_requests("FunctionCallFetch")) == 1

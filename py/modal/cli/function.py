@@ -3,7 +3,7 @@ import dataclasses
 import json as json_lib
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncGenerator, cast
+from typing import Any, AsyncGenerator, Sequence, cast
 
 import click
 from click import UsageError
@@ -13,11 +13,12 @@ from rich.text import Text
 from modal._environments import ensure_env
 from modal._function_variants import _FunctionOptionsInfo, _list_function_variants
 from modal._functions import _Function
+from modal._logs import _fetch_time_range, _seconds_to_timestamp, _timestamp_to_seconds
 from modal._object import _get_environment_name
 from modal._utils.async_utils import async_map_ordered, synchronizer
 from modal._utils.time_utils import parse_duration
 from modal.client import _Client
-from modal.exception import NotFoundError
+from modal.exception import LogsFetchError, NotFoundError
 from modal.output import OutputManager
 from modal.retries import Retries
 from modal.secret import _Secret
@@ -25,7 +26,7 @@ from modal.types import CloudBucketMountInfo, FunctionAutoscalerSettings, Functi
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
-from ._logs import _parse_time_arg, _run_logs_command, _validate_logs_args
+from ._logs import _parse_fetch_range, _parse_time_arg, _run_logs_command, _validate_logs_args
 from ._stats import (
     _DEFAULT_STATS_WINDOW,
     STATS_HEADING_STYLE,
@@ -60,6 +61,7 @@ _CONTAINER_METRIC_ORDER = (
     "GPU Utilization (%)",
 )
 _DEFAULT_CALL_TAIL = 10
+_MAX_CALL_FETCH_INPUTS = 1_000_000
 _MAX_CALL_TAIL = 1000
 _FAILURE_STATUSES = {
     api_pb2.FUNCTION_CALL_INPUT_STATUS_FAILURE: "Failure",
@@ -917,10 +919,11 @@ def _options_cell(options: _FunctionOptionsInfo | None) -> Text:
     "-n",
     "--tail",
     type=click.IntRange(min=1, max=_MAX_CALL_TAIL),
-    default=_DEFAULT_CALL_TAIL,
-    show_default=True,
-    help="Show up to the last N Function inputs.",
+    default=None,
+    help="Show up to the last N Function inputs. Defaults to 10. Cannot be combined with --since or --until.",
 )
+@click.option("--since", help="Fetch inputs enqueued at or after this time (e.g. '2h' or an ISO 8601 datetime).")
+@click.option("--until", help="Fetch inputs enqueued before this time (e.g. '1h' or an ISO 8601 datetime).")
 @click.option(
     "--all-variants",
     is_flag=True,
@@ -939,13 +942,15 @@ def _options_cell(options: _FunctionOptionsInfo | None) -> Text:
 @synchronizer.create_blocking
 async def calls(
     function_identifier: str,
-    tail: int = _DEFAULT_CALL_TAIL,
+    tail: int | None = None,
     all_variants: bool = False,
     show_function_call_id: bool = False,
     json_output: bool = False,
     no_color: bool = False,
     *,
     env: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
 ) -> None:
     """Show recent inputs for a Modal Function.
 
@@ -953,10 +958,22 @@ async def calls(
     ``APP_NAME/FUNCTION_NAME``. Each unique input corresponds to one entry
     in the output.
 
+    Use ``--since`` and/or ``--until`` to fetch all inputs in the time range,
+    oldest first. ``--until`` defaults to now. If ``--since`` is omitted, the preceeding hour
+    is fetched. If timezones are omitted, the time is interpreted as local time.
+
+    ``--tail`` cannot be combined with either date option.
+    By default, ``--tail`` returns the latest 10 inputs, newest first.
+
+
     Examples:
 
     ```
     modal function calls my-app/my-function
+    ```
+
+    ```
+    modal function calls my-app/my-function --since 2h --until 1h
     ```
 
     Show recent calls across all variants of a Cls:
@@ -971,6 +988,11 @@ async def calls(
     modal function calls my-app/my-function --no-color
     ```
     """
+    fetch_range = None
+    if since is not None or until is not None:
+        if tail is not None:
+            raise UsageError("--tail cannot be combined with --since or --until.")
+        fetch_range = _parse_fetch_range(since, until)
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
     function_id, _, _ = await _resolve_function_id(
@@ -979,13 +1001,66 @@ async def calls(
         environment_name,
         command="calls",
     )
-    response = await client._stub.FunctionCallFetch(
-        api_pb2.FunctionCallFetchRequest(
-            function_id=function_id,
-            tail=api_pb2.FunctionCallFetchRequest.Tail(count=tail),
-            all_variants=all_variants,
+    if fetch_range is None:
+        response = await client._stub.FunctionCallFetch(
+            api_pb2.FunctionCallFetchRequest(
+                function_id=function_id,
+                tail=api_pb2.FunctionCallFetchRequest.Tail(count=tail if tail is not None else _DEFAULT_CALL_TAIL),
+                all_variants=all_variants,
+            )
         )
-    )
+        calls: Sequence[api_pb2.FunctionCallInputInfo] = response.function_call_inputs
+    else:
+        since_dt, until_dt = fetch_range
+
+        async def count_ranges(start: float, end: float, bucket_secs: int) -> list[tuple[float, float, int]]:
+            counted = await client._stub.FunctionCallCount(
+                api_pb2.FunctionCallCountRequest(
+                    function_id=function_id,
+                    since=_seconds_to_timestamp(start),
+                    until=_seconds_to_timestamp(end),
+                    bucket_secs=bucket_secs,
+                    all_variants=all_variants,
+                )
+            )
+            if sum(bucket.count for bucket in counted.buckets) > _MAX_CALL_FETCH_INPUTS:
+                raise UsageError(
+                    f"Cannot fetch more than {_MAX_CALL_FETCH_INPUTS:,} inputs. Consider narrowing the range."
+                )
+            return [
+                (
+                    _timestamp_to_seconds(b.bucket_start_at),
+                    _timestamp_to_seconds(b.bucket_start_at) + bucket_secs,
+                    b.count,
+                )
+                for b in counted.buckets
+            ]
+
+        async def fetch_interval(start: float, end: float, limit: int) -> Sequence[api_pb2.FunctionCallInputInfo]:
+            fetched = await client._stub.FunctionCallFetch(
+                api_pb2.FunctionCallFetchRequest(
+                    function_id=function_id,
+                    range=api_pb2.FunctionCallFetchRequest.Range(
+                        since=_seconds_to_timestamp(start), until=_seconds_to_timestamp(end), limit=limit
+                    ),
+                    all_variants=all_variants,
+                )
+            )
+            return fetched.function_call_inputs
+
+        try:
+            calls = [
+                item
+                async for item in _fetch_time_range(
+                    since_dt,
+                    until_dt,
+                    count_ranges,
+                    fetch_interval,
+                    max_concurrent_counts=10,
+                )
+            ]
+        except LogsFetchError:
+            raise UsageError("Too many inputs to fetch in time range. Consider narrowing the range.")
 
     if json_output:
         OutputManager.get().print_json(
@@ -1007,18 +1082,16 @@ async def calls(
                         ),
                         "status": _function_call_status(call.status, True),
                     }
-                    for call in response.function_call_inputs
+                    for call in calls
                 ]
             )
         )
         return
 
-    show_service_method_name = bool(response.function_call_inputs) and all(
-        call.HasField("service_method_name") for call in response.function_call_inputs
-    )
+    show_service_method_name = bool(calls) and all(call.HasField("service_method_name") for call in calls)
     rows: list[list[Text | str]] = []
     previous_enqueued_date = None
-    for call in response.function_call_inputs:
+    for call in calls:
         if call.HasField("enqueued_at"):
             enqueued_at, enqueued_date = grouped_utc_timestamp(call.enqueued_at, previous_enqueued_date)
             previous_enqueued_date = enqueued_date
@@ -1053,6 +1126,12 @@ async def calls(
         rows.append(row)
 
     title = f"Function calls for {function_id}"
+    date_range = ""
+    if fetch_range is not None:
+        since_dt, until_dt = fetch_range
+        since_label = since_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        until_label = until_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        date_range += f" · [{since_label}, {until_label}) UTC"
     if all_variants:
         title += " · all variants"
     output = OutputManager.get()
@@ -1060,7 +1139,7 @@ async def calls(
     output.print(Text(title))
     output.print(
         Text(
-            f"Displaying {len(rows):,} {'row' if len(rows) == 1 else 'rows'}",
+            f"Displaying {len(rows):,} {'row' if len(rows) == 1 else 'rows'}{date_range}",
             style=STATS_METADATA_STYLE if not no_color else "",
         )
     )

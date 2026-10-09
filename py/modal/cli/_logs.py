@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2026
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from click import UsageError
 
@@ -10,6 +10,7 @@ from modal_proto import api_pb2
 from .utils import _fetch_app_logs, _stream_app_logs, _tail_app_logs
 
 _DEFAULT_LOGS_TAIL = 100
+_MAX_INVOCATION_FETCH_RANGE = timedelta(days=7)
 _RELATIVE_TIME_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _SOURCE_OPTIONS = {
     "stdout": api_pb2.FILE_DESCRIPTOR_STDOUT,
@@ -50,6 +51,33 @@ def _validate_logs_args(*, follow: bool, since: str | None, until: str | None, t
         raise UsageError("--tail value must be positive.")
     if tail is not None and tail > _FETCH_LIMIT:
         raise UsageError(f"--tail value must not exceed {_FETCH_LIMIT}.")
+
+
+def _parse_fetch_range(since: str | None, until: str | None) -> tuple[datetime, datetime]:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+
+    def parse_bound(value: str | None, default: datetime, flag: str) -> datetime:
+        if value is None:
+            return default
+        try:
+            duration = parse_duration(value)
+        except ValueError:
+            result = _parse_time_arg(value, default=default)
+        else:
+            result = now - duration
+        if result.astimezone(timezone.utc).microsecond:
+            raise UsageError(f"{flag} must have whole-second precision; fractional seconds are not supported.")
+        return result
+
+    until_dt = parse_bound(until, now, "--until")
+    since_dt = parse_bound(since, until_dt - timedelta(hours=1), "--since")
+    if since_dt >= until_dt:
+        raise UsageError("--since must be before --until.")
+    if since_dt.timestamp() < 0:
+        raise UsageError("--since must be on or after 1970-01-01 UTC.")
+    if until_dt - since_dt > _MAX_INVOCATION_FETCH_RANGE:
+        raise UsageError(f"Fetch time range cannot exceed {_MAX_INVOCATION_FETCH_RANGE.days} days.")
+    return since_dt, until_dt
 
 
 async def _run_logs_command(
