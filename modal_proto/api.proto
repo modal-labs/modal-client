@@ -3444,6 +3444,48 @@ message PTYInfo {
   bool no_terminate_on_idle_stdin = 8;
 }
 
+message PersistentSandboxCreateRequest {
+  string app_id = 1;
+  Sandbox definition = 2;
+}
+
+message PersistentSandboxCreateResponse {
+  string persistent_sandbox_id = 1;
+  string sandbox_id = 2;
+}
+
+message PersistentSandboxGetRequest {
+  oneof lookup {
+    string persistent_sandbox_id = 1;
+    PersistentSandboxNameLookup name = 2;
+  }
+}
+
+message PersistentSandboxGetResponse {
+  string persistent_sandbox_id = 1;
+  string sandbox_id = 2;
+}
+
+message PersistentSandboxNameLookup {
+  string app_name = 1;
+  string environment_name = 2;
+  string name = 3;
+}
+
+message PersistentSandboxResumeRequest {
+  string persistent_sandbox_id = 1;
+}
+
+message PersistentSandboxResumeResponse {
+  string sandbox_id = 1;
+}
+
+message PersistentSandboxTerminateRequest {
+  string persistent_sandbox_id = 1;
+}
+
+message PersistentSandboxTerminateResponse {}
+
 message PortSpec {
   uint32 port = 1;
   bool unencrypted = 2;
@@ -5364,6 +5406,12 @@ service ModalClient {
 
   // Notebooks
   rpc NotebookKernelPublishResults(NotebookKernelPublishResultsRequest) returns (google.protobuf.Empty);
+
+  // Persistent sandboxes
+  rpc PersistentSandboxCreate(PersistentSandboxCreateRequest) returns (PersistentSandboxCreateResponse);
+  rpc PersistentSandboxGet(PersistentSandboxGetRequest) returns (PersistentSandboxGetResponse);
+  rpc PersistentSandboxResume(PersistentSandboxResumeRequest) returns (PersistentSandboxResumeResponse);
+  rpc PersistentSandboxTerminate(PersistentSandboxTerminateRequest) returns (PersistentSandboxTerminateResponse);
 
   // Proxies
   rpc ProxyAddIp(ProxyAddIpRequest) returns (ProxyAddIpResponse);

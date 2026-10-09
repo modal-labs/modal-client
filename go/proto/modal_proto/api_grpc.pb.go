@@ -161,6 +161,10 @@ const (
 	ModalClient_MountGetOrCreate_FullMethodName                       = "/modal.client.ModalClient/MountGetOrCreate"
 	ModalClient_MountPutFile_FullMethodName                           = "/modal.client.ModalClient/MountPutFile"
 	ModalClient_NotebookKernelPublishResults_FullMethodName           = "/modal.client.ModalClient/NotebookKernelPublishResults"
+	ModalClient_PersistentSandboxCreate_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxCreate"
+	ModalClient_PersistentSandboxGet_FullMethodName                   = "/modal.client.ModalClient/PersistentSandboxGet"
+	ModalClient_PersistentSandboxResume_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxResume"
+	ModalClient_PersistentSandboxTerminate_FullMethodName             = "/modal.client.ModalClient/PersistentSandboxTerminate"
 	ModalClient_ProxyAddIp_FullMethodName                             = "/modal.client.ModalClient/ProxyAddIp"
 	ModalClient_ProxyCreate_FullMethodName                            = "/modal.client.ModalClient/ProxyCreate"
 	ModalClient_ProxyDelete_FullMethodName                            = "/modal.client.ModalClient/ProxyDelete"
@@ -441,6 +445,11 @@ type ModalClientClient interface {
 	MountPutFile(ctx context.Context, in *MountPutFileRequest, opts ...grpc.CallOption) (*MountPutFileResponse, error)
 	// Notebooks
 	NotebookKernelPublishResults(ctx context.Context, in *NotebookKernelPublishResultsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Persistent sandboxes
+	PersistentSandboxCreate(ctx context.Context, in *PersistentSandboxCreateRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateResponse, error)
+	PersistentSandboxGet(ctx context.Context, in *PersistentSandboxGetRequest, opts ...grpc.CallOption) (*PersistentSandboxGetResponse, error)
+	PersistentSandboxResume(ctx context.Context, in *PersistentSandboxResumeRequest, opts ...grpc.CallOption) (*PersistentSandboxResumeResponse, error)
+	PersistentSandboxTerminate(ctx context.Context, in *PersistentSandboxTerminateRequest, opts ...grpc.CallOption) (*PersistentSandboxTerminateResponse, error)
 	// Proxies
 	ProxyAddIp(ctx context.Context, in *ProxyAddIpRequest, opts ...grpc.CallOption) (*ProxyAddIpResponse, error)
 	ProxyCreate(ctx context.Context, in *ProxyCreateRequest, opts ...grpc.CallOption) (*ProxyCreateResponse, error)
@@ -1999,6 +2008,46 @@ func (c *modalClientClient) NotebookKernelPublishResults(ctx context.Context, in
 	return out, nil
 }
 
+func (c *modalClientClient) PersistentSandboxCreate(ctx context.Context, in *PersistentSandboxCreateRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersistentSandboxCreateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_PersistentSandboxCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) PersistentSandboxGet(ctx context.Context, in *PersistentSandboxGetRequest, opts ...grpc.CallOption) (*PersistentSandboxGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersistentSandboxGetResponse)
+	err := c.cc.Invoke(ctx, ModalClient_PersistentSandboxGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) PersistentSandboxResume(ctx context.Context, in *PersistentSandboxResumeRequest, opts ...grpc.CallOption) (*PersistentSandboxResumeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersistentSandboxResumeResponse)
+	err := c.cc.Invoke(ctx, ModalClient_PersistentSandboxResume_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) PersistentSandboxTerminate(ctx context.Context, in *PersistentSandboxTerminateRequest, opts ...grpc.CallOption) (*PersistentSandboxTerminateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersistentSandboxTerminateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_PersistentSandboxTerminate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) ProxyAddIp(ctx context.Context, in *ProxyAddIpRequest, opts ...grpc.CallOption) (*ProxyAddIpResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProxyAddIpResponse)
@@ -3402,6 +3451,11 @@ type ModalClientServer interface {
 	MountPutFile(context.Context, *MountPutFileRequest) (*MountPutFileResponse, error)
 	// Notebooks
 	NotebookKernelPublishResults(context.Context, *NotebookKernelPublishResultsRequest) (*emptypb.Empty, error)
+	// Persistent sandboxes
+	PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error)
+	PersistentSandboxGet(context.Context, *PersistentSandboxGetRequest) (*PersistentSandboxGetResponse, error)
+	PersistentSandboxResume(context.Context, *PersistentSandboxResumeRequest) (*PersistentSandboxResumeResponse, error)
+	PersistentSandboxTerminate(context.Context, *PersistentSandboxTerminateRequest) (*PersistentSandboxTerminateResponse, error)
 	// Proxies
 	ProxyAddIp(context.Context, *ProxyAddIpRequest) (*ProxyAddIpResponse, error)
 	ProxyCreate(context.Context, *ProxyCreateRequest) (*ProxyCreateResponse, error)
@@ -3951,6 +4005,18 @@ func (UnimplementedModalClientServer) MountPutFile(context.Context, *MountPutFil
 }
 func (UnimplementedModalClientServer) NotebookKernelPublishResults(context.Context, *NotebookKernelPublishResultsRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method NotebookKernelPublishResults not implemented")
+}
+func (UnimplementedModalClientServer) PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxCreate not implemented")
+}
+func (UnimplementedModalClientServer) PersistentSandboxGet(context.Context, *PersistentSandboxGetRequest) (*PersistentSandboxGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxGet not implemented")
+}
+func (UnimplementedModalClientServer) PersistentSandboxResume(context.Context, *PersistentSandboxResumeRequest) (*PersistentSandboxResumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxResume not implemented")
+}
+func (UnimplementedModalClientServer) PersistentSandboxTerminate(context.Context, *PersistentSandboxTerminateRequest) (*PersistentSandboxTerminateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxTerminate not implemented")
 }
 func (UnimplementedModalClientServer) ProxyAddIp(context.Context, *ProxyAddIpRequest) (*ProxyAddIpResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProxyAddIp not implemented")
@@ -6714,6 +6780,78 @@ func _ModalClient_NotebookKernelPublishResults_Handler(srv interface{}, ctx cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_PersistentSandboxCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersistentSandboxCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).PersistentSandboxCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_PersistentSandboxCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).PersistentSandboxCreate(ctx, req.(*PersistentSandboxCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_PersistentSandboxGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersistentSandboxGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).PersistentSandboxGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_PersistentSandboxGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).PersistentSandboxGet(ctx, req.(*PersistentSandboxGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_PersistentSandboxResume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersistentSandboxResumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).PersistentSandboxResume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_PersistentSandboxResume_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).PersistentSandboxResume(ctx, req.(*PersistentSandboxResumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_PersistentSandboxTerminate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersistentSandboxTerminateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).PersistentSandboxTerminate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_PersistentSandboxTerminate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).PersistentSandboxTerminate(ctx, req.(*PersistentSandboxTerminateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_ProxyAddIp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProxyAddIpRequest)
 	if err := dec(in); err != nil {
@@ -9357,6 +9495,22 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NotebookKernelPublishResults",
 			Handler:    _ModalClient_NotebookKernelPublishResults_Handler,
+		},
+		{
+			MethodName: "PersistentSandboxCreate",
+			Handler:    _ModalClient_PersistentSandboxCreate_Handler,
+		},
+		{
+			MethodName: "PersistentSandboxGet",
+			Handler:    _ModalClient_PersistentSandboxGet_Handler,
+		},
+		{
+			MethodName: "PersistentSandboxResume",
+			Handler:    _ModalClient_PersistentSandboxResume_Handler,
+		},
+		{
+			MethodName: "PersistentSandboxTerminate",
+			Handler:    _ModalClient_PersistentSandboxTerminate_Handler,
 		},
 		{
 			MethodName: "ProxyAddIp",
