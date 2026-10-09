@@ -203,6 +203,7 @@ func (fsys *SandboxFilesystem) CopyFromLocal(ctx context.Context, localPath, rem
 		return translateExecError(ctx, fsys.logger, "CopyFromLocal", remotePath, err)
 	}
 
+	waitCh := waitAsync(execCtx, cp)
 	src := &readErrTracker{rs: f}
 	if _, werr := cp.stdinWriteStream(execCtx, src); werr != nil && !isBinaryExitedEarly(werr) {
 		if src.readErr != nil {
@@ -219,7 +220,8 @@ func (fsys *SandboxFilesystem) CopyFromLocal(ctx context.Context, localPath, rem
 			fsys.logger.DebugContext(ctx, "CopyFromLocal: close stdout", "error", err)
 		}
 	}()
-	returnCode, err := cp.Wait(execCtx, nil)
+	wr := <-waitCh
+	returnCode, err := wr.returnCode, wr.err
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "CopyFromLocal", remotePath, err)
 	}
@@ -644,14 +646,36 @@ func (fsys *SandboxFilesystem) Watch(
 	}, nil
 }
 
+// waitResult is the outcome of a [ContainerProcess.Wait] started by [waitAsync].
+type waitResult struct {
+	returnCode int
+	err        error
+}
+
+// waitAsync starts waiting for cp to exit in the background, so the wait is
+// already in flight when the caller finishes streaming stdin instead of
+// costing another round trip after it. Cancel ctx to abandon the wait.
+func waitAsync(ctx context.Context, cp *ContainerProcess) <-chan waitResult {
+	ch := make(chan waitResult, 1)
+	go func() {
+		returnCode, err := cp.Wait(ctx, nil)
+		ch <- waitResult{returnCode: returnCode, err: err}
+	}()
+	return ch
+}
+
 func (fsys *SandboxFilesystem) writeFile(ctx context.Context, operation string, data []byte, remotePath string, _ *SandboxFilesystemWriteParams) error {
-	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeWriteFileCommand(remotePath)}, nil)
+	execCtx, cancelExec := context.WithCancel(ctx)
+	defer cancelExec()
+
+	cp, err := fsys.sandbox.execForFilesystem(execCtx, []string{sandboxFsToolsPath, makeWriteFileCommand(remotePath)}, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}
 
+	waitCh := waitAsync(execCtx, cp)
 	// Note empty data still creates an empty file.
-	if _, werr := cp.stdinWriteStream(ctx, bytes.NewReader(data)); werr != nil && !isBinaryExitedEarly(werr) {
+	if _, werr := cp.stdinWriteStream(execCtx, bytes.NewReader(data)); werr != nil && !isBinaryExitedEarly(werr) {
 		return translateExecError(ctx, fsys.logger, operation, remotePath, werr)
 	}
 
@@ -660,7 +684,8 @@ func (fsys *SandboxFilesystem) writeFile(ctx context.Context, operation string, 
 			fsys.logger.DebugContext(ctx, operation+": close stdout", "error", err)
 		}
 	}()
-	returnCode, err := cp.Wait(ctx, nil)
+	wr := <-waitCh
+	returnCode, err := wr.returnCode, wr.err
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}

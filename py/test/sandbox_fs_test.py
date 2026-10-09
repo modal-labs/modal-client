@@ -13,6 +13,7 @@ from modal.exception import (
     InvalidError,
     NotFoundError,
     SandboxFilesystemDirectoryNotEmptyError,
+    SandboxFilesystemError,
     SandboxFilesystemFileTooLargeError,
     SandboxFilesystemIsADirectoryError,
     SandboxFilesystemNotADirectoryError,
@@ -707,6 +708,22 @@ def test_sandbox_fs_copy_from_local_succeeds_when_response_lost_after_upload(
 
     assert not servicer.task_command_router.stdin_stream_drop_response, "failure was never injected"
     assert (tmp_path / "copied.bin").read_bytes() == payload
+
+
+@skip_non_subprocess
+@pytest.mark.timeout(60)
+def test_sandbox_fs_write_bytes_raises_when_stdin_rejected_while_process_running(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
+):
+    # The upload is rejected while the write command is still running, so the
+    # command never exits. The write must raise rather than wait for it.
+    servicer.task_command_router.stdin_stream_reject = True
+
+    with pytest.raises(SandboxFilesystemError):
+        sandbox.filesystem.write_bytes(b"payload", str(tmp_path / "never-written.txt"))
+
+    assert not servicer.task_command_router.stdin_stream_reject, "failure was never injected"
+    assert not (tmp_path / "never-written.txt").exists()
 
 
 # ---------------------------------------------------------------------------

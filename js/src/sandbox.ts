@@ -2874,10 +2874,20 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
 
   /** Wait for process completion and return the exit code. */
   async wait(): Promise<number> {
+    return await this._wait();
+  }
+
+  /**
+   * @internal
+   * @hidden
+   * Like `wait()`, but stops waiting when `signal` is aborted.
+   */
+  async _wait(signal?: AbortSignal): Promise<number> {
     const resp = await this.#commandRouterClient.execWait(
       this.#taskId,
       this.#execId,
       this.#deadline,
+      signal,
     );
     if (resp.code !== undefined) {
       return resp.code;

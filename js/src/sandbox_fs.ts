@@ -617,35 +617,48 @@ export class SandboxFilesystem {
         { mode: "binary" },
       );
 
-      // TODO(saltzm): If streaming fails after resume attempts are exhausted,
-      // the exec'd process remains alive indefinitely since stdin stays open.
-      // We should kill the process in that case when we have a way to do so.
+      // Wait for exit concurrently with the stdin stream, so the request is
+      // already in flight when the upload finishes instead of costing another
+      // round trip after it.
+      const waitAbort = new AbortController();
+      const waitPromise = process._wait(waitAbort.signal);
+      // The result is only awaited on the success path; a rejection on the
+      // error paths is superseded by the error rethrown there.
+      waitPromise.catch(() => {});
       try {
-        await process._stdinWriteStream(source);
-      } catch (err) {
-        // When the FS tools binary exits early on an error, the worker
-        // reports the dropped stdin write as FAILED_PRECONDITION or ABORTED.
-        if (
-          err instanceof ClientError &&
-          (err.code === Status.FAILED_PRECONDITION ||
-            err.code === Status.ABORTED)
-        ) {
-          // The error can come from a failure in fs-tools or server.
-          // If server, the process won't exit, so the wait below would
-          // hang forever — rethrow. Otherwise fall through and let
-          // raiseWriteFileError below surface the real filesystem error.
-          if ((await process._poll()) === null) {
+        // TODO(saltzm): If streaming fails after resume attempts are exhausted,
+        // the exec'd process remains alive indefinitely since stdin stays open.
+        // We should kill the process in that case when we have a way to do so.
+        try {
+          await process._stdinWriteStream(source);
+        } catch (err) {
+          // When the FS tools binary exits early on an error, the worker
+          // reports the dropped stdin write as FAILED_PRECONDITION or ABORTED.
+          if (
+            err instanceof ClientError &&
+            (err.code === Status.FAILED_PRECONDITION ||
+              err.code === Status.ABORTED)
+          ) {
+            // The error can come from a failure in fs-tools or server.
+            // If server, the process won't exit, so the wait below would
+            // hang forever — rethrow. Otherwise fall through and let
+            // raiseWriteFileError below surface the real filesystem error.
+            if ((await process._poll()) === null) {
+              throw err;
+            }
+          } else {
             throw err;
           }
-        } else {
-          throw err;
         }
-      }
 
-      const returnCode = await process.wait();
-      if (returnCode !== 0) {
-        const stderr = await process.stderr.readBytes();
-        raiseWriteFileError(returnCode, stderr, remotePath);
+        const returnCode = await waitPromise;
+        if (returnCode !== 0) {
+          const stderr = await process.stderr.readBytes();
+          raiseWriteFileError(returnCode, stderr, remotePath);
+        }
+      } finally {
+        // No-op once the wait has finished; otherwise stops it.
+        waitAbort.abort();
       }
     });
   }

@@ -120,6 +120,9 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         # (closing stdin) but raises instead of sending the response, simulating
         # a completed upload whose response was lost.
         self.stdin_stream_drop_response: bool = False
+        # When set, the next TaskExecStdinWriteStream fails with FAILED_PRECONDITION
+        # without closing stdin, so the exec'd process keeps running.
+        self.stdin_stream_reject: bool = False
         # Messages sent back in the `x-modal-warning` trailing metadata of every TaskExecPoll.
         self.exec_poll_warnings: list[str] = []
 
@@ -311,6 +314,9 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         current = task_state.stdin_offsets[start.exec_id]
         if start.offset != current:
             raise GRPCError(Status.FAILED_PRECONDITION, "stdin offset mismatch")
+        if self.stdin_stream_reject:
+            self.stdin_stream_reject = False
+            raise GRPCError(Status.FAILED_PRECONDITION, "injected stdin stream rejection")
         while request := await stream.recv_message():
             which = request.WhichOneof("payload")
             if which == "end":

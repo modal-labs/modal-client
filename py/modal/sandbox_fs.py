@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, AsyncIterator, BinaryIO, Optional, Union, cast
 if TYPE_CHECKING:
     import modal.sandbox._sandbox
 
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.logger import logger
 from ._utils.sandbox_fs_utils import (
     make_list_files_command,
@@ -626,22 +626,28 @@ class _SandboxFilesystem:
         """
         with translate_exec_errors(op_name, remote_path):
             process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
-            # TODO(saltzm): If streaming fails after resume attempts are exhausted, the
-            # ContainerProcess will remain alive indefinitely since stdin will remain open.
-            # We should catch exceptions from this and kill the ContainerProcess when we
-            # have a way to do this.
-            try:
-                total_bytes = await process._stdin_write_stream(source)
-            # When the FS tools binary exits early on an error, the worker
-            # reports the dropped stdin write as ConflictError.
-            except ConflictError:
-                # ConflictError can come from a failure in fs-tools or server-side.
-                # - if server-side, the process won't exit, so the gather below would hang forever -> raise
-                # - else if fs-tools, process will be closed, use raise_write_file_error below
-                if await process.poll() is None:
-                    raise
-                total_bytes = source.tell()
-            stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
+            async with TaskContext() as tc:
+                # Wait for exit concurrently with the stdin stream, so the request is
+                # already in flight when the upload finishes instead of costing another
+                # round trip after it.
+                wait_task = tc.create_task(process.wait())
+                # TODO(saltzm): If streaming fails after resume attempts are exhausted, the
+                # ContainerProcess will remain alive indefinitely since stdin will remain open.
+                # We should catch exceptions from this and kill the ContainerProcess when we
+                # have a way to do this.
+                try:
+                    total_bytes = await process._stdin_write_stream(source)
+                # When the FS tools binary exits early on an error, the worker
+                # reports the dropped stdin write as ConflictError.
+                except ConflictError:
+                    # ConflictError can come from a failure in fs-tools or server-side.
+                    # - if server-side, the process won't exit, so the wait would hang forever -> raise
+                    # - else if fs-tools, process will be closed, use raise_write_file_error below
+                    if await process.poll() is None:
+                        raise
+                    total_bytes = source.tell()
+                returncode = await wait_task
+            stderr = await process.stderr.read() if returncode != 0 else b""
 
         if returncode != 0:
             raise_write_file_error(returncode, stderr, remote_path)

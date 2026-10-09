@@ -808,6 +808,7 @@ export class TaskCommandRouterClientImpl {
     taskId: string,
     execId: string,
     deadline: number | null = null,
+    signal?: AbortSignal,
   ): Promise<TaskExecWaitResponse> {
     const request = TaskExecWaitRequest.create({ taskId, execId });
 
@@ -817,12 +818,17 @@ export class TaskCommandRouterClientImpl {
 
     try {
       return await this.callWithRetries(
-        () =>
-          this.callWithAuthRetry(() =>
+        () => {
+          // An aborted call can surface as a retryable CANCELLED, so stop
+          // here rather than retrying a wait the caller gave up on.
+          signal?.throwIfAborted();
+          return this.callWithAuthRetry(() =>
             this.stub.taskExecWait(request, {
               timeoutMs: 60_000,
+              signal,
             } as CallOptions & TimeoutOptions),
-          ),
+          );
+        },
         1000, // Retry after 1s since total time is expected to be long.
         1, // Fixed delay.
         null, // Retry forever.

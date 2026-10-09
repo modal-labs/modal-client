@@ -146,6 +146,34 @@ function mockJwt(exp: number | string | null): string {
   return `${header}.${payload}.${signature}`;
 }
 
+test("execWait does not retry a call the caller aborted", async () => {
+  let calls = 0;
+  const client = makeTestClient({
+    taskExecWait: (_req: unknown, opts: { signal?: AbortSignal }) => {
+      calls++;
+      return new Promise((_resolve, reject) => {
+        opts.signal?.addEventListener(
+          "abort",
+          () => reject(new ClientError("/test", Status.CANCELLED, "cancel")),
+          { once: true },
+        );
+      });
+    },
+  });
+
+  const caller = new AbortController();
+  const wait = client.execWait("ta-1", "exec-1", null, caller.signal);
+  const settled = wait.catch((err: unknown) => err);
+
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+  expect(calls).toBe(1);
+
+  caller.abort();
+  const err = await settled;
+  expect(err).not.toBeInstanceOf(ClientError);
+  expect(calls).toBe(1);
+});
+
 test("parseJwtExpiration with valid JWT", () => {
   const exp = Math.floor(Date.now() / 1000) + 3600;
   const jwt = mockJwt(exp);
