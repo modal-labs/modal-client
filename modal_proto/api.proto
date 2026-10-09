@@ -2272,7 +2272,35 @@ message FunctionCallCancelRequest {
   optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
+message FunctionCallCountRequest {
+  string function_id = 1;
+  google.protobuf.Timestamp since = 2;  // Inclusive, based on input enqueue time.
+  google.protobuf.Timestamp until = 3;  // Exclusive, based on input enqueue time.
+  uint32 bucket_secs = 4;
+  // Include the root Function and its eligible variants.
+  bool all_variants = 5;
+}
+
+message FunctionCallCountResponse {
+  message InputBucket {
+    google.protobuf.Timestamp bucket_start_at = 1;
+    // Number of unique inputs, matching FunctionCallFetch.
+    uint64 count = 2;
+  }
+
+  // Ordered by bucket start time, from oldest to newest.
+  // Counts include only inputs within the requested time range.
+  repeated InputBucket buckets = 1;
+}
+
 message FunctionCallFetchRequest {
+  message Range {
+    google.protobuf.Timestamp since = 1;  // Inclusive, based on input enqueue time.
+    google.protobuf.Timestamp until = 2;  // Exclusive, based on input enqueue time.
+    // Maximum number of inputs to return. Must be between 1 and 20000.
+    uint32 limit = 3;
+  }
+
   message Tail {
     // Number of most recent inputs to return. Must be between 1 and 1000.
     uint32 count = 1;
@@ -2281,13 +2309,15 @@ message FunctionCallFetchRequest {
   string function_id = 1;
   oneof query_oneof {
     Tail tail = 3;
+    Range range = 5;
   }
   // Include the root Function and its eligible variants.
   bool all_variants = 4;
 }
 
 message FunctionCallFetchResponse {
-  // The requested number of most recent inputs from the last seven days, ordered from newest to oldest.
+  // Tail queries return the most recent inputs from the last seven days, ordered from newest to oldest.
+  // Range queries return inputs ordered from oldest to newest.
   repeated FunctionCallInputInfo function_call_inputs = 1;
 }
 
@@ -4544,6 +4574,25 @@ message SecretUpdateRequest {
   repeated Update updates = 2;
 }
 
+message ServerCountRequestsRequest {
+  string function_id = 1;
+  google.protobuf.Timestamp since = 2;  // Inclusive, based on request timestamp.
+  google.protobuf.Timestamp until = 3;  // Exclusive, based on request timestamp.
+  uint32 bucket_secs = 4;
+}
+
+message ServerCountRequestsResponse {
+  message RequestBucket {
+    google.protobuf.Timestamp bucket_start_at = 1;
+    // Number of request records, matching ServerRequestFetch.
+    uint64 count = 2;
+  }
+
+  // Ordered by bucket start time, from oldest to newest.
+  // Counts include only requests within the requested time range.
+  repeated RequestBucket buckets = 1;
+}
+
 message ServerGetMetricsRequest {
   string function_id = 1;
   google.protobuf.Timestamp since = 2; // Required; rounded down to a UTC bucket boundary.
@@ -4618,6 +4667,13 @@ message ServerGetTimeRangeStatsResponse {
 }
 
 message ServerRequestFetchRequest {
+  message Range {
+    google.protobuf.Timestamp since = 1;  // Inclusive, based on request timestamp.
+    google.protobuf.Timestamp until = 2;  // Exclusive, based on request timestamp.
+    // Maximum number of requests to return. Must be between 1 and 20000.
+    uint32 limit = 3;
+  }
+
   message Tail {
     // Number of most recent requests to return. Must be between 1 and 1000.
     uint32 count = 1;
@@ -4626,11 +4682,13 @@ message ServerRequestFetchRequest {
   string function_id = 1;
   oneof query_oneof {
     Tail tail = 3;
+    Range range = 4;
   }
 }
 
 message ServerRequestFetchResponse {
-  // The requested number of most recent requests from the last seven days, ordered from newest to oldest.
+  // Tail queries return the most recent requests from the last seven days, ordered from newest to oldest.
+  // Range queries return requests ordered from oldest to newest.
   repeated ServerRequestInfo requests = 1;
 }
 
@@ -5569,6 +5627,7 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallCount(FunctionCallCountRequest) returns (FunctionCallCountResponse);
   rpc FunctionCallFetch(FunctionCallFetchRequest) returns (FunctionCallFetchResponse);
   rpc FunctionCallFromId(FunctionCallFromIdRequest) returns (FunctionCallFromIdResponse);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
@@ -5700,6 +5759,7 @@ service ModalClient {
   rpc SecretUpdate(SecretUpdateRequest) returns (google.protobuf.Empty);
 
   // Servers
+  rpc ServerCountRequests(ServerCountRequestsRequest) returns (ServerCountRequestsResponse);
   rpc ServerGetMetrics(ServerGetMetricsRequest) returns (ServerGetMetricsResponse);
   rpc ServerGetTimeRangeStats(ServerGetTimeRangeStatsRequest) returns (ServerGetTimeRangeStatsResponse);
   rpc ServerRequestFetch(ServerRequestFetchRequest) returns (ServerRequestFetchResponse);
