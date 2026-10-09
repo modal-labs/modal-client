@@ -133,6 +133,7 @@ const (
 	ModalClient_FunctionGetDynamicConcurrency_FullMethodName          = "/modal.client.ModalClient/FunctionGetDynamicConcurrency"
 	ModalClient_FunctionGetFlashAuthToken_FullMethodName              = "/modal.client.ModalClient/FunctionGetFlashAuthToken"
 	ModalClient_FunctionGetInputs_FullMethodName                      = "/modal.client.ModalClient/FunctionGetInputs"
+	ModalClient_FunctionGetMetrics_FullMethodName                     = "/modal.client.ModalClient/FunctionGetMetrics"
 	ModalClient_FunctionGetOutputs_FullMethodName                     = "/modal.client.ModalClient/FunctionGetOutputs"
 	ModalClient_FunctionGetSchedulingParams_FullMethodName            = "/modal.client.ModalClient/FunctionGetSchedulingParams"
 	ModalClient_FunctionGetSerialized_FullMethodName                  = "/modal.client.ModalClient/FunctionGetSerialized"
@@ -157,6 +158,7 @@ const (
 	ModalClient_MapAwait_FullMethodName                               = "/modal.client.ModalClient/MapAwait"
 	ModalClient_MapCheckInputs_FullMethodName                         = "/modal.client.ModalClient/MapCheckInputs"
 	ModalClient_MapStartOrContinue_FullMethodName                     = "/modal.client.ModalClient/MapStartOrContinue"
+	ModalClient_MetricsGetInfo_FullMethodName                         = "/modal.client.ModalClient/MetricsGetInfo"
 	ModalClient_MountBatchedCheckExistence_FullMethodName             = "/modal.client.ModalClient/MountBatchedCheckExistence"
 	ModalClient_MountGetOrCreate_FullMethodName                       = "/modal.client.ModalClient/MountGetOrCreate"
 	ModalClient_MountPutFile_FullMethodName                           = "/modal.client.ModalClient/MountPutFile"
@@ -224,6 +226,7 @@ const (
 	ModalClient_SecretGetOrCreate_FullMethodName                      = "/modal.client.ModalClient/SecretGetOrCreate"
 	ModalClient_SecretList_FullMethodName                             = "/modal.client.ModalClient/SecretList"
 	ModalClient_SecretUpdate_FullMethodName                           = "/modal.client.ModalClient/SecretUpdate"
+	ModalClient_ServerGetMetrics_FullMethodName                       = "/modal.client.ModalClient/ServerGetMetrics"
 	ModalClient_ServerGetTimeRangeStats_FullMethodName                = "/modal.client.ModalClient/ServerGetTimeRangeStats"
 	ModalClient_ServerRequestFetch_FullMethodName                     = "/modal.client.ModalClient/ServerRequestFetch"
 	ModalClient_ServiceUserList_FullMethodName                        = "/modal.client.ModalClient/ServiceUserList"
@@ -413,6 +416,7 @@ type ModalClientClient interface {
 	FunctionGetDynamicConcurrency(ctx context.Context, in *FunctionGetDynamicConcurrencyRequest, opts ...grpc.CallOption) (*FunctionGetDynamicConcurrencyResponse, error)
 	FunctionGetFlashAuthToken(ctx context.Context, in *FunctionGetFlashAuthTokenRequest, opts ...grpc.CallOption) (*FunctionGetFlashAuthTokenResponse, error)
 	FunctionGetInputs(ctx context.Context, in *FunctionGetInputsRequest, opts ...grpc.CallOption) (*FunctionGetInputsResponse, error)
+	FunctionGetMetrics(ctx context.Context, in *FunctionGetMetricsRequest, opts ...grpc.CallOption) (*FunctionGetMetricsResponse, error)
 	FunctionGetOutputs(ctx context.Context, in *FunctionGetOutputsRequest, opts ...grpc.CallOption) (*FunctionGetOutputsResponse, error)
 	FunctionGetSchedulingParams(ctx context.Context, in *FunctionGetSchedulingParamsRequest, opts ...grpc.CallOption) (*FunctionGetSchedulingParamsResponse, error)
 	FunctionGetSerialized(ctx context.Context, in *FunctionGetSerializedRequest, opts ...grpc.CallOption) (*FunctionGetSerializedResponse, error)
@@ -439,6 +443,8 @@ type ModalClientClient interface {
 	MapAwait(ctx context.Context, in *MapAwaitRequest, opts ...grpc.CallOption) (*MapAwaitResponse, error)
 	MapCheckInputs(ctx context.Context, in *MapCheckInputsRequest, opts ...grpc.CallOption) (*MapCheckInputsResponse, error)
 	MapStartOrContinue(ctx context.Context, in *MapStartOrContinueRequest, opts ...grpc.CallOption) (*MapStartOrContinueResponse, error)
+	// Metrics discovery
+	MetricsGetInfo(ctx context.Context, in *MetricsGetInfoRequest, opts ...grpc.CallOption) (*MetricsGetInfoResponse, error)
 	// Mounts
 	MountBatchedCheckExistence(ctx context.Context, in *MountBatchedCheckExistenceRequest, opts ...grpc.CallOption) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(ctx context.Context, in *MountGetOrCreateRequest, opts ...grpc.CallOption) (*MountGetOrCreateResponse, error)
@@ -514,6 +520,7 @@ type ModalClientClient interface {
 	SecretList(ctx context.Context, in *SecretListRequest, opts ...grpc.CallOption) (*SecretListResponse, error)
 	SecretUpdate(ctx context.Context, in *SecretUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Servers
+	ServerGetMetrics(ctx context.Context, in *ServerGetMetricsRequest, opts ...grpc.CallOption) (*ServerGetMetricsResponse, error)
 	ServerGetTimeRangeStats(ctx context.Context, in *ServerGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*ServerGetTimeRangeStatsResponse, error)
 	ServerRequestFetch(ctx context.Context, in *ServerRequestFetchRequest, opts ...grpc.CallOption) (*ServerRequestFetchResponse, error)
 	// Service users
@@ -1719,6 +1726,16 @@ func (c *modalClientClient) FunctionGetInputs(ctx context.Context, in *FunctionG
 	return out, nil
 }
 
+func (c *modalClientClient) FunctionGetMetrics(ctx context.Context, in *FunctionGetMetricsRequest, opts ...grpc.CallOption) (*FunctionGetMetricsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FunctionGetMetricsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionGetMetrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) FunctionGetOutputs(ctx context.Context, in *FunctionGetOutputsRequest, opts ...grpc.CallOption) (*FunctionGetOutputsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FunctionGetOutputsResponse)
@@ -1962,6 +1979,16 @@ func (c *modalClientClient) MapStartOrContinue(ctx context.Context, in *MapStart
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MapStartOrContinueResponse)
 	err := c.cc.Invoke(ctx, ModalClient_MapStartOrContinue_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) MetricsGetInfo(ctx context.Context, in *MetricsGetInfoRequest, opts ...grpc.CallOption) (*MetricsGetInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MetricsGetInfoResponse)
+	err := c.cc.Invoke(ctx, ModalClient_MetricsGetInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2641,6 +2668,16 @@ func (c *modalClientClient) SecretUpdate(ctx context.Context, in *SecretUpdateRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ModalClient_SecretUpdate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) ServerGetMetrics(ctx context.Context, in *ServerGetMetricsRequest, opts ...grpc.CallOption) (*ServerGetMetricsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerGetMetricsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ServerGetMetrics_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3419,6 +3456,7 @@ type ModalClientServer interface {
 	FunctionGetDynamicConcurrency(context.Context, *FunctionGetDynamicConcurrencyRequest) (*FunctionGetDynamicConcurrencyResponse, error)
 	FunctionGetFlashAuthToken(context.Context, *FunctionGetFlashAuthTokenRequest) (*FunctionGetFlashAuthTokenResponse, error)
 	FunctionGetInputs(context.Context, *FunctionGetInputsRequest) (*FunctionGetInputsResponse, error)
+	FunctionGetMetrics(context.Context, *FunctionGetMetricsRequest) (*FunctionGetMetricsResponse, error)
 	FunctionGetOutputs(context.Context, *FunctionGetOutputsRequest) (*FunctionGetOutputsResponse, error)
 	FunctionGetSchedulingParams(context.Context, *FunctionGetSchedulingParamsRequest) (*FunctionGetSchedulingParamsResponse, error)
 	FunctionGetSerialized(context.Context, *FunctionGetSerializedRequest) (*FunctionGetSerializedResponse, error)
@@ -3445,6 +3483,8 @@ type ModalClientServer interface {
 	MapAwait(context.Context, *MapAwaitRequest) (*MapAwaitResponse, error)
 	MapCheckInputs(context.Context, *MapCheckInputsRequest) (*MapCheckInputsResponse, error)
 	MapStartOrContinue(context.Context, *MapStartOrContinueRequest) (*MapStartOrContinueResponse, error)
+	// Metrics discovery
+	MetricsGetInfo(context.Context, *MetricsGetInfoRequest) (*MetricsGetInfoResponse, error)
 	// Mounts
 	MountBatchedCheckExistence(context.Context, *MountBatchedCheckExistenceRequest) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(context.Context, *MountGetOrCreateRequest) (*MountGetOrCreateResponse, error)
@@ -3520,6 +3560,7 @@ type ModalClientServer interface {
 	SecretList(context.Context, *SecretListRequest) (*SecretListResponse, error)
 	SecretUpdate(context.Context, *SecretUpdateRequest) (*emptypb.Empty, error)
 	// Servers
+	ServerGetMetrics(context.Context, *ServerGetMetricsRequest) (*ServerGetMetricsResponse, error)
 	ServerGetTimeRangeStats(context.Context, *ServerGetTimeRangeStatsRequest) (*ServerGetTimeRangeStatsResponse, error)
 	ServerRequestFetch(context.Context, *ServerRequestFetchRequest) (*ServerRequestFetchResponse, error)
 	// Service users
@@ -3922,6 +3963,9 @@ func (UnimplementedModalClientServer) FunctionGetFlashAuthToken(context.Context,
 func (UnimplementedModalClientServer) FunctionGetInputs(context.Context, *FunctionGetInputsRequest) (*FunctionGetInputsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetInputs not implemented")
 }
+func (UnimplementedModalClientServer) FunctionGetMetrics(context.Context, *FunctionGetMetricsRequest) (*FunctionGetMetricsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionGetMetrics not implemented")
+}
 func (UnimplementedModalClientServer) FunctionGetOutputs(context.Context, *FunctionGetOutputsRequest) (*FunctionGetOutputsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionGetOutputs not implemented")
 }
@@ -3993,6 +4037,9 @@ func (UnimplementedModalClientServer) MapCheckInputs(context.Context, *MapCheckI
 }
 func (UnimplementedModalClientServer) MapStartOrContinue(context.Context, *MapStartOrContinueRequest) (*MapStartOrContinueResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MapStartOrContinue not implemented")
+}
+func (UnimplementedModalClientServer) MetricsGetInfo(context.Context, *MetricsGetInfoRequest) (*MetricsGetInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MetricsGetInfo not implemented")
 }
 func (UnimplementedModalClientServer) MountBatchedCheckExistence(context.Context, *MountBatchedCheckExistenceRequest) (*MountBatchedCheckExistenceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MountBatchedCheckExistence not implemented")
@@ -4194,6 +4241,9 @@ func (UnimplementedModalClientServer) SecretList(context.Context, *SecretListReq
 }
 func (UnimplementedModalClientServer) SecretUpdate(context.Context, *SecretUpdateRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SecretUpdate not implemented")
+}
+func (UnimplementedModalClientServer) ServerGetMetrics(context.Context, *ServerGetMetricsRequest) (*ServerGetMetricsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ServerGetMetrics not implemented")
 }
 func (UnimplementedModalClientServer) ServerGetTimeRangeStats(context.Context, *ServerGetTimeRangeStatsRequest) (*ServerGetTimeRangeStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServerGetTimeRangeStats not implemented")
@@ -6283,6 +6333,24 @@ func _ModalClient_FunctionGetInputs_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_FunctionGetMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FunctionGetMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionGetMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionGetMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionGetMetrics(ctx, req.(*FunctionGetMetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_FunctionGetOutputs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FunctionGetOutputsRequest)
 	if err := dec(in); err != nil {
@@ -6704,6 +6772,24 @@ func _ModalClient_MapStartOrContinue_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).MapStartOrContinue(ctx, req.(*MapStartOrContinueRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_MetricsGetInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MetricsGetInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).MetricsGetInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_MetricsGetInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).MetricsGetInfo(ctx, req.(*MetricsGetInfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7903,6 +7989,24 @@ func _ModalClient_SecretUpdate_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).SecretUpdate(ctx, req.(*SecretUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_ServerGetMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServerGetMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ServerGetMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ServerGetMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ServerGetMetrics(ctx, req.(*ServerGetMetricsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -9389,6 +9493,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_FunctionGetInputs_Handler,
 		},
 		{
+			MethodName: "FunctionGetMetrics",
+			Handler:    _ModalClient_FunctionGetMetrics_Handler,
+		},
+		{
 			MethodName: "FunctionGetOutputs",
 			Handler:    _ModalClient_FunctionGetOutputs_Handler,
 		},
@@ -9479,6 +9587,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MapStartOrContinue",
 			Handler:    _ModalClient_MapStartOrContinue_Handler,
+		},
+		{
+			MethodName: "MetricsGetInfo",
+			Handler:    _ModalClient_MetricsGetInfo_Handler,
 		},
 		{
 			MethodName: "MountBatchedCheckExistence",
@@ -9743,6 +9855,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SecretUpdate",
 			Handler:    _ModalClient_SecretUpdate_Handler,
+		},
+		{
+			MethodName: "ServerGetMetrics",
+			Handler:    _ModalClient_ServerGetMetrics_Handler,
 		},
 		{
 			MethodName: "ServerGetTimeRangeStats",

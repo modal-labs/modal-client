@@ -2560,6 +2560,28 @@ message FunctionGetInputsResponse {
   float rate_limit_sleep_duration = 4; // How long to sleep before requesting another input.
 }
 
+message FunctionGetMetricsRequest {
+  string function_id = 1;
+  google.protobuf.Timestamp since = 2; // Required; rounded down to a UTC bucket boundary.
+  google.protobuf.Timestamp until = 3; // Required; rounded down; at most 31 days after since.
+  // If omitted, choose a supported width targeting approximately 100 buckets.
+  // Allowed widths are documented in MetricsGetInfoRequest.bucket_secs.
+  // At most 500 points per series in the rounded interval.
+  optional uint32 bucket_secs = 4;
+  // Metric groups: containers, calls.
+  // Empty selects all applicable groups. Each group returns its standard series.
+  repeated string groups = 5;
+  // Restrict the root Function's metrics to one of its parametrized Functions.
+  bool rollup = 6;
+}
+
+message FunctionGetMetricsResponse {
+  google.protobuf.Timestamp since = 1; // Inclusive effective bound, rounded down.
+  google.protobuf.Timestamp until = 2; // Exclusive effective bound, rounded down.
+  uint32 bucket_secs = 3;
+  repeated FunctionMetricSeries series = 4;
+}
+
 message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
@@ -2754,6 +2776,22 @@ message FunctionMapResponse {
   string function_call_jwt = 4;
   bool sync_client_retries_enabled = 5;
   uint32 max_inputs_outstanding = 6;
+}
+
+message FunctionMetricPoint {
+  // UTC-aligned bucket start within the response's effective [since, until).
+  google.protobuf.Timestamp timestamp = 1;
+  optional double value = 2;
+}
+
+message FunctionMetricSeries {
+  // Unique within the response; identifies one aggregate series for this metric.
+  // The metric name defines the aggregation semantics.
+  string name = 1;
+  // Public semantic unit, such as seconds, calls, containers, or requests.
+  string unit = 2;
+  repeated FunctionMetricPoint points = 3; // Ascending timestamps; absent points are gaps.
+  string description = 4;
 }
 
 // todo(ayush): update this to also use `autoscaler_settings`
@@ -3272,6 +3310,46 @@ message MethodDefinition {
   FunctionSchema function_schema = 7;
   repeated DataFormat supported_input_formats = 8;
   repeated DataFormat supported_output_formats = 9;
+}
+
+message MetricDefinition {
+  string name = 1; // Exact series name returned by the metrics RPC.
+  string unit = 2; // Matches FunctionMetricSeries.unit.
+  string description = 3; // Meaning and aggregation semantics of the series.
+}
+
+message MetricGroupDefinition {
+  // Group selector, such as "calls". Multiple catalogue rows can share this name.
+  string name = 1;
+  string description = 2; // Shared description of this catalogue row's series.
+  // Individual series represented by this row, ordered by name; all have the same unit.
+  repeated MetricDefinition metrics = 3;
+  string display_name = 4; // Display label, such as "execution_time_{p50,p90,p99}".
+}
+
+message MetricsGetInfoRequest {
+  enum MetricsTargetType {
+    METRICS_TARGET_TYPE_UNSPECIFIED = 0;
+    METRICS_TARGET_TYPE_FUNCTION = 1;
+    METRICS_TARGET_TYPE_SERVER = 2;
+  }
+
+  // Required; unspecified and unrecognized targets are rejected.
+  MetricsTargetType target_type = 1;
+  google.protobuf.Timestamp since = 2; // Required; rounded down to a UTC bucket boundary.
+  google.protobuf.Timestamp until = 3; // Required; rounded down; at most 31 days after since.
+  // If omitted, choose a supported width targeting approximately 100 buckets.
+  optional uint32 bucket_secs = 4;
+  repeated string groups = 5;
+}
+
+message MetricsGetInfoResponse {
+  // Catalogue rows for the requested target type, ordered by name then display_name.
+  // Rows sharing a name belong under the same group heading. Each series appears once per group.
+  // Describes the catalog; individual exports may omit unavailable series.
+  repeated MetricGroupDefinition groups = 1;
+  uint32 bucket_secs = 4; // Resolved bucket width.
+  uint32 bucket_count = 5; // Projected buckets per series, not observed sample count.
 }
 
 message MountBatchedCheckExistenceRequest {
@@ -4466,6 +4544,24 @@ message SecretUpdateRequest {
   repeated Update updates = 2;
 }
 
+message ServerGetMetricsRequest {
+  string function_id = 1;
+  google.protobuf.Timestamp since = 2; // Required; rounded down to a UTC bucket boundary.
+  google.protobuf.Timestamp until = 3; // Required; rounded down; at most 31 days after since.
+  // If omitted, choose a supported width targeting approximately 100 buckets.
+  // At most 500 points per series in the rounded interval.
+  optional uint32 bucket_secs = 4;
+  // Metric groups: containers, requests, etc.
+  repeated string groups = 5;
+}
+
+message ServerGetMetricsResponse {
+  google.protobuf.Timestamp since = 1; // Inclusive effective bound, rounded down.
+  google.protobuf.Timestamp until = 2; // Exclusive effective bound, rounded down.
+  uint32 bucket_secs = 3;
+  repeated FunctionMetricSeries series = 4;
+}
+
 message ServerGetTimeRangeStatsRequest {
   string function_id = 1;
   google.protobuf.Timestamp since = 2;  // Inclusive.
@@ -5489,6 +5585,7 @@ service ModalClient {
   rpc FunctionGetDynamicConcurrency(FunctionGetDynamicConcurrencyRequest) returns (FunctionGetDynamicConcurrencyResponse);
   rpc FunctionGetFlashAuthToken(FunctionGetFlashAuthTokenRequest) returns (FunctionGetFlashAuthTokenResponse);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
+  rpc FunctionGetMetrics(FunctionGetMetricsRequest) returns (FunctionGetMetricsResponse);
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetSchedulingParams(FunctionGetSchedulingParamsRequest) returns (FunctionGetSchedulingParamsResponse);
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
@@ -5517,6 +5614,9 @@ service ModalClient {
   rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
   rpc MapCheckInputs(MapCheckInputsRequest) returns (MapCheckInputsResponse);
   rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
+
+  // Metrics discovery
+  rpc MetricsGetInfo(MetricsGetInfoRequest) returns (MetricsGetInfoResponse);
 
   // Mounts
   rpc MountBatchedCheckExistence(MountBatchedCheckExistenceRequest) returns (MountBatchedCheckExistenceResponse);
@@ -5600,6 +5700,7 @@ service ModalClient {
   rpc SecretUpdate(SecretUpdateRequest) returns (google.protobuf.Empty);
 
   // Servers
+  rpc ServerGetMetrics(ServerGetMetricsRequest) returns (ServerGetMetricsResponse);
   rpc ServerGetTimeRangeStats(ServerGetTimeRangeStatsRequest) returns (ServerGetTimeRangeStatsResponse);
   rpc ServerRequestFetch(ServerRequestFetchRequest) returns (ServerRequestFetchResponse);
 
