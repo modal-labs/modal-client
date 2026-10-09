@@ -231,6 +231,9 @@ const (
 	ModalClient_ServerGetMetrics_FullMethodName                       = "/modal.client.ModalClient/ServerGetMetrics"
 	ModalClient_ServerGetTimeRangeStats_FullMethodName                = "/modal.client.ModalClient/ServerGetTimeRangeStats"
 	ModalClient_ServerRequestFetch_FullMethodName                     = "/modal.client.ModalClient/ServerRequestFetch"
+	ModalClient_ServiceUserCreate_FullMethodName                      = "/modal.client.ModalClient/ServiceUserCreate"
+	ModalClient_ServiceUserDelete_FullMethodName                      = "/modal.client.ModalClient/ServiceUserDelete"
+	ModalClient_ServiceUserInfo_FullMethodName                        = "/modal.client.ModalClient/ServiceUserInfo"
 	ModalClient_ServiceUserList_FullMethodName                        = "/modal.client.ModalClient/ServiceUserList"
 	ModalClient_SharedVolumeDelete_FullMethodName                     = "/modal.client.ModalClient/SharedVolumeDelete"
 	ModalClient_SharedVolumeGetFile_FullMethodName                    = "/modal.client.ModalClient/SharedVolumeGetFile"
@@ -528,6 +531,9 @@ type ModalClientClient interface {
 	ServerGetTimeRangeStats(ctx context.Context, in *ServerGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*ServerGetTimeRangeStatsResponse, error)
 	ServerRequestFetch(ctx context.Context, in *ServerRequestFetchRequest, opts ...grpc.CallOption) (*ServerRequestFetchResponse, error)
 	// Service users
+	ServiceUserCreate(ctx context.Context, in *ServiceUserCreateRequest, opts ...grpc.CallOption) (*ServiceUserCreateResponse, error)
+	ServiceUserDelete(ctx context.Context, in *ServiceUserDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ServiceUserInfo(ctx context.Context, in *ServiceUserInfoRequest, opts ...grpc.CallOption) (*ServiceUserInfoResponse, error)
 	ServiceUserList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceUserListResponse, error)
 	// SharedVolumes
 	SharedVolumeDelete(ctx context.Context, in *SharedVolumeDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -2728,6 +2734,36 @@ func (c *modalClientClient) ServerRequestFetch(ctx context.Context, in *ServerRe
 	return out, nil
 }
 
+func (c *modalClientClient) ServiceUserCreate(ctx context.Context, in *ServiceUserCreateRequest, opts ...grpc.CallOption) (*ServiceUserCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceUserCreateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ServiceUserCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) ServiceUserDelete(ctx context.Context, in *ServiceUserDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_ServiceUserDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) ServiceUserInfo(ctx context.Context, in *ServiceUserInfoRequest, opts ...grpc.CallOption) (*ServiceUserInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceUserInfoResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ServiceUserInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) ServiceUserList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceUserListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ServiceUserListResponse)
@@ -3590,6 +3626,9 @@ type ModalClientServer interface {
 	ServerGetTimeRangeStats(context.Context, *ServerGetTimeRangeStatsRequest) (*ServerGetTimeRangeStatsResponse, error)
 	ServerRequestFetch(context.Context, *ServerRequestFetchRequest) (*ServerRequestFetchResponse, error)
 	// Service users
+	ServiceUserCreate(context.Context, *ServiceUserCreateRequest) (*ServiceUserCreateResponse, error)
+	ServiceUserDelete(context.Context, *ServiceUserDeleteRequest) (*emptypb.Empty, error)
+	ServiceUserInfo(context.Context, *ServiceUserInfoRequest) (*ServiceUserInfoResponse, error)
 	ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error)
 	// SharedVolumes
 	SharedVolumeDelete(context.Context, *SharedVolumeDeleteRequest) (*emptypb.Empty, error)
@@ -4282,6 +4321,15 @@ func (UnimplementedModalClientServer) ServerGetTimeRangeStats(context.Context, *
 }
 func (UnimplementedModalClientServer) ServerRequestFetch(context.Context, *ServerRequestFetchRequest) (*ServerRequestFetchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServerRequestFetch not implemented")
+}
+func (UnimplementedModalClientServer) ServiceUserCreate(context.Context, *ServiceUserCreateRequest) (*ServiceUserCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ServiceUserCreate not implemented")
+}
+func (UnimplementedModalClientServer) ServiceUserDelete(context.Context, *ServiceUserDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ServiceUserDelete not implemented")
+}
+func (UnimplementedModalClientServer) ServiceUserInfo(context.Context, *ServiceUserInfoRequest) (*ServiceUserInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ServiceUserInfo not implemented")
 }
 func (UnimplementedModalClientServer) ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServiceUserList not implemented")
@@ -8115,6 +8163,60 @@ func _ModalClient_ServerRequestFetch_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_ServiceUserCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceUserCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ServiceUserCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ServiceUserCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ServiceUserCreate(ctx, req.(*ServiceUserCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_ServiceUserDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceUserDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ServiceUserDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ServiceUserDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ServiceUserDelete(ctx, req.(*ServiceUserDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_ServiceUserInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceUserInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ServiceUserInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ServiceUserInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ServiceUserInfo(ctx, req.(*ServiceUserInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_ServiceUserList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -9943,6 +10045,18 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ServerRequestFetch",
 			Handler:    _ModalClient_ServerRequestFetch_Handler,
+		},
+		{
+			MethodName: "ServiceUserCreate",
+			Handler:    _ModalClient_ServiceUserCreate_Handler,
+		},
+		{
+			MethodName: "ServiceUserDelete",
+			Handler:    _ModalClient_ServiceUserDelete_Handler,
+		},
+		{
+			MethodName: "ServiceUserInfo",
+			Handler:    _ModalClient_ServiceUserInfo_Handler,
 		},
 		{
 			MethodName: "ServiceUserList",

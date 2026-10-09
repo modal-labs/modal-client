@@ -1922,6 +1922,8 @@ message EnvironmentRoleSetRequest {
   string service_user_id = 3;
   EnvironmentRole role = 4;
   string role_str = 5;  // String representation from the CLI; parsed when role is unspecified
+  string service_user_name = 6;
+  string environment_name = 7; // Sent by the client when an environment ID is unavailable
 }
 
 message EnvironmentSetBudgetRequest {
@@ -4701,6 +4703,12 @@ message ServerRequestInfo {
 }
 
 message ServiceUser {
+  message EnvironmentRoleEntry {
+    string environment_id = 1;
+    EnvironmentRole role = 2;
+    string environment_name = 3;
+  }
+
   string name = 1;
   string token_id = 2;
   string created_by = 3;
@@ -4708,6 +4716,30 @@ message ServiceUser {
   double last_used_at = 5;
   string created_by_avatar_url = 6;
   string service_user_id = 7;
+  string status = 8;
+  bool scoped = 9;
+  repeated EnvironmentRoleEntry environment_roles = 10;
+
+  // This should be a TImestamp type, but keeping as a double for compatibility with public_api.proto
+  optional double expires_at = 11;
+}
+
+message ServiceUserCreateRequest {
+  string name = 1;
+  bool scoped = 2;
+  uint32 expires_in_seconds = 3;
+}
+
+message ServiceUserCreateResponse {
+  string token_id = 1;
+  string token_secret = 2;
+  string service_user_id = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message ServiceUserDeleteRequest {
+  string service_user_id = 1;
+  string service_user_name = 2;
 }
 
 message ServiceUserIdentity {
@@ -4716,9 +4748,18 @@ message ServiceUserIdentity {
   UserIdentity created_by = 3;
 }
 
+message ServiceUserInfoRequest {
+  string service_user_name = 1;
+}
+
+message ServiceUserInfoResponse {
+  ServiceUser service_user = 1;
+}
+
 message ServiceUserListResponse {
   repeated ServiceUser service_users = 1;
 }
+
 
 // SharedVolume in the backend corresponds to NetworkFileSystem in the current API
 
@@ -5765,6 +5806,9 @@ service ModalClient {
   rpc ServerRequestFetch(ServerRequestFetchRequest) returns (ServerRequestFetchResponse);
 
   // Service users
+  rpc ServiceUserCreate(ServiceUserCreateRequest) returns (ServiceUserCreateResponse);
+  rpc ServiceUserDelete(ServiceUserDeleteRequest) returns (google.protobuf.Empty);
+  rpc ServiceUserInfo(ServiceUserInfoRequest) returns (ServiceUserInfoResponse);
   rpc ServiceUserList(google.protobuf.Empty) returns (ServiceUserListResponse);
 
   // SharedVolumes
