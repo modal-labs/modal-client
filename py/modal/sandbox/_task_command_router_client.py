@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import contextlib
+import contextvars
 import io
 import json
 import socket
@@ -12,7 +13,7 @@ import urllib.parse
 import weakref
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
 from contextlib import suppress
-from typing import BinaryIO, TypeVar
+from typing import Any, BinaryIO, TypeVar
 
 import grpclib.client
 import grpclib.events
@@ -37,6 +38,7 @@ from .._utils.grpc_utils import (
     RETRYABLE_GRPC_STATUS_CODES,
     ModalChannel,
     create_channel_config,
+    custom_detail_codec,
     listen_for_server_warnings,
 )
 from .._utils.idle_countdown import IdleCountdown
@@ -97,6 +99,15 @@ def _parse_jwt_expiration(jwt_token: str) -> float | None:
 # an isolated blip, without leaving a stuck call silent for long.
 RETRY_WARNING_THRESHOLD = 3
 
+_throttle_retry_attempt: contextvars.ContextVar[int] = contextvars.ContextVar("throttle_retry_attempt", default=0)
+
+
+def server_retry_after_secs(details: Any) -> float | None:
+    for entry in details or []:
+        if isinstance(entry, api_pb2.RPCRetryPolicy):
+            return max(entry.retry_after_secs, 0.1)
+    return None
+
 
 async def call_with_retries_on_transient_errors(
     func,
@@ -113,6 +124,8 @@ async def call_with_retries_on_transient_errors(
     """Call func() with transient error retries and exponential backoff.
 
     Authentication retries are expected to be handled by the caller.
+
+    RESOURCE_EXHAUSTED is retried only when the server attaches a retry policy to the error.
 
     Args:
         exclude_status_codes: gRPC status codes to exclude from retry logic even if
@@ -133,31 +146,45 @@ async def call_with_retries_on_transient_errors(
     """
     delay_secs = base_delay_secs
     num_retries = 0
+    num_throttled_retries = 0
     consecutive_failures = 0
     warned = False
     exclude_status_codes = exclude_status_codes or []
     called_for = f" for exec {exec_id}" if exec_id is not None else ""
+    throttle_wait_total = 0.0
+    max_throttle_wait: int | None = config.get("max_throttle_wait")
 
     def is_retryable_status(status: Status) -> bool:
         return status in RETRYABLE_GRPC_STATUS_CODES and status not in exclude_status_codes
 
+    def server_retry_after(e: GRPCError) -> float | None:
+        if max_throttle_wait == 0 or e.status != Status.RESOURCE_EXHAUSTED or e.status in exclude_status_codes:
+            return None
+        return server_retry_after_secs(e.details)
+
+    def fits_deadline(delay: float) -> bool:
+        return timeout_deadline is None or time.monotonic() + delay < timeout_deadline
+
     def can_retry() -> bool:
         if max_retries is not None and num_retries >= max_retries:
             return False
-        if timeout_deadline is not None and time.monotonic() >= timeout_deadline:
-            return False
-        return True
+        return fits_deadline(0.0)
 
-    async def sleep_and_advance(e: Exception, *, count_failure: bool = True):
-        nonlocal delay_secs, num_retries, consecutive_failures, warned
+    def can_retry_throttled(delay: float) -> bool:
+        if max_throttle_wait is not None and throttle_wait_total + delay > max_throttle_wait:
+            return False
+        return fits_deadline(delay)
+
+    async def sleep_and_advance(e: Exception, *, count_failure: bool = True, throttle_delay: float | None = None):
+        nonlocal delay_secs, num_retries, num_throttled_retries, throttle_wait_total, consecutive_failures, warned
         # Clamp the backoff sleep to the remaining deadline so we don't sleep
         # past it just to fail on the next iteration's deadline check.
-        sleep_for = delay_secs
+        sleep_for = delay_secs if throttle_delay is None else throttle_delay
         if timeout_deadline is not None:
             sleep_for = min(sleep_for, max(0.0, timeout_deadline - time.monotonic()))
         elapsed = time.monotonic() - attempt_started_at
         logger.debug(
-            f"{rpc_name}{called_for} attempt {num_retries + 1} failed after {elapsed:.3f}s, "
+            f"{rpc_name}{called_for} attempt {num_retries + num_throttled_retries + 1} failed after {elapsed:.3f}s, "
             f"retrying in {sleep_for}s: {e!r}"
         )
         if count_failure:
@@ -171,39 +198,55 @@ async def call_with_retries_on_transient_errors(
         else:
             consecutive_failures = 0
         await asyncio.sleep(sleep_for)
-        delay_secs *= delay_factor
-        num_retries += 1
+        if throttle_delay is None:
+            delay_secs *= delay_factor
+            num_retries += 1
+        else:
+            num_throttled_retries += 1
+            _throttle_retry_attempt.set(num_throttled_retries)
+            throttle_wait_total += throttle_delay
 
-    while True:
-        attempt_started_at = time.monotonic()
-        try:
-            return await func()
-        except GRPCError as e:
-            if not is_retryable_status(e.status) or not can_retry():
-                raise
-            # Long-poll deadlines can expire while the process is still running on a healthy connection.
-            await sleep_and_advance(e, count_failure=e.status != Status.DEADLINE_EXCEEDED)
-        except AttributeError as e:
-            # StreamTerminatedError are not properly raised in grpclib<=0.4.7
-            # fixed in https://github.com/vmagamedov/grpclib/issues/185
-            # TODO: update to newer version (>=0.4.8) once stable
-            if "_write_appdata" not in str(e) or not can_retry():
-                raise
-            await sleep_and_advance(e)
-        except StreamTerminatedError as e:
-            if not can_retry():
-                raise
-            await sleep_and_advance(e)
-        except (asyncio.TimeoutError, OSError) as e:
-            if not can_retry():
-                # Client-side timeout / network OSError surfaces as a generic
-                # ConnectionError once we stop retrying. Callers that pass
-                # `timeout_deadline` can further translate this based on
-                # whether the deadline has elapsed.
-                raise ConnectionError(str(e))
-            # A client-side timeout says nothing about the connection's health, so it
-            # doesn't count toward the warning.
-            await sleep_and_advance(e, count_failure=not isinstance(e, asyncio.TimeoutError))
+    token = _throttle_retry_attempt.set(num_throttled_retries)
+    try:
+        while True:
+            attempt_started_at = time.monotonic()
+            try:
+                return await func()
+            except GRPCError as e:
+                retry_after = server_retry_after(e)
+                if retry_after is not None:
+                    if not can_retry_throttled(retry_after):
+                        raise
+                    # Throttling says nothing about the connection's health.
+                    await sleep_and_advance(e, count_failure=False, throttle_delay=retry_after)
+                    continue
+                if not is_retryable_status(e.status) or not can_retry():
+                    raise
+                # Long-poll deadlines can expire while the process is still running on a healthy connection.
+                await sleep_and_advance(e, count_failure=e.status != Status.DEADLINE_EXCEEDED)
+            except AttributeError as e:
+                # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                # TODO: update to newer version (>=0.4.8) once stable
+                if "_write_appdata" not in str(e) or not can_retry():
+                    raise
+                await sleep_and_advance(e)
+            except StreamTerminatedError as e:
+                if not can_retry():
+                    raise
+                await sleep_and_advance(e)
+            except (asyncio.TimeoutError, OSError) as e:
+                if not can_retry():
+                    # Client-side timeout / network OSError surfaces as a generic
+                    # ConnectionError once we stop retrying. Callers that pass
+                    # `timeout_deadline` can further translate this based on
+                    # whether the deadline has elapsed.
+                    raise ConnectionError(str(e))
+                # A client-side timeout says nothing about the connection's health, so it
+                # doesn't count toward the warning.
+                await sleep_and_advance(e, count_failure=not isinstance(e, asyncio.TimeoutError))
+    finally:
+        _throttle_retry_attempt.reset(token)
 
 
 _StdioReq = TypeVar("_StdioReq")
@@ -301,6 +344,7 @@ class TaskCommandRouterClient:
             port,
             ssl=ssl_context,
             config=create_channel_config(sustained_keepalive=True),
+            status_details_codec=custom_detail_codec,
             closed_error_message="Unable to perform operation on a detached sandbox",
         )
 
@@ -449,7 +493,10 @@ class TaskCommandRouterClient:
 
     def _get_metadata(self):
         self._ensure_open()
-        return {"authorization": f"Bearer {self._jwt}"}
+        return {
+            "authorization": f"Bearer {self._jwt}",
+            "x-throttle-retry-attempt": str(_throttle_retry_attempt.get()),
+        }
 
     @contextlib.asynccontextmanager
     async def _lease(self):
@@ -1197,7 +1244,13 @@ class TaskCommandRouterClient:
                     timeout_deadline=timeout_deadline,
                 )
         except Exception as exc:
-            if time.monotonic() >= timeout_deadline or getattr(exc, "_grpc_status", None) == Status.DEADLINE_EXCEEDED:
+            # A throttled call whose server-requested wait doesn't fit the remaining
+            # budget is given up without sleeping, so treat it as a timeout too.
+            retry_after = server_retry_after_secs(getattr(exc, "_grpc_details", None)) or 0.0
+            if (
+                time.monotonic() + retry_after >= timeout_deadline
+                or getattr(exc, "_grpc_status", None) == Status.DEADLINE_EXCEEDED
+            ):
                 raise ModalTimeoutError("Timeout expired")
             raise
 
