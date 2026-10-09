@@ -3,11 +3,63 @@
 
 import enum
 from dataclasses import FrozenInstanceError, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Iterable, Literal, Optional, TypedDict
 
 from modal_proto import api_pb2
+
+
+@dataclass(frozen=True)
+class TimeSeriesPoint:
+    """A metric sample at a UTC bucket start. A missing observation has value None."""
+
+    time: datetime
+    value: float | None
+
+
+@dataclass(frozen=True)
+class MetricSeries:
+    """An individual metric series with points ordered by time."""
+
+    name: str
+    unit: str
+    aggregation: str
+    points: list[TimeSeriesPoint]
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class MetricDefinition:
+    """The name, unit, and meaning of an individual exportable series."""
+
+    name: str
+    unit: str
+    description: str
+
+
+@dataclass(frozen=True)
+class MetricsSchema:
+    """A metrics group and its individual series definitions."""
+
+    name: str
+    definitions: list[MetricDefinition]
+
+
+@dataclass(frozen=True)
+class ObjectMetrics:
+    """Exported metrics over the effective, UTC-aligned [since, until) range."""
+
+    object_id: str
+    since: datetime
+    until: datetime
+    bucket_size: timedelta
+    point_count: int
+    series: dict[str, MetricSeries]
+
+    def __getitem__(self, name: str) -> MetricSeries:
+        """Look up a series by its exact name."""
+        return self.series[name]
 
 
 class InputStatus(enum.IntEnum):

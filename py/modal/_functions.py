@@ -27,6 +27,7 @@ from ._image import _Image
 from ._load_context import LoadContext
 from ._logs import LogsFilters
 from ._logs_manager import _FunctionCallLogsManager, _FunctionLogsManager
+from ._metrics import _FunctionMetricsManager
 from ._object import _Object, live_method, live_method_gen
 from ._output.pty import get_pty_info
 from ._output.status import FunctionCreationStatus
@@ -660,6 +661,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             LogsFilters(function_id=self.object_id),
             source_object_id=self.object_id,
         )
+
+    @property
+    def metrics(self) -> "_FunctionMetricsManager":
+        """Access metric samples with `export()` and series definitions with `schema()`."""
+        return _FunctionMetricsManager(self)
 
     @property
     def logs(self) -> _FunctionLogsManager:

@@ -19,7 +19,7 @@ _SOURCE_OPTIONS = {
 }
 
 
-def _parse_time_arg(value: str | None, default: datetime) -> datetime:
+def _parse_time_arg(value: str | None, default: datetime, *, now: datetime | None = None) -> datetime:
     """Parse a time argument that can be a relative duration (e.g. '2h', '30m') or ISO 8601 datetime.
 
     Naive datetime values are interpreted in the user's local timezone.
@@ -33,7 +33,7 @@ def _parse_time_arg(value: str | None, default: datetime) -> datetime:
     except ValueError:
         pass
     else:
-        return datetime.now(timezone.utc) - duration
+        return (now or datetime.now(timezone.utc)) - duration
 
     try:
         dt = datetime.fromisoformat(value)

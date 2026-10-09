@@ -247,7 +247,7 @@ async def _resolve_function_id(
     environment_name: str,
     *,
     object_type: Literal["Function", "Server"] = "Function",
-    command: Literal["info", "calls", "logs", "requests", "stats", "variants"],
+    command: Literal["info", "calls", "logs", "requests", "stats", "variants", "metrics"],
 ) -> tuple[str, api_pb2.FunctionHandleMetadata, api_pb2.FunctionData]:
     identifier_label = object_type.upper()
     usage = (

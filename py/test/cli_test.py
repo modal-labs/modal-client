@@ -6031,8 +6031,8 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
         "Management": ["list", "create", "stop"],
         "Inspection": ["info", "logs", "stats"],
     },
-    "function": {"Commands": ["info", "logs", "stats", "calls", "variants"]},
-    "server": {"Commands": ["info", "logs", "stats", "requests"]},
+    "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "metrics"]},
+    "server": {"Commands": ["info", "logs", "stats", "requests", "metrics"]},
     "image": {"Commands": ["logs", "names"]},
     "image names": {"Commands": ["list"]},
     "dict": {
@@ -6126,3 +6126,454 @@ def test_function_calls_total_input_limit(servicer, set_env_client, monkeypatch,
     else:
         assert json.loads(result.stdout) == []
         assert len(ctx.get_requests("FunctionCallFetch")) == 1
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+@pytest.mark.parametrize("by_id", [False, True])
+def test_metrics_export_cli(servicer, set_env_client, kind, by_id):
+    rpc = "FunctionGetMetrics" if kind == "function" else "ServerGetMetrics"
+    response = getattr(api_pb2, rpc + "Response")(bucket_secs=60)
+    response.since.FromSeconds(1800000000)
+    response.until.FromSeconds(1800000120)
+    series = response.series.add(name="live_containers_max", unit="containers")
+    series.points.add(value=0).timestamp.FromSeconds(1800000000)
+    series.points.add().timestamp.FromSeconds(1800000060)
+    args = [
+        kind,
+        "metrics",
+        "fu-test" if by_id else "my-app/my-object",
+        "--since",
+        "2027-01-15T08:00:30+00:00",
+        "--until",
+        "2027-01-15T08:02:30+00:00",
+        "--group",
+        "containers",
+        "--group",
+        "calls" if kind == "function" else "requests",
+        "--bucket-size",
+        "1m",
+        "--json",
+        "--env",
+        "main",
+    ]
+    if kind == "function":
+        args += ["--all-variants"]
+    with servicer.intercept() as ctx:
+        if by_id:
+            ctx.add_response(
+                "FunctionGetById",
+                api_pb2.FunctionGetByIdResponse(function=api_pb2.FunctionData(is_server=kind == "server")),
+            )
+        else:
+            ctx.add_response(
+                "FunctionGet",
+                api_pb2.FunctionGetResponse(
+                    function_id="fu-test", function=api_pb2.FunctionData(is_server=kind == "server")
+                ),
+            )
+        ctx.add_response(rpc, response)
+        result = run_cli_command(args)
+    if not by_id:
+        assert ctx.pop_request("FunctionGet").environment_name == "main"
+    request = ctx.pop_request(rpc)
+    assert request.function_id == "fu-test"
+    assert request.since.seconds == 1800000030
+    assert request.until.seconds == 1800000150
+    assert request.bucket_secs == 60
+    assert list(request.groups) == ["containers", "calls" if kind == "function" else "requests"]
+    if kind == "function":
+        assert request.rollup
+    data = json.loads(result.stdout)
+    assert data["since"] == "2027-01-15T08:00:00+00:00"
+    assert data["until"] == "2027-01-15T08:02:00+00:00"
+    assert "warnings" not in data
+    assert data["series"][0]["points"] == [
+        {"timestamp": data["since"], "value": 0},
+        {"timestamp": "2027-01-15T08:01:00+00:00", "value": None},
+    ]
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+@pytest.mark.parametrize("output", ["summary", "json", "csv"])
+def test_metrics_relative_max_range(servicer, set_env_client, kind, output):
+    rpc = (
+        "MetricsGetInfo"
+        if output == "summary"
+        else ("FunctionGetMetrics" if kind == "function" else "ServerGetMetrics")
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test", function=api_pb2.FunctionData(is_server=kind == "server")
+            ),
+        )
+        ctx.add_response(rpc, getattr(api_pb2, rpc + "Response")(bucket_secs=86400))
+        args = [kind, "metrics", "app/name", "--since", "31d"]
+        if output != "summary":
+            args.append("--" + output)
+        run_cli_command(args)
+    request = ctx.pop_request(rpc)
+    assert request.until.ToDatetime() - request.since.ToDatetime() == timedelta(days=31)
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+def test_metrics_export_json_defaults(servicer, set_env_client, kind):
+    rpc = "FunctionGetMetrics" if kind == "function" else "ServerGetMetrics"
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test", function=api_pb2.FunctionData(is_server=kind == "server")
+            ),
+        )
+        ctx.add_response(rpc, getattr(api_pb2, rpc + "Response")(bucket_secs=60))
+        result = run_cli_command([kind, "metrics", "app/name", "--json"])
+    request = ctx.pop_request(rpc)
+    assert request.until.ToDatetime() - request.since.ToDatetime() == timedelta(hours=1)
+    assert not request.groups
+    assert not request.HasField("bucket_secs")
+    if kind == "function":
+        assert not request.rollup
+    assert json.loads(result.stdout)["series"] == []
+
+
+@pytest.mark.parametrize(
+    "kind,options,message",
+    [
+        ("server", ["--all-variants"], "No such option"),
+        ("function", ["--bucket-size", "59s"], "Invalid value"),
+        ("function", ["--since", "bad-time"], "Invalid time format"),
+        ("server", ["--since", "2026-10-02", "--until", "2026-10-01"], "must be before"),
+        ("function", ["--since", "2026-08-01T00:00:00+00:00", "--until", "2026-10-01T00:00:00+00:00"], "31 days"),
+        (
+            "function",
+            ["--since", "2026-10-01T00:00:00+00:00", "--until", "2026-10-02T00:00:00+00:00", "--bucket-size", "1m"],
+            "500 points",
+        ),
+    ],
+)
+def test_metrics_export_invalid_options(kind, options, message):
+    result = run_cli_command([kind, "metrics", "fu-test", *options], expected_exit_code=2)
+    assert message in result.stderr
+
+
+@pytest.mark.parametrize(
+    "kind,valid_group,invalid_group", [("function", "calls", "requests"), ("server", "requests", "calls")]
+)
+def test_metrics_invalid_group_uses_schema(servicer, set_env_client, kind, valid_group, invalid_group):
+    async def reject_groups(servicer, stream):
+        request = await stream.recv_message()
+        assert list(request.groups) == [invalid_group]
+        raise GRPCError(
+            Status.INVALID_ARGUMENT, f"Invalid metrics groups: {invalid_group}. Valid groups: {valid_group}"
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test", function=api_pb2.FunctionData(is_server=kind == "server")
+            ),
+        )
+        ctx.set_responder("MetricsGetInfo", reject_groups)
+        result = run_cli_command([kind, "metrics", "app/name", "--group", invalid_group], expected_exit_code=2)
+    assert f"Invalid metrics groups: {invalid_group}" in result.stderr
+    assert f"Valid groups: {valid_group}" in result.stderr
+    ctx.pop_request("FunctionGet")
+    ctx.pop_request("MetricsGetInfo")
+    assert not ctx.calls
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+@pytest.mark.parametrize("empty_window", [False, True])
+def test_metrics_export_summary_does_not_fetch_samples(servicer, set_env_client, kind, empty_window, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "120")
+    response = api_pb2.MetricsGetInfoResponse(
+        bucket_secs=60,
+        bucket_count=0 if empty_window else 2,
+        groups=[
+            api_pb2.MetricGroupDefinition(
+                name="containers",
+                metrics=[
+                    api_pb2.MetricDefinition(
+                        name="live_containers_max", unit="containers", description="Peak containers"
+                    ),
+                ],
+            ),
+        ],
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test",
+                function=api_pb2.FunctionData(is_server=kind == "server"),
+            ),
+        )
+        ctx.add_response("MetricsGetInfo", response)
+        # No sample response is registered: fetching samples fails this test.
+        result = run_cli_command(
+            [
+                kind,
+                "metrics",
+                "app/name",
+                "--group",
+                "containers",
+                "--since",
+                "2027-01-15T08:00:30+00:00",
+                "--until",
+                "2027-01-15T08:00:59+00:00" if empty_window else "2027-01-15T08:02:30+00:00",
+            ]
+        )
+    ctx.pop_request("FunctionGet")
+    request = ctx.pop_request("MetricsGetInfo")
+    assert request.target_type == (
+        api_pb2.MetricsGetInfoRequest.METRICS_TARGET_TYPE_SERVER
+        if kind == "server"
+        else api_pb2.MetricsGetInfoRequest.METRICS_TARGET_TYPE_FUNCTION
+    )
+    assert request.since.seconds == 1800000030
+    assert request.until.seconds == (1800000059 if empty_window else 1800000150)
+    assert not request.HasField("bucket_secs")
+    assert not ctx.calls
+    assert "Metrics schema for fu-test" in result.stdout
+    assert "Groups: containers" in " ".join(result.stdout.split())
+    summary = " ".join(result.stdout.split())
+    assert "Range: [2027-01-15 08:00:00," in summary
+    assert "Bucket size: 1 minute" in summary
+    assert f"Data size: {0 if empty_window else 2} points" in summary
+    assert "Series" in result.stdout
+    assert "live_containers_max" in result.stdout
+    assert "Description" in result.stdout
+    assert "Peak containers" in result.stdout
+    assert "CONTAINERS --group containers · 1 series" in summary
+    assert "Export:" in result.stdout
+    assert f"modal {kind} metrics fu-test" in summary
+    assert "--csv --group containers > metrics.csv" in summary
+    assert "--json --group containers" in summary
+    assert "successful_calls" not in result.stdout
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+def test_metrics_export_csv(servicer, set_env_client, kind):
+    import csv
+    import io
+
+    rpc = "FunctionGetMetrics" if kind == "function" else "ServerGetMetrics"
+    response = getattr(api_pb2, rpc + "Response")(bucket_secs=60)
+    response.since.FromSeconds(1800000000)
+    response.until.FromSeconds(1800000120)
+    series = response.series.add(name="live_containers_max", unit="containers")
+    series.points.add(value=0).timestamp.FromSeconds(1800000000)
+    series.points.add().timestamp.FromSeconds(1800000060)
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test",
+                function=api_pb2.FunctionData(is_server=kind == "server"),
+            ),
+        )
+        ctx.add_response(rpc, response)
+        result = run_cli_command([kind, "metrics", "app/name", "--group", "containers", "--csv"])
+    assert list(csv.DictReader(io.StringIO(result.stdout))) == [
+        {
+            "series_name": "live_containers_max",
+            "unit": "containers",
+            "time": "2027-01-15T08:00:00Z",
+            "value": "0.0",
+        },
+        {
+            "series_name": "live_containers_max",
+            "unit": "containers",
+            "time": "2027-01-15T08:01:00Z",
+            "value": "",
+        },
+    ]
+    assert not result.stderr
+    assert "Warning" not in result.stdout
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+def test_metrics_export_output_flags_mutually_exclusive(kind):
+    result = run_cli_command([kind, "metrics", "fu-test", "--json", "--csv"], expected_exit_code=2)
+    assert "--json and --csv are mutually exclusive" in result.stderr
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+def test_metrics_command_help(kind):
+    result = run_cli_command([kind, "metrics", "--help"])
+    assert "--json" in result.stdout and "--csv" in result.stdout
+    assert "By default, prints a schema summarizing" in " ".join(result.stdout.split())
+    assert "COMMAND" not in result.stdout
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_metrics_summary_uses_server_bucket_resolution(servicer, set_env_client, kind, explicit):
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test",
+                function=api_pb2.FunctionData(is_server=kind == "server"),
+            ),
+        )
+        ctx.add_response("MetricsGetInfo", api_pb2.MetricsGetInfoResponse(bucket_secs=300, bucket_count=12))
+        args = [
+            kind,
+            "metrics",
+            "app/name",
+            "--since",
+            "2027-01-15T08:00:30+00:00",
+            "--until",
+            "2027-01-15T09:00:30+00:00",
+        ]
+        if explicit:
+            args.extend(["--bucket-size", "5m"])
+        result = run_cli_command(args)
+    request = ctx.pop_request("MetricsGetInfo")
+    assert request.HasField("bucket_secs") == explicit
+    if explicit:
+        assert request.bucket_secs == 300
+    summary = " ".join(result.stdout.split())
+    assert "Bucket size: 5 minutes" in summary
+    assert "Data size: 0 points" in summary
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+def test_metrics_bucket_size_duration(servicer, set_env_client, kind):
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test", function=api_pb2.FunctionData(is_server=kind == "server")
+            ),
+        )
+        ctx.add_response("MetricsGetInfo", api_pb2.MetricsGetInfoResponse(bucket_secs=28800, bucket_count=84))
+        result = run_cli_command([kind, "metrics", "app/name", "--since", "28d", "--bucket-size", "8h"])
+    request = ctx.pop_request("MetricsGetInfo")
+    assert request.bucket_secs == 28800
+    assert "Bucket size: 8 hours" in " ".join(result.stdout.split())
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+@pytest.mark.parametrize("output", ["summary", "json", "csv"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_metrics_resource_groups(servicer, set_env_client, kind, output, explicit):
+    import csv
+    import io
+
+    metrics = [
+        ("cpu", "cpu_usage", "cores", "avg"),
+        ("memory", "memory_requested", "GiB", "avg"),
+        ("network", "network_ingress", "bytes", "sum"),
+        ("gpu", "gpu_count_h100", "GPUs", "avg"),
+    ]
+    schema = api_pb2.MetricsGetInfoResponse(bucket_secs=60, bucket_count=2)
+    rpc = "FunctionGetMetrics" if kind == "function" else "ServerGetMetrics"
+    response = getattr(api_pb2, rpc + "Response")(bucket_secs=60)
+    response.since.FromSeconds(1800000000)
+    response.until.FromSeconds(1800000120)
+    for group, name, unit, _ in metrics:
+        description = f"Description of {name}"
+        schema.groups.add(name=group).metrics.add(name=name, unit=unit, description=description)
+        series = response.series.add(name=name, unit=unit, description=description)
+        series.points.add(value=0).timestamp.FromSeconds(1800000000)
+        series.points.add().timestamp.FromSeconds(1800000060)
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test", function=api_pb2.FunctionData(is_server=kind == "server")
+            ),
+        )
+        if output == "summary":
+            ctx.add_response("MetricsGetInfo", schema)
+        if output != "summary":
+            ctx.add_response(rpc, response)
+        args = [kind, "metrics", "app/name"]
+        if explicit:
+            for group, *_ in metrics:
+                args.extend(["--group", group])
+        if output != "summary":
+            args.append("--" + output)
+        result = run_cli_command(args)
+    ctx.pop_request("FunctionGet")
+    if output == "summary":
+        ctx.pop_request("MetricsGetInfo")
+    if output != "summary":
+        request = ctx.pop_request(rpc)
+        assert list(request.groups) == ([m[0] for m in metrics] if explicit else [])
+    assert not ctx.calls
+    if output == "summary":
+        assert "Data size: 8 points" in " ".join(result.stdout.split())
+        for _, name, unit, _ in metrics:
+            assert name in result.stdout and unit in result.stdout
+    elif output == "json":
+        data = json.loads(result.stdout)
+        assert len(data["series"]) == 4
+        for series, (_, name, unit, _) in zip(data["series"], metrics):
+            assert series["name"] == name
+            assert series["unit"] == unit
+            assert series["description"] == f"Description of {name}"
+            assert [point["value"] for point in series["points"]] == [0, None]
+    else:
+        rows = list(csv.DictReader(io.StringIO(result.stdout)))
+        assert len(rows) == 8
+        for group, name, unit, _ in metrics:
+            points = [row for row in rows if row["series_name"] == name]
+            assert [row["value"] for row in points] == ["0.0", ""]
+            assert all(row["unit"] == unit for row in points)
+
+
+@pytest.mark.parametrize("kind", ["function", "server"])
+@pytest.mark.parametrize("output", ["summary", "csv"])
+def test_metrics_schema_uses_server_rows(servicer, set_env_client, monkeypatch, kind, output):
+    monkeypatch.setenv("COLUMNS", "140")
+    schema = api_pb2.MetricsGetInfoResponse(bucket_secs=60, bucket_count=2)
+    for label, names in (("future_{a,b}_avg", ["future_a_avg", "future_b_avg"]), ("future_c_avg", ["future_c_avg"])):
+        row = schema.groups.add(name="future", display_name=label, description=f"Server definition for {label}.")
+        for name in names:
+            row.metrics.add(name=name, unit="widgets", description="Individual definition.")
+    rpc = "ServerGetMetrics" if kind == "server" else "FunctionGetMetrics"
+    response = getattr(api_pb2, rpc + "Response")(bucket_secs=60)
+    for name in ("future_a_avg", "future_b_avg", "future_c_avg"):
+        response.series.add(name=name, unit="widgets").points.add(value=1).timestamp.FromSeconds(1800000000)
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test", function=api_pb2.FunctionData(is_server=kind == "server")
+            ),
+        )
+        if output == "summary":
+            ctx.add_response("MetricsGetInfo", schema)
+        args = [kind, "metrics", "app/name", "--group", "future"]
+        if output == "csv":
+            ctx.add_response(rpc, response)
+            args.append("--csv")
+        result = run_cli_command(args)
+    ctx.pop_request("FunctionGet")
+    if output == "summary":
+        ctx.pop_request("MetricsGetInfo")
+        summary = " ".join(result.stdout.split())
+        assert "Data size: 6 points" in summary
+        assert result.stdout.count("FUTURE --group future · 3 series") == 1
+        assert "Groups: future" in summary
+        assert "future, future" not in summary
+        assert "future_{a,b}_avg (widgets)" in result.stdout
+        assert "Server definition for future_{a,b}_avg." in result.stdout
+        assert "Server definition for future_c_avg." in result.stdout
+    else:
+        import csv
+        import io
+
+        ctx.pop_request(rpc)
+        assert [row["series_name"] for row in csv.DictReader(io.StringIO(result.stdout))] == [
+            "future_a_avg",
+            "future_b_avg",
+            "future_c_avg",
+        ]
+    assert not ctx.calls

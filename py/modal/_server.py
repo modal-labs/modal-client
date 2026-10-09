@@ -14,6 +14,7 @@ from modal_proto import api_pb2
 from ._functions import _Function
 from ._load_context import LoadContext
 from ._logs_manager import _ServerLogsManager
+from ._metrics import _ServerMetricsManager
 from ._object import live_method
 from ._partial_function import (
     _find_partial_methods_for_user_cls,
@@ -98,6 +99,11 @@ class _Server:
 
     async def _get_log_query_data(self) -> _LogQueryData:
         return await self._get_service_function()._get_log_query_data()
+
+    @property
+    def metrics(self) -> _ServerMetricsManager:
+        """Access metric samples with `export()` and series definitions with `schema()`."""
+        return _ServerMetricsManager(self._get_service_function())
 
     @property
     def logs(self) -> _ServerLogsManager:

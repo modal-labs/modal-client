@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from modal._utils.time_utils import (
     add_months,
+    humanize_duration,
     is_leap,
     month_length,
     parse_billing_cycle,
@@ -393,3 +394,24 @@ def test_relative_timestamp_future():
     # Future datetimes should return "just now"
     dt = datetime.now(timezone.utc) + timedelta(hours=1)
     assert relative_timestamp(dt) == "just now"
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [
+        (0, "0 seconds"),
+        (1, "1 second"),
+        (60, "1 minute"),
+        (90, "1 minute"),
+        (900, "15 minutes"),
+        (14400, "4 hours"),
+        (86400, "1 day"),
+    ],
+)
+def test_humanize_duration(seconds, expected):
+    assert humanize_duration(seconds) == expected
+
+
+def test_humanize_duration_negative():
+    with pytest.raises(ValueError, match="nonnegative"):
+        humanize_duration(-1)

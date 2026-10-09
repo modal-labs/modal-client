@@ -34,6 +34,7 @@ from ._stats import (
     STATS_SECTION_STYLE,
     _count_with_percentage,
     _distribution_map_json,
+    _export_metrics,
     _metric_rows,
     _percentile_table,
     _timestamp,
@@ -1285,3 +1286,103 @@ async def variants(
                 style="dim",
             )
         )
+
+
+@function_cli.command("metrics", no_args_is_help=True)
+@click.argument("identifier", metavar="FUNCTION")
+@click.option("--since", help="Start time: ISO 8601 or relative duration (e.g. 2h). Naive times are local.")
+@click.option("--until", help="End time; same syntax as --since. Defaults to now.")
+@click.option(
+    "--group",
+    "groups",
+    multiple=True,
+    type=str,
+    help="Metric group; repeat to select multiple. Defaults to all. Valid values are "
+    "'containers', 'cpu', 'memory', 'network', 'gpu', 'calls'.",
+)
+@click.option(
+    "--bucket-size",
+    type=str,
+    metavar="DURATION",
+    help=(
+        "Bucket width: 1m, 2m, 3m, 4m, 5m, 6m, 10m, 12m, 15m, 20m, 30m, "
+        "1h, 2h, 3h, 4h, 8h, 12h, 1d. By default, a value is chosen that splits the time range "
+        "into approximately 100 buckets."
+    ),
+)
+@click.option("--json", "json_output", is_flag=True, help="Fetch metric samples and output JSON.")
+@click.option("--csv", "csv_output", is_flag=True, help="Fetch metric samples and output CSV.")
+@click.option("--all-variants", is_flag=True, help="Aggregate the root Function and its variants.")
+@env_option
+@synchronizer.create_blocking
+async def metrics(
+    identifier: str,
+    since: str | None,
+    until: str | None,
+    groups: tuple[str, ...],
+    bucket_size: str | None,
+    json_output: bool,
+    csv_output: bool,
+    env: str | None,
+    all_variants: bool = False,
+) -> None:
+    """Preview and export metrics for a Modal Function.
+
+    Function may be an Object ID or a deployed Function name in the form
+    ``APP_NAME/FUNCTION_NAME``.
+
+    Each metric is a time series over the window from ``--since`` to ``--until``
+    (default: the last hour, maximum: 31 days). Samples are aggregated into
+    fixed-width buckets.
+
+    Set the width with ``--bucket-size``. Each series is limited to 500 buckets, so long windows
+    need wider buckets. Time bounds are rounded down to bucket boundaries in UTC.
+    Results may include data before --since and exclude data between the last boundary and --until.
+
+    Series are grouped by name. Specify which metrics to return with ``--group``.
+
+    By default, prints a schema summarizing the date range, bucket size, and time series that would
+    be returned. Use ``--json`` or ``--csv`` to output the raw samples instead.
+
+    Preview available Function metrics:
+
+    ```shell
+    modal function metrics my-app/my-function
+    ```
+
+    Export calls metrics for the last two hours as JSON:
+
+    ```shell
+    modal function metrics my-app/my-function --group calls --since 2h --json > metrics.json
+    ```
+
+    Export CPU, memory, network, and GPU metrics:
+
+    ```shell
+    modal function metrics my-app/my-function --group cpu --group memory --group network --group gpu --json
+    ```
+
+    Save container metrics with five-minute buckets as CSV:
+
+    ```shell
+    modal function metrics fu-abc123 --group containers --bucket-size 5m --csv > metrics.csv
+    ```
+
+    Export all metrics groups across all parametrized variants:
+
+    ```shell
+    modal function metrics my-app/MyClass.* --all-variants --json > metrics.json
+    ```
+    """
+    await _export_metrics(
+        identifier,
+        since,
+        until,
+        groups,
+        bucket_size,
+        json_output,
+        csv_output,
+        env,
+        is_server=False,
+        all_variants=all_variants,
+    )
