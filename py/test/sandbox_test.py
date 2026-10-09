@@ -981,6 +981,29 @@ def test_sandbox_from_name_env_flag_falls_back_to_v1(client, servicer, monkeypat
     assert len(ctx.get_requests("SandboxGetFromName")) == 1
 
 
+def test_sandbox_from_name_include_terminated(client, servicer, monkeypatch):
+    # Even when V2 routing is off, a terminated lookup goes through the V2 RPC.
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
+    servicer.sandbox_names[_V2_SANDBOX_ID] = "my-sandbox"
+
+    with servicer.intercept() as ctx:
+        Sandbox.from_name("my-app", "my-sandbox", client=client)
+        Sandbox.from_name("my-app", "my-sandbox", include_terminated=True, client=client)
+
+    (default_req,) = ctx.get_requests("SandboxGetFromName")
+    assert not default_req.include_terminated
+    (terminated_req,) = ctx.get_requests("SandboxGetFromNameV2")
+    assert terminated_req.include_terminated
+
+    # A terminated lookup never falls back to the default lookup.
+    with servicer.intercept() as ctx:
+        with pytest.raises(modal.exception.NotFoundError):
+            Sandbox.from_name("my-app", "no-such-sandbox", include_terminated=True, client=client)
+
+    assert len(ctx.get_requests("SandboxGetFromNameV2")) == 1
+    assert ctx.get_requests("SandboxGetFromName") == []
+
+
 def test_sandbox_list_env_flag_routes_to_v2(client, servicer, monkeypatch):
     app = App()
     with app.run(client=client):

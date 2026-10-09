@@ -1821,6 +1821,8 @@ type sandboxV2RoutingStub struct {
 	v1TaskLookups        int
 	fromNameV2Err        error // returned by SandboxGetFromNameV2 when set
 	listV2Req            *pb.SandboxListRequest
+	fromNameV1Req        *pb.SandboxGetFromNameRequest
+	fromNameV2Req        *pb.SandboxGetFromNameRequest
 }
 
 func (m *sandboxV2RoutingStub) SandboxCreate(
@@ -1847,16 +1849,18 @@ func (m *sandboxV2RoutingStub) SandboxCreateV2(
 }
 
 func (m *sandboxV2RoutingStub) SandboxGetFromName(
-	_ context.Context, _ *pb.SandboxGetFromNameRequest, _ ...grpc.CallOption,
+	_ context.Context, req *pb.SandboxGetFromNameRequest, _ ...grpc.CallOption,
 ) (*pb.SandboxGetFromNameResponse, error) {
 	m.v1Lookups++
+	m.fromNameV1Req = req
 	return pb.SandboxGetFromNameResponse_builder{SandboxId: testV1SandboxID}.Build(), nil
 }
 
 func (m *sandboxV2RoutingStub) SandboxGetFromNameV2(
-	_ context.Context, _ *pb.SandboxGetFromNameRequest, _ ...grpc.CallOption,
+	_ context.Context, req *pb.SandboxGetFromNameRequest, _ ...grpc.CallOption,
 ) (*pb.SandboxGetFromNameResponse, error) {
 	m.v2Lookups++
+	m.fromNameV2Req = req
 	if m.fromNameV2Err != nil {
 		return nil, m.fromNameV2Err
 	}
@@ -2259,6 +2263,47 @@ func TestSandboxV2FlagRoutesFromName(t *testing.T) {
 		g.Expect(sb.SandboxID).To(gomega.Equal(testV1SandboxID))
 		g.Expect(stub.v1Lookups).To(gomega.Equal(1))
 		g.Expect(stub.v2Lookups).To(gomega.Equal(0))
+	})
+}
+
+func TestSandboxFromNameIncludeTerminated(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults to false", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		_, err := newSandboxV2RoutingService(stub, false).FromName(t.Context(), "my-app", "my-sandbox", nil)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(stub.fromNameV1Req.GetIncludeTerminated()).To(gomega.BeFalse())
+	})
+
+	t.Run("routes to the V2 lookup even when the flag is off", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{}
+		_, err := newSandboxV2RoutingService(stub, false).FromName(t.Context(), "my-app", "my-sandbox", &SandboxFromNameParams{
+			IncludeTerminated: true,
+		})
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(stub.v2Lookups).To(gomega.Equal(1))
+		g.Expect(stub.v1Lookups).To(gomega.Equal(0))
+		g.Expect(stub.fromNameV2Req.GetIncludeTerminated()).To(gomega.BeTrue())
+	})
+
+	t.Run("does not fall back to the V1 lookup on NotFound", func(t *testing.T) {
+		t.Parallel()
+		g := gomega.NewWithT(t)
+
+		stub := &sandboxV2RoutingStub{fromNameV2Err: status.Error(codes.NotFound, "no such sandbox")}
+		_, err := newSandboxV2RoutingService(stub, true).FromName(t.Context(), "my-app", "my-sandbox", &SandboxFromNameParams{
+			IncludeTerminated: true,
+		})
+		g.Expect(err).To(gomega.BeAssignableToTypeOf(NotFoundError{}))
+		g.Expect(stub.v2Lookups).To(gomega.Equal(1))
+		g.Expect(stub.v1Lookups).To(gomega.Equal(0))
 	})
 }
 

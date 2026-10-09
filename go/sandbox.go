@@ -881,6 +881,9 @@ type SandboxFromIDParams struct{}
 // SandboxFromNameParams are options for finding deployed Sandbox objects by name.
 type SandboxFromNameParams struct {
 	Environment string
+	// If IncludeTerminated is set to true and no Sandbox with the name is
+	// currently running, the most recent terminated Sandbox will be returned instead.
+	IncludeTerminated bool
 }
 
 // SandboxWaitParams are options for Sandbox.Wait.
@@ -939,21 +942,24 @@ type ContainerProcessWaitParams struct{}
 
 // FromName gets a running Sandbox by name from a deployed App.
 //
-// Raises a NotFoundError if no running Sandbox is found with the given name.
+// Raises a NotFoundError if no running Sandbox is found with the given name,
+// unless IncludeTerminated is set, in which case the most recently created
+// Sandbox with the name is returned even if it has terminated.
 // A Sandbox's name is the `Name` argument passed to `App.CreateSandbox`.
 func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error) {
 	if params == nil {
 		params = &SandboxFromNameParams{}
 	}
 
-	if s.client.profile.SandboxV2 {
+	if params.IncludeTerminated || s.client.profile.SandboxV2 {
 		sb, err := s.ExperimentalFromName(ctx, appName, name, &SandboxExperimentalFromNameParams{
-			Environment: params.Environment,
+			Environment:       params.Environment,
+			IncludeTerminated: params.IncludeTerminated,
 		})
 		var notFound NotFoundError
 		if err == nil {
 			return sb, nil
-		} else if !errors.As(err, &notFound) {
+		} else if params.IncludeTerminated || !errors.As(err, &notFound) {
 			return nil, err
 		}
 	}
@@ -976,6 +982,9 @@ func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string,
 // SandboxExperimentalFromNameParams are options for SandboxService.ExperimentalFromName.
 type SandboxExperimentalFromNameParams struct {
 	Environment string
+	// If IncludeTerminated is set to true and no Sandbox with the name is
+	// currently running, the most recent terminated Sandbox will be returned instead.
+	IncludeTerminated bool
 }
 
 // ExperimentalFromName gets a running V2 Sandbox by name from a deployed App,
@@ -988,9 +997,10 @@ func (s *sandboxServiceImpl) ExperimentalFromName(ctx context.Context, appName, 
 	}
 
 	resp, err := s.client.cpClient.SandboxGetFromNameV2(ctx, pb.SandboxGetFromNameRequest_builder{
-		SandboxName:     name,
-		AppName:         appName,
-		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
+		SandboxName:       name,
+		AppName:           appName,
+		EnvironmentName:   firstNonEmpty(params.Environment, s.client.profile.Environment),
+		IncludeTerminated: params.IncludeTerminated,
 	}.Build())
 	if err != nil {
 		if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {

@@ -964,6 +964,8 @@ export class SandboxService {
   /** Get a running {@link Sandbox} by name from a deployed {@link App}.
    *
    * Raises a {@link NotFoundError} if no running Sandbox is found with the given name.
+   * If `includeTerminated` is set to `true` and no Sandbox with the name is currently
+   * running, the most recent terminated Sandbox will be returned instead.
    * A Sandbox's name is the `name` argument passed to {@link SandboxService#create sandboxes.create()}.
    *
    * @param appName - Name of the deployed App
@@ -976,11 +978,12 @@ export class SandboxService {
     name: string,
     params?: SandboxFromNameParams,
   ): Promise<Sandbox> {
-    if (this.#client.profile.sandboxV2) {
+    if (params?.includeTerminated || this.#client.profile.sandboxV2) {
       try {
         return await this.experimentalFromName(appName, name, params);
       } catch (err) {
-        if (!(err instanceof NotFoundError)) throw err;
+        if (!(err instanceof NotFoundError) || params?.includeTerminated)
+          throw err;
       }
     }
 
@@ -1026,6 +1029,7 @@ export class SandboxService {
         sandboxName: name,
         appName,
         environmentName: this.#client.environmentName(params?.environment),
+        includeTerminated: params?.includeTerminated ?? false,
       });
 
       return new Sandbox(this.#client, resp.sandboxId);
@@ -1238,11 +1242,21 @@ export type SandboxExperimentalListParams = {
 /** Optional parameters for {@link SandboxService#fromName client.sandboxes.fromName()}. */
 export type SandboxFromNameParams = {
   environment?: string;
+  /**
+   * If `includeTerminated` is set to `true` and no Sandbox with the name is
+   * currently running, the most recent terminated Sandbox will be returned instead.
+   */
+  includeTerminated?: boolean;
 };
 
 /** Optional parameters for {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()}. */
 export type SandboxExperimentalFromNameParams = {
   environment?: string;
+  /**
+   * If `includeTerminated` is set to `true` and no Sandbox with the name is
+   * currently running, the most recent terminated Sandbox will be returned instead.
+   */
+  includeTerminated?: boolean;
 };
 
 /** Optional parameters for {@link SandboxService#experimentalFromSnapshot client.sandboxes.experimentalFromSnapshot()}. */

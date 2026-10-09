@@ -1142,6 +1142,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         name: str,
         *,
         environment_name: str | None = None,
+        include_terminated: bool = False,
         client: _Client | None = None,
     ) -> "_Sandbox":
         """Get a running Sandbox by name from a deployed App.
@@ -1152,28 +1153,40 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_name: Name of the deployed app to look up the sandbox under.
             name: Sandbox name to resolve.
             environment_name: Optional environment name for the lookup; defaults to the configured environment.
+            include_terminated: If set to `True` and no Sandbox with the name is currently running, the most
+                recent terminated Sandbox will be returned instead.
             client: Modal client to use for the RPC; defaults to `Client.from_env()` when omitted.
 
         Returns:
-            A `Sandbox` handle for the running sandbox.
+            A `Sandbox` handle for the running Sandbox, or the most recent terminated one when
+            `include_terminated=True`.
 
         Raises:
-            NotFoundError: If no running sandbox exists with the given name.
+            NotFoundError: If no matching sandbox exists with the given name.
         """
         if client is None:
             client = await _Client.from_env()
 
-        if config.get("sandbox_v2") is True:
+        if include_terminated or config.get("sandbox_v2") is True:
             try:
                 return await _Sandbox._experimental_from_name(
-                    app_name, name, environment_name=environment_name, client=client
+                    app_name,
+                    name,
+                    environment_name=environment_name,
+                    include_terminated=include_terminated,
+                    client=client,
                 )
             except NotFoundError:
-                pass
+                if include_terminated:
+                    raise
 
         env_name = _get_environment_name(environment_name)
 
-        req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
+        req = api_pb2.SandboxGetFromNameRequest(
+            sandbox_name=name,
+            app_name=app_name,
+            environment_name=env_name,
+        )
         resp = await client._stub.SandboxGetFromName(req)
         return _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
 
@@ -1183,6 +1196,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         name: str,
         *,
         environment_name: str | None = None,
+        include_terminated: bool = False,
         client: _Client | None = None,
     ) -> "_Sandbox":
         """Get a running V2 Sandbox by name from a deployed App.
@@ -1193,19 +1207,27 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_name: Name of the deployed app to look up the sandbox under.
             name: Sandbox name to resolve.
             environment_name: Optional environment name for the lookup; defaults to the configured environment.
+            include_terminated: If set to `True` and no Sandbox with the name is currently running, the most
+                recent terminated Sandbox will be returned instead.
             client: Modal client to use for the RPC; defaults to `Client.from_env()` when omitted.
 
         Returns:
-            A `Sandbox` handle for the running sandbox.
+            A `Sandbox` handle for the running Sandbox, or the most recent terminated one when
+            `include_terminated=True`.
 
         Raises:
-            NotFoundError: If no running sandbox exists with the given name.
+            NotFoundError: If no matching sandbox exists with the given name.
         """
         if client is None:
             client = await _Client.from_env()
         env_name = _get_environment_name(environment_name)
 
-        req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
+        req = api_pb2.SandboxGetFromNameRequest(
+            sandbox_name=name,
+            app_name=app_name,
+            environment_name=env_name,
+            include_terminated=include_terminated,
+        )
         assert client._auth_token_manager
         auth_token = await client._auth_token_manager.get_token()
         resp = await client._stub.SandboxGetFromNameV2(req, metadata=[("x-modal-auth-token", auth_token)])

@@ -1490,6 +1490,56 @@ test("fromName deduces V2 from the returned Sandbox ID shape", async () => {
   mock.assertExhausted();
 });
 
+test("fromName routes includeTerminated to V2 without V1 fallback", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetFromName", (req: any) => {
+    expect(req.includeTerminated).toBeFalsy();
+    return { sandboxId: V1_SANDBOX_ID };
+  });
+  mock.handleUnary("/SandboxGetFromNameV2", (req: any) => {
+    expect(req.includeTerminated).toBe(true);
+    return { sandboxId: V2_SANDBOX_ID };
+  });
+  mock.handleUnary("/SandboxGetFromNameV2", () => {
+    throw new ClientError(
+      "/SandboxGetFromNameV2",
+      Status.NOT_FOUND,
+      "not found",
+    );
+  });
+
+  await mc.sandboxes.fromName("libmodal-test", "my-sandbox");
+  const sb = await mc.sandboxes.fromName("libmodal-test", "my-sandbox", {
+    includeTerminated: true,
+  });
+  expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
+  await expect(
+    mc.sandboxes.fromName("libmodal-test", "gone", { includeTerminated: true }),
+  ).rejects.toThrow(NotFoundError);
+
+  mock.assertExhausted();
+});
+
+test("fromName forwards includeTerminated to SandboxGetFromNameV2", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxGetFromNameV2", (req: any) => {
+    expect(req.includeTerminated).toBe(true);
+    return { sandboxId: V2_SANDBOX_ID };
+  });
+
+  await mc.sandboxes.fromName("libmodal-test", "my-sandbox", {
+    includeTerminated: true,
+  });
+
+  mock.assertExhausted();
+});
+
 test("experimentalList routes mirrored V1 sandboxes to the V1 backend", async () => {
   // V1 Sandboxes are mirrored into the V2 store during the V1->V2 migration,
   // so SandboxListV2 can return V1 Sandboxes.
