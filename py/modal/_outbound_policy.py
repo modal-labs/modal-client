@@ -139,11 +139,11 @@ class _OutboundPolicy:
         """Deduplicated list of secrets referenced by the policy's replacements."""
         return list(dict.fromkeys(r.secret for r in self._replacements if r.secret is not None))
 
-    def _to_proto(self) -> api_pb2.OutboundPolicy:
+    def _to_proto(self) -> api_pb2.ExperimentalOutboundPolicy:
         """Convert to the wire format. Referenced secrets must be hydrated first."""
-        return api_pb2.OutboundPolicy(
+        return api_pb2.ExperimentalOutboundPolicy(
             header_replacements=[
-                api_pb2.OutboundPolicy.HeaderReplacement(
+                api_pb2.ExperimentalOutboundPolicy.HeaderReplacement(
                     domain=replacement.domain,
                     secret_id=(replacement.secret.object_id if replacement.secret is not None else ""),
                     headers=replacement.headers,

@@ -3576,6 +3576,132 @@ func (b0 TaskReloadVolumesResponse_builder) Build() *TaskReloadVolumesResponse {
 	return m0
 }
 
+type TaskSetExperimentalOutboundPolicyRequest struct {
+	state                                 protoimpl.MessageState      `protogen:"opaque.v1"`
+	xxx_hidden_TaskId                     string                      `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_ExperimentalOutboundPolicy *ExperimentalOutboundPolicy `protobuf:"bytes,2,opt,name=experimental_outbound_policy,json=experimentalOutboundPolicy,proto3"`
+	unknownFields                         protoimpl.UnknownFields
+	sizeCache                             protoimpl.SizeCache
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) Reset() {
+	*x = TaskSetExperimentalOutboundPolicyRequest{}
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskSetExperimentalOutboundPolicyRequest) ProtoMessage() {}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) GetTaskId() string {
+	if x != nil {
+		return x.xxx_hidden_TaskId
+	}
+	return ""
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) GetExperimentalOutboundPolicy() *ExperimentalOutboundPolicy {
+	if x != nil {
+		return x.xxx_hidden_ExperimentalOutboundPolicy
+	}
+	return nil
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) SetTaskId(v string) {
+	x.xxx_hidden_TaskId = v
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) SetExperimentalOutboundPolicy(v *ExperimentalOutboundPolicy) {
+	x.xxx_hidden_ExperimentalOutboundPolicy = v
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) HasExperimentalOutboundPolicy() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_ExperimentalOutboundPolicy != nil
+}
+
+func (x *TaskSetExperimentalOutboundPolicyRequest) ClearExperimentalOutboundPolicy() {
+	x.xxx_hidden_ExperimentalOutboundPolicy = nil
+}
+
+type TaskSetExperimentalOutboundPolicyRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	TaskId string
+	// Replaces the task's experimental outbound policy.
+	ExperimentalOutboundPolicy *ExperimentalOutboundPolicy
+}
+
+func (b0 TaskSetExperimentalOutboundPolicyRequest_builder) Build() *TaskSetExperimentalOutboundPolicyRequest {
+	m0 := &TaskSetExperimentalOutboundPolicyRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_TaskId = b.TaskId
+	x.xxx_hidden_ExperimentalOutboundPolicy = b.ExperimentalOutboundPolicy
+	return m0
+}
+
+type TaskSetExperimentalOutboundPolicyResponse struct {
+	state         protoimpl.MessageState `protogen:"opaque.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TaskSetExperimentalOutboundPolicyResponse) Reset() {
+	*x = TaskSetExperimentalOutboundPolicyResponse{}
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskSetExperimentalOutboundPolicyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskSetExperimentalOutboundPolicyResponse) ProtoMessage() {}
+
+func (x *TaskSetExperimentalOutboundPolicyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+type TaskSetExperimentalOutboundPolicyResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+}
+
+func (b0 TaskSetExperimentalOutboundPolicyResponse_builder) Build() *TaskSetExperimentalOutboundPolicyResponse {
+	m0 := &TaskSetExperimentalOutboundPolicyResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	return m0
+}
+
 type TaskSetNetworkAccessRequest struct {
 	state                    protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
@@ -3586,7 +3712,7 @@ type TaskSetNetworkAccessRequest struct {
 
 func (x *TaskSetNetworkAccessRequest) Reset() {
 	*x = TaskSetNetworkAccessRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[36]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3598,7 +3724,7 @@ func (x *TaskSetNetworkAccessRequest) String() string {
 func (*TaskSetNetworkAccessRequest) ProtoMessage() {}
 
 func (x *TaskSetNetworkAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[36]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3668,7 +3794,7 @@ type TaskSetNetworkAccessResponse struct {
 
 func (x *TaskSetNetworkAccessResponse) Reset() {
 	*x = TaskSetNetworkAccessResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[37]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3680,7 +3806,7 @@ func (x *TaskSetNetworkAccessResponse) String() string {
 func (*TaskSetNetworkAccessResponse) ProtoMessage() {}
 
 func (x *TaskSetNetworkAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[37]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3698,132 +3824,6 @@ type TaskSetNetworkAccessResponse_builder struct {
 
 func (b0 TaskSetNetworkAccessResponse_builder) Build() *TaskSetNetworkAccessResponse {
 	m0 := &TaskSetNetworkAccessResponse{}
-	b, x := &b0, m0
-	_, _ = b, x
-	return m0
-}
-
-type TaskSetOutboundPolicyRequest struct {
-	state                     protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_TaskId         string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
-	xxx_hidden_OutboundPolicy *OutboundPolicy        `protobuf:"bytes,2,opt,name=outbound_policy,json=outboundPolicy,proto3"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
-}
-
-func (x *TaskSetOutboundPolicyRequest) Reset() {
-	*x = TaskSetOutboundPolicyRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[38]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TaskSetOutboundPolicyRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TaskSetOutboundPolicyRequest) ProtoMessage() {}
-
-func (x *TaskSetOutboundPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[38]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-func (x *TaskSetOutboundPolicyRequest) GetTaskId() string {
-	if x != nil {
-		return x.xxx_hidden_TaskId
-	}
-	return ""
-}
-
-func (x *TaskSetOutboundPolicyRequest) GetOutboundPolicy() *OutboundPolicy {
-	if x != nil {
-		return x.xxx_hidden_OutboundPolicy
-	}
-	return nil
-}
-
-func (x *TaskSetOutboundPolicyRequest) SetTaskId(v string) {
-	x.xxx_hidden_TaskId = v
-}
-
-func (x *TaskSetOutboundPolicyRequest) SetOutboundPolicy(v *OutboundPolicy) {
-	x.xxx_hidden_OutboundPolicy = v
-}
-
-func (x *TaskSetOutboundPolicyRequest) HasOutboundPolicy() bool {
-	if x == nil {
-		return false
-	}
-	return x.xxx_hidden_OutboundPolicy != nil
-}
-
-func (x *TaskSetOutboundPolicyRequest) ClearOutboundPolicy() {
-	x.xxx_hidden_OutboundPolicy = nil
-}
-
-type TaskSetOutboundPolicyRequest_builder struct {
-	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
-
-	TaskId string
-	// Replaces the task's outbound policy.
-	OutboundPolicy *OutboundPolicy
-}
-
-func (b0 TaskSetOutboundPolicyRequest_builder) Build() *TaskSetOutboundPolicyRequest {
-	m0 := &TaskSetOutboundPolicyRequest{}
-	b, x := &b0, m0
-	_, _ = b, x
-	x.xxx_hidden_TaskId = b.TaskId
-	x.xxx_hidden_OutboundPolicy = b.OutboundPolicy
-	return m0
-}
-
-type TaskSetOutboundPolicyResponse struct {
-	state         protoimpl.MessageState `protogen:"opaque.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TaskSetOutboundPolicyResponse) Reset() {
-	*x = TaskSetOutboundPolicyResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[39]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TaskSetOutboundPolicyResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TaskSetOutboundPolicyResponse) ProtoMessage() {}
-
-func (x *TaskSetOutboundPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[39]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-type TaskSetOutboundPolicyResponse_builder struct {
-	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
-
-}
-
-func (b0 TaskSetOutboundPolicyResponse_builder) Build() *TaskSetOutboundPolicyResponse {
-	m0 := &TaskSetOutboundPolicyResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
 	return m0
@@ -4657,15 +4657,15 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x18TaskReloadVolumesRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
 	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\"\x1b\n" +
-	"\x19TaskReloadVolumesResponse\"z\n" +
+	"\x19TaskReloadVolumesResponse\"\xaf\x01\n" +
+	"(TaskSetExperimentalOutboundPolicyRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12j\n" +
+	"\x1cexperimental_outbound_policy\x18\x02 \x01(\v2(.modal.client.ExperimentalOutboundPolicyR\x1aexperimentalOutboundPolicy\"+\n" +
+	")TaskSetExperimentalOutboundPolicyResponse\"z\n" +
 	"\x1bTaskSetNetworkAccessRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12B\n" +
 	"\x0enetwork_access\x18\x02 \x01(\v2\x1b.modal.client.NetworkAccessR\rnetworkAccess\"\x1e\n" +
-	"\x1cTaskSetNetworkAccessResponse\"~\n" +
-	"\x1cTaskSetOutboundPolicyRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12E\n" +
-	"\x0foutbound_policy\x18\x02 \x01(\v2\x1c.modal.client.OutboundPolicyR\x0eoutboundPolicy\"\x1f\n" +
-	"\x1dTaskSetOutboundPolicyResponse\"\xb8\x02\n" +
+	"\x1cTaskSetNetworkAccessResponse\"\xb8\x02\n" +
 	"\x1cTaskSnapshotDirectoryRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x1f\n" +
@@ -4713,7 +4713,7 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"&TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR\x10\x01*]\n" +
 	"\x14TaskExecStdoutConfig\x12#\n" +
 	"\x1fTASK_EXEC_STDOUT_CONFIG_DEVNULL\x10\x00\x12 \n" +
-	"\x1cTASK_EXEC_STDOUT_CONFIG_PIPE\x10\x012\xc7\x17\n" +
+	"\x1cTASK_EXEC_STDOUT_CONFIG_PIPE\x10\x012\xdf\x17\n" +
 	"\x11TaskCommandRouter\x12\x84\x01\n" +
 	"\x13SandboxStdinWriteV2\x125.modal.task_command_router.SandboxStdinWriteV2Request\x1a6.modal.task_command_router.SandboxStdinWriteV2Response\x12\x83\x01\n" +
 	"\x12SandboxStdioReadV2\x124.modal.task_command_router.SandboxStdioReadV2Request\x1a5.modal.task_command_router.SandboxStdioReadV2Response0\x01\x12\x90\x01\n" +
@@ -4732,8 +4732,8 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\fTaskExecWait\x12..modal.task_command_router.TaskExecWaitRequest\x1a/.modal.task_command_router.TaskExecWaitResponse\x12b\n" +
 	"\x12TaskMountDirectory\x124.modal.task_command_router.TaskMountDirectoryRequest\x1a\x16.google.protobuf.Empty\x12~\n" +
 	"\x11TaskReloadVolumes\x123.modal.task_command_router.TaskReloadVolumesRequest\x1a4.modal.task_command_router.TaskReloadVolumesResponse\x12\x87\x01\n" +
-	"\x14TaskSetNetworkAccess\x126.modal.task_command_router.TaskSetNetworkAccessRequest\x1a7.modal.task_command_router.TaskSetNetworkAccessResponse\x12\x8a\x01\n" +
-	"\x15TaskSetOutboundPolicy\x127.modal.task_command_router.TaskSetOutboundPolicyRequest\x1a8.modal.task_command_router.TaskSetOutboundPolicyResponse\x12\x8a\x01\n" +
+	"\x14TaskSetNetworkAccess\x126.modal.task_command_router.TaskSetNetworkAccessRequest\x1a7.modal.task_command_router.TaskSetNetworkAccessResponse\x12\xa2\x01\n" +
+	"\x15TaskSetOutboundPolicy\x12C.modal.task_command_router.TaskSetExperimentalOutboundPolicyRequest\x1aD.modal.task_command_router.TaskSetExperimentalOutboundPolicyResponse\x12\x8a\x01\n" +
 	"\x15TaskSnapshotDirectory\x127.modal.task_command_router.TaskSnapshotDirectoryRequest\x1a8.modal.task_command_router.TaskSnapshotDirectoryResponse\x12\x8d\x01\n" +
 	"\x16TaskSnapshotFilesystem\x128.modal.task_command_router.TaskSnapshotFilesystemRequest\x1a9.modal.task_command_router.TaskSnapshotFilesystemResponse\x12\x81\x01\n" +
 	"\x12TaskSnapshotMemory\x124.modal.task_command_router.TaskSnapshotMemoryRequest\x1a5.modal.task_command_router.TaskSnapshotMemoryResponse\x12f\n" +
@@ -4742,66 +4742,66 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 var file_modal_proto_task_command_router_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_modal_proto_task_command_router_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_modal_proto_task_command_router_proto_goTypes = []any{
-	(SandboxStdioFileDescriptor)(0),          // 0: modal.task_command_router.SandboxStdioFileDescriptor
-	(TaskExecStderrConfig)(0),                // 1: modal.task_command_router.TaskExecStderrConfig
-	(TaskExecStdioFileDescriptor)(0),         // 2: modal.task_command_router.TaskExecStdioFileDescriptor
-	(TaskExecStdoutConfig)(0),                // 3: modal.task_command_router.TaskExecStdoutConfig
-	(*SandboxStdinWriteV2Request)(nil),       // 4: modal.task_command_router.SandboxStdinWriteV2Request
-	(*SandboxStdinWriteV2Response)(nil),      // 5: modal.task_command_router.SandboxStdinWriteV2Response
-	(*SandboxStdioReadV2Request)(nil),        // 6: modal.task_command_router.SandboxStdioReadV2Request
-	(*SandboxStdioReadV2Response)(nil),       // 7: modal.task_command_router.SandboxStdioReadV2Response
-	(*SandboxWaitUntilReadyTcrRequest)(nil),  // 8: modal.task_command_router.SandboxWaitUntilReadyTcrRequest
-	(*SandboxWaitUntilReadyTcrResponse)(nil), // 9: modal.task_command_router.SandboxWaitUntilReadyTcrResponse
-	(*TaskContainerCreateRequest)(nil),       // 10: modal.task_command_router.TaskContainerCreateRequest
-	(*TaskContainerCreateResponse)(nil),      // 11: modal.task_command_router.TaskContainerCreateResponse
-	(*TaskContainerGetRequest)(nil),          // 12: modal.task_command_router.TaskContainerGetRequest
-	(*TaskContainerGetResponse)(nil),         // 13: modal.task_command_router.TaskContainerGetResponse
-	(*TaskContainerInfo)(nil),                // 14: modal.task_command_router.TaskContainerInfo
-	(*TaskContainerListRequest)(nil),         // 15: modal.task_command_router.TaskContainerListRequest
-	(*TaskContainerListResponse)(nil),        // 16: modal.task_command_router.TaskContainerListResponse
-	(*TaskContainerTerminateRequest)(nil),    // 17: modal.task_command_router.TaskContainerTerminateRequest
-	(*TaskContainerTerminateResponse)(nil),   // 18: modal.task_command_router.TaskContainerTerminateResponse
-	(*TaskContainerWaitRequest)(nil),         // 19: modal.task_command_router.TaskContainerWaitRequest
-	(*TaskContainerWaitResponse)(nil),        // 20: modal.task_command_router.TaskContainerWaitResponse
-	(*TaskExecPollRequest)(nil),              // 21: modal.task_command_router.TaskExecPollRequest
-	(*TaskExecPollResponse)(nil),             // 22: modal.task_command_router.TaskExecPollResponse
-	(*TaskExecStartRequest)(nil),             // 23: modal.task_command_router.TaskExecStartRequest
-	(*TaskExecStartResponse)(nil),            // 24: modal.task_command_router.TaskExecStartResponse
-	(*TaskExecStdinStatusRequest)(nil),       // 25: modal.task_command_router.TaskExecStdinStatusRequest
-	(*TaskExecStdinStatusResponse)(nil),      // 26: modal.task_command_router.TaskExecStdinStatusResponse
-	(*TaskExecStdinWriteRequest)(nil),        // 27: modal.task_command_router.TaskExecStdinWriteRequest
-	(*TaskExecStdinWriteResponse)(nil),       // 28: modal.task_command_router.TaskExecStdinWriteResponse
-	(*TaskExecStdinWriteStreamEnd)(nil),      // 29: modal.task_command_router.TaskExecStdinWriteStreamEnd
-	(*TaskExecStdinWriteStreamRequest)(nil),  // 30: modal.task_command_router.TaskExecStdinWriteStreamRequest
-	(*TaskExecStdinWriteStreamResponse)(nil), // 31: modal.task_command_router.TaskExecStdinWriteStreamResponse
-	(*TaskExecStdinWriteStreamStart)(nil),    // 32: modal.task_command_router.TaskExecStdinWriteStreamStart
-	(*TaskExecStdioReadRequest)(nil),         // 33: modal.task_command_router.TaskExecStdioReadRequest
-	(*TaskExecStdioReadResponse)(nil),        // 34: modal.task_command_router.TaskExecStdioReadResponse
-	(*TaskExecWaitRequest)(nil),              // 35: modal.task_command_router.TaskExecWaitRequest
-	(*TaskExecWaitResponse)(nil),             // 36: modal.task_command_router.TaskExecWaitResponse
-	(*TaskMountDirectoryRequest)(nil),        // 37: modal.task_command_router.TaskMountDirectoryRequest
-	(*TaskReloadVolumesRequest)(nil),         // 38: modal.task_command_router.TaskReloadVolumesRequest
-	(*TaskReloadVolumesResponse)(nil),        // 39: modal.task_command_router.TaskReloadVolumesResponse
-	(*TaskSetNetworkAccessRequest)(nil),      // 40: modal.task_command_router.TaskSetNetworkAccessRequest
-	(*TaskSetNetworkAccessResponse)(nil),     // 41: modal.task_command_router.TaskSetNetworkAccessResponse
-	(*TaskSetOutboundPolicyRequest)(nil),     // 42: modal.task_command_router.TaskSetOutboundPolicyRequest
-	(*TaskSetOutboundPolicyResponse)(nil),    // 43: modal.task_command_router.TaskSetOutboundPolicyResponse
-	(*TaskSnapshotDirectoryRequest)(nil),     // 44: modal.task_command_router.TaskSnapshotDirectoryRequest
-	(*TaskSnapshotDirectoryResponse)(nil),    // 45: modal.task_command_router.TaskSnapshotDirectoryResponse
-	(*TaskSnapshotFilesystemRequest)(nil),    // 46: modal.task_command_router.TaskSnapshotFilesystemRequest
-	(*TaskSnapshotFilesystemResponse)(nil),   // 47: modal.task_command_router.TaskSnapshotFilesystemResponse
-	(*TaskSnapshotMemoryRequest)(nil),        // 48: modal.task_command_router.TaskSnapshotMemoryRequest
-	(*TaskSnapshotMemoryResponse)(nil),       // 49: modal.task_command_router.TaskSnapshotMemoryResponse
-	(*TaskUnmountDirectoryRequest)(nil),      // 50: modal.task_command_router.TaskUnmountDirectoryRequest
-	nil,                                      // 51: modal.task_command_router.TaskContainerCreateRequest.EnvEntry
-	nil,                                      // 52: modal.task_command_router.TaskExecStartRequest.EnvEntry
-	(*VolumeMount)(nil),                      // 53: modal.client.VolumeMount
-	(*NetworkAccess)(nil),                    // 54: modal.client.NetworkAccess
-	(*PTYInfo)(nil),                          // 55: modal.client.PTYInfo
-	(*SecretSource)(nil),                     // 56: modal.client.SecretSource
-	(*GenericResult)(nil),                    // 57: modal.client.GenericResult
-	(*OutboundPolicy)(nil),                   // 58: modal.client.OutboundPolicy
-	(*emptypb.Empty)(nil),                    // 59: google.protobuf.Empty
+	(SandboxStdioFileDescriptor)(0),                   // 0: modal.task_command_router.SandboxStdioFileDescriptor
+	(TaskExecStderrConfig)(0),                         // 1: modal.task_command_router.TaskExecStderrConfig
+	(TaskExecStdioFileDescriptor)(0),                  // 2: modal.task_command_router.TaskExecStdioFileDescriptor
+	(TaskExecStdoutConfig)(0),                         // 3: modal.task_command_router.TaskExecStdoutConfig
+	(*SandboxStdinWriteV2Request)(nil),                // 4: modal.task_command_router.SandboxStdinWriteV2Request
+	(*SandboxStdinWriteV2Response)(nil),               // 5: modal.task_command_router.SandboxStdinWriteV2Response
+	(*SandboxStdioReadV2Request)(nil),                 // 6: modal.task_command_router.SandboxStdioReadV2Request
+	(*SandboxStdioReadV2Response)(nil),                // 7: modal.task_command_router.SandboxStdioReadV2Response
+	(*SandboxWaitUntilReadyTcrRequest)(nil),           // 8: modal.task_command_router.SandboxWaitUntilReadyTcrRequest
+	(*SandboxWaitUntilReadyTcrResponse)(nil),          // 9: modal.task_command_router.SandboxWaitUntilReadyTcrResponse
+	(*TaskContainerCreateRequest)(nil),                // 10: modal.task_command_router.TaskContainerCreateRequest
+	(*TaskContainerCreateResponse)(nil),               // 11: modal.task_command_router.TaskContainerCreateResponse
+	(*TaskContainerGetRequest)(nil),                   // 12: modal.task_command_router.TaskContainerGetRequest
+	(*TaskContainerGetResponse)(nil),                  // 13: modal.task_command_router.TaskContainerGetResponse
+	(*TaskContainerInfo)(nil),                         // 14: modal.task_command_router.TaskContainerInfo
+	(*TaskContainerListRequest)(nil),                  // 15: modal.task_command_router.TaskContainerListRequest
+	(*TaskContainerListResponse)(nil),                 // 16: modal.task_command_router.TaskContainerListResponse
+	(*TaskContainerTerminateRequest)(nil),             // 17: modal.task_command_router.TaskContainerTerminateRequest
+	(*TaskContainerTerminateResponse)(nil),            // 18: modal.task_command_router.TaskContainerTerminateResponse
+	(*TaskContainerWaitRequest)(nil),                  // 19: modal.task_command_router.TaskContainerWaitRequest
+	(*TaskContainerWaitResponse)(nil),                 // 20: modal.task_command_router.TaskContainerWaitResponse
+	(*TaskExecPollRequest)(nil),                       // 21: modal.task_command_router.TaskExecPollRequest
+	(*TaskExecPollResponse)(nil),                      // 22: modal.task_command_router.TaskExecPollResponse
+	(*TaskExecStartRequest)(nil),                      // 23: modal.task_command_router.TaskExecStartRequest
+	(*TaskExecStartResponse)(nil),                     // 24: modal.task_command_router.TaskExecStartResponse
+	(*TaskExecStdinStatusRequest)(nil),                // 25: modal.task_command_router.TaskExecStdinStatusRequest
+	(*TaskExecStdinStatusResponse)(nil),               // 26: modal.task_command_router.TaskExecStdinStatusResponse
+	(*TaskExecStdinWriteRequest)(nil),                 // 27: modal.task_command_router.TaskExecStdinWriteRequest
+	(*TaskExecStdinWriteResponse)(nil),                // 28: modal.task_command_router.TaskExecStdinWriteResponse
+	(*TaskExecStdinWriteStreamEnd)(nil),               // 29: modal.task_command_router.TaskExecStdinWriteStreamEnd
+	(*TaskExecStdinWriteStreamRequest)(nil),           // 30: modal.task_command_router.TaskExecStdinWriteStreamRequest
+	(*TaskExecStdinWriteStreamResponse)(nil),          // 31: modal.task_command_router.TaskExecStdinWriteStreamResponse
+	(*TaskExecStdinWriteStreamStart)(nil),             // 32: modal.task_command_router.TaskExecStdinWriteStreamStart
+	(*TaskExecStdioReadRequest)(nil),                  // 33: modal.task_command_router.TaskExecStdioReadRequest
+	(*TaskExecStdioReadResponse)(nil),                 // 34: modal.task_command_router.TaskExecStdioReadResponse
+	(*TaskExecWaitRequest)(nil),                       // 35: modal.task_command_router.TaskExecWaitRequest
+	(*TaskExecWaitResponse)(nil),                      // 36: modal.task_command_router.TaskExecWaitResponse
+	(*TaskMountDirectoryRequest)(nil),                 // 37: modal.task_command_router.TaskMountDirectoryRequest
+	(*TaskReloadVolumesRequest)(nil),                  // 38: modal.task_command_router.TaskReloadVolumesRequest
+	(*TaskReloadVolumesResponse)(nil),                 // 39: modal.task_command_router.TaskReloadVolumesResponse
+	(*TaskSetExperimentalOutboundPolicyRequest)(nil),  // 40: modal.task_command_router.TaskSetExperimentalOutboundPolicyRequest
+	(*TaskSetExperimentalOutboundPolicyResponse)(nil), // 41: modal.task_command_router.TaskSetExperimentalOutboundPolicyResponse
+	(*TaskSetNetworkAccessRequest)(nil),               // 42: modal.task_command_router.TaskSetNetworkAccessRequest
+	(*TaskSetNetworkAccessResponse)(nil),              // 43: modal.task_command_router.TaskSetNetworkAccessResponse
+	(*TaskSnapshotDirectoryRequest)(nil),              // 44: modal.task_command_router.TaskSnapshotDirectoryRequest
+	(*TaskSnapshotDirectoryResponse)(nil),             // 45: modal.task_command_router.TaskSnapshotDirectoryResponse
+	(*TaskSnapshotFilesystemRequest)(nil),             // 46: modal.task_command_router.TaskSnapshotFilesystemRequest
+	(*TaskSnapshotFilesystemResponse)(nil),            // 47: modal.task_command_router.TaskSnapshotFilesystemResponse
+	(*TaskSnapshotMemoryRequest)(nil),                 // 48: modal.task_command_router.TaskSnapshotMemoryRequest
+	(*TaskSnapshotMemoryResponse)(nil),                // 49: modal.task_command_router.TaskSnapshotMemoryResponse
+	(*TaskUnmountDirectoryRequest)(nil),               // 50: modal.task_command_router.TaskUnmountDirectoryRequest
+	nil,                                               // 51: modal.task_command_router.TaskContainerCreateRequest.EnvEntry
+	nil,                                               // 52: modal.task_command_router.TaskExecStartRequest.EnvEntry
+	(*VolumeMount)(nil),                               // 53: modal.client.VolumeMount
+	(*NetworkAccess)(nil),                             // 54: modal.client.NetworkAccess
+	(*PTYInfo)(nil),                                   // 55: modal.client.PTYInfo
+	(*SecretSource)(nil),                              // 56: modal.client.SecretSource
+	(*GenericResult)(nil),                             // 57: modal.client.GenericResult
+	(*ExperimentalOutboundPolicy)(nil),                // 58: modal.client.ExperimentalOutboundPolicy
+	(*emptypb.Empty)(nil),                             // 59: google.protobuf.Empty
 }
 var file_modal_proto_task_command_router_proto_depIdxs = []int32{
 	0,  // 0: modal.task_command_router.SandboxStdioReadV2Request.file_descriptor:type_name -> modal.task_command_router.SandboxStdioFileDescriptor
@@ -4822,8 +4822,8 @@ var file_modal_proto_task_command_router_proto_depIdxs = []int32{
 	32, // 15: modal.task_command_router.TaskExecStdinWriteStreamRequest.start:type_name -> modal.task_command_router.TaskExecStdinWriteStreamStart
 	29, // 16: modal.task_command_router.TaskExecStdinWriteStreamRequest.end:type_name -> modal.task_command_router.TaskExecStdinWriteStreamEnd
 	2,  // 17: modal.task_command_router.TaskExecStdioReadRequest.file_descriptor:type_name -> modal.task_command_router.TaskExecStdioFileDescriptor
-	54, // 18: modal.task_command_router.TaskSetNetworkAccessRequest.network_access:type_name -> modal.client.NetworkAccess
-	58, // 19: modal.task_command_router.TaskSetOutboundPolicyRequest.outbound_policy:type_name -> modal.client.OutboundPolicy
+	58, // 18: modal.task_command_router.TaskSetExperimentalOutboundPolicyRequest.experimental_outbound_policy:type_name -> modal.client.ExperimentalOutboundPolicy
+	54, // 19: modal.task_command_router.TaskSetNetworkAccessRequest.network_access:type_name -> modal.client.NetworkAccess
 	4,  // 20: modal.task_command_router.TaskCommandRouter.SandboxStdinWriteV2:input_type -> modal.task_command_router.SandboxStdinWriteV2Request
 	6,  // 21: modal.task_command_router.TaskCommandRouter.SandboxStdioReadV2:input_type -> modal.task_command_router.SandboxStdioReadV2Request
 	8,  // 22: modal.task_command_router.TaskCommandRouter.SandboxWaitUntilReady:input_type -> modal.task_command_router.SandboxWaitUntilReadyTcrRequest
@@ -4841,8 +4841,8 @@ var file_modal_proto_task_command_router_proto_depIdxs = []int32{
 	35, // 34: modal.task_command_router.TaskCommandRouter.TaskExecWait:input_type -> modal.task_command_router.TaskExecWaitRequest
 	37, // 35: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:input_type -> modal.task_command_router.TaskMountDirectoryRequest
 	38, // 36: modal.task_command_router.TaskCommandRouter.TaskReloadVolumes:input_type -> modal.task_command_router.TaskReloadVolumesRequest
-	40, // 37: modal.task_command_router.TaskCommandRouter.TaskSetNetworkAccess:input_type -> modal.task_command_router.TaskSetNetworkAccessRequest
-	42, // 38: modal.task_command_router.TaskCommandRouter.TaskSetOutboundPolicy:input_type -> modal.task_command_router.TaskSetOutboundPolicyRequest
+	42, // 37: modal.task_command_router.TaskCommandRouter.TaskSetNetworkAccess:input_type -> modal.task_command_router.TaskSetNetworkAccessRequest
+	40, // 38: modal.task_command_router.TaskCommandRouter.TaskSetOutboundPolicy:input_type -> modal.task_command_router.TaskSetExperimentalOutboundPolicyRequest
 	44, // 39: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:input_type -> modal.task_command_router.TaskSnapshotDirectoryRequest
 	46, // 40: modal.task_command_router.TaskCommandRouter.TaskSnapshotFilesystem:input_type -> modal.task_command_router.TaskSnapshotFilesystemRequest
 	48, // 41: modal.task_command_router.TaskCommandRouter.TaskSnapshotMemory:input_type -> modal.task_command_router.TaskSnapshotMemoryRequest
@@ -4864,8 +4864,8 @@ var file_modal_proto_task_command_router_proto_depIdxs = []int32{
 	36, // 57: modal.task_command_router.TaskCommandRouter.TaskExecWait:output_type -> modal.task_command_router.TaskExecWaitResponse
 	59, // 58: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:output_type -> google.protobuf.Empty
 	39, // 59: modal.task_command_router.TaskCommandRouter.TaskReloadVolumes:output_type -> modal.task_command_router.TaskReloadVolumesResponse
-	41, // 60: modal.task_command_router.TaskCommandRouter.TaskSetNetworkAccess:output_type -> modal.task_command_router.TaskSetNetworkAccessResponse
-	43, // 61: modal.task_command_router.TaskCommandRouter.TaskSetOutboundPolicy:output_type -> modal.task_command_router.TaskSetOutboundPolicyResponse
+	43, // 60: modal.task_command_router.TaskCommandRouter.TaskSetNetworkAccess:output_type -> modal.task_command_router.TaskSetNetworkAccessResponse
+	41, // 61: modal.task_command_router.TaskCommandRouter.TaskSetOutboundPolicy:output_type -> modal.task_command_router.TaskSetExperimentalOutboundPolicyResponse
 	45, // 62: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:output_type -> modal.task_command_router.TaskSnapshotDirectoryResponse
 	47, // 63: modal.task_command_router.TaskCommandRouter.TaskSnapshotFilesystem:output_type -> modal.task_command_router.TaskSnapshotFilesystemResponse
 	49, // 64: modal.task_command_router.TaskCommandRouter.TaskSnapshotMemory:output_type -> modal.task_command_router.TaskSnapshotMemoryResponse

@@ -39,7 +39,7 @@ import {
   SandboxStdioReadV2Response,
   TaskExecStdioReadResponse,
   TaskSetNetworkAccessRequest,
-  TaskSetOutboundPolicyRequest,
+  TaskSetExperimentalOutboundPolicyRequest,
   TaskSnapshotFilesystemRequest,
   TaskSnapshotMemoryRequest,
 } from "../proto/modal_proto/task_command_router";
@@ -3791,7 +3791,8 @@ test("buildSandboxCreateRequestProto supports an outbound policy", async () => {
       }),
   });
 
-  const replacements = req.definition?.outboundPolicy?.headerReplacements ?? [];
+  const replacements =
+    req.definition?.experimentalOutboundPolicy?.headerReplacements ?? [];
   expect(replacements).toHaveLength(2);
   expect(replacements[0].domain).toBe("api.example.com");
   expect(replacements[0].secretId).toBe("st-1");
@@ -3846,12 +3847,12 @@ test("buildSandboxCreateRequestProto allows outboundPolicy with CIDR-only allowl
     outboundCidrAllowlist: ["10.0.0.0/8"],
     experimentalOutboundPolicy: outboundPolicy,
   });
-  expect(req.definition?.outboundPolicy).toBeDefined();
+  expect(req.definition?.experimentalOutboundPolicy).toBeDefined();
 });
 
 test("buildSandboxCreateRequestProto leaves outboundPolicy unset when absent", async () => {
   const req = await buildSandboxCreateRequestProto("app-123", "img-456", {});
-  expect(req.definition?.outboundPolicy).toBeUndefined();
+  expect(req.definition?.experimentalOutboundPolicy).toBeUndefined();
 });
 
 test("create sends the outbound policy in the definition", async () => {
@@ -3889,7 +3890,7 @@ test("create sends the outbound policy in the definition", async () => {
   });
   mock.handleUnary("/SandboxCreateV2", (req: any) => {
     const replacements =
-      req.definition?.outboundPolicy?.headerReplacements ?? [];
+      req.definition?.experimentalOutboundPolicy?.headerReplacements ?? [];
     expect(replacements).toHaveLength(1);
     expect(replacements[0].domain).toBe("api.example.com");
     expect(replacements[0].secretId).toBe("st-1");
@@ -3947,9 +3948,10 @@ test("experimentalUpdateOutboundPolicy sends correct request via mocked command 
 
   expect(setOutboundPolicy).toHaveBeenCalledTimes(1);
   const request = setOutboundPolicy.mock
-    .calls[0][0] as TaskSetOutboundPolicyRequest;
+    .calls[0][0] as TaskSetExperimentalOutboundPolicyRequest;
   expect(request.taskId).toBe("ta-v2-123");
-  const replacements = request.outboundPolicy?.headerReplacements ?? [];
+  const replacements =
+    request.experimentalOutboundPolicy?.headerReplacements ?? [];
   expect(replacements).toHaveLength(1);
   expect(replacements[0].domain).toBe("api.example.com");
   expect(replacements[0].secretId).toBe("st-1");

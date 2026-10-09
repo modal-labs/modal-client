@@ -362,7 +362,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
-                outbound_policy=outbound_policy_proto,
+                experimental_outbound_policy=outbound_policy_proto,
                 proxy_id=(proxy.object_id if proxy else None),
                 readiness_probe=(readiness_probe._to_proto() if readiness_probe else None),
                 enable_snapshot=enable_snapshot,
@@ -927,7 +927,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
-                outbound_policy=_experimental_outbound_policy._to_proto() if _experimental_outbound_policy else None,
+                experimental_outbound_policy=(
+                    _experimental_outbound_policy._to_proto() if _experimental_outbound_policy else None
+                ),
                 proxy_id=(proxy.object_id if proxy else None),
                 verbose=verbose,
                 name=name,
@@ -1397,7 +1399,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             return task_id, await self._get_command_router_client(task_id)
 
         _, (task_id, command_router_client) = await TaskContext.gather(hydrate_policy_secrets(), resolve_router())
-        req = sr_pb2.TaskSetOutboundPolicyRequest(task_id=task_id, outbound_policy=outbound_policy._to_proto())
+        req = sr_pb2.TaskSetExperimentalOutboundPolicyRequest(
+            task_id=task_id, experimental_outbound_policy=outbound_policy._to_proto()
+        )
         await command_router_client.set_outbound_policy(req)
 
     async def _experimental_get_exit_snapshot(self, timeout: float | None = None) -> _Image:

@@ -1964,6 +1964,31 @@ message EnvironmentUpdateRequest {
   optional EnvironmentBlockUnauthenticatedResources block_unauthenticated_resources = 6;
 }
 
+// Experimental policy for outbound traffic from a sandbox: header
+// replacements.
+message ExperimentalOutboundPolicy {
+  // Replace headers in outbound HTTPS requests, potentially with secret values.
+  repeated HeaderReplacement header_replacements = 1;
+
+  message HeaderReplacement {
+    // Domain that the header replacements are scoped to. Supports wildcards in
+    // subdomain positions.
+    string domain = 1;
+    // Reference to a secret usable in the header value templates. Can be
+    // empty if no secret value is used.
+    string secret_id = 4;
+    // Header name -> header value.
+    //
+    // Values support templating with keys in the stanza's secret_id: a
+    // $-prefixed key name in the secret will be replaced with the secret
+    // value. Literal $ characters can be represented by two dollars: `$$`.
+    map<string, string> headers = 5;
+
+    reserved 2, 3;
+    reserved "header_name", "header_value";
+  }
+}
+
 // A file entry when listing files in a volume or network file system.
 message FileEntry {
   enum FileType {
@@ -3403,30 +3428,6 @@ message ObjectDependency {
   string object_id = 1;
 }
 
-// Policy for outbound traffic from a sandbox.
-message OutboundPolicy {
-  // Replace headers in outbound HTTPS requests, potentially with secret values.
-  repeated HeaderReplacement header_replacements = 1;
-
-  message HeaderReplacement {
-    // Domain that the header replacements are scoped to. Supports wildcards in
-    // subdomain positions.
-    string domain = 1;
-    // Reference to a secret usable in the header value templates. Can be
-    // empty if no secret value is used.
-    string secret_id = 4;
-    // Header name -> header value.
-    //
-    // Values support templating with keys in the stanza's secret_id: a
-    // $-prefixed key name in the secret will be replaced with the secret
-    // value. Literal $ characters can be represented by two dollars: `$$`.
-    map<string, string> headers = 5;
-
-    reserved 2, 3;
-    reserved "header_name", "header_value";
-  }
-}
-
 message PTYInfo {
   bool enabled = 1;  // Soon deprecated
   uint32 winsz_rows = 2;
@@ -3824,7 +3825,7 @@ message Sandbox {
 
   StringMap environment_variables = 40;
 
-  optional OutboundPolicy outbound_policy = 42;
+  optional ExperimentalOutboundPolicy experimental_outbound_policy = 42;
 
   // If set, the sandbox's main container is served an X.509-SVID over a
   // SPIFFE Workload API socket, addressed by SPIFFE_ENDPOINT_SOCKET. The

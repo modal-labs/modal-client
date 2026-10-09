@@ -160,21 +160,21 @@ func (p *ExperimentalOutboundPolicy) secrets() []*Secret {
 }
 
 // toProto converts to the wire format. Referenced secrets must be hydrated first.
-func (p *ExperimentalOutboundPolicy) toProto() *pb.OutboundPolicy {
+func (p *ExperimentalOutboundPolicy) toProto() *pb.ExperimentalOutboundPolicy {
 	if p == nil {
 		return nil
 	}
-	replacements := make([]*pb.OutboundPolicy_HeaderReplacement, 0, len(p.replacements))
+	replacements := make([]*pb.ExperimentalOutboundPolicy_HeaderReplacement, 0, len(p.replacements))
 	for _, replacement := range p.replacements {
 		secretID := ""
 		if replacement.Secret != nil {
 			secretID = replacement.Secret.SecretID
 		}
-		replacements = append(replacements, pb.OutboundPolicy_HeaderReplacement_builder{
+		replacements = append(replacements, pb.ExperimentalOutboundPolicy_HeaderReplacement_builder{
 			Domain:   replacement.Domain,
 			SecretId: secretID,
 			Headers:  replacement.Headers,
 		}.Build())
 	}
-	return pb.OutboundPolicy_builder{HeaderReplacements: replacements}.Build()
+	return pb.ExperimentalOutboundPolicy_builder{HeaderReplacements: replacements}.Build()
 }

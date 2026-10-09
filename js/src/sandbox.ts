@@ -35,7 +35,7 @@ import {
   TaskSnapshotMemoryRequest,
   TaskUnmountDirectoryRequest,
   TaskSetNetworkAccessRequest,
-  TaskSetOutboundPolicyRequest,
+  TaskSetExperimentalOutboundPolicyRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
   TaskCommandRouterClientImpl,
@@ -737,7 +737,7 @@ export async function buildSandboxCreateRequestProto(
           : undefined,
       workdir: params.workdir ?? undefined,
       networkAccess,
-      outboundPolicy: params.experimentalOutboundPolicy?._toProto(),
+      experimentalOutboundPolicy: params.experimentalOutboundPolicy?._toProto(),
       resources: Resources.create({
         milliCpu,
         milliCpuMax,
@@ -2675,9 +2675,9 @@ export class Sandbox {
       this.#getCommandRouter(),
     ]);
 
-    const request = TaskSetOutboundPolicyRequest.create({
+    const request = TaskSetExperimentalOutboundPolicyRequest.create({
       taskId,
-      outboundPolicy: outboundPolicy._toProto(),
+      experimentalOutboundPolicy: outboundPolicy._toProto(),
     });
     await commandRouterClient.setOutboundPolicy(request);
   }

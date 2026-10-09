@@ -3,8 +3,8 @@
  */
 
 import {
-  OutboundPolicy as OutboundPolicyProto,
-  OutboundPolicy_HeaderReplacement,
+  ExperimentalOutboundPolicy as ExperimentalOutboundPolicyProto,
+  ExperimentalOutboundPolicy_HeaderReplacement,
 } from "../proto/modal_proto/api";
 import { InvalidError } from "./errors";
 import { Secret, secretEnvDictHydrator } from "./secret";
@@ -177,10 +177,10 @@ export class ExperimentalOutboundPolicy {
   /** Convert to the wire format. Referenced secrets must be hydrated first.
    * @internal
    */
-  _toProto(): OutboundPolicyProto {
-    return OutboundPolicyProto.create({
+  _toProto(): ExperimentalOutboundPolicyProto {
+    return ExperimentalOutboundPolicyProto.create({
       headerReplacements: this._replacements.map((replacement) =>
-        OutboundPolicy_HeaderReplacement.create({
+        ExperimentalOutboundPolicy_HeaderReplacement.create({
           domain: replacement.domain,
           secretId: replacement.secret?.secretId ?? "",
           headers: replacement.headers,

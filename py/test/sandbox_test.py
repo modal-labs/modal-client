@@ -4399,7 +4399,7 @@ def test_sandbox_create_outbound_policy_v1(app, servicer, client):
 
     Sandbox.create("echo", "hi", app=app, _experimental_outbound_policy=policy)
 
-    replacements = servicer.sandbox_defs[0].outbound_policy.header_replacements
+    replacements = servicer.sandbox_defs[0].experimental_outbound_policy.header_replacements
     assert len(replacements) == 2
     assert replacements[0].domain == "api.example.com"
     assert replacements[0].secret_id  # resolved to a server-side secret id
@@ -4434,7 +4434,7 @@ def test_sandbox_create_outbound_policy_rejects_domain_allowlist(app, monkeypatc
 def test_sandbox_create_outbound_policy_allows_cidr_only_allowlist(app, servicer):
     policy = modal.experimental.OutboundPolicy().with_header_replacement(domain="example.com", headers={"a": "b"})
     Sandbox.create("echo", "hi", app=app, outbound_cidr_allowlist=["10.0.0.0/8"], _experimental_outbound_policy=policy)
-    assert servicer.sandbox_defs[0].HasField("outbound_policy")
+    assert servicer.sandbox_defs[0].HasField("experimental_outbound_policy")
 
 
 def test_sandbox_create_outbound_policy_v2(app, servicer, client, monkeypatch):
@@ -4450,7 +4450,7 @@ def test_sandbox_create_outbound_policy_v2(app, servicer, client, monkeypatch):
         Sandbox.create("echo", "hi", app=app, _experimental_outbound_policy=policy)
         (req,) = ctx.get_requests("SandboxCreateV2")
 
-    (replacement,) = req.definition.outbound_policy.header_replacements
+    (replacement,) = req.definition.experimental_outbound_policy.header_replacements
     assert replacement.domain == "api.example.com"
     assert replacement.secret_id
     assert dict(replacement.headers) == {"Authorization": "Bearer $API_KEY"}
@@ -4458,7 +4458,7 @@ def test_sandbox_create_outbound_policy_v2(app, servicer, client, monkeypatch):
 
 def test_sandbox_create_no_outbound_policy_unset(app, servicer):
     Sandbox.create("echo", "hi", app=app)
-    assert not servicer.sandbox_defs[0].HasField("outbound_policy")
+    assert not servicer.sandbox_defs[0].HasField("experimental_outbound_policy")
 
 
 def test_sandbox_update_outbound_policy(app, servicer, client):
@@ -4475,7 +4475,7 @@ def test_sandbox_update_outbound_policy(app, servicer, client):
         sb._experimental_update_outbound_policy(policy)
 
     (req,) = tcr_ctx.get_requests("TaskSetOutboundPolicy")
-    (replacement,) = req.outbound_policy.header_replacements
+    (replacement,) = req.experimental_outbound_policy.header_replacements
     assert replacement.domain == "api.example.com"
     assert replacement.secret_id == secret.object_id
     assert dict(replacement.headers) == {"Authorization": "Bearer $API_KEY"}
