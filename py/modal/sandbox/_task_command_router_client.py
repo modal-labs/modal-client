@@ -32,10 +32,14 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .._grpc_client import grpc_error_converter
-from .._utils.grpc_utils import ModalChannel, create_channel_config, listen_for_server_warnings
-from .async_utils import aclosing, retry
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
-from .idle_countdown import IdleCountdown
+from .._utils.async_utils import aclosing, retry
+from .._utils.grpc_utils import (
+    RETRYABLE_GRPC_STATUS_CODES,
+    ModalChannel,
+    create_channel_config,
+    listen_for_server_warnings,
+)
+from .._utils.idle_countdown import IdleCountdown
 
 STREAMING_STDIN_CHUNK_SIZE = 256 * 1024
 

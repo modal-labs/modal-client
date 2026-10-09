@@ -8,7 +8,6 @@ from typing import Callable, Optional
 from unittest import mock
 
 from modal import App, Sandbox
-from modal._utils.task_command_router_client import STREAMING_STDIN_CHUNK_SIZE
 from modal.exception import (
     InvalidError,
     NotFoundError,
@@ -25,6 +24,7 @@ from modal.exception import (
 # types, so mypy cannot see this plain module-level constant. We suppress the
 # error here rather than defining a separate constant we'd have to keep in sync.
 from modal.io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE  # type: ignore[attr-defined]
+from modal.sandbox._task_command_router_client import STREAMING_STDIN_CHUNK_SIZE
 from modal.types import FileInfo, FileType, FileWatchEvent, FileWatchEventType
 
 from .supports.skip import skip_windows
@@ -58,7 +58,7 @@ def sandbox_fs_tools(monkeypatch, tmp_path):
     wrapper = tmp_path / "mock_sandbox_fs_tools"
     wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{_MOCK_SANDBOX_FS_TOOLS_PATH}" "$@"\n')
     wrapper.chmod(0o755)
-    monkeypatch.setattr("modal.sandbox_fs._SANDBOX_FS_TOOLS_PATH", str(wrapper))
+    monkeypatch.setattr("modal.sandbox._filesystem._SANDBOX_FS_TOOLS_PATH", str(wrapper))
 
 
 @pytest.fixture

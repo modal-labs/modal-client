@@ -21,10 +21,10 @@ from modal.exception import ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import aclosing, synchronize_api, synchronizer
-from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
 from .exception import ConflictError, InternalError, ServiceError
+from .sandbox._task_command_router_client import TaskCommandRouterClient
 from .stream_type import StreamType
 
 if TYPE_CHECKING:

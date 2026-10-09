@@ -43,11 +43,11 @@ try:
     from .queue import Queue
     from .retries import Retries
     from .sandbox import Probe, Sandbox
+    from .sandbox.sandbox import SandboxSnapshot
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
     from .server import Server
-    from .snapshot import SandboxSnapshot
     from .volume import Volume
     from .workspace import Workspace
 except Exception:

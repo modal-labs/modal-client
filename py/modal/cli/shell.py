@@ -18,7 +18,8 @@ from ..image import Image
 from ..mount import _Mount
 from ..runner import interactive_shell
 from ..sandbox import Sandbox
-from ..sandbox._sandbox import _MAIN_CONTAINER_NAME, SandboxVersion, _get_sandbox_version
+from ..sandbox._common import SandboxVersion, _get_sandbox_version
+from ..sandbox._sidecar import _MAIN_CONTAINER_NAME
 from ..sandbox.sandbox import _container_exec
 from ..secret import Secret
 from ..stream_type import StreamType

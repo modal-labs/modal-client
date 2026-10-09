@@ -7,11 +7,11 @@ from google.protobuf.message import Message
 import modal.client
 from modal_proto import api_pb2
 
-from ._load_context import LoadContext
-from ._object import _Object
-from ._resolver import Resolver
-from ._utils.async_utils import deprecate_aio_usage, synchronize_api, synchronizer
-from .client import _Client
+from .._load_context import LoadContext
+from .._object import _Object
+from .._resolver import Resolver
+from .._utils.async_utils import deprecate_aio_usage, synchronizer
+from ..client import _Client
 
 
 class _SandboxSnapshot(_Object, type_prefix="sn"):
@@ -72,6 +72,3 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
         # to be used only for its object id anyway
         obj._object_id = sandbox_snapshot_id
         return cast(typing_extensions.Self, synchronizer._translate_out(obj))
-
-
-SandboxSnapshot = synchronize_api(_SandboxSnapshot)

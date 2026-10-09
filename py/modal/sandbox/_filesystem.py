@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING, AsyncIterator, BinaryIO, Optional, Union, cast
 
 if TYPE_CHECKING:
     import modal.sandbox._sandbox
+    import modal.sandbox._sidecar
 
-from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.logger import logger
-from ._utils.sandbox_fs_utils import (
+from .._utils.async_utils import TaskContext
+from .._utils.logger import logger
+from .._utils.sandbox_fs_utils import (
     make_list_files_command,
     make_make_directory_command,
     make_read_file_command,
@@ -33,8 +34,8 @@ from ._utils.sandbox_fs_utils import (
     translate_exec_errors,
     validate_absolute_remote_path,
 )
-from .exception import ConflictError
-from .types import FileInfo, FileType, FileWatchEvent, FileWatchEventType
+from ..exception import ConflictError
+from ..types import FileInfo, FileType, FileWatchEvent, FileWatchEventType
 
 _SANDBOX_FS_TOOLS_PATH = "/__modal/.bin/modal-sandbox-fs-tools"
 
@@ -68,13 +69,14 @@ def _expand_watch_filter(filter: list[FileWatchEventType]) -> list[str]:
 class _SandboxFilesystem:
     """mdmd:namespace"""
 
-    _container: Union["modal.sandbox._sandbox._Sandbox", "modal.sandbox._sandbox._SidecarContainer"]
+    _container: Union["modal.sandbox._sandbox._Sandbox", "modal.sandbox._sidecar._SidecarContainer"]
 
     def __init__(
-        self, container: Union["modal.sandbox._sandbox._Sandbox", "modal.sandbox._sandbox._SidecarContainer"]
+        self, container: Union["modal.sandbox._sandbox._Sandbox", "modal.sandbox._sidecar._SidecarContainer"]
     ) -> None:
         """mdmd:hidden"""
-        from modal.sandbox._sandbox import _Sandbox, _SidecarContainer
+        from modal.sandbox._sandbox import _Sandbox
+        from modal.sandbox._sidecar import _SidecarContainer
 
         # Use a weakref proxy to avoid circular references between Sandbox/SidecarContainer and SandboxFilesystem.
         self._container = cast(_Sandbox | _SidecarContainer, weakref.proxy(container))
@@ -652,6 +654,3 @@ class _SandboxFilesystem:
         if returncode != 0:
             raise_write_file_error(returncode, stderr, remote_path)
         return total_bytes
-
-
-SandboxFilesystem = synchronize_api(_SandboxFilesystem)

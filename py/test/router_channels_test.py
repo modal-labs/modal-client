@@ -9,8 +9,8 @@ import pytest_asyncio
 
 from modal._utils.grpc_utils import ModalChannel
 from modal._utils.idle_countdown import IdleCountdown
-from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.exception import ClientClosed
+from modal.sandbox._task_command_router_client import TaskCommandRouterClient
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .supports.skip import skip_windows

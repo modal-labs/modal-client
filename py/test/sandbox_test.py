@@ -31,10 +31,10 @@ from modal import (
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES
-from modal._utils.task_command_router_client import _is_v2_task_id
 from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
 from modal.sandbox import SidecarContainer
-from modal.sandbox._sandbox import SandboxVersion, _get_sandbox_version
+from modal.sandbox._common import SandboxVersion, _get_sandbox_version
+from modal.sandbox._task_command_router_client import _is_v2_task_id
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -4303,7 +4303,7 @@ def test_sandbox_create_reuses_hydrated_image(app, servicer):
 def test_sandbox_create_timing_log_caps_dependency_list():
     """The formatter caps the per-dep list at 10 entries (slowest first) and
     appends a `+N more` suffix for the remainder."""
-    from modal.sandbox._sandbox import _format_sandbox_create_timing_log
+    from modal.sandbox._common import _format_sandbox_create_timing_log
 
     deps = [(f"im-{i:03d}", float(i)) for i in range(15)]
     line = _format_sandbox_create_timing_log("sb-abc", 12.34, 0.5, deps)

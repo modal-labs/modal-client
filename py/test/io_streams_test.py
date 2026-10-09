@@ -10,7 +10,6 @@ from grpclib.exceptions import StreamTerminatedError
 import modal.io_streams as io_streams
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter, synchronizer
-from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.io_streams import (
     StreamReader,
     _decode_bytes_stream_to_str,
@@ -22,6 +21,7 @@ from modal.io_streams import (
     _StreamWriterThroughCommandRouterSandboxExecParams,
     _StreamWriterThroughCommandRouterSandboxParams,
 )
+from modal.sandbox._task_command_router_client import TaskCommandRouterClient
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 

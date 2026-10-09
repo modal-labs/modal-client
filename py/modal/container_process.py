@@ -7,7 +7,6 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
-from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
 from .exception import ExecTimeoutError, InteractiveTimeoutError, InvalidError
@@ -17,6 +16,7 @@ from .io_streams import (
     _StreamWriter,
     _StreamWriterThroughCommandRouterSandboxExecParams,
 )
+from .sandbox._task_command_router_client import TaskCommandRouterClient
 from .stream_type import StreamType
 
 T = TypeVar("T", str, bytes)

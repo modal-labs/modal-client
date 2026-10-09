@@ -13,9 +13,9 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.grpc_utils import ModalChannel
-from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.client import _Client
 from modal.exception import AuthError, ClientClosed, ExecTimeoutError, ServiceError, TimeoutError as ModalTimeoutError
+from modal.sandbox._task_command_router_client import TaskCommandRouterClient
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
@@ -881,7 +881,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
 
 @pytest.mark.asyncio
 async def test_exec_wait_logs_transient_failures(make_router_client, monkeypatch, caplog):
-    from modal._utils import task_command_router_client
+    from modal.sandbox import _task_command_router_client as task_command_router_client
 
     caplog.set_level("DEBUG", logger="modal-client")
     client = make_router_client()
