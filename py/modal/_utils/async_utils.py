@@ -378,7 +378,7 @@ def retry(
 
     Usage:
 
-    ```
+    ```python notest
     @retry
     async def may_fail_default():
         # ...
@@ -907,8 +907,10 @@ async def asyncnullcontext(*args, **kwargs):
     Note that for Python 3.10+ you can use contextlib.nullcontext() instead.
 
     Usage:
+    ```python notest
     async with asyncnullcontext():
         pass
+    ```
     """
     yield
 

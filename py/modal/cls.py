@@ -960,7 +960,7 @@ def is_parameter(p: Any) -> bool:
 
 def parameter(*, default: Any = _no_default, init: bool = True) -> Any:
     """Used to specify options for modal.cls parameters, similar to dataclass.field for dataclasses
-    ```
+    ```python notest
     class A:
         a: str = modal.parameter()
 
