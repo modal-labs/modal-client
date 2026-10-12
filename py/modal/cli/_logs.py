@@ -19,7 +19,7 @@ _SOURCE_OPTIONS = {
 }
 
 
-def _parse_time_arg(value: str | None, default: datetime, *, now: datetime | None = None) -> datetime:
+def _parse_time_arg(value: str | None, default: datetime, *, now: datetime) -> datetime:
     """Parse a time argument that can be a relative duration (e.g. '2h', '30m') or ISO 8601 datetime.
 
     Naive datetime values are interpreted in the user's local timezone.
@@ -33,7 +33,7 @@ def _parse_time_arg(value: str | None, default: datetime, *, now: datetime | Non
     except ValueError:
         pass
     else:
-        return (now or datetime.now(timezone.utc)) - duration
+        return now - duration
 
     try:
         dt = datetime.fromisoformat(value)
@@ -62,7 +62,7 @@ def _parse_fetch_range(since: str | None, until: str | None) -> tuple[datetime, 
         try:
             duration = parse_duration(value)
         except ValueError:
-            result = _parse_time_arg(value, default=default)
+            result = _parse_time_arg(value, default=default, now=now)
         else:
             result = now - duration
         if result.astimezone(timezone.utc).microsecond:
@@ -124,8 +124,8 @@ async def _run_logs_command(
         return
 
     now = datetime.now(timezone.utc)
-    since_dt = _parse_time_arg(since, default=now) if since else None
-    until_dt = _parse_time_arg(until, default=now) if until else None
+    since_dt = _parse_time_arg(since, default=now, now=now) if since else None
+    until_dt = _parse_time_arg(until, default=now, now=now) if until else None
     if since_dt is not None:
         effective_until = until_dt or now
         if since_dt >= effective_until:

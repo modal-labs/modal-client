@@ -1258,6 +1258,14 @@ def test_endpoint_stats_uses_server_stats_runner(set_env_client, monkeypatch):
     assert kwargs["endpoint_id"] == _TEST_ENDPOINT_ID
 
 
+def test_server_stats_relative_since_and_until_share_now():
+    from modal.cli.server import _server_stats_time_range
+
+    since_dt, until_dt, history_duration = _server_stats_time_range("2d", "1d")
+    assert until_dt - since_dt == timedelta(days=1)
+    assert history_duration == timedelta(days=1)
+
+
 def test_endpoint_stats_includes_endpoint_id_in_json_output(set_env_client, monkeypatch):
     client = _mock_endpoint_client(monkeypatch)
     since = datetime(2026, 9, 25, 12, tzinfo=timezone.utc)

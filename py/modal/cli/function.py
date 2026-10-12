@@ -708,8 +708,8 @@ async def stats(
     ```
     """
     now = datetime.now(timezone.utc)
-    until_dt = _parse_time_arg(until, default=now)
-    since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW)
+    until_dt = _parse_time_arg(until, default=now, now=now)
+    since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW, now=now)
     if since_dt >= until_dt:
         raise UsageError("--since must be before --until.")
 

@@ -184,19 +184,16 @@ def test_timestamp_roundtrip():
 
 def test_parse_time_arg_none():
     default = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    assert _parse_time_arg(None, default) == default
+    assert _parse_time_arg(None, default, now=default) == default
 
 
 def test_parse_time_arg_relative():
-    before = datetime.now(timezone.utc)
-    result = _parse_time_arg("30m", datetime.min)
-    expected = before - timedelta(minutes=30)
-    # Should be approximately 30 minutes ago
-    assert abs((result - expected).total_seconds()) < 2
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert _parse_time_arg("30m", datetime.min, now=now) == now - timedelta(minutes=30)
 
 
 def test_parse_time_arg_iso():
-    result = _parse_time_arg("2026-01-15T12:00:00", datetime.min)
+    result = _parse_time_arg("2026-01-15T12:00:00", datetime.min, now=datetime.min)
     # Naive datetimes are interpreted in the user's local timezone
     from modal._utils.time_utils import locale_tz
 
@@ -204,7 +201,7 @@ def test_parse_time_arg_iso():
 
 
 def test_parse_time_arg_iso_with_explicit_tz_in_value():
-    result = _parse_time_arg("2026-01-15T12:00:00+03:00", datetime.min)
+    result = _parse_time_arg("2026-01-15T12:00:00+03:00", datetime.min, now=datetime.min)
     assert result.utcoffset() == timedelta(hours=3)
 
 
@@ -212,7 +209,7 @@ def test_parse_time_arg_invalid():
     from click import UsageError
 
     with pytest.raises(UsageError, match="Invalid time format"):
-        _parse_time_arg("not-a-time", datetime.min)
+        _parse_time_arg("not-a-time", datetime.min, now=datetime.min)
 
 
 # ---------------------------------------------------------------------------

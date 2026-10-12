@@ -248,8 +248,8 @@ async def logs(
             since_dt = default_since_dt
             until_dt = default_until_dt
         else:
-            since_dt = _parse_time_arg(since, default=default_since_dt)
-            until_dt = _parse_time_arg(until, default=default_until_dt)
+            since_dt = _parse_time_arg(since, default=default_since_dt, now=now)
+            until_dt = _parse_time_arg(until, default=default_until_dt, now=now)
 
         if since is not None and until is not None and since_dt >= until_dt:
             # User provided both --since and --until, but did so incorrectly

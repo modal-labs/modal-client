@@ -673,8 +673,8 @@ def _render_inference(history: api_pb2.ServerGetTimeRangeStatsResponse, use_colo
 
 def _server_stats_time_range(since: str | None, until: str | None) -> tuple[datetime, datetime, timedelta]:
     now = datetime.now(timezone.utc)
-    until_dt = _parse_time_arg(until, default=now)
-    since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW)
+    until_dt = _parse_time_arg(until, default=now, now=now)
+    since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW, now=now)
     if since_dt >= until_dt:
         raise UsageError("--since must be before --until.")
 
