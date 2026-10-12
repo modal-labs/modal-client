@@ -3390,6 +3390,7 @@ message MountBatchedCheckExistenceRequest {
 
 message MountBatchedCheckExistenceResponse {
   repeated string missing_sha256_hex_hashes = 1;
+  google.protobuf.Timestamp checked_at = 2; // Server time of the check. Clients send the earliest one back as earliest_checked_at on the commit.
 }
 
 message MountFile {
@@ -3406,6 +3407,8 @@ message MountGetOrCreateRequest {
   ObjectCreationType object_creation_type = 4;
   repeated MountFile files = 5;
   string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+  // Earliest checked_at the client received from the existence checks for these files. Telemetry only.
+  google.protobuf.Timestamp earliest_checked_at = 7;
 }
 
 message MountGetOrCreateResponse {
@@ -3428,6 +3431,7 @@ message MountPutFileRequest {
 
 message MountPutFileResponse {
   bool exists = 2;
+  google.protobuf.Timestamp checked_at = 3; // Server time of the check. Clients send the earliest one back as earliest_checked_at on the commit.
 }
 
 message MultiPartUpload {
@@ -5339,6 +5343,8 @@ message VolumePutFilesRequest {
   // If set to true, prevent overwriting existing files. (Note that we don't allow overwriting
   // existing directories with uploaded files regardless.)
   bool disallow_overwrite_existing_files = 3;
+  // Earliest checked_at the client received from the existence checks for these files. Telemetry only.
+  google.protobuf.Timestamp earliest_checked_at = 4;
 }
 
 message VolumeReloadRequest {
