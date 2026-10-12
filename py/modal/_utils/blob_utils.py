@@ -18,6 +18,7 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+from google.protobuf.timestamp_pb2 import Timestamp
 from typing_extensions import Self
 
 from modal_proto import api_pb2
@@ -451,6 +452,7 @@ class FileUploadSpec:
     size: int
     content: bytes | None = None  # Set for very small files to avoid double-read
     exists_in_store: bool | None = None  # set after existence check
+    checked_at: Timestamp | None = None  # server time of the existence check, set alongside exists_in_store
 
     def read_content(self) -> bytes:
         """Read content from source."""

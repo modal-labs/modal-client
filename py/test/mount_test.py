@@ -5,6 +5,7 @@ import platform
 import pytest
 import random
 import re
+import time
 from math import ceil
 from pathlib import Path, PurePosixPath
 
@@ -111,6 +112,19 @@ def test_create_mount(servicer, client):
     assert sha256_hex in servicer.files_sha2data
     assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
     assert repr(Path(local_dir)) in repr(m)
+
+
+def test_create_mount_reports_earliest_checked_at(servicer, client, tmp_path):
+    (tmp_path / "data.txt").write_text("hello")
+    with servicer.intercept() as ctx:
+        before = time.time()
+        Mount._from_local_file(tmp_path / "data.txt", remote_path="/data.txt")._deploy("my-mount", client=client)
+        after = time.time()
+        Mount.from_name("my-mount").hydrate(client=client)
+
+    create_req, lookup_req = ctx.get_requests("MountGetOrCreate")
+    assert before <= create_req.earliest_checked_at.ToNanoseconds() / 1e9 <= after
+    assert not lookup_req.HasField("earliest_checked_at")
 
 
 def test_mount_from_name_double_resolve(servicer, client, tmp_path):

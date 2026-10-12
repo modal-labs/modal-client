@@ -23,6 +23,7 @@ from typing import (
 )
 
 from google.protobuf.message import Message
+from google.protobuf.timestamp_pb2 import Timestamp
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 from typing_extensions import Self
@@ -1316,6 +1317,8 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
     _force: bool
     progress_cb: Callable[..., Any]
     _upload_generators: list[Generator[Callable[[], FileUploadSpec], None, None]]
+    # Server time of the earliest existence check, echoed on the commit for telemetry.
+    _earliest_checked_at: Timestamp | None
 
     def __init__(
         self, volume_id: str, client: _Client, progress_cb: Callable[..., Any] | None = None, force: bool = False
@@ -1327,6 +1330,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
         self._progress_cb = progress_cb or (lambda *_, **__: None)
         self._force = force
         self._byte_budget = _ByteBudget.from_system_memory()
+        self._earliest_checked_at = None
 
     async def __aenter__(self) -> Self:
         return self
@@ -1359,6 +1363,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 volume_id=self._volume_id,
                 files=files,
                 disallow_overwrite_existing_files=not self._force,
+                earliest_checked_at=self._earliest_checked_at,
             )
             try:
                 await self._client._stub.VolumePutFiles(request, retry=Retry(base_delay=1))
@@ -1425,6 +1430,11 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
         progress_task_id = self._progress_cb(name=remote_filename, size=file_spec.size)
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
         response = await self._client._stub.MountPutFile(request, retry=Retry(base_delay=1))
+        if response.HasField("checked_at") and (
+            self._earliest_checked_at is None
+            or response.checked_at.ToNanoseconds() < self._earliest_checked_at.ToNanoseconds()
+        ):
+            self._earliest_checked_at = response.checked_at
 
         start_time = time.monotonic()
         if not response.exists:

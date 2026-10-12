@@ -446,6 +446,19 @@ def test_volume_reload(client, servicer):
 
 
 @pytest.mark.asyncio
+async def test_volume_batch_upload_reports_earliest_checked_at(servicer, client):
+    async with modal.Volume.ephemeral(client=client) as vol:
+        with servicer.intercept() as ctx:
+            before = time.time()
+            async with vol.batch_upload() as batch:
+                batch.put_file(io.BytesIO(b"hello"), "/hello")
+            after = time.time()
+
+    [req] = ctx.get_requests("VolumePutFiles")
+    assert before <= req.earliest_checked_at.ToNanoseconds() / 1e9 <= after
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
 async def test_volume_batch_upload(servicer, client, tmp_path, version):
     local_file_path = tmp_path / "some_file"

@@ -36,6 +36,7 @@ import grpclib.server
 import jwt
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
+from google.protobuf.timestamp_pb2 import Timestamp
 from grpclib import GRPCError, Status
 from grpclib.events import RecvRequest, listen
 from packaging.version import Version
@@ -87,6 +88,12 @@ class TaskCommandRouterTaskState:
     # Set (and replaced) whenever an entrypoint buffer grows or reaches EOF.
     entrypoint_changed: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
     entrypoint_stdin_offset: int = 0
+
+
+def _timestamp_now() -> Timestamp:
+    ts = Timestamp()
+    ts.GetCurrentTime()
+    return ts
 
 
 def _inline_secret_env(secret_sources: Iterable[api_pb2.SecretSource]) -> dict[str, str]:
@@ -3199,6 +3206,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(
                 api_pb2.MountBatchedCheckExistenceResponse(
                     missing_sha256_hex_hashes=request.sha256_hex_hashes,
+                    checked_at=_timestamp_now(),
                 )
             )
             return
@@ -3213,6 +3221,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(
             api_pb2.MountBatchedCheckExistenceResponse(
                 missing_sha256_hex_hashes=missing_hashes,
+                checked_at=_timestamp_now(),
             )
         )
 
@@ -3221,9 +3230,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if request.WhichOneof("data_oneof") is not None:
             self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
             self.n_mount_files += 1
-            await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
+            await stream.send_message(api_pb2.MountPutFileResponse(exists=True, checked_at=_timestamp_now()))
         else:
-            await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
+            await stream.send_message(api_pb2.MountPutFileResponse(exists=False, checked_at=_timestamp_now()))
 
     async def MountGetOrCreate(self, stream):
         request: api_pb2.MountGetOrCreateRequest = await stream.recv_message()

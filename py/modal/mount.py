@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator, Callable, Generator, Sequence
 from pathlib import Path, PurePosixPath
 
 from google.protobuf.message import Message
+from google.protobuf.timestamp_pb2 import Timestamp
 
 import modal.exception
 import modal.file_pattern_matcher
@@ -507,6 +508,7 @@ class _Mount(_Object, type_prefix="mo"):
 
                 for spec in batch:
                     spec.exists_in_store = spec.sha256_hex not in missing_hashes
+                    spec.checked_at = response.checked_at if response.HasField("checked_at") else None
                     yield spec
 
             batch: list[FileUploadSpec] = []
@@ -545,6 +547,8 @@ class _Mount(_Object, type_prefix="mo"):
         # Asynchronously list and checksum files with a thread pool, then upload them concurrently.
         n_seen, n_finished = 0, 0
         total_uploads, total_bytes = 0, 0
+        # Server time of the earliest existence check, echoed on the commit for telemetry.
+        earliest_checked_at: Timestamp | None = None
         from modal.output import OutputManager
 
         message_label = _Mount._description(self._entries)
@@ -557,8 +561,13 @@ class _Mount(_Object, type_prefix="mo"):
         # Assumption is that if a file_spec is provided to this function, we've checked that
         # the file is not already present in blobnet upstream
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
-            nonlocal n_seen, n_finished, total_uploads, total_bytes
+            nonlocal n_seen, n_finished, total_uploads, total_bytes, earliest_checked_at
             n_seen += 1
+            if file_spec.checked_at is not None and (
+                earliest_checked_at is None
+                or file_spec.checked_at.ToNanoseconds() < earliest_checked_at.ToNanoseconds()
+            ):
+                earliest_checked_at = file_spec.checked_at
             status_row.message(f"Creating mount {message_label}: Uploaded {n_finished}/{n_seen} missing files")
 
             remote_filename = file_spec.mount_filename
@@ -675,6 +684,8 @@ class _Mount(_Object, type_prefix="mo"):
                 environment_name=load_context.environment_name,
             )
 
+        if earliest_checked_at is not None:
+            req.earliest_checked_at.CopyFrom(earliest_checked_at)
         resp = await load_context.client._stub.MountGetOrCreate(req, retry=Retry(base_delay=1))
         status_row.finish(f"Uploaded {message_label}")
 
