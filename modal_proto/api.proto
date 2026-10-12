@@ -363,23 +363,6 @@ enum ServerInferenceStatsStatus {
   SERVER_INFERENCE_STATS_STATUS_UNAVAILABLE = 3;
 }
 
-enum SystemErrorCode {
-  SYSTEM_ERROR_CODE_UNSPECIFIED = 0;
-  SYSTEM_ERROR_CODE_PERM = 1;           // EPERM: Operation not permitted
-  SYSTEM_ERROR_CODE_NOENT = 2;          // ENOENT: No such file or directory
-  SYSTEM_ERROR_CODE_IO = 5;             // EIO: Input/output error
-  SYSTEM_ERROR_CODE_NXIO = 6;           // ENXIO: No such device or address
-  SYSTEM_ERROR_CODE_NOMEM = 12;         // ENOMEM: Out of memory
-  SYSTEM_ERROR_CODE_ACCES = 13;         // EACCES: Permission denied
-  SYSTEM_ERROR_CODE_EXIST = 17;         // EEXIST: File exists
-  SYSTEM_ERROR_CODE_NOTDIR = 20;        // ENOTDIR: Not a directory
-  SYSTEM_ERROR_CODE_ISDIR = 21;         // EISDIR: Is a directory
-  SYSTEM_ERROR_CODE_INVAL = 22;         // EINVAL: Invalid argument
-  SYSTEM_ERROR_CODE_MFILE = 24;         // EMFILE: Too many open files
-  SYSTEM_ERROR_CODE_FBIG = 27;          // EFBIG: File too large
-  SYSTEM_ERROR_CODE_NOSPC = 28;         // ENOSPC: No space left on device
-}
-
 enum TaskSnapshotBehavior {
   TASK_SNAPSHOT_BEHAVIOR_UNSPECIFIED = 0;
   TASK_SNAPSHOT_BEHAVIOR_SNAPSHOT = 1;
@@ -1364,11 +1347,6 @@ message ContainerFileWriteRequest {
   bytes data = 2;
 }
 
-message ContainerFilesystemExecGetOutputRequest {
-  string exec_id = 1;
-  float timeout = 2;
-}
-
 message ContainerFilesystemExecRequest {
   oneof file_exec_request_oneof {
     ContainerFileOpenRequest file_open_request = 1;
@@ -2005,13 +1983,6 @@ message FileEntry {
   FileType type = 2;
   uint64 mtime = 3;
   uint64 size = 4;
-}
-
-message FilesystemRuntimeOutputBatch {
-  repeated bytes output = 1;
-  optional SystemErrorMessage error = 2;
-  uint64 batch_index = 3;
-  bool eof = 4;
 }
 
 message FlashContainerDeregisterRequest {
@@ -4869,11 +4840,6 @@ message StringMap {
   map<string, string> contents = 1;
 }
 
-message SystemErrorMessage {
-  SystemErrorCode error_code = 1;
-  string error_message = 2;
-}
-
 message TaskClusterHelloRequest {
   string task_id = 1;
   string container_ip = 2;
@@ -5612,7 +5578,6 @@ service ModalClient {
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
   rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
   rpc ContainerFilesystemExec(ContainerFilesystemExecRequest) returns (ContainerFilesystemExecResponse);
-  rpc ContainerFilesystemExecGetOutput(ContainerFilesystemExecGetOutputRequest) returns (stream FilesystemRuntimeOutputBatch);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerHello(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);

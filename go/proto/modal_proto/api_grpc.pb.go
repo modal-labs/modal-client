@@ -68,7 +68,6 @@ const (
 	ModalClient_ContainerExecPutInput_FullMethodName                  = "/modal.client.ModalClient/ContainerExecPutInput"
 	ModalClient_ContainerExecWait_FullMethodName                      = "/modal.client.ModalClient/ContainerExecWait"
 	ModalClient_ContainerFilesystemExec_FullMethodName                = "/modal.client.ModalClient/ContainerFilesystemExec"
-	ModalClient_ContainerFilesystemExecGetOutput_FullMethodName       = "/modal.client.ModalClient/ContainerFilesystemExecGetOutput"
 	ModalClient_ContainerHeartbeat_FullMethodName                     = "/modal.client.ModalClient/ContainerHeartbeat"
 	ModalClient_ContainerHello_FullMethodName                         = "/modal.client.ModalClient/ContainerHello"
 	ModalClient_ContainerLog_FullMethodName                           = "/modal.client.ModalClient/ContainerLog"
@@ -349,7 +348,6 @@ type ModalClientClient interface {
 	ContainerExecPutInput(ctx context.Context, in *ContainerExecPutInputRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContainerExecWait(ctx context.Context, in *ContainerExecWaitRequest, opts ...grpc.CallOption) (*ContainerExecWaitResponse, error)
 	ContainerFilesystemExec(ctx context.Context, in *ContainerFilesystemExecRequest, opts ...grpc.CallOption) (*ContainerFilesystemExecResponse, error)
-	ContainerFilesystemExecGetOutput(ctx context.Context, in *ContainerFilesystemExecGetOutputRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FilesystemRuntimeOutputBatch], error)
 	ContainerHeartbeat(ctx context.Context, in *ContainerHeartbeatRequest, opts ...grpc.CallOption) (*ContainerHeartbeatResponse, error)
 	ContainerHello(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContainerLog(ctx context.Context, in *ContainerLogRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1050,25 +1048,6 @@ func (c *modalClientClient) ContainerFilesystemExec(ctx context.Context, in *Con
 	return out, nil
 }
 
-func (c *modalClientClient) ContainerFilesystemExecGetOutput(ctx context.Context, in *ContainerFilesystemExecGetOutputRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FilesystemRuntimeOutputBatch], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[2], ModalClient_ContainerFilesystemExecGetOutput_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ContainerFilesystemExecGetOutputRequest, FilesystemRuntimeOutputBatch]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ModalClient_ContainerFilesystemExecGetOutputClient = grpc.ServerStreamingClient[FilesystemRuntimeOutputBatch]
-
 func (c *modalClientClient) ContainerHeartbeat(ctx context.Context, in *ContainerHeartbeatRequest, opts ...grpc.CallOption) (*ContainerHeartbeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ContainerHeartbeatResponse)
@@ -1161,7 +1140,7 @@ func (c *modalClientClient) DictContains(ctx context.Context, in *DictContainsRe
 
 func (c *modalClientClient) DictContents(ctx context.Context, in *DictContentsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DictEntry], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[3], ModalClient_DictContents_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[2], ModalClient_DictContents_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1590,7 +1569,7 @@ func (c *modalClientClient) FunctionCallFromId(ctx context.Context, in *Function
 
 func (c *modalClientClient) FunctionCallGetDataIn(ctx context.Context, in *FunctionCallGetDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[4], ModalClient_FunctionCallGetDataIn_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[3], ModalClient_FunctionCallGetDataIn_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1609,7 +1588,7 @@ type ModalClient_FunctionCallGetDataInClient = grpc.ServerStreamingClient[DataCh
 
 func (c *modalClientClient) FunctionCallGetDataOut(ctx context.Context, in *FunctionCallGetDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[5], ModalClient_FunctionCallGetDataOut_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[4], ModalClient_FunctionCallGetDataOut_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1928,7 +1907,7 @@ func (c *modalClientClient) ImageGetOrCreate(ctx context.Context, in *ImageGetOr
 
 func (c *modalClientClient) ImageJoinStreaming(ctx context.Context, in *ImageJoinStreamingRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ImageJoinStreamingResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[6], ModalClient_ImageJoinStreaming_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[5], ModalClient_ImageJoinStreaming_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2367,7 +2346,7 @@ func (c *modalClientClient) SandboxGetFromNameV2(ctx context.Context, in *Sandbo
 
 func (c *modalClientClient) SandboxGetLogs(ctx context.Context, in *SandboxGetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskLogsBatch], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[7], ModalClient_SandboxGetLogs_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[6], ModalClient_SandboxGetLogs_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2836,7 +2815,7 @@ func (c *modalClientClient) SharedVolumeListFiles(ctx context.Context, in *Share
 
 func (c *modalClientClient) SharedVolumeListFilesStream(ctx context.Context, in *SharedVolumeListFilesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SharedVolumeListFilesResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[8], ModalClient_SharedVolumeListFilesStream_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[7], ModalClient_SharedVolumeListFilesStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3105,7 +3084,7 @@ func (c *modalClientClient) VolumeList(ctx context.Context, in *VolumeListReques
 
 func (c *modalClientClient) VolumeListFiles(ctx context.Context, in *VolumeListFilesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VolumeListFilesResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[9], ModalClient_VolumeListFiles_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[8], ModalClient_VolumeListFiles_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3124,7 +3103,7 @@ type ModalClient_VolumeListFilesClient = grpc.ServerStreamingClient[VolumeListFi
 
 func (c *modalClientClient) VolumeListFiles2(ctx context.Context, in *VolumeListFiles2Request, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VolumeListFiles2Response], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[10], ModalClient_VolumeListFiles2_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[9], ModalClient_VolumeListFiles2_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3293,7 +3272,7 @@ func (c *modalClientClient) WorkspaceBillingRates(ctx context.Context, in *Works
 
 func (c *modalClientClient) WorkspaceBillingReport(ctx context.Context, in *WorkspaceBillingReportRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceBillingReportItem], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[11], ModalClient_WorkspaceBillingReport_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[10], ModalClient_WorkspaceBillingReport_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3444,7 +3423,6 @@ type ModalClientServer interface {
 	ContainerExecPutInput(context.Context, *ContainerExecPutInputRequest) (*emptypb.Empty, error)
 	ContainerExecWait(context.Context, *ContainerExecWaitRequest) (*ContainerExecWaitResponse, error)
 	ContainerFilesystemExec(context.Context, *ContainerFilesystemExecRequest) (*ContainerFilesystemExecResponse, error)
-	ContainerFilesystemExecGetOutput(*ContainerFilesystemExecGetOutputRequest, grpc.ServerStreamingServer[FilesystemRuntimeOutputBatch]) error
 	ContainerHeartbeat(context.Context, *ContainerHeartbeatRequest) (*ContainerHeartbeatResponse, error)
 	ContainerHello(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	ContainerLog(context.Context, *ContainerLogRequest) (*emptypb.Empty, error)
@@ -3832,9 +3810,6 @@ func (UnimplementedModalClientServer) ContainerExecWait(context.Context, *Contai
 }
 func (UnimplementedModalClientServer) ContainerFilesystemExec(context.Context, *ContainerFilesystemExecRequest) (*ContainerFilesystemExecResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ContainerFilesystemExec not implemented")
-}
-func (UnimplementedModalClientServer) ContainerFilesystemExecGetOutput(*ContainerFilesystemExecGetOutputRequest, grpc.ServerStreamingServer[FilesystemRuntimeOutputBatch]) error {
-	return status.Error(codes.Unimplemented, "method ContainerFilesystemExecGetOutput not implemented")
 }
 func (UnimplementedModalClientServer) ContainerHeartbeat(context.Context, *ContainerHeartbeatRequest) (*ContainerHeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ContainerHeartbeat not implemented")
@@ -5270,17 +5245,6 @@ func _ModalClient_ContainerFilesystemExec_Handler(srv interface{}, ctx context.C
 	}
 	return interceptor(ctx, in, info, handler)
 }
-
-func _ModalClient_ContainerFilesystemExecGetOutput_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ContainerFilesystemExecGetOutputRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(ModalClientServer).ContainerFilesystemExecGetOutput(m, &grpc.GenericServerStream[ContainerFilesystemExecGetOutputRequest, FilesystemRuntimeOutputBatch]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ModalClient_ContainerFilesystemExecGetOutputServer = grpc.ServerStreamingServer[FilesystemRuntimeOutputBatch]
 
 func _ModalClient_ContainerHeartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ContainerHeartbeatRequest)
@@ -10288,11 +10252,6 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ContainerExecGetOutput",
 			Handler:       _ModalClient_ContainerExecGetOutput_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "ContainerFilesystemExecGetOutput",
-			Handler:       _ModalClient_ContainerFilesystemExecGetOutput_Handler,
 			ServerStreams: true,
 		},
 		{
