@@ -6031,8 +6031,8 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
         "Management": ["list", "create", "stop"],
         "Inspection": ["info", "logs", "stats"],
     },
-    "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "metrics"]},
-    "server": {"Commands": ["info", "logs", "stats", "requests", "metrics"]},
+    "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "autoscaler", "metrics"]},
+    "server": {"Commands": ["info", "logs", "stats", "requests", "autoscaler", "metrics"]},
     "image": {"Commands": ["logs", "names"]},
     "image names": {"Commands": ["list"]},
     "dict": {
@@ -6086,6 +6086,188 @@ def test_cli_help_subcommand_layout(group_path):
     assert layout == _CLI_HELP_LAYOUT[group_path]
     # Dict equality ignores key order, but panel order is part of the layout.
     assert list(layout) == list(_CLI_HELP_LAYOUT[group_path])
+
+
+def test_cli_help_top_level_commands_order():
+    from modal.cli._help import group_commands_by_panel
+    from modal.cli.entry_point import entrypoint_cli
+
+    commands = [name for name, _ in group_commands_by_panel(entrypoint_cli)["Commands"]]
+    assert commands == ["run", "serve", "deploy", "shell", "curl"]
+
+
+def test_function_autoscaler(set_env_client, mock_dir):
+    test_app_file = textwrap.dedent("""\
+    import time
+
+    import modal
+
+    app = modal.App("test-function-autoscaler")
+
+
+    @app.function(
+        min_containers=2,
+        buffer_containers=3,
+        max_containers=4,
+        scaledown_window=90,
+    )
+    def do_stuff():
+        pass
+
+    """)
+
+    with mock_dir({"test_function_autoscaler.py": test_app_file}):
+        run_cli_command(["deploy", "test_function_autoscaler.py"])
+
+        json_output = run_cli_command(
+            ["function", "autoscaler", "settings", "test-function-autoscaler/do_stuff", "--json"]
+        )
+        loaded = json.loads(json_output.stdout)
+
+        assert loaded["current_settings"] == {
+            "min_containers": 2,
+            "max_containers": 4,
+            "buffer_containers": 3,
+            "scaledown_window": 90,
+        }
+
+        human_output = run_cli_command(["function", "autoscaler", "settings", "test-function-autoscaler/do_stuff"])
+        deformatted = re.sub(r"\s+", " ", human_output.stdout)
+
+        assert "Min Containers 2" in deformatted
+        assert "Max Containers 4" in deformatted
+        assert "Buffer Containers 3" in deformatted
+        assert "Scaledown Window 90 seconds" in deformatted
+
+        for input, error in [
+            (("--scaledown-window", "1.5"), "Invalid input for '--scaledown-window': '1.5' must be an integer."),
+            (("--max-containers", "5"), None),
+            (("--min-containers", "3"), None),
+            (("--buffer-containers", "4", "--scaledown-window", "45"), None),
+        ]:
+            exit_code = 0
+            if error:
+                exit_code = 2
+
+            res = run_cli_command(
+                ["function", "autoscaler", "update", "test-function-autoscaler/do_stuff", *input],
+                expected_exit_code=exit_code,
+            )
+
+            if error:
+                assert error in res.stderr
+
+        json_output = run_cli_command(
+            ["function", "autoscaler", "settings", "test-function-autoscaler/do_stuff", "--json"]
+        )
+        loaded = json.loads(json_output.stdout)
+
+        assert loaded["current_settings"] == {
+            "min_containers": 3,
+            "max_containers": 5,
+            "scaledown_window": 45,
+            "buffer_containers": 4,
+        }
+
+
+def test_server_autoscaler(set_env_client, mock_dir, servicer):
+    test_app_file = textwrap.dedent("""\
+    import modal
+
+    app = modal.App("test-server-autoscaler")
+
+
+    @app.server(
+        min_containers=2,
+        buffer_containers=3,
+        max_containers=4,
+        scaleup_window=15,
+        scaledown_window=90,
+        target_concurrency=5.2,
+    )
+    class MyServer:
+        @modal.enter()
+        def enter(self):
+            pass
+
+    """)
+
+    with mock_dir({"test_server_autoscaler.py": test_app_file}):
+        run_cli_command(["deploy", "test_server_autoscaler.py"])
+
+        json_output = run_cli_command(["server", "autoscaler", "settings", "test-server-autoscaler/MyServer", "--json"])
+        loaded = json.loads(json_output.stdout)
+
+        assert loaded["current_settings"] == {
+            "min_containers": 2,
+            "max_containers": 4,
+            "buffer_containers": 3,
+            "scaledown_window": 90,
+            "scaleup_window": 15,
+            "target_concurrency": 5.2,
+        }
+
+        human_output = run_cli_command(["server", "autoscaler", "settings", "test-server-autoscaler/MyServer"])
+        deformatted = re.sub(r"\s+", " ", human_output.stdout)
+
+        assert "Min Containers 2" in deformatted
+        assert "Max Containers 4" in deformatted
+        assert "Buffer Containers 3" in deformatted
+        assert "Scaledown Window 90 seconds" in deformatted
+        assert "Scaleup Window 15 seconds" in deformatted
+        assert "Target Concurrency 5.2 requests/container" in deformatted
+
+        for input, error in [
+            (("--scaledown-window", "1.5"), "Invalid input for '--scaledown-window': '1.5' must be an integer."),
+            (("--target-concurrency", "1.5"), None),
+            (
+                ("--target-concurrency", "1.5.6"),
+                "Error: Invalid input for '--target-concurrency': '1.5.6' must be a positive float "
+                'or the string "none"',
+            ),
+            (("--max-containers", "5"), None),
+            (("--min-containers", "3"), None),
+            (("--buffer-containers", "4", "--scaledown-window", "45", "--scaleup-window", "15"), None),
+        ]:
+            exit_code = 0
+            if error:
+                exit_code = 2
+
+            res = run_cli_command(
+                ["server", "autoscaler", "update", "test-server-autoscaler/MyServer", *input],
+                expected_exit_code=exit_code,
+            )
+
+            if error:
+                assert error in res.stderr
+
+        json_output = run_cli_command(["server", "autoscaler", "settings", "test-server-autoscaler/MyServer", "--json"])
+        loaded = json.loads(json_output.stdout)
+
+        assert loaded["current_settings"] == {
+            "target_concurrency": 1.5,
+            "min_containers": 3,
+            "max_containers": 5,
+            "buffer_containers": 4,
+            "scaleup_window": 15,
+            "scaledown_window": 45,
+        }
+
+        run_cli_command(
+            ["server", "autoscaler", "update", "test-server-autoscaler/MyServer", "--target-concurrency", "none"]
+        )
+
+        json_output = run_cli_command(["server", "autoscaler", "settings", "test-server-autoscaler/MyServer", "--json"])
+        loaded = json.loads(json_output.stdout)
+
+        assert loaded["current_settings"] == {
+            "target_concurrency": None,
+            "min_containers": 3,
+            "max_containers": 5,
+            "buffer_containers": 4,
+            "scaleup_window": 15,
+            "scaledown_window": 45,
+        }
 
 
 def test_cli_does_not_import_aiohttp():

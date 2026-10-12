@@ -247,7 +247,17 @@ async def _resolve_function_id(
     environment_name: str,
     *,
     object_type: Literal["Function", "Server"] = "Function",
-    command: Literal["info", "calls", "logs", "requests", "stats", "variants", "metrics"],
+    command: Literal[
+        "info",
+        "calls",
+        "logs",
+        "requests",
+        "stats",
+        "variants",
+        "metrics",
+        "autoscaler settings",
+        "autoscaler update",
+    ],
 ) -> tuple[str, api_pb2.FunctionHandleMetadata, api_pb2.FunctionData]:
     identifier_label = object_type.upper()
     usage = (
@@ -299,3 +309,21 @@ async def _resolve_function_id(
         raise UsageError(f"'{function_identifier}' is a {actual_type}. Use `modal {actual_type.lower()} {command}`.")
 
     return function_id, metadata, function
+
+
+def parse_int(s: str, *, allow_negative: bool = True, allow_zero: bool = True, allow_positive: bool = True) -> int:
+    try:
+        x = int(s)
+    except ValueError as e:
+        raise ValueError(f"{s!r} must be an integer.") from e
+
+    if not allow_negative and x < 0:
+        raise ValueError(f"{x!r} must not be negative.")
+
+    if not allow_zero and x == 0:
+        raise ValueError(f"{x!r} must not be zero.")
+
+    if not allow_positive and x > 0:
+        raise ValueError(f"{x!r} must not be positive.")
+
+    return x

@@ -9,6 +9,7 @@ from typing import AsyncGenerator, Sequence, cast
 
 import click
 from click import UsageError
+from rich.box import SIMPLE
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -17,7 +18,7 @@ from modal._logs import _fetch_time_range, _seconds_to_timestamp, _timestamp_to_
 from modal._object import _get_environment_name
 from modal._server import _Server
 from modal._utils.async_utils import async_map_ordered, synchronizer
-from modal._utils.time_utils import parse_duration
+from modal._utils.time_utils import parse_duration, timestamp_to_localized_str
 from modal.cli.utils import humanize_filesize
 from modal.client import _Client
 from modal.exception import LogsFetchError, NotFoundError
@@ -51,6 +52,7 @@ from .utils import (
     display_table,
     env_option,
     grouped_utc_timestamp,
+    parse_int,
 )
 
 server_cli = ModalGroup(name="server", help="Inspect Modal Servers.")
@@ -1084,6 +1086,281 @@ async def requests(
         table_box=HEADER_ONLY,
         border_style=STATS_METADATA_STYLE if not no_color else None,
     )
+
+
+autoscaler_cli = ModalGroup(name="autoscaler", help="View and Configure Autoscaler settings for Modal Servers.")
+server_cli.add_command(autoscaler_cli)
+
+
+@autoscaler_cli.command("settings", no_args_is_help=True)
+@click.argument("server_identifier", metavar="FUNCTION")
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@env_option
+@synchronizer.create_blocking
+async def autoscaler_info(server_identifier: str, json: bool = False, env: str | None = None):
+    """Show the current Autsocaling settings for the provided Server.
+
+    In addition to the current settings, this command also shows any active overrides to these
+    settings, along with metadata about who overrode the setting, and when. SERVER may be a
+    Server ID or a deployed Server name in the form ``APP_NAME/SERVER_NAME``.
+
+    If a setting's value is the default and not overridden, its value is omitted in the output.
+
+    Examples:
+
+    Show autoscaling settings for a deployed Server:
+
+    ```
+    modal server autoscaler settings my-app/my-server
+    ```
+
+    Show autoscaling settings using an ID:
+
+    ```
+    modal server autoscaler settings fu-1234
+    ```
+    """
+
+    environment_name = _get_environment_name(ensure_env(env))
+    client = await _Client.from_env()
+    function_id, _, _ = await _resolve_function_id(
+        client,
+        server_identifier,
+        environment_name,
+        object_type="Server",
+        command="autoscaler settings",
+    )
+
+    autoscaler_response = await client._stub.FunctionGetSchedulingParams(
+        api_pb2.FunctionGetSchedulingParamsRequest(function_id=function_id)
+    )
+
+    autoscaler_settings = ServerAutoscalerSettings._from_proto(autoscaler_response.autoscaler_configuration.settings)
+    override_events = autoscaler_response.autoscaler_configuration.override_events
+
+    output_manager = OutputManager.get()
+
+    if json:
+        current_settings = dataclasses.asdict(autoscaler_settings)
+        if current_settings["target_concurrency"] == 0:
+            current_settings["target_concurrency"] = None
+
+        override_events_json: list[dict[str, str]] = []
+        for k, v in override_events.items():
+            if k == "target_concurrency_float":
+                continue
+
+            if v.user_id:
+                obj = {
+                    "setting": k,
+                    "updated_at": str(v.timestamp),
+                    "actor_name": v.requested_by,
+                    "actor_id": v.user_id,
+                    "actor_type": "user",
+                }
+            elif v.service_user_id:
+                obj = {
+                    "setting": k,
+                    "updated_at": str(v.timestamp),
+                    "actor_name": v.requested_by,
+                    "actor_id": v.service_user_id,
+                    "actor_type": "service-user",
+                }
+            else:
+                obj = {
+                    "setting": k,
+                    "updated_at": str(v.timestamp),
+                    "actor_id": "unknown",
+                    "actor_name": "unknown",
+                    "actor_type": "unknown",
+                }
+
+            override_events_json.append(obj)
+
+        output_manager.print_json(
+            json_lib.dumps(
+                {
+                    "current_settings": current_settings,
+                    "override_events": override_events_json,
+                }
+            )
+        )
+
+        return
+
+    human_readable = {
+        "min_containers": "Min Containers",
+        "max_containers": "Max Containers",
+        "buffer_containers": "Buffer Containers",
+        "scaledown_window": "Scaledown Window",
+        "scaleup_window": "Scaleup Window",
+        "target_concurrency": "Target Concurrency",
+    }
+
+    if override_events:
+        t = Table("Setting", "Value", "Overridden By", box=SIMPLE)
+    else:
+        t = Table("Setting", "Value", box=SIMPLE)
+
+    for key, pretty in human_readable.items():
+        value = getattr(autoscaler_settings, key)
+        value_str = str(value)
+
+        override_meta = "-"
+        if key in override_events:
+            override = override_events[key]
+            override_meta = f"{override.requested_by} at {timestamp_to_localized_str(override.timestamp, isotz=False)}"
+
+        if key in {"scaledown_window", "scaleup_window"}:
+            value_str = f"{value} seconds"
+
+        if key == "target_concurrency":
+            value_str = f"{value} requests/container"
+
+        if not value and (key == "target_concurrency" or key not in override_events):
+            value_str = "-"
+
+        if override_events:
+            t.add_row(pretty, value_str, override_meta)
+        else:
+            t.add_row(pretty, value_str)
+
+    output_manager.print(t)
+
+
+@autoscaler_cli.command("update", no_args_is_help=True)
+@click.argument("server_identifier", metavar="SERVER")
+@click.option("--max-containers", "max_containers", default=None, help="Maximum concurrent containers.")
+@click.option("--min-containers", "min_containers", default=None, help="Minimum number of containers to keep running.")
+@click.option(
+    "--buffer-containers",
+    "buffer_containers",
+    default=None,
+    help="Extra containers to keep warm beyond current demand.",
+)
+@click.option(
+    "--scaledown-window",
+    "scaledown_window",
+    default=None,
+    help="Maximum duration (in seconds) idle containers wait before scaling down.",
+)
+@click.option(
+    "--scaleup-window",
+    "scaleup_window",
+    default=None,
+    help="Seconds of sustained demand required before scaling up new containers. ",
+)
+@click.option(
+    "--target-concurrency",
+    "target_concurrency",
+    default=None,
+    help="Target number of concurrent requests per container. May be fractional.",
+)
+@env_option
+@synchronizer.create_blocking
+async def autoscaler_update(
+    server_identifier: str,
+    max_containers: str | None = None,
+    min_containers: str | None = None,
+    buffer_containers: str | None = None,
+    scaledown_window: str | None = None,
+    scaleup_window: str | None = None,
+    target_concurrency: str | None = None,
+    env: str | None = None,
+):
+    """Update the current Autsocaling settings for the provided Server.
+
+    SERVER may be a Server ID or a deployed Server name in the form ``APP_NAME/SERVER_NAME``.
+
+    Settings can be modified using the `--max-containers`, `--min-containers`, `--buffer-containers`,
+    `--scaledown-window`, `--scaleup-window`, and `--target-concurrency` options.
+
+    If provided, Max Containers should be a positive integer, Min and Buffer Containers should be
+    nonnegative integers, Scaledown and Scaleup windows should be positive integers measured in seconds,
+    and Target Concurrency should either be a positive floating point number, or the string "none".
+
+    Examples:
+
+    Update Max Containers for a deployed Server:
+
+    ```
+    modal server autoscaler update my-app/my-server --max-containers 10
+    ```
+
+    Update both Min Containers and Target Concurrency for a Server by ID:
+
+    ```
+    modal server autoscaler update fu-1234 --min-containers 3 --target-concurrency 2.5
+    ```
+
+    Set Target Concurrency to "none" (disabling autoscaling for the Server)
+
+    ```
+    modal server autoscaler update my-app/my-server --target-concurrency none
+    ```
+    """
+
+    environment_name = _get_environment_name(ensure_env(env))
+    client = await _Client.from_env()
+
+    updates: dict[str, int | float] = {}
+    for k, v in {
+        "min_containers": min_containers,
+        "max_containers": max_containers,
+        "buffer_containers": buffer_containers,
+        "scaledown_window": scaledown_window,
+        "scaleup_window": scaleup_window,
+        "target_concurrency": target_concurrency,
+    }.items():
+        if v is None:
+            continue
+
+        if k == "target_concurrency":
+            error_message = (
+                f"Invalid input for '--target-concurrency': {v!r} must be a positive float or the string \"none\""
+            )
+
+            if v == "none":
+                updates[k] = 0
+                continue
+
+            try:
+                updates[k] = float(v)
+            except ValueError as e:
+                raise click.UsageError(error_message) from e
+
+            if updates[k] <= 0:
+                raise click.UsageError(error_message)
+
+            continue
+
+        try:
+            updates[k] = parse_int(
+                v,
+                allow_negative=False,
+                allow_zero=k in {"min_containers", "buffer_containers"},
+            )
+        except ValueError as e:
+            option_name = f"--{k.replace('_', '-')}"
+            raise click.UsageError(f"Invalid input for {option_name!r}: {e}")
+
+    output_manager = OutputManager.get()
+    if not updates:
+        output_manager.print("No autoscaler settings specified.")
+        return
+
+    function_id, handle_metadata, _ = await _resolve_function_id(
+        client,
+        server_identifier,
+        environment_name,
+        object_type="Server",
+        command="autoscaler update",
+    )
+
+    s = _Server._new_from_function(function_id, client, handle_metadata)
+    await s.update_autoscaler(**updates)  # type: ignore
+
+    output_manager.print(f"[green]✓[/green] Updated autoscaler settings for Server {handle_metadata.function_name}")
 
 
 @server_cli.command("metrics", no_args_is_help=True)
