@@ -230,6 +230,7 @@ extra-standard-library = ["pytest"]
 max-nested-blocks = 7
 
 [tool.pyright]
+reportPrivateUsage = false
 reportUnnecessaryComparison = true
 # mypy checks most of the codebase, but it skips the .py implementation of any
 # module that also ships a .pyi type stub, so pyright covers those
