@@ -74043,6 +74043,7 @@ type ServiceUser_EnvironmentRoleEntry struct {
 	xxx_hidden_EnvironmentId   string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
 	xxx_hidden_Role            EnvironmentRole        `protobuf:"varint,2,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
 	xxx_hidden_EnvironmentName string                 `protobuf:"bytes,3,opt,name=environment_name,json=environmentName,proto3"`
+	xxx_hidden_RoleStr         string                 `protobuf:"bytes,4,opt,name=role_str,json=roleStr,proto3"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -74093,6 +74094,13 @@ func (x *ServiceUser_EnvironmentRoleEntry) GetEnvironmentName() string {
 	return ""
 }
 
+func (x *ServiceUser_EnvironmentRoleEntry) GetRoleStr() string {
+	if x != nil {
+		return x.xxx_hidden_RoleStr
+	}
+	return ""
+}
+
 func (x *ServiceUser_EnvironmentRoleEntry) SetEnvironmentId(v string) {
 	x.xxx_hidden_EnvironmentId = v
 }
@@ -74105,12 +74113,17 @@ func (x *ServiceUser_EnvironmentRoleEntry) SetEnvironmentName(v string) {
 	x.xxx_hidden_EnvironmentName = v
 }
 
+func (x *ServiceUser_EnvironmentRoleEntry) SetRoleStr(v string) {
+	x.xxx_hidden_RoleStr = v
+}
+
 type ServiceUser_EnvironmentRoleEntry_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	EnvironmentId   string
 	Role            EnvironmentRole
 	EnvironmentName string
+	RoleStr         string
 }
 
 func (b0 ServiceUser_EnvironmentRoleEntry_builder) Build() *ServiceUser_EnvironmentRoleEntry {
@@ -74120,6 +74133,7 @@ func (b0 ServiceUser_EnvironmentRoleEntry_builder) Build() *ServiceUser_Environm
 	x.xxx_hidden_EnvironmentId = b.EnvironmentId
 	x.xxx_hidden_Role = b.Role
 	x.xxx_hidden_EnvironmentName = b.EnvironmentName
+	x.xxx_hidden_RoleStr = b.RoleStr
 	return m0
 }
 
@@ -77682,7 +77696,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12!\n" +
 	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12)\n" +
 	"\x10duration_seconds\x18\x04 \x01(\x01R\x0fdurationSeconds\x12\x16\n" +
-	"\x06status\x18\x05 \x01(\x05R\x06status\"\xd5\x04\n" +
+	"\x06status\x18\x05 \x01(\x05R\x06status\"\xf0\x04\n" +
 	"\vServiceUser\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
 	"\btoken_id\x18\x02 \x01(\tR\atokenId\x12\x1d\n" +
@@ -77699,11 +77713,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x11environment_roles\x18\n" +
 	" \x03(\v2..modal.client.ServiceUser.EnvironmentRoleEntryR\x10environmentRoles\x12\"\n" +
 	"\n" +
-	"expires_at\x18\v \x01(\x01H\x00R\texpiresAt\x88\x01\x01\x1a\x9b\x01\n" +
+	"expires_at\x18\v \x01(\x01H\x00R\texpiresAt\x88\x01\x01\x1a\xb6\x01\n" +
 	"\x14EnvironmentRoleEntry\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x121\n" +
 	"\x04role\x18\x02 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\x12)\n" +
-	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentNameB\r\n" +
+	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentName\x12\x19\n" +
+	"\brole_str\x18\x04 \x01(\tR\aroleStrB\r\n" +
 	"\v_expires_at\"t\n" +
 	"\x18ServiceUserCreateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +

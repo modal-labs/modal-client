@@ -4711,6 +4711,7 @@ message ServiceUser {
     string environment_id = 1;
     EnvironmentRole role = 2;
     string environment_name = 3;
+    string role_str = 4;
   }
 
   string name = 1;
