@@ -1,4 +1,20 @@
-export { App, AppService, type AppFromNameParams } from "./app";
+export {
+  App,
+  AppService,
+  type AppFromNameParams,
+  type AppInfo,
+  type AppInfoParams,
+  type AppLifecycle,
+  type AppState,
+} from "./app";
+export {
+  Environment,
+  EnvironmentService,
+  EnvironmentObjectsService,
+  EnvironmentAppsService,
+  type EnvironmentFromNameParams,
+  type EnvironmentCreateParams,
+} from "./environment";
 export {
   Cls,
   ClsInstance,

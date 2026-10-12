@@ -30,7 +30,7 @@ import { AuthTokenManager, authTokenGetFetcher } from "./auth_token_manager";
 import { getSDKVersion } from "./version";
 import { checkForRenamedParams } from "./validation";
 import { createLogger, type Logger, type LogLevel } from "./logger";
-import { EnvironmentManager } from "./environment";
+import { EnvironmentManager, EnvironmentService } from "./environment";
 import { InvalidError } from "./errors";
 import { mintOAuthClientAssertion, parseOAuthJwtKey } from "./oauth";
 import { serverWarningMiddleware } from "./server_warnings";
@@ -95,6 +95,7 @@ export class ModalClient {
   readonly apps: AppService;
   readonly cloudBucketMounts: CloudBucketMountService;
   readonly cls: ClsService;
+  readonly environments: EnvironmentService;
   readonly functions: FunctionService;
   readonly functionCalls: FunctionCallService;
   readonly images: ImageService;
@@ -178,6 +179,7 @@ export class ModalClient {
     this.apps = new AppService(this);
     this.cloudBucketMounts = new CloudBucketMountService(this);
     this.cls = new ClsService(this);
+    this.environments = new EnvironmentService(this);
     this.functions = new FunctionService(this);
     this.functionCalls = new FunctionCallService(this);
     this.images = new ImageService(this);

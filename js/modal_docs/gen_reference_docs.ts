@@ -618,6 +618,8 @@ function isErrorType(model: PkgModel, name: string): boolean {
 /** A dependent class folded into a primary class's page. */
 interface Companion {
   propName: string; // property/getter on the primary, e.g. "filesystem"
+  /** Access path when the namespace belongs to a service on ModalClient. */
+  accessPath?: string;
   propDoc: DocInfo; // doc comment on that property/getter
   ti: TypeDeclInfo;
   isService: boolean; // the companion is a service class
@@ -724,7 +726,7 @@ export function buildPages(model: PkgModel): Page[] {
  * Detects dependent classes reached through a property or getter on a primary
  * class (e.g. Sandbox.filesystem -> SandboxFilesystem) and folds them into the
  * primary's page as namespace sections, removing their standalone page. A
- * class qualifies when it is referenced via a public property of a page class
+ * class qualifies when it is referenced via a public property of a page class or its merged service
  * and is either a service class or has public methods of its own (a concrete
  * operations namespace) — plain data types are left as their own pages. A
  * companion reached from several primaries (e.g. both Sandbox and
@@ -737,20 +739,30 @@ function foldCompanions(model: PkgModel, pages: Map<string, Page>): void {
 
   for (const [name, p] of pages) {
     if (!p.ti || p.ti.kind !== "class") continue;
-    for (const prop of p.ti.properties) {
-      const dep = prop.baseTypeName;
-      if (!dep || dep === name) continue;
-      const depPage = pages.get(dep);
-      if (!depPage) continue; // not a standalone page (external, merged, grouped)
-      const ti = model.types.get(dep)!;
-      if (ti.kind !== "class") continue; // interfaces stay standalone pages
-      const isSvc = isServiceClass(ti);
-      if (!isSvc && ti.methods.length === 0) continue; // plain data class
-      additions.push({
-        owner: name,
-        comp: { propName: prop.name, propDoc: prop.doc, ti, isService: isSvc },
-      });
-      deletions.add(dep);
+    const owners = p.service && p.service !== p.ti ? [p.ti, p.service] : [p.ti];
+    for (const owner of owners) {
+      for (const prop of owner.properties) {
+        const dep = prop.baseTypeName;
+        if (!dep || dep === name) continue;
+        const depPage = pages.get(dep);
+        if (!depPage) continue; // not a standalone page (external, merged, grouped)
+        const ti = model.types.get(dep)!;
+        if (ti.kind !== "class") continue; // interfaces stay standalone pages
+        const isSvc = isServiceClass(ti);
+        if (!isSvc && ti.methods.length === 0) continue; // plain data class
+        const accessor = model.serviceAccessors.get(owner.name);
+        additions.push({
+          owner: name,
+          comp: {
+            propName: prop.name,
+            accessPath: accessor ? `modal.${accessor}.${prop.name}` : undefined,
+            propDoc: prop.doc,
+            ti,
+            isService: isSvc,
+          },
+        });
+        deletions.add(dep);
+      }
     }
   }
 
@@ -839,7 +851,7 @@ function renderCompanion(
   primary: string,
   c: Companion,
 ): void {
-  b.push(`## ${primary}.${c.propName}\n\n`);
+  b.push(`## ${c.accessPath ?? `${primary}.${c.propName}`}\n\n`);
   const doc = c.propDoc.summary.trim() ? c.propDoc : c.ti.doc;
   writeDoc(b, doc.summary);
   if (c.isService) {

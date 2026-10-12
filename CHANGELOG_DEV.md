@@ -17,6 +17,8 @@ view and update autoscaler settings for a given Function / Server.
 
 ## JS
 
+- Added `App.info()` to access cached App lifecycle information and member Function and Server IDs, with optional refresh.
+- Added `client.environments.fromName()`, `client.environments.objects.create/list/delete()`, and `environment.apps.list()` to look up and manage Environments and iterate over their Apps.
 - Added `client.Functions.FromID()` to look up a Function by ID.
 - Added [`Function_.stats()`](/docs/sdk/js/latest/Function#stats) to retrieve historical Function statistics over a time range.
 - Improved the performance of Sandbox filesystem writes (`writeBytes`, `writeText`, `copyFromLocal`).

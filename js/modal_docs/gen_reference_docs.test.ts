@@ -268,6 +268,66 @@ describe("buildPages", () => {
     expect(volume).not.toContain("new Volume(");
   });
 
+  test("folds namespaces on merged services onto the entity page", () => {
+    const model = buildModel({
+      ...fixtureFiles,
+      "index.ts":
+        fixtureFiles["index.ts"] +
+        `
+export { Environment, EnvironmentService, EnvironmentObjectsService, EnvironmentAppsService, type EnvironmentCreateParams } from "./environment";
+`,
+      "client.ts": fixtureFiles["client.ts"].replace(
+        "readonly volumes: VolumeService;",
+        "readonly environments: EnvironmentService;\n  readonly volumes: VolumeService;",
+      ),
+      "environment.ts": `
+export class Environment {
+  readonly apps: EnvironmentAppsService;
+}
+export class EnvironmentService {
+  /** Manage Environments through this client. */
+  readonly objects: EnvironmentObjectsService;
+  /** Look up an Environment. */
+  async fromName(name: string): Promise<Environment> {}
+}
+export class EnvironmentObjectsService {
+  /** Create an Environment. */
+  async create(name: string, params: EnvironmentCreateParams = {}): Promise<void> {}
+  /** List Environments. */
+  async *list(): AsyncGenerator<Environment> {}
+  /** Delete an Environment. */
+  async delete(name: string): Promise<void> {}
+}
+export type EnvironmentCreateParams = {
+  /** Restrict access to assigned roles. */
+  restricted?: boolean;
+};
+export class EnvironmentAppsService {
+  /** List Apps in the Environment. */
+  async *list(): AsyncGenerator<unknown> {}
+}
+`,
+    });
+    const pages = buildPages(model);
+    expect(
+      pages.some((page) => page.label === "EnvironmentObjectsService"),
+    ).toBe(false);
+    expect(pages.some((page) => page.label === "EnvironmentAppsService")).toBe(
+      false,
+    );
+    const environment = pages.find((page) => page.label === "Environment")!;
+    const markdown = renderPage(model, environment);
+    expect(markdown).toContain("## fromName");
+    expect(markdown).toContain("## modal.environments.objects");
+    expect(markdown).toContain("Manage Environments through this client.");
+    expect(markdown).toContain("### create");
+    expect(markdown).toContain("### delete");
+    expect(markdown).toContain("**Parameters** (`EnvironmentCreateParams`)");
+    expect(markdown).toContain("Restrict access to assigned roles.");
+    expect(markdown).toContain("## Environment.apps");
+    expect(markdown.match(/^### list$/gm)).toHaveLength(2);
+  });
+
   test("shows overload signatures, not the implementation", () => {
     const { model, byLabel } = buildFixturePages();
     const volume = renderPage(model, byLabel.get("Volume")!);
