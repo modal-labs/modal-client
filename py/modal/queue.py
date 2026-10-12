@@ -292,7 +292,7 @@ class _Queue(_Object, type_prefix="qu"):
         **Limits**
 
         A single `Queue` can contain up to 100,000 partitions, each with up to 5,000 items. Each item can be up to
-        1 MiB.
+        1 MiB, and each partition can be up to 64 MiB in total size.
 
         Partition keys must be non-empty and must not exceed 64 bytes.
     """
