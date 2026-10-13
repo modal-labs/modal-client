@@ -5343,7 +5343,11 @@ def mock_webbrowser(monkeypatch):
 
 
 def run_cli_command(
-    args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""
+    args: list[str],
+    expected_exit_code: int = 0,
+    expected_stderr: str = "",
+    expected_error: str = "",
+    input: str | None = None,
 ) -> click.testing.Result:
     from importlib.metadata import version as get_version
 
@@ -5366,7 +5370,7 @@ def run_cli_command(
         with mock.patch.object(sys, "argv", args):
             # Enable rich output during CLI tests, just like __main__.py does
             with enable_output():
-                res = runner.invoke(entrypoint_cli, args)
+                res = runner.invoke(entrypoint_cli, args, input=input)
     finally:
         if previous_env_profile is None:
             os.environ.pop("MODAL_PROFILE", None)

@@ -2,7 +2,9 @@
 import asyncio
 import functools
 import inspect
+import os
 import re
+import stat
 import sys
 import time
 import typing
@@ -25,6 +27,7 @@ from ..runner import DEPLOYMENT_STRATEGY_TYPE, deploy_app, run_app
 from ..serving import serve_app
 from ._help import ModalCommand, ModalGroup, _consume_global_options, _global_option_token_length
 from .import_refs import (
+    STDIN_REF,
     CLICommand,
     MethodReference,
     _get_runnable_app,
@@ -399,6 +402,14 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
         return click.command(cls=ModalCommand)(with_click_options)
 
 
+def _stdin_is_piped() -> bool:
+    try:
+        mode = os.fstat(sys.stdin.fileno()).st_mode
+    except (AttributeError, OSError, ValueError):
+        return False
+    return stat.S_ISFIFO(mode) or stat.S_ISREG(mode)
+
+
 def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
     usable_command_lines = []
     for cmd in all_usable_commands:
@@ -428,12 +439,22 @@ class RunGroup(ModalGroup):
             elif arg == "--":
                 func_ref_index += 1
                 break
+            elif arg == STDIN_REF:
+                break
             elif param := option_params.get(arg.split("=", 1)[0]):
                 func_ref_index += 1 if "=" in arg or param.is_flag else param.nargs + 1
             elif arg.startswith("-"):
                 func_ref_index += 1
             else:
                 break
+
+        missing_func_ref = func_ref_index >= len(args)
+        requests_help = any(arg in ctx.help_option_names for arg in args)
+        if missing_func_ref and not requests_help and not ctx.resilient_parsing and _stdin_is_piped():
+            raise click.UsageError(
+                f"Missing FUNC_REF. To read the script from stdin, pass `{STDIN_REF}`: `cat my_app.py | modal run -`",
+                ctx,
+            )
 
         args[:] = _consume_global_options(ctx, args[:func_ref_index]) + args[func_ref_index:]
         return click.Group.parse_args(self, ctx, args)
@@ -448,9 +469,23 @@ class RunGroup(ModalGroup):
         func_ref = cmd_name
 
         import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"], command="modal run")
+        from_stdin = import_ref.file_or_module == STDIN_REF
+        if from_stdin and ctx.params["interactive"]:
+            raise ClickException("Interactive mode can't be used when reading a script from stdin.")
         runnable, all_usable_commands = import_and_filter(
-            import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
+            import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False, allow_stdin=True
         )
+        if not runnable and from_stdin:
+            help_header = (
+                "Couldn't determine what to run from the script on stdin. Define a single "
+                "`@app.local_entrypoint()`, or save the script to a file and pass `my_app.py::my_function`."
+            )
+            if all_usable_commands:
+                help_footer = "The script has the following functions and local entrypoints:\n"
+                help_footer += _get_runnable_list(all_usable_commands)
+            else:
+                help_footer = "The script has no functions or local entrypoints."
+            raise ClickException(f"{help_header}\n\n{help_footer}")
         if not runnable:
             help_header = (
                 "Specify a Modal Function or local entrypoint to run. E.g.\n"
@@ -534,6 +569,21 @@ def run(
 
     ```
     modal run -m my_project.my_app
+    ```
+
+    Pass `-` to read the script from stdin. The script must have a single local
+    entrypoint (or a single function):
+
+    ```
+    modal run - <<'EOF'
+    import modal
+
+    app = modal.App()
+
+    @app.function()
+    def hello():
+        print("hello from Modal")
+    EOF
     ```
     """
     ctx.ensure_object(dict)

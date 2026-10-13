@@ -2030,6 +2030,64 @@ def test_run_errors_without_module_flag(
     assert f"-m {app_module}" in str(res.exception)
 
 
+stdin_entrypoint_script = """
+import modal
+
+app = modal.App()
+
+
+@app.function()
+def foo():
+    pass
+
+
+@app.local_entrypoint()
+def main(name: str = "world"):
+    print(f"hello {name}")
+    foo.remote()
+"""
+
+
+def test_run_stdin(servicer, set_env_client):
+    res = run_cli_command(["run", "-q", "-", "--name", "alice"], input=stdin_entrypoint_script)
+    assert "hello alice" in res.stdout
+    assert len(servicer.function_call_inputs) == 1
+    mounted_files = {f for content in servicer.mount_contents.values() for f in content}
+    assert "/root/modal_stdin_app.py" in mounted_files
+
+
+def test_run_stdin_single_function(servicer, set_env_client, supports_dir):
+    source = (supports_dir / "app_run_tests" / "default_app.py").read_text()
+    run_cli_command(["run", "-"], input=source)
+    assert len(servicer.function_call_inputs) == 1
+
+
+def test_run_stdin_ambiguous(servicer, set_env_client, supports_dir):
+    source = (supports_dir / "app_run_tests" / "app_with_multiple_functions.py").read_text()
+    res = run_cli_command(["run", "-"], input=source, expected_exit_code=1)
+    assert "script on stdin" in res.stderr
+
+
+@pytest.mark.parametrize(
+    ("args", "expected_error"),
+    [
+        (["run", "-m", "-"], "can't be combined with the -m flag"),
+        (["run", "-i", "-"], "Interactive mode"),
+        (["deploy", "-"], "does not support reading a script from stdin"),
+    ],
+)
+def test_run_stdin_errors(servicer, set_env_client, args, expected_error):
+    res = run_cli_command(args, input=stdin_entrypoint_script, expected_exit_code=1)
+    assert re.search(expected_error, str(res.exception) + res.stderr)
+
+
+@pytest.mark.parametrize("args", [["run"], ["run", "-q"]])
+def test_run_stdin_without_dash(servicer, set_env_client, monkeypatch, args):
+    monkeypatch.setattr("modal.cli.run._stdin_is_piped", lambda: True)
+    res = run_cli_command(args, input=stdin_entrypoint_script, expected_exit_code=2)
+    assert "pass `-`" in res.stderr
+
+
 def test_run_async(servicer, set_env_client, test_dir):
     sync_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     res = run_cli_command(["run", sync_fn.as_posix()])
