@@ -976,7 +976,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.environment_type: "dict[str, api_pb2.EnvironmentType.ValueType]" = {}
         # Workspace principals that can be assigned roles in restricted Environments
         self.workspace_users: dict[str, str] = {"us-1": "alice", "us-2": "bob", "us-3": "carol"}
-        self.workspace_service_users: dict[str, str] = {"sv-1": "alice-bot", "sv-2": "ops-bot"}
+        self.workspace_service_users: dict[str, api_pb2.ServiceUser | None] = {
+            "sv-1": api_pb2.ServiceUser(name="alice-bot"),
+            "sv-2": api_pb2.ServiceUser(name="ops-bot"),
+        }
         # env_id -> {principal_id: role_proto}
         self.environment_members: dict[str, dict[str, api_pb2.EnvironmentRole.ValueType]] = {}
         # Proxy auth (webhook) tokens, including the metadata returned by list operations
@@ -2264,7 +2267,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 principal_roles.append(
                     Principal(
                         service_user_id=principal_id,
-                        service_user_name=self.workspace_service_users[principal_id],
+                        service_user_name=self.workspace_service_users[principal_id].name,
                         role=role,
                     )
                 )
@@ -2272,9 +2275,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for user_id, user_name in self.workspace_users.items():
             if user_id not in members:
                 additional_roles.append(Principal(user_id=user_id, user_name=user_name))
-        for sv_id, sv_name in self.workspace_service_users.items():
+        for sv_id, sv in self.workspace_service_users.items():
             if sv_id not in members:
-                additional_roles.append(Principal(service_user_id=sv_id, service_user_name=sv_name))
+                additional_roles.append(Principal(service_user_id=sv_id, service_user_name=sv.name))
         await stream.send_message(
             api_pb2.EnvironmentGetManagedResponse(
                 environment_id=env_id,
@@ -2305,17 +2308,51 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for user_id, user_name in self.workspace_users.items():
             role = members.get(user_id, default_role)
             principal_roles.append(Principal(user_id=user_id, user_name=user_name, role=role, role_str=role_str(role)))
-        for sv_id, sv_name in self.workspace_service_users.items():
+        for sv_id, sv in self.workspace_service_users.items():
+            if sv is None:
+                continue
+
             role = members.get(sv_id, default_role)
             principal_roles.append(
-                Principal(service_user_id=sv_id, service_user_name=sv_name, role=role, role_str=role_str(role))
+                Principal(service_user_id=sv_id, service_user_name=sv.name, role=role, role_str=role_str(role))
             )
         await stream.send_message(api_pb2.EnvironmentGetRolesResponse(name="", principal_roles=principal_roles))
 
     async def EnvironmentRoleSet(self, stream):
         request: api_pb2.EnvironmentRoleSetRequest = await stream.recv_message()
-        members = self.environment_members.setdefault(request.environment_id, {})
-        principal_id = request.user_id or request.service_user_id
+
+        for name, id in self.environments.items():
+            if name == request.environment_name or id == request.environment_id:
+                env_id = id
+                env_name = name
+                break
+
+        assert env_id
+        assert env_name
+
+        members = self.environment_members.setdefault(env_id, {})
+        principal_id: str | None = None
+
+        service_user: api_pb2.ServiceUser | None = None
+        if request.user_id:
+            principal_id = request.user_id
+        elif request.service_user_id:
+            principal_id = request.service_user_id
+        elif request.service_user_name:
+            for sv_id, sv in self.workspace_service_users.items():
+                if sv is None:
+                    continue
+
+                if sv.name != request.service_user_name:
+                    continue
+
+                service_user = sv
+                principal_id = sv_id
+                break
+
+        if not principal_id:
+            raise GRPCError(Status.INVALID_ARGUMENT, "Principal not found")
+
         role = request.role
         if request.role_str:
             role = {
@@ -2323,12 +2360,37 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "viewer": api_pb2.ENVIRONMENT_ROLE_VIEWER,
                 "contributor": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,
             }.get(request.role_str)
+
             if role is None:
                 raise GRPCError(Status.INVALID_ARGUMENT, f"Unknown role: {request.role_str!r}")
+
         if role == api_pb2.ENVIRONMENT_ROLE_UNSPECIFIED:
             members.pop(principal_id, None)
         else:
             members[principal_id] = role
+
+        if service_user is not None:
+            existing_role: api_pb2.ServiceUser.EnvironmentRoleEntry | None = None
+            for environment_role in service_user.environment_roles:
+                if environment_role.environment_id != env_id:
+                    continue
+
+                existing_role = environment_role
+                break
+
+            if existing_role:
+                service_user.environment_roles.remove(existing_role)
+
+            if role != api_pb2.ENVIRONMENT_ROLE_UNSPECIFIED:
+                service_user.environment_roles.append(
+                    api_pb2.ServiceUser.EnvironmentRoleEntry(
+                        environment_id=env_id,
+                        role=role,
+                        environment_name=env_name,
+                        role_str=request.role_str,
+                    )
+                )
+
         await stream.send_message(Empty())
 
     async def EnvironmentUpdate(self, stream):
@@ -3895,6 +3957,74 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         secrets = sorted(secrets, key=lambda x: x.metadata.creation_info.created_at, reverse=True)
         await stream.send_message(api_pb2.SecretListResponse(items=secrets))
+
+    ### Service Users
+
+    async def ServiceUserInfo(self, stream):
+        req: api_pb2.ServiceUserInfoRequest = await stream.recv_message()
+
+        service_user: api_pb2.ServiceUser | None = None
+        if req.service_user_name:
+            for su in self.workspace_service_users.values():
+                if su is None:
+                    continue
+
+                if su.name != req.service_user_name:
+                    continue
+
+                service_user = su
+                break
+
+        if service_user is None:
+            raise GRPCError(Status.NOT_FOUND, "Could not find Service User.")
+
+        await stream.send_message(api_pb2.ServiceUserInfoResponse(service_user=service_user))
+
+    async def ServiceUserCreate(self, stream):
+        req: api_pb2.ServiceUserCreateRequest = await stream.recv_message()
+
+        names = set([s.name for s in self.workspace_service_users.values() if s is not None])
+        if req.name in names:
+            raise GRPCError(Status.ALREADY_EXISTS, f"Service user {req.name} already exists")
+
+        next_id = f"sv-{len(self.workspace_service_users) + 1}"
+        self.workspace_service_users[next_id] = api_pb2.ServiceUser(
+            name=req.name,
+            token_id="",
+            created_by="",
+            created_at=datetime.datetime.now().timestamp(),
+            service_user_id=next_id,
+        )
+
+        await stream.send_message(api_pb2.ServiceUserCreateResponse(service_user_id=next_id))
+
+    async def ServiceUserList(self, stream):
+        _ = await stream.recv_message()  # Empty()
+        await stream.send_message(
+            api_pb2.ServiceUserListResponse(
+                service_users=[su for su in self.workspace_service_users.values() if su is not None]
+            )
+        )
+
+    async def ServiceUserDelete(self, stream):
+        req: api_pb2.ServiceUserDeleteRequest = await stream.recv_message()
+
+        service_user_id = req.service_user_id
+        if req.service_user_name:
+            for sv_id, sv in self.workspace_service_users.items():
+                if sv is None:
+                    continue
+
+                if sv.name != req.service_user_name:
+                    continue
+
+                service_user_id = sv_id
+
+        if service_user_id not in self.workspace_service_users:
+            raise GRPCError(Status.NOT_FOUND, "Could not find service user.")
+
+        self.workspace_service_users[service_user_id] = None
+        await stream.send_message(Empty())
 
     ### Snapshot
 

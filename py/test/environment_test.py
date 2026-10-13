@@ -385,7 +385,9 @@ def test_environment_members_remove_user_and_service_user_with_same_name(service
     """A user and a service user can share a name — both removals must be sent."""
     env = Environment.from_name("main", client=client)
     env.hydrate()
-    servicer.workspace_service_users["sv-3"] = "alice"  # collide with the workspace user named "alice"
+    servicer.workspace_service_users["sv-3"] = api_pb2.ServiceUser(
+        name="alice"
+    )  # collide with the workspace user named "alice"
     servicer.environment_members[env.object_id] = {
         "us-1": api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR,  # user "alice"
         "sv-3": api_pb2.ENVIRONMENT_ROLE_VIEWER,  # service user "alice"

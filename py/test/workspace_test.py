@@ -6,6 +6,7 @@ from grpclib import GRPCError, Status
 
 from modal._utils.time_utils import timestamp_to_localized_dt
 from modal._workspace import _member_role_from_proto
+from modal.environments import Environment
 from modal.workspace import ProxyTokenInfo, TokenData, Workspace, WorkspaceMemberInfo
 from modal_proto import api_pb2
 
@@ -205,3 +206,57 @@ def test_member_role_from_proto():
 
     with pytest.raises(ValueError, match="Unknown workspace member role"):
         _member_role_from_proto(999)
+
+
+def test_workspace_service_users(servicer, client):
+    ws = Workspace.from_context(client=client)
+    env = Environment.from_name("main", client=client)
+
+    service_users = list(ws.service_users.list())
+    assert len(service_users) == 2
+
+    roles = env.roles.list()
+    assert roles["service_users"] == {"alice-bot": "contributor", "ops-bot": "contributor"}
+
+    for i in range(4):
+        ws.service_users.create(f"service-user-{i}", expires_in=None)
+
+    service_users = list(ws.service_users.list())
+    assert len(service_users) == 6
+
+    info = ws.service_users.info("service-user-1")
+
+    assert info.name == "service-user-1"
+    assert info.expires_at is None
+    assert len(info.environment_roles) == 0
+
+    for i in range(4):
+        ws.service_users.set_role(f"service-user-{i}", "main", role="viewer" if i % 2 else "no-access")
+
+    roles = env.roles.list()
+    assert roles["service_users"] == {
+        "alice-bot": "contributor",
+        "ops-bot": "contributor",
+        "service-user-0": "no-access",
+        "service-user-1": "viewer",
+        "service-user-2": "no-access",
+        "service-user-3": "viewer",
+    }
+
+    for i in range(2):
+        ws.service_users.delete(f"service-user-{i * 2}")
+
+    roles = env.roles.list()
+    assert roles["service_users"] == {
+        "alice-bot": "contributor",
+        "ops-bot": "contributor",
+        "service-user-1": "viewer",
+        "service-user-3": "viewer",
+    }
+
+    info = ws.service_users.info("service-user-1")
+
+    assert info.name == "service-user-1"
+    assert info.expires_at is None
+    assert len(info.environment_roles) == 1
+    assert info.environment_roles["main"] == "viewer"

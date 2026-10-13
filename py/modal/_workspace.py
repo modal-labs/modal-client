@@ -9,6 +9,7 @@ from typing import Optional
 from google.protobuf.empty_pb2 import Empty
 
 from modal.exception import DeprecationError, InvalidError
+from modal.types import ServiceUserInfo
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -128,6 +129,15 @@ class _Workspace(_Object, type_prefix="ac"):
     def settings(self) -> "_WorkspaceSettingsManager":
         """Namespace for Workspace settings APIs."""
         return _WorkspaceSettingsManager(self)
+
+    @property
+    def service_users(self) -> "_WorkspaceServiceUserManager":
+        """Namespace for managing Service Users in a Workspace.
+
+        See [the guide](https://modal.com/docs/guide/service-users) for more information about Service
+        Users.
+        """
+        return _WorkspaceServiceUserManager(self)
 
 
 class _WorkspaceProxyTokenManager:
@@ -556,3 +566,169 @@ class _WorkspaceSettingsManager:
                 await self._set_default_environment(value)
             case _:
                 raise ValueError(f"Unknown setting {name!r}. Valid settings: {', '.join(self._valid_settings())}")
+
+
+class _WorkspaceServiceUserManager:
+    """mdmd:namespace"""
+
+    def __init__(self, workspace: _Workspace):
+        """mdmd:hidden"""
+        self._workspace = workspace
+
+    async def create(self, name: str, *, expires_in: int | None) -> TokenData:
+        """Create a new Service User in the current workspace.
+
+        To call this function, you are required to have Manager permissions in the Workspace.
+
+        Args:
+            name: The name of the new Service User. Must consistent only of alphanumeric, '-', or '_'
+                characters.
+            expires_in: An expiration time, in seconds, after which the token will stop working. If
+                `None`, the token will never expire.
+
+        Returns:
+            A `TokenData` dataclass containing the credentials for the Service User. Note that this
+            is the only time you will be able to view these credentials.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+
+        # Creates a Service User named "test-service-user", whose credentials expire after one year.
+        service_user_token_data = ws.service_users.create(
+            "test-service-user",
+            expires_in=datetime.timedelta(days=365).total_seconds(),
+        )
+        ```
+        """
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        if expires_in is None:
+            req = api_pb2.ServiceUserCreateRequest(name=name)
+        else:
+            req = api_pb2.ServiceUserCreateRequest(name=name, expires_in_seconds=expires_in)
+
+        resp = await self._workspace.client._stub.ServiceUserCreate(req)
+
+        return TokenData(token_id=resp.token_id, token_secret=resp.token_secret)
+
+    async def set_role(
+        self,
+        service_user_name: str,
+        environment_name: str,
+        *,
+        role: str,
+    ) -> None:
+        """Set the role of a specified Service User within an Environment.
+
+        To call this function, you are required to have Manager permissions in the Workspace.
+
+        Args:
+            service_user_name: The name of the Service User.
+            environment_name: The name of the Environment to which the Service User's new role will
+                apply.
+            role: The access level to grant this Service User. Must be one of the strings `"no-access"`,
+                `"viewer"`, or `"contributor"`.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        # Grants Service User "test-service-user" the Viewer role in Environment "production"
+        ws.service_users.set_role("test-service-user", "production", role="viewer")
+
+        # Revokes access to "production" from Service User "test-service-user"
+        ws.service_users.set_role("test-service-user", "production", role="no-access")
+        ```
+        """
+
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        from ._environments import _Environment
+
+        env = _Environment.from_name(environment_name, client=self._workspace.client)
+        await env.hydrate()
+
+        await self._workspace.client._stub.EnvironmentRoleSet(
+            api_pb2.EnvironmentRoleSetRequest(
+                service_user_name=service_user_name,
+                environment_id=env.object_id,
+                role_str=role,
+            )
+        )
+
+    async def info(self, name: str) -> ServiceUserInfo:
+        """Get information about a specific Service User.
+
+        To call this function, you are required to have Manager permissions in the Workspace.
+
+        Args:
+            name: The name of the Service User to introspect.
+
+        Returns:
+            A `ServiceUserInfo` dataclass containing information about the Service User.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        service_user = ws.service_users.info("test-service-user")
+        ```
+        """
+
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        resp = await self._workspace.client._stub.ServiceUserInfo(
+            api_pb2.ServiceUserInfoRequest(service_user_name=name)
+        )
+
+        return ServiceUserInfo._from_proto(resp.service_user)
+
+    async def list(self) -> list[ServiceUserInfo]:
+        """List all Service Users in the current workspace.
+
+        To call this function, you are required to have Manager permissions in the Workspace.
+
+        Returns:
+            A list of `ServiceUserInfo` dataclasses.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        for service_user in ws.service_users.list():
+            print(service_user.name)
+        ```
+        """
+
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        resp = await self._workspace.client._stub.ServiceUserList(Empty())
+
+        return [ServiceUserInfo._from_proto(su) for su in resp.service_users]
+
+    async def delete(self, name: str) -> None:
+        """Permanently delete a Service User.
+
+        To call this function, you are required to have Manager permissions in the Workspace.
+
+        Args:
+            name: The name of the Service User to delete.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        ws.service_users.delete("test-service-user")
+        ```
+        """
+
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        await self._workspace.client._stub.ServiceUserDelete(api_pb2.ServiceUserDeleteRequest(service_user_name=name))

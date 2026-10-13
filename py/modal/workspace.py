@@ -9,6 +9,7 @@ from ._workspace import (
     _WorkspaceBillingManager,
     _WorkspaceMembersManager,
     _WorkspaceProxyTokenManager,
+    _WorkspaceServiceUserManager,
     _WorkspaceSettingsManager,
 )
 
@@ -17,6 +18,7 @@ WorkspaceMembersManager = synchronize_api(_WorkspaceMembersManager, target_modul
 WorkspaceBillingManager = synchronize_api(_WorkspaceBillingManager, target_module=__name__)
 WorkspaceProxyTokenManager = synchronize_api(_WorkspaceProxyTokenManager, target_module=__name__)
 WorkspaceSettingsManager = synchronize_api(_WorkspaceSettingsManager, target_module=__name__)
+WorkspaceServiceUserManager = synchronize_api(_WorkspaceServiceUserManager, target_module=__name__)
 
 __all__ = [
     "ProxyTokenInfo",
@@ -25,6 +27,7 @@ __all__ = [
     "WorkspaceMemberInfo",
     "WorkspaceMembersManager",
     "WorkspaceProxyTokenManager",
+    "WorkspaceServiceUserManager",
     "WorkspaceSettingsManager",
     "WorkspaceSettings",
 ]
