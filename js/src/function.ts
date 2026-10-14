@@ -23,6 +23,7 @@ import { InternalFailure, InvalidError, NotFoundError } from "./errors";
 import { cborEncode } from "./serialization";
 import { ClientError, Status } from "nice-grpc";
 import { FunctionLogsManager } from "./logs";
+import { FunctionMetricsManager } from "./metrics";
 import {
   ControlPlaneInvocation,
   InputPlaneInvocation,
@@ -581,6 +582,11 @@ export class Function_ {
       this.functionId,
       this.#handleMetadata?.appId ?? "",
     );
+  }
+
+  /** Access metric samples with export() and series definitions with schema(). */
+  get metrics(): FunctionMetricsManager {
+    return new FunctionMetricsManager(this.#client, this.functionId);
   }
 
   /** Override the static Function configuration at runtime. */

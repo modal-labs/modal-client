@@ -177,3 +177,14 @@ export {
   type SandboxLogTailParams,
 } from "./logs";
 export { checkForRenamedParams } from "./validation";
+
+export {
+  FunctionMetricsManager,
+  type FunctionMetricsExportParams,
+  type MetricsSchemaParams,
+  type TimeSeriesPoint,
+  type MetricSeries,
+  type MetricDefinition,
+  type MetricsSchema,
+  type ObjectMetrics,
+} from "./metrics";
