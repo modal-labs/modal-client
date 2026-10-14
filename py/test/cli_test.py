@@ -6118,10 +6118,11 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
         "Management": ["list", "create", "rename", "dashboard", "delete"],
         "File operations": ["ls", "get", "put", "cp", "rm"],
     },
-    "workspace": {"Commands": ["members", "proxy-tokens", "settings"]},
+    "workspace": {"Commands": ["members", "proxy-tokens", "settings", "service-users"]},
     "workspace members": {"Commands": ["list"]},
     "workspace proxy-tokens": {"Commands": ["list", "create", "update", "allow", "revoke", "delete"]},
     "workspace settings": {"Commands": ["list", "set"]},
+    "workspace service-users": {"Commands": ["create", "list", "delete", "info", "set-role"]},
     "environment": {
         "Management": ["list", "create", "update", "delete", "roles"],
         "Inspection": ["billing"],
@@ -6341,6 +6342,169 @@ def test_cli_does_not_import_aiohttp():
     # Runs in a subprocess because the test suite itself imports aiohttp.
     code = "import sys, modal.__main__; assert 'aiohttp' not in sys.modules"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_service_users_cli(set_env_client):
+    list_output = run_cli_command(["workspace", "service-users", "list", "--json"])
+    list_loaded = json.loads(list_output.stdout)
+    assert isinstance(list_loaded, list)
+    assert len(list_loaded) == 2  # alice-bot and ops-bot
+
+    for i, expiration in zip(
+        range(6),
+        [None, f"{60 * 60 * 24}", f"{60 * 60 * 24}s", f"{60 * 24}m", "24h", "1d"],
+    ):
+        is_json = i % 2 == 1
+
+        command = ["workspace", "service-users", "create", f"test-{i}"]
+        if expiration:
+            command.extend(["--expires-in", expiration])
+        if is_json:
+            command.append("--json")
+
+        create_output = run_cli_command(command)
+
+        if is_json:
+            create_loaded = json.loads(create_output.stdout)
+            assert isinstance(create_loaded, dict)
+
+            assert "token_id" in create_loaded
+            assert "token_secret" in create_loaded
+            assert "expires_at" in create_loaded
+
+            if expiration:
+                assert create_loaded["expires_at"] is not None
+
+            continue
+
+        assert "Token ID:" in create_output.stdout
+        assert "Token Secret:" in create_output.stdout
+        if expiration:
+            assert "Expires At:" in create_output.stdout
+
+    # failure cases
+    run_cli_command(
+        ["workspace", "service-users", "create", "test-0"],
+        expected_exit_code=1,
+        expected_error="Service user with name 'test-0' already exists",
+    )
+    run_cli_command(
+        ["workspace", "service-users", "create", "test-10", "--expires-in", "-10"],
+        expected_exit_code=2,
+        expected_stderr="Value passed to `--expires-in` must be a positive integer.",
+    )
+    run_cli_command(
+        ["workspace", "service-users", "create", "test-10", "--expires-in", "10y"],
+        expected_exit_code=2,
+        expected_stderr=("Invalid duration:"),
+    )
+    run_cli_command(
+        ["workspace", "service-users", "create", "test-10", "--expires-in", "hello"],
+        expected_exit_code=2,
+        expected_stderr=("Invalid duration:"),
+    )
+
+    expected_lines = [
+        r"alice-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
+        r"ops-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
+        r"test-0\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
+        r"test-1\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-2\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-3\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-4\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-5\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+    ]
+
+    list_output = run_cli_command(["workspace", "service-users", "list"])
+    for line in expected_lines:
+        assert re.search(line, list_output.stdout)
+
+    list_output = run_cli_command(["workspace", "service-users", "list", "--json"])
+    list_loaded = json.loads(list_output.stdout)
+    assert isinstance(list_loaded, list)
+    assert len(list_loaded) == 8
+
+    for i in range(3):
+        run_cli_command(["workspace", "service-users", "delete", "-y", f"test-{i}"])
+
+    list_output = run_cli_command(["workspace", "service-users", "list", "--json"])
+    list_loaded = json.loads(list_output.stdout)
+    assert isinstance(list_loaded, list)
+    assert len(list_loaded) == 5
+
+    expected_lines = [
+        r"alice-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
+        r"ops-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
+        r"test-3\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-4\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-5\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+    ]
+
+    list_output = run_cli_command(["workspace", "service-users", "list"])
+    for line in expected_lines:
+        assert re.search(line, list_output.stdout)
+
+    run_cli_command(
+        ["workspace", "service-users", "delete", "-y", "test-0"],
+        expected_exit_code=1,
+        expected_error="Service user 'test-0' not found",
+    )
+
+    # should still work and be a noop
+    run_cli_command(["workspace", "service-users", "delete", "-y", "--allow-missing", "test-0"])
+
+    run_cli_command(
+        ["workspace", "service-users", "info", "test-0"],
+        expected_exit_code=1,
+        expected_error="Could not find Service User",
+    )
+
+    info_output = run_cli_command(["workspace", "service-users", "info", "test-3"])
+    expected_lines = [
+        r"This Service User does not have access to any Environments.",
+        r"Name:\s+test-3",
+        r"Service User ID:\s+sv-6",
+        r"Token ID:\s+ak-SU6",
+        r"Created By:\s+user",
+        r"Created At:\s+[^\s]+",
+        r"Last Used:\s+-",
+        r"Expires:\s+[^\s]+",
+    ]
+    for line in expected_lines:
+        assert re.search(line, info_output.stdout)
+
+    run_cli_command(["workspace", "service-users", "set-role", "test-3", "main", "contributor"])
+
+    info_output = run_cli_command(["workspace", "service-users", "info", "test-3"])
+    expected_lines = [
+        r"Name:\s+test-3",
+        r"Service User ID:\s+sv-6",
+        r"Token ID:\s+ak-SU6",
+        r"Created By:\s+user",
+        r"Created At:\s+[^\s]+",
+        r"Last Used:\s+-",
+        r"Expires:\s+[^\s]+",
+        r"Environment Access:",
+        r"main\s+Contributor",
+    ]
+    for line in expected_lines:
+        assert re.search(line, info_output.stdout)
+
+    run_cli_command(["workspace", "service-users", "set-role", "test-3", "main", "no-access"])
+
+    info_output = run_cli_command(["workspace", "service-users", "info", "test-3"])
+    expected_lines = [
+        r"This Service User does not have access to any Environments.",
+        r"Name:\s+test-3",
+        r"Service User ID:\s+sv-6",
+        r"Token ID:\s+ak-SU6",
+        r"Created By:\s+user",
+        r"Created At:\s+[^\s]+",
+        r"Last Used:\s+-",
+        r"Expires:\s+[^\s]+",
+    ]
+    for line in expected_lines:
+        assert re.search(line, info_output.stdout)
 
 
 @pytest.mark.parametrize("count", [1_000_000, 1_000_001])

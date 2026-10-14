@@ -8,7 +8,7 @@ from typing import Optional
 
 from google.protobuf.empty_pb2 import Empty
 
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.types import ServiceUserInfo
 from modal_proto import api_pb2
 
@@ -663,8 +663,6 @@ class _WorkspaceServiceUserManager:
     async def info(self, name: str) -> ServiceUserInfo:
         """Get information about a specific Service User.
 
-        To call this function, you are required to have Manager permissions in the Workspace.
-
         Args:
             name: The name of the Service User to introspect.
 
@@ -691,8 +689,6 @@ class _WorkspaceServiceUserManager:
     async def list(self) -> list[ServiceUserInfo]:
         """List all Service Users in the current workspace.
 
-        To call this function, you are required to have Manager permissions in the Workspace.
-
         Returns:
             A list of `ServiceUserInfo` dataclasses.
 
@@ -712,13 +708,12 @@ class _WorkspaceServiceUserManager:
 
         return [ServiceUserInfo._from_proto(su) for su in resp.service_users]
 
-    async def delete(self, name: str) -> None:
+    async def delete(self, name: str, *, allow_missing: bool = False) -> None:
         """Permanently delete a Service User.
-
-        To call this function, you are required to have Manager permissions in the Workspace.
 
         Args:
             name: The name of the Service User to delete.
+            allow_missing: If `True`, do not throw an exception if the Service User does not exist.
 
         Examples:
 
@@ -731,4 +726,10 @@ class _WorkspaceServiceUserManager:
         if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
 
-        await self._workspace.client._stub.ServiceUserDelete(api_pb2.ServiceUserDeleteRequest(service_user_name=name))
+        try:
+            await self._workspace.client._stub.ServiceUserDelete(
+                api_pb2.ServiceUserDeleteRequest(service_user_name=name)
+            )
+        except NotFoundError:
+            if not allow_missing:
+                raise

@@ -14,6 +14,8 @@ view and update autoscaler settings for a given Function / Server.
 - Added `--since` and `--until` to `modal function calls` and `modal server requests` to fetch all records in a time range.
 - Added `modal function metrics` and `modal server metrics` CLI commands for exporting metrics.
 - Use `Function.metrics.export()` and `Server.metrics.export()` to export metrics in the Python SDK. Discover available metrics and their definitions with `metrics.schema()`.
+- Added `Workspace.service_users` to create, inspect, delete, and update roles of Service Users.
+- Added the `modal workspace service-users` CLI family of commands to manage Service Users.
 - `modal run -` now reads the script from stdin, e.g. `cat my_app.py | modal run -`. The script must have a single local entrypoint or a single function.
 
 ## JS

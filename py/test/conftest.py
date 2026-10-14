@@ -977,8 +977,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # Workspace principals that can be assigned roles in restricted Environments
         self.workspace_users: dict[str, str] = {"us-1": "alice", "us-2": "bob", "us-3": "carol"}
         self.workspace_service_users: dict[str, api_pb2.ServiceUser | None] = {
-            "sv-1": api_pb2.ServiceUser(name="alice-bot"),
-            "sv-2": api_pb2.ServiceUser(name="ops-bot"),
+            "sv-1": api_pb2.ServiceUser(name="alice-bot", token_id="ak-SU1", created_by="user"),
+            "sv-2": api_pb2.ServiceUser(name="ops-bot", token_id="ak-SU2", created_by="user"),
         }
         # env_id -> {principal_id: role_proto}
         self.environment_members: dict[str, dict[str, api_pb2.EnvironmentRole.ValueType]] = {}
@@ -3985,18 +3985,32 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         names = set([s.name for s in self.workspace_service_users.values() if s is not None])
         if req.name in names:
-            raise GRPCError(Status.ALREADY_EXISTS, f"Service user {req.name} already exists")
+            raise GRPCError(Status.ALREADY_EXISTS, f"Service user with name '{req.name}' already exists")
 
-        next_id = f"sv-{len(self.workspace_service_users) + 1}"
+        index = len(self.workspace_service_users) + 1
+
+        expires_at: datetime.datetime | None = None
+        if req.expires_in_seconds:
+            expires_at = datetime.datetime.now() + datetime.timedelta(seconds=req.expires_in_seconds)
+
+        token_id = f"ak-SU{index}"
+        token_secret = f"as-SU{index}"
+
+        next_id = f"sv-{index}"
         self.workspace_service_users[next_id] = api_pb2.ServiceUser(
             name=req.name,
-            token_id="",
-            created_by="",
+            token_id=token_id,
+            created_by="user",
             created_at=datetime.datetime.now().timestamp(),
             service_user_id=next_id,
+            expires_at=expires_at.timestamp() if expires_at is not None else None,
         )
 
-        await stream.send_message(api_pb2.ServiceUserCreateResponse(service_user_id=next_id))
+        resp = api_pb2.ServiceUserCreateResponse(token_id=token_id, token_secret=token_secret, service_user_id=next_id)
+        if expires_at is not None:
+            resp.expires_at.FromDatetime(expires_at)
+
+        await stream.send_message(resp)
 
     async def ServiceUserList(self, stream):
         _ = await stream.recv_message()  # Empty()
@@ -4021,7 +4035,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 service_user_id = sv_id
 
         if service_user_id not in self.workspace_service_users:
-            raise GRPCError(Status.NOT_FOUND, "Could not find service user.")
+            raise GRPCError(Status.NOT_FOUND, f"Service user {req.service_user_name!r} not found")
 
         self.workspace_service_users[service_user_id] = None
         await stream.send_message(Empty())

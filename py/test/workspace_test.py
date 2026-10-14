@@ -7,6 +7,7 @@ from grpclib import GRPCError, Status
 from modal._utils.time_utils import timestamp_to_localized_dt
 from modal._workspace import _member_role_from_proto
 from modal.environments import Environment
+from modal.exception import NotFoundError
 from modal.workspace import ProxyTokenInfo, TokenData, Workspace, WorkspaceMemberInfo
 from modal_proto import api_pb2
 
@@ -253,6 +254,11 @@ def test_workspace_service_users(servicer, client):
         "service-user-1": "viewer",
         "service-user-3": "viewer",
     }
+
+    with pytest.raises(NotFoundError, match="Service user 'service-user-2' not found"):
+        ws.service_users.delete("service-user-2")
+
+    ws.service_users.delete("service-user-2", allow_missing=True)
 
     info = ws.service_users.info("service-user-1")
 
