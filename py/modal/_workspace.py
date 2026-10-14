@@ -629,8 +629,7 @@ class _WorkspaceServiceUserManager:
             service_user_name: The name of the Service User.
             environment_name: The name of the Environment to which the Service User's new role will
                 apply.
-            role: The access level to grant this Service User. Must be one of the strings `"no-access"`,
-                `"viewer"`, or `"contributor"`.
+            role: The access level to grant this Service User.
 
         Examples:
 
@@ -643,6 +642,9 @@ class _WorkspaceServiceUserManager:
         ws.service_users.set_role("test-service-user", "production", role="no-access")
         ```
         """
+
+        if not role:
+            raise InvalidError("Invalid argument: `role` must not be empty.")
 
         if not self._workspace._is_hydrated:
             await self._workspace.hydrate()

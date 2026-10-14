@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2025
 import json as json_mod
 from datetime import timezone
-from typing import Literal
 
 import click
 import rich
@@ -539,7 +538,7 @@ def service_users_info(name: str, json: bool):
 
     environment_roles: list[tuple[str, str]] = []
     for env_name, role in su.environment_roles.items():
-        if role not in ("viewer", "contributor"):
+        if role == "no-access":
             continue
 
         environment_roles.append((env_name, role))
@@ -584,15 +583,13 @@ def service_users_info(name: str, json: bool):
 @service_users_cli.command("set-role", no_args_is_help=True)
 @click.argument("service_user_name")
 @click.argument("environment_name")
-@click.argument("role", type=click.Choice(["no-access", "viewer", "contributor"]), metavar="ROLE")
+@click.argument("role")
 def service_users_set_role(
     service_user_name: str,
     environment_name: str,
-    role: Literal["no-access", "viewer", "contributor"],
+    role: str,
 ):
     """Update a Service User's role in a specific Environment.
-
-    ROLE must be one of either `"no-access"`, `"viewer"`, or `"contributor"`.
 
     Examples:
 
