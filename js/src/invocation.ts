@@ -11,9 +11,15 @@ import {
   GenericResult_GenericStatus,
 } from "../proto/modal_proto/api";
 import { ModalGrpcClient, type ModalClient } from "./client";
-import { FunctionTimeoutError, InternalFailure, RemoteError } from "./errors";
+import {
+  FunctionCallGetTimeoutError,
+  FunctionTimeoutError,
+  InternalFailure,
+  RemoteError,
+} from "./errors";
 import { cborDecode } from "./serialization";
 import { blobDownload } from "./blob";
+import type { Logger } from "./logger";
 
 // From: modal-client/modal/_utils/function_utils.py
 const outputsTimeoutMs = 55 * 1000;
@@ -34,6 +40,7 @@ export interface Invocation {
  */
 export class ControlPlaneInvocation implements Invocation {
   private readonly cpClient: ModalGrpcClient;
+  private readonly logger: Logger;
   readonly functionCallId: string;
   private readonly input?: FunctionInput;
   private readonly functionCallJwt?: string;
@@ -41,12 +48,14 @@ export class ControlPlaneInvocation implements Invocation {
 
   private constructor(
     cpClient: ModalGrpcClient,
+    logger: Logger,
     functionCallId: string,
     input?: FunctionInput,
     functionCallJwt?: string,
     inputJwt?: string,
   ) {
     this.cpClient = cpClient;
+    this.logger = logger;
     this.functionCallId = functionCallId;
     this.input = input;
     this.functionCallJwt = functionCallJwt;
@@ -73,6 +82,7 @@ export class ControlPlaneInvocation implements Invocation {
 
     return new ControlPlaneInvocation(
       client.cpClient,
+      client.logger,
       functionMapResponse.functionCallId,
       input,
       functionMapResponse.functionCallJwt,
@@ -81,7 +91,11 @@ export class ControlPlaneInvocation implements Invocation {
   }
 
   static fromFunctionCallId(client: ModalClient, functionCallId: string) {
-    return new ControlPlaneInvocation(client.cpClient, functionCallId);
+    return new ControlPlaneInvocation(
+      client.cpClient,
+      client.logger,
+      functionCallId,
+    );
   }
 
   async awaitOutput(
@@ -90,6 +104,7 @@ export class ControlPlaneInvocation implements Invocation {
   ): Promise<any> {
     return await pollFunctionOutput(
       this.cpClient,
+      this.logger,
       (timeoutMs: number) =>
         this.#getOutput(
           timeoutMs,
@@ -143,6 +158,7 @@ export class ControlPlaneInvocation implements Invocation {
 export class InputPlaneInvocation implements Invocation {
   private readonly cpClient: ModalGrpcClient;
   private readonly ipClient: ModalGrpcClient;
+  private readonly logger: Logger;
   private readonly functionId: string;
   private readonly input: FunctionPutInputsItem;
   private attemptToken: string;
@@ -150,12 +166,14 @@ export class InputPlaneInvocation implements Invocation {
   constructor(
     cpClient: ModalGrpcClient,
     ipClient: ModalGrpcClient,
+    logger: Logger,
     functionId: string,
     input: FunctionPutInputsItem,
     attemptToken: string,
   ) {
     this.cpClient = cpClient;
     this.ipClient = ipClient;
+    this.logger = logger;
     this.functionId = functionId;
     this.input = input;
     this.attemptToken = attemptToken;
@@ -180,6 +198,7 @@ export class InputPlaneInvocation implements Invocation {
     return new InputPlaneInvocation(
       client.cpClient,
       ipClient,
+      client.logger,
       functionId,
       functionPutInputsItem,
       attemptStartResponse.attemptToken,
@@ -189,6 +208,7 @@ export class InputPlaneInvocation implements Invocation {
   async awaitOutput(timeoutMs?: number): Promise<any> {
     return await pollFunctionOutput(
       this.cpClient,
+      this.logger,
       (timeoutMs: number) => this.#getOutput(timeoutMs),
       timeoutMs,
     );
@@ -234,6 +254,7 @@ type GetOutput = (
  */
 async function pollFunctionOutput(
   cpClient: ModalGrpcClient,
+  logger: Logger,
   getOutput: GetOutput,
   timeoutMs?: number,
 ): Promise<any> {
@@ -253,7 +274,7 @@ async function pollFunctionOutput(
       const remainingMs = timeoutMs - (Date.now() - startTime);
       if (remainingMs <= 0) {
         const message = `Timeout exceeded: ${timeoutMs}ms`;
-        throw new FunctionTimeoutError(message);
+        throw new FunctionCallGetTimeoutError(message, logger);
       }
       pollTimeoutMs = Math.min(outputsTimeoutMs, remainingMs);
     }

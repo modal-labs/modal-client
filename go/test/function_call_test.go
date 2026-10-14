@@ -1,6 +1,7 @@
 package test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -54,7 +55,8 @@ func TestFunctionSpawn(t *testing.T) {
 
 	timeout := 1 * time.Second
 	_, err = functionCall.Get(ctx, &modal.FunctionCallGetParams{Timeout: &timeout})
-	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(modal.FunctionTimeoutError{}))
+	g.Expect(errors.As(err, &modal.TimeoutError{})).To(gomega.BeTrue())
 }
 
 func TestFunctionCallGet0(t *testing.T) {
@@ -75,7 +77,8 @@ func TestFunctionCallGet0(t *testing.T) {
 	// function call has not finished yet.
 	timeout := 0 * time.Second
 	_, err = functionCall.Get(ctx, &modal.FunctionCallGetParams{Timeout: &timeout})
-	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(modal.FunctionTimeoutError{}))
+	g.Expect(errors.As(err, &modal.TimeoutError{})).To(gomega.BeTrue())
 
 	// Wait for the function call to finish.
 	result, err := functionCall.Get(ctx, nil)

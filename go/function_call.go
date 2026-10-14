@@ -81,6 +81,9 @@ type FunctionCallGetParams struct {
 
 // Get waits for the output of a FunctionCall.
 // If timeout > 0, the operation will be cancelled after the specified duration.
+//
+// If Timeout elapses before the Function finishes, the returned error matches TimeoutError with
+// errors.As. If the Function exceeds its execution timeout, it is a FunctionTimeoutError.
 func (fc *FunctionCall) Get(ctx context.Context, params *FunctionCallGetParams) (any, error) {
 	if params == nil {
 		params = &FunctionCallGetParams{}

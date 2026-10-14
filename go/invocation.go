@@ -221,7 +221,7 @@ func pollFunctionOutput(ctx context.Context, client pb.ModalClientClient, logger
 			remainingTime := *timeout - time.Since(startTime)
 			if remainingTime <= 0 {
 				message := fmt.Sprintf("Timeout exceeded: %.1fs", timeout.Seconds())
-				return nil, FunctionTimeoutError{message}
+				return nil, FunctionTimeoutError{Exception: message, waitTimeout: true}
 			}
 			pollTimeout = min(outputsTimeout, remainingTime)
 		}
@@ -250,7 +250,7 @@ func processResult(ctx context.Context, client pb.ModalClientClient, logger *slo
 
 	switch result.GetStatus() {
 	case pb.GenericResult_GENERIC_STATUS_TIMEOUT:
-		return nil, FunctionTimeoutError{result.GetException()}
+		return nil, FunctionTimeoutError{Exception: result.GetException()}
 	case pb.GenericResult_GENERIC_STATUS_INTERNAL_FAILURE:
 		return nil, InternalFailure{result.GetException()}
 	case pb.GenericResult_GENERIC_STATUS_SUCCESS:

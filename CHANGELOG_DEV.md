@@ -20,6 +20,7 @@ view and update autoscaler settings for a given Function / Server.
 
 ## JS
 
+- `FunctionCall.get()` now throws `TimeoutError` when `timeoutMs` elapses before the Function finishes, so it can be told apart from the Function exceeding its own execution timeout (`FunctionTimeoutError`). For backward compatibility the error still matches `instanceof FunctionTimeoutError`, but doing so logs a deprecation warning and will stop working in a future release. Check `instanceof TimeoutError` first instead. Checking `err.name === "FunctionTimeoutError"` no longer matches this case, since `err.name` is now `"TimeoutError"`.
 - Added `App.info()` to access cached App lifecycle information and member Function and Server IDs, with optional refresh.
 - Added `client.environments.fromName()`, `client.environments.objects.create/list/delete()`, and `environment.apps.list()` to look up and manage Environments and iterate over their Apps.
 - Added `Function_.metrics.export()` to fetch metric samples and `Function_.metrics.schema()` to discover metric definitions.
@@ -30,6 +31,7 @@ view and update autoscaler settings for a given Function / Server.
 
 ## Go
 
+- When `Timeout` elapses before the Function finishes, the `FunctionTimeoutError` returned by `FunctionCall.Get()` now wraps a `TimeoutError`, so `errors.As(err, &modal.TimeoutError{})` tells it apart from the Function exceeding its own execution timeout. Matching this case as a `FunctionTimeoutError` is deprecated; a future release will return a plain `TimeoutError`.
 - Added `client.Functions.FromID()` to look up a Function by ID.
 - Added [`Function.Stats()`](/docs/sdk/go/latest/Function#stats)  to retrieve historical Function statistics over a time range.
 - Improved the performance of Sandbox filesystem writes (`WriteBytes`, `WriteText`, `CopyFromLocal`).

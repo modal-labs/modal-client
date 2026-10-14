@@ -3,12 +3,27 @@ package modal
 // errors.go defines common error types for the public API.
 
 // FunctionTimeoutError is returned when a Function execution exceeds the allowed time limit.
+//
+// FunctionCall.Get also returns it, wrapping a TimeoutError, when its Timeout elapses before the
+// Function finishes. Matching that case as a FunctionTimeoutError is deprecated: a future release
+// will return a plain TimeoutError there, so check for it with errors.As(err, &TimeoutError{}).
 type FunctionTimeoutError struct {
 	Exception string
+
+	// FunctionCall.Get wait timeouts stay a FunctionTimeoutError for backward compatibility and
+	// unwrap to TimeoutError.
+	waitTimeout bool
 }
 
 func (e FunctionTimeoutError) Error() string {
 	return "FunctionTimeoutError: " + e.Exception
+}
+
+func (e FunctionTimeoutError) Unwrap() error {
+	if e.waitTimeout {
+		return TimeoutError{e.Exception}
+	}
+	return nil
 }
 
 // RemoteError represents an error on the Modal server, or a Python exception.

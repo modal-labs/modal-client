@@ -72,7 +72,12 @@ export class FunctionCall {
     this.functionCallId = functionCallId;
   }
 
-  /** Get the result of a FunctionCall, optionally waiting with a timeout. */
+  /**
+   * Get the result of a FunctionCall, optionally waiting with a timeout.
+   *
+   * @throws {@link TimeoutError} if `timeoutMs` elapses before the Function finishes.
+   * @throws {@link FunctionTimeoutError} if the Function exceeds its execution timeout.
+   */
   async get(params: FunctionCallGetParams = {}): Promise<any> {
     checkForRenamedParams(params, { timeout: "timeoutMs" });
 

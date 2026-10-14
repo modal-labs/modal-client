@@ -1,5 +1,5 @@
 import { tc } from "../test-support/test-client";
-import { FunctionTimeoutError } from "modal";
+import { FunctionTimeoutError, TimeoutError } from "modal";
 import { expect, test } from "vitest";
 
 test("FunctionSpawn", async () => {
@@ -22,6 +22,8 @@ test("FunctionSpawn", async () => {
   expect(functionCall.functionCallId).toMatch(/^fc-/);
 
   const promise = functionCall.get({ timeoutMs: 1000 }); // 1000ms
+  await expect(promise).rejects.toThrow(TimeoutError);
+  // Backward compatibility: wait timeouts still match FunctionTimeoutError.
   await expect(promise).rejects.toThrow(FunctionTimeoutError);
 });
 
@@ -31,9 +33,7 @@ test("FunctionCallGet0", async () => {
   const call = await sleep.spawn([0.5]);
   // Polling for output with timeout 0 should raise an error, since the
   // function call has not finished yet.
-  await expect(call.get({ timeoutMs: 0 })).rejects.toThrow(
-    FunctionTimeoutError,
-  );
+  await expect(call.get({ timeoutMs: 0 })).rejects.toThrow(TimeoutError);
 
   expect(await call.get()).toBe(null);
   expect(await call.get({ timeoutMs: 0 })).toBe(null);

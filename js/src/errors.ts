@@ -1,3 +1,5 @@
+import type { Logger } from "./logger";
+
 /** An operation exceeds the allowed time limit. */
 export class TimeoutError extends Error {
   constructor(message: string = "Operation timed out") {
@@ -6,11 +8,61 @@ export class TimeoutError extends Error {
   }
 }
 
-/** Function execution exceeds the allowed time limit. */
+/**
+ * Function execution exceeds the allowed time limit.
+ *
+ * {@link FunctionCall#get FunctionCall.get()} throws {@link TimeoutError}
+ * instead when `timeoutMs` elapses before the Function finishes. Matching that
+ * case with `instanceof FunctionTimeoutError` is deprecated and will stop
+ * working in a future release.
+ */
 export class FunctionTimeoutError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "FunctionTimeoutError";
+  }
+
+  // Backward compatibility: FunctionCall.get() wait timeouts still match
+  // FunctionTimeoutError, with a deprecation warning.
+  static [Symbol.hasInstance](instance: unknown): boolean {
+    if (Function.prototype[Symbol.hasInstance].call(this, instance)) {
+      return true;
+    }
+    if (
+      this === FunctionTimeoutError &&
+      instance instanceof FunctionCallGetTimeoutError
+    ) {
+      instance.warnFunctionTimeoutErrorMatch();
+      return true;
+    }
+    return false;
+  }
+}
+
+let warnedFunctionTimeoutErrorMatch = false;
+
+/**
+ * Thrown by FunctionCall.get() when `timeoutMs` elapses.
+ *
+ * @internal
+ * @hidden
+ */
+export class FunctionCallGetTimeoutError extends TimeoutError {
+  readonly #logger: Logger;
+
+  constructor(message: string, logger: Logger) {
+    super(message);
+    this.#logger = logger;
+  }
+
+  warnFunctionTimeoutErrorMatch(): void {
+    if (warnedFunctionTimeoutErrorMatch) {
+      return;
+    }
+    warnedFunctionTimeoutErrorMatch = true;
+    this.#logger.warn(
+      "Matching a FunctionCall.get() timeout with `instanceof FunctionTimeoutError` is deprecated and will stop working in a future release; check `instanceof TimeoutError` first instead.",
+    );
   }
 }
 
