@@ -7,7 +7,8 @@ from typing import Any, AsyncGenerator, Sequence, cast
 
 import click
 from click import UsageError
-from rich.box import SIMPLE
+from rich.box import SIMPLE, SIMPLE_HEAD
+from rich.style import Style
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -212,18 +213,20 @@ async def info(
     enabled = "Enabled"
     disabled = "Disabled"
 
-    rows: list[str | Text | tuple[str | Text, str | Text]] = []
+    rows: list[str | Text | tuple[str | Text, str | Text] | None] = []
 
     if function_proto.is_class:
-        rows.append(("Cls Name:", function_proto.function_name))
+        rows.append((Text("Cls Name:", style="bold"), function_proto.function_name))
     else:
-        rows.append(("Function Name:", function_proto.function_name))
+        rows.append((Text("Function Name:", style="bold"), function_proto.function_name))
 
-    rows.append(("Object ID:", f.object_id))
-    rows.append(("App ID:", handle_metadata.app_id))
-    rows.append(("Image ID:", str(info.image_info.image_id)))
+    rows.append(None)
+    rows.append((Text("Object ID:", style="bold"), f.object_id))
+    rows.append((Text("App ID:", style="bold"), handle_metadata.app_id))
+    rows.append((Text("Image ID:", style="bold"), str(info.image_info.image_id)))
 
     # --- Resources ---
+    rows.append(None)
     rows.append("Resources:")
     rows.append(
         (
@@ -261,6 +264,7 @@ async def info(
     )
 
     # --- Autoscaling ---
+    rows.append(None)
     rows.append("Autoscaling:")
     rows.append(
         (
@@ -289,6 +293,7 @@ async def info(
         )
     )
 
+    rows.append(None)
     rows.append("Execution:")
     if info.startup_timeout:
         rows.append(("  Startup Timeout:", f"{info.startup_timeout} seconds"))
@@ -297,6 +302,7 @@ async def info(
     rows.append(("  Max Retries:", not_configured if info.max_retries is None else str(info.max_retries)))
 
     if info.concurrency_info:
+        rows.append(None)
         rows.append("Concurrency:")
         rows.append(("  Max Inputs:", str(info.concurrency_info.max_inputs)))
         rows.append(
@@ -309,11 +315,13 @@ async def info(
         )
 
     if info.batching_info:
+        rows.append(None)
         rows.append("Batching:")
         rows.append(("  Max Batch Size:", str(info.batching_info.max_batch_size)))
         rows.append(("  Wait Time:", f"{info.batching_info.wait_ms} milliseconds"))
 
     # --- Scheduling ---
+    rows.append(None)
     rows.append("Scheduling:")
     rows.append(("  Compute Region(s):", not_configured if not info.regions else " | ".join(info.regions)))
     rows.append(("  Nonpreemptible Capacity:", not_configured if not info.nonpreemptible else enabled))
@@ -322,6 +330,7 @@ async def info(
     rows.append(("  Routing Region:", not_configured if not info.routing_region else info.routing_region))
 
     if info.cluster_info:
+        rows.append(None)
         rows.append("Clustering:")
         rows.append(("  Cluster Size:", str(info.cluster_info.size)))
         rows.append(("  RDMA:", enabled if info.cluster_info.rdma else disabled))
@@ -329,8 +338,10 @@ async def info(
             rows.append(("  Fabric Size:", str(info.cluster_info.fabric_size)))
 
     if info.schedule is not None:
+        rows.append(None)
         rows.append(("Schedule:", info.schedule))
 
+    rows.append(None)
     rows.append("Security:")
     rows.append(("  Outbound Networking:", disabled if info.block_network else enabled))
     rows.append(("  Modal API Access:", disabled if info.restrict_modal_access else enabled))
@@ -338,6 +349,7 @@ async def info(
 
     # --- Web Functions ---
     if info.web_info is not None:
+        rows.append(None)
         rows.append("Web Info:")
 
         if info.web_info.web_url:
@@ -345,7 +357,9 @@ async def info(
             if info.web_info.method:
                 url_str = f"  URL ({info.web_info.method}):"
 
-            rows.append((url_str, info.web_info.web_url))
+            url_text = Text(info.web_info.web_url, overflow="fold")
+            url_text.stylize(style=Style(link=info.web_info.web_url), end=len(info.web_info.web_url))
+            rows.append((url_str, url_text))
 
         rows.append(("  Authentication:", disabled if info.web_info.unauthenticated else enabled))
 
@@ -353,6 +367,7 @@ async def info(
     if info.method_names is not None:
         assert info.method_details is not None
 
+        rows.append(None)
         rows.append("Methods:")
 
         for method_name in info.method_names:
@@ -368,10 +383,14 @@ async def info(
                 if web_info.method:
                     url_str = f"    URL ({web_info.method}):"
 
-                rows.append((url_str, web_info.web_url))
+                url_text = Text(web_info.web_url, overflow="fold")
+                url_text.stylize(style=Style(link=web_info.web_url), end=len(web_info.web_url))
+
+                rows.append((url_str, url_text))
 
     # --- Mounts ---
     if info.volumes:
+        rows.append(None)
         rows.append("Volume Mounts:")
         for mount_path, volume in info.volumes.items():
             assert volume.volume_id is not None
@@ -390,6 +409,7 @@ async def info(
             rows.append((f"  {mount_path}", volume_text))
 
     if info.cloud_bucket_mounts:
+        rows.append(None)
         rows.append("Cloud Bucket Mounts:")
         for mount_path, cbm in info.cloud_bucket_mounts.items():
             extra = []
@@ -407,6 +427,7 @@ async def info(
 
     # --- Secrets ---
     if info.secrets:
+        rows.append(None)
         rows.append("Secrets:")
 
         async def _hydrate(secret_id: str) -> tuple[str, _Secret | None]:
@@ -446,18 +467,20 @@ async def info(
 
             rows.append((f"  {secret_identifier}", ", ".join(display_keys)))
 
+    t = Table(box=SIMPLE_HEAD, show_header=False)
     for row in rows:
-        t = Table().grid(padding=(0, 0, 3, 3), expand=True)
+        if row is None:
+            t.add_row()
+            continue
 
         if not isinstance(row, tuple):
             if isinstance(row, str):
-                row = Text(row)
+                row = Text(row, style="bold")
 
             if not tty:
                 output_manager.print(row)
             else:
                 t.add_row(row)
-                output_manager.print(t)
 
             continue
 
@@ -470,9 +493,11 @@ async def info(
         if isinstance(left, str):
             left = Text(left, overflow="fold")
         if isinstance(right, str):
-            right = Text(right, overflow="fold", justify="right")
+            right = Text(right, overflow="fold")
 
         t.add_row(left, right)
+
+    if tty:
         output_manager.print(t)
 
 

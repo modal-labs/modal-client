@@ -9,7 +9,8 @@ from typing import AsyncGenerator, Sequence, cast
 
 import click
 from click import UsageError
-from rich.box import SIMPLE
+from rich.box import SIMPLE, SIMPLE_HEAD
+from rich.style import Style
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -174,16 +175,22 @@ async def info(
     enabled = "Enabled"
     disabled = "Disabled"
 
-    rows: list[str | Text | tuple[str | Text, str | Text]] = []
+    rows: list[str | Text | tuple[str | Text, str | Text] | None] = []
 
-    rows.append(("Server Name:", handle_metadata.function_name))
-    rows.append(("Object ID:", server_id))
-    rows.append(("App ID:", handle_metadata.app_id))
-    rows.append(("Image ID:", str(info.image_info.image_id)))
+    rows.append((Text("Server Name:", style="bold"), handle_metadata.function_name))
+    rows.append(None)
+    rows.append((Text("Object ID:", style="bold"), server_id))
+    rows.append((Text("App ID:", style="bold"), handle_metadata.app_id))
+    rows.append((Text("Image ID:", style="bold"), str(info.image_info.image_id)))
 
     # --- HTTP ---
+    rows.append(None)
     rows.append("HTTP Info:")
-    rows.append(("  URL:", info.server_url))
+
+    url = Text(info.server_url, overflow="fold")
+    url.stylize(style=Style(link=info.server_url), end=len(info.server_url))
+
+    rows.append(("  URL:", url))
     rows.append(("  Port:", not_configured if not info.port else str(info.port)))
     rows.append(("  Authentication:", disabled if info.unauthenticated else enabled))
     rows.append(("  HTTP/2:", disabled if not info.h2_enabled else enabled))
@@ -193,6 +200,7 @@ async def info(
     rows.append(("  Exit Grace Period:", f"{info.exit_grace_period} seconds"))
 
     # --- Resources ---
+    rows.append(None)
     rows.append("Resources:")
     rows.append(
         (
@@ -230,6 +238,7 @@ async def info(
     )
 
     # --- Autoscaling ---
+    rows.append(None)
     rows.append("Autoscaling:")
     rows.append(
         (
@@ -276,6 +285,7 @@ async def info(
     )
 
     # --- Scheduling ---
+    rows.append(None)
     rows.append("Scheduling:")
     rows.append(
         ("  Compute Region(s):", not_configured if not info.compute_regions else " | ".join(info.compute_regions))
@@ -285,6 +295,7 @@ async def info(
         rows.append(("  Cloud Provider:", info.cloud))
 
     if info.cluster_info:
+        rows.append(None)
         rows.append("Clustering:")
         rows.append(("  Cluster Size:", str(info.cluster_info.size)))
         rows.append(("  RDMA:", enabled if info.cluster_info.rdma else disabled))
@@ -293,6 +304,7 @@ async def info(
 
     # --- Mounts ---
     if info.volumes:
+        rows.append(None)
         rows.append("Volume Mounts:")
         for mount_path, volume in info.volumes.items():
             assert volume.volume_id is not None
@@ -311,6 +323,7 @@ async def info(
             rows.append((f"  {mount_path}", volume_text))
 
     if info.cloud_bucket_mounts:
+        rows.append(None)
         rows.append("Cloud Bucket Mounts:")
         for mount_path, cbm in info.cloud_bucket_mounts.items():
             extra = []
@@ -328,6 +341,7 @@ async def info(
 
     # --- Secrets ---
     if info.secrets:
+        rows.append(None)
         rows.append("Secrets:")
 
         async def _hydrate(secret_id: str) -> tuple[str, _Secret | None]:
@@ -367,18 +381,20 @@ async def info(
 
             rows.append((f"  {secret_identifier}", ", ".join(display_keys)))
 
+    t = Table(box=SIMPLE_HEAD, show_header=False)
     for row in rows:
-        t = Table().grid(padding=(0, 0, 3, 3), expand=True)
+        if row is None:
+            t.add_row()
+            continue
 
         if not isinstance(row, tuple):
             if isinstance(row, str):
-                row = Text(row)
+                row = Text(row, style="bold")
 
             if not tty:
                 output_manager.print(row)
             else:
                 t.add_row(row)
-                output_manager.print(t)
 
             continue
 
@@ -391,9 +407,11 @@ async def info(
         if isinstance(left, str):
             left = Text(left, overflow="fold")
         if isinstance(right, str):
-            right = Text(right, overflow="fold", justify="right")
+            right = Text(right, overflow="fold")
 
         t.add_row(left, right)
+
+    if tty:
         output_manager.print(t)
 
 
