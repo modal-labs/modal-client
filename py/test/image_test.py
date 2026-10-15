@@ -164,6 +164,14 @@ def test_python_version_validation_free_threading():
         _validate_python_version("3.14.2t", "PREVIEW", allow_free_threading=True, allow_micro_granularity=True)
         == "3.14.2t"
     )
+    assert (
+        _validate_python_version("3.15.0t", "PREVIEW", allow_free_threading=True, allow_micro_granularity=True)
+        == "3.15.0t"
+    )
+    assert (
+        _validate_python_version("3.15.0t", "2025.06", allow_free_threading=True, allow_micro_granularity=True)
+        == "3.15.0t"
+    )
 
 
 def test_dockerhub_python_version(builder_version):
@@ -177,6 +185,9 @@ def test_dockerhub_python_version(builder_version):
         "PREVIEW": "3.10.17",
     }[builder_version]
     assert _dockerhub_python_version(builder_version, "3.10") == expected_39_full
+
+    if builder_version in ("2025.06", "PREVIEW"):
+        assert _dockerhub_python_version(builder_version, "3.15") == "3.15.0"
 
     v = _dockerhub_python_version(builder_version, None).split(".")
     assert len(v) == 3

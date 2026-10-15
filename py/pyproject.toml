@@ -7,7 +7,7 @@ name = "modal"
 description = "Python client library for Modal"
 readme = "README.md"
 dynamic = ["version"]
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.10,<3.16"
 license = "Apache-2.0"
 
 authors = [{ name = "Modal Labs", email = "support@modal.com" }]
@@ -26,6 +26,8 @@ dependencies = [
     "types-toml",
     "watchfiles",
     "typing_extensions~=4.6",
+    # typing_extensions<4.14 fails to import on Python 3.15
+    "typing_extensions>=4.14 ; python_version >= '3.15'",
 ]
 keywords = ["modal", "client", "cloud", "serverless", "infrastructure"]
 classifiers = [

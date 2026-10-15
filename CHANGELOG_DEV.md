@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Added Python 3.15 support to the client and the 2025.06 and PREVIEW Image Builders.
 - New Environment names (via `modal environment create`, `modal environment update --set-name`, or `modal.Environment.objects.create`) can no longer contain periods.
 - Added `modal function autoscaler` and `modal server autoscaler` subcommands, which allow users to
 view and update autoscaler settings for a given Function / Server.

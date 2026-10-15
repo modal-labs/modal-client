@@ -7,7 +7,7 @@ from pathlib import Path
 @pytest.fixture
 def notebook_runner(servicer, credentials):
     # local imports so we don't break on Python 3.9 before the pytest skip
-    import jupytext
+    jupytext = pytest.importorskip("jupytext")
     import nbformat
     from nbclient import NotebookClient
     from nbclient.exceptions import CellExecutionError, DeadKernelError

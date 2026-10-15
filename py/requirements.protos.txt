@@ -7,7 +7,8 @@ mypy-protobuf~=3.3.0  # TODO: can't use mypy-protobuf>=3.4 because of protobuf==
 grpcio-tools==1.48.2;python_version<'3.11' # TODO: remove when we drop client support for Protobuf 3.20
 grpcio-tools==1.59.2;python_version>='3.11' and python_version<'3.13'
 grpcio-tools==1.66.2;python_version>='3.13' and python_version<'3.14'
-grpcio-tools==1.76.0;python_version>='3.14'
+grpcio-tools==1.76.0;python_version>='3.14' and python_version<'3.15'
+grpcio-tools==1.84.0;python_version>='3.15'
 grpclib==0.4.7;python_version<'3.14'
 grpclib==0.4.9;python_version>='3.14'
 setuptools<82
