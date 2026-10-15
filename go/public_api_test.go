@@ -31,7 +31,10 @@ import (
 // *XxxParams rule. These implement standard interfaces or are simple accessors
 // that would gain no benefit from an options struct.
 var skipMethods = map[string]string{
-	"FunctionService.FromID": "looks up a Function by ID with no configuration options",
+	"EnvironmentObjectsService.List":   "lists all Environments for the client, with no configuration options",
+	"EnvironmentObjectsService.Delete": "deletes the named Environment, with no configuration options",
+	"EnvironmentAppsService.List":      "the Environment fixes the listing scope, with no configuration options",
+	"FunctionService.FromID":           "looks up a Function by ID with no configuration options",
 	// Simple value accessors.
 	"Function.GetWebURL": "returns cached URL string",
 
@@ -83,6 +86,10 @@ type typeEntry struct {
 // When adding a new exported type that has public methods, add it here.
 // If the type has no public methods to check, add it to excludedTypes instead.
 var typeRegistry = []typeEntry{
+	{name: "EnvironmentService", typ: reflect.TypeOf((*EnvironmentService)(nil)), isInterface: false},
+	{name: "EnvironmentObjectsService", typ: reflect.TypeOf((*EnvironmentObjectsService)(nil)).Elem(), isInterface: true},
+	{name: "App", typ: reflect.TypeOf((*App)(nil)), isInterface: false},
+	{name: "EnvironmentAppsService", typ: reflect.TypeOf((*EnvironmentAppsService)(nil)).Elem(), isInterface: true},
 	// Service interfaces accessed through Client or Sandbox fields.
 	{name: "AppService", typ: reflect.TypeOf((*AppService)(nil)).Elem(), isInterface: true},
 	{name: "CloudBucketMountService", typ: reflect.TypeOf((*CloudBucketMountService)(nil)).Elem(), isInterface: true},
@@ -131,10 +138,13 @@ var excludedTypes = map[string]string{
 	"MetricsSchema":    "data type, no public methods",
 	"ObjectMetrics":    "data type, no public methods",
 
+	"Environment":                     "resource handle with namespaces, no public methods",
 	"FunctionStats":                   "data type",
 	"StatsPercentile":                 "data type",
 	"StatsPercentileDistribution":     "data type",
-	"App":                             "data type, no public methods",
+	"AppInfo":                         "data type, no public methods",
+	"AppLifecycle":                    "data type, no public methods",
+	"AppState":                        "string enum, no public methods",
 	"Client":                          "main client; Close and Version are intentionally parameter-free",
 	"CloudBucketMount":                "data type, no public methods",
 	"FunctionCurrentStats":            "data type",

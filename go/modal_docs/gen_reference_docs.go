@@ -8,8 +8,8 @@
 // Four Go-specific conventions shape the output:
 //
 //   - Each resource exposes both an object type (e.g. Volume) and a service
-//     interface (e.g. VolumeService, reached via client.Volumes). The service
-//     interface's methods are merged onto the object-type page, so a reader sees
+//     interface or struct (e.g. VolumeService, reached via client.Volumes). The service
+//     type's methods are merged onto the object-type page, so a reader sees
 //     FromName/Ephemeral/Delete next to Volume's own methods. The doc comments
 //     for service methods live on the unexported *ServiceImpl methods, which we
 //     match to the interface methods by name.
@@ -204,7 +204,7 @@ func parsePackage(srcDir string) (*pkgModel, error) {
 	return m, nil
 }
 
-// buildServiceAccessors records, for each service interface exposed as an
+// buildServiceAccessors records, for each service type exposed as an
 // exported field on the Client struct, the field name that reaches it (e.g.
 // client.Volumes -> VolumeService). Doc rendering uses this to show the real
 // call path for merged service methods.
@@ -225,7 +225,7 @@ func (m *pkgModel) buildServiceAccessors() {
 		if svcType == "" {
 			continue
 		}
-		if fieldTI := m.types[svcType]; fieldTI != nil && isServiceInterface(fieldTI) {
+		if fieldTI := m.types[svcType]; fieldTI != nil && isServiceType(fieldTI) {
 			m.serviceAccessors[svcType] = field.Names[0].Name
 		}
 	}
@@ -278,9 +278,9 @@ type page struct {
 	label string // page title and filename stem, e.g. "Volume"
 	ti    *typeInfo
 
-	// serviceIface, when set, is a service interface whose methods are merged
+	// serviceType, when set, is a service type whose methods are merged
 	// onto this page (e.g. VolumeService merged onto the Volume page).
-	serviceIface *typeInfo
+	serviceType *typeInfo
 	// serviceOwnPage marks a service interface that has no matching object type
 	// and is documented on its own page (e.g. SidecarService).
 	serviceOwnPage bool
@@ -300,10 +300,11 @@ type page struct {
 // companion is a dependent type folded into a primary type's page, reached via
 // an exported field on that primary (e.g. Sandbox.Filesystem -> SandboxFilesystem).
 type companion struct {
-	fieldName string // exported field on the primary, e.g. "Filesystem"
-	fieldDoc  string // doc comment on that field
-	ti        *typeInfo
-	isService bool // the companion type is a service interface
+	fieldName  string // exported field on the primary, e.g. "Filesystem"
+	accessPath string // client access path for a namespace on a merged service
+	fieldDoc   string // doc comment on that field
+	ti         *typeInfo
+	isService  bool // the companion type is a service interface
 }
 
 // errorsPageLabel is the title/URL stem of the aggregate page that collects all
@@ -329,7 +330,7 @@ func (m *pkgModel) buildPages() []*page {
 		if !isExported(name) || hiddenTypes[name] {
 			continue
 		}
-		if isParamsType(name) || isServiceInterface(ti) {
+		if isParamsType(name) || isServiceType(ti) {
 			continue
 		}
 		if m.isErrorType(name) {
@@ -342,14 +343,14 @@ func (m *pkgModel) buildPages() []*page {
 	// Merge each service interface into its matching object-type page, or give
 	// it a page of its own when there is no match.
 	for name, ti := range m.types {
-		if !isServiceInterface(ti) || hiddenTypes[name] {
+		if !isServiceType(ti) || hiddenTypes[name] {
 			continue
 		}
 		target := strings.TrimSuffix(name, "Service")
 		if p, ok := pages[target]; ok {
-			p.serviceIface = ti
+			p.serviceType = ti
 		} else {
-			pages[name] = &page{label: name, ti: ti, serviceIface: ti, serviceOwnPage: true}
+			pages[name] = &page{label: name, ti: ti, serviceType: ti, serviceOwnPage: true}
 		}
 	}
 
@@ -392,7 +393,8 @@ func (m *pkgModel) buildPages() []*page {
 
 // foldCompanions detects dependent types reached through a field on a primary
 // type (e.g. Sandbox.Filesystem -> *SandboxFilesystem) and folds them into the
-// primary's page as namespace sections, removing their standalone page. A type
+// primary's page as namespace sections, removing their standalone page. Fields
+// on a merged service struct are included as client-scoped namespaces. A type
 // qualifies when it is referenced via an exported field of a page type and is
 // either a service interface or has methods of its own (a concrete operations
 // namespace) — plain data fields are left as their own pages. A companion
@@ -410,33 +412,44 @@ func (m *pkgModel) foldCompanions(pages map[string]*page) {
 		if p.ti == nil {
 			continue
 		}
-		st, ok := p.ti.spec.Type.(*ast.StructType)
-		if !ok {
-			continue
+		owners := []*typeInfo{p.ti}
+		if p.serviceType != nil && p.serviceType != p.ti {
+			owners = append(owners, p.serviceType)
 		}
-		for _, field := range st.Fields.List {
-			if len(field.Names) != 1 || !isExported(field.Names[0].Name) {
+		for _, owner := range owners {
+			st, ok := owner.spec.Type.(*ast.StructType)
+			if !ok {
 				continue
 			}
-			dep := baseTypeName(field.Type)
-			if dep == "" || dep == name {
-				continue
+			for _, field := range st.Fields.List {
+				if len(field.Names) != 1 || !isExported(field.Names[0].Name) {
+					continue
+				}
+				dep := baseTypeName(field.Type)
+				if dep == "" || dep == name {
+					continue
+				}
+				if _, ok := pages[dep]; !ok {
+					continue // not a standalone page (external type, merged, grouped)
+				}
+				ti := m.types[dep]
+				isSvc := isServiceType(ti)
+				if !isSvc && !m.hasExportedMethods(dep) {
+					continue // plain data type, not an operations namespace
+				}
+				accessPath := ""
+				if accessor := m.serviceAccessors[owner.name]; accessor != "" {
+					accessPath = "client." + accessor + "." + field.Names[0].Name
+				}
+				additions = append(additions, addition{owner: name, comp: companion{
+					accessPath: accessPath,
+					fieldName:  field.Names[0].Name,
+					fieldDoc:   fieldDoc(field),
+					ti:         ti,
+					isService:  isSvc,
+				}})
+				deletions[dep] = true
 			}
-			if _, ok := pages[dep]; !ok {
-				continue // not a standalone page (external type, merged, grouped)
-			}
-			ti := m.types[dep]
-			isSvc := isServiceInterface(ti)
-			if !isSvc && !m.hasExportedMethods(dep) {
-				continue // plain data type, not an operations namespace
-			}
-			additions = append(additions, addition{owner: name, comp: companion{
-				fieldName: field.Names[0].Name,
-				fieldDoc:  fieldDoc(field),
-				ti:        ti,
-				isService: isSvc,
-			}})
-			deletions[dep] = true
 		}
 	}
 
@@ -486,10 +499,12 @@ func (m *pkgModel) render(p *page) string {
 	for _, fd := range p.constructors {
 		m.renderFunc(&b, fd, 2)
 	}
-	if p.serviceIface != nil {
-		m.renderServiceMethods(&b, p.serviceIface, 2, m.serviceAccessCaption(p.serviceIface.name))
+	if p.serviceType != nil {
+		m.renderServiceMethods(&b, p.serviceType, 2, m.serviceAccessCaption(p.serviceType.name))
 	}
-	m.renderObjectMethods(&b, p.label, 2)
+	if !p.serviceOwnPage {
+		m.renderObjectMethods(&b, p.label, 2)
+	}
 
 	// Dependent "companion" types reached through a field on this type (e.g.
 	// sandbox.Filesystem) are documented inline as a namespace, one heading
@@ -505,7 +520,11 @@ func (m *pkgModel) render(p *page) string {
 // by its accessor path (e.g. "## Sandbox.Filesystem"), with the companion's
 // methods nested one level deeper.
 func (m *pkgModel) renderCompanion(b *strings.Builder, primary string, c companion) {
-	fmt.Fprintf(b, "## %s.%s\n\n", primary, c.fieldName)
+	accessPath := c.accessPath
+	if accessPath == "" {
+		accessPath = primary + "." + c.fieldName
+	}
+	fmt.Fprintf(b, "## %s\n\n", accessPath)
 	doc := strings.TrimSpace(c.fieldDoc)
 	if doc == "" {
 		doc = c.ti.doc
@@ -589,7 +608,8 @@ func (m *pkgModel) renderStructDecl(name string, st *ast.StructType) string {
 	return codeBlock(src)
 }
 
-// renderServiceMethods renders one section per interface method, taking the
+// renderServiceMethods renders methods from an interface or concrete service.
+// For interfaces, it takes the
 // signature from the interface and the doc comment from the matching method on
 // the unexported *ServiceImpl type. caption, when non-empty, is shown under
 // every method heading to name the call path (e.g. via client.Volumes); it is
@@ -598,6 +618,17 @@ func (m *pkgModel) renderStructDecl(name string, st *ast.StructType) string {
 func (m *pkgModel) renderServiceMethods(b *strings.Builder, svc *typeInfo, depth int, caption string) {
 	it, ok := svc.spec.Type.(*ast.InterfaceType)
 	if !ok {
+		names := make([]string, 0, len(m.methods[svc.name]))
+		for name := range m.methods[svc.name] {
+			if isExported(name) {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			fd := m.methods[svc.name][name]
+			m.renderSection(b, depth, name, caption, m.methodSig(name, fd.Type), fd.Doc.Text(), fd.Type)
+		}
 		return
 	}
 	implName := lowerFirst(svc.name) + "Impl"
@@ -897,12 +928,16 @@ func firstResultBaseType(fd *ast.FuncDecl) string {
 	return ""
 }
 
-func isServiceInterface(ti *typeInfo) bool {
+func isServiceType(ti *typeInfo) bool {
 	if !strings.HasSuffix(ti.name, "Service") {
 		return false
 	}
-	_, ok := ti.spec.Type.(*ast.InterfaceType)
-	return ok
+	switch ti.spec.Type.(type) {
+	case *ast.InterfaceType, *ast.StructType:
+		return true
+	default:
+		return false
+	}
 }
 
 func isParamsType(name string) bool { return strings.HasSuffix(name, "Params") }

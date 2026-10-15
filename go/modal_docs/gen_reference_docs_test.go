@@ -161,6 +161,55 @@ func TestGeneratorMergesServiceAndFoldsParams(t *testing.T) {
 	g.Expect(volume).NotTo(ContainSubstring("internal"))
 }
 
+func TestGeneratorFoldsNamespacesOnConcreteServices(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	srcDir := t.TempDir()
+	source := `package modal
+import "context"
+type Client struct { Environments *EnvironmentService }
+type Environment struct { Apps EnvironmentAppsService }
+type EnvironmentService struct {
+    // Objects manages Environments through this client.
+    Objects EnvironmentObjectsService
+}
+// FromName looks up an Environment.
+func (s *EnvironmentService) FromName(ctx context.Context, name string, params *EnvironmentFromNameParams) (*Environment, error) { return nil, nil }
+type EnvironmentFromNameParams struct { CreateIfMissing bool }
+type EnvironmentObjectsService interface {
+    Create(ctx context.Context, name string, params *EnvironmentCreateParams) error
+    List(ctx context.Context) error
+    Delete(ctx context.Context, name string) error
+}
+type EnvironmentCreateParams struct {
+    // Restricted limits access to assigned roles.
+    Restricted bool
+}
+type EnvironmentAppsService interface { List(ctx context.Context) error }
+`
+	g.Expect(os.WriteFile(filepath.Join(srcDir, "modal.go"), []byte(source), 0o644)).To(Succeed())
+	model, err := parsePackage(srcDir)
+	g.Expect(err).NotTo(HaveOccurred())
+	byLabel := map[string]*page{}
+	for _, p := range model.buildPages() {
+		byLabel[p.label] = p
+	}
+	g.Expect(byLabel).To(HaveKey("Environment"))
+	g.Expect(byLabel).NotTo(HaveKey("EnvironmentService"))
+	g.Expect(byLabel).NotTo(HaveKey("EnvironmentObjectsService"))
+	g.Expect(byLabel).NotTo(HaveKey("EnvironmentAppsService"))
+	markdown := model.render(byLabel["Environment"])
+	g.Expect(markdown).To(ContainSubstring("## FromName"))
+	g.Expect(markdown).To(ContainSubstring("_Accessed via `client.Environments`_"))
+	g.Expect(markdown).To(ContainSubstring("## client.Environments.Objects"))
+	g.Expect(markdown).To(ContainSubstring("Objects manages Environments through this client."))
+	g.Expect(markdown).To(ContainSubstring("### Create"))
+	g.Expect(markdown).To(ContainSubstring("### Delete"))
+	g.Expect(markdown).To(ContainSubstring("**Parameters** (`EnvironmentCreateParams`)"))
+	g.Expect(markdown).To(ContainSubstring("Restricted limits access to assigned roles."))
+	g.Expect(markdown).To(ContainSubstring("## Environment.Apps"))
+}
+
 func TestGeneratorRendersEnumValues(t *testing.T) {
 	g := NewWithT(t)
 

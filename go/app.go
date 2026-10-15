@@ -3,8 +3,11 @@ package modal
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
@@ -18,11 +21,136 @@ type AppService interface {
 
 type appServiceImpl struct{ client *Client }
 
-// App references a deployed Modal App.
+// App references a Modal App.
 type App struct {
 	AppID       string
 	Name        string
 	Environment string
+	client      *Client
+	metadataMu  sync.Mutex
+	metadata    *pb.AppHandleMetadata
+}
+
+// AppState is the lifecycle state of a Modal App.
+type AppState string
+
+const (
+	AppStateEphemeral    AppState = "ephemeral"
+	AppStateDetached     AppState = "detached"
+	AppStateDeployed     AppState = "deployed"
+	AppStateStopping     AppState = "stopping"
+	AppStateStopped      AppState = "stopped"
+	AppStateInitializing AppState = "initializing"
+	AppStateDisabled     AppState = "disabled"
+	AppStateUnknown      AppState = "unknown"
+)
+
+// AppLifecycle contains timestamps and attributions for an App's lifecycle events.
+// Optional fields are nil when the event or attribution does not apply.
+type AppLifecycle struct {
+	State      AppState
+	Version    *int
+	CreatedAt  time.Time
+	CreatedBy  string
+	DeployedAt *time.Time
+	DeployedBy *string
+	StoppedAt  *time.Time
+	StoppedBy  *string
+}
+
+// AppInfo describes an App's lifecycle and member Functions and Servers.
+type AppInfo struct {
+	AppID       string
+	Description string
+	Lifecycle   AppLifecycle
+	Functions   map[string]string // Function name to Function ID.
+	Servers     map[string]string // Server name to Function ID.
+}
+
+// AppInfoParams are options for App.Info.
+type AppInfoParams struct {
+	// Refresh fetches current information instead of the cached snapshot.
+	Refresh bool
+}
+
+func newApp(client *Client, id, name, environment string, metadata *pb.AppHandleMetadata) *App {
+	return &App{AppID: id, Name: name, Environment: environment, client: client, metadata: metadata}
+}
+
+func appOptionalTime(timestamp float64) *time.Time {
+	if timestamp <= 0 {
+		return nil
+	}
+	value := unixTime(timestamp)
+	return &value
+}
+
+func appOptionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func appInfoFromProto(metadata *pb.AppHandleMetadata, id string) *AppInfo {
+	lifecycle := metadata.GetLifecycle()
+	state := AppStateUnknown
+	switch lifecycle.GetAppState() {
+	case pb.AppState_APP_STATE_UNSPECIFIED, pb.AppState_APP_STATE_EPHEMERAL:
+		state = AppStateEphemeral
+	case pb.AppState_APP_STATE_DETACHED, pb.AppState_APP_STATE_DETACHED_DISCONNECTED:
+		state = AppStateDetached
+	case pb.AppState_APP_STATE_DEPLOYED:
+		state = AppStateDeployed
+	case pb.AppState_APP_STATE_STOPPING:
+		state = AppStateStopping
+	case pb.AppState_APP_STATE_STOPPED:
+		state = AppStateStopped
+	case pb.AppState_APP_STATE_INITIALIZING:
+		state = AppStateInitializing
+	case pb.AppState_APP_STATE_DISABLED:
+		state = AppStateDisabled
+	}
+	info := &AppInfo{
+		AppID: id, Description: metadata.GetDescription(),
+		Functions: make(map[string]string), Servers: make(map[string]string),
+		Lifecycle: AppLifecycle{
+			State: state, CreatedAt: unixTime(lifecycle.GetCreatedAt()), CreatedBy: lifecycle.GetCreatedBy(),
+			DeployedAt: appOptionalTime(lifecycle.GetDeployedAt()), DeployedBy: appOptionalString(lifecycle.GetDeployedBy()),
+			StoppedAt: appOptionalTime(lifecycle.GetStoppedAt()), StoppedBy: appOptionalString(lifecycle.GetStoppedBy()),
+		},
+	}
+	maps.Copy(info.Functions, metadata.GetFunctions())
+	maps.Copy(info.Servers, metadata.GetServers())
+	if version := int(lifecycle.GetVersion()); version != 0 {
+		info.Lifecycle.Version = &version
+	}
+	return info
+}
+
+// Info returns the snapshot from the previous lookup, listing, or refresh.
+// Set Refresh to fetch current lifecycle information and member Function and Server IDs.
+// The returned information is a copy that callers can modify independently.
+func (a *App) Info(ctx context.Context, params *AppInfoParams) (*AppInfo, error) {
+	a.metadataMu.Lock()
+	defer a.metadataMu.Unlock()
+	if a.metadata == nil || (params != nil && params.Refresh) {
+		if a.client == nil {
+			return nil, InvalidError{"App.Info requires a handle retrieved through a Client"}
+		}
+		resp, err := a.client.cpClient.AppGetInfo(ctx, pb.AppGetInfoRequest_builder{AppId: a.AppID}.Build())
+		if status.Code(err) == codes.NotFound {
+			return nil, NotFoundError{fmt.Sprintf("App '%s' not found", a.AppID)}
+		}
+		if err != nil {
+			return nil, err
+		}
+		if resp.GetInfo() == nil {
+			return nil, InvalidError{fmt.Sprintf("No information returned for App '%s'", a.AppID)}
+		}
+		a.metadata = resp.GetInfo()
+	}
+	return appInfoFromProto(a.metadata, a.AppID), nil
 }
 
 // parseGPUConfig parses a GPU configuration string into a GPUConfig object.
@@ -84,9 +212,5 @@ func (s *appServiceImpl) FromName(ctx context.Context, name string, params *AppF
 	}
 
 	s.client.logger.DebugContext(ctx, "Retrieved App", "app_id", resp.GetAppId(), "app_name", name)
-	return &App{
-		AppID:       resp.GetAppId(),
-		Name:        name,
-		Environment: firstNonEmpty(params.Environment, s.client.profile.Environment),
-	}, nil
+	return newApp(s.client, resp.GetAppId(), name, firstNonEmpty(params.Environment, s.client.profile.Environment), resp.GetHandleMetadata()), nil
 }

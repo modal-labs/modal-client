@@ -3,12 +3,28 @@ package modal
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 var (
-	objectNameCharset = regexp.MustCompile(`^[a-zA-Z0-9\-_.]+$`)
-	appIDPattern      = regexp.MustCompile(`^ap-[a-zA-Z0-9]{22}$`)
+	objectNameCharset      = regexp.MustCompile(`^[a-zA-Z0-9\-_.]+$`)
+	appIDPattern           = regexp.MustCompile(`^ap-[a-zA-Z0-9]{22}$`)
+	environmentNameCharset = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
 )
+
+// checkEnvironmentName allows periods when looking up existing Environments.
+// Newly created Environment names cannot contain periods.
+func checkEnvironmentName(name string, allowPeriods bool) error {
+	if len(name) <= 64 && environmentNameCharset.MatchString(name) &&
+		!strings.HasPrefix(strings.ToLower(name), "en-") && (allowPeriods || !strings.Contains(name, ".")) {
+		return nil
+	}
+	allowed := "alphanumeric characters, dashes, and underscores"
+	if allowPeriods {
+		allowed = "alphanumeric characters, dashes, periods, and underscores"
+	}
+	return InvalidError{fmt.Sprintf("Invalid Environment name: '%s'. Environment names must be 1-64 characters, start with an alphanumeric character, contain only %s, and cannot start with 'en-'.", name, allowed)}
+}
 
 // isValidObjectName checks whether a name is a valid Modal object name.
 func isValidObjectName(name string) bool {
