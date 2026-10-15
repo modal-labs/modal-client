@@ -1358,7 +1358,7 @@ class _App:
                 fractional, e.g. 1.5 to target three concurrent requests per two containers.
             max_concurrency:
                 Maximum number of concurrent requests per container. Requests above this limit
-                receive a 503 response. If set to 0 or unset, request concurrency is unlimited.
+                receive a 429 response. If set to 0 or unset, request concurrency is unlimited.
             min_containers: Minimum number of containers to keep running regardless of demand.
             max_containers: Limit on the number of containers that can be concurrently running.
             buffer_containers: Extra containers to scale up beyond current demand.
