@@ -68,6 +68,9 @@ type Function struct {
 	// Logs provides access to logs emitted by this Function.
 	Logs *FunctionLogsManager
 
+	// Metrics provides metric samples and schema definitions.
+	Metrics *FunctionMetricsManager
+
 	handleMetadata *pb.FunctionHandleMetadata
 
 	client  *Client
@@ -82,6 +85,7 @@ func newFunction(
 ) *Function {
 	return &Function{
 		FunctionID: functionID,
+		Metrics:    &FunctionMetricsManager{client: client, functionID: functionID},
 		Logs: &FunctionLogsManager{
 			client:     client,
 			appID:      handleMetadata.GetAppId(),

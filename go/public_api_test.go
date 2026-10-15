@@ -112,6 +112,7 @@ var typeRegistry = []typeEntry{
 	{name: "Tunnel", typ: reflect.TypeOf((*Tunnel)(nil)), isInterface: false},
 	{name: "SandboxFilesystem", typ: reflect.TypeOf((*SandboxFilesystem)(nil)), isInterface: false},
 	{name: "SidecarContainer", typ: reflect.TypeOf((*SidecarContainer)(nil)), isInterface: false},
+	{name: "FunctionMetricsManager", typ: reflect.TypeOf((*FunctionMetricsManager)(nil)), isInterface: false},
 	{name: "FunctionLogsManager", typ: reflect.TypeOf((*FunctionLogsManager)(nil)), isInterface: false},
 	{name: "FunctionCallLogsManager", typ: reflect.TypeOf((*FunctionCallLogsManager)(nil)), isInterface: false},
 	{name: "SandboxLogsManager", typ: reflect.TypeOf((*SandboxLogsManager)(nil)), isInterface: false},
@@ -124,6 +125,12 @@ var typeRegistry = []typeEntry{
 // Types whose names end in "Params" or "Error" are automatically excluded and
 // do not need to appear here.
 var excludedTypes = map[string]string{
+	"TimeSeriesPoint":  "data type, no public methods",
+	"MetricSeries":     "data type, no public methods",
+	"MetricDefinition": "data type, no public methods",
+	"MetricsSchema":    "data type, no public methods",
+	"ObjectMetrics":    "data type, no public methods",
+
 	"FunctionStats":                   "data type",
 	"StatsPercentile":                 "data type",
 	"StatsPercentileDistribution":     "data type",

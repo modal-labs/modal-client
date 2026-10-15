@@ -32,6 +32,7 @@ view and update autoscaler settings for a given Function / Server.
 ## Go
 
 - When `Timeout` elapses before the Function finishes, the `FunctionTimeoutError` returned by `FunctionCall.Get()` now wraps a `TimeoutError`, so `errors.As(err, &modal.TimeoutError{})` tells it apart from the Function exceeding its own execution timeout. Matching this case as a `FunctionTimeoutError` is deprecated; a future release will return a plain `TimeoutError`.
+- Added `Function.Metrics.Export()` for metric samples and `Function.Metrics.Schema()` for metric definitions.
 - Added `client.Functions.FromID()` to look up a Function by ID.
 - Added [`Function.Stats()`](/docs/sdk/go/latest/Function#stats)  to retrieve historical Function statistics over a time range.
 - Improved the performance of Sandbox filesystem writes (`WriteBytes`, `WriteText`, `CopyFromLocal`).
