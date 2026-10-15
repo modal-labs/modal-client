@@ -31,6 +31,7 @@ from .import_refs import (
     CLICommand,
     MethodReference,
     _get_runnable_app,
+    format_lazy_imports_note,
     import_and_filter,
     import_app_from_ref,
     parse_import_ref,
@@ -472,7 +473,7 @@ class RunGroup(ModalGroup):
         from_stdin = import_ref.file_or_module == STDIN_REF
         if from_stdin and ctx.params["interactive"]:
             raise ClickException("Interactive mode can't be used when reading a script from stdin.")
-        runnable, all_usable_commands = import_and_filter(
+        runnable, all_usable_commands, lazy_imports = import_and_filter(
             import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False, allow_stdin=True
         )
         if not runnable and from_stdin:
@@ -497,6 +498,8 @@ class RunGroup(ModalGroup):
                 help_footer += _get_runnable_list(all_usable_commands)
             else:
                 help_footer = f"'{import_ref.file_or_module}' has no functions or local entrypoints."
+
+            help_footer += format_lazy_imports_note(lazy_imports, found_commands=bool(all_usable_commands))
 
             raise ClickException(f"{help_header}\n\n{help_footer}")
 

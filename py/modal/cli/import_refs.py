@@ -15,6 +15,7 @@ import inspect
 import shutil
 import sys
 import tempfile
+import types
 import typing
 from collections import defaultdict
 from dataclasses import dataclass
@@ -177,6 +178,41 @@ class AutoRunPriority:
     APP_FUNCTION = 3
 
 
+_LazyImportType = getattr(types, "LazyImportType", None)  # Python 3.15+ (PEP 810)
+
+_MAX_LISTED_LAZY_IMPORTS = 10
+
+
+def _is_lazy_import(module: types.ModuleType, name: str) -> bool:
+    return _LazyImportType is not None and isinstance(vars(module).get(name), _LazyImportType)
+
+
+def _check_not_lazy_import(module: types.ModuleType, name: str, import_ref: ImportRef) -> None:
+    if _is_lazy_import(module, name):
+        raise InvalidError(
+            f"'{name}' is imported lazily in '{import_ref.file_or_module}'. Modal Apps, Functions, and Classes "
+            "can't be imported lazily; change it to a regular import."
+        )
+
+
+def _get_module_members(module: types.ModuleType) -> tuple[dict[str, typing.Any], list[str]]:
+    """Like `dict(inspect.getmembers(module))`, but skips lazy imports instead of resolving them.
+
+    Returns the members and the names of the skipped lazy imports.
+    """
+    members = {}
+    lazy_imports = []
+    for name in dir(module):
+        if _is_lazy_import(module, name):
+            lazy_imports.append(name)
+            continue
+        try:
+            members[name] = getattr(module, name)
+        except AttributeError:
+            continue  # matches inspect.getmembers
+    return members, lazy_imports
+
+
 def list_cli_commands(
     module_members: dict[str, typing.Any],
     include_service_functions: bool = False,
@@ -308,6 +344,7 @@ def import_app_from_ref(import_ref: ImportRef, base_cmd: str = "") -> App:
     if "." in object_path:
         raise click.UsageError(f"{object_path} is not a Modal App")
 
+    _check_not_lazy_import(module, object_path, import_ref)
     app = getattr(module, object_path)
 
     if app is None:
@@ -385,9 +422,9 @@ def import_and_filter(
     accept_webhook=False,
     accept_service_functions=False,
     allow_stdin=False,
-) -> tuple[Runnable | None, list[CLICommand]]:
-    """Takes a function ref string and returns a single determined "runnable" to use, and a list of all available
-    runnables.
+) -> tuple[Runnable | None, list[CLICommand], list[str]]:
+    """Takes a function ref string and returns a single determined "runnable" to use, a list of all available
+    runnables, and the names of the lazy imports that were not searched for runnables.
 
     The function ref can leave out partial information (apart from the file name/module)
     as long as the runnable is uniquely identifiable by the provided information.
@@ -401,8 +438,10 @@ def import_and_filter(
     """
     # all commands:
     module = import_file_or_module(import_ref, base_cmd, allow_stdin=allow_stdin)
+    _check_not_lazy_import(module, import_ref.object_path.split(".", 1)[0], import_ref)
+    module_members, lazy_imports = _get_module_members(module)
     cli_commands = list_cli_commands(
-        dict(inspect.getmembers(module)),
+        module_members,
         include_service_functions=accept_service_functions,
     )
 
@@ -413,10 +452,22 @@ def import_and_filter(
 
     if inferred_runnable:
         # if there is a single command with "highest run prio" - use that
-        return inferred_runnable, all_usable_commands
+        return inferred_runnable, all_usable_commands, lazy_imports
 
     # otherwise, just return the list of all commands
-    return None, all_usable_commands
+    return None, all_usable_commands, lazy_imports
+
+
+def format_lazy_imports_note(lazy_imports: list[str], found_commands: bool) -> str:
+    if found_commands or not lazy_imports:
+        return ""
+    details = "\n".join(f"  {name}" for name in lazy_imports[:_MAX_LISTED_LAZY_IMPORTS])
+    if len(lazy_imports) > _MAX_LISTED_LAZY_IMPORTS:
+        details += f"\n  ... and {len(lazy_imports) - _MAX_LISTED_LAZY_IMPORTS} more"
+    return (
+        "\n\nNote: Modal does not look inside lazy imports, and Modal Apps, Functions, and Classes can't be "
+        f"imported lazily. If one of these is a Modal object, change it to a regular import:\n{details}"
+    )
 
 
 def infer_runnable(

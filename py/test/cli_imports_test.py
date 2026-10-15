@@ -155,7 +155,7 @@ dir_containing_python_package = {
 def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type, num_error_choices, use_module_mode):
     with mock_dir(dir_structure):
         import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
-        runnable, all_usable_commands = import_and_filter(
+        runnable, all_usable_commands, _ = import_and_filter(
             import_ref, base_cmd="dummy", accept_local_entrypoint=True, accept_webhook=False
         )
         print(all_usable_commands)
@@ -165,12 +165,13 @@ def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type,
 
 def test_import_and_filter_2(monkeypatch, supports_on_path):
     def import_runnable(object_path, accept_local_entrypoint=False, accept_webhook=False):
-        return import_and_filter(
+        runnable, all_usable_commands, _ = import_and_filter(
             ImportRef("import_and_filter_source", use_module_mode=True, object_path=object_path),
             base_cmd="",
             accept_local_entrypoint=accept_local_entrypoint,
             accept_webhook=accept_webhook,
         )
+        return runnable, all_usable_commands
 
     runnable, all_usable_commands = import_runnable(
         "app_with_one_web_function", accept_webhook=False, accept_local_entrypoint=True

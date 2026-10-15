@@ -28,6 +28,7 @@ from ..volume import Volume
 from ._help import ModalCommand
 from .import_refs import (
     MethodReference,
+    format_lazy_imports_note,
     import_and_filter,
     parse_import_ref,
 )
@@ -162,7 +163,7 @@ def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
 
 def _function_spec_from_ref(ref: str, use_module_mode: bool) -> _FunctionSpec:
     import_ref = parse_import_ref(ref, use_module_mode=use_module_mode, command="modal shell")
-    runnable, all_usable_commands = import_and_filter(
+    runnable, all_usable_commands, lazy_imports = import_and_filter(
         import_ref,
         base_cmd="modal shell",
         accept_local_entrypoint=False,
@@ -180,6 +181,8 @@ def _function_spec_from_ref(ref: str, use_module_mode: bool) -> _FunctionSpec:
             help_footer += _get_runnable_list(all_usable_commands)
         else:
             help_footer = f"The selected module '{import_ref.file_or_module}' has no Modal functions or classes."
+
+        help_footer += format_lazy_imports_note(lazy_imports, found_commands=bool(all_usable_commands))
 
         raise ClickException(f"{help_header}\n\n{help_footer}")
 

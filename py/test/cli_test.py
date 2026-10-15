@@ -2104,6 +2104,80 @@ def test_run_generator(servicer, set_env_client, test_dir):
     assert "generator functions" in str(result.exception)
 
 
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports require Python 3.15+")
+def test_run_with_lazy_imports(servicer, set_env_client, tmp_path):
+    (tmp_path / "lazy_not_imported_locally.py").write_text("raise RuntimeError('imported locally')\n")
+    app_file = tmp_path / "lazy_import_app.py"
+    app_file.write_text(
+        textwrap.dedent(
+            """
+            import modal
+            lazy import json
+            lazy import lazy_not_imported_locally
+            lazy import remote_only_dependency
+
+            app = modal.App()
+
+            @app.function()
+            def foo():
+                return remote_only_dependency.value
+
+            @app.local_entrypoint()
+            def main():
+                print(json.dumps("lazy imports ok"))
+            """
+        )
+    )
+    res = run_cli_command(["run", app_file.as_posix()])
+    assert '"lazy imports ok"' in res.stdout
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports require Python 3.15+")
+def test_lazily_imported_app(servicer, set_env_client, tmp_path):
+    (tmp_path / "lazy_app_definition.py").write_text(
+        textwrap.dedent(
+            """
+            import modal
+
+            app = modal.App()
+
+            @app.local_entrypoint()
+            def main():
+                pass
+            """
+        )
+    )
+    app_file = tmp_path / "lazy_app_reexport.py"
+    app_file.write_text("lazy from lazy_app_definition import app\n")
+    error = f"'app' is imported lazily in '{app_file.as_posix()}'"
+
+    result = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
+    assert "has no functions or local entrypoints" in result.stderr
+    assert "change it to a regular import:\n  app" in result.stderr
+
+    run_cli_command(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_error=error)
+    run_cli_command(["run", app_file.as_posix() + "::app.main"], expected_exit_code=1, expected_error=error)
+    run_cli_command(["deploy", app_file.as_posix()], expected_exit_code=1, expected_error=error)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports require Python 3.15+")
+@pytest.mark.parametrize(
+    ("functions", "expect_note"),
+    [
+        ("", True),
+        ("@app.function()\ndef foo(): pass\n@app.function()\ndef bar(): pass\n", False),
+    ],
+)
+def test_run_lazy_imports_note(servicer, set_env_client, tmp_path, functions, expect_note):
+    app_file = tmp_path / "lazy_import_app.py"
+    app_file.write_text(
+        "import modal\nlazy from remote_only_dependency import remote_fn\napp = modal.App()\n" + functions
+    )
+    result = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
+    assert "Specify a Modal Function or local entrypoint to run" in result.stderr
+    assert ("change it to a regular import:\n  remote_fn" in result.stderr) == expect_note
+
+
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "app_with_multiple_functions.py"
     result = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)

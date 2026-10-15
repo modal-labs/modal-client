@@ -7,6 +7,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 ## Python
 
 - Added Python 3.15 support to the client and the 2025.06 and PREVIEW Image Builders.
+- Modal apps can use [lazy imports](https://peps.python.org/pep-0810/) (`lazy import ...`) on Python 3.15. The Modal CLI does not import lazily imported modules when loading an app, so dependencies that are only installed in the remote Image can be imported lazily.
 - New Environment names (via `modal environment create`, `modal environment update --set-name`, or `modal.Environment.objects.create`) can no longer contain periods.
 - Added `modal function autoscaler` and `modal server autoscaler` subcommands, which allow users to
 view and update autoscaler settings for a given Function / Server.
