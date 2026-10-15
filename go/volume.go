@@ -60,12 +60,26 @@ func volumeToMountProto(mountPath string, volume *Volume) *pb.VolumeMount {
 type VolumeFromNameParams struct {
 	Environment     string
 	CreateIfMissing bool
+	// Version selects a VolumeFS version: 0 leaves it unspecified (any version), while 1 or 2
+	// selects that version. This option is experimental and matches the Python SDK.
+	Version int
 }
 
 // FromName references a Volume by its name.
 func (s *volumeServiceImpl) FromName(ctx context.Context, name string, params *VolumeFromNameParams) (*Volume, error) {
 	if params == nil {
 		params = &VolumeFromNameParams{}
+	}
+
+	requestedVersion := pb.VolumeFsVersion_VOLUME_FS_VERSION_UNSPECIFIED
+	switch params.Version {
+	case 0:
+	case 1:
+		requestedVersion = pb.VolumeFsVersion_VOLUME_FS_VERSION_V1
+	case 2:
+		requestedVersion = pb.VolumeFsVersion_VOLUME_FS_VERSION_V2
+	default:
+		return nil, InvalidError{Exception: "VolumeFS version must be either 1 or 2"}
 	}
 
 	creationType := pb.ObjectCreationType_OBJECT_CREATION_TYPE_UNSPECIFIED
@@ -77,6 +91,7 @@ func (s *volumeServiceImpl) FromName(ctx context.Context, name string, params *V
 		DeploymentName:     name,
 		EnvironmentName:    firstNonEmpty(params.Environment, s.client.profile.Environment),
 		ObjectCreationType: creationType,
+		Version:            requestedVersion,
 	}.Build())
 
 	if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
@@ -85,9 +100,29 @@ func (s *volumeServiceImpl) FromName(ctx context.Context, name string, params *V
 	if err != nil {
 		return nil, err
 	}
+	if params.Version != 0 {
+		actualVersion := normalizeVolumeVersion(resp.GetMetadata().GetVersion())
+		requestedVersion = normalizeVolumeVersion(requestedVersion)
+		if actualVersion != requestedVersion {
+			return nil, InvalidError{Exception: fmt.Sprintf(
+				"Volume '%s' exists but has version v%d, not v%d as requested. "+
+					"To access this Volume, either omit the version parameter or use the correct version.",
+				name,
+				actualVersion,
+				requestedVersion,
+			)}
+		}
+	}
 
 	s.client.logger.DebugContext(ctx, "Retrieved Volume", "volume_id", resp.GetVolumeId(), "volume_name", name)
 	return &Volume{VolumeID: resp.GetVolumeId(), Name: name, cancelEphemeral: nil}, nil
+}
+
+func normalizeVolumeVersion(version pb.VolumeFsVersion) pb.VolumeFsVersion {
+	if version == pb.VolumeFsVersion_VOLUME_FS_VERSION_UNSPECIFIED {
+		return pb.VolumeFsVersion_VOLUME_FS_VERSION_V1
+	}
+	return version
 }
 
 // WithMountOptions configures how a Volume is mounted. Fields left as nil on options preserve

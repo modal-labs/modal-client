@@ -1,13 +1,38 @@
-import { ObjectCreationType, type VolumeMount } from "../proto/modal_proto/api";
+import {
+  ObjectCreationType,
+  VolumeFsVersion,
+  type VolumeMount,
+} from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
 import { ClientError, Status } from "nice-grpc";
 import { NotFoundError, InvalidError } from "./errors";
 import { EphemeralHeartbeatManager } from "./ephemeral";
 
+function volumeFsVersionProto(version: number | undefined): VolumeFsVersion {
+  switch (version) {
+    case undefined:
+      return VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED;
+    case 1:
+      return VolumeFsVersion.VOLUME_FS_VERSION_V1;
+    case 2:
+      return VolumeFsVersion.VOLUME_FS_VERSION_V2;
+    default:
+      throw new InvalidError("VolumeFS version must be either 1 or 2");
+  }
+}
+
+function normalizeVolumeFsVersion(version: VolumeFsVersion): VolumeFsVersion {
+  return version === VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED
+    ? VolumeFsVersion.VOLUME_FS_VERSION_V1
+    : version;
+}
+
 /** Optional parameters for {@link VolumeService#fromName client.volumes.fromName()}. */
 export type VolumeFromNameParams = {
   environment?: string;
   createIfMissing?: boolean;
+  /** Experimental VolumeFS version; omit to accept either version. */
+  version?: 1 | 2;
 };
 
 /** Optional parameters for {@link VolumeService#ephemeral client.volumes.ephemeral()}. */
@@ -40,6 +65,7 @@ export class VolumeService {
    * Reference a {@link Volume} by its name.
    */
   async fromName(name: string, params?: VolumeFromNameParams): Promise<Volume> {
+    const requestedVersion = volumeFsVersionProto(params?.version);
     try {
       const resp = await this.#client.cpClient.volumeGetOrCreate({
         deploymentName: name,
@@ -47,7 +73,22 @@ export class VolumeService {
         objectCreationType: params?.createIfMissing
           ? ObjectCreationType.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
           : ObjectCreationType.OBJECT_CREATION_TYPE_UNSPECIFIED,
+        version: requestedVersion,
       });
+      if (params?.version !== undefined) {
+        const actualVersion = normalizeVolumeFsVersion(
+          resp.metadata?.version ??
+            VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
+        );
+        const normalizedRequestedVersion =
+          normalizeVolumeFsVersion(requestedVersion);
+        if (actualVersion !== normalizedRequestedVersion) {
+          throw new InvalidError(
+            `Volume '${name}' exists but has version v${actualVersion}, not v${normalizedRequestedVersion} as requested. ` +
+              "To access this Volume, either omit the version parameter or use the correct version.",
+          );
+        }
+      }
       this.#client.logger.debug(
         "Retrieved Volume",
         "volume_id",

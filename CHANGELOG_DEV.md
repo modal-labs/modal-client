@@ -22,6 +22,7 @@ view and update autoscaler settings for a given Function / Server.
 
 ## JS
 
+- Added a `version` parameter to `client.volumes.fromName()` to select VolumeFS v1 or v2.
 - `FunctionCall.get()` now throws `TimeoutError` when `timeoutMs` elapses before the Function finishes, so it can be told apart from the Function exceeding its own execution timeout (`FunctionTimeoutError`). For backward compatibility the error still matches `instanceof FunctionTimeoutError`, but doing so logs a deprecation warning and will stop working in a future release. Check `instanceof TimeoutError` first instead. Checking `err.name === "FunctionTimeoutError"` no longer matches this case, since `err.name` is now `"TimeoutError"`.
 - Added `App.info()` to access cached App lifecycle information and member Function and Server IDs, with optional refresh.
 - Added `client.environments.fromName()`, `client.environments.objects.create/list/delete()`, and `environment.apps.list()` to look up and manage Environments and iterate over their Apps.
@@ -33,6 +34,7 @@ view and update autoscaler settings for a given Function / Server.
 
 ## Go
 
+- Added a `Version` field to `VolumeFromNameParams` to select VolumeFS v1 or v2.
 - When `Timeout` elapses before the Function finishes, the `FunctionTimeoutError` returned by `FunctionCall.Get()` now wraps a `TimeoutError`, so `errors.As(err, &modal.TimeoutError{})` tells it apart from the Function exceeding its own execution timeout. Matching this case as a `FunctionTimeoutError` is deprecated; a future release will return a plain `TimeoutError`.
 - Added `Function.Metrics.Export()` for metric samples and `Function.Metrics.Schema()` for metric definitions.
 - Added `client.Functions.FromID()` to look up a Function by ID.
