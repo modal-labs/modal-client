@@ -3142,6 +3142,8 @@ message ImageListTagsRequest {
   // Defaults to 100. Values above 100 are rejected by the server.
   uint32 max_objects = 3;
   string page_token = 4;
+  // Returns only the tags that currently point at this image. Optional.
+  string image_id = 5;
 }
 
 message ImageListTagsResponse {

@@ -38070,6 +38070,7 @@ type ImageListTagsRequest struct {
 	xxx_hidden_TagPrefix       string                 `protobuf:"bytes,2,opt,name=tag_prefix,json=tagPrefix,proto3"`
 	xxx_hidden_MaxObjects      uint32                 `protobuf:"varint,3,opt,name=max_objects,json=maxObjects,proto3"`
 	xxx_hidden_PageToken       string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3"`
+	xxx_hidden_ImageId         string                 `protobuf:"bytes,5,opt,name=image_id,json=imageId,proto3"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -38127,6 +38128,13 @@ func (x *ImageListTagsRequest) GetPageToken() string {
 	return ""
 }
 
+func (x *ImageListTagsRequest) GetImageId() string {
+	if x != nil {
+		return x.xxx_hidden_ImageId
+	}
+	return ""
+}
+
 func (x *ImageListTagsRequest) SetEnvironmentName(v string) {
 	x.xxx_hidden_EnvironmentName = v
 }
@@ -38143,6 +38151,10 @@ func (x *ImageListTagsRequest) SetPageToken(v string) {
 	x.xxx_hidden_PageToken = v
 }
 
+func (x *ImageListTagsRequest) SetImageId(v string) {
+	x.xxx_hidden_ImageId = v
+}
+
 type ImageListTagsRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -38152,6 +38164,8 @@ type ImageListTagsRequest_builder struct {
 	// Defaults to 100. Values above 100 are rejected by the server.
 	MaxObjects uint32
 	PageToken  string
+	// Returns only the tags that currently point at this image. Optional.
+	ImageId string
 }
 
 func (b0 ImageListTagsRequest_builder) Build() *ImageListTagsRequest {
@@ -38162,6 +38176,7 @@ func (b0 ImageListTagsRequest_builder) Build() *ImageListTagsRequest {
 	x.xxx_hidden_TagPrefix = b.TagPrefix
 	x.xxx_hidden_MaxObjects = b.MaxObjects
 	x.xxx_hidden_PageToken = b.PageToken
+	x.xxx_hidden_ImageId = b.ImageId
 	return m0
 }
 
@@ -76350,7 +76365,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\x01R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\x01R\tupdatedAt\"\xa0\x01\n" +
+	"updated_at\x18\x05 \x01(\x01R\tupdatedAt\"\xbb\x01\n" +
 	"\x14ImageListTagsRequest\x12)\n" +
 	"\x10environment_name\x18\x01 \x01(\tR\x0fenvironmentName\x12\x1d\n" +
 	"\n" +
@@ -76358,7 +76373,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vmax_objects\x18\x03 \x01(\rR\n" +
 	"maxObjects\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tR\tpageToken\"\xa1\x01\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\x12\x19\n" +
+	"\bimage_id\x18\x05 \x01(\tR\aimageId\"\xa1\x01\n" +
 	"\x15ImageListTagsResponse\x125\n" +
 	"\x05items\x18\x01 \x03(\v2\x1f.modal.client.ImageListTagsItemR\x05items\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12)\n" +
