@@ -141,6 +141,8 @@ def _agent_environment() -> str | None:
     _TOOL_SPECIFIC_ENV_VARS: list[tuple[str, str]] = [
         ("CLAUDECODE", "claude-code"),
         ("CODEX_THREAD_ID", "codex"),
+        ("CODEX_SESSION_ID", "codex"),  # unified exec, always injected
+        ("CODEX_SANDBOX", "codex"),
         ("GEMINI_CLI", "gemini-cli"),
         ("CURSOR_AGENT", "cursor"),
         ("CLINE_ACTIVE", "cline"),
@@ -152,6 +154,8 @@ def _agent_environment() -> str | None:
         ("COPILOT_AGENT_SESSION_ID", "copilot"),
         ("ANTIGRAVITY_AGENT", "antigravity"),
         ("JUNIE_SHIM_PATH", "junie"),
+        ("QWEN_CODE", "qwen-code"),
+        ("MUSE_SESSION_ID", "muse-code"),
     ]
     for env_var, agent_name in _TOOL_SPECIFIC_ENV_VARS:
         if os.environ.get(env_var):
