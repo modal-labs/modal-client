@@ -1672,6 +1672,37 @@ def test_autoscaler_settings_deprecations(new, old):
         app.function(**{old: 10})(dummy)  # type: ignore
 
 
+def test_update_autoscaler_deprecated(client):
+    app = App()
+
+    @app.function(serialized=True)
+    def noop(): ...
+
+    with app.run(client=client):
+        with pytest.raises(DeprecationError, match=r"`Function.update_autoscaler\(\)` is deprecated"):
+            noop.update_autoscaler()
+
+
+def test_autoscaler_never_sends_0(client):
+    app = App()
+
+    @app.function(serialized=True)
+    def noop(): ...
+
+    with app.run(client=client):
+        settings = noop.autoscaler.settings()
+        assert settings.max_containers is None
+
+        settings = noop.autoscaler.update(max_containers=10)
+        assert settings.max_containers == 10
+
+        settings = noop.autoscaler.update(max_containers=None)
+        assert settings.max_containers is None
+
+        settings = noop.autoscaler.settings()
+        assert settings.max_containers is None
+
+
 def test_timeout(servicer, client):
     app = App(include_source=False)
 

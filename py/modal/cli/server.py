@@ -1321,7 +1321,7 @@ async def autoscaler_update(
             )
 
             if v == "none":
-                updates[k] = 0
+                updates[k] = None  # type: ignore
                 continue
 
             try:
@@ -1358,7 +1358,7 @@ async def autoscaler_update(
     )
 
     s = _Server._new_from_function(function_id, client, handle_metadata)
-    await s.update_autoscaler(**updates)  # type: ignore
+    await s.autoscaler.update(**updates)  # type: ignore
 
     output_manager.print(f"[green]✓[/green] Updated autoscaler settings for Server {handle_metadata.function_name}")
 

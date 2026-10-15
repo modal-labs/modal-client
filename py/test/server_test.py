@@ -14,7 +14,7 @@ from modal._serialization import deserialize
 from modal._server import _Server, _ServerSessionsManager
 from modal._utils.async_utils import synchronizer
 from modal._utils.http_utils import ClientSessionRegistry, run_temporary_http_server
-from modal.exception import ExecutionError, InvalidError, NotFoundError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.runner import deploy_app
 from modal.server import Server
 from modal.types import CloudBucketMountInfo, ServerInfo, ServerSessionCredentials, VolumeMountInfo
@@ -955,7 +955,7 @@ def test_server_update_autoscaler(client, servicer):
         function_id = AutoscaleServer._get_service_function().object_id  # type: ignore[attr-defined]
         assert servicer.app_functions[function_id].target_concurrent_inputs == 0
 
-        update_autoscaler = AutoscaleServer.update_autoscaler  # type: ignore[attr-defined]
+        update_autoscaler = AutoscaleServer.autoscaler.update  # type: ignore[attr-defined]
         settings = update_autoscaler(min_containers=1, max_containers=5, target_concurrency=20)  # type: ignore[call-arg]
         assert settings.target_concurrency == 20
         assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency_float == 20
@@ -963,7 +963,8 @@ def test_server_update_autoscaler(client, servicer):
         assert servicer.app_functions[function_id].target_concurrent_inputs == 0
         assert not servicer.app_functions[function_id].autoscaler_settings.HasField("target_concurrency")
 
-        settings = update_autoscaler(target_concurrency=0)  # type: ignore[call-arg]
+        settings = update_autoscaler(target_concurrency=None)  # type: ignore[call-arg]
+        assert settings.target_concurrency is None
 
         settings = update_autoscaler(target_concurrency=0.5)  # type: ignore[call-arg]
         assert settings.target_concurrency == 1.0
@@ -973,16 +974,58 @@ def test_server_update_autoscaler(client, servicer):
         assert settings.target_concurrency == 1.23
         assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency_float == 1.23
 
-        settings = update_autoscaler(target_concurrency=0)  # type: ignore[call-arg]
+        settings = update_autoscaler(target_concurrency=None)  # type: ignore[call-arg]
+        assert settings.target_concurrency is None
 
     f = servicer.app_functions[function_id]
 
     assert settings.min_containers == f.autoscaler_settings.min_containers == 1
     assert settings.max_containers == f.autoscaler_settings.max_containers == 5
     assert f.autoscaler_settings.HasField("target_concurrency_float")
-    assert settings.target_concurrency == f.autoscaler_settings.target_concurrency_float == 0
+    assert f.autoscaler_settings.target_concurrency_float == 0
     assert f.target_concurrent_inputs == 0
     assert not f.autoscaler_settings.HasField("target_concurrency")
+
+
+def test_update_autoscaler_deprecated(client):
+    app = modal.App()
+
+    @app.server(port=8000, routing_region="us-east", serialized=True)
+    class AutoscaleServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        with pytest.raises(DeprecationError, match=r"`Server.update_autoscaler\(\)` is deprecated"):
+            AutoscaleServer.update_autoscaler()  # type: ignore[attr-defined]
+
+
+def test_autoscaler_never_sends_0(client):
+    app = modal.App()
+
+    @app.server(port=8000, routing_region="us-east", serialized=True)
+    class AutoscaleServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        settings = AutoscaleServer.autoscaler.settings()  # type: ignore[attr-defined]
+        assert settings.max_containers is None
+        assert settings.target_concurrency is None
+
+        settings = AutoscaleServer.autoscaler.update(max_containers=10, target_concurrency=1.5)  # type: ignore[attr-defined]
+        assert settings.max_containers == 10
+        assert settings.target_concurrency == 1.5
+
+        settings = AutoscaleServer.autoscaler.update(max_containers=None, target_concurrency=None)  # type: ignore[attr-defined]
+        assert settings.max_containers is None
+        assert settings.target_concurrency is None
+
+        settings = AutoscaleServer.autoscaler.settings()  # type: ignore[attr-defined]
+        assert settings.max_containers is None
+        assert settings.target_concurrency is None
 
 
 # =============================================================================

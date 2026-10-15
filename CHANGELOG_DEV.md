@@ -9,6 +9,8 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - New Environment names (via `modal environment create`, `modal environment update --set-name`, or `modal.Environment.objects.create`) can no longer contain periods.
 - Added `modal function autoscaler` and `modal server autoscaler` subcommands, which allow users to
 view and update autoscaler settings for a given Function / Server.
+- Added `Function.autoscaler` and `Server.autoscaler` namespaces, with `.update()` and `.settings()` methods.
+- Deprecated `Function.update_autoscaler()` and `Server.update_autoscaler()`.
 - Improved the performance of Sandbox filesystem writes (`write_bytes`, `write_text`, `copy_from_local`).
 - Added an `include_terminated` parameter to `Sandbox.from_name()`. If set to `True` and no Sandbox with the name is currently running, the most recent terminated Sandbox will be returned instead.
 - Added `--since` and `--until` to `modal function calls` and `modal server requests` to fetch all records in a time range.

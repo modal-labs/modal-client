@@ -857,7 +857,7 @@ def test_cls_update_autoscaler(client, servicer):
         assert cls_service_fun.warm_pool_size == 0
 
         empty_args_obj = typing.cast(modal.cls.Obj, ClsWithMethod())
-        empty_args_obj.update_autoscaler(min_containers=2, buffer_containers=1)
+        empty_args_obj.bar.autoscaler.update(min_containers=2, buffer_containers=1)  # type: ignore
         service_function_id = empty_args_obj._cached_service_function().object_id
         service_function_defn = servicer.app_functions[service_function_id]
         autoscaler_settings = service_function_defn.autoscaler_settings
@@ -865,7 +865,7 @@ def test_cls_update_autoscaler(client, servicer):
         assert service_function_defn._experimental_buffer_containers == autoscaler_settings.buffer_containers == 1
 
         param_obj = ClsWithMethod(arg="other-instance")
-        settings = param_obj.update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
+        settings = param_obj.bar.autoscaler.update(min_containers=5, max_containers=10)  # type: ignore
         assert len(servicer.app_functions) == 3  # base + 2 x instance service function
         assert cls_service_fun.warm_pool_size == 0  # base still has no warm
 
@@ -899,14 +899,14 @@ def test_cls_lookup_update_autoscaler(client, servicer, set_env_client):
 
     C_pre_deploy = ClsWithMethod()
     with pytest.raises(ExecutionError, match="has not been hydrated"):
-        C_pre_deploy.update_autoscaler(min_containers=1)  # type: ignore
+        C_pre_deploy.bar.autoscaler.update(min_containers=1)  # type: ignore
 
     deploy_app(app, name, client=client)
 
     C = Cls.from_name(name, "ClsWithMethod", client=client)
     obj = C(arg="other-instance")
     with servicer.intercept() as ctx:
-        obj.update_autoscaler(min_containers=3)
+        obj.bar.autoscaler.update(min_containers=3)  # type: ignore
         (bind_req,) = ctx.get_requests("FunctionBindParams")
         assert deserialize_proto_params(bind_req.serialized_params) == {"arg": "other-instance"}
 
@@ -914,7 +914,7 @@ def test_cls_lookup_update_autoscaler(client, servicer, set_env_client):
     assert servicer.app_functions[service_function_id].warm_pool_size == 3
 
     with servicer.intercept() as ctx:
-        obj.update_autoscaler(min_containers=4)
+        obj.bar.autoscaler.update(min_containers=4)  # type: ignore
         assert len(ctx.get_requests("FunctionBindParams")) == 0  # We did not re-bind
 
 
@@ -1391,9 +1391,17 @@ def test_parameter_inheritance(client):
     class Base:
         a: int = modal.parameter()  # parameter in base class
 
+        @modal.method()
+        def method(self):
+            pass
+
     @app.cls(serialized=True)
     class ConcatenatingParams(Base):
         b: str = modal.parameter()  # add additional parameter
+
+        @modal.method()
+        def method(self):
+            pass
 
     @app.cls(serialized=True)
     class RepeatingParams(Base):
@@ -1404,18 +1412,26 @@ def test_parameter_inheritance(client):
         a: int = modal.parameter()  # redefine base class parameter
         b: str = modal.parameter()
 
+        @modal.method()
+        def method(self):
+            pass
+
     @app.cls(serialized=True)
     class ChangingParameterDefinitions(Base):
         # change type of base class parameter, allowed but frowned upon
         a: str = modal.parameter()  # type: ignore  # this isn't allowed by type checkers
 
+        @modal.method()
+        def method(self):
+            pass
+
     with app.run(client=client):
-        # use .update_autoscaler()
-        ConcatenatingParams(a=10, b="hello").update_autoscaler()  # type: ignore
-        RepeatingParams(a=10, b="hello").update_autoscaler()  # type: ignore
+        # use .autoscaler.update()
+        ConcatenatingParams(a=10, b="hello").method.autoscaler.update()  # type: ignore
+        RepeatingParams(a=10, b="hello").method.autoscaler.update()  # type: ignore
         with pytest.raises(TypeError):
-            ChangingParameterDefinitions(a=10).update_autoscaler()  # type: ignore
-        ChangingParameterDefinitions(a="10").update_autoscaler()  # type: ignore
+            ChangingParameterDefinitions(a=10).method.autoscaler.update()  # type: ignore
+        ChangingParameterDefinitions(a="10").method.autoscaler.update()  # type: ignore
 
 
 clustered_app = App(include_source=False)

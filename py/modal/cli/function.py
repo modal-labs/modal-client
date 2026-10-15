@@ -1521,7 +1521,7 @@ async def autoscaler_update(
         )
 
     f: _Function = _Function._new_hydrated(function_id, client, handle_metadata)
-    await f.update_autoscaler(**updates)
+    await f.autoscaler.update(**updates)
 
     output_manager.print(f"[green]✓[/green] Updated autoscaler settings for Function {handle_metadata.function_name}")
 

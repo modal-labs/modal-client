@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2025
 import asyncio
+import dataclasses
 import inspect
 import json
 import time
@@ -23,6 +24,8 @@ from ._partial_function import (
 )
 from ._supports_logs import _LogQueryData
 from ._utils.async_utils import retry, synchronize_api
+from ._utils.deprecation import deprecation_warning
+from ._utils.function_utils import normalize_fractional_target_concurrency, validate_target_concurrency
 from ._utils.http_utils import ClientSessionRegistry
 from .client import _Client
 from .cls import is_parameter
@@ -124,6 +127,11 @@ class _Server:
     def sessions(self) -> "_ServerSessionsManager":
         """Start and terminate sticky sessions on a Server decorated with `@modal.sessioned()`."""
         return _ServerSessionsManager(self)
+
+    @property
+    def autoscaler(self) -> "_ServerAutoscalerManager":
+        """View and update Autoscaler settings on a Server."""
+        return _ServerAutoscalerManager(self)
 
     async def info(self, *, refresh: bool = False) -> ServerInfo:
         """Get an overview of a Server's resource requests, associated mounts, http config, etc.
@@ -238,6 +246,13 @@ class _Server:
             ```
 
         """
+
+        deprecation_warning(
+            (2026, 10, 16),
+            "`Server.update_autoscaler()` is deprecated and will be removed in a future version "
+            "of `modal`. Use `Server.autoscaler.update()` instead.",
+        )
+
         return await self._get_service_function()._update_autoscaler_server(
             min_containers=min_containers,
             max_containers=max_containers,
@@ -618,3 +633,167 @@ class _ServerSessionsManager:
 
 
 ServerSessionsManager = synchronize_api(_ServerSessionsManager, target_module=__name__)
+
+
+UNSET_PARAMETER = -1
+
+
+class _ServerAutoscalerManager:
+    def __init__(self, server: _Server):
+        """mdmd:hidden"""
+        self._server = server
+
+    async def settings(self) -> ServerAutoscalerSettings:
+        """View the current Autoscaler settings for this Server.
+
+        Returns:
+            A `ServerAutoscalerSettings` dataclass.
+
+        Examples:
+
+            ```python notest
+            server = modal.Server.from_name("my-app", "MyServer")
+            settings = server.autoscaler.settings()
+            ```
+        """
+
+        await self._server.hydrate()
+
+        service_fn = self._server._get_service_function()
+        response = await service_fn.client._stub.FunctionGetSchedulingParams(
+            api_pb2.FunctionGetSchedulingParamsRequest(function_id=service_fn.object_id)
+        )
+
+        ret = ServerAutoscalerSettings._from_proto(response.autoscaler_configuration.settings)
+
+        updates = {}
+        if ret.target_concurrency == 0.0:
+            updates["target_concurrency"] = None
+        if ret.max_containers == 0:
+            updates["max_containers"] = None
+
+        if updates:
+            ret = dataclasses.replace(ret, **updates)
+
+        return ret
+
+    async def update(
+        self,
+        *,
+        target_concurrency: float | None = UNSET_PARAMETER,
+        min_containers: int | None = UNSET_PARAMETER,
+        max_containers: int | None = UNSET_PARAMETER,
+        buffer_containers: int | None = UNSET_PARAMETER,
+        scaledown_window: int = UNSET_PARAMETER,
+        scaleup_window: int = UNSET_PARAMETER,
+    ) -> ServerAutoscalerSettings:
+        """Override the current Autoscaler settings for this Server.
+
+        All parameters to this function are optional; not passing an argument for a given parameter
+        will not update its value.
+
+        Note that re-deploying the App containing this Server will wipe any overrides and revert
+        its Autoscaler settings back to those defined on the Server at creation time.
+
+        Args:
+            target_concurrency: Target number of concurrent requests per container. Must either be a
+                positive float (e.g. 1.5 to target 3 requests for every 2 containers), or `None`.
+                Passing `None` will disable autoscaling of this Server (effectively setting target
+                concurrency to infinity).
+            min_containers: Minimum number of containers to keep running. Must be a nonnegative
+                integer, or `None`. Passing `None` is equivalent to setting the minimum to 0.
+            max_containers: Maximum concurrent containers. Must be a positive integer, or `None`.
+                Passing `None` is equivalent to disabling the upper bound on container concurrency at
+                the Server level (note that Environment and Workspace level container upper limits
+                still apply.)
+            buffer_containers: Extra containers to keep warm beyond current demand. Must be a
+                nonnegative integer, or `None`. Passing `None` is equivalent to setting the buffer to
+                0.
+            scaledown_window: Maximum duration (in seconds) idle containers wait before scaling down.
+                Must be a positive integer between 2 and 3600, inclusive.
+            scaleup_window: Seconds of sustained demand required before scaling up new containers.
+                Must be a positive integer.
+
+        Returns:
+            A `ServerAutoscalerSettings` dataclass.
+
+        Examples:
+
+            Update `MyServer` so that 2 containers are always active.
+
+            ```python notest
+            MyServer = modal.Server.from_name("my-app", "MyServer")
+            MyServer.autoscaler.update(min_containers=2)
+            ```
+
+            Update `MyServer` so that there is no Server-level limit on `max_containers`:
+
+            ```python notest
+            MyServer = modal.Server.from_name("my-app", "MyServer")
+            MyServer.autoscaler.update(max_containers=None)
+            ```
+        """
+        await self._server.hydrate()
+
+        service_fn = self._server._get_service_function()
+
+        settings: api_pb2.AutoscalerSettings = api_pb2.AutoscalerSettings()
+
+        if min_containers != UNSET_PARAMETER:
+            min_containers = min_containers if min_containers is not None else 0
+            if min_containers < 0:
+                raise InvalidError("Invalid argument: `min_containers` must be a nonnegative integer or `None`.")
+
+            settings.min_containers = min_containers
+
+        if buffer_containers != UNSET_PARAMETER:
+            buffer_containers = buffer_containers if buffer_containers is not None else 0
+            if buffer_containers < 0:
+                raise InvalidError("Invalid argument: `buffer_containers` must be a nonnegative integer or `None`.")
+
+            settings.buffer_containers = buffer_containers
+
+        if max_containers != UNSET_PARAMETER:
+            if max_containers is not None and max_containers <= 0:
+                raise InvalidError("Invalid argument: `max_containers` must be a postive integer or `None`.")
+
+            settings.max_containers = max_containers if max_containers is not None else 0
+
+        if scaledown_window != UNSET_PARAMETER:
+            if not (2 <= scaledown_window <= 3600):
+                raise InvalidError("Invalid argument: `scaledown_window` must be between 2 and 3600 (inclusive)")
+
+            settings.scaledown_window = scaledown_window
+
+        if scaleup_window != UNSET_PARAMETER:
+            if scaleup_window <= 0:
+                raise InvalidError("Invalid argument: `scaleup_window` must be a postive integer.")
+
+            settings.scaleup_window = scaleup_window
+
+        if target_concurrency != UNSET_PARAMETER:
+            if target_concurrency is not None:
+                if target_concurrency <= 0:
+                    raise InvalidError("Invalid argument: `target_concurrency` must be a postive float or `None`.")
+
+                validate_target_concurrency(target_concurrency, "target_concurrency", allow_fractional=True)
+
+            settings.target_concurrency_float = (
+                normalize_fractional_target_concurrency(target_concurrency) if target_concurrency is not None else 0.0
+            )
+
+        request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=service_fn.object_id, settings=settings)
+        response = await service_fn.client._stub.FunctionUpdateSchedulingParams(request)
+
+        ret = ServerAutoscalerSettings._from_proto(response.current_settings)
+
+        updates = {}
+        if ret.target_concurrency == 0.0:
+            updates["target_concurrency"] = None
+        if ret.max_containers == 0:
+            updates["max_containers"] = None
+
+        if updates:
+            ret = dataclasses.replace(ret, **updates)
+
+        return ret

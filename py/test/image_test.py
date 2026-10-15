@@ -1950,6 +1950,10 @@ def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path):
     class A:
         some_arg: str = modal.parameter()
 
+        @modal.method()
+        def some_method(self):
+            pass
+
     ACls = app.cls(serialized=True, image=img)(A)  # mounts on image
     deploy_app(app, client=client)
 
@@ -1961,7 +1965,7 @@ def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path):
 
     obj = ACls(some_arg="foo")  # type: ignore
     # hacky way to force hydration of the *parameter bound* function (instance service function):
-    obj.update_autoscaler(min_containers=0)  #  type: ignore
+    obj.some_method.autoscaler.update(min_containers=0)  #  type: ignore
 
     obj_fun_def = servicer.function_by_name("A.*", ((), {"some_arg": "foo"}))  # instance service function
     added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
