@@ -6377,10 +6377,10 @@ def test_service_users_cli(set_env_client):
 
             continue
 
-        assert "Token ID:" in create_output.stdout
-        assert "Token Secret:" in create_output.stdout
+        assert "MODAL_TOKEN_ID=" in create_output.stdout
+        assert "MODAL_TOKEN_SECRET=" in create_output.stdout
         if expiration:
-            assert "Expires At:" in create_output.stdout
+            assert ", expiring at " in create_output.stdout
 
     # failure cases
     run_cli_command(

@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2025
 import json as json_mod
+import shutil
 from datetime import timezone
 
 import click
@@ -7,6 +8,7 @@ import rich
 import rich.box
 import rich.table
 from rich.box import SIMPLE, SIMPLE_HEAD
+from rich.syntax import Syntax
 from rich.text import Text
 
 from modal._utils.async_utils import synchronizer
@@ -17,7 +19,7 @@ from modal.output import OutputManager
 from modal.workspace import Workspace
 from modal_proto import api_pb2
 
-from ._help import ModalGroup
+from ._help import _MAX_HELP_WIDTH, ModalGroup
 
 WORKSPACE_HELP_TEXT = """Interact with the current Modal Workspace.
 
@@ -380,18 +382,24 @@ async def service_users_create(name: str, expires_in_str: str | None, json: bool
         )
         return
 
-    output_manager.print(f"[green]✓[/green] Successfully created Service User `{name}`, token details below:")
-
-    table = rich.table.Table("", pad_edge=False, box=None)
-    table.add_row("Token ID:", resp.token_id)
-    table.add_row("Token Secret:", resp.token_secret)
-
+    base = f"[green]✓[/green] Successfully created Service User [bold]{name}[/bold]"
     if expires_in:
-        table.add_row(
-            "Expires At:", timestamp_to_localized_str(resp.expires_at.ToDatetime(timezone.utc).timestamp(), isotz=False)
-        )
+        expiration_time = timestamp_to_localized_str(resp.expires_at.ToDatetime(timezone.utc).timestamp(), isotz=False)
+        base = f"{base}, expiring at [bold]{expiration_time}[/bold]"
 
-    output_manager.print(table)
+    output_manager.print(f"{base}.\n", highlight=False)
+
+    output_manager.print("To use it, set the following environment variables in your program:\n")
+
+    columns, _ = shutil.get_terminal_size()
+    s = Syntax(
+        f"\n export MODAL_TOKEN_ID={resp.token_id}\n export MODAL_TOKEN_SECRET={resp.token_secret}\n",
+        "sh",
+        code_width=min(_MAX_HELP_WIDTH, columns),
+        word_wrap=True,
+    )
+
+    output_manager.print(s)
     output_manager.print("")
 
     output_manager.print("[yellow]:warning:[/yellow] This is the only time you will be able to see the Token Secret.")
