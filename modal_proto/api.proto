@@ -3172,6 +3172,11 @@ message ImageMetadata {
   optional string image_builder_version = 5;
 }
 
+message ImageNameDeleteRequest {
+  // Named image reference: "[environment/]name[:tag]".
+  string tag = 1;
+}
+
 
 message ImagePublishRequest {
   string image_id = 1;
@@ -5679,6 +5684,7 @@ service ModalClient {
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
   rpc ImageListTags(ImageListTagsRequest) returns (ImageListTagsResponse);
+  rpc ImageNameDelete(ImageNameDeleteRequest) returns (google.protobuf.Empty);
   rpc ImagePublish(ImagePublishRequest) returns (ImagePublishResponse);
   rpc ImageTagRevisions(ImageTagRevisionsRequest) returns (ImageTagRevisionsResponse);
 

@@ -153,6 +153,7 @@ const (
 	ModalClient_ImageGetOrCreate_FullMethodName                       = "/modal.client.ModalClient/ImageGetOrCreate"
 	ModalClient_ImageJoinStreaming_FullMethodName                     = "/modal.client.ModalClient/ImageJoinStreaming"
 	ModalClient_ImageListTags_FullMethodName                          = "/modal.client.ModalClient/ImageListTags"
+	ModalClient_ImageNameDelete_FullMethodName                        = "/modal.client.ModalClient/ImageNameDelete"
 	ModalClient_ImagePublish_FullMethodName                           = "/modal.client.ModalClient/ImagePublish"
 	ModalClient_ImageTagRevisions_FullMethodName                      = "/modal.client.ModalClient/ImageTagRevisions"
 	ModalClient_MapAwait_FullMethodName                               = "/modal.client.ModalClient/MapAwait"
@@ -441,6 +442,7 @@ type ModalClientClient interface {
 	ImageGetOrCreate(ctx context.Context, in *ImageGetOrCreateRequest, opts ...grpc.CallOption) (*ImageGetOrCreateResponse, error)
 	ImageJoinStreaming(ctx context.Context, in *ImageJoinStreamingRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ImageJoinStreamingResponse], error)
 	ImageListTags(ctx context.Context, in *ImageListTagsRequest, opts ...grpc.CallOption) (*ImageListTagsResponse, error)
+	ImageNameDelete(ctx context.Context, in *ImageNameDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ImagePublish(ctx context.Context, in *ImagePublishRequest, opts ...grpc.CallOption) (*ImagePublishResponse, error)
 	ImageTagRevisions(ctx context.Context, in *ImageTagRevisionsRequest, opts ...grpc.CallOption) (*ImageTagRevisionsResponse, error)
 	// Input Plane Map
@@ -1928,6 +1930,16 @@ func (c *modalClientClient) ImageListTags(ctx context.Context, in *ImageListTags
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ImageListTagsResponse)
 	err := c.cc.Invoke(ctx, ModalClient_ImageListTags_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) ImageNameDelete(ctx context.Context, in *ImageNameDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_ImageNameDelete_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3516,6 +3528,7 @@ type ModalClientServer interface {
 	ImageGetOrCreate(context.Context, *ImageGetOrCreateRequest) (*ImageGetOrCreateResponse, error)
 	ImageJoinStreaming(*ImageJoinStreamingRequest, grpc.ServerStreamingServer[ImageJoinStreamingResponse]) error
 	ImageListTags(context.Context, *ImageListTagsRequest) (*ImageListTagsResponse, error)
+	ImageNameDelete(context.Context, *ImageNameDeleteRequest) (*emptypb.Empty, error)
 	ImagePublish(context.Context, *ImagePublishRequest) (*ImagePublishResponse, error)
 	ImageTagRevisions(context.Context, *ImageTagRevisionsRequest) (*ImageTagRevisionsResponse, error)
 	// Input Plane Map
@@ -4065,6 +4078,9 @@ func (UnimplementedModalClientServer) ImageJoinStreaming(*ImageJoinStreamingRequ
 }
 func (UnimplementedModalClientServer) ImageListTags(context.Context, *ImageListTagsRequest) (*ImageListTagsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ImageListTags not implemented")
+}
+func (UnimplementedModalClientServer) ImageNameDelete(context.Context, *ImageNameDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ImageNameDelete not implemented")
 }
 func (UnimplementedModalClientServer) ImagePublish(context.Context, *ImagePublishRequest) (*ImagePublishResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ImagePublish not implemented")
@@ -6744,6 +6760,24 @@ func _ModalClient_ImageListTags_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).ImageListTags(ctx, req.(*ImageListTagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_ImageNameDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImageNameDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ImageNameDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ImageNameDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ImageNameDelete(ctx, req.(*ImageNameDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -9705,6 +9739,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ImageListTags",
 			Handler:    _ModalClient_ImageListTags_Handler,
+		},
+		{
+			MethodName: "ImageNameDelete",
+			Handler:    _ModalClient_ImageNameDelete_Handler,
 		},
 		{
 			MethodName: "ImagePublish",
