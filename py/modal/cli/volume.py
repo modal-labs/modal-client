@@ -13,7 +13,7 @@ from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
-from modal.cli.utils import display_table, env_option, humanize_filesize, yes_option
+from modal.cli.utils import confirm_or_suggest_yes, display_table, env_option, humanize_filesize, yes_option
 from modal.output import OutputManager
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
@@ -81,10 +81,8 @@ async def rename(
     env: str | None = None,
 ):
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want rename the modal.Volume '{old_name}'? This may break any Apps currently using it.",
-            default=False,
-            abort=True,
         )
 
     await _Volume.rename(old_name, new_name, environment_name=env)
@@ -132,10 +130,8 @@ async def delete(
 ):
     env = ensure_env(env)
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want to irrevocably delete the modal.Volume '{name}'?",
-            default=False,
-            abort=True,
         )
 
     await _Volume.objects.delete(name, environment_name=env, allow_missing=allow_missing)

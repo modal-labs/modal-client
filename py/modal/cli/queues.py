@@ -8,7 +8,7 @@ from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import display_table, env_option, yes_option
+from modal.cli.utils import confirm_or_suggest_yes, display_table, env_option, yes_option
 from modal.client import _Client
 from modal.output import OutputManager
 from modal.queue import _Queue
@@ -127,10 +127,8 @@ async def clear(
     """Clear the contents of a Queue by removing all of its data."""
     q = _Queue.from_name(name, environment_name=env)
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want to irrevocably delete the contents of modal.Queue '{name}'?",
-            default=False,
-            abort=True,
         )
     await q.clear(partition=partition, all=all)
 
@@ -151,10 +149,8 @@ async def delete(
     """Delete a named Queue and all of its data."""
     env = ensure_env(env)
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
-            default=False,
-            abort=True,
         )
     await _Queue.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 

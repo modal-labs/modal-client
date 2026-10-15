@@ -8,7 +8,7 @@ from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import display_table, env_option, yes_option
+from modal.cli.utils import confirm_or_suggest_yes, display_table, env_option, yes_option
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.output import OutputManager
@@ -64,10 +64,8 @@ async def clear(name: str, *, yes: bool = False, env: str | None = None):
     """Clear the contents of a named Dict by deleting all of its data."""
     d = _Dict.from_name(name, environment_name=env)
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want to irrevocably delete the contents of modal.Dict '{name}'?",
-            default=False,
-            abort=True,
         )
     await d.clear()
 
@@ -87,10 +85,8 @@ async def delete(
 ):
     """Delete a named Dict and all of its data."""
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",
-            default=False,
-            abort=True,
         )
     await _Dict.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 

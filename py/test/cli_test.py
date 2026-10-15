@@ -11,6 +11,7 @@ import tempfile
 import textwrap
 import threading
 import time
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
@@ -18,12 +19,14 @@ from pickle import dumps
 from typing import cast
 from unittest import mock
 
+import click
 import toml
 from grpclib import GRPCError, Status
 
 import modal
 from modal._serialization import PICKLE_PROTOCOL, serialize_proto_params
 from modal._utils.grpc_testing import InterceptionContext
+from modal.cli.entry_point import entrypoint_cli
 from modal.exception import DeprecationError, InvalidError, NotFoundError, _CliUserExecutionError
 from modal.types import LogEntry
 from modal_proto import api_pb2
@@ -46,6 +49,58 @@ assert mod.app == app
 """
 
 dummy_other_module_file = "x = 42"
+
+
+def _commands_with_yes(
+    command: click.Command, path: tuple[str, ...] = ()
+) -> Iterator[tuple[tuple[str, ...], click.Command]]:
+    if any(isinstance(param, click.Option) and "--yes" in param.opts for param in command.params):
+        yield path, command
+    if isinstance(command, click.Group):
+        for name, subcommand in command.commands.items():
+            yield from _commands_with_yes(subcommand, (*path, name))
+
+
+@pytest.mark.parametrize(
+    "path, command",
+    [pytest.param(path, command, id=" ".join(path)) for path, command in _commands_with_yes(entrypoint_cli)],
+)
+@pytest.mark.filterwarnings("ignore:.*`modal.NetworkFileSystem` is deprecated:modal.exception.DeprecationError")
+def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_client, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    # Force both skill commands down a path requiring confirmation.
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    target_dir.mkdir(parents=True)
+    (target_dir / "old.txt").write_text("old")
+
+    app_id = "ap-aaaaaaaaaaaaaaaaaaaaaa"
+    servicer.app_state_history[app_id] = [api_pb2.APP_STATE_DEPLOYED]
+    _add_endpoint_lifecycle(servicer)
+    if path == ("nfs", "delete"):
+        run_cli_command(["nfs", "create", "test-name"])
+    argument_values = {
+        "app_identifier": app_id,
+        "endpoint_identifier": "ep-aaaaaaaaaaaaaaaaaaaaaa",
+        "container_id": "ta-123",
+    }
+    args = list(path)
+    for param in command.params:
+        if isinstance(param, click.Argument) and param.required:
+            assert param.nargs == 1, f"Provide test arguments for {' '.join(path)}"
+            args.append(argument_values.get(param.name, "test-name"))
+
+    # A non-TTY stdin may remain open indefinitely. Never attempt to read it.
+    def unexpected_prompt(*args, **kwargs):
+        pytest.fail("Attempted to prompt without an interactive terminal")
+
+    monkeypatch.setattr(click, "confirm", unexpected_prompt)
+    with servicer.intercept() as ctx:
+        if path == ("container", "stop"):
+            ctx.add_response("TaskGetInfo", api_pb2.TaskGetInfoResponse(info=api_pb2.TaskInfo(id="ta-123")))
+        res = run_cli_command(args, expected_exit_code=1)
+    assert "Aborted: no interactive terminal detected. Rerun with --yes (-y) to skip confirmation." in str(
+        res.exception
+    )
 
 
 def windows_sleep():

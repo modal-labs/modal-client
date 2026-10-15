@@ -14,7 +14,7 @@ from modal._location import display_location
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
-from modal.cli.utils import display_table, env_option, yes_option
+from modal.cli.utils import confirm_or_suggest_yes, display_table, env_option, yes_option
 from modal.client import _Client
 from modal.network_file_system import _NetworkFileSystem
 from modal.output import OutputManager
@@ -86,10 +86,8 @@ async def delete(
     # Lookup first to validate the name, even though delete is a staticmethod
     await _NetworkFileSystem.from_name(nfs_name, environment_name=env).hydrate()
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want to irrevocably delete the modal.NetworkFileSystem '{nfs_name}'?",
-            default=False,
-            abort=True,
         )
 
     await _NetworkFileSystem.delete(nfs_name, environment_name=env)

@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 from modal._environments import ensure_env
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import display_table, env_option, yes_option
+from modal.cli.utils import confirm_or_suggest_yes, display_table, env_option, yes_option
 from modal.client import _Client
 from modal.output import OutputManager
 from modal.secret import _Secret
@@ -194,10 +194,8 @@ async def delete(
 ):
     env = ensure_env(env)
     if not yes:
-        click.confirm(
+        confirm_or_suggest_yes(
             f"Are you sure you want to irrevocably delete the modal.Secret '{name}'?",
-            default=False,
-            abort=True,
         )
     await _Secret.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
