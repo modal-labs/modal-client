@@ -2,6 +2,25 @@
 
 ## Latest
 
+### 0.11.1 (2026-10-15)
+
+This release introduces a number of tools for programmatic observability.
+
+- The new [`Function.Stats()`](/docs/sdk/go/latest/Function#stats) method retrieves aggregate Function performance and resource statistics over a time range.
+- The new [`Function.Metrics`](/docs/sdk/go/latest/Function#functionmetrics) surface provides a flexible query interface for fetching detailed time-resolved data about performance and resource consumption.
+- The new [`App.Info()`](/docs/sdk/go/latest/App#info) method reports basic information about the lifecycle and members of an App.
+- It's now possible to look up and manage Environments in code:
+  - Use the new [`client.Environments.FromName()`](/docs/sdk/go/latest/Environment#fromname) method to look up an Environment.
+  - Use methods in the new [`client.Environments.Objects`](/docs/sdk/go/latest/Environment#clientenvironmentsobjects) namespace to create, list, and delete Environments.
+  - Use the new [`environment.Apps.List()`](/docs/sdk/go/latest/Environment#environmentapps) method to iterate over the Apps in an Environment.
+- The new [`client.Functions.FromID()`](/docs/sdk/go/latest/Function#fromid) method looks up a Function by its ID.
+- The params for the [`client.Volumes.FromName()`](/docs/sdk/go/latest/Volume#fromname) method (`VolumeFromNameParams`) now have a `Version` field, supporting [v2 Volume](/docs/guide/volumes#volumes-v2) creation.
+- The [`client.Sandboxes.FromName()`](/docs/sdk/go/latest/Sandbox#fromname) method will now return the most recently-terminated Sandbox that used the name (if it has not been claimed since) with `IncludeTerminated: true`.
+- Writes through the [`Sandbox.Filesystem`](/docs/sdk/go/latest/Sandbox#sandboxfilesystem) methods are now even more performant.
+- The [`FunctionCall.Get()`](/docs/sdk/go/latest/FunctionCall#get) method now returns a [`FunctionTimeoutError`](/docs/sdk/go/latest/Errors#functiontimeouterror) that wraps a [`TimeoutError`](/docs/sdk/go/latest/Errors#timeouterror) when its `Timeout` elapses before the Function finishes, so that it can be distinguished from the Function call exceeding its own execution timeout:
+  - Use `errors.As(err, &modal.TimeoutError{})` to detect this case.
+  - Matching this case as a `FunctionTimeoutError` is deprecated; a future release will return a plain `TimeoutError`.
+
 ### 0.11.0 (2026-09-28)
 
 - Sandboxes now use our [next-generation backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds), affording substantially higher creation rates and concurrency limits for CPU Sandboxes. No code changes are required, but there are some semantic differences to be aware of:

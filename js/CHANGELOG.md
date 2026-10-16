@@ -2,6 +2,25 @@
 
 ## Latest
 
+### 0.11.1 (2026-10-15)
+
+This release introduces a number of tools for programmatic observability.
+
+- The new [`Function_.stats()`](/docs/sdk/js/latest/Function#stats) method retrieves aggregate Function performance and resource statistics over a time range.
+- The new [`Function_.metrics`](/docs/sdk/js/latest/Function#functionmetrics) surface provides a flexible query interface for fetching detailed time-resolved data about performance and resource consumption.
+- The new [`App.info()`](/docs/sdk/js/latest/App#info) method reports basic information about the lifecycle and members of an App.
+- It's now possible to look up and manage Environments in code:
+  - Use the new [`client.environments.fromName()`](/docs/sdk/js/latest/Environment#fromname) method to look up an Environment.
+  - Use methods in the new [`client.environments.objects`](/docs/sdk/js/latest/Environment#modalenvironmentsobjects) namespace to create, list, and delete Environments.
+  - Use the new [`environment.apps.list()`](/docs/sdk/js/latest/Environment#environmentapps) method to iterate over the Apps in an Environment.
+- The new [`client.functions.fromId()`](/docs/sdk/js/latest/Function#fromid) method looks up a Function by its ID.
+- The [`client.volumes.fromName()`](/docs/sdk/js/latest/Volume#fromname) method now accepts a `version` parameter, supporting [v2 Volumes](/docs/guide/volumes#volumes-v2).
+- The [`client.sandboxes.fromName()`](/docs/sdk/js/latest/Sandbox#fromname) method will now return the most recently-terminated Sandbox that used the name (if it has not been claimed since) with `includeTerminated: true`.
+- Writes through the [`Sandbox.filesystem`](/docs/sdk/js/latest/Sandbox#sandboxfilesystem) methods are now even more performant.
+- The [`FunctionCall.get()`](/docs/sdk/js/latest/FunctionCall#get) method now throws a [`TimeoutError`](/docs/sdk/js/latest/Errors#timeouterror) when `timeoutMs` elapses before the Function finishes, so that it can be distinguished from the Function call exceeding its own execution timeout ([`FunctionTimeoutError`](/docs/sdk/js/latest/Errors#functiontimeouterror)):
+  - For backward compatibility, the error still matches `instanceof FunctionTimeoutError`, but doing so logs a deprecation warning and will stop working in a future release. Check `instanceof TimeoutError` first instead.
+  - Checking `err.name === "FunctionTimeoutError"` no longer matches this case, since `err.name` is now `"TimeoutError"`.
+
 ### 0.11.0 (2026-09-28)
 
 - Sandboxes now use our [next-generation backend](/blog/scaling-to-1-million-concurrent-sandboxes-in-seconds), affording substantially higher creation rates and concurrency limits for CPU Sandboxes. No code changes are required, but there are some semantic differences to be aware of:

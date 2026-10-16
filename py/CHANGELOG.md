@@ -2,6 +2,24 @@
 
 ## Latest
 
+### 1.6.2 (2026-10-15)
+
+- The new `metrics` observability surface provides a flexible query interface for fetching detailed time-resolved data about performance and resource consumption:
+  - Use the new [`modal function metrics`](/docs/cli/latest/function#modal-function-metrics) / [`modal server metrics`](/docs/cli/latest/server#modal-server-metrics) CLIs to export metrics to JSON or CSV.
+  - Use methods in the new [`Function.metrics`](/docs/sdk/py/latest/Function#metrics) / [`Server.metrics`](/docs/sdk/py/latest/Server#metrics) namespaces to operate on metrics in code.
+- It's now possible to programmatically manage [Service Users](/docs/guide/service-users):
+  - Use the new [`modal workspace service-users`](/docs/cli/latest/workspace#modal-workspace-service-users) CLI to create, inspect, delete, and update the roles of Service Users.
+  - Use methods in the new [`Workspace.service_users`](/docs/sdk/py/latest/Workspace#service_users) namespace to perform the same operations in code.
+- We've increased the feature set around autoscaling configuration:
+  - The new [`Function.autoscaler.settings()`](/docs/sdk/py/latest/Function#autoscalersettings) / [`Server.autoscaler.settings()`](/docs/sdk/py/latest/Server#autoscaler) methods report the current configuration with provenance for any overrides that are in effect.
+  - The new [`Function.autoscaler.update()`](/docs/sdk/py/latest/Function#autoscalerupdate) / [`Server.autoscaler.update()`](/docs/sdk/py/latest/Server#autoscaler) methods replace the existing `.update_autoscaler()` methods, which are now deprecated.
+  - Use commands in the new [`modal function autoscaler`](/docs/cli/latest/function#modal-function-autoscaler) / [`modal server autoscaler`](/docs/cli/latest/server#modal-server-autoscaler) groups to query or update the autoscaler configuration from the command line.
+- The [`modal function calls`](/docs/cli/latest/function#modal-function-calls) and [`modal server requests`](/docs/cli/latest/server#modal-server-requests) CLI commands now support `--since` and `--until` filters for fetching historical data.
+- The Modal SDK now supports Python 3.15. Of note, the new [lazy import](https://peps.python.org/pep-0810/) syntax makes it easier to use third-party libraries that are not available locally or in all remote Images.
+- The [`Sandbox.from_name()`](/docs/sdk/py/latest/Sandbox#from_name) method will now return the most recently-terminated Sandbox that used the name (if it has not been claimed since) with `include_terminated=True`.
+- The [`modal run`](/docs/cli/latest/run) CLI can now read a script from stdin when passed as `-`, e.g. `modal run - <<'EOF'` followed by an inlined script. The App must have a single local entrypoint or, otherwise, a single Function.
+- Writes through the [`Sandbox.filesystem`](/docs/sdk/py/latest/Sandbox#filesystem) methods are now even more performant.
+
 ### 1.6.1 (2026-10-03)
 
 - We've added CLI commands for observability over Modal Endpoints:

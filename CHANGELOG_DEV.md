@@ -6,42 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
-- Added Python 3.15 support to the client and the 2025.06 and PREVIEW Image Builders.
-- Modal apps can use [lazy imports](https://peps.python.org/pep-0810/) (`lazy import ...`) on Python 3.15. The Modal CLI does not import lazily imported modules when loading an app, so dependencies that are only installed in the remote Image can be imported lazily.
-- New Environment names (via `modal environment create`, `modal environment update --set-name`, or `modal.Environment.objects.create`) can no longer contain periods.
-- Added `modal function autoscaler` and `modal server autoscaler` subcommands, which allow users to
-view and update autoscaler settings for a given Function / Server.
-- Added `Function.autoscaler` and `Server.autoscaler` namespaces, with `.update()` and `.settings()` methods.
-- Deprecated `Function.update_autoscaler()` and `Server.update_autoscaler()`.
-- Improved the performance of Sandbox filesystem writes (`write_bytes`, `write_text`, `copy_from_local`).
-- Added an `include_terminated` parameter to `Sandbox.from_name()`. If set to `True` and no Sandbox with the name is currently running, the most recent terminated Sandbox will be returned instead.
-- Added `--since` and `--until` to `modal function calls` and `modal server requests` to fetch all records in a time range.
-- Added `modal function metrics` and `modal server metrics` CLI commands for exporting metrics.
-- Use `Function.metrics.export()` and `Server.metrics.export()` to export metrics in the Python SDK. Discover available metrics and their definitions with `metrics.schema()`.
-- Added `Workspace.service_users` to create, inspect, delete, and update roles of Service Users.
-- Added the `modal workspace service-users` CLI family of commands to manage Service Users.
-- `modal run -` now reads the script from stdin, e.g. `cat my_app.py | modal run -`. The script must have a single local entrypoint or a single function.
-
 ## JS
-
-- Added a `version` parameter to `client.volumes.fromName()` to select VolumeFS v1 or v2.
-- `FunctionCall.get()` now throws `TimeoutError` when `timeoutMs` elapses before the Function finishes, so it can be told apart from the Function exceeding its own execution timeout (`FunctionTimeoutError`). For backward compatibility the error still matches `instanceof FunctionTimeoutError`, but doing so logs a deprecation warning and will stop working in a future release. Check `instanceof TimeoutError` first instead. Checking `err.name === "FunctionTimeoutError"` no longer matches this case, since `err.name` is now `"TimeoutError"`.
-- Added `App.info()` to access cached App lifecycle information and member Function and Server IDs, with optional refresh.
-- Added `client.environments.fromName()`, `client.environments.objects.create/list/delete()`, and `environment.apps.list()` to look up and manage Environments and iterate over their Apps.
-- Added `Function_.metrics.export()` to fetch metric samples and `Function_.metrics.schema()` to discover metric definitions.
-- Added `client.Functions.FromID()` to look up a Function by ID.
-- Added [`Function_.stats()`](/docs/sdk/js/latest/Function#stats) to retrieve historical Function statistics over a time range.
-- Improved the performance of Sandbox filesystem writes (`writeBytes`, `writeText`, `copyFromLocal`).
-- Added an `includeTerminated` option to `client.sandboxes.fromName()`. If set to `true` and no Sandbox with the name is currently running, the most recent terminated Sandbox will be returned instead.
 
 ## Go
 
-- Added a `Version` field to `VolumeFromNameParams` to select VolumeFS v1 or v2.
-- When `Timeout` elapses before the Function finishes, the `FunctionTimeoutError` returned by `FunctionCall.Get()` now wraps a `TimeoutError`, so `errors.As(err, &modal.TimeoutError{})` tells it apart from the Function exceeding its own execution timeout. Matching this case as a `FunctionTimeoutError` is deprecated; a future release will return a plain `TimeoutError`.
-- Added `Function.Metrics.Export()` for metric samples and `Function.Metrics.Schema()` for metric definitions.
-- Added `client.Environments.FromName()`, `client.Environments.Objects.Create/List/Delete()`, and `environment.Apps.List()` to look up and manage Environments and iterate over their live Apps.
-- Added `App.Info()` to access cached App lifecycle information and member Function and Server IDs, with optional refresh.
-- Added `client.Functions.FromID()` to look up a Function by ID.
-- Added [`Function.Stats()`](/docs/sdk/go/latest/Function#stats)  to retrieve historical Function statistics over a time range.
-- Improved the performance of Sandbox filesystem writes (`WriteBytes`, `WriteText`, `CopyFromLocal`).
-- Added an `IncludeTerminated` field to `SandboxFromNameParams`. If set to `true` and no Sandbox with the name is currently running, `Sandboxes.FromName` returns the most recent terminated Sandbox instead.
