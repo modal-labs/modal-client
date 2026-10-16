@@ -98,8 +98,9 @@ class _AuthTokenManager:
         caller goes away.
         """
         if self._refresh_task is None:
-            # Maybe another coroutine refreshed already, or we're cooling down after a failure.
-            if self._token and not self._should_refresh():
+            # Maybe another coroutine refreshed already, or we're cooling down after a failure. The cooldown
+            # only applies while the cached token is still usable.
+            if self._has_valid_token() and not self._should_refresh():
                 return
             # Note: the task is created in async code so it binds to the synchronicity event loop.
             self._refresh_task = asyncio.create_task(self._fetch_token())
@@ -121,12 +122,12 @@ class _AuthTokenManager:
     async def _fetch_token(self):
         """Fetch a new token and cache it, or arm the failure backoff."""
         try:
-            # No cached token to fall back on, so a failure is user-visible: retry transient errors.
+            # Retry transient errors if the cached token is missing or expired.
             # Otherwise one attempt, and _retry_after handles the cooldown.
             retry = Retry(
                 attempt_timeout=self.AUTH_TOKEN_TIMEOUT,
                 total_timeout=self.AUTH_TOKEN_RETRY_TOTAL_TIMEOUT,
-                max_retries=0 if self._token else DEFAULT_MAX_RETRIES,
+                max_retries=0 if self._has_valid_token() else DEFAULT_MAX_RETRIES,
             )
             token = await self._fetch(retry)
             if not token:
@@ -165,6 +166,9 @@ class _AuthTokenManager:
             return json.loads(decoded_bytes)
         except Exception as e:
             raise ValueError("Internal error: Cannot parse auth token. Please contact Modal support.") from e
+
+    def _has_valid_token(self):
+        return bool(self._token) and not self._is_expired()
 
     def _in_backoff(self):
         return time.time() < self._retry_after

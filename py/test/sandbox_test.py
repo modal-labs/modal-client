@@ -4240,6 +4240,37 @@ def test_sandbox_wait_allowed_after_detached(app, servicer):
     assert sb.returncode != 0
 
 
+@pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
+def test_sandbox_wait_retries_poll_the_server_never_answers(app, servicer, monkeypatch, sandbox_version):
+    monkeypatch.setattr("modal.sandbox._sandbox._WAIT_LONG_POLL_TIMEOUT", 0.1)
+    monkeypatch.setattr("modal.sandbox._sandbox._WAIT_POLL_DEADLINE_MARGIN", 0.2)
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_version == SandboxVersion.V2 else "0")
+    sb = _create_wait_until_ready_sandbox(app, sandbox_version)
+    assert _get_sandbox_version(sb.object_id) == sandbox_version
+    method = "SandboxWaitV2" if sandbox_version == SandboxVersion.V2 else "SandboxWait"
+    calls = 0
+
+    async def wait_handler(self, stream):
+        nonlocal calls
+        await stream.recv_message()
+        calls += 1
+        if calls == 1:
+            await asyncio.sleep(10)
+        result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, exitcode=0)
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(result=result, metadata=api_pb2.SandboxHandleMetadata(result=result))
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder(method, wait_handler)
+        t0 = time.monotonic()
+        sb.wait()
+
+    assert time.monotonic() - t0 < 5
+    assert calls == 2
+    assert sb.returncode == 0
+
+
 def _create_wait_until_ready_sandbox(app, sandbox_version: SandboxVersion, *, with_readiness_probe: bool = True):
     if sandbox_version == SandboxVersion.V2:
         return Sandbox._experimental_create("bash", "-c", "sleep 100", app=app)

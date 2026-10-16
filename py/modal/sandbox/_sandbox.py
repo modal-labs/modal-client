@@ -112,6 +112,11 @@ _EXIT_SNAPSHOT_LONG_POLL_TIMEOUT = 10.0
 # client-side deadline.
 _EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN = 5.0
 
+# `Sandbox.wait` re-polls a server-side long poll of this many seconds. Each poll gets a network deadline
+# with a margin over the hold, so a poll the server never answers fails and is retried instead of hanging.
+_WAIT_LONG_POLL_TIMEOUT = 10.0
+_WAIT_POLL_DEADLINE_MARGIN = 5.0
+
 # How long `Sandbox.create` waits for capacity before giving up.
 _SANDBOX_SCHEDULING_TIMEOUT: float = 21 * 60
 
@@ -1682,14 +1687,15 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         """
 
+        poll_retry = Retry(attempt_timeout=_WAIT_LONG_POLL_TIMEOUT + _WAIT_POLL_DEADLINE_MARGIN)
         while True:
-            req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
+            req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=_WAIT_LONG_POLL_TIMEOUT)
             # Use the private __client to allow `wait` to work with a detached sandbox
             stub = self.__client._stub
             if self._is_v2:
-                resp = await stub.SandboxWaitV2(req, metadata=await self._v2_metadata(self.__client))
+                resp = await stub.SandboxWaitV2(req, retry=poll_retry, metadata=await self._v2_metadata(self.__client))
             else:
-                resp = await stub.SandboxWait(req)
+                resp = await stub.SandboxWait(req, retry=poll_retry)
             if resp.result.status:
                 logger.debug(f"Sandbox {self.object_id} wait completed with status {resp.result.status}")
                 self._result = resp.result
