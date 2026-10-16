@@ -1,0 +1,11 @@
+__pycache__
+.venv
+*.egg-info
+build
+dist
+uv.lock
+/generated/
+playground
+mise.local.toml
+# Hand-written synchronicity 0.x type stubs used by tests (the parent .gitignore ignores *.pyi)
+!test/support_files/*.pyi

@@ -133,6 +133,7 @@ def type_check(ctx, stubs: bool = True, mypy: bool = True, pyright: bool = True)
         "test/supports/sibling_hydration_app.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
         "test/supports/type_assertions_negative.py",
         "modal_proto",
+        "synchronicity2",  # standalone package with its own type-checking setup
     ]
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
     if mypy:
@@ -189,6 +190,8 @@ def check_copyright(ctx, fix=False):
                 # vendored code has a different copyright
                 and "_vendor" not in root
                 and "protoc_plugin" not in root
+                # transient codegen output from the synchronicity2 test suite
+                and not root.startswith("./synchronicity2/generated")
                 # third-party code (i.e., in a local venv) has a different copyright
                 and "/site-packages/" not in root
                 and "/build/" not in root

@@ -1,0 +1,341 @@
+# Copyright Modal Labs 2026
+"""Unit tests for IR → full module emission (``SyncAsyncModuleEmitter.emit_module``)."""
+
+from __future__ import annotations
+
+import re
+
+from synchronicity2.codegen.emission.module_codegen import SyncAsyncModuleEmitter
+from synchronicity2.codegen.ir.annotations import (
+    AwaitableAnnotationIR,
+    DictAnnotationIR,
+    ListAnnotationIR,
+    OptionalAnnotationIR,
+    PlainAnnotationIR,
+    WrappedClassRefIR,
+)
+from synchronicity2.codegen.ir.declarations import (
+    ManualClassAttributeAccessKind,
+    ManualClassAttributeIR,
+    ManualReexportIR,
+    MethodBindingKind,
+    ModuleIR,
+    ParameterIR,
+    WrappedClassIR,
+    WrappedFunctionIR,
+    WrappedMethodIR,
+)
+from synchronicity2.codegen.ir.references import ObjectReferenceIR
+
+IMPL = __name__
+TARGET = "test_module"
+
+IR_MODULE_TWO_CLASSES = ModuleIR(
+    target_module="test_module",
+    synchronizer_module="generated._synchronizer",
+    impl_modules=frozenset({IMPL}),
+    cross_module_imports={},
+    typevar_specs=(),
+    wrapped_classes=(
+        WrappedClassIR(
+            impl_ref=ObjectReferenceIR(IMPL, "EmitModuleClassA"),
+            wrapper_ref=ObjectReferenceIR(TARGET, "EmitModuleClassA"),
+            wrapped_bases=(),
+            generic_type_parameters=None,
+            attributes=(),
+            properties=(),
+            methods=(
+                WrappedMethodIR(
+                    method_name="__init__",
+                    method_type=MethodBindingKind.INSTANCE,
+                    parameters=(
+                        ParameterIR(
+                            name="value",
+                            kind=1,
+                            annotation_ir=PlainAnnotationIR(signature_text="int"),
+                            default_expr=None,
+                        ),
+                    ),
+                    is_async_gen=False,
+                    is_async=False,
+                    return_annotation_ir=PlainAnnotationIR(signature_text=""),
+                ),
+                WrappedMethodIR(
+                    method_name="get_value",
+                    method_type=MethodBindingKind.INSTANCE,
+                    parameters=(),
+                    is_async_gen=False,
+                    is_async=True,
+                    return_annotation_ir=AwaitableAnnotationIR(inner_ir=PlainAnnotationIR(signature_text="int")),
+                ),
+            ),
+        ),
+        WrappedClassIR(
+            impl_ref=ObjectReferenceIR(IMPL, "EmitModuleClassB"),
+            wrapper_ref=ObjectReferenceIR(TARGET, "EmitModuleClassB"),
+            wrapped_bases=(),
+            generic_type_parameters=None,
+            attributes=(),
+            properties=(),
+            methods=(
+                WrappedMethodIR(
+                    method_name="__init__",
+                    method_type=MethodBindingKind.INSTANCE,
+                    parameters=(
+                        ParameterIR(
+                            name="data",
+                            kind=1,
+                            annotation_ir=ListAnnotationIR(item_ir=PlainAnnotationIR(signature_text="str")),
+                            default_expr=None,
+                        ),
+                    ),
+                    is_async_gen=False,
+                    is_async=False,
+                    return_annotation_ir=PlainAnnotationIR(signature_text=""),
+                ),
+                WrappedMethodIR(
+                    method_name="process_data",
+                    method_type=MethodBindingKind.INSTANCE,
+                    parameters=(
+                        ParameterIR(
+                            name="config",
+                            kind=1,
+                            annotation_ir=DictAnnotationIR(
+                                key_ir=PlainAnnotationIR(signature_text="str"),
+                                value_ir=PlainAnnotationIR(signature_text="int"),
+                            ),
+                            default_expr=None,
+                        ),
+                        ParameterIR(
+                            name="optional_filter",
+                            kind=1,
+                            annotation_ir=OptionalAnnotationIR(inner_ir=PlainAnnotationIR(signature_text="str")),
+                            default_expr="None",
+                        ),
+                    ),
+                    is_async_gen=False,
+                    is_async=True,
+                    return_annotation_ir=AwaitableAnnotationIR(
+                        inner_ir=ListAnnotationIR(item_ir=PlainAnnotationIR(signature_text="str"))
+                    ),
+                ),
+            ),
+        ),
+    ),
+    wrapped_functions=(),
+)
+
+
+def test_emit_module_two_classes_separated_by_blank_lines():
+    generated_code = SyncAsyncModuleEmitter().emit_module(IR_MODULE_TWO_CLASSES)
+    compile(generated_code, "<string>", "exec")
+
+    assert generated_code.startswith("# Generated by synchronicity2.\n# This module should not be modified directly.\n")
+    assert generated_code.index("import weakref") < generated_code.index(
+        "_synchronizer = generated._synchronizer.synchronizer"
+    )
+    class_comment_pattern = r"^# Proxy type for the underlying implementation type .+\.$"
+    lines = generated_code.split("\n")
+    class_line_indices = [
+        i for i, line in enumerate(lines) if line.strip() in {"class EmitModuleClassA:", "class EmitModuleClassB:"}
+    ]
+    assert len(class_line_indices) >= 2, "Should have at least 2 classes"
+    for idx in class_line_indices:
+        assert idx > 0
+        assert re.match(class_comment_pattern, lines[idx - 1].strip())
+    for idx in class_line_indices[1:]:
+        prev_line_idx = idx - 2
+        assert prev_line_idx >= 0
+        assert lines[prev_line_idx].strip() == ""
+    assert (
+        "_synchronizer.register_wrapper_class(test.unit.emission.test_module.EmitModuleClassA, EmitModuleClassA)"
+        in generated_code
+    )
+    assert (
+        "_synchronizer.register_wrapper_class(test.unit.emission.test_module.EmitModuleClassB, EmitModuleClassB)"
+        in generated_code
+    )
+    assert (
+        "# Proxy type for the underlying implementation type test.unit.emission.test_module.EmitModuleClassA."
+        in generated_code
+    )
+    assert (
+        "# Proxy type for the underlying implementation type test.unit.emission.test_module.EmitModuleClassB."
+        in generated_code
+    )
+
+
+def test_emit_module_manual_reexports_and_class_attributes():
+    ir = ModuleIR(
+        target_module="test_module",
+        synchronizer_module="generated._synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        wrapped_classes=(
+            WrappedClassIR(
+                impl_ref=ObjectReferenceIR(IMPL, "EmitModuleClassA"),
+                wrapper_ref=ObjectReferenceIR(TARGET, "EmitModuleClassA"),
+                wrapped_bases=(),
+                generic_type_parameters=None,
+                attributes=(),
+                properties=(),
+                methods=(
+                    WrappedMethodIR(
+                        method_name="__init__",
+                        method_type=MethodBindingKind.INSTANCE,
+                        parameters=(),
+                        is_async_gen=False,
+                        is_async=False,
+                        return_annotation_ir=PlainAnnotationIR(signature_text=""),
+                    ),
+                ),
+                manual_attributes=(
+                    ManualClassAttributeIR(
+                        name="manual_method",
+                        access_kind=ManualClassAttributeAccessKind.ATTRIBUTE,
+                    ),
+                    ManualClassAttributeIR(
+                        name="manual_descriptor",
+                        access_kind=ManualClassAttributeAccessKind.RAW_CLASS_DICT,
+                    ),
+                ),
+            ),
+        ),
+        wrapped_functions=(),
+        manual_reexports=(
+            ManualReexportIR(
+                impl_ref=ObjectReferenceIR(IMPL, "forwarded"),
+                export_name="forwarded",
+            ),
+        ),
+    )
+
+    generated_code = SyncAsyncModuleEmitter().emit_module(ir)
+
+    assert "manual_method = test.unit.emission.test_module.EmitModuleClassA.manual_method" in generated_code
+    assert (
+        "manual_descriptor = test.unit.emission.test_module.EmitModuleClassA.__dict__['manual_descriptor']"
+        in generated_code
+    )
+    assert "forwarded = test.unit.emission.test_module.forwarded" in generated_code
+
+
+def test_emit_module_imports_default_expression_module_refs():
+    ir = ModuleIR(
+        target_module="test_module",
+        synchronizer_module="generated._synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        wrapped_classes=(),
+        wrapped_functions=(
+            WrappedFunctionIR(
+                impl_ref=ObjectReferenceIR(IMPL, "read_pipe"),
+                needs_async_wrapper=False,
+                is_async_gen=False,
+                parameters=(
+                    ParameterIR(
+                        name="pipe",
+                        kind=1,
+                        annotation_ir=PlainAnnotationIR(signature_text="int"),
+                        default_expr="subprocess.PIPE",
+                        default_import_modules=("subprocess",),
+                    ),
+                ),
+                return_annotation_ir=PlainAnnotationIR(signature_text="int"),
+            ),
+        ),
+    )
+
+    generated_code = SyncAsyncModuleEmitter().emit_module(ir)
+
+    assert "import subprocess" in generated_code
+    assert "def read_pipe(pipe: int = subprocess.PIPE) -> int:" in generated_code
+    assert "from subprocess import PIPE" not in generated_code
+
+
+def test_emit_module_imports_annotation_module_refs():
+    ir = ModuleIR(
+        target_module="test_module",
+        synchronizer_module="generated._synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        wrapped_classes=(),
+        wrapped_functions=(
+            WrappedFunctionIR(
+                impl_ref=ObjectReferenceIR(IMPL, "round_trip_timestamp"),
+                needs_async_wrapper=False,
+                is_async_gen=False,
+                parameters=(
+                    ParameterIR(
+                        name="value",
+                        kind=1,
+                        annotation_ir=PlainAnnotationIR(
+                            signature_text="datetime.datetime",
+                            import_modules=("datetime",),
+                        ),
+                        default_expr=None,
+                    ),
+                ),
+                return_annotation_ir=PlainAnnotationIR(
+                    signature_text="datetime.datetime",
+                    import_modules=("datetime",),
+                ),
+            ),
+        ),
+    )
+
+    generated_code = SyncAsyncModuleEmitter().emit_module(ir)
+
+    assert "import datetime" in generated_code
+    assert "def round_trip_timestamp(value: datetime.datetime) -> datetime.datetime:" in generated_code
+
+
+def test_emit_module_imports_cross_module_wrapper_refs_but_not_self_imports():
+    ir = ModuleIR(
+        target_module="generated.cloud_bucket_mount",
+        synchronizer_module="generated._synchronizer",
+        impl_modules=frozenset({IMPL}),
+        cross_module_imports={},
+        typevar_specs=(),
+        wrapped_classes=(
+            WrappedClassIR(
+                impl_ref=ObjectReferenceIR(IMPL, "_CloudBucketMount"),
+                wrapper_ref=ObjectReferenceIR("generated.cloud_bucket_mount", "CloudBucketMount"),
+                wrapped_bases=(),
+                generic_type_parameters=None,
+                attributes=(),
+                properties=(),
+                methods=(
+                    WrappedMethodIR(
+                        method_name="__init__",
+                        method_type=MethodBindingKind.INSTANCE,
+                        parameters=(
+                            ParameterIR(
+                                name="secret",
+                                kind=1,
+                                annotation_ir=OptionalAnnotationIR(
+                                    inner_ir=WrappedClassRefIR(
+                                        impl=ObjectReferenceIR(IMPL, "_Secret"),
+                                        wrapper=ObjectReferenceIR("generated.secret", "Secret"),
+                                    )
+                                ),
+                                default_expr="None",
+                            ),
+                        ),
+                        is_async_gen=False,
+                        is_async=False,
+                        return_annotation_ir=PlainAnnotationIR(signature_text=""),
+                    ),
+                ),
+            ),
+        ),
+        wrapped_functions=(),
+    )
+
+    generated_code = SyncAsyncModuleEmitter().emit_module(ir)
+
+    assert "import generated.secret" in generated_code
+    assert "import generated.cloud_bucket_mount" not in generated_code
