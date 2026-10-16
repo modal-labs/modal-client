@@ -579,3 +579,50 @@ func TestGetImageBuilderVersionWithEnvironmentOverride(t *testing.T) {
 	g.Expect(version).Should(Equal("2025.06"))
 	g.Expect(int(mockClient.EnvironmentGetOrCreateCallCount.Load())).Should(Equal(1))
 }
+
+func TestEnvironmentFromContext(t *testing.T) {
+	for _, tc := range []struct {
+		configured   string
+		expectedName string
+	}{
+		{"dev", "dev"},
+		{"", "main"},
+	} {
+		t.Run(fmt.Sprintf("configured=%q", tc.configured), func(t *testing.T) {
+			t.Setenv("MODAL_ENVIRONMENT", "")
+			g := NewWithT(t)
+			mock := &environmentServiceMockClient{lookup: func(_ context.Context, req *pb.EnvironmentGetOrCreateRequest) (*pb.EnvironmentGetOrCreateResponse, error) {
+				g.Expect(req.GetDeploymentName()).To(Equal(tc.configured))
+				g.Expect(req.GetObjectCreationType()).To(Equal(pb.ObjectCreationType_OBJECT_CREATION_TYPE_UNSPECIFIED))
+				return pb.EnvironmentGetOrCreateResponse_builder{
+					EnvironmentId: "en-" + tc.expectedName,
+					Metadata:      pb.EnvironmentMetadata_builder{Name: tc.expectedName}.Build(),
+				}.Build(), nil
+			}}
+			client, err := NewClientWithOptions(&ClientParams{
+				ControlPlaneClient: mock,
+				TokenID:            "test-token-id", TokenSecret: "test-token-secret",
+				Environment: tc.configured, Config: &config{},
+			})
+			g.Expect(err).ShouldNot(HaveOccurred())
+			t.Cleanup(client.Close)
+			env, err := client.Environments.FromContext(t.Context())
+			g.Expect(err).ShouldNot(HaveOccurred())
+			g.Expect(env.EnvironmentID).To(Equal("en-" + tc.expectedName))
+			g.Expect(env.Name).To(Equal(tc.expectedName))
+			g.Expect(env.Apps).NotTo(BeNil())
+		})
+	}
+}
+
+func TestEnvironmentFromContextNotFound(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	mock := &environmentServiceMockClient{lookup: func(context.Context, *pb.EnvironmentGetOrCreateRequest) (*pb.EnvironmentGetOrCreateResponse, error) {
+		return nil, status.Error(codes.NotFound, "lookup failed")
+	}}
+	client := newEnvironmentServiceTestClient(t, mock)
+	env, err := client.Environments.FromContext(t.Context())
+	g.Expect(env).To(BeNil())
+	g.Expect(err).To(Equal(NotFoundError{"Environment 'dev' not found"}))
+}

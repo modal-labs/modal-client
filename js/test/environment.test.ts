@@ -584,6 +584,58 @@ test.each([Status.NOT_FOUND, Status.PERMISSION_DENIED])(
   },
 );
 
+test("EnvironmentFromContext uses the client's environment", async () => {
+  const mock = new MockGrpcClient();
+  const client = new ModalClient({
+    cpClient: mock as any,
+    tokenId: "test-token-id",
+    tokenSecret: "test-token-secret",
+    environment: "dev",
+  });
+  onTestFinished(() => client.close());
+  mock.handleUnary("/EnvironmentGetOrCreate", (req: unknown) => {
+    expect(req).toMatchObject(
+      EnvironmentGetOrCreateRequest.create({
+        deploymentName: "dev",
+        objectCreationType: ObjectCreationType.OBJECT_CREATION_TYPE_UNSPECIFIED,
+      }),
+    );
+    return EnvironmentGetOrCreateResponse.create({
+      environmentId: "en-dev",
+      metadata: { name: "dev" },
+    });
+  });
+
+  const environment = await client.environments.fromContext();
+  expect(environment).toBeInstanceOf(Environment);
+  expect(environment.environmentId).toBe("en-dev");
+  expect(environment.name).toBe("dev");
+  mock.assertExhausted();
+});
+
+test("EnvironmentFromContext throws NotFoundError for a missing environment", async () => {
+  const mock = new MockGrpcClient();
+  const client = new ModalClient({
+    cpClient: mock as any,
+    tokenId: "test-token-id",
+    tokenSecret: "test-token-secret",
+    environment: "missing",
+  });
+  onTestFinished(() => client.close());
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    throw new ClientError(
+      "/EnvironmentGetOrCreate",
+      Status.NOT_FOUND,
+      "Lookup failed",
+    );
+  });
+
+  await expect(client.environments.fromContext()).rejects.toThrow(
+    new NotFoundError("Environment 'missing' not found"),
+  );
+  mock.assertExhausted();
+});
+
 test("EnvironmentAppsList propagates RPC errors", async () => {
   const { mockClient: client, mockCpClient: mock } = createMockModalClients();
   onTestFinished(() => client.close());

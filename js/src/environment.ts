@@ -51,11 +51,37 @@ export class EnvironmentService {
     params: EnvironmentFromNameParams = {},
   ): Promise<Environment> {
     checkEnvironmentName(name, true);
+    return this.#getOrCreate(name, params.createIfMissing ?? false);
+  }
+
+  /**
+   * Look up an Environment object using the current context.
+   *
+   * This method returns the Environment that is defined by the local configuration
+   * (i.e., the `environment` passed to the {@link ModalClient}, your active profile, or the
+   * `MODAL_ENVIRONMENT` environment variable), or it fetches the default environment from
+   * the server when not defined locally. If called inside a Modal container, it will return
+   * the Environment that container is associated with.
+   *
+   * ```typescript
+   * const environment = await client.environments.fromContext();
+   * console.log(environment.environmentId, environment.name);
+   * ```
+   */
+  async fromContext(): Promise<Environment> {
+    // An empty name falls back to the server's default environment.
+    return this.#getOrCreate(this.#client.environmentName(), false);
+  }
+
+  async #getOrCreate(
+    name: string,
+    createIfMissing: boolean,
+  ): Promise<Environment> {
     try {
       const resp = await this.#client.cpClient.environmentGetOrCreate(
         EnvironmentGetOrCreateRequest.create({
           deploymentName: name,
-          objectCreationType: params.createIfMissing
+          objectCreationType: createIfMissing
             ? ObjectCreationType.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
             : ObjectCreationType.OBJECT_CREATION_TYPE_UNSPECIFIED,
         }),

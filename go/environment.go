@@ -39,8 +39,30 @@ func (s *EnvironmentService) FromName(ctx context.Context, name string, params *
 	if err := checkEnvironmentName(name, true); err != nil {
 		return nil, err
 	}
+	return s.getOrCreate(ctx, name, params != nil && params.CreateIfMissing)
+}
+
+// FromContext looks up an Environment object using the current context.
+//
+// This method returns the Environment that is defined by the local configuration
+// (i.e., the Environment set in [ClientParams], your active profile, or the
+// MODAL_ENVIRONMENT environment variable), or it fetches the default environment
+// from the server when not defined locally. If called inside a Modal container,
+// it will return the Environment that container is associated with.
+//
+//	env, err := client.Environments.FromContext(ctx)
+//	if err != nil {
+//		return err
+//	}
+//	fmt.Println(env.EnvironmentID, env.Name)
+func (s *EnvironmentService) FromContext(ctx context.Context) (*Environment, error) {
+	// An empty name falls back to the server's default environment.
+	return s.getOrCreate(ctx, s.client.profile.Environment, false)
+}
+
+func (s *EnvironmentService) getOrCreate(ctx context.Context, name string, createIfMissing bool) (*Environment, error) {
 	creationType := pb.ObjectCreationType_OBJECT_CREATION_TYPE_UNSPECIFIED
-	if params != nil && params.CreateIfMissing {
+	if createIfMissing {
 		creationType = pb.ObjectCreationType_OBJECT_CREATION_TYPE_CREATE_IF_MISSING
 	}
 	resp, err := s.client.cpClient.EnvironmentGetOrCreate(ctx, pb.EnvironmentGetOrCreateRequest_builder{

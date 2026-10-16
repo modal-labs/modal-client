@@ -8,5 +8,9 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## JS
 
+- Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
+
 ## Go
+
+- Added `client.Environments.FromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 

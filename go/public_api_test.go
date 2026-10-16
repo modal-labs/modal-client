@@ -31,6 +31,7 @@ import (
 // *XxxParams rule. These implement standard interfaces or are simple accessors
 // that would gain no benefit from an options struct.
 var skipMethods = map[string]string{
+	"EnvironmentService.FromContext":   "resolves the Environment from the client configuration, with no configuration options",
 	"EnvironmentObjectsService.List":   "lists all Environments for the client, with no configuration options",
 	"EnvironmentObjectsService.Delete": "deletes the named Environment, with no configuration options",
 	"EnvironmentAppsService.List":      "the Environment fixes the listing scope, with no configuration options",
