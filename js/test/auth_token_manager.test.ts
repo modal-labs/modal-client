@@ -90,21 +90,32 @@ describe("AuthTokenManager", () => {
     });
   });
 
-  test("TestAuthToken_FetchOnlyRetriesWithoutCachedToken", async () => {
-    const token = createTestJWT(Math.floor(Date.now() / 1000) + 3600);
+  test("TestAuthToken_FetchOnlyRetriesWithoutValidCachedToken", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = createTestJWT(now + 3600);
     mockClient.setAuthToken(token);
 
+    // No cached token: a failure would be user-visible, so retry.
     await expect(manager.getToken()).resolves.toBe(token);
     expect(mockClient.authTokenGet.mock.calls[0][1]).toEqual({
       retries: AUTH_TOKEN_GET_MAX_RETRIES,
       timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
     });
 
-    const expiredToken = createTestJWT(Math.floor(Date.now() / 1000) - 60);
-    manager.setToken(expiredToken, Math.floor(Date.now() / 1000) - 60);
+    // Valid token past its refresh point: the cached token is a usable fallback, so one attempt.
+    manager.setToken(createTestJWT(now + 3600), now + 3600, now - 1);
     await expect(manager.getToken()).resolves.toBe(token);
     expect(mockClient.authTokenGet.mock.calls[1][1]).toEqual({
       retries: 0,
+      timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
+    });
+
+    // Expired token: the cached token is not a usable fallback, so retry.
+    const expiredToken = createTestJWT(now - 60);
+    manager.setToken(expiredToken, now - 60);
+    await expect(manager.getToken()).resolves.toBe(token);
+    expect(mockClient.authTokenGet.mock.calls[2][1]).toEqual({
+      retries: AUTH_TOKEN_GET_MAX_RETRIES,
       timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
     });
   });
@@ -210,19 +221,19 @@ describe("AuthTokenManager", () => {
     await expect(manager.getToken()).rejects.toThrow("server blip");
   });
 
-  test("TestAuthToken_ExpiredRefreshBackoffClearsRefreshPromise", async () => {
+  test("TestAuthToken_RefreshBackoffClearsRefreshPromise", async () => {
     vi.useFakeTimers();
     try {
       const baseTime = new Date("2025-01-01T00:00:00Z");
       vi.setSystemTime(baseTime);
       const now = Math.floor(baseTime.getTime() / 1000);
-      const expiredToken = createTestJWT(now - 60);
-      const refreshedToken = createTestJWT(now + 3600);
-      manager.setToken(expiredToken, now - 60);
+      const cachedToken = createTestJWT(now + 3600);
+      const refreshedToken = createTestJWT(now + 7200);
+      manager.setToken(cachedToken, now + 3600, now - 1);
       mockClient.authTokenGet.mockRejectedValueOnce(new Error("server blip"));
 
-      await expect(manager.getToken()).resolves.toBe(expiredToken);
-      await expect(manager.getToken()).resolves.toBe(expiredToken);
+      await expect(manager.getToken()).resolves.toBe(cachedToken);
+      await expect(manager.getToken()).resolves.toBe(cachedToken);
       expect(mockClient.authTokenGet).toHaveBeenCalledTimes(1);
 
       mockClient.setAuthToken(refreshedToken);
@@ -233,6 +244,18 @@ describe("AuthTokenManager", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test("TestAuthToken_ExpiredIgnoresBackoff", async () => {
+    // An expired cached token is refreshed right away, even during the backoff from an earlier failure.
+    const now = Math.floor(Date.now() / 1000);
+    const freshToken = createTestJWT(now + 3600);
+    manager.setToken(createTestJWT(now - 60), now - 60);
+    manager["retryAfter"] = Date.now() + 60 * 1000;
+    mockClient.setAuthToken(freshToken);
+
+    await expect(manager.getToken()).resolves.toBe(freshToken);
+    expect(mockClient.authTokenGet).toHaveBeenCalledTimes(1);
   });
 
   test("TestAuthToken_ExpiredTokenIsDueForRefreshImmediately", async () => {

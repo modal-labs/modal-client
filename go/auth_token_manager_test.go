@@ -158,7 +158,7 @@ func TestAuthTokenManager_CustomFetcher(t *testing.T) {
 	g.Expect(receivedOpts).Should(gomega.HaveLen(2))
 }
 
-func TestAuthTokenManager_FetchOnlyRetriesWithoutCachedToken(t *testing.T) {
+func TestAuthTokenManager_FetchOnlyRetriesWithoutValidCachedToken(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
@@ -167,39 +167,38 @@ func TestAuthTokenManager_FetchOnlyRetriesWithoutCachedToken(t *testing.T) {
 	mockClient.setAuthToken(token)
 	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
 
+	expectLastFetchOpts := func(expectedRetries int) {
+		t.Helper()
+		var timeoutFound, retriesFound bool
+		for _, opt := range mockClient.getLastOpts() {
+			switch option := opt.(type) {
+			case timeoutCallOption:
+				timeoutFound = option.timeout == authTokenGetTimeout
+			case retryCallOption:
+				retriesFound = option.retries != nil && *option.retries == expectedRetries
+			}
+		}
+		g.Expect(timeoutFound).Should(gomega.BeTrue())
+		g.Expect(retriesFound).Should(gomega.BeTrue())
+	}
+
+	// No cached token: a failure would be user-visible, so retry.
 	_, err := manager.GetToken(t.Context())
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	expectLastFetchOpts(defaultRetryAttempts)
 
-	opts := mockClient.getLastOpts()
-	var timeoutFound, retriesFound bool
-	for _, opt := range opts {
-		switch option := opt.(type) {
-		case timeoutCallOption:
-			timeoutFound = option.timeout == authTokenGetTimeout
-		case retryCallOption:
-			retriesFound = option.retries != nil && *option.retries == defaultRetryAttempts
-		}
-	}
-	g.Expect(timeoutFound).Should(gomega.BeTrue())
-	g.Expect(retriesFound).Should(gomega.BeTrue())
+	// Valid token past its refresh point: the cached token is a usable fallback, so one attempt.
+	now := time.Now().Unix()
+	manager.setTokenWithRefreshAt(createTestJWT(now+3600), now+3600, now-1)
+	_, err = manager.FetchToken(t.Context())
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	expectLastFetchOpts(0)
 
+	// Expired token: the cached token is not a usable fallback, so retry.
 	manager.SetToken(createTestJWT(time.Now().Unix()-60), time.Now().Unix()-60)
 	_, err = manager.FetchToken(t.Context())
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-	opts = mockClient.getLastOpts()
-	timeoutFound = false
-	retriesFound = false
-	for _, opt := range opts {
-		switch option := opt.(type) {
-		case timeoutCallOption:
-			timeoutFound = option.timeout == authTokenGetTimeout
-		case retryCallOption:
-			retriesFound = option.retries != nil && *option.retries == 0
-		}
-	}
-	g.Expect(timeoutFound).Should(gomega.BeTrue())
-	g.Expect(retriesFound).Should(gomega.BeTrue())
+	expectLastFetchOpts(defaultRetryAttempts)
 }
 
 func TestAuthTokenManager_IsExpired(t *testing.T) {
@@ -281,26 +280,46 @@ func TestAuthTokenManager_GetToken_EmptyResponse(t *testing.T) {
 	g.Expect(err).Should(gomega.HaveOccurred())
 }
 
-func TestAuthTokenManager_ExpiredRefreshFailureBacksOff(t *testing.T) {
+func TestAuthTokenManager_RefreshFailureBacksOff(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
 	mockClient := newMockAuthClient()
 	mockClient.setAuthTokenError(fmt.Errorf("server blip"))
 	now := time.Now().Unix()
-	expiredToken := createTestJWT(now - 60)
+	cachedToken := createTestJWT(now + 3600)
 	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
-	manager.SetToken(expiredToken, now-60)
+	manager.setTokenWithRefreshAt(cachedToken, now+3600, now-1)
 
 	token, err := manager.GetToken(t.Context())
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(token).Should(gomega.Equal(expiredToken))
+	g.Expect(token).Should(gomega.Equal(cachedToken))
 
 	token, err = manager.GetToken(t.Context())
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(token).Should(gomega.Equal(expiredToken))
+	g.Expect(token).Should(gomega.Equal(cachedToken))
 	g.Expect(mockClient.getCallCount()).Should(gomega.Equal(1))
 	g.Expect(manager.inBackoff()).Should(gomega.BeTrue())
+}
+
+func TestAuthTokenManager_ExpiredIgnoresBackoff(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// An expired cached token is refreshed right away, even during the backoff from an earlier failure.
+	mockClient := newMockAuthClient()
+	now := time.Now().Unix()
+	freshToken := createTestJWT(now + 3600)
+	mockClient.setAuthToken(freshToken)
+	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
+	manager.SetToken(createTestJWT(now-60), now-60)
+	retryAfter := time.Now().Add(time.Minute)
+	manager.retryAfter.Store(&retryAfter)
+
+	token, err := manager.GetToken(t.Context())
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(token).Should(gomega.Equal(freshToken))
+	g.Expect(mockClient.getCallCount()).Should(gomega.Equal(1))
 }
 
 func TestAuthTokenManager_NoCachedTokenRefreshFailureReturnsError(t *testing.T) {
@@ -321,17 +340,17 @@ func TestAuthTokenManager_EmptyResponseBacksOff(t *testing.T) {
 
 	mockClient := newMockAuthClient()
 	now := time.Now().Unix()
-	expiredToken := createTestJWT(now - 60)
+	cachedToken := createTestJWT(now + 3600)
 	manager := newAuthTokenManager(authTokenGetFetcher(mockClient), slog.Default())
-	manager.SetToken(expiredToken, now-60)
+	manager.setTokenWithRefreshAt(cachedToken, now+3600, now-1)
 
 	token, err := manager.GetToken(t.Context())
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(token).Should(gomega.Equal(expiredToken))
+	g.Expect(token).Should(gomega.Equal(cachedToken))
 
 	token, err = manager.GetToken(t.Context())
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(token).Should(gomega.Equal(expiredToken))
+	g.Expect(token).Should(gomega.Equal(cachedToken))
 	g.Expect(mockClient.getCallCount()).Should(gomega.Equal(1))
 	g.Expect(manager.inBackoff()).Should(gomega.BeTrue())
 }

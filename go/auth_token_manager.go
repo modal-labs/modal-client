@@ -205,8 +205,9 @@ func (m *authTokenManager) sharedRefreshToken(ctx context.Context) (string, erro
 // outcome is delivered on.
 func (m *authTokenManager) startSharedRefresh(ctx context.Context) <-chan singleflight.Result {
 	return m.refreshGroup.DoChan("refresh", func() (any, error) {
-		// Maybe another goroutine refreshed while this call was being shared.
-		if data := m.tokenAndExpiry.Load(); data.token != "" && !m.shouldRefresh(*data) {
+		// Maybe another goroutine refreshed while this call was being shared, or we're cooling down after a failure.
+		// The cooldown only applies while the cached token is not expired.
+		if data := m.tokenAndExpiry.Load(); data.token != "" && !isExpired(*data) && !m.shouldRefresh(*data) {
 			return data.token, nil
 		}
 		rpcCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authTokenRefreshTimeout)
@@ -226,8 +227,8 @@ func tokenFromRefresh(result singleflight.Result) (string, error) {
 // FetchToken fetches a new token and stores it.
 func (m *authTokenManager) FetchToken(ctx context.Context) (string, error) {
 	retries := 0
-	if m.tokenAndExpiry.Load().token == "" {
-		// No cached token to fall back on, so a failure is user-visible: retry transient errors.
+	if data := m.tokenAndExpiry.Load(); data.token == "" || isExpired(*data) {
+		// No valid cached token to fall back on, so a failure is user-visible: retry transient errors.
 		// Otherwise one attempt, and retryAfter handles the cooldown.
 		retries = defaultRetryAttempts
 	}

@@ -103,10 +103,11 @@ export class AuthTokenManager {
   /**
    * Ensures only one fetch is in progress at a time. Concurrent callers
    * await the same promise. Includes a double-check so that if another
-   * caller already refreshed, we skip the RPC.
+   * caller already refreshed, or we're cooling down after a failure, we skip
+   * the RPC. The cooldown only applies while the cached token is not expired.
    */
   private async lockedRefreshToken(): Promise<string> {
-    if (this.currentToken && !this.shouldRefresh()) {
+    if (this.currentToken && !this.isExpired() && !this.shouldRefresh()) {
       return this.currentToken;
     }
     if (!this.refreshPromise) {
@@ -127,11 +128,11 @@ export class AuthTokenManager {
    */
   private async fetchToken(): Promise<void> {
     try {
-      const hasCachedToken = !!this.currentToken;
+      const hasValidCachedToken = !!this.currentToken && !this.isExpired();
       const token = await this.fetch({
-        // No cached token to fall back on, so a failure is user-visible: retry transient errors.
+        // No valid cached token to fall back on, so a failure is user-visible: retry transient errors.
         // Otherwise one attempt, and retryAfter handles the cooldown.
-        retries: hasCachedToken ? 0 : AUTH_TOKEN_GET_MAX_RETRIES,
+        retries: hasValidCachedToken ? 0 : AUTH_TOKEN_GET_MAX_RETRIES,
         timeoutMs: AUTH_TOKEN_GET_TIMEOUT_MS,
       });
       if (!token) {
