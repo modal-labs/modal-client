@@ -3133,6 +3133,8 @@ message ImageListTagsItem {
   string revision_id = 3;
   double created_at = 4;
   double updated_at = 5;
+  // Display name of whoever published the image this tag points at.
+  string last_published_by = 6;
 }
 
 message ImageListTagsRequest {

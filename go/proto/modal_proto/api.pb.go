@@ -37952,14 +37952,15 @@ func (b0 ImageJoinStreamingResponse_builder) Build() *ImageJoinStreamingResponse
 }
 
 type ImageListTagsItem struct {
-	state                 protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Tag        string                 `protobuf:"bytes,1,opt,name=tag,proto3"`
-	xxx_hidden_ImageId    string                 `protobuf:"bytes,2,opt,name=image_id,json=imageId,proto3"`
-	xxx_hidden_RevisionId string                 `protobuf:"bytes,3,opt,name=revision_id,json=revisionId,proto3"`
-	xxx_hidden_CreatedAt  float64                `protobuf:"fixed64,4,opt,name=created_at,json=createdAt,proto3"`
-	xxx_hidden_UpdatedAt  float64                `protobuf:"fixed64,5,opt,name=updated_at,json=updatedAt,proto3"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Tag             string                 `protobuf:"bytes,1,opt,name=tag,proto3"`
+	xxx_hidden_ImageId         string                 `protobuf:"bytes,2,opt,name=image_id,json=imageId,proto3"`
+	xxx_hidden_RevisionId      string                 `protobuf:"bytes,3,opt,name=revision_id,json=revisionId,proto3"`
+	xxx_hidden_CreatedAt       float64                `protobuf:"fixed64,4,opt,name=created_at,json=createdAt,proto3"`
+	xxx_hidden_UpdatedAt       float64                `protobuf:"fixed64,5,opt,name=updated_at,json=updatedAt,proto3"`
+	xxx_hidden_LastPublishedBy string                 `protobuf:"bytes,6,opt,name=last_published_by,json=lastPublishedBy,proto3"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *ImageListTagsItem) Reset() {
@@ -38022,6 +38023,13 @@ func (x *ImageListTagsItem) GetUpdatedAt() float64 {
 	return 0
 }
 
+func (x *ImageListTagsItem) GetLastPublishedBy() string {
+	if x != nil {
+		return x.xxx_hidden_LastPublishedBy
+	}
+	return ""
+}
+
 func (x *ImageListTagsItem) SetTag(v string) {
 	x.xxx_hidden_Tag = v
 }
@@ -38042,6 +38050,10 @@ func (x *ImageListTagsItem) SetUpdatedAt(v float64) {
 	x.xxx_hidden_UpdatedAt = v
 }
 
+func (x *ImageListTagsItem) SetLastPublishedBy(v string) {
+	x.xxx_hidden_LastPublishedBy = v
+}
+
 type ImageListTagsItem_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -38050,6 +38062,8 @@ type ImageListTagsItem_builder struct {
 	RevisionId string
 	CreatedAt  float64
 	UpdatedAt  float64
+	// Display name of whoever published the image this tag points at.
+	LastPublishedBy string
 }
 
 func (b0 ImageListTagsItem_builder) Build() *ImageListTagsItem {
@@ -38061,6 +38075,7 @@ func (b0 ImageListTagsItem_builder) Build() *ImageListTagsItem {
 	x.xxx_hidden_RevisionId = b.RevisionId
 	x.xxx_hidden_CreatedAt = b.CreatedAt
 	x.xxx_hidden_UpdatedAt = b.UpdatedAt
+	x.xxx_hidden_LastPublishedBy = b.LastPublishedBy
 	return m0
 }
 
@@ -76356,7 +76371,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\ttask_logs\x18\x02 \x03(\v2\x16.modal.client.TaskLogsR\btaskLogs\x12\x19\n" +
 	"\bentry_id\x18\x03 \x01(\tR\aentryId\x12\x10\n" +
 	"\x03eof\x18\x04 \x01(\bR\x03eof\x127\n" +
-	"\bmetadata\x18\x05 \x01(\v2\x1b.modal.client.ImageMetadataR\bmetadata\"\x9f\x01\n" +
+	"\bmetadata\x18\x05 \x01(\v2\x1b.modal.client.ImageMetadataR\bmetadata\"\xcb\x01\n" +
 	"\x11ImageListTagsItem\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x19\n" +
 	"\bimage_id\x18\x02 \x01(\tR\aimageId\x12\x1f\n" +
@@ -76365,7 +76380,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\x01R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\x01R\tupdatedAt\"\xbb\x01\n" +
+	"updated_at\x18\x05 \x01(\x01R\tupdatedAt\x12*\n" +
+	"\x11last_published_by\x18\x06 \x01(\tR\x0flastPublishedBy\"\xbb\x01\n" +
 	"\x14ImageListTagsRequest\x12)\n" +
 	"\x10environment_name\x18\x01 \x01(\tR\x0fenvironmentName\x12\x1d\n" +
 	"\n" +
