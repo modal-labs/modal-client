@@ -230,7 +230,7 @@ type SandboxCreateParams struct {
 	BlockNetwork               bool                         // Whether to block all network access from the Sandbox.
 	OutboundCIDRAllowlist      *Allowlist                   // CIDRs the Sandbox is allowed to access. Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
 	OutboundDomainAllowlist    *Allowlist                   // Domain names the Sandbox is allowed to access (supports wildcard prefixes like *.example.com). Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
-	InboundCIDRAllowlist       []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
+	InboundCIDRAllowlist       []string                     // List of CIDRs allowed to connect inbound to the Sandbox (encrypted tunnels and connection tokens). If empty, all IPs are allowed.
 	I6PN                       bool                         // Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can reach each other at their i6pn.modal.local address. Pin every Sandbox in the group to the same specific region. Cannot be used with BlockNetwork.
 	Cloud                      string                       // Cloud provider to run the Sandbox on.
 	Regions                    []string                     // Region(s) to run the Sandbox on.

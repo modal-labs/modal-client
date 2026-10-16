@@ -484,8 +484,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 wildcard prefixes (``*.``); a bare ``"*"`` allows all domains. The outbound policy
                 can be replaced later via `Sandbox._experimental_set_outbound_network_policy`.
             inbound_cidr_allowlist:
-                List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens). If None,
-                all CIDRs are allowed.
+                List of CIDRs allowed to connect inbound to the sandbox (encrypted tunnels and connection tokens).
+                If None, all CIDRs are allowed.
             _experimental_outbound_policy: Configuration for replacing headers in outbound HTTPS requests from
                 the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never
                 visible to the workload. See `modal.experimental.OutboundPolicy`. This API is experimental and

@@ -427,7 +427,7 @@ export type SandboxCreateParams = {
    * EXPERIMENTAL: the API is subject to change. */
   experimentalOutboundPolicy?: ExperimentalOutboundPolicy;
 
-  /** List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
+  /** List of CIDRs allowed to connect inbound to the Sandbox (encrypted tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
   inboundCidrAllowlist?: string[];
 
   /** Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can address each
