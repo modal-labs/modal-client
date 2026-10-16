@@ -244,6 +244,7 @@ enum FunctionCallInputStatus {
   FUNCTION_CALL_INPUT_STATUS_INTERNAL_FAILURE = 8;
   FUNCTION_CALL_INPUT_STATUS_IDLE_TIMEOUT = 9;
   FUNCTION_CALL_INPUT_STATUS_MEMORY_MANAGER_EVICTION = 10;
+  FUNCTION_CALL_INPUT_STATUS_MEMORY_THRASHING_EVICTION = 11;
 }
 
 enum FunctionCallInvocationType {
@@ -2979,6 +2980,8 @@ message GenericResult {  // Used for both tasks and function outputs
     // Used when a task was killed because it was evicted by the memory manager when the worker was
     // under memory pressure.
     GENERIC_STATUS_MEMORY_MANAGER_EVICTION = 8;
+    // Used when a task was killed by the memory manager after thrashing at its own memory limit.
+    GENERIC_STATUS_MEMORY_THRASHING_EVICTION = 9;
   }
 
   GenericStatus status = 1; // Status of the task or function output.
