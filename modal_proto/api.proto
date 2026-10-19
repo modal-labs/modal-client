@@ -205,6 +205,8 @@ enum EnvironmentRole {
   ENVIRONMENT_ROLE_CONTRIBUTOR = 2;
   ENVIRONMENT_ROLE_NO_ACCESS = 3;
   ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER = 4;
+  // Assignment uses a workspace role definition (`rd-`), not a built-in role.
+  ENVIRONMENT_ROLE_CUSTOM = 5;
 }
 
 // Creation-time environment classification. Captures whether an environment
@@ -1903,6 +1905,8 @@ message EnvironmentRoleSetRequest {
   string role_str = 5;  // String representation from the CLI; parsed when role is unspecified
   string service_user_name = 6;
   string environment_name = 7; // Sent by the client when an environment ID is unavailable
+  // Custom role (`rd-`).
+  string environment_role_definition_id = 8;
 }
 
 message EnvironmentSetBudgetRequest {
@@ -4695,6 +4699,8 @@ message ServiceUser {
     EnvironmentRole role = 2;
     string environment_name = 3;
     string role_str = 4;
+    // Custom role (`rd-`). Mutually exclusive with a built-in role.
+    string environment_role_definition_id = 5;
   }
 
   string name = 1;
@@ -5088,6 +5094,8 @@ message UserGroupEnvironmentSetRequest {
   string environment_id = 1;
   string user_group_id = 2;
   EnvironmentRole role = 3;
+  // Custom role (`rd-`).
+  string environment_role_definition_id = 4;
 }
 
 message UserIdentity {

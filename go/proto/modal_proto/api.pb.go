@@ -1081,6 +1081,8 @@ const (
 	EnvironmentRole_ENVIRONMENT_ROLE_CONTRIBUTOR                 EnvironmentRole = 2
 	EnvironmentRole_ENVIRONMENT_ROLE_NO_ACCESS                   EnvironmentRole = 3
 	EnvironmentRole_ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER EnvironmentRole = 4
+	// Assignment uses a workspace role definition (`rd-`), not a built-in role.
+	EnvironmentRole_ENVIRONMENT_ROLE_CUSTOM EnvironmentRole = 5
 )
 
 // Enum value maps for EnvironmentRole.
@@ -1091,6 +1093,7 @@ var (
 		2: "ENVIRONMENT_ROLE_CONTRIBUTOR",
 		3: "ENVIRONMENT_ROLE_NO_ACCESS",
 		4: "ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER",
+		5: "ENVIRONMENT_ROLE_CUSTOM",
 	}
 	EnvironmentRole_value = map[string]int32{
 		"ENVIRONMENT_ROLE_UNSPECIFIED":                 0,
@@ -1098,6 +1101,7 @@ var (
 		"ENVIRONMENT_ROLE_CONTRIBUTOR":                 2,
 		"ENVIRONMENT_ROLE_NO_ACCESS":                   3,
 		"ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER": 4,
+		"ENVIRONMENT_ROLE_CUSTOM":                      5,
 	}
 )
 
@@ -22942,16 +22946,17 @@ func (b0 EnvironmentMetadata_builder) Build() *EnvironmentMetadata {
 }
 
 type EnvironmentRoleSetRequest struct {
-	state                      protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_EnvironmentId   string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
-	xxx_hidden_UserId          string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3"`
-	xxx_hidden_ServiceUserId   string                 `protobuf:"bytes,3,opt,name=service_user_id,json=serviceUserId,proto3"`
-	xxx_hidden_Role            EnvironmentRole        `protobuf:"varint,4,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
-	xxx_hidden_RoleStr         string                 `protobuf:"bytes,5,opt,name=role_str,json=roleStr,proto3"`
-	xxx_hidden_ServiceUserName string                 `protobuf:"bytes,6,opt,name=service_user_name,json=serviceUserName,proto3"`
-	xxx_hidden_EnvironmentName string                 `protobuf:"bytes,7,opt,name=environment_name,json=environmentName,proto3"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state                                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_EnvironmentId               string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
+	xxx_hidden_UserId                      string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3"`
+	xxx_hidden_ServiceUserId               string                 `protobuf:"bytes,3,opt,name=service_user_id,json=serviceUserId,proto3"`
+	xxx_hidden_Role                        EnvironmentRole        `protobuf:"varint,4,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
+	xxx_hidden_RoleStr                     string                 `protobuf:"bytes,5,opt,name=role_str,json=roleStr,proto3"`
+	xxx_hidden_ServiceUserName             string                 `protobuf:"bytes,6,opt,name=service_user_name,json=serviceUserName,proto3"`
+	xxx_hidden_EnvironmentName             string                 `protobuf:"bytes,7,opt,name=environment_name,json=environmentName,proto3"`
+	xxx_hidden_EnvironmentRoleDefinitionId string                 `protobuf:"bytes,8,opt,name=environment_role_definition_id,json=environmentRoleDefinitionId,proto3"`
+	unknownFields                          protoimpl.UnknownFields
+	sizeCache                              protoimpl.SizeCache
 }
 
 func (x *EnvironmentRoleSetRequest) Reset() {
@@ -23028,6 +23033,13 @@ func (x *EnvironmentRoleSetRequest) GetEnvironmentName() string {
 	return ""
 }
 
+func (x *EnvironmentRoleSetRequest) GetEnvironmentRoleDefinitionId() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentRoleDefinitionId
+	}
+	return ""
+}
+
 func (x *EnvironmentRoleSetRequest) SetEnvironmentId(v string) {
 	x.xxx_hidden_EnvironmentId = v
 }
@@ -23056,6 +23068,10 @@ func (x *EnvironmentRoleSetRequest) SetEnvironmentName(v string) {
 	x.xxx_hidden_EnvironmentName = v
 }
 
+func (x *EnvironmentRoleSetRequest) SetEnvironmentRoleDefinitionId(v string) {
+	x.xxx_hidden_EnvironmentRoleDefinitionId = v
+}
+
 type EnvironmentRoleSetRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -23066,6 +23082,8 @@ type EnvironmentRoleSetRequest_builder struct {
 	RoleStr         string
 	ServiceUserName string
 	EnvironmentName string
+	// Custom role (`rd-`).
+	EnvironmentRoleDefinitionId string
 }
 
 func (b0 EnvironmentRoleSetRequest_builder) Build() *EnvironmentRoleSetRequest {
@@ -23079,6 +23097,7 @@ func (b0 EnvironmentRoleSetRequest_builder) Build() *EnvironmentRoleSetRequest {
 	x.xxx_hidden_RoleStr = b.RoleStr
 	x.xxx_hidden_ServiceUserName = b.ServiceUserName
 	x.xxx_hidden_EnvironmentName = b.EnvironmentName
+	x.xxx_hidden_EnvironmentRoleDefinitionId = b.EnvironmentRoleDefinitionId
 	return m0
 }
 
@@ -61863,12 +61882,13 @@ func (b0 UserActionInfo_builder) Build() *UserActionInfo {
 }
 
 type UserGroupEnvironmentSetRequest struct {
-	state                    protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_EnvironmentId string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
-	xxx_hidden_UserGroupId   string                 `protobuf:"bytes,2,opt,name=user_group_id,json=userGroupId,proto3"`
-	xxx_hidden_Role          EnvironmentRole        `protobuf:"varint,3,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_EnvironmentId               string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
+	xxx_hidden_UserGroupId                 string                 `protobuf:"bytes,2,opt,name=user_group_id,json=userGroupId,proto3"`
+	xxx_hidden_Role                        EnvironmentRole        `protobuf:"varint,3,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
+	xxx_hidden_EnvironmentRoleDefinitionId string                 `protobuf:"bytes,4,opt,name=environment_role_definition_id,json=environmentRoleDefinitionId,proto3"`
+	unknownFields                          protoimpl.UnknownFields
+	sizeCache                              protoimpl.SizeCache
 }
 
 func (x *UserGroupEnvironmentSetRequest) Reset() {
@@ -61917,6 +61937,13 @@ func (x *UserGroupEnvironmentSetRequest) GetRole() EnvironmentRole {
 	return EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED
 }
 
+func (x *UserGroupEnvironmentSetRequest) GetEnvironmentRoleDefinitionId() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentRoleDefinitionId
+	}
+	return ""
+}
+
 func (x *UserGroupEnvironmentSetRequest) SetEnvironmentId(v string) {
 	x.xxx_hidden_EnvironmentId = v
 }
@@ -61929,12 +61956,18 @@ func (x *UserGroupEnvironmentSetRequest) SetRole(v EnvironmentRole) {
 	x.xxx_hidden_Role = v
 }
 
+func (x *UserGroupEnvironmentSetRequest) SetEnvironmentRoleDefinitionId(v string) {
+	x.xxx_hidden_EnvironmentRoleDefinitionId = v
+}
+
 type UserGroupEnvironmentSetRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	EnvironmentId string
 	UserGroupId   string
 	Role          EnvironmentRole
+	// Custom role (`rd-`).
+	EnvironmentRoleDefinitionId string
 }
 
 func (b0 UserGroupEnvironmentSetRequest_builder) Build() *UserGroupEnvironmentSetRequest {
@@ -61944,6 +61977,7 @@ func (b0 UserGroupEnvironmentSetRequest_builder) Build() *UserGroupEnvironmentSe
 	x.xxx_hidden_EnvironmentId = b.EnvironmentId
 	x.xxx_hidden_UserGroupId = b.UserGroupId
 	x.xxx_hidden_Role = b.Role
+	x.xxx_hidden_EnvironmentRoleDefinitionId = b.EnvironmentRoleDefinitionId
 	return m0
 }
 
@@ -73805,13 +73839,14 @@ func (b0 ServerRequestFetchRequest_Tail_builder) Build() *ServerRequestFetchRequ
 }
 
 type ServiceUser_EnvironmentRoleEntry struct {
-	state                      protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_EnvironmentId   string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
-	xxx_hidden_Role            EnvironmentRole        `protobuf:"varint,2,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
-	xxx_hidden_EnvironmentName string                 `protobuf:"bytes,3,opt,name=environment_name,json=environmentName,proto3"`
-	xxx_hidden_RoleStr         string                 `protobuf:"bytes,4,opt,name=role_str,json=roleStr,proto3"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state                                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_EnvironmentId               string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
+	xxx_hidden_Role                        EnvironmentRole        `protobuf:"varint,2,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
+	xxx_hidden_EnvironmentName             string                 `protobuf:"bytes,3,opt,name=environment_name,json=environmentName,proto3"`
+	xxx_hidden_RoleStr                     string                 `protobuf:"bytes,4,opt,name=role_str,json=roleStr,proto3"`
+	xxx_hidden_EnvironmentRoleDefinitionId string                 `protobuf:"bytes,5,opt,name=environment_role_definition_id,json=environmentRoleDefinitionId,proto3"`
+	unknownFields                          protoimpl.UnknownFields
+	sizeCache                              protoimpl.SizeCache
 }
 
 func (x *ServiceUser_EnvironmentRoleEntry) Reset() {
@@ -73867,6 +73902,13 @@ func (x *ServiceUser_EnvironmentRoleEntry) GetRoleStr() string {
 	return ""
 }
 
+func (x *ServiceUser_EnvironmentRoleEntry) GetEnvironmentRoleDefinitionId() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentRoleDefinitionId
+	}
+	return ""
+}
+
 func (x *ServiceUser_EnvironmentRoleEntry) SetEnvironmentId(v string) {
 	x.xxx_hidden_EnvironmentId = v
 }
@@ -73883,6 +73925,10 @@ func (x *ServiceUser_EnvironmentRoleEntry) SetRoleStr(v string) {
 	x.xxx_hidden_RoleStr = v
 }
 
+func (x *ServiceUser_EnvironmentRoleEntry) SetEnvironmentRoleDefinitionId(v string) {
+	x.xxx_hidden_EnvironmentRoleDefinitionId = v
+}
+
 type ServiceUser_EnvironmentRoleEntry_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -73890,6 +73936,8 @@ type ServiceUser_EnvironmentRoleEntry_builder struct {
 	Role            EnvironmentRole
 	EnvironmentName string
 	RoleStr         string
+	// Custom role (`rd-`). Mutually exclusive with a built-in role.
+	EnvironmentRoleDefinitionId string
 }
 
 func (b0 ServiceUser_EnvironmentRoleEntry_builder) Build() *ServiceUser_EnvironmentRoleEntry {
@@ -73900,6 +73948,7 @@ func (b0 ServiceUser_EnvironmentRoleEntry_builder) Build() *ServiceUser_Environm
 	x.xxx_hidden_Role = b.Role
 	x.xxx_hidden_EnvironmentName = b.EnvironmentName
 	x.xxx_hidden_RoleStr = b.RoleStr
+	x.xxx_hidden_EnvironmentRoleDefinitionId = b.EnvironmentRoleDefinitionId
 	return m0
 }
 
@@ -75473,7 +75522,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13EnvironmentMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\bsettings\x18\x02 \x01(\v2!.modal.client.EnvironmentSettingsR\bsettings\x12H\n" +
-	"\x10environment_type\x18\x03 \x01(\x0e2\x1d.modal.client.EnvironmentTypeR\x0fenvironmentType\"\xa8\x02\n" +
+	"\x10environment_type\x18\x03 \x01(\x0e2\x1d.modal.client.EnvironmentTypeR\x0fenvironmentType\"\xed\x02\n" +
 	"\x19EnvironmentRoleSetRequest\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12&\n" +
@@ -75481,7 +75530,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x04role\x18\x04 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\x12\x19\n" +
 	"\brole_str\x18\x05 \x01(\tR\aroleStr\x12*\n" +
 	"\x11service_user_name\x18\x06 \x01(\tR\x0fserviceUserName\x12)\n" +
-	"\x10environment_name\x18\a \x01(\tR\x0fenvironmentName\"\xb7\x01\n" +
+	"\x10environment_name\x18\a \x01(\tR\x0fenvironmentName\x12C\n" +
+	"\x1eenvironment_role_definition_id\x18\b \x01(\tR\x1benvironmentRoleDefinitionId\"\xb7\x01\n" +
 	"\x1bEnvironmentSetBudgetRequest\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x125\n" +
 	"\x14cycle_budget_dollars\x18\x02 \x01(\x01H\x00R\x12cycleBudgetDollars\x88\x01\x01\x12!\n" +
@@ -77457,7 +77507,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12!\n" +
 	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12)\n" +
 	"\x10duration_seconds\x18\x04 \x01(\x01R\x0fdurationSeconds\x12\x16\n" +
-	"\x06status\x18\x05 \x01(\x05R\x06status\"\xf0\x04\n" +
+	"\x06status\x18\x05 \x01(\x05R\x06status\"\xb5\x05\n" +
 	"\vServiceUser\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
 	"\btoken_id\x18\x02 \x01(\tR\atokenId\x12\x1d\n" +
@@ -77474,12 +77524,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x11environment_roles\x18\n" +
 	" \x03(\v2..modal.client.ServiceUser.EnvironmentRoleEntryR\x10environmentRoles\x12\"\n" +
 	"\n" +
-	"expires_at\x18\v \x01(\x01H\x00R\texpiresAt\x88\x01\x01\x1a\xb6\x01\n" +
+	"expires_at\x18\v \x01(\x01H\x00R\texpiresAt\x88\x01\x01\x1a\xfb\x01\n" +
 	"\x14EnvironmentRoleEntry\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x121\n" +
 	"\x04role\x18\x02 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\x12)\n" +
 	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentName\x12\x19\n" +
-	"\brole_str\x18\x04 \x01(\tR\aroleStrB\r\n" +
+	"\brole_str\x18\x04 \x01(\tR\aroleStr\x12C\n" +
+	"\x1eenvironment_role_definition_id\x18\x05 \x01(\tR\x1benvironmentRoleDefinitionIdB\r\n" +
 	"\v_expires_at\"t\n" +
 	"\x18ServiceUserCreateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
@@ -77751,11 +77802,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12&\n" +
 	"\x0fservice_user_id\x18\x04 \x01(\tR\rserviceUserId\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\x01R\ttimestamp\x12!\n" +
-	"\frequested_by\x18\x03 \x01(\tR\vrequestedBy\"\x9e\x01\n" +
+	"\frequested_by\x18\x03 \x01(\tR\vrequestedBy\"\xe3\x01\n" +
 	"\x1eUserGroupEnvironmentSetRequest\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12\"\n" +
 	"\ruser_group_id\x18\x02 \x01(\tR\vuserGroupId\x121\n" +
-	"\x04role\x18\x03 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\"C\n" +
+	"\x04role\x18\x03 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\x12C\n" +
+	"\x1eenvironment_role_definition_id\x18\x04 \x01(\tR\x1benvironmentRoleDefinitionId\"C\n" +
 	"\fUserIdentity\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\"k\n" +
@@ -78180,13 +78232,14 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"7ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_UNSPECIFIED\x10\x00\x127\n" +
 	"3ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_INHERIT\x10\x01\x125\n" +
 	"1ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_BLOCK\x10\x02\x125\n" +
-	"1ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_ALLOW\x10\x03*\xc4\x01\n" +
+	"1ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_ALLOW\x10\x03*\xe1\x01\n" +
 	"\x0fEnvironmentRole\x12 \n" +
 	"\x1cENVIRONMENT_ROLE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17ENVIRONMENT_ROLE_VIEWER\x10\x01\x12 \n" +
 	"\x1cENVIRONMENT_ROLE_CONTRIBUTOR\x10\x02\x12\x1e\n" +
 	"\x1aENVIRONMENT_ROLE_NO_ACCESS\x10\x03\x120\n" +
-	",ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER\x10\x04*y\n" +
+	",ENVIRONMENT_ROLE_MODAL_ADMINISTERED_OBSERVER\x10\x04\x12\x1b\n" +
+	"\x17ENVIRONMENT_ROLE_CUSTOM\x10\x05*y\n" +
 	"\x0fEnvironmentType\x12 \n" +
 	"\x1cENVIRONMENT_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17ENVIRONMENT_TYPE_PUBLIC\x10\x01\x12'\n" +
