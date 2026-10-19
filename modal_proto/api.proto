@@ -1852,9 +1852,14 @@ message EnvironmentGetRolesResponse {
     string avatar_url = 4;
     string user_name = 5;
     string service_user_name = 6;
+    // Built-in role token or custom role name.
+    string role_str = 8;
     EnvironmentRole role = 7;
-    string role_str = 8;  // String representation for the CLI
+    EnvironmentRoleDefinition role_definition = 13;
+
     repeated EnvironmentRole choosable_roles = 9;
+    repeated EnvironmentRoleDefinition choosable_role_definitions = 14;
+
     MemberRole member_role = 10;
     optional bool inherits_default_member_role = 11;
     optional bool has_role_assignment = 12;
@@ -1895,6 +1900,15 @@ message EnvironmentMetadata{
   string name = 1;
   EnvironmentSettings settings = 2;
   EnvironmentType environment_type = 3;
+}
+
+// Workspace custom role. Built-in Viewer and Contributor are not represented here.
+message EnvironmentRoleDefinition {
+  string environment_role_definition_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string permissions = 4;
+  double created_at = 5;
 }
 
 message EnvironmentRoleSetRequest {
@@ -4698,9 +4712,11 @@ message ServiceUser {
     string environment_id = 1;
     EnvironmentRole role = 2;
     string environment_name = 3;
+    // Built-in token, or the custom definition's name.
     string role_str = 4;
-    // Custom role (`rd-`). Mutually exclusive with a built-in role.
-    string environment_role_definition_id = 5;
+    reserved 5; // environment_role_definition_id
+    // Set on reads when `role` is ENVIRONMENT_ROLE_CUSTOM.
+    EnvironmentRoleDefinition environment_role_definition = 6;
   }
 
   string name = 1;
