@@ -333,12 +333,6 @@ enum ProxyIpStatus {
   PROXY_IP_STATUS_UNHEALTHY = 4;
 }
 
-enum ProxyType {
-  PROXY_TYPE_UNSPECIFIED = 0;
-  PROXY_TYPE_LEGACY = 1;
-  PROXY_TYPE_VPROX = 2;
-}
-
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
@@ -1223,7 +1217,6 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string function_id = 2;
   string app_id = 4;
   Function function_def = 7;
-  ProxyInfo proxy_info = 8 [deprecated=true];
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
   string runtime = 11;
@@ -3792,7 +3785,6 @@ message ProxyGetResponse {
 message ProxyInfo {
   string elastic_ip = 1;
   string proxy_key = 2;
-  ProxyType proxy_type = 5;
   bool use_oidc = 6;
   string vprox_node_id = 7;
 }
