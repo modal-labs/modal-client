@@ -1401,6 +1401,38 @@ async def test_snapshot_filesystem_server_retry_policy_respects_deadline(make_ro
 
 
 @pytest.mark.asyncio
+async def test_snapshot_filesystem_throttle_disabled_surfaces_resource_exhausted(make_router_client, monkeypatch):
+    monkeypatch.setenv("MODAL_MAX_THROTTLE_WAIT", "0")
+    client = make_router_client()
+
+    attempts = 0
+
+    class _SnapshotFilesystemMethod:
+        async def __call__(
+            self,
+            request: sr_pb2.TaskSnapshotFilesystemRequest,
+            *,
+            timeout: float | None = None,
+            metadata: dict | None = None,
+        ):
+            nonlocal attempts
+            attempts += 1
+            raise GRPCError(
+                Status.RESOURCE_EXHAUSTED,
+                "rate limit exceeded",
+                details=[api_pb2.RPCRetryPolicy(retry_after_secs=10.0)],
+            )
+
+    monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
+
+    request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
+    with pytest.raises(ResourceExhaustedError):
+        await client.snapshot_filesystem(request, timeout=0.3)
+
+    assert attempts == 1
+
+
+@pytest.mark.asyncio
 async def test_snapshot_filesystem_deadline_aborts_retries(make_router_client, monkeypatch):
     client = make_router_client()
 

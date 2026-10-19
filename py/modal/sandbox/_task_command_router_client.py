@@ -137,7 +137,8 @@ async def call_with_retries_on_transient_errors(
             the caller to decide whether to further translate the surfaced
             exception (e.g., into a TimeoutError) based on the deadline check.
             The caller is also responsible for propagating the remaining budget
-            into `func()` (typically as the per-call gRPC timeout).
+            into `func()` (typically as the per-call gRPC timeout). A server-requested
+            throttle wait that doesn't fit before the deadline raises a TimeoutError.
         rpc_name: RPC name to include in retry diagnostics.
         exec_id: Execution ID to include in retry diagnostics, for correlating
             the retries of concurrent executions.
@@ -170,10 +171,8 @@ async def call_with_retries_on_transient_errors(
             return False
         return fits_deadline(0.0)
 
-    def can_retry_throttled(delay: float) -> bool:
-        if max_throttle_wait is not None and throttle_wait_total + delay > max_throttle_wait:
-            return False
-        return fits_deadline(delay)
+    def fits_throttle_budget(delay: float) -> bool:
+        return max_throttle_wait is None or throttle_wait_total + delay <= max_throttle_wait
 
     async def sleep_and_advance(e: Exception, *, count_failure: bool = True, throttle_delay: float | None = None):
         nonlocal delay_secs, num_retries, num_throttled_retries, throttle_wait_total, consecutive_failures, warned
@@ -215,7 +214,9 @@ async def call_with_retries_on_transient_errors(
             except GRPCError as e:
                 retry_after = server_retry_after(e)
                 if retry_after is not None:
-                    if not can_retry_throttled(retry_after):
+                    if not fits_deadline(retry_after):
+                        raise ModalTimeoutError("Timeout expired") from e
+                    if not fits_throttle_budget(retry_after):
                         raise
                     # Throttling says nothing about the connection's health.
                     await sleep_and_advance(e, count_failure=False, throttle_delay=retry_after)
@@ -1244,13 +1245,7 @@ class TaskCommandRouterClient:
                     timeout_deadline=timeout_deadline,
                 )
         except Exception as exc:
-            # A throttled call whose server-requested wait doesn't fit the remaining
-            # budget is given up without sleeping, so treat it as a timeout too.
-            retry_after = server_retry_after_secs(getattr(exc, "_grpc_details", None)) or 0.0
-            if (
-                time.monotonic() + retry_after >= timeout_deadline
-                or getattr(exc, "_grpc_status", None) == Status.DEADLINE_EXCEEDED
-            ):
+            if time.monotonic() >= timeout_deadline or getattr(exc, "_grpc_status", None) == Status.DEADLINE_EXCEEDED:
                 raise ModalTimeoutError("Timeout expired")
             raise
 
