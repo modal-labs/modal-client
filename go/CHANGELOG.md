@@ -223,7 +223,7 @@ This release primarily contains a number of breaking changes as we continue work
 
 ### 0.5.0 (2025-10-28)
 
-The first beta release of the Modal SDK for Go (graduating from alpha). See the [Migration Guide](../MIGRATION-GUIDE.md) for a detailed list of breaking changes.
+The first beta release of the Modal SDK for Go (graduating from alpha). See the [Migration Guide](https://github.com/modal-labs/modal-client/blob/main/MIGRATION-GUIDE.md) for a detailed list of breaking changes.
 
 - The SDK now exposes a central [`Client`](/docs/sdk/go/latest/Client) object as the main entry point for interacting with Modal resources.
 - The interface for working with Modal object instances (Functions, Sandboxes, Images, etc.) is largely the same as before, with some naming changes.
@@ -277,7 +277,7 @@ Additional new features:
 - Added `NewImageFromId`.
 - Operations on an ephemeral Queue after having called `CloseEphemeral()` will now explicitly fail.
 - Added support for instantiating a Cls with custom options, using [`Cls.WithOptions()`](/docs/sdk/go/latest/Cls#withoptions)/[`.WithConcurrency()`](/docs/sdk/go/latest/Cls#withconcurrency)/[`.WithBatching()`](/docs/sdk/go/latest/Cls#withbatching).
-- Added support for [Named Sandboxes](https://modal.com/docs/guide/sandbox#named-sandboxes) (example in [`examples/sandbox-named/main.go`](./examples/sandbox-named/main.go)).
+- Added support for [Named Sandboxes](https://modal.com/docs/guide/sandbox#named-sandboxes) (example in [`examples/sandbox-named/main.go`](https://github.com/modal-labs/modal-client/blob/main/go/examples/sandbox-named/main.go)).
 - Added support for `VolumeEphemeral()`.
 
 ### 0.0.17 (2025-08-22)

@@ -85,7 +85,7 @@ This release primarily contains a number of breaking changes as we continue work
 - **Breaking:** Removed the deprecated low-level file-handle API: `sandbox.open` and `SandboxFile`. Use the [Sandbox Filesystem API](/docs/sdk/js/latest/Sandbox#sandboxfilesystem) instead: `sandbox.filesystem`.
 - **Breaking:** Removed the deprecated `volume.readOnly` and `volume.isReadOnly`. Use [`withMountOptions({ readOnly: true })`](/docs/sdk/js/latest/Volume#withmountoptions) instead.
 - **Breaking:** Removed the deprecated `cidrAllowlist` parameter from [`sandboxes.create`](/docs/sdk/js/latest/Sandbox#create). Use `outboundCidrAllowlist` instead.
-- **Breaking:** Removed the entire deprecated v0.5.0 backwards-compatibility surface: the global `initializeClient()` / `close()` functions and the `ClientOptions` type; the deprecated static factories `App.lookup`, `Function_.lookup`, `Cls.lookup`, `Queue.lookup` / `Queue.ephemeral` / `Queue.delete`, `Volume.fromName` / `Volume.ephemeral`, `Secret.fromName` / `Secret.fromObject`, `Sandbox.fromId` / `Sandbox.fromName` / `Sandbox.list`, `Image.fromId` / `Image.fromRegistry` / `Image.fromAwsEcr` / `Image.fromGcpArtifactRegistry` / `Image.delete`, `Proxy.fromName`, and `FunctionCall.fromId`; the instance shims `app.createSandbox`, `app.imageFromRegistry` / `imageFromAwsEcr` / `imageFromGcpArtifactRegistry`, the public `CloudBucketMount` constructor, and the deprecated `LookupOptions` / `DeleteOptions` / `EphemeralOptions` type aliases. See [`MIGRATION-GUIDE.md`](../MIGRATION-GUIDE.md).
+- **Breaking:** Removed the entire deprecated v0.5.0 backwards-compatibility surface: the global `initializeClient()` / `close()` functions and the `ClientOptions` type; the deprecated static factories `App.lookup`, `Function_.lookup`, `Cls.lookup`, `Queue.lookup` / `Queue.ephemeral` / `Queue.delete`, `Volume.fromName` / `Volume.ephemeral`, `Secret.fromName` / `Secret.fromObject`, `Sandbox.fromId` / `Sandbox.fromName` / `Sandbox.list`, `Image.fromId` / `Image.fromRegistry` / `Image.fromAwsEcr` / `Image.fromGcpArtifactRegistry` / `Image.delete`, `Proxy.fromName`, and `FunctionCall.fromId`; the instance shims `app.createSandbox`, `app.imageFromRegistry` / `imageFromAwsEcr` / `imageFromGcpArtifactRegistry`, the public `CloudBucketMount` constructor, and the deprecated `LookupOptions` / `DeleteOptions` / `EphemeralOptions` type aliases. See [`MIGRATION-GUIDE.md`](https://github.com/modal-labs/modal-client/blob/main/MIGRATION-GUIDE.md).
 
 ## 0.7
 
@@ -204,7 +204,7 @@ This release primarily contains a number of breaking changes as we continue work
 
 ### 0.5.0 (2025-10-28)
 
-The first beta release of the Modal SDK for JS (graduating from alpha). See the [Migration Guide](../MIGRATION-GUIDE.md) for a detailed list of breaking changes.
+The first beta release of the Modal SDK for JS (graduating from alpha). See the [Migration Guide](https://github.com/modal-labs/modal-client/blob/main/MIGRATION-GUIDE.md) for a detailed list of breaking changes.
 
 - The SDK now exposes a central [`ModalClient`](/docs/sdk/js/latest/ModalClient) object as the main entry point for interacting with Modal resources.
 - The interface for working with Modal object instances (Functions, Sandboxes, Images, etc.) is largely the same as before, with some naming changes.
@@ -255,7 +255,7 @@ Additional new features:
 - Added [`Image.build`](/docs/sdk/js/latest/Image#build).
 - Added [`Image.fromId`](/docs/sdk/js/latest/Image#fromid).
 - Added support for instantiating a Cls with custom options, using [`Cls.withOptions()`](/docs/sdk/js/latest/Cls#withoptions)/[`.withConcurrency()`](/docs/sdk/js/latest/Cls#withconcurrency)/[`.withBatching()`](/docs/sdk/js/latest/Cls#withbatching).
-- Added support for [Named Sandboxes](https://modal.com/docs/guide/sandbox#named-sandboxes) (example in [`examples/sandbox-named.ts`](./examples/sandbox-named.ts)).
+- Added support for [Named Sandboxes](https://modal.com/docs/guide/sandbox#named-sandboxes) (example in [`examples/sandbox-named.ts`](https://github.com/modal-labs/modal-client/blob/main/js/examples/sandbox-named.ts)).
 - Added support for [`Volume.ephemeral()`](/docs/sdk/js/latest/Volume#ephemeral).
 
 ### 0.3.17 (2025-08-22)
