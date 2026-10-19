@@ -53,6 +53,9 @@ const (
 	ModalClient_AttemptAwait_FullMethodName                           = "/modal.client.ModalClient/AttemptAwait"
 	ModalClient_AttemptRetry_FullMethodName                           = "/modal.client.ModalClient/AttemptRetry"
 	ModalClient_AttemptStart_FullMethodName                           = "/modal.client.ModalClient/AttemptStart"
+	ModalClient_AuditLogV2Count_FullMethodName                        = "/modal.client.ModalClient/AuditLogV2Count"
+	ModalClient_AuditLogV2List_FullMethodName                         = "/modal.client.ModalClient/AuditLogV2List"
+	ModalClient_AuditLogV2Plan_FullMethodName                         = "/modal.client.ModalClient/AuditLogV2Plan"
 	ModalClient_AuthTokenGet_FullMethodName                           = "/modal.client.ModalClient/AuthTokenGet"
 	ModalClient_BlobCreate_FullMethodName                             = "/modal.client.ModalClient/BlobCreate"
 	ModalClient_BlobGet_FullMethodName                                = "/modal.client.ModalClient/BlobGet"
@@ -328,6 +331,10 @@ type ModalClientClient interface {
 	AttemptAwait(ctx context.Context, in *AttemptAwaitRequest, opts ...grpc.CallOption) (*AttemptAwaitResponse, error)
 	AttemptRetry(ctx context.Context, in *AttemptRetryRequest, opts ...grpc.CallOption) (*AttemptRetryResponse, error)
 	AttemptStart(ctx context.Context, in *AttemptStartRequest, opts ...grpc.CallOption) (*AttemptStartResponse, error)
+	// Audit logs
+	AuditLogV2Count(ctx context.Context, in *AuditLogV2CountRequest, opts ...grpc.CallOption) (*AuditLogV2CountResponse, error)
+	AuditLogV2List(ctx context.Context, in *AuditLogV2ListRequest, opts ...grpc.CallOption) (*AuditLogV2ListResponse, error)
+	AuditLogV2Plan(ctx context.Context, in *AuditLogV2PlanRequest, opts ...grpc.CallOption) (*AuditLogV2PlanResponse, error)
 	// Auth Token
 	AuthTokenGet(ctx context.Context, in *AuthTokenGetRequest, opts ...grpc.CallOption) (*AuthTokenGetResponse, error)
 	// Blobs
@@ -885,6 +892,36 @@ func (c *modalClientClient) AttemptStart(ctx context.Context, in *AttemptStartRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AttemptStartResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AttemptStart_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AuditLogV2Count(ctx context.Context, in *AuditLogV2CountRequest, opts ...grpc.CallOption) (*AuditLogV2CountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuditLogV2CountResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AuditLogV2Count_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AuditLogV2List(ctx context.Context, in *AuditLogV2ListRequest, opts ...grpc.CallOption) (*AuditLogV2ListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuditLogV2ListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AuditLogV2List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AuditLogV2Plan(ctx context.Context, in *AuditLogV2PlanRequest, opts ...grpc.CallOption) (*AuditLogV2PlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuditLogV2PlanResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AuditLogV2Plan_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3414,6 +3451,10 @@ type ModalClientServer interface {
 	AttemptAwait(context.Context, *AttemptAwaitRequest) (*AttemptAwaitResponse, error)
 	AttemptRetry(context.Context, *AttemptRetryRequest) (*AttemptRetryResponse, error)
 	AttemptStart(context.Context, *AttemptStartRequest) (*AttemptStartResponse, error)
+	// Audit logs
+	AuditLogV2Count(context.Context, *AuditLogV2CountRequest) (*AuditLogV2CountResponse, error)
+	AuditLogV2List(context.Context, *AuditLogV2ListRequest) (*AuditLogV2ListResponse, error)
+	AuditLogV2Plan(context.Context, *AuditLogV2PlanRequest) (*AuditLogV2PlanResponse, error)
 	// Auth Token
 	AuthTokenGet(context.Context, *AuthTokenGetRequest) (*AuthTokenGetResponse, error)
 	// Blobs
@@ -3778,6 +3819,15 @@ func (UnimplementedModalClientServer) AttemptRetry(context.Context, *AttemptRetr
 }
 func (UnimplementedModalClientServer) AttemptStart(context.Context, *AttemptStartRequest) (*AttemptStartResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AttemptStart not implemented")
+}
+func (UnimplementedModalClientServer) AuditLogV2Count(context.Context, *AuditLogV2CountRequest) (*AuditLogV2CountResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AuditLogV2Count not implemented")
+}
+func (UnimplementedModalClientServer) AuditLogV2List(context.Context, *AuditLogV2ListRequest) (*AuditLogV2ListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AuditLogV2List not implemented")
+}
+func (UnimplementedModalClientServer) AuditLogV2Plan(context.Context, *AuditLogV2PlanRequest) (*AuditLogV2PlanResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AuditLogV2Plan not implemented")
 }
 func (UnimplementedModalClientServer) AuthTokenGet(context.Context, *AuthTokenGetRequest) (*AuthTokenGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuthTokenGet not implemented")
@@ -4995,6 +5045,60 @@ func _ModalClient_AttemptStart_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AttemptStart(ctx, req.(*AttemptStartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AuditLogV2Count_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuditLogV2CountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AuditLogV2Count(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AuditLogV2Count_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AuditLogV2Count(ctx, req.(*AuditLogV2CountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AuditLogV2List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuditLogV2ListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AuditLogV2List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AuditLogV2List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AuditLogV2List(ctx, req.(*AuditLogV2ListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AuditLogV2Plan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuditLogV2PlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AuditLogV2Plan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AuditLogV2Plan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AuditLogV2Plan(ctx, req.(*AuditLogV2PlanRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -9359,6 +9463,18 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AttemptStart",
 			Handler:    _ModalClient_AttemptStart_Handler,
+		},
+		{
+			MethodName: "AuditLogV2Count",
+			Handler:    _ModalClient_AuditLogV2Count_Handler,
+		},
+		{
+			MethodName: "AuditLogV2List",
+			Handler:    _ModalClient_AuditLogV2List_Handler,
+		},
+		{
+			MethodName: "AuditLogV2Plan",
+			Handler:    _ModalClient_AuditLogV2Plan_Handler,
 		},
 		{
 			MethodName: "AuthTokenGet",
