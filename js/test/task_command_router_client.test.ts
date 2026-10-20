@@ -3,10 +3,14 @@ import { IdleCountdown } from "../src/idle_countdown";
 import {
   parseJwtExpiration,
   callWithRetriesOnTransientErrors,
+  ServerThrottledError,
   TaskCommandRouterClientImpl,
+  throttleMiddleware,
   type StdinSource,
 } from "../src/task_command_router_client";
-import { ClientError, Status } from "nice-grpc";
+import { type CallOptions, ClientError, Metadata, Status } from "nice-grpc";
+import { Any } from "../proto/google/protobuf/any";
+import { RPCRetryPolicy, RPCStatus } from "../proto/modal_proto/api";
 import {
   SandboxStdinWriteV2Request,
   SandboxStdioFileDescriptor,
@@ -321,6 +325,227 @@ test("snapshotFilesystem preemptive deadline returns TimeoutError", async () => 
       { timeoutMs: 100 },
     ),
   ).rejects.toBeInstanceOf(TimeoutError);
+});
+
+function throttled(retryAfterSecs: number): ServerThrottledError {
+  return new ServerThrottledError(
+    "/test",
+    "rate limit exceeded",
+    retryAfterSecs,
+  );
+}
+
+test("callWithRetriesOnTransientErrors throttled retries do not count toward maxRetries", async () => {
+  let attempts = 0;
+  const func = vi.fn(async () => {
+    attempts++;
+    if (attempts <= 3) throw throttled(0.01);
+    return "ok";
+  });
+  expect(await callWithRetriesOnTransientErrors(func, 10, 2, 1)).toBe("ok");
+  expect(attempts).toBe(4);
+});
+
+test("callWithRetriesOnTransientErrors maxThrottleWaitSecs 0 disables throttled retries", async () => {
+  const error = throttled(0.01);
+  const func = vi.fn().mockRejectedValue(error);
+  await expect(
+    callWithRetriesOnTransientErrors(func, 10, 2, 10, null, undefined, [], 0),
+  ).rejects.toBe(error);
+  expect(func).toHaveBeenCalledTimes(1);
+});
+
+test("snapshotFilesystem retries RESOURCE_EXHAUSTED carrying a server retry policy", async () => {
+  const attemptTimes: number[] = [];
+  const mockStub = {
+    taskSnapshotFilesystem: vi.fn(async () => {
+      attemptTimes.push(Date.now());
+      if (attemptTimes.length === 1) throw throttled(0.2);
+      return { imageId: "im-123" };
+    }),
+  };
+  const client = makeTestClient(mockStub);
+  const response = await client.snapshotFilesystem(
+    TaskSnapshotFilesystemRequest.create({ taskId: "t" }),
+    { timeoutMs: 5000 },
+  );
+  expect(response.imageId).toBe("im-123");
+  expect(attemptTimes).toHaveLength(2);
+  expect(attemptTimes[1] - attemptTimes[0]).toBeGreaterThanOrEqual(190);
+});
+
+test("snapshotFilesystem does not retry RESOURCE_EXHAUSTED without a retry policy", async () => {
+  const error = new ClientError(
+    "/test",
+    Status.RESOURCE_EXHAUSTED,
+    "rate limit exceeded",
+  );
+  const mockStub = { taskSnapshotFilesystem: vi.fn().mockRejectedValue(error) };
+  const client = makeTestClient(mockStub);
+  await expect(
+    client.snapshotFilesystem(
+      TaskSnapshotFilesystemRequest.create({ taskId: "t" }),
+      { timeoutMs: 5000 },
+    ),
+  ).rejects.toBe(error);
+  expect(mockStub.taskSnapshotFilesystem).toHaveBeenCalledTimes(1);
+});
+
+test("snapshotFilesystem gives up without sleeping when the server delay does not fit the deadline", async () => {
+  const mockStub = {
+    taskSnapshotFilesystem: vi.fn().mockRejectedValue(throttled(10)),
+  };
+  const client = makeTestClient(mockStub);
+  const startedAt = Date.now();
+  await expect(
+    client.snapshotFilesystem(
+      TaskSnapshotFilesystemRequest.create({ taskId: "t" }),
+      { timeoutMs: 300 },
+    ),
+  ).rejects.toBeInstanceOf(TimeoutError);
+  expect(Date.now() - startedAt).toBeLessThan(300);
+  expect(mockStub.taskSnapshotFilesystem).toHaveBeenCalledTimes(1);
+});
+
+test("snapshotFilesystem with throttle retries disabled surfaces RESOURCE_EXHAUSTED", async () => {
+  const error = throttled(10);
+  const mockStub = { taskSnapshotFilesystem: vi.fn().mockRejectedValue(error) };
+  const client = makeTestClient(mockStub);
+  client.maxThrottleWaitSecs = 0;
+  await expect(
+    client.snapshotFilesystem(
+      TaskSnapshotFilesystemRequest.create({ taskId: "t" }),
+      { timeoutMs: 300 },
+    ),
+  ).rejects.toBe(error);
+  expect(mockStub.taskSnapshotFilesystem).toHaveBeenCalledTimes(1);
+});
+
+test("sandboxWaitUntilReady throttled beyond the deadline throws TimeoutError", async () => {
+  const mockStub = {
+    sandboxWaitUntilReady: vi.fn().mockRejectedValue(throttled(10)),
+  };
+  const client = makeTestClient(mockStub);
+  await expect(
+    client.sandboxWaitUntilReady("ta-1", 300),
+  ).rejects.toBeInstanceOf(TimeoutError);
+  expect(mockStub.sandboxWaitUntilReady).toHaveBeenCalledTimes(1);
+});
+
+test("execWait throttled beyond the deadline throws a deadline error", async () => {
+  const mockStub = { taskExecWait: vi.fn().mockRejectedValue(throttled(10)) };
+  const client = makeTestClient(mockStub);
+  await expect(
+    client.execWait("ta-1", "exec-1", Date.now() + 300),
+  ).rejects.toThrow("Deadline exceeded while waiting for exec exec-1");
+  expect(mockStub.taskExecWait).toHaveBeenCalledTimes(1);
+});
+
+test("execPoll throttled beyond the deadline throws a deadline error", async () => {
+  const mockStub = { taskExecPoll: vi.fn().mockRejectedValue(throttled(10)) };
+  const client = makeTestClient(mockStub);
+  await expect(
+    client.execPoll("ta-1", "exec-1", Date.now() + 300),
+  ).rejects.toThrow("Deadline exceeded while polling for exec exec-1");
+  expect(mockStub.taskExecPoll).toHaveBeenCalledTimes(1);
+});
+
+function throttleTrailer(retryAfterSecs: number): Metadata {
+  const statusBytes = RPCStatus.encode(
+    RPCStatus.fromPartial({
+      code: Status.RESOURCE_EXHAUSTED,
+      message: "server throttled",
+      details: [
+        Any.fromPartial({
+          typeUrl: "type.googleapis.com/modal.client.RPCRetryPolicy",
+          value: RPCRetryPolicy.encode(
+            RPCRetryPolicy.fromPartial({ retryAfterSecs }),
+          ).finish(),
+        }),
+      ],
+    }),
+  ).finish();
+  const trailer = new Metadata();
+  trailer.set("grpc-status-details-bin", Buffer.from(statusBytes));
+  return trailer;
+}
+
+function makeMiddlewareCall(trailer: Metadata, err?: Error) {
+  let metadata: Metadata | undefined;
+  const call: any = {
+    method: { path: "/test", requestStream: false, responseStream: false },
+    request: {},
+    requestStream: false,
+    responseStream: false,
+    async *next(_request: unknown, options: CallOptions) {
+      metadata = options.metadata;
+      options.onTrailer?.(trailer);
+      if (err) throw err;
+      yield {};
+    },
+  };
+  return { call, metadata: () => metadata };
+}
+
+async function drain(gen: AsyncIterable<unknown>) {
+  for await (const _ of gen) {
+    // Drain the response.
+  }
+}
+
+test("throttleMiddleware sends x-throttle-retry-attempt", async () => {
+  const { call, metadata } = makeMiddlewareCall(new Metadata());
+  await drain(
+    throttleMiddleware()(call, {
+      metadata: new Metadata({ authorization: "Bearer t" }),
+    }),
+  );
+  expect(metadata()?.get("x-throttle-retry-attempt")).toBe("0");
+  expect(metadata()?.get("authorization")).toBe("Bearer t");
+});
+
+test("throttleMiddleware sends the throttled retry count on each attempt", async () => {
+  const sent: (string | undefined)[] = [];
+  const middleware = throttleMiddleware();
+  const result = await callWithRetriesOnTransientErrors(async () => {
+    const attempt = sent.length;
+    const { call, metadata } = makeMiddlewareCall(
+      attempt < 2 ? throttleTrailer(0.01) : new Metadata(),
+      attempt < 2
+        ? new ClientError("/test", Status.RESOURCE_EXHAUSTED, "throttled")
+        : undefined,
+    );
+    try {
+      await drain(middleware(call, {}));
+    } finally {
+      sent.push(metadata()?.get("x-throttle-retry-attempt"));
+    }
+    return "ok";
+  });
+  expect(result).toBe("ok");
+  expect(sent).toEqual(["0", "1", "2"]);
+});
+
+test("throttleMiddleware surfaces a retry policy as ServerThrottledError", async () => {
+  const { call } = makeMiddlewareCall(
+    throttleTrailer(1.5),
+    new ClientError("/test", Status.RESOURCE_EXHAUSTED, "server throttled"),
+  );
+  const err = await drain(throttleMiddleware()(call, {})).catch((e) => e);
+  expect(err).toBeInstanceOf(ServerThrottledError);
+  expect(err).toBeInstanceOf(ClientError);
+  expect(err.code).toBe(Status.RESOURCE_EXHAUSTED);
+  expect(err.retryAfterSecs).toBe(1.5);
+});
+
+test("throttleMiddleware leaves RESOURCE_EXHAUSTED without a policy alone", async () => {
+  const error = new ClientError(
+    "/test",
+    Status.RESOURCE_EXHAUSTED,
+    "no policy",
+  );
+  const { call } = makeMiddlewareCall(new Metadata(), error);
+  await expect(drain(throttleMiddleware()(call, {}))).rejects.toBe(error);
 });
 
 // ---------------------------------------------------------------------------

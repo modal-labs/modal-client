@@ -1,8 +1,10 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout } from "timers/promises";
 import {
   CallOptions,
   Client,
   ClientError,
+  ClientMiddleware,
   ChannelCredentials,
   createChannel,
   createClientFactory,
@@ -59,7 +61,11 @@ import {
   SandboxGetCommandRouterAccessRequest,
 } from "../proto/modal_proto/api";
 import type { ModalGrpcClient } from "./client";
-import { timeoutMiddleware, type TimeoutOptions } from "./client";
+import {
+  getServerRetryPolicy,
+  timeoutMiddleware,
+  type TimeoutOptions,
+} from "./client";
 import type { Logger } from "./logger";
 import { serverWarningMiddleware } from "./server_warnings";
 import type { Profile } from "./config";
@@ -108,6 +114,74 @@ class RetryDeadlineExceededError extends Error {
   constructor() {
     super("Deadline exceeded");
   }
+}
+
+/**
+ * @internal
+ * @hidden
+ */
+export class ServerThrottledError extends ClientError {
+  readonly retryAfterSecs: number;
+
+  constructor(path: string, details: string, retryAfterSecs: number) {
+    super(path, Status.RESOURCE_EXHAUSTED, details);
+    this.retryAfterSecs = retryAfterSecs;
+  }
+}
+
+/**
+ * @internal
+ * @hidden
+ */
+export function serverRetryAfterMs(err: unknown): number | null {
+  if (err instanceof ServerThrottledError) {
+    return Math.max(err.retryAfterSecs * 1000, 100);
+  }
+  return null;
+}
+
+const throttleRetryAttempt = new AsyncLocalStorage<{ attempt: number }>();
+
+/**
+ * @internal
+ * @hidden
+ */
+export function throttleMiddleware(): ClientMiddleware {
+  return async function* throttleMiddleware(call, options) {
+    const { onTrailer, ...restOptions } = options;
+    const metadata = new Metadata(restOptions.metadata ?? {});
+    metadata.set(
+      "x-throttle-retry-attempt",
+      String(throttleRetryAttempt.getStore()?.attempt ?? 0),
+    );
+    let statusDetails: Uint8Array | undefined;
+    try {
+      return yield* call.next(call.request, {
+        ...restOptions,
+        metadata,
+        onTrailer: (trailer: Metadata) => {
+          const raw = trailer.get("grpc-status-details-bin");
+          if (raw != null) statusDetails = raw as Uint8Array;
+          onTrailer?.(trailer);
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof ClientError &&
+        err.code === Status.RESOURCE_EXHAUSTED
+      ) {
+        const policy = getServerRetryPolicy(statusDetails);
+        if (policy) {
+          throw new ServerThrottledError(
+            err.path,
+            err.details,
+            policy.retryAfterSecs,
+          );
+        }
+      }
+      throw err;
+    }
+  };
 }
 
 /**
@@ -191,51 +265,88 @@ export async function callWithRetriesOnTransientErrors<T>(
    * propagate immediately when the caller specified their own timeout.
    */
   excludeStatusCodes: Status[] = [],
+  maxThrottleWaitSecs: number | null = null,
+  logger?: Logger,
 ): Promise<T> {
   let delayMs = baseDelayMs;
   let numRetries = 0;
+  let throttleWaitMs = 0;
+  const throttleDisabled = maxThrottleWaitSecs === 0;
+  const throttleState = { attempt: 0 };
 
   const excluded = new Set(excludeStatusCodes);
 
-  while (true) {
-    if (deadlineMs !== null && Date.now() >= deadlineMs) {
-      throw new RetryDeadlineExceededError();
-    }
+  return await throttleRetryAttempt.run(throttleState, async () => {
+    while (true) {
+      if (deadlineMs !== null && Date.now() >= deadlineMs) {
+        throw new RetryDeadlineExceededError();
+      }
 
-    try {
-      return await func();
-    } catch (err) {
-      if (
-        err instanceof ClientError &&
-        err.code === Status.CANCELLED &&
-        isClosed?.()
-      ) {
-        throw new ClientClosedError();
-      }
-      if (
-        err instanceof ClientError &&
-        RETRYABLE_GRPC_STATUS_CODES.has(err.code) &&
-        !excluded.has(err.code) &&
-        (maxRetries === null || numRetries < maxRetries)
-      ) {
-        // Clamp the backoff to the remaining deadline budget so we don't
-        // sleep past it. If the budget is already exhausted, the next
-        // iteration's top-of-loop check throws RetryDeadlineExceededError
-        // with Date.now() actually past the deadline — letting callers
-        // translate consistently against the wall clock.
-        let sleepMs = delayMs;
-        if (deadlineMs !== null) {
-          sleepMs = Math.min(sleepMs, deadlineMs - Date.now());
+      try {
+        return await func();
+      } catch (err) {
+        if (
+          err instanceof ClientError &&
+          err.code === Status.CANCELLED &&
+          isClosed?.()
+        ) {
+          throw new ClientClosedError();
         }
-        if (sleepMs < 0) sleepMs = 0;
-        await setTimeout(sleepMs);
-        delayMs *= delayFactor;
-        numRetries++;
-      } else {
-        throw err;
+        // RESOURCE_EXHAUSTED is retried only when the server attaches a retry
+        // policy to the error. A server-requested wait that doesn't fit before
+        // the deadline throws RetryDeadlineExceededError.
+        const retryAfterMs =
+          throttleDisabled ||
+          (err instanceof ClientError && excluded.has(err.code))
+            ? null
+            : serverRetryAfterMs(err);
+        if (retryAfterMs !== null) {
+          if (deadlineMs !== null && Date.now() + retryAfterMs >= deadlineMs) {
+            throw new RetryDeadlineExceededError();
+          }
+          if (
+            maxThrottleWaitSecs != null &&
+            throttleWaitMs + retryAfterMs > maxThrottleWaitSecs * 1000
+          ) {
+            throw err;
+          }
+          logger?.debug(
+            "Server requested retry delay",
+            "throttle_retries",
+            throttleState.attempt,
+            "server_delay_ms",
+            retryAfterMs,
+          );
+          await setTimeout(retryAfterMs);
+          throttleState.attempt++;
+          throttleWaitMs += retryAfterMs;
+          continue;
+        }
+        if (
+          err instanceof ClientError &&
+          RETRYABLE_GRPC_STATUS_CODES.has(err.code) &&
+          !excluded.has(err.code) &&
+          (maxRetries === null || numRetries < maxRetries)
+        ) {
+          // Clamp the backoff to the remaining deadline budget so we don't
+          // sleep past it. If the budget is already exhausted, the next
+          // iteration's top-of-loop check throws RetryDeadlineExceededError
+          // with Date.now() actually past the deadline — letting callers
+          // translate consistently against the wall clock.
+          let sleepMs = delayMs;
+          if (deadlineMs !== null) {
+            sleepMs = Math.min(sleepMs, deadlineMs - Date.now());
+          }
+          if (sleepMs < 0) sleepMs = 0;
+          await setTimeout(sleepMs);
+          delayMs *= delayFactor;
+          numRetries++;
+        } else {
+          throw err;
+        }
       }
     }
-  }
+  });
 }
 
 /** @ignore */
@@ -254,6 +365,7 @@ export class TaskCommandRouterClientImpl {
    */
   private inFlight = 0;
   private idle = new IdleCountdown();
+  private maxThrottleWaitSecs: number | null;
   /**
    * Bumped every time a connection is dialled. A stream opened on an earlier
    * one is stale: the connection under it has since been given up.
@@ -375,6 +487,7 @@ export class TaskCommandRouterClientImpl {
       dial,
       logger,
       profile.sandboxChannelIdleTimeoutMs,
+      profile.maxThrottleWaitSecs,
     );
 
     logger.debug(
@@ -401,9 +514,11 @@ export class TaskCommandRouterClientImpl {
     dial: () => ReturnType<typeof createChannel>,
     logger: Logger,
     idleTimeoutMs: number,
+    maxThrottleWaitSecs?: number,
   ) {
     this.dial = dial;
     this.idleTimeoutMs = idleTimeoutMs;
+    this.maxThrottleWaitSecs = maxThrottleWaitSecs ?? null;
     this.serverClient = serverClient;
     this.taskId = taskId;
     this.sandboxId = sandboxId;
@@ -426,6 +541,7 @@ export class TaskCommandRouterClientImpl {
         options.metadata.set("authorization", `Bearer ${self.jwt}`);
         return yield* call.next(call.request, options);
       })
+      .use(throttleMiddleware())
       .use(serverWarningMiddleware(logger));
 
     this.factory = factory;
@@ -528,11 +644,27 @@ export class TaskCommandRouterClientImpl {
   }
 
   private async callWithRetries<T>(
-    ...args: Parameters<typeof callWithRetriesOnTransientErrors<T>>
+    func: () => Promise<T>,
+    baseDelayMs?: number,
+    delayFactor?: number,
+    maxRetries?: number | null,
+    deadlineMs?: number | null,
+    isClosed?: () => boolean,
+    excludeStatusCodes?: Status[],
   ): Promise<T> {
     this.beginOp();
     try {
-      return await callWithRetriesOnTransientErrors(...args);
+      return await callWithRetriesOnTransientErrors(
+        func,
+        baseDelayMs,
+        delayFactor,
+        maxRetries,
+        deadlineMs,
+        isClosed,
+        excludeStatusCodes,
+        this.maxThrottleWaitSecs,
+        this.logger,
+      );
     } finally {
       this.endOp();
     }
@@ -740,6 +872,9 @@ export class TaskCommandRouterClientImpl {
             10,
             null,
             () => this.closed,
+            [],
+            this.maxThrottleWaitSecs,
+            this.logger,
           );
           if (status.closed) {
             // stdin only closes on our explicit End message; if the server
@@ -797,7 +932,10 @@ export class TaskCommandRouterClientImpl {
         () => this.closed,
       );
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED) {
+      if (
+        err instanceof RetryDeadlineExceededError ||
+        (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED)
+      ) {
         throw new Error(`Deadline exceeded while polling for exec ${execId}`);
       }
       throw err;
@@ -836,7 +974,10 @@ export class TaskCommandRouterClientImpl {
         () => this.closed,
       );
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED) {
+      if (
+        err instanceof RetryDeadlineExceededError ||
+        (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED)
+      ) {
         throw new Error(`Deadline exceeded while waiting for exec ${execId}`);
       }
       throw err;
@@ -879,7 +1020,10 @@ export class TaskCommandRouterClientImpl {
         [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
       );
     } catch (err) {
-      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+      if (
+        err instanceof RetryDeadlineExceededError ||
+        (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs)
+      ) {
         throw new TimeoutError("Timeout expired");
       }
       throw err;
@@ -931,7 +1075,10 @@ export class TaskCommandRouterClientImpl {
         [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
       );
     } catch (err) {
-      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+      if (
+        err instanceof RetryDeadlineExceededError ||
+        (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs)
+      ) {
         throw new TimeoutError("Timeout expired");
       }
       throw err;
@@ -966,7 +1113,10 @@ export class TaskCommandRouterClientImpl {
         [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
       );
     } catch (err) {
-      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+      if (
+        err instanceof RetryDeadlineExceededError ||
+        (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs)
+      ) {
         throw new TimeoutError("Timeout expired");
       }
       throw err;
@@ -1020,7 +1170,10 @@ export class TaskCommandRouterClientImpl {
         [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
       );
     } catch (err) {
-      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+      if (
+        err instanceof RetryDeadlineExceededError ||
+        (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs)
+      ) {
         throw new TimeoutError("Timeout expired");
       }
       throw err;
