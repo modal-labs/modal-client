@@ -8722,7 +8722,7 @@ func (b0 AttemptStartResponse_builder) Build() *AttemptStartResponse {
 	return m0
 }
 
-type AuditLogV2Actor struct {
+type AuditLogActor struct {
 	state           protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Type string                 `protobuf:"bytes,1,opt,name=type,proto3"`
 	xxx_hidden_Id   string                 `protobuf:"bytes,2,opt,name=id,proto3"`
@@ -8730,20 +8730,20 @@ type AuditLogV2Actor struct {
 	sizeCache       protoimpl.SizeCache
 }
 
-func (x *AuditLogV2Actor) Reset() {
-	*x = AuditLogV2Actor{}
+func (x *AuditLogActor) Reset() {
+	*x = AuditLogActor{}
 	mi := &file_modal_proto_api_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2Actor) String() string {
+func (x *AuditLogActor) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2Actor) ProtoMessage() {}
+func (*AuditLogActor) ProtoMessage() {}
 
-func (x *AuditLogV2Actor) ProtoReflect() protoreflect.Message {
+func (x *AuditLogActor) ProtoReflect() protoreflect.Message {
 	mi := &file_modal_proto_api_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -8755,37 +8755,37 @@ func (x *AuditLogV2Actor) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2Actor) GetType() string {
+func (x *AuditLogActor) GetType() string {
 	if x != nil {
 		return x.xxx_hidden_Type
 	}
 	return ""
 }
 
-func (x *AuditLogV2Actor) GetId() string {
+func (x *AuditLogActor) GetId() string {
 	if x != nil {
 		return x.xxx_hidden_Id
 	}
 	return ""
 }
 
-func (x *AuditLogV2Actor) SetType(v string) {
+func (x *AuditLogActor) SetType(v string) {
 	x.xxx_hidden_Type = v
 }
 
-func (x *AuditLogV2Actor) SetId(v string) {
+func (x *AuditLogActor) SetId(v string) {
 	x.xxx_hidden_Id = v
 }
 
-type AuditLogV2Actor_builder struct {
+type AuditLogActor_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Type string
 	Id   string
 }
 
-func (b0 AuditLogV2Actor_builder) Build() *AuditLogV2Actor {
-	m0 := &AuditLogV2Actor{}
+func (b0 AuditLogActor_builder) Build() *AuditLogActor {
+	m0 := &AuditLogActor{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Type = b.Type
@@ -8793,7 +8793,106 @@ func (b0 AuditLogV2Actor_builder) Build() *AuditLogV2Actor {
 	return m0
 }
 
-type AuditLogV2Context struct {
+type AuditLogBucketsRequest struct {
+	state                 protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Q          string                 `protobuf:"bytes,1,opt,name=q,proto3"`
+	xxx_hidden_StartMs    int64                  `protobuf:"varint,2,opt,name=start_ms,json=startMs,proto3"`
+	xxx_hidden_EndMs      int64                  `protobuf:"varint,3,opt,name=end_ms,json=endMs,proto3"`
+	xxx_hidden_BucketRows uint32                 `protobuf:"varint,4,opt,name=bucket_rows,json=bucketRows,proto3"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *AuditLogBucketsRequest) Reset() {
+	*x = AuditLogBucketsRequest{}
+	mi := &file_modal_proto_api_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditLogBucketsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditLogBucketsRequest) ProtoMessage() {}
+
+func (x *AuditLogBucketsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *AuditLogBucketsRequest) GetQ() string {
+	if x != nil {
+		return x.xxx_hidden_Q
+	}
+	return ""
+}
+
+func (x *AuditLogBucketsRequest) GetStartMs() int64 {
+	if x != nil {
+		return x.xxx_hidden_StartMs
+	}
+	return 0
+}
+
+func (x *AuditLogBucketsRequest) GetEndMs() int64 {
+	if x != nil {
+		return x.xxx_hidden_EndMs
+	}
+	return 0
+}
+
+func (x *AuditLogBucketsRequest) GetBucketRows() uint32 {
+	if x != nil {
+		return x.xxx_hidden_BucketRows
+	}
+	return 0
+}
+
+func (x *AuditLogBucketsRequest) SetQ(v string) {
+	x.xxx_hidden_Q = v
+}
+
+func (x *AuditLogBucketsRequest) SetStartMs(v int64) {
+	x.xxx_hidden_StartMs = v
+}
+
+func (x *AuditLogBucketsRequest) SetEndMs(v int64) {
+	x.xxx_hidden_EndMs = v
+}
+
+func (x *AuditLogBucketsRequest) SetBucketRows(v uint32) {
+	x.xxx_hidden_BucketRows = v
+}
+
+type AuditLogBucketsRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Q          string
+	StartMs    int64
+	EndMs      int64
+	BucketRows uint32
+}
+
+func (b0 AuditLogBucketsRequest_builder) Build() *AuditLogBucketsRequest {
+	m0 := &AuditLogBucketsRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_Q = b.Q
+	x.xxx_hidden_StartMs = b.StartMs
+	x.xxx_hidden_EndMs = b.EndMs
+	x.xxx_hidden_BucketRows = b.BucketRows
+	return m0
+}
+
+type AuditLogContext struct {
 	state                    protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3"`
 	xxx_hidden_EnvironmentId string                 `protobuf:"bytes,2,opt,name=environment_id,json=environmentId,proto3"`
@@ -8804,21 +8903,21 @@ type AuditLogV2Context struct {
 	sizeCache                protoimpl.SizeCache
 }
 
-func (x *AuditLogV2Context) Reset() {
-	*x = AuditLogV2Context{}
-	mi := &file_modal_proto_api_proto_msgTypes[55]
+func (x *AuditLogContext) Reset() {
+	*x = AuditLogContext{}
+	mi := &file_modal_proto_api_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2Context) String() string {
+func (x *AuditLogContext) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2Context) ProtoMessage() {}
+func (*AuditLogContext) ProtoMessage() {}
 
-func (x *AuditLogV2Context) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[55]
+func (x *AuditLogContext) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8829,62 +8928,62 @@ func (x *AuditLogV2Context) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2Context) GetWorkspaceId() string {
+func (x *AuditLogContext) GetWorkspaceId() string {
 	if x != nil {
 		return x.xxx_hidden_WorkspaceId
 	}
 	return ""
 }
 
-func (x *AuditLogV2Context) GetEnvironmentId() string {
+func (x *AuditLogContext) GetEnvironmentId() string {
 	if x != nil {
 		return x.xxx_hidden_EnvironmentId
 	}
 	return ""
 }
 
-func (x *AuditLogV2Context) GetSource() string {
+func (x *AuditLogContext) GetSource() string {
 	if x != nil {
 		return x.xxx_hidden_Source
 	}
 	return ""
 }
 
-func (x *AuditLogV2Context) GetIpAddress() string {
+func (x *AuditLogContext) GetIpAddress() string {
 	if x != nil {
 		return x.xxx_hidden_IpAddress
 	}
 	return ""
 }
 
-func (x *AuditLogV2Context) GetIsModalAdmin() bool {
+func (x *AuditLogContext) GetIsModalAdmin() bool {
 	if x != nil {
 		return x.xxx_hidden_IsModalAdmin
 	}
 	return false
 }
 
-func (x *AuditLogV2Context) SetWorkspaceId(v string) {
+func (x *AuditLogContext) SetWorkspaceId(v string) {
 	x.xxx_hidden_WorkspaceId = v
 }
 
-func (x *AuditLogV2Context) SetEnvironmentId(v string) {
+func (x *AuditLogContext) SetEnvironmentId(v string) {
 	x.xxx_hidden_EnvironmentId = v
 }
 
-func (x *AuditLogV2Context) SetSource(v string) {
+func (x *AuditLogContext) SetSource(v string) {
 	x.xxx_hidden_Source = v
 }
 
-func (x *AuditLogV2Context) SetIpAddress(v string) {
+func (x *AuditLogContext) SetIpAddress(v string) {
 	x.xxx_hidden_IpAddress = v
 }
 
-func (x *AuditLogV2Context) SetIsModalAdmin(v bool) {
+func (x *AuditLogContext) SetIsModalAdmin(v bool) {
 	x.xxx_hidden_IsModalAdmin = v
 }
 
-type AuditLogV2Context_builder struct {
+type AuditLogContext_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	WorkspaceId   string
@@ -8894,8 +8993,8 @@ type AuditLogV2Context_builder struct {
 	IsModalAdmin  bool
 }
 
-func (b0 AuditLogV2Context_builder) Build() *AuditLogV2Context {
-	m0 := &AuditLogV2Context{}
+func (b0 AuditLogContext_builder) Build() *AuditLogContext {
+	m0 := &AuditLogContext{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_WorkspaceId = b.WorkspaceId
@@ -8906,7 +9005,7 @@ func (b0 AuditLogV2Context_builder) Build() *AuditLogV2Context {
 	return m0
 }
 
-type AuditLogV2CountRequest struct {
+type AuditLogCountRequest struct {
 	state              protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Q       string                 `protobuf:"bytes,1,opt,name=q,proto3"`
 	xxx_hidden_StartMs int64                  `protobuf:"varint,2,opt,name=start_ms,json=startMs,proto3"`
@@ -8915,21 +9014,21 @@ type AuditLogV2CountRequest struct {
 	sizeCache          protoimpl.SizeCache
 }
 
-func (x *AuditLogV2CountRequest) Reset() {
-	*x = AuditLogV2CountRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[56]
+func (x *AuditLogCountRequest) Reset() {
+	*x = AuditLogCountRequest{}
+	mi := &file_modal_proto_api_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2CountRequest) String() string {
+func (x *AuditLogCountRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2CountRequest) ProtoMessage() {}
+func (*AuditLogCountRequest) ProtoMessage() {}
 
-func (x *AuditLogV2CountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[56]
+func (x *AuditLogCountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8940,40 +9039,40 @@ func (x *AuditLogV2CountRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2CountRequest) GetQ() string {
+func (x *AuditLogCountRequest) GetQ() string {
 	if x != nil {
 		return x.xxx_hidden_Q
 	}
 	return ""
 }
 
-func (x *AuditLogV2CountRequest) GetStartMs() int64 {
+func (x *AuditLogCountRequest) GetStartMs() int64 {
 	if x != nil {
 		return x.xxx_hidden_StartMs
 	}
 	return 0
 }
 
-func (x *AuditLogV2CountRequest) GetEndMs() int64 {
+func (x *AuditLogCountRequest) GetEndMs() int64 {
 	if x != nil {
 		return x.xxx_hidden_EndMs
 	}
 	return 0
 }
 
-func (x *AuditLogV2CountRequest) SetQ(v string) {
+func (x *AuditLogCountRequest) SetQ(v string) {
 	x.xxx_hidden_Q = v
 }
 
-func (x *AuditLogV2CountRequest) SetStartMs(v int64) {
+func (x *AuditLogCountRequest) SetStartMs(v int64) {
 	x.xxx_hidden_StartMs = v
 }
 
-func (x *AuditLogV2CountRequest) SetEndMs(v int64) {
+func (x *AuditLogCountRequest) SetEndMs(v int64) {
 	x.xxx_hidden_EndMs = v
 }
 
-type AuditLogV2CountRequest_builder struct {
+type AuditLogCountRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Q       string
@@ -8981,8 +9080,8 @@ type AuditLogV2CountRequest_builder struct {
 	EndMs   int64
 }
 
-func (b0 AuditLogV2CountRequest_builder) Build() *AuditLogV2CountRequest {
-	m0 := &AuditLogV2CountRequest{}
+func (b0 AuditLogCountRequest_builder) Build() *AuditLogCountRequest {
+	m0 := &AuditLogCountRequest{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Q = b.Q
@@ -8991,28 +9090,28 @@ func (b0 AuditLogV2CountRequest_builder) Build() *AuditLogV2CountRequest {
 	return m0
 }
 
-type AuditLogV2CountResponse struct {
+type AuditLogCountResponse struct {
 	state            protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Count int64                  `protobuf:"varint,1,opt,name=count,proto3"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
-func (x *AuditLogV2CountResponse) Reset() {
-	*x = AuditLogV2CountResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[57]
+func (x *AuditLogCountResponse) Reset() {
+	*x = AuditLogCountResponse{}
+	mi := &file_modal_proto_api_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2CountResponse) String() string {
+func (x *AuditLogCountResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2CountResponse) ProtoMessage() {}
+func (*AuditLogCountResponse) ProtoMessage() {}
 
-func (x *AuditLogV2CountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[57]
+func (x *AuditLogCountResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9023,25 +9122,25 @@ func (x *AuditLogV2CountResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2CountResponse) GetCount() int64 {
+func (x *AuditLogCountResponse) GetCount() int64 {
 	if x != nil {
 		return x.xxx_hidden_Count
 	}
 	return 0
 }
 
-func (x *AuditLogV2CountResponse) SetCount(v int64) {
+func (x *AuditLogCountResponse) SetCount(v int64) {
 	x.xxx_hidden_Count = v
 }
 
-type AuditLogV2CountResponse_builder struct {
+type AuditLogCountResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Count int64
 }
 
-func (b0 AuditLogV2CountResponse_builder) Build() *AuditLogV2CountResponse {
-	m0 := &AuditLogV2CountResponse{}
+func (b0 AuditLogCountResponse_builder) Build() *AuditLogCountResponse {
+	m0 := &AuditLogCountResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Count = b.Count
@@ -9049,7 +9148,7 @@ func (b0 AuditLogV2CountResponse_builder) Build() *AuditLogV2CountResponse {
 }
 
 // A position in the results. Pass it back unchanged.
-type AuditLogV2Cursor struct {
+type AuditLogCursor struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_EventAtDesc int64                  `protobuf:"varint,1,opt,name=event_at_desc,json=eventAtDesc,proto3"`
 	xxx_hidden_Id          string                 `protobuf:"bytes,2,opt,name=id,proto3"`
@@ -9057,21 +9156,21 @@ type AuditLogV2Cursor struct {
 	sizeCache              protoimpl.SizeCache
 }
 
-func (x *AuditLogV2Cursor) Reset() {
-	*x = AuditLogV2Cursor{}
-	mi := &file_modal_proto_api_proto_msgTypes[58]
+func (x *AuditLogCursor) Reset() {
+	*x = AuditLogCursor{}
+	mi := &file_modal_proto_api_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2Cursor) String() string {
+func (x *AuditLogCursor) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2Cursor) ProtoMessage() {}
+func (*AuditLogCursor) ProtoMessage() {}
 
-func (x *AuditLogV2Cursor) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[58]
+func (x *AuditLogCursor) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9082,37 +9181,37 @@ func (x *AuditLogV2Cursor) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2Cursor) GetEventAtDesc() int64 {
+func (x *AuditLogCursor) GetEventAtDesc() int64 {
 	if x != nil {
 		return x.xxx_hidden_EventAtDesc
 	}
 	return 0
 }
 
-func (x *AuditLogV2Cursor) GetId() string {
+func (x *AuditLogCursor) GetId() string {
 	if x != nil {
 		return x.xxx_hidden_Id
 	}
 	return ""
 }
 
-func (x *AuditLogV2Cursor) SetEventAtDesc(v int64) {
+func (x *AuditLogCursor) SetEventAtDesc(v int64) {
 	x.xxx_hidden_EventAtDesc = v
 }
 
-func (x *AuditLogV2Cursor) SetId(v string) {
+func (x *AuditLogCursor) SetId(v string) {
 	x.xxx_hidden_Id = v
 }
 
-type AuditLogV2Cursor_builder struct {
+type AuditLogCursor_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	EventAtDesc int64
 	Id          string
 }
 
-func (b0 AuditLogV2Cursor_builder) Build() *AuditLogV2Cursor {
-	m0 := &AuditLogV2Cursor{}
+func (b0 AuditLogCursor_builder) Build() *AuditLogCursor {
+	m0 := &AuditLogCursor{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_EventAtDesc = b.EventAtDesc
@@ -9120,13 +9219,13 @@ func (b0 AuditLogV2Cursor_builder) Build() *AuditLogV2Cursor {
 	return m0
 }
 
-type AuditLogV2Entry struct {
+type AuditLogEntry struct {
 	state                   protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Id           string                 `protobuf:"bytes,1,opt,name=id,proto3"`
-	xxx_hidden_Actor        *AuditLogV2Actor       `protobuf:"bytes,2,opt,name=actor,proto3"`
+	xxx_hidden_Actor        *AuditLogActor         `protobuf:"bytes,2,opt,name=actor,proto3"`
 	xxx_hidden_Action       string                 `protobuf:"bytes,3,opt,name=action,proto3"`
-	xxx_hidden_Targets      *[]*AuditLogV2Target   `protobuf:"bytes,4,rep,name=targets,proto3"`
-	xxx_hidden_Context      *AuditLogV2Context     `protobuf:"bytes,5,opt,name=context,proto3"`
+	xxx_hidden_Targets      *[]*AuditLogTarget     `protobuf:"bytes,4,rep,name=targets,proto3"`
+	xxx_hidden_Context      *AuditLogContext       `protobuf:"bytes,5,opt,name=context,proto3"`
 	xxx_hidden_EventAt      string                 `protobuf:"bytes,6,opt,name=event_at,json=eventAt,proto3"`
 	xxx_hidden_Status       string                 `protobuf:"bytes,7,opt,name=status,proto3"`
 	xxx_hidden_MetadataJson string                 `protobuf:"bytes,8,opt,name=metadata_json,json=metadataJson,proto3"`
@@ -9134,21 +9233,21 @@ type AuditLogV2Entry struct {
 	sizeCache               protoimpl.SizeCache
 }
 
-func (x *AuditLogV2Entry) Reset() {
-	*x = AuditLogV2Entry{}
-	mi := &file_modal_proto_api_proto_msgTypes[59]
+func (x *AuditLogEntry) Reset() {
+	*x = AuditLogEntry{}
+	mi := &file_modal_proto_api_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2Entry) String() string {
+func (x *AuditLogEntry) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2Entry) ProtoMessage() {}
+func (*AuditLogEntry) ProtoMessage() {}
 
-func (x *AuditLogV2Entry) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[59]
+func (x *AuditLogEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9159,28 +9258,28 @@ func (x *AuditLogV2Entry) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2Entry) GetId() string {
+func (x *AuditLogEntry) GetId() string {
 	if x != nil {
 		return x.xxx_hidden_Id
 	}
 	return ""
 }
 
-func (x *AuditLogV2Entry) GetActor() *AuditLogV2Actor {
+func (x *AuditLogEntry) GetActor() *AuditLogActor {
 	if x != nil {
 		return x.xxx_hidden_Actor
 	}
 	return nil
 }
 
-func (x *AuditLogV2Entry) GetAction() string {
+func (x *AuditLogEntry) GetAction() string {
 	if x != nil {
 		return x.xxx_hidden_Action
 	}
 	return ""
 }
 
-func (x *AuditLogV2Entry) GetTargets() []*AuditLogV2Target {
+func (x *AuditLogEntry) GetTargets() []*AuditLogTarget {
 	if x != nil {
 		if x.xxx_hidden_Targets != nil {
 			return *x.xxx_hidden_Targets
@@ -9189,103 +9288,103 @@ func (x *AuditLogV2Entry) GetTargets() []*AuditLogV2Target {
 	return nil
 }
 
-func (x *AuditLogV2Entry) GetContext() *AuditLogV2Context {
+func (x *AuditLogEntry) GetContext() *AuditLogContext {
 	if x != nil {
 		return x.xxx_hidden_Context
 	}
 	return nil
 }
 
-func (x *AuditLogV2Entry) GetEventAt() string {
+func (x *AuditLogEntry) GetEventAt() string {
 	if x != nil {
 		return x.xxx_hidden_EventAt
 	}
 	return ""
 }
 
-func (x *AuditLogV2Entry) GetStatus() string {
+func (x *AuditLogEntry) GetStatus() string {
 	if x != nil {
 		return x.xxx_hidden_Status
 	}
 	return ""
 }
 
-func (x *AuditLogV2Entry) GetMetadataJson() string {
+func (x *AuditLogEntry) GetMetadataJson() string {
 	if x != nil {
 		return x.xxx_hidden_MetadataJson
 	}
 	return ""
 }
 
-func (x *AuditLogV2Entry) SetId(v string) {
+func (x *AuditLogEntry) SetId(v string) {
 	x.xxx_hidden_Id = v
 }
 
-func (x *AuditLogV2Entry) SetActor(v *AuditLogV2Actor) {
+func (x *AuditLogEntry) SetActor(v *AuditLogActor) {
 	x.xxx_hidden_Actor = v
 }
 
-func (x *AuditLogV2Entry) SetAction(v string) {
+func (x *AuditLogEntry) SetAction(v string) {
 	x.xxx_hidden_Action = v
 }
 
-func (x *AuditLogV2Entry) SetTargets(v []*AuditLogV2Target) {
+func (x *AuditLogEntry) SetTargets(v []*AuditLogTarget) {
 	x.xxx_hidden_Targets = &v
 }
 
-func (x *AuditLogV2Entry) SetContext(v *AuditLogV2Context) {
+func (x *AuditLogEntry) SetContext(v *AuditLogContext) {
 	x.xxx_hidden_Context = v
 }
 
-func (x *AuditLogV2Entry) SetEventAt(v string) {
+func (x *AuditLogEntry) SetEventAt(v string) {
 	x.xxx_hidden_EventAt = v
 }
 
-func (x *AuditLogV2Entry) SetStatus(v string) {
+func (x *AuditLogEntry) SetStatus(v string) {
 	x.xxx_hidden_Status = v
 }
 
-func (x *AuditLogV2Entry) SetMetadataJson(v string) {
+func (x *AuditLogEntry) SetMetadataJson(v string) {
 	x.xxx_hidden_MetadataJson = v
 }
 
-func (x *AuditLogV2Entry) HasActor() bool {
+func (x *AuditLogEntry) HasActor() bool {
 	if x == nil {
 		return false
 	}
 	return x.xxx_hidden_Actor != nil
 }
 
-func (x *AuditLogV2Entry) HasContext() bool {
+func (x *AuditLogEntry) HasContext() bool {
 	if x == nil {
 		return false
 	}
 	return x.xxx_hidden_Context != nil
 }
 
-func (x *AuditLogV2Entry) ClearActor() {
+func (x *AuditLogEntry) ClearActor() {
 	x.xxx_hidden_Actor = nil
 }
 
-func (x *AuditLogV2Entry) ClearContext() {
+func (x *AuditLogEntry) ClearContext() {
 	x.xxx_hidden_Context = nil
 }
 
-type AuditLogV2Entry_builder struct {
+type AuditLogEntry_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Id           string
-	Actor        *AuditLogV2Actor
+	Actor        *AuditLogActor
 	Action       string
-	Targets      []*AuditLogV2Target
-	Context      *AuditLogV2Context
+	Targets      []*AuditLogTarget
+	Context      *AuditLogContext
 	EventAt      string
 	Status       string
 	MetadataJson string
 }
 
-func (b0 AuditLogV2Entry_builder) Build() *AuditLogV2Entry {
-	m0 := &AuditLogV2Entry{}
+func (b0 AuditLogEntry_builder) Build() *AuditLogEntry {
+	m0 := &AuditLogEntry{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Id = b.Id
@@ -9299,33 +9398,33 @@ func (b0 AuditLogV2Entry_builder) Build() *AuditLogV2Entry {
 	return m0
 }
 
-type AuditLogV2ListRequest struct {
+type AuditLogListRequest struct {
 	state                protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Q         string                 `protobuf:"bytes,1,opt,name=q,proto3"`
 	xxx_hidden_StartMs   int64                  `protobuf:"varint,2,opt,name=start_ms,json=startMs,proto3"`
 	xxx_hidden_EndMs     int64                  `protobuf:"varint,3,opt,name=end_ms,json=endMs,proto3"`
 	xxx_hidden_Limit     uint32                 `protobuf:"varint,4,opt,name=limit,proto3"`
-	xxx_hidden_Cursor    *AuditLogV2Cursor      `protobuf:"bytes,5,opt,name=cursor,proto3"`
-	xxx_hidden_EndCursor *AuditLogV2Cursor      `protobuf:"bytes,6,opt,name=end_cursor,json=endCursor,proto3"`
+	xxx_hidden_Cursor    *AuditLogCursor        `protobuf:"bytes,5,opt,name=cursor,proto3"`
+	xxx_hidden_EndCursor *AuditLogCursor        `protobuf:"bytes,6,opt,name=end_cursor,json=endCursor,proto3"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
-func (x *AuditLogV2ListRequest) Reset() {
-	*x = AuditLogV2ListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[60]
+func (x *AuditLogListRequest) Reset() {
+	*x = AuditLogListRequest{}
+	mi := &file_modal_proto_api_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2ListRequest) String() string {
+func (x *AuditLogListRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2ListRequest) ProtoMessage() {}
+func (*AuditLogListRequest) ProtoMessage() {}
 
-func (x *AuditLogV2ListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[60]
+func (x *AuditLogListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9336,107 +9435,107 @@ func (x *AuditLogV2ListRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2ListRequest) GetQ() string {
+func (x *AuditLogListRequest) GetQ() string {
 	if x != nil {
 		return x.xxx_hidden_Q
 	}
 	return ""
 }
 
-func (x *AuditLogV2ListRequest) GetStartMs() int64 {
+func (x *AuditLogListRequest) GetStartMs() int64 {
 	if x != nil {
 		return x.xxx_hidden_StartMs
 	}
 	return 0
 }
 
-func (x *AuditLogV2ListRequest) GetEndMs() int64 {
+func (x *AuditLogListRequest) GetEndMs() int64 {
 	if x != nil {
 		return x.xxx_hidden_EndMs
 	}
 	return 0
 }
 
-func (x *AuditLogV2ListRequest) GetLimit() uint32 {
+func (x *AuditLogListRequest) GetLimit() uint32 {
 	if x != nil {
 		return x.xxx_hidden_Limit
 	}
 	return 0
 }
 
-func (x *AuditLogV2ListRequest) GetCursor() *AuditLogV2Cursor {
+func (x *AuditLogListRequest) GetCursor() *AuditLogCursor {
 	if x != nil {
 		return x.xxx_hidden_Cursor
 	}
 	return nil
 }
 
-func (x *AuditLogV2ListRequest) GetEndCursor() *AuditLogV2Cursor {
+func (x *AuditLogListRequest) GetEndCursor() *AuditLogCursor {
 	if x != nil {
 		return x.xxx_hidden_EndCursor
 	}
 	return nil
 }
 
-func (x *AuditLogV2ListRequest) SetQ(v string) {
+func (x *AuditLogListRequest) SetQ(v string) {
 	x.xxx_hidden_Q = v
 }
 
-func (x *AuditLogV2ListRequest) SetStartMs(v int64) {
+func (x *AuditLogListRequest) SetStartMs(v int64) {
 	x.xxx_hidden_StartMs = v
 }
 
-func (x *AuditLogV2ListRequest) SetEndMs(v int64) {
+func (x *AuditLogListRequest) SetEndMs(v int64) {
 	x.xxx_hidden_EndMs = v
 }
 
-func (x *AuditLogV2ListRequest) SetLimit(v uint32) {
+func (x *AuditLogListRequest) SetLimit(v uint32) {
 	x.xxx_hidden_Limit = v
 }
 
-func (x *AuditLogV2ListRequest) SetCursor(v *AuditLogV2Cursor) {
+func (x *AuditLogListRequest) SetCursor(v *AuditLogCursor) {
 	x.xxx_hidden_Cursor = v
 }
 
-func (x *AuditLogV2ListRequest) SetEndCursor(v *AuditLogV2Cursor) {
+func (x *AuditLogListRequest) SetEndCursor(v *AuditLogCursor) {
 	x.xxx_hidden_EndCursor = v
 }
 
-func (x *AuditLogV2ListRequest) HasCursor() bool {
+func (x *AuditLogListRequest) HasCursor() bool {
 	if x == nil {
 		return false
 	}
 	return x.xxx_hidden_Cursor != nil
 }
 
-func (x *AuditLogV2ListRequest) HasEndCursor() bool {
+func (x *AuditLogListRequest) HasEndCursor() bool {
 	if x == nil {
 		return false
 	}
 	return x.xxx_hidden_EndCursor != nil
 }
 
-func (x *AuditLogV2ListRequest) ClearCursor() {
+func (x *AuditLogListRequest) ClearCursor() {
 	x.xxx_hidden_Cursor = nil
 }
 
-func (x *AuditLogV2ListRequest) ClearEndCursor() {
+func (x *AuditLogListRequest) ClearEndCursor() {
 	x.xxx_hidden_EndCursor = nil
 }
 
-type AuditLogV2ListRequest_builder struct {
+type AuditLogListRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Q         string
 	StartMs   int64
 	EndMs     int64
 	Limit     uint32
-	Cursor    *AuditLogV2Cursor
-	EndCursor *AuditLogV2Cursor
+	Cursor    *AuditLogCursor
+	EndCursor *AuditLogCursor
 }
 
-func (b0 AuditLogV2ListRequest_builder) Build() *AuditLogV2ListRequest {
-	m0 := &AuditLogV2ListRequest{}
+func (b0 AuditLogListRequest_builder) Build() *AuditLogListRequest {
+	m0 := &AuditLogListRequest{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Q = b.Q
@@ -9448,29 +9547,29 @@ func (b0 AuditLogV2ListRequest_builder) Build() *AuditLogV2ListRequest {
 	return m0
 }
 
-type AuditLogV2ListResponse struct {
+type AuditLogListResponse struct {
 	state                 protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Items      *[]*AuditLogV2Entry    `protobuf:"bytes,1,rep,name=items,proto3"`
-	xxx_hidden_NextCursor *AuditLogV2Cursor      `protobuf:"bytes,2,opt,name=next_cursor,json=nextCursor,proto3"`
+	xxx_hidden_Items      *[]*AuditLogEntry      `protobuf:"bytes,1,rep,name=items,proto3"`
+	xxx_hidden_NextCursor *AuditLogCursor        `protobuf:"bytes,2,opt,name=next_cursor,json=nextCursor,proto3"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
 
-func (x *AuditLogV2ListResponse) Reset() {
-	*x = AuditLogV2ListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[61]
+func (x *AuditLogListResponse) Reset() {
+	*x = AuditLogListResponse{}
+	mi := &file_modal_proto_api_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2ListResponse) String() string {
+func (x *AuditLogListResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2ListResponse) ProtoMessage() {}
+func (*AuditLogListResponse) ProtoMessage() {}
 
-func (x *AuditLogV2ListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[61]
+func (x *AuditLogListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9481,7 +9580,7 @@ func (x *AuditLogV2ListResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2ListResponse) GetItems() []*AuditLogV2Entry {
+func (x *AuditLogListResponse) GetItems() []*AuditLogEntry {
 	if x != nil {
 		if x.xxx_hidden_Items != nil {
 			return *x.xxx_hidden_Items
@@ -9490,41 +9589,41 @@ func (x *AuditLogV2ListResponse) GetItems() []*AuditLogV2Entry {
 	return nil
 }
 
-func (x *AuditLogV2ListResponse) GetNextCursor() *AuditLogV2Cursor {
+func (x *AuditLogListResponse) GetNextCursor() *AuditLogCursor {
 	if x != nil {
 		return x.xxx_hidden_NextCursor
 	}
 	return nil
 }
 
-func (x *AuditLogV2ListResponse) SetItems(v []*AuditLogV2Entry) {
+func (x *AuditLogListResponse) SetItems(v []*AuditLogEntry) {
 	x.xxx_hidden_Items = &v
 }
 
-func (x *AuditLogV2ListResponse) SetNextCursor(v *AuditLogV2Cursor) {
+func (x *AuditLogListResponse) SetNextCursor(v *AuditLogCursor) {
 	x.xxx_hidden_NextCursor = v
 }
 
-func (x *AuditLogV2ListResponse) HasNextCursor() bool {
+func (x *AuditLogListResponse) HasNextCursor() bool {
 	if x == nil {
 		return false
 	}
 	return x.xxx_hidden_NextCursor != nil
 }
 
-func (x *AuditLogV2ListResponse) ClearNextCursor() {
+func (x *AuditLogListResponse) ClearNextCursor() {
 	x.xxx_hidden_NextCursor = nil
 }
 
-type AuditLogV2ListResponse_builder struct {
+type AuditLogListResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Items      []*AuditLogV2Entry
-	NextCursor *AuditLogV2Cursor
+	Items      []*AuditLogEntry
+	NextCursor *AuditLogCursor
 }
 
-func (b0 AuditLogV2ListResponse_builder) Build() *AuditLogV2ListResponse {
-	m0 := &AuditLogV2ListResponse{}
+func (b0 AuditLogListResponse_builder) Build() *AuditLogListResponse {
+	m0 := &AuditLogListResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Items = &b.Items
@@ -9532,126 +9631,27 @@ func (b0 AuditLogV2ListResponse_builder) Build() *AuditLogV2ListResponse {
 	return m0
 }
 
-type AuditLogV2PlanRequest struct {
-	state                 protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Q          string                 `protobuf:"bytes,1,opt,name=q,proto3"`
-	xxx_hidden_StartMs    int64                  `protobuf:"varint,2,opt,name=start_ms,json=startMs,proto3"`
-	xxx_hidden_EndMs      int64                  `protobuf:"varint,3,opt,name=end_ms,json=endMs,proto3"`
-	xxx_hidden_BucketRows uint32                 `protobuf:"varint,4,opt,name=bucket_rows,json=bucketRows,proto3"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
-}
-
-func (x *AuditLogV2PlanRequest) Reset() {
-	*x = AuditLogV2PlanRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[62]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AuditLogV2PlanRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AuditLogV2PlanRequest) ProtoMessage() {}
-
-func (x *AuditLogV2PlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[62]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-func (x *AuditLogV2PlanRequest) GetQ() string {
-	if x != nil {
-		return x.xxx_hidden_Q
-	}
-	return ""
-}
-
-func (x *AuditLogV2PlanRequest) GetStartMs() int64 {
-	if x != nil {
-		return x.xxx_hidden_StartMs
-	}
-	return 0
-}
-
-func (x *AuditLogV2PlanRequest) GetEndMs() int64 {
-	if x != nil {
-		return x.xxx_hidden_EndMs
-	}
-	return 0
-}
-
-func (x *AuditLogV2PlanRequest) GetBucketRows() uint32 {
-	if x != nil {
-		return x.xxx_hidden_BucketRows
-	}
-	return 0
-}
-
-func (x *AuditLogV2PlanRequest) SetQ(v string) {
-	x.xxx_hidden_Q = v
-}
-
-func (x *AuditLogV2PlanRequest) SetStartMs(v int64) {
-	x.xxx_hidden_StartMs = v
-}
-
-func (x *AuditLogV2PlanRequest) SetEndMs(v int64) {
-	x.xxx_hidden_EndMs = v
-}
-
-func (x *AuditLogV2PlanRequest) SetBucketRows(v uint32) {
-	x.xxx_hidden_BucketRows = v
-}
-
-type AuditLogV2PlanRequest_builder struct {
-	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
-
-	Q          string
-	StartMs    int64
-	EndMs      int64
-	BucketRows uint32
-}
-
-func (b0 AuditLogV2PlanRequest_builder) Build() *AuditLogV2PlanRequest {
-	m0 := &AuditLogV2PlanRequest{}
-	b, x := &b0, m0
-	_, _ = b, x
-	x.xxx_hidden_Q = b.Q
-	x.xxx_hidden_StartMs = b.StartMs
-	x.xxx_hidden_EndMs = b.EndMs
-	x.xxx_hidden_BucketRows = b.BucketRows
-	return m0
-}
-
-type AuditLogV2PlanResponse struct {
+type AuditLogPlanResponse struct {
 	state              protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Cursors *[]*AuditLogV2Cursor   `protobuf:"bytes,1,rep,name=cursors,proto3"`
+	xxx_hidden_Cursors *[]*AuditLogCursor     `protobuf:"bytes,1,rep,name=cursors,proto3"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
-func (x *AuditLogV2PlanResponse) Reset() {
-	*x = AuditLogV2PlanResponse{}
+func (x *AuditLogPlanResponse) Reset() {
+	*x = AuditLogPlanResponse{}
 	mi := &file_modal_proto_api_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2PlanResponse) String() string {
+func (x *AuditLogPlanResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2PlanResponse) ProtoMessage() {}
+func (*AuditLogPlanResponse) ProtoMessage() {}
 
-func (x *AuditLogV2PlanResponse) ProtoReflect() protoreflect.Message {
+func (x *AuditLogPlanResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_modal_proto_api_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9663,7 +9663,7 @@ func (x *AuditLogV2PlanResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2PlanResponse) GetCursors() []*AuditLogV2Cursor {
+func (x *AuditLogPlanResponse) GetCursors() []*AuditLogCursor {
 	if x != nil {
 		if x.xxx_hidden_Cursors != nil {
 			return *x.xxx_hidden_Cursors
@@ -9672,27 +9672,27 @@ func (x *AuditLogV2PlanResponse) GetCursors() []*AuditLogV2Cursor {
 	return nil
 }
 
-func (x *AuditLogV2PlanResponse) SetCursors(v []*AuditLogV2Cursor) {
+func (x *AuditLogPlanResponse) SetCursors(v []*AuditLogCursor) {
 	x.xxx_hidden_Cursors = &v
 }
 
-type AuditLogV2PlanResponse_builder struct {
+type AuditLogPlanResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	// Bucket boundaries, newest first. Bucket i reads after cursors[i] (bucket 0: from the newest entry)
 	// through cursors[i+1] inclusive (last bucket: to the oldest), using List cursor and end_cursor.
-	Cursors []*AuditLogV2Cursor
+	Cursors []*AuditLogCursor
 }
 
-func (b0 AuditLogV2PlanResponse_builder) Build() *AuditLogV2PlanResponse {
-	m0 := &AuditLogV2PlanResponse{}
+func (b0 AuditLogPlanResponse_builder) Build() *AuditLogPlanResponse {
+	m0 := &AuditLogPlanResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Cursors = &b.Cursors
 	return m0
 }
 
-type AuditLogV2Target struct {
+type AuditLogTarget struct {
 	state           protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Type string                 `protobuf:"bytes,1,opt,name=type,proto3"`
 	xxx_hidden_Id   string                 `protobuf:"bytes,2,opt,name=id,proto3"`
@@ -9700,20 +9700,20 @@ type AuditLogV2Target struct {
 	sizeCache       protoimpl.SizeCache
 }
 
-func (x *AuditLogV2Target) Reset() {
-	*x = AuditLogV2Target{}
+func (x *AuditLogTarget) Reset() {
+	*x = AuditLogTarget{}
 	mi := &file_modal_proto_api_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AuditLogV2Target) String() string {
+func (x *AuditLogTarget) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuditLogV2Target) ProtoMessage() {}
+func (*AuditLogTarget) ProtoMessage() {}
 
-func (x *AuditLogV2Target) ProtoReflect() protoreflect.Message {
+func (x *AuditLogTarget) ProtoReflect() protoreflect.Message {
 	mi := &file_modal_proto_api_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9725,37 +9725,37 @@ func (x *AuditLogV2Target) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *AuditLogV2Target) GetType() string {
+func (x *AuditLogTarget) GetType() string {
 	if x != nil {
 		return x.xxx_hidden_Type
 	}
 	return ""
 }
 
-func (x *AuditLogV2Target) GetId() string {
+func (x *AuditLogTarget) GetId() string {
 	if x != nil {
 		return x.xxx_hidden_Id
 	}
 	return ""
 }
 
-func (x *AuditLogV2Target) SetType(v string) {
+func (x *AuditLogTarget) SetType(v string) {
 	x.xxx_hidden_Type = v
 }
 
-func (x *AuditLogV2Target) SetId(v string) {
+func (x *AuditLogTarget) SetId(v string) {
 	x.xxx_hidden_Id = v
 }
 
-type AuditLogV2Target_builder struct {
+type AuditLogTarget_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Type string
 	Id   string
 }
 
-func (b0 AuditLogV2Target_builder) Build() *AuditLogV2Target {
-	m0 := &AuditLogV2Target{}
+func (b0 AuditLogTarget_builder) Build() *AuditLogTarget {
+	m0 := &AuditLogTarget{}
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Type = b.Type
@@ -75883,56 +75883,56 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\aproxied\x18\x04 \x01(\bR\aproxied\"\x81\x01\n" +
 	"\x14AttemptStartResponse\x12#\n" +
 	"\rattempt_token\x18\x01 \x01(\tR\fattemptToken\x12D\n" +
-	"\fretry_policy\x18\x02 \x01(\v2!.modal.client.FunctionRetryPolicyR\vretryPolicy\"5\n" +
-	"\x0fAuditLogV2Actor\x12\x12\n" +
+	"\fretry_policy\x18\x02 \x01(\v2!.modal.client.FunctionRetryPolicyR\vretryPolicy\"3\n" +
+	"\rAuditLogActor\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"\xba\x01\n" +
-	"\x11AuditLogV2Context\x12!\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"y\n" +
+	"\x16AuditLogBucketsRequest\x12\f\n" +
+	"\x01q\x18\x01 \x01(\tR\x01q\x12\x19\n" +
+	"\bstart_ms\x18\x02 \x01(\x03R\astartMs\x12\x15\n" +
+	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\x12\x1f\n" +
+	"\vbucket_rows\x18\x04 \x01(\rR\n" +
+	"bucketRows\"\xb8\x01\n" +
+	"\x0fAuditLogContext\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12%\n" +
 	"\x0eenvironment_id\x18\x02 \x01(\tR\renvironmentId\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x12\x1d\n" +
 	"\n" +
 	"ip_address\x18\x04 \x01(\tR\tipAddress\x12$\n" +
-	"\x0eis_modal_admin\x18\x05 \x01(\bR\fisModalAdmin\"X\n" +
-	"\x16AuditLogV2CountRequest\x12\f\n" +
+	"\x0eis_modal_admin\x18\x05 \x01(\bR\fisModalAdmin\"V\n" +
+	"\x14AuditLogCountRequest\x12\f\n" +
 	"\x01q\x18\x01 \x01(\tR\x01q\x12\x19\n" +
 	"\bstart_ms\x18\x02 \x01(\x03R\astartMs\x12\x15\n" +
-	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\"/\n" +
-	"\x17AuditLogV2CountResponse\x12\x14\n" +
-	"\x05count\x18\x01 \x01(\x03R\x05count\"F\n" +
-	"\x10AuditLogV2Cursor\x12\"\n" +
+	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\"-\n" +
+	"\x15AuditLogCountResponse\x12\x14\n" +
+	"\x05count\x18\x01 \x01(\x03R\x05count\"D\n" +
+	"\x0eAuditLogCursor\x12\"\n" +
 	"\revent_at_desc\x18\x01 \x01(\x03R\veventAtDesc\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"\xbb\x02\n" +
-	"\x0fAuditLogV2Entry\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x123\n" +
-	"\x05actor\x18\x02 \x01(\v2\x1d.modal.client.AuditLogV2ActorR\x05actor\x12\x16\n" +
-	"\x06action\x18\x03 \x01(\tR\x06action\x128\n" +
-	"\atargets\x18\x04 \x03(\v2\x1e.modal.client.AuditLogV2TargetR\atargets\x129\n" +
-	"\acontext\x18\x05 \x01(\v2\x1f.modal.client.AuditLogV2ContextR\acontext\x12\x19\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\xb3\x02\n" +
+	"\rAuditLogEntry\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x121\n" +
+	"\x05actor\x18\x02 \x01(\v2\x1b.modal.client.AuditLogActorR\x05actor\x12\x16\n" +
+	"\x06action\x18\x03 \x01(\tR\x06action\x126\n" +
+	"\atargets\x18\x04 \x03(\v2\x1c.modal.client.AuditLogTargetR\atargets\x127\n" +
+	"\acontext\x18\x05 \x01(\v2\x1d.modal.client.AuditLogContextR\acontext\x12\x19\n" +
 	"\bevent_at\x18\x06 \x01(\tR\aeventAt\x12\x16\n" +
 	"\x06status\x18\a \x01(\tR\x06status\x12#\n" +
-	"\rmetadata_json\x18\b \x01(\tR\fmetadataJson\"\xe4\x01\n" +
-	"\x15AuditLogV2ListRequest\x12\f\n" +
+	"\rmetadata_json\x18\b \x01(\tR\fmetadataJson\"\xde\x01\n" +
+	"\x13AuditLogListRequest\x12\f\n" +
 	"\x01q\x18\x01 \x01(\tR\x01q\x12\x19\n" +
 	"\bstart_ms\x18\x02 \x01(\x03R\astartMs\x12\x15\n" +
 	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\rR\x05limit\x126\n" +
-	"\x06cursor\x18\x05 \x01(\v2\x1e.modal.client.AuditLogV2CursorR\x06cursor\x12=\n" +
+	"\x05limit\x18\x04 \x01(\rR\x05limit\x124\n" +
+	"\x06cursor\x18\x05 \x01(\v2\x1c.modal.client.AuditLogCursorR\x06cursor\x12;\n" +
 	"\n" +
-	"end_cursor\x18\x06 \x01(\v2\x1e.modal.client.AuditLogV2CursorR\tendCursor\"\x8e\x01\n" +
-	"\x16AuditLogV2ListResponse\x123\n" +
-	"\x05items\x18\x01 \x03(\v2\x1d.modal.client.AuditLogV2EntryR\x05items\x12?\n" +
-	"\vnext_cursor\x18\x02 \x01(\v2\x1e.modal.client.AuditLogV2CursorR\n" +
-	"nextCursor\"x\n" +
-	"\x15AuditLogV2PlanRequest\x12\f\n" +
-	"\x01q\x18\x01 \x01(\tR\x01q\x12\x19\n" +
-	"\bstart_ms\x18\x02 \x01(\x03R\astartMs\x12\x15\n" +
-	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\x12\x1f\n" +
-	"\vbucket_rows\x18\x04 \x01(\rR\n" +
-	"bucketRows\"R\n" +
-	"\x16AuditLogV2PlanResponse\x128\n" +
-	"\acursors\x18\x01 \x03(\v2\x1e.modal.client.AuditLogV2CursorR\acursors\"6\n" +
-	"\x10AuditLogV2Target\x12\x12\n" +
+	"end_cursor\x18\x06 \x01(\v2\x1c.modal.client.AuditLogCursorR\tendCursor\"\x88\x01\n" +
+	"\x14AuditLogListResponse\x121\n" +
+	"\x05items\x18\x01 \x03(\v2\x1b.modal.client.AuditLogEntryR\x05items\x12=\n" +
+	"\vnext_cursor\x18\x02 \x01(\v2\x1c.modal.client.AuditLogCursorR\n" +
+	"nextCursor\"N\n" +
+	"\x14AuditLogPlanResponse\x126\n" +
+	"\acursors\x18\x01 \x03(\v2\x1c.modal.client.AuditLogCursorR\acursors\"4\n" +
+	"\x0eAuditLogTarget\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"\x15\n" +
 	"\x13AuthTokenGetRequest\",\n" +
@@ -79566,7 +79566,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x15WEBHOOK_TYPE_ASGI_APP\x10\x01\x12\x19\n" +
 	"\x15WEBHOOK_TYPE_FUNCTION\x10\x02\x12\x19\n" +
 	"\x15WEBHOOK_TYPE_WSGI_APP\x10\x03\x12\x1b\n" +
-	"\x17WEBHOOK_TYPE_WEB_SERVER\x10\x042\xb8\xc9\x01\n" +
+	"\x17WEBHOOK_TYPE_WEB_SERVER\x10\x042\xa9\xc9\x01\n" +
 	"\vModalClient\x12W\n" +
 	"\x13AppClientDisconnect\x12(.modal.client.AppClientDisconnectRequest\x1a\x16.google.protobuf.Empty\x12U\n" +
 	"\fAppCountLogs\x12!.modal.client.AppCountLogsRequest\x1a\".modal.client.AppCountLogsResponse\x12L\n" +
@@ -79600,10 +79600,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\aAppStop\x12\x1c.modal.client.AppStopRequest\x1a\x16.google.protobuf.Empty\x12U\n" +
 	"\fAttemptAwait\x12!.modal.client.AttemptAwaitRequest\x1a\".modal.client.AttemptAwaitResponse\x12U\n" +
 	"\fAttemptRetry\x12!.modal.client.AttemptRetryRequest\x1a\".modal.client.AttemptRetryResponse\x12U\n" +
-	"\fAttemptStart\x12!.modal.client.AttemptStartRequest\x1a\".modal.client.AttemptStartResponse\x12^\n" +
-	"\x0fAuditLogV2Count\x12$.modal.client.AuditLogV2CountRequest\x1a%.modal.client.AuditLogV2CountResponse\x12[\n" +
-	"\x0eAuditLogV2List\x12#.modal.client.AuditLogV2ListRequest\x1a$.modal.client.AuditLogV2ListResponse\x12[\n" +
-	"\x0eAuditLogV2Plan\x12#.modal.client.AuditLogV2PlanRequest\x1a$.modal.client.AuditLogV2PlanResponse\x12U\n" +
+	"\fAttemptStart\x12!.modal.client.AttemptStartRequest\x1a\".modal.client.AttemptStartResponse\x12X\n" +
+	"\rAuditLogCount\x12\".modal.client.AuditLogCountRequest\x1a#.modal.client.AuditLogCountResponse\x12U\n" +
+	"\fAuditLogList\x12!.modal.client.AuditLogListRequest\x1a\".modal.client.AuditLogListResponse\x12X\n" +
+	"\fAuditLogPlan\x12$.modal.client.AuditLogBucketsRequest\x1a\".modal.client.AuditLogPlanResponse\x12U\n" +
 	"\fAuthTokenGet\x12!.modal.client.AuthTokenGetRequest\x1a\".modal.client.AuthTokenGetResponse\x12O\n" +
 	"\n" +
 	"BlobCreate\x12\x1f.modal.client.BlobCreateRequest\x1a .modal.client.BlobCreateResponse\x12F\n" +
@@ -79977,17 +79977,17 @@ var file_modal_proto_api_proto_goTypes = []any{
 	(*AttemptRetryResponse)(nil),                           // 115: modal.client.AttemptRetryResponse
 	(*AttemptStartRequest)(nil),                            // 116: modal.client.AttemptStartRequest
 	(*AttemptStartResponse)(nil),                           // 117: modal.client.AttemptStartResponse
-	(*AuditLogV2Actor)(nil),                                // 118: modal.client.AuditLogV2Actor
-	(*AuditLogV2Context)(nil),                              // 119: modal.client.AuditLogV2Context
-	(*AuditLogV2CountRequest)(nil),                         // 120: modal.client.AuditLogV2CountRequest
-	(*AuditLogV2CountResponse)(nil),                        // 121: modal.client.AuditLogV2CountResponse
-	(*AuditLogV2Cursor)(nil),                               // 122: modal.client.AuditLogV2Cursor
-	(*AuditLogV2Entry)(nil),                                // 123: modal.client.AuditLogV2Entry
-	(*AuditLogV2ListRequest)(nil),                          // 124: modal.client.AuditLogV2ListRequest
-	(*AuditLogV2ListResponse)(nil),                         // 125: modal.client.AuditLogV2ListResponse
-	(*AuditLogV2PlanRequest)(nil),                          // 126: modal.client.AuditLogV2PlanRequest
-	(*AuditLogV2PlanResponse)(nil),                         // 127: modal.client.AuditLogV2PlanResponse
-	(*AuditLogV2Target)(nil),                               // 128: modal.client.AuditLogV2Target
+	(*AuditLogActor)(nil),                                  // 118: modal.client.AuditLogActor
+	(*AuditLogBucketsRequest)(nil),                         // 119: modal.client.AuditLogBucketsRequest
+	(*AuditLogContext)(nil),                                // 120: modal.client.AuditLogContext
+	(*AuditLogCountRequest)(nil),                           // 121: modal.client.AuditLogCountRequest
+	(*AuditLogCountResponse)(nil),                          // 122: modal.client.AuditLogCountResponse
+	(*AuditLogCursor)(nil),                                 // 123: modal.client.AuditLogCursor
+	(*AuditLogEntry)(nil),                                  // 124: modal.client.AuditLogEntry
+	(*AuditLogListRequest)(nil),                            // 125: modal.client.AuditLogListRequest
+	(*AuditLogListResponse)(nil),                           // 126: modal.client.AuditLogListResponse
+	(*AuditLogPlanResponse)(nil),                           // 127: modal.client.AuditLogPlanResponse
+	(*AuditLogTarget)(nil),                                 // 128: modal.client.AuditLogTarget
 	(*AuthTokenGetRequest)(nil),                            // 129: modal.client.AuthTokenGetRequest
 	(*AuthTokenGetResponse)(nil),                           // 130: modal.client.AuthTokenGetResponse
 	(*AutoscalerConfiguration)(nil),                        // 131: modal.client.AutoscalerConfiguration
@@ -80727,14 +80727,14 @@ var file_modal_proto_api_proto_depIdxs = []int32{
 	348, // 63: modal.client.AttemptRetryRequest.input:type_name -> modal.client.FunctionPutInputsItem
 	348, // 64: modal.client.AttemptStartRequest.input:type_name -> modal.client.FunctionPutInputsItem
 	357, // 65: modal.client.AttemptStartResponse.retry_policy:type_name -> modal.client.FunctionRetryPolicy
-	118, // 66: modal.client.AuditLogV2Entry.actor:type_name -> modal.client.AuditLogV2Actor
-	128, // 67: modal.client.AuditLogV2Entry.targets:type_name -> modal.client.AuditLogV2Target
-	119, // 68: modal.client.AuditLogV2Entry.context:type_name -> modal.client.AuditLogV2Context
-	122, // 69: modal.client.AuditLogV2ListRequest.cursor:type_name -> modal.client.AuditLogV2Cursor
-	122, // 70: modal.client.AuditLogV2ListRequest.end_cursor:type_name -> modal.client.AuditLogV2Cursor
-	123, // 71: modal.client.AuditLogV2ListResponse.items:type_name -> modal.client.AuditLogV2Entry
-	122, // 72: modal.client.AuditLogV2ListResponse.next_cursor:type_name -> modal.client.AuditLogV2Cursor
-	122, // 73: modal.client.AuditLogV2PlanResponse.cursors:type_name -> modal.client.AuditLogV2Cursor
+	118, // 66: modal.client.AuditLogEntry.actor:type_name -> modal.client.AuditLogActor
+	128, // 67: modal.client.AuditLogEntry.targets:type_name -> modal.client.AuditLogTarget
+	120, // 68: modal.client.AuditLogEntry.context:type_name -> modal.client.AuditLogContext
+	123, // 69: modal.client.AuditLogListRequest.cursor:type_name -> modal.client.AuditLogCursor
+	123, // 70: modal.client.AuditLogListRequest.end_cursor:type_name -> modal.client.AuditLogCursor
+	124, // 71: modal.client.AuditLogListResponse.items:type_name -> modal.client.AuditLogEntry
+	123, // 72: modal.client.AuditLogListResponse.next_cursor:type_name -> modal.client.AuditLogCursor
+	123, // 73: modal.client.AuditLogPlanResponse.cursors:type_name -> modal.client.AuditLogCursor
 	132, // 74: modal.client.AutoscalerConfiguration.settings:type_name -> modal.client.AutoscalerSettings
 	711, // 75: modal.client.AutoscalerConfiguration.override_events:type_name -> modal.client.AutoscalerConfiguration.OverrideEventsEntry
 	132, // 76: modal.client.AutoscalerConfiguration.default_settings:type_name -> modal.client.AutoscalerSettings
@@ -81361,9 +81361,9 @@ var file_modal_proto_api_proto_depIdxs = []int32{
 	112, // 697: modal.client.ModalClient.AttemptAwait:input_type -> modal.client.AttemptAwaitRequest
 	114, // 698: modal.client.ModalClient.AttemptRetry:input_type -> modal.client.AttemptRetryRequest
 	116, // 699: modal.client.ModalClient.AttemptStart:input_type -> modal.client.AttemptStartRequest
-	120, // 700: modal.client.ModalClient.AuditLogV2Count:input_type -> modal.client.AuditLogV2CountRequest
-	124, // 701: modal.client.ModalClient.AuditLogV2List:input_type -> modal.client.AuditLogV2ListRequest
-	126, // 702: modal.client.ModalClient.AuditLogV2Plan:input_type -> modal.client.AuditLogV2PlanRequest
+	121, // 700: modal.client.ModalClient.AuditLogCount:input_type -> modal.client.AuditLogCountRequest
+	125, // 701: modal.client.ModalClient.AuditLogList:input_type -> modal.client.AuditLogListRequest
+	119, // 702: modal.client.ModalClient.AuditLogPlan:input_type -> modal.client.AuditLogBucketsRequest
 	129, // 703: modal.client.ModalClient.AuthTokenGet:input_type -> modal.client.AuthTokenGetRequest
 	135, // 704: modal.client.ModalClient.BlobCreate:input_type -> modal.client.BlobCreateRequest
 	137, // 705: modal.client.ModalClient.BlobGet:input_type -> modal.client.BlobGetRequest
@@ -81631,9 +81631,9 @@ var file_modal_proto_api_proto_depIdxs = []int32{
 	113, // 967: modal.client.ModalClient.AttemptAwait:output_type -> modal.client.AttemptAwaitResponse
 	115, // 968: modal.client.ModalClient.AttemptRetry:output_type -> modal.client.AttemptRetryResponse
 	117, // 969: modal.client.ModalClient.AttemptStart:output_type -> modal.client.AttemptStartResponse
-	121, // 970: modal.client.ModalClient.AuditLogV2Count:output_type -> modal.client.AuditLogV2CountResponse
-	125, // 971: modal.client.ModalClient.AuditLogV2List:output_type -> modal.client.AuditLogV2ListResponse
-	127, // 972: modal.client.ModalClient.AuditLogV2Plan:output_type -> modal.client.AuditLogV2PlanResponse
+	122, // 970: modal.client.ModalClient.AuditLogCount:output_type -> modal.client.AuditLogCountResponse
+	126, // 971: modal.client.ModalClient.AuditLogList:output_type -> modal.client.AuditLogListResponse
+	127, // 972: modal.client.ModalClient.AuditLogPlan:output_type -> modal.client.AuditLogPlanResponse
 	130, // 973: modal.client.ModalClient.AuthTokenGet:output_type -> modal.client.AuthTokenGetResponse
 	136, // 974: modal.client.ModalClient.BlobCreate:output_type -> modal.client.BlobCreateResponse
 	138, // 975: modal.client.ModalClient.BlobGet:output_type -> modal.client.BlobGetResponse

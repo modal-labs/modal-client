@@ -893,12 +893,19 @@ message AttemptStartResponse {
   FunctionRetryPolicy retry_policy = 2;
 }
 
-message AuditLogV2Actor {
+message AuditLogActor {
   string type = 1;  // "user", "service_user", "oauth_grant" or "system"
   string id = 2;
 }
 
-message AuditLogV2Context {
+message AuditLogBucketsRequest {
+  string q = 1;             // Search query in the audit log search syntax
+  int64 start_ms = 2;       // Start of the time range in Unix milliseconds, inclusive
+  int64 end_ms = 3;         // End of the time range in Unix milliseconds, exclusive
+  uint32 bucket_rows = 4;   // Approximate entries per bucket; 0 selects the default
+}
+
+message AuditLogContext {
   string workspace_id = 1;
   string environment_id = 2;
   string source = 3;  // "sdk", "web" or "unknown"
@@ -906,61 +913,54 @@ message AuditLogV2Context {
   bool is_modal_admin = 5;
 }
 
-message AuditLogV2CountRequest {
+message AuditLogCountRequest {
   string q = 1;        // Search query in the audit log search syntax
   int64 start_ms = 2;  // Start of the time range in Unix milliseconds, inclusive
   int64 end_ms = 3;    // End of the time range in Unix milliseconds, exclusive
 }
 
-message AuditLogV2CountResponse {
+message AuditLogCountResponse {
   int64 count = 1;
 }
 
 // A position in the results. Pass it back unchanged.
-message AuditLogV2Cursor {
+message AuditLogCursor {
   int64 event_at_desc = 1;
   string id = 2;
 }
 
-message AuditLogV2Entry {
+message AuditLogEntry {
   string id = 1;
-  AuditLogV2Actor actor = 2;
+  AuditLogActor actor = 2;
   string action = 3;
-  repeated AuditLogV2Target targets = 4;
-  AuditLogV2Context context = 5;
+  repeated AuditLogTarget targets = 4;
+  AuditLogContext context = 5;
   string event_at = 6;       // ISO 8601 timestamp
   string status = 7;         // "success" or "error"
   string metadata_json = 8;  // JSON-encoded string
 }
 
-message AuditLogV2ListRequest {
+message AuditLogListRequest {
   string q = 1;                     // Search query in the audit log search syntax
   int64 start_ms = 2;               // Start of the time range in Unix milliseconds, inclusive
   int64 end_ms = 3;                 // End of the time range in Unix milliseconds, exclusive
   uint32 limit = 4;                 // Maximum entries to return; 0 selects the default
-  AuditLogV2Cursor cursor = 5;      // Return entries after this position; omit for the first page
-  AuditLogV2Cursor end_cursor = 6;  // Stop at this position, inclusive; omit to read to start_ms
+  AuditLogCursor cursor = 5;      // Return entries after this position; omit for the first page
+  AuditLogCursor end_cursor = 6;  // Stop at this position, inclusive; omit to read to start_ms
 }
 
-message AuditLogV2ListResponse {
-  repeated AuditLogV2Entry items = 1;   // Newest first
-  AuditLogV2Cursor next_cursor = 2;     // Set when more entries may follow
+message AuditLogListResponse {
+  repeated AuditLogEntry items = 1;   // Newest first
+  AuditLogCursor next_cursor = 2;     // Set when more entries may follow
 }
 
-message AuditLogV2PlanRequest {
-  string q = 1;             // Search query in the audit log search syntax
-  int64 start_ms = 2;       // Start of the time range in Unix milliseconds, inclusive
-  int64 end_ms = 3;         // End of the time range in Unix milliseconds, exclusive
-  uint32 bucket_rows = 4;   // Approximate entries per bucket; 0 selects the default
-}
-
-message AuditLogV2PlanResponse {
+message AuditLogPlanResponse {
   // Bucket boundaries, newest first. Bucket i reads after cursors[i] (bucket 0: from the newest entry)
   // through cursors[i+1] inclusive (last bucket: to the oldest), using List cursor and end_cursor.
-  repeated AuditLogV2Cursor cursors = 1;
+  repeated AuditLogCursor cursors = 1;
 }
 
-message AuditLogV2Target {
+message AuditLogTarget {
   string type = 1;  // For example "app", "function" or "secret"
   string id = 2;
 }
@@ -5653,9 +5653,9 @@ service ModalClient {
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
   // Audit logs
-  rpc AuditLogV2Count(AuditLogV2CountRequest) returns (AuditLogV2CountResponse);
-  rpc AuditLogV2List(AuditLogV2ListRequest) returns (AuditLogV2ListResponse);
-  rpc AuditLogV2Plan(AuditLogV2PlanRequest) returns (AuditLogV2PlanResponse);
+  rpc AuditLogCount(AuditLogCountRequest) returns (AuditLogCountResponse);
+  rpc AuditLogList(AuditLogListRequest) returns (AuditLogListResponse);
+  rpc AuditLogPlan(AuditLogBucketsRequest) returns (AuditLogPlanResponse);
 
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
