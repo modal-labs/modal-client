@@ -1,4 +1,5 @@
 load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel:pytest.bzl", "pytest_test")
 
 py_library(
     name = "client",
@@ -7,5 +8,33 @@ py_library(
     deps = [
         "@pip//invoke",
         "@pip//rich",
+    ],
+)
+
+# The client SDK consistency lints (proto ordering, JS/Go version literals,
+# changelog structure, client/py copyright headers), run against the checked-in
+# files, by calling the `inv lint-protos` / `lint-versions` / `lint-changelogs`
+# (client/tasks.py) and `inv check-copyright` (client/py/tasks.py) tasks.
+pytest_test(
+    name = "sdk_lints_test",
+    size = "small",
+    srcs = ["sdk_lints_test.py"],
+    args = ["client/sdk_lints_test.py"],
+    data = [
+        "//client/go:CHANGELOG.md",
+        "//client/go:version.go",
+        "//client/js:CHANGELOG.md",
+        "//client/js:package.json",
+        "//client/js:src/version.ts",
+        "//client/modal_proto:proto_files",
+        "//client/py:CHANGELOG.md",
+        "//client/py:py_sources",
+    ],
+    tags = ["team:sdk"],
+    deps = [
+        # The tasks files are loaded by path, which Gazelle doesn't see.
+        ":client",  # keep
+        "@pip//pytest",
+        "@pip//invoke",
     ],
 )
