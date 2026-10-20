@@ -2047,7 +2047,7 @@ func (sb *Sandbox) ExperimentalSnapshot(ctx context.Context, params *SandboxExpe
 		resp, err := crClient.SnapshotMemory(ctx, pb.TaskSnapshotMemoryRequest_builder{
 			TaskId:         taskID,
 			IdempotencyKey: uuid.NewString(),
-		}.Build(), 165*time.Second)
+		}.Build(), 300*time.Second)
 		if err != nil {
 			return nil, err
 		}

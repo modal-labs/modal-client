@@ -2219,7 +2219,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             command_router_client = await self._get_command_router_client(task_id)
             snap_v2_resp = await command_router_client.snapshot_memory(
                 sr_pb2.TaskSnapshotMemoryRequest(task_id=task_id, idempotency_key=str(uuid.uuid4())),
-                timeout=165.0,
+                timeout=300.0,
             )
             snapshot_id = snap_v2_resp.snapshot_id
         else:
