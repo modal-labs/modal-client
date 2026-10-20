@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -37,7 +38,9 @@ type retryOptions struct {
 	// if they would otherwise be retryable. Use this to let errors like
 	// DeadlineExceeded propagate immediately when the caller has
 	// specified their own deadline.
-	ExcludeCodes []codes.Code
+	ExcludeCodes    []codes.Code
+	MaxThrottleWait *time.Duration
+	Logger          *slog.Logger
 }
 
 // defaultRetryOptions returns the default retry options.
@@ -111,22 +114,52 @@ func parseJwtExpiration(jwt string) (*int64, error) {
 
 var errDeadlineExceeded = errors.New("deadline exceeded")
 
+type throttleRetryAttemptKey struct{}
+
+func throttleRetryAttempt(ctx context.Context) int {
+	attempt, _ := ctx.Value(throttleRetryAttemptKey{}).(int)
+	return attempt
+}
+
+func serverRetryAfter(err error) (time.Duration, bool) {
+	policy := getServerRetryPolicy(err)
+	if policy == nil {
+		return 0, false
+	}
+	return max(time.Duration(float64(policy.GetRetryAfterSecs())*float64(time.Second)), 100*time.Millisecond), true
+}
+
 // callWithRetriesOnTransientErrors retries the given function on transient gRPC errors.
+//
+// ResourceExhausted is retried only when the server attaches a retry policy to the error.
+// A server-requested throttle wait that doesn't fit before the deadline returns errDeadlineExceeded.
 func callWithRetriesOnTransientErrors[T any](
 	ctx context.Context,
-	fn func() (*T, error),
+	fn func(ctx context.Context) (*T, error),
 	opts retryOptions,
 	closed *atomic.Bool,
 ) (*T, error) {
 	delay := opts.BaseDelay
 	numRetries := 0
+	numThrottledRetries := 0
+	var throttleWaitTotal time.Duration
+	throttleDisabled := opts.MaxThrottleWait != nil && *opts.MaxThrottleWait == 0
+
+	isExcluded := func(code codes.Code) bool {
+		for _, excluded := range opts.ExcludeCodes {
+			if excluded == code {
+				return true
+			}
+		}
+		return false
+	}
 
 	for {
 		if opts.Deadline != nil && time.Now().After(*opts.Deadline) {
 			return nil, errDeadlineExceeded
 		}
 
-		result, err := fn()
+		result, err := fn(context.WithValue(ctx, throttleRetryAttemptKey{}, numThrottledRetries))
 		if err == nil {
 			return result, nil
 		}
@@ -139,13 +172,35 @@ func callWithRetriesOnTransientErrors[T any](
 			return nil, ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
 		}
 
+		if st.Code() == codes.ResourceExhausted && !throttleDisabled && !isExcluded(st.Code()) {
+			if retryAfter, ok := serverRetryAfter(err); ok {
+				if opts.Deadline != nil && !time.Now().Add(retryAfter).Before(*opts.Deadline) {
+					return nil, errDeadlineExceeded
+				}
+				if opts.MaxThrottleWait != nil && throttleWaitTotal+retryAfter > *opts.MaxThrottleWait {
+					return nil, err
+				}
+				if opts.Logger != nil {
+					opts.Logger.DebugContext(ctx, "Server requested retry delay",
+						"throttle_retries", numThrottledRetries, "server_delay", retryAfter)
+				}
+				// Throttling says nothing about the connection's health.
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(retryAfter):
+				}
+				numThrottledRetries++
+				throttleWaitTotal += retryAfter
+				continue
+			}
+		}
+
 		if _, retryable := commandRouterRetryableCodes[st.Code()]; !retryable {
 			return nil, err
 		}
-		for _, excluded := range opts.ExcludeCodes {
-			if excluded == st.Code() {
-				return nil, err
-			}
+		if isExcluded(st.Code()) {
+			return nil, err
 		}
 
 		if opts.MaxRetries != nil && numRetries >= *opts.MaxRetries {
@@ -202,7 +257,8 @@ type taskCommandRouterClient struct {
 	idleTimeout time.Duration
 	// Incremented whenever an idle connection is rebuilt. A stream opened on an
 	// earlier generation belongs to the connection that was given up.
-	generation uint64
+	generation      uint64
+	maxThrottleWait *time.Duration
 
 	serverClient    pb.ModalClientClient
 	taskID          string
@@ -272,18 +328,19 @@ func initTaskCommandRouterClient(
 	}
 
 	client, err := newTaskCommandRouterClient(commandRouterParams{
-		serverClient: serverClient,
-		taskID:       taskID,
-		sandboxID:    sandboxID,
-		isV2:         isV2,
-		serverURL:    access.url,
-		jwt:          jwt,
-		jwtExp:       jwtExp,
-		target:       target,
-		creds:        creds,
-		idleTimeout:  profile.SandboxChannelIdleTimeout,
-		logger:       logger,
-		warnings:     warnings,
+		serverClient:    serverClient,
+		taskID:          taskID,
+		sandboxID:       sandboxID,
+		isV2:            isV2,
+		serverURL:       access.url,
+		jwt:             jwt,
+		jwtExp:          jwtExp,
+		target:          target,
+		creds:           creds,
+		idleTimeout:     profile.SandboxChannelIdleTimeout,
+		logger:          logger,
+		warnings:        warnings,
+		maxThrottleWait: profile.MaxThrottleWait,
 	})
 	if err != nil {
 		return nil, err
@@ -309,7 +366,8 @@ type commandRouterParams struct {
 	idleTimeout time.Duration
 	logger      *slog.Logger
 	// Shared with the control plane connection when the caller has one; nil makes a private one.
-	warnings *serverWarningLogger
+	warnings        *serverWarningLogger
+	maxThrottleWait *time.Duration
 }
 
 // newTaskCommandRouterClient dials the command router and returns a client for
@@ -329,18 +387,19 @@ func newTaskCommandRouterClient(p commandRouterParams) (*taskCommandRouterClient
 	}
 
 	client := &taskCommandRouterClient{
-		stubValue:    pb.NewTaskCommandRouterClient(conn),
-		conn:         conn,
-		target:       p.target,
-		creds:        p.creds,
-		idleTimeout:  p.idleTimeout,
-		serverClient: p.serverClient,
-		taskID:       p.taskID,
-		sandboxID:    p.sandboxID,
-		isV2:         p.isV2,
-		serverURL:    p.serverURL,
-		logger:       p.logger,
-		warnings:     p.warnings,
+		stubValue:       pb.NewTaskCommandRouterClient(conn),
+		conn:            conn,
+		target:          p.target,
+		creds:           p.creds,
+		idleTimeout:     p.idleTimeout,
+		serverClient:    p.serverClient,
+		taskID:          p.taskID,
+		sandboxID:       p.sandboxID,
+		isV2:            p.isV2,
+		serverURL:       p.serverURL,
+		logger:          p.logger,
+		warnings:        p.warnings,
+		maxThrottleWait: p.maxThrottleWait,
 	}
 	client.jwt.Store(&p.jwt)
 	client.jwtExp.Store(p.jwtExp)
@@ -526,7 +585,10 @@ func (c *taskCommandRouterClient) closeIfStillIdle(seq uint64) {
 }
 
 func (c *taskCommandRouterClient) authContext(ctx context.Context) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+*c.jwt.Load())
+	return metadata.AppendToOutgoingContext(ctx,
+		"authorization", "Bearer "+*c.jwt.Load(),
+		"x-throttle-retry-attempt", strconv.Itoa(throttleRetryAttempt(ctx)),
+	)
 }
 
 func (c *taskCommandRouterClient) refreshJwt(ctx context.Context) error {
@@ -589,16 +651,18 @@ func callWithAuthRetry[T any](ctx context.Context, c retryableClient, fn func(co
 }
 
 func callCommandRouterUnary[T any](ctx context.Context, c *taskCommandRouterClient, fn func(context.Context) (*T, error)) (*T, error) {
-	return callCommandRouterWithRetries(ctx, c, func() (*T, error) {
+	return callCommandRouterWithRetries(ctx, c, func(ctx context.Context) (*T, error) {
 		return callWithAuthRetry(ctx, c, fn)
 	}, defaultRetryOptions())
 }
 
-func callCommandRouterWithRetries[T any](ctx context.Context, c *taskCommandRouterClient, fn func() (*T, error), opts retryOptions) (*T, error) {
+func callCommandRouterWithRetries[T any](ctx context.Context, c *taskCommandRouterClient, fn func(ctx context.Context) (*T, error), opts retryOptions) (*T, error) {
 	if _, err := c.beginOp(); err != nil {
 		return nil, err
 	}
 	defer c.endOp()
+	opts.MaxThrottleWait = c.maxThrottleWait
+	opts.Logger = c.logger
 	return callWithRetriesOnTransientErrors(ctx, fn, opts, &c.closed)
 }
 
@@ -643,7 +707,7 @@ func (c *taskCommandRouterClient) ReloadVolumes(ctx context.Context, request *pb
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	_, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskReloadVolumesResponse, error) {
+	_, err := callCommandRouterWithRetries(ctx, c, func(ctx context.Context) (*pb.TaskReloadVolumesResponse, error) {
 		remaining := time.Until(overallDeadline)
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
@@ -651,7 +715,7 @@ func (c *taskCommandRouterClient) ReloadVolumes(ctx context.Context, request *pb
 			return c.stubValue.TaskReloadVolumes(authCtx, request)
 		})
 	}, opts)
-	if err != nil && time.Now().After(overallDeadline) {
+	if err != nil && (errors.Is(err, errDeadlineExceeded) || time.Now().After(overallDeadline)) {
 		return TimeoutError{Exception: "Timeout expired"}
 	}
 	return err
@@ -670,7 +734,7 @@ func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskSnapshotDirectoryResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func(ctx context.Context) (*pb.TaskSnapshotDirectoryResponse, error) {
 		remaining := time.Until(overallDeadline)
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
@@ -678,7 +742,7 @@ func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request
 			return c.stubValue.TaskSnapshotDirectory(authCtx, request)
 		})
 	}, opts)
-	if err != nil && time.Now().After(overallDeadline) {
+	if err != nil && (errors.Is(err, errDeadlineExceeded) || time.Now().After(overallDeadline)) {
 		return nil, TimeoutError{Exception: "Timeout expired"}
 	}
 	return resp, err
@@ -703,7 +767,7 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskSnapshotFilesystemResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func(ctx context.Context) (*pb.TaskSnapshotFilesystemResponse, error) {
 		// Per-call timeout = remaining budget on the overall deadline.
 		// A zero or negative remaining time would still create a usable
 		// (already-expired) context, which grpc-go reports as DeadlineExceeded.
@@ -714,7 +778,7 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 			return c.stubValue.TaskSnapshotFilesystem(authCtx, request)
 		})
 	}, opts)
-	if err != nil && time.Now().After(overallDeadline) {
+	if err != nil && (errors.Is(err, errDeadlineExceeded) || time.Now().After(overallDeadline)) {
 		return nil, TimeoutError{Exception: "Timeout expired"}
 	}
 	return resp, err
@@ -726,7 +790,7 @@ func (c *taskCommandRouterClient) SnapshotMemory(ctx context.Context, request *p
 	opts := defaultRetryOptions()
 	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
 	opts.Deadline = &overallDeadline
-	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskSnapshotMemoryResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func(ctx context.Context) (*pb.TaskSnapshotMemoryResponse, error) {
 		remaining := time.Until(overallDeadline)
 		callCtx, cancel := context.WithTimeout(ctx, remaining)
 		defer cancel()
@@ -734,7 +798,7 @@ func (c *taskCommandRouterClient) SnapshotMemory(ctx context.Context, request *p
 			return c.stubValue.TaskSnapshotMemory(authCtx, request)
 		})
 	}, opts)
-	if err != nil && time.Now().After(overallDeadline) {
+	if err != nil && (errors.Is(err, errDeadlineExceeded) || time.Now().After(overallDeadline)) {
 		return nil, TimeoutError{Exception: "Timeout expired"}
 	}
 	return resp, err
@@ -746,7 +810,7 @@ func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, tas
 	overallDeadline := time.Now().Add(timeout)
 	opts.Deadline = &overallDeadline
 
-	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func(ctx context.Context) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
 		remaining := max(time.Until(overallDeadline), time.Millisecond)
 		request := pb.SandboxWaitUntilReadyTcrRequest_builder{
 			TaskId:  taskID,
@@ -844,11 +908,14 @@ func (c *taskCommandRouterClient) execStdinStatus(ctx context.Context, taskID, e
 		ExecId: execID,
 	}.Build()
 
-	return callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskExecStdinStatusResponse, error) {
+	opts := defaultRetryOptions()
+	opts.MaxThrottleWait = c.maxThrottleWait
+	opts.Logger = c.logger
+	return callWithRetriesOnTransientErrors(ctx, func(ctx context.Context) (*pb.TaskExecStdinStatusResponse, error) {
 		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinStatusResponse, error) {
 			return c.stubValue.TaskExecStdinStatus(authCtx, request)
 		})
-	}, defaultRetryOptions(), &c.closed)
+	}, opts, &c.closed)
 }
 
 // isStreamingStdinResumableCode reports whether a stdin stream attempt that
@@ -1021,7 +1088,7 @@ func (c *taskCommandRouterClient) ExecWait(ctx context.Context, taskID, execID s
 		Deadline:    deadline,
 	}
 
-	resp, err := callCommandRouterWithRetries(ctx, c, func() (*pb.TaskExecWaitResponse, error) {
+	resp, err := callCommandRouterWithRetries(ctx, c, func(ctx context.Context) (*pb.TaskExecWaitResponse, error) {
 		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*pb.TaskExecWaitResponse, error) {
 			// Set a per-call timeout of 60 seconds
 			callCtx, cancel := context.WithTimeout(authCtx, 60*time.Second)

@@ -220,7 +220,7 @@ func TestCallWithRetriesOnTransientErrorsSuccessOnFirstAttempt(t *testing.T) {
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	callCount := 0
-	result, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+	result, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 		callCount++
 		output := "success"
 		return &output, nil
@@ -252,7 +252,7 @@ func TestCallWithRetriesOnTransientErrorsRetriesOnTransientCodes(t *testing.T) {
 			g := gomega.NewWithT(t)
 			ctx := t.Context()
 			callCount := 0
-			result, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+			result, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 				callCount++
 				var output string
 				if callCount == 1 {
@@ -280,7 +280,7 @@ func TestCallWithRetriesOnTransientErrorsExcludeCodes(t *testing.T) {
 			g := gomega.NewWithT(t)
 			ctx := t.Context()
 			callCount := 0
-			_, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+			_, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 				callCount++
 				return nil, status.Error(code, "")
 			}, retryOptions{
@@ -303,7 +303,7 @@ func TestCallWithRetriesOnTransientErrorsExcludeCodesDoesNotAffectOtherRetryable
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	callCount := 0
-	result, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+	result, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 		callCount++
 		if callCount == 1 {
 			return nil, status.Error(codes.Unavailable, "unavailable")
@@ -327,7 +327,7 @@ func TestCallWithRetriesOnTransientErrorsNonRetryableError(t *testing.T) {
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	callCount := 0
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+	_, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 		callCount++
 		return nil, status.Error(codes.InvalidArgument, "invalid")
 	}, retryOptions{BaseDelay: time.Millisecond, DelayFactor: 1, MaxRetries: intPtr(10)}, nil)
@@ -342,7 +342,7 @@ func TestCallWithRetriesOnTransientErrorsMaxRetriesExceeded(t *testing.T) {
 	ctx := t.Context()
 	callCount := 0
 	maxRetries := 3
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+	_, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 		callCount++
 		return nil, status.Error(codes.Unavailable, "unavailable")
 	}, retryOptions{BaseDelay: time.Millisecond, DelayFactor: 1, MaxRetries: &maxRetries}, nil)
@@ -357,7 +357,7 @@ func TestCallWithRetriesOnTransientErrorsDeadlineExceeded(t *testing.T) {
 	ctx := t.Context()
 	callCount := 0
 	deadline := time.Now().Add(50 * time.Millisecond)
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+	_, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 		callCount++
 		return nil, status.Error(codes.Unavailable, "unavailable")
 	}, retryOptions{BaseDelay: 100 * time.Millisecond, DelayFactor: 1, MaxRetries: nil, Deadline: &deadline}, nil)
@@ -374,7 +374,7 @@ func TestCallWithRetriesOnTransientErrorClosed(t *testing.T) {
 	var closed atomic.Bool
 	closed.Store(true)
 
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+	_, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
 		callCount++
 		return nil, status.Error(codes.Canceled, "invalid")
 	}, defaultRetryOptions(), &closed)
@@ -386,6 +386,141 @@ func TestCallWithRetriesOnTransientErrorClosed(t *testing.T) {
 
 func intPtr(i int) *int {
 	return &i
+}
+
+func throttledError(retryAfterSecs float32) error {
+	st, err := status.New(codes.ResourceExhausted, "rate limit exceeded").WithDetails(
+		pb.RPCRetryPolicy_builder{RetryAfterSecs: retryAfterSecs}.Build(),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return st.Err()
+}
+
+func TestSnapshotFilesystemRetriesResourceExhaustedWithServerRetryPolicy(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	var attemptTimes []time.Time
+	var throttleRetryAttempts []string
+	stub := &mockSnapshotFsStub{
+		fn: func(ctx context.Context, _ *pb.TaskSnapshotFilesystemRequest, _ ...grpc.CallOption) (*pb.TaskSnapshotFilesystemResponse, error) {
+			attemptTimes = append(attemptTimes, time.Now())
+			md, _ := metadata.FromOutgoingContext(ctx)
+			throttleRetryAttempts = append(throttleRetryAttempts, md.Get("x-throttle-retry-attempt")...)
+			if len(attemptTimes) <= 2 {
+				return nil, throttledError(0.2)
+			}
+			return pb.TaskSnapshotFilesystemResponse_builder{ImageId: "im-123"}.Build(), nil
+		},
+	}
+	client := newStubClient(t, stub)
+	var logs bytes.Buffer
+	client.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	resp, err := client.SnapshotFilesystem(context.Background(), &pb.TaskSnapshotFilesystemRequest{}, 5*time.Second)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(resp.GetImageId()).To(gomega.Equal("im-123"))
+
+	g.Expect(attemptTimes).To(gomega.HaveLen(3))
+	g.Expect(attemptTimes[1].Sub(attemptTimes[0])).To(gomega.BeNumerically(">=", 200*time.Millisecond))
+	g.Expect(throttleRetryAttempts).To(gomega.Equal([]string{"0", "1", "2"}))
+	g.Expect(strings.Count(logs.String(), `msg="Server requested retry delay" throttle_retries=`)).To(gomega.Equal(2))
+	g.Expect(logs.String()).To(gomega.ContainSubstring("throttle_retries=1 server_delay=200"))
+}
+
+func TestThrottledRetriesDoNotCountTowardMaxRetries(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	attempts := 0
+	result, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
+		attempts++
+		if attempts <= 3 {
+			return nil, throttledError(0.01)
+		}
+		out := "ok"
+		return &out, nil
+	}, retryOptions{BaseDelay: time.Millisecond, DelayFactor: 1, MaxRetries: intPtr(1)}, nil)
+
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(*result).To(gomega.Equal("ok"))
+	g.Expect(attempts).To(gomega.Equal(4))
+}
+
+func TestThrottledRetriesStopAtMaxThrottleWait(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	attempts := 0
+	disabled := time.Duration(0)
+	_, err := callWithRetriesOnTransientErrors(ctx, func(context.Context) (*string, error) {
+		attempts++
+		return nil, throttledError(0.01)
+	}, retryOptions{BaseDelay: time.Millisecond, DelayFactor: 1, MaxRetries: intPtr(10), MaxThrottleWait: &disabled}, nil)
+
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.ResourceExhausted))
+	g.Expect(attempts).To(gomega.Equal(1))
+}
+
+func TestSnapshotFilesystemResourceExhaustedWithoutRetryPolicyIsNotRetried(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	attempts := 0
+	stub := &mockSnapshotFsStub{
+		fn: func(_ context.Context, _ *pb.TaskSnapshotFilesystemRequest, _ ...grpc.CallOption) (*pb.TaskSnapshotFilesystemResponse, error) {
+			attempts++
+			return nil, status.Error(codes.ResourceExhausted, "rate limit exceeded")
+		},
+	}
+	client := newStubClient(t, stub)
+
+	_, err := client.SnapshotFilesystem(context.Background(), &pb.TaskSnapshotFilesystemRequest{}, 5*time.Second)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.ResourceExhausted))
+	g.Expect(attempts).To(gomega.Equal(1))
+}
+
+func TestSnapshotFilesystemServerRetryPolicyRespectsDeadline(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	attempts := 0
+	stub := &mockSnapshotFsStub{
+		fn: func(_ context.Context, _ *pb.TaskSnapshotFilesystemRequest, _ ...grpc.CallOption) (*pb.TaskSnapshotFilesystemResponse, error) {
+			attempts++
+			return nil, throttledError(10)
+		},
+	}
+	client := newStubClient(t, stub)
+
+	startedAt := time.Now()
+	_, err := client.SnapshotFilesystem(context.Background(), &pb.TaskSnapshotFilesystemRequest{}, 300*time.Millisecond)
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(TimeoutError{}))
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Timeout expired"))
+	g.Expect(time.Since(startedAt)).To(gomega.BeNumerically("<", 300*time.Millisecond))
+	g.Expect(attempts).To(gomega.Equal(1))
+}
+
+func TestSnapshotFilesystemThrottleDisabledSurfacesResourceExhausted(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	attempts := 0
+	stub := &mockSnapshotFsStub{
+		fn: func(_ context.Context, _ *pb.TaskSnapshotFilesystemRequest, _ ...grpc.CallOption) (*pb.TaskSnapshotFilesystemResponse, error) {
+			attempts++
+			return nil, throttledError(10)
+		},
+	}
+	client := newStubClient(t, stub)
+	disabled := time.Duration(0)
+	client.maxThrottleWait = &disabled
+
+	_, err := client.SnapshotFilesystem(context.Background(), &pb.TaskSnapshotFilesystemRequest{}, 300*time.Millisecond)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.ResourceExhausted))
+	g.Expect(attempts).To(gomega.Equal(1))
 }
 
 type mockRetryableClient struct {
@@ -568,6 +703,52 @@ func TestSandboxWaitUntilReadyReturnsTimeoutErrorOnDeadline(t *testing.T) {
 	var timeoutErr TimeoutError
 	g.Expect(errors.As(err, &timeoutErr)).To(gomega.BeTrue(),
 		"expected TimeoutError, got %T: %v", err, err)
+}
+
+func TestSandboxWaitUntilReadyThrottleBeyondDeadlineReturnsTimeoutError(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	calls := 0
+	stub := &mockWaitUntilReadyClientStub{
+		fn: func(_ context.Context, _ *pb.SandboxWaitUntilReadyTcrRequest, _ ...grpc.CallOption) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+			calls++
+			return nil, throttledError(10)
+		},
+	}
+	client := newStubClient(t, stub)
+
+	_, err := client.SandboxWaitUntilReady(context.Background(), "ta-123", 300*time.Millisecond)
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(TimeoutError{}))
+	g.Expect(calls).To(gomega.Equal(1))
+}
+
+type mockExecWaitStub struct {
+	pb.TaskCommandRouterClient
+	fn func(ctx context.Context, in *pb.TaskExecWaitRequest, opts ...grpc.CallOption) (*pb.TaskExecWaitResponse, error)
+}
+
+func (m *mockExecWaitStub) TaskExecWait(ctx context.Context, in *pb.TaskExecWaitRequest, opts ...grpc.CallOption) (*pb.TaskExecWaitResponse, error) {
+	return m.fn(ctx, in, opts...)
+}
+
+func TestExecWaitThrottleBeyondDeadlineReturnsExecTimeoutError(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	calls := 0
+	stub := &mockExecWaitStub{
+		fn: func(_ context.Context, _ *pb.TaskExecWaitRequest, _ ...grpc.CallOption) (*pb.TaskExecWaitResponse, error) {
+			calls++
+			return nil, throttledError(10)
+		},
+	}
+	client := newStubClient(t, stub)
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	_, err := client.ExecWait(context.Background(), "ta-123", "ex-123", &deadline)
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(ExecTimeoutError{}))
+	g.Expect(calls).To(gomega.Equal(1))
 }
 
 // fakeStdinRouterServer is a minimal in-process TaskCommandRouter
