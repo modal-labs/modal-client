@@ -7,7 +7,7 @@ aiosignal==1.4.0 ; python_version >= "3.14"
 async-timeout==5.0.1 ; python_version < "3.11"
 attrs==25.3.0
 cbor2==5.7.0
-certifi==2025.4.26
+certifi==2026.10.19
 frozenlist==1.6.0
 grpclib==0.4.8 ; python_version < "3.14"
 grpclib==0.4.9 ; python_version >= "3.14"
