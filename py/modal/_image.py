@@ -212,23 +212,32 @@ def _dockerhub_python_version(
     python_version = _validate_python_version(
         python_version, builder_version, allow_free_threading=allow_free_threading, caller_name=caller_name
     )
+
     version_components = python_version.split(".")
 
-    # When user specifies a full Python version, use that
-    if len(version_components) > 2:
+    # - Users that want a specific patch version for reproducibility guarantees can specify that up
+    #   front
+    # - Users on the newest builder can force-rebuild to get the latest patch versions, allowing
+    #   quick responses to upstream bug fixes / CVEs.
+    if builder_version > "2025.06" or len(version_components) > 2:
         return python_version
 
     # Otherwise, use the same series, but a specific micro version, corresponding to the latest
     # available from https://hub.docker.com/_/python at the time of each image builder release.
     # This allows us to publish one pre-built debian-slim image per Python series.
     python_versions = _base_image_config("python", builder_version)
-    series_to_micro_version = dict(tuple(v.rsplit(".", 1)) for v in python_versions)
+    series_to_micro_version: dict[str, str] = {}
+    for v in python_versions:
+        series, micro = v.rsplit(".", 1)
+        series_to_micro_version[series] = micro
     python_series_requested = "{}.{}".format(*version_components)
     micro_version = series_to_micro_version[python_series_requested]
     return f"{python_series_requested}.{micro_version}"
 
 
 def _base_image_config(group: str, builder_version: ImageBuilderVersion) -> Any:
+    # data["python"] does not include image builder versions more recent than `2025.06`, as those do
+    # not rely on hardcoded patch versions.
     with open(LOCAL_REQUIREMENTS_DIR / "base-images.json") as f:
         data = json.load(f)
     return data[group][builder_version]

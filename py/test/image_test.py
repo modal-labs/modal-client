@@ -175,22 +175,29 @@ def test_python_version_validation_free_threading():
 
 
 def test_dockerhub_python_version(builder_version):
-    assert _dockerhub_python_version(builder_version, "3.10.1") == "3.10.1"
+    assert _dockerhub_python_version(builder_version, "3.11.8") == "3.11.8"
 
-    expected_39_full = {
-        "2023.12": "3.10.8",
-        "2024.04": "3.10.14",
-        "2024.10": "3.10.15",
-        "2025.06": "3.10.17",
-        "PREVIEW": "3.10.17",
+    expected_3_11_full = {
+        "2023.12": "3.11.0",
+        "2024.04": "3.11.8",
+        "2024.10": "3.11.10",
+        "2025.06": "3.11.12",
+        "PREVIEW": "3.11",
     }[builder_version]
-    assert _dockerhub_python_version(builder_version, "3.10") == expected_39_full
+    assert _dockerhub_python_version(builder_version, "3.11") == expected_3_11_full
 
-    if builder_version in ("2025.06", "PREVIEW"):
+    if builder_version == "2025.06":
         assert _dockerhub_python_version(builder_version, "3.15") == "3.15.0"
+    if builder_version == "PREVIEW":
+        assert _dockerhub_python_version(builder_version, "3.15") == "3.15"
 
     v = _dockerhub_python_version(builder_version, None).split(".")
-    assert len(v) == 3
+
+    if builder_version == "PREVIEW":
+        assert len(v) == 2
+    else:
+        assert len(v) == 3
+
     assert (int(v[0]), int(v[1])) == sys.version_info[:2]
 
 
