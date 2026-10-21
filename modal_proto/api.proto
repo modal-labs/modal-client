@@ -899,10 +899,10 @@ message AuditLogActor {
 }
 
 message AuditLogBucketsRequest {
-  string q = 1;             // Search query in the audit log search syntax
-  int64 start_ms = 2;       // Start of the time range in Unix milliseconds, inclusive
-  int64 end_ms = 3;         // End of the time range in Unix milliseconds, exclusive
-  uint32 bucket_rows = 4;   // Approximate entries per bucket; 0 selects the default
+  string q = 1;            // Search query in the audit log search syntax
+  int64 oldest_ms = 2;     // Oldest time bound in Unix milliseconds, inclusive
+  int64 newest_ms = 3;     // Newest time bound in Unix milliseconds, exclusive
+  uint32 bucket_size = 4;  // Approximate entries per bucket; 0 selects the default
 }
 
 message AuditLogContext {
@@ -914,9 +914,9 @@ message AuditLogContext {
 }
 
 message AuditLogCountRequest {
-  string q = 1;        // Search query in the audit log search syntax
-  int64 start_ms = 2;  // Start of the time range in Unix milliseconds, inclusive
-  int64 end_ms = 3;    // End of the time range in Unix milliseconds, exclusive
+  string q = 1;         // Search query in the audit log search syntax
+  int64 oldest_ms = 2;  // Oldest time bound in Unix milliseconds, inclusive
+  int64 newest_ms = 3;  // Newest time bound in Unix milliseconds, exclusive
 }
 
 message AuditLogCountResponse {
@@ -940,13 +940,14 @@ message AuditLogEntry {
   string metadata_json = 8;  // JSON-encoded string
 }
 
+// Entries are read newest to oldest. The newest bound is exclusive and the oldest bound is inclusive, for time and cursors.
 message AuditLogListRequest {
-  string q = 1;                     // Search query in the audit log search syntax
-  int64 start_ms = 2;               // Start of the time range in Unix milliseconds, inclusive
-  int64 end_ms = 3;                 // End of the time range in Unix milliseconds, exclusive
-  uint32 limit = 4;                 // Maximum entries to return; 0 selects the default
-  AuditLogCursor cursor = 5;      // Return entries after this position; omit for the first page
-  AuditLogCursor end_cursor = 6;  // Stop at this position, inclusive; omit to read to start_ms
+  string q = 1;                      // Search query in the audit log search syntax
+  int64 oldest_ms = 2;               // Oldest time bound in Unix milliseconds, inclusive
+  int64 newest_ms = 3;               // Newest time bound in Unix milliseconds, exclusive
+  uint32 limit = 4;                  // Maximum entries to return; 0 selects the default
+  AuditLogCursor oldest_cursor = 5;  // Oldest cursor bound, inclusive; omit to read to oldest_ms
+  AuditLogCursor newest_cursor = 6;  // Newest cursor bound, exclusive; omit to start at newest_ms
 }
 
 message AuditLogListResponse {
@@ -955,8 +956,8 @@ message AuditLogListResponse {
 }
 
 message AuditLogPlanResponse {
-  // Bucket boundaries, newest first. Bucket i reads after cursors[i] (bucket 0: from the newest entry)
-  // through cursors[i+1] inclusive (last bucket: to the oldest), using List cursor and end_cursor.
+  // Bucket cut points, newest first. Cursor i is the last entry of bucket i, and bucket i+1 starts after it.
+  // Bucket 0 starts at the newest entry, and the last bucket is the remainder.
   repeated AuditLogCursor cursors = 1;
 }
 

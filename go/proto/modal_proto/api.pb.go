@@ -8840,9 +8840,9 @@ func (b0 AuditLogActor_builder) Build() *AuditLogActor {
 type AuditLogBucketsRequest struct {
 	state                 protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Q          string                 `protobuf:"bytes,1,opt,name=q,proto3"`
-	xxx_hidden_StartMs    int64                  `protobuf:"varint,2,opt,name=start_ms,json=startMs,proto3"`
-	xxx_hidden_EndMs      int64                  `protobuf:"varint,3,opt,name=end_ms,json=endMs,proto3"`
-	xxx_hidden_BucketRows uint32                 `protobuf:"varint,4,opt,name=bucket_rows,json=bucketRows,proto3"`
+	xxx_hidden_OldestMs   int64                  `protobuf:"varint,2,opt,name=oldest_ms,json=oldestMs,proto3"`
+	xxx_hidden_NewestMs   int64                  `protobuf:"varint,3,opt,name=newest_ms,json=newestMs,proto3"`
+	xxx_hidden_BucketSize uint32                 `protobuf:"varint,4,opt,name=bucket_size,json=bucketSize,proto3"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -8879,23 +8879,23 @@ func (x *AuditLogBucketsRequest) GetQ() string {
 	return ""
 }
 
-func (x *AuditLogBucketsRequest) GetStartMs() int64 {
+func (x *AuditLogBucketsRequest) GetOldestMs() int64 {
 	if x != nil {
-		return x.xxx_hidden_StartMs
+		return x.xxx_hidden_OldestMs
 	}
 	return 0
 }
 
-func (x *AuditLogBucketsRequest) GetEndMs() int64 {
+func (x *AuditLogBucketsRequest) GetNewestMs() int64 {
 	if x != nil {
-		return x.xxx_hidden_EndMs
+		return x.xxx_hidden_NewestMs
 	}
 	return 0
 }
 
-func (x *AuditLogBucketsRequest) GetBucketRows() uint32 {
+func (x *AuditLogBucketsRequest) GetBucketSize() uint32 {
 	if x != nil {
-		return x.xxx_hidden_BucketRows
+		return x.xxx_hidden_BucketSize
 	}
 	return 0
 }
@@ -8904,25 +8904,25 @@ func (x *AuditLogBucketsRequest) SetQ(v string) {
 	x.xxx_hidden_Q = v
 }
 
-func (x *AuditLogBucketsRequest) SetStartMs(v int64) {
-	x.xxx_hidden_StartMs = v
+func (x *AuditLogBucketsRequest) SetOldestMs(v int64) {
+	x.xxx_hidden_OldestMs = v
 }
 
-func (x *AuditLogBucketsRequest) SetEndMs(v int64) {
-	x.xxx_hidden_EndMs = v
+func (x *AuditLogBucketsRequest) SetNewestMs(v int64) {
+	x.xxx_hidden_NewestMs = v
 }
 
-func (x *AuditLogBucketsRequest) SetBucketRows(v uint32) {
-	x.xxx_hidden_BucketRows = v
+func (x *AuditLogBucketsRequest) SetBucketSize(v uint32) {
+	x.xxx_hidden_BucketSize = v
 }
 
 type AuditLogBucketsRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Q          string
-	StartMs    int64
-	EndMs      int64
-	BucketRows uint32
+	OldestMs   int64
+	NewestMs   int64
+	BucketSize uint32
 }
 
 func (b0 AuditLogBucketsRequest_builder) Build() *AuditLogBucketsRequest {
@@ -8930,9 +8930,9 @@ func (b0 AuditLogBucketsRequest_builder) Build() *AuditLogBucketsRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Q = b.Q
-	x.xxx_hidden_StartMs = b.StartMs
-	x.xxx_hidden_EndMs = b.EndMs
-	x.xxx_hidden_BucketRows = b.BucketRows
+	x.xxx_hidden_OldestMs = b.OldestMs
+	x.xxx_hidden_NewestMs = b.NewestMs
+	x.xxx_hidden_BucketSize = b.BucketSize
 	return m0
 }
 
@@ -9050,12 +9050,12 @@ func (b0 AuditLogContext_builder) Build() *AuditLogContext {
 }
 
 type AuditLogCountRequest struct {
-	state              protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Q       string                 `protobuf:"bytes,1,opt,name=q,proto3"`
-	xxx_hidden_StartMs int64                  `protobuf:"varint,2,opt,name=start_ms,json=startMs,proto3"`
-	xxx_hidden_EndMs   int64                  `protobuf:"varint,3,opt,name=end_ms,json=endMs,proto3"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Q        string                 `protobuf:"bytes,1,opt,name=q,proto3"`
+	xxx_hidden_OldestMs int64                  `protobuf:"varint,2,opt,name=oldest_ms,json=oldestMs,proto3"`
+	xxx_hidden_NewestMs int64                  `protobuf:"varint,3,opt,name=newest_ms,json=newestMs,proto3"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *AuditLogCountRequest) Reset() {
@@ -9090,16 +9090,16 @@ func (x *AuditLogCountRequest) GetQ() string {
 	return ""
 }
 
-func (x *AuditLogCountRequest) GetStartMs() int64 {
+func (x *AuditLogCountRequest) GetOldestMs() int64 {
 	if x != nil {
-		return x.xxx_hidden_StartMs
+		return x.xxx_hidden_OldestMs
 	}
 	return 0
 }
 
-func (x *AuditLogCountRequest) GetEndMs() int64 {
+func (x *AuditLogCountRequest) GetNewestMs() int64 {
 	if x != nil {
-		return x.xxx_hidden_EndMs
+		return x.xxx_hidden_NewestMs
 	}
 	return 0
 }
@@ -9108,20 +9108,20 @@ func (x *AuditLogCountRequest) SetQ(v string) {
 	x.xxx_hidden_Q = v
 }
 
-func (x *AuditLogCountRequest) SetStartMs(v int64) {
-	x.xxx_hidden_StartMs = v
+func (x *AuditLogCountRequest) SetOldestMs(v int64) {
+	x.xxx_hidden_OldestMs = v
 }
 
-func (x *AuditLogCountRequest) SetEndMs(v int64) {
-	x.xxx_hidden_EndMs = v
+func (x *AuditLogCountRequest) SetNewestMs(v int64) {
+	x.xxx_hidden_NewestMs = v
 }
 
 type AuditLogCountRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Q       string
-	StartMs int64
-	EndMs   int64
+	Q        string
+	OldestMs int64
+	NewestMs int64
 }
 
 func (b0 AuditLogCountRequest_builder) Build() *AuditLogCountRequest {
@@ -9129,8 +9129,8 @@ func (b0 AuditLogCountRequest_builder) Build() *AuditLogCountRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Q = b.Q
-	x.xxx_hidden_StartMs = b.StartMs
-	x.xxx_hidden_EndMs = b.EndMs
+	x.xxx_hidden_OldestMs = b.OldestMs
+	x.xxx_hidden_NewestMs = b.NewestMs
 	return m0
 }
 
@@ -9442,16 +9442,17 @@ func (b0 AuditLogEntry_builder) Build() *AuditLogEntry {
 	return m0
 }
 
+// Entries are read newest to oldest. The newest bound is exclusive and the oldest bound is inclusive, for time and cursors.
 type AuditLogListRequest struct {
-	state                protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Q         string                 `protobuf:"bytes,1,opt,name=q,proto3"`
-	xxx_hidden_StartMs   int64                  `protobuf:"varint,2,opt,name=start_ms,json=startMs,proto3"`
-	xxx_hidden_EndMs     int64                  `protobuf:"varint,3,opt,name=end_ms,json=endMs,proto3"`
-	xxx_hidden_Limit     uint32                 `protobuf:"varint,4,opt,name=limit,proto3"`
-	xxx_hidden_Cursor    *AuditLogCursor        `protobuf:"bytes,5,opt,name=cursor,proto3"`
-	xxx_hidden_EndCursor *AuditLogCursor        `protobuf:"bytes,6,opt,name=end_cursor,json=endCursor,proto3"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Q            string                 `protobuf:"bytes,1,opt,name=q,proto3"`
+	xxx_hidden_OldestMs     int64                  `protobuf:"varint,2,opt,name=oldest_ms,json=oldestMs,proto3"`
+	xxx_hidden_NewestMs     int64                  `protobuf:"varint,3,opt,name=newest_ms,json=newestMs,proto3"`
+	xxx_hidden_Limit        uint32                 `protobuf:"varint,4,opt,name=limit,proto3"`
+	xxx_hidden_OldestCursor *AuditLogCursor        `protobuf:"bytes,5,opt,name=oldest_cursor,json=oldestCursor,proto3"`
+	xxx_hidden_NewestCursor *AuditLogCursor        `protobuf:"bytes,6,opt,name=newest_cursor,json=newestCursor,proto3"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *AuditLogListRequest) Reset() {
@@ -9486,16 +9487,16 @@ func (x *AuditLogListRequest) GetQ() string {
 	return ""
 }
 
-func (x *AuditLogListRequest) GetStartMs() int64 {
+func (x *AuditLogListRequest) GetOldestMs() int64 {
 	if x != nil {
-		return x.xxx_hidden_StartMs
+		return x.xxx_hidden_OldestMs
 	}
 	return 0
 }
 
-func (x *AuditLogListRequest) GetEndMs() int64 {
+func (x *AuditLogListRequest) GetNewestMs() int64 {
 	if x != nil {
-		return x.xxx_hidden_EndMs
+		return x.xxx_hidden_NewestMs
 	}
 	return 0
 }
@@ -9507,16 +9508,16 @@ func (x *AuditLogListRequest) GetLimit() uint32 {
 	return 0
 }
 
-func (x *AuditLogListRequest) GetCursor() *AuditLogCursor {
+func (x *AuditLogListRequest) GetOldestCursor() *AuditLogCursor {
 	if x != nil {
-		return x.xxx_hidden_Cursor
+		return x.xxx_hidden_OldestCursor
 	}
 	return nil
 }
 
-func (x *AuditLogListRequest) GetEndCursor() *AuditLogCursor {
+func (x *AuditLogListRequest) GetNewestCursor() *AuditLogCursor {
 	if x != nil {
-		return x.xxx_hidden_EndCursor
+		return x.xxx_hidden_NewestCursor
 	}
 	return nil
 }
@@ -9525,57 +9526,57 @@ func (x *AuditLogListRequest) SetQ(v string) {
 	x.xxx_hidden_Q = v
 }
 
-func (x *AuditLogListRequest) SetStartMs(v int64) {
-	x.xxx_hidden_StartMs = v
+func (x *AuditLogListRequest) SetOldestMs(v int64) {
+	x.xxx_hidden_OldestMs = v
 }
 
-func (x *AuditLogListRequest) SetEndMs(v int64) {
-	x.xxx_hidden_EndMs = v
+func (x *AuditLogListRequest) SetNewestMs(v int64) {
+	x.xxx_hidden_NewestMs = v
 }
 
 func (x *AuditLogListRequest) SetLimit(v uint32) {
 	x.xxx_hidden_Limit = v
 }
 
-func (x *AuditLogListRequest) SetCursor(v *AuditLogCursor) {
-	x.xxx_hidden_Cursor = v
+func (x *AuditLogListRequest) SetOldestCursor(v *AuditLogCursor) {
+	x.xxx_hidden_OldestCursor = v
 }
 
-func (x *AuditLogListRequest) SetEndCursor(v *AuditLogCursor) {
-	x.xxx_hidden_EndCursor = v
+func (x *AuditLogListRequest) SetNewestCursor(v *AuditLogCursor) {
+	x.xxx_hidden_NewestCursor = v
 }
 
-func (x *AuditLogListRequest) HasCursor() bool {
+func (x *AuditLogListRequest) HasOldestCursor() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Cursor != nil
+	return x.xxx_hidden_OldestCursor != nil
 }
 
-func (x *AuditLogListRequest) HasEndCursor() bool {
+func (x *AuditLogListRequest) HasNewestCursor() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_EndCursor != nil
+	return x.xxx_hidden_NewestCursor != nil
 }
 
-func (x *AuditLogListRequest) ClearCursor() {
-	x.xxx_hidden_Cursor = nil
+func (x *AuditLogListRequest) ClearOldestCursor() {
+	x.xxx_hidden_OldestCursor = nil
 }
 
-func (x *AuditLogListRequest) ClearEndCursor() {
-	x.xxx_hidden_EndCursor = nil
+func (x *AuditLogListRequest) ClearNewestCursor() {
+	x.xxx_hidden_NewestCursor = nil
 }
 
 type AuditLogListRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Q         string
-	StartMs   int64
-	EndMs     int64
-	Limit     uint32
-	Cursor    *AuditLogCursor
-	EndCursor *AuditLogCursor
+	Q            string
+	OldestMs     int64
+	NewestMs     int64
+	Limit        uint32
+	OldestCursor *AuditLogCursor
+	NewestCursor *AuditLogCursor
 }
 
 func (b0 AuditLogListRequest_builder) Build() *AuditLogListRequest {
@@ -9583,11 +9584,11 @@ func (b0 AuditLogListRequest_builder) Build() *AuditLogListRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Q = b.Q
-	x.xxx_hidden_StartMs = b.StartMs
-	x.xxx_hidden_EndMs = b.EndMs
+	x.xxx_hidden_OldestMs = b.OldestMs
+	x.xxx_hidden_NewestMs = b.NewestMs
 	x.xxx_hidden_Limit = b.Limit
-	x.xxx_hidden_Cursor = b.Cursor
-	x.xxx_hidden_EndCursor = b.EndCursor
+	x.xxx_hidden_OldestCursor = b.OldestCursor
+	x.xxx_hidden_NewestCursor = b.NewestCursor
 	return m0
 }
 
@@ -9723,8 +9724,8 @@ func (x *AuditLogPlanResponse) SetCursors(v []*AuditLogCursor) {
 type AuditLogPlanResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Bucket boundaries, newest first. Bucket i reads after cursors[i] (bucket 0: from the newest entry)
-	// through cursors[i+1] inclusive (last bucket: to the oldest), using List cursor and end_cursor.
+	// Bucket cut points, newest first. Cursor i is the last entry of bucket i, and bucket i+1 starts after it.
+	// Bucket 0 starts at the newest entry, and the last bucket is the remainder.
 	Cursors []*AuditLogCursor
 }
 
@@ -76027,24 +76028,24 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\fretry_policy\x18\x02 \x01(\v2!.modal.client.FunctionRetryPolicyR\vretryPolicy\"3\n" +
 	"\rAuditLogActor\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"y\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\x81\x01\n" +
 	"\x16AuditLogBucketsRequest\x12\f\n" +
-	"\x01q\x18\x01 \x01(\tR\x01q\x12\x19\n" +
-	"\bstart_ms\x18\x02 \x01(\x03R\astartMs\x12\x15\n" +
-	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\x12\x1f\n" +
-	"\vbucket_rows\x18\x04 \x01(\rR\n" +
-	"bucketRows\"\xb8\x01\n" +
+	"\x01q\x18\x01 \x01(\tR\x01q\x12\x1b\n" +
+	"\toldest_ms\x18\x02 \x01(\x03R\boldestMs\x12\x1b\n" +
+	"\tnewest_ms\x18\x03 \x01(\x03R\bnewestMs\x12\x1f\n" +
+	"\vbucket_size\x18\x04 \x01(\rR\n" +
+	"bucketSize\"\xb8\x01\n" +
 	"\x0fAuditLogContext\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12%\n" +
 	"\x0eenvironment_id\x18\x02 \x01(\tR\renvironmentId\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x12\x1d\n" +
 	"\n" +
 	"ip_address\x18\x04 \x01(\tR\tipAddress\x12$\n" +
-	"\x0eis_modal_admin\x18\x05 \x01(\bR\fisModalAdmin\"V\n" +
+	"\x0eis_modal_admin\x18\x05 \x01(\bR\fisModalAdmin\"^\n" +
 	"\x14AuditLogCountRequest\x12\f\n" +
-	"\x01q\x18\x01 \x01(\tR\x01q\x12\x19\n" +
-	"\bstart_ms\x18\x02 \x01(\x03R\astartMs\x12\x15\n" +
-	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\"-\n" +
+	"\x01q\x18\x01 \x01(\tR\x01q\x12\x1b\n" +
+	"\toldest_ms\x18\x02 \x01(\x03R\boldestMs\x12\x1b\n" +
+	"\tnewest_ms\x18\x03 \x01(\x03R\bnewestMs\"-\n" +
 	"\x15AuditLogCountResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x03R\x05count\"D\n" +
 	"\x0eAuditLogCursor\x12\"\n" +
@@ -76058,15 +76059,14 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\acontext\x18\x05 \x01(\v2\x1d.modal.client.AuditLogContextR\acontext\x12\x19\n" +
 	"\bevent_at\x18\x06 \x01(\tR\aeventAt\x12\x16\n" +
 	"\x06status\x18\a \x01(\tR\x06status\x12#\n" +
-	"\rmetadata_json\x18\b \x01(\tR\fmetadataJson\"\xde\x01\n" +
+	"\rmetadata_json\x18\b \x01(\tR\fmetadataJson\"\xf9\x01\n" +
 	"\x13AuditLogListRequest\x12\f\n" +
-	"\x01q\x18\x01 \x01(\tR\x01q\x12\x19\n" +
-	"\bstart_ms\x18\x02 \x01(\x03R\astartMs\x12\x15\n" +
-	"\x06end_ms\x18\x03 \x01(\x03R\x05endMs\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\rR\x05limit\x124\n" +
-	"\x06cursor\x18\x05 \x01(\v2\x1c.modal.client.AuditLogCursorR\x06cursor\x12;\n" +
-	"\n" +
-	"end_cursor\x18\x06 \x01(\v2\x1c.modal.client.AuditLogCursorR\tendCursor\"\x88\x01\n" +
+	"\x01q\x18\x01 \x01(\tR\x01q\x12\x1b\n" +
+	"\toldest_ms\x18\x02 \x01(\x03R\boldestMs\x12\x1b\n" +
+	"\tnewest_ms\x18\x03 \x01(\x03R\bnewestMs\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\rR\x05limit\x12A\n" +
+	"\roldest_cursor\x18\x05 \x01(\v2\x1c.modal.client.AuditLogCursorR\foldestCursor\x12A\n" +
+	"\rnewest_cursor\x18\x06 \x01(\v2\x1c.modal.client.AuditLogCursorR\fnewestCursor\"\x88\x01\n" +
 	"\x14AuditLogListResponse\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.modal.client.AuditLogEntryR\x05items\x12=\n" +
 	"\vnext_cursor\x18\x02 \x01(\v2\x1c.modal.client.AuditLogCursorR\n" +
@@ -80881,8 +80881,8 @@ var file_modal_proto_api_proto_depIdxs = []int32{
 	119, // 66: modal.client.AuditLogEntry.actor:type_name -> modal.client.AuditLogActor
 	129, // 67: modal.client.AuditLogEntry.targets:type_name -> modal.client.AuditLogTarget
 	121, // 68: modal.client.AuditLogEntry.context:type_name -> modal.client.AuditLogContext
-	124, // 69: modal.client.AuditLogListRequest.cursor:type_name -> modal.client.AuditLogCursor
-	124, // 70: modal.client.AuditLogListRequest.end_cursor:type_name -> modal.client.AuditLogCursor
+	124, // 69: modal.client.AuditLogListRequest.oldest_cursor:type_name -> modal.client.AuditLogCursor
+	124, // 70: modal.client.AuditLogListRequest.newest_cursor:type_name -> modal.client.AuditLogCursor
 	125, // 71: modal.client.AuditLogListResponse.items:type_name -> modal.client.AuditLogEntry
 	124, // 72: modal.client.AuditLogListResponse.next_cursor:type_name -> modal.client.AuditLogCursor
 	124, // 73: modal.client.AuditLogPlanResponse.cursors:type_name -> modal.client.AuditLogCursor
