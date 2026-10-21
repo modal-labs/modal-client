@@ -21,6 +21,8 @@ from modal._type_manager import parameter_serde_registry
 from modal._utils.async_utils import synchronize_api, synchronizer
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
+from modal.sandbox._impl_v1 import SandboxImplV1
+from modal.sandbox._impl_v2 import SandboxImplV2
 from modal_proto import api_pb2
 
 
@@ -70,8 +72,9 @@ def test_sandbox_roundtrip_preserves_metadata(servicer, client, sandbox_id, is_v
     sandbox_impl = synchronizer._translate_in(sandbox)
     sandbox_roundtrip_impl = synchronizer._translate_in(sandbox_roundtrip)
     assert sandbox_roundtrip_impl._app_id == sandbox_impl._app_id == servicer.sandbox_app_id
-    assert sandbox_roundtrip_impl._result == sandbox_impl._result == servicer.sandbox_result
-    assert sandbox_roundtrip_impl._is_v2 is sandbox_impl._is_v2 is is_v2
+    assert sandbox_roundtrip_impl._impl.result == sandbox_impl._impl.result == servicer.sandbox_result
+    expected_impl = SandboxImplV2 if is_v2 else SandboxImplV1
+    assert type(sandbox_roundtrip_impl._impl) is type(sandbox_impl._impl) is expected_impl
 
 
 @pytest.mark.asyncio

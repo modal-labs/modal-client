@@ -23,6 +23,11 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .conftest import MockTaskCommandRouterServicer
 
+
+async def _unexpected_fetch_access():
+    raise AssertionError("unexpected command router access fetch")
+
+
 # The client API names descriptors with the api_pb2 enum; the wire uses the
 # task-command-router one, which numbers them differently.
 STDOUT = api_pb2.FILE_DESCRIPTOR_STDOUT
@@ -96,13 +101,13 @@ class RouterEnv:
             closed_error_message="Unable to perform operation on a detached sandbox",
         )
         client = TaskCommandRouterClient(
-            None,
             task_id,
             f"http://127.0.0.1:{self.port}",
             "jwt",
             channel,
             asyncio.get_running_loop(),
             asyncio.Lock(),
+            fetch_access=_unexpected_fetch_access,
             stream_stdio_retry_delay_secs=0.01,
         )
         client.idle_timeout_secs = idle_timeout

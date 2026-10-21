@@ -256,5 +256,7 @@ exclude = [
     "modal/parallel_map.py",  # 18 errors, needs some thought around implementation / interface types
     "modal/sandbox/_sandbox.py",  # 31 errors together with stub
     "modal/sandbox/_sidecar.py",
+    "modal/sandbox/_impl_v1.py",  # proto args passed as `str | None`, moved from _sandbox.py
+    "modal/sandbox/_impl_v2.py",
     "modal/sandbox/sandbox.pyi",
 ]

@@ -43,7 +43,9 @@ from .exception import (
 )
 from .output import OutputManager
 from .running_app import RunningApp, running_app_from_layout
-from .sandbox._sandbox import _Sandbox
+from .sandbox._common import SandboxCreateArgs
+from .sandbox._impl_v2 import SandboxImplV2
+from .sandbox._sandbox import _Sandbox, impl_class_for_create_args
 from .secret import _Secret
 from .stream_type import StreamType
 
@@ -758,21 +760,10 @@ async def _interactive_shell(
             for option in ("gpu", "network_file_systems"):
                 if kwargs.pop(option, None):
                     raise InvalidError(f"`{option}` is not supported for V2 sandboxes")
-            sandbox = await _Sandbox._experimental_create(
-                "sleep",
-                "100000",
-                app=_app,
-                secrets=secrets,
-                **kwargs,
-            )
-        else:
-            sandbox = await _Sandbox._create(
-                "sleep",
-                "100000",
-                app=_app,
-                secrets=secrets,
-                **kwargs,
-            )
+        create_args = SandboxCreateArgs(args=("sleep", "100000"), secrets=secrets, **kwargs)
+        impl_cls = SandboxImplV2 if v2 else impl_class_for_create_args(create_args)
+        impl, metadata = await impl_cls.create(create_args, app=_app, client=None)
+        sandbox = _Sandbox._from_impl(impl, metadata)
 
         # Re-enable quiet mode before starting the interactive session
         output_mgr.set_quiet_mode(True)
@@ -790,15 +781,9 @@ async def _interactive_shell(
                 await container_process.wait()
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
-            req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox.object_id, timeout=0)
-            if sandbox._is_v2:
-                assert sandbox._client._auth_token_manager
-                auth_token = await sandbox._client._auth_token_manager.get_token()
-                resp = await sandbox._client._stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
-            else:
-                resp = await sandbox._client._stub.SandboxWait(req)
-            if resp.result.exception:
-                raise RemoteError(resp.result.exception)
+            await sandbox.poll()
+            if sandbox._impl.result is not None and sandbox._impl.result.exception:
+                raise RemoteError(sandbox._impl.result.exception)
             else:
                 raise
 

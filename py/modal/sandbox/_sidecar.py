@@ -1,47 +1,37 @@
 # Copyright Modal Labs 2026
 import asyncio
 import builtins
-import os
 import typing
-import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import PurePosixPath
 from typing import Literal, overload
 
 import modal.sandbox._sandbox
-from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
-from modal.secret import _local_secret_env, _resolvable_secrets, _secret_sources
-from modal.volume import _Volume, _volume_to_mount_proto
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .._image import _Image
 from .._load_context import LoadContext
 from .._resolver import Resolver
 from .._utils.async_utils import TaskContext
-from .._utils.mount_utils import (
-    validate_volumes,
-    validate_volumes_by_object_id,
-)
-from ..config import config
+from .._utils.mount_utils import validate_volumes, validate_volumes_by_object_id
+from ..cloud_bucket_mount import _CloudBucketMount
 from ..container_process import _ContainerProcess
-from ..exception import (
-    InvalidError,
-    SandboxTerminatedError,
-)
+from ..exception import InvalidError, SandboxTerminatedError
 from ..proxy import _Proxy
-from ..secret import _Secret
+from ..secret import _local_secret_env, _resolvable_secrets, _Secret, _secret_sources
 from ..stream_type import StreamType
+from ..volume import _Volume, _volume_to_mount_proto
 from ._common import (
     _build_outbound_network_access,
     _image_id_for_mount,
     _result_returncode,
-    _ttl_to_wire_ttl,
     _validate_exec_args,
-    _validate_experimental_encryption_key,
     _validate_sandbox_env,
+    default_pty_info,
 )
 from ._filesystem import _SandboxFilesystem
-from ._task_command_router_client import TaskCommandRouterClient
+
+_MAIN_CONTAINER_NAME: str = "main"
 
 
 class _SidecarContainer:
@@ -78,12 +68,6 @@ class _SidecarContainer:
         result = container_info.result if container_info.HasField("result") else None
         return _SidecarContainer(sandbox, container_info.container_id, container_info.container_name, result)
 
-    async def _get_command_router(self) -> tuple[str, "TaskCommandRouterClient"]:
-        """Get task ID and command router client."""
-        task_id = await self._sandbox._get_task_id()
-        command_router_client = await self._sandbox._get_command_router_client(task_id)
-        return task_id, command_router_client
-
     async def snapshot_filesystem(
         self,
         timeout: int = 55,
@@ -103,7 +87,8 @@ class _SidecarContainer:
             An [`Image`](https://modal.com/docs/sdk/py/latest/Image) containing a snapshot of this Sidecar's
             filesystem.
         """
-        return await self._sandbox._snapshot_filesystem(
+        self._sandbox._ensure_attached()
+        return await self._sandbox._impl.snapshot_filesystem(
             timeout,
             ttl=ttl,
             container_id=self._container_id,
@@ -158,7 +143,7 @@ class _SidecarContainer:
         # process) is multiplexed into stdout, and the stderr stream is effectively empty.
         pty: bool = False,
     ) -> _ContainerProcess[bytes] | _ContainerProcess[str]:
-        pty_info = self._sandbox._default_pty_info() if pty else None
+        pty_info = default_pty_info() if pty else None
         return await self._sandbox._exec(
             *args,
             pty_info=pty_info,
@@ -213,21 +198,10 @@ class _SidecarContainer:
             sidecar_2.filesystem.list_files("/workspace")
             ```
         """
+        self._sandbox._ensure_attached()
         image_id = _image_id_for_mount(image, "SidecarContainer.mount_image")
-
-        posix_path = PurePosixPath(path)
-        if not posix_path.is_absolute():
-            raise InvalidError(f"Mount path must be absolute; got: {posix_path}")
-
-        task_id, command_router_client = await self._get_command_router()
-        await command_router_client.mount_image(
-            sr_pb2.TaskMountDirectoryRequest(
-                task_id=task_id,
-                path=posix_path.as_posix().encode("utf8"),
-                image_id=image_id,
-                customer_supplied_encryption_key=_validate_experimental_encryption_key(_experimental_encryption_key),
-                container_id=self._container_id,
-            )
+        await self._sandbox._impl.mount_image(
+            path, image_id, encryption_key=_experimental_encryption_key, container_id=self._container_id
         )
 
     async def unmount_image(self, path: PurePosixPath | str) -> None:
@@ -241,18 +215,8 @@ class _SidecarContainer:
             path: Absolute mount point directory to unmount.
 
         """
-        posix_path = PurePosixPath(path)
-        if not posix_path.is_absolute():
-            raise InvalidError(f"Unmount path must be absolute; got: {posix_path}")
-
-        task_id, command_router_client = await self._get_command_router()
-        await command_router_client.unmount_image(
-            sr_pb2.TaskUnmountDirectoryRequest(
-                task_id=task_id,
-                path=posix_path.as_posix().encode("utf8"),
-                container_id=self._container_id,
-            )
-        )
+        self._sandbox._ensure_attached()
+        await self._sandbox._impl.unmount_image(path, container_id=self._container_id)
 
     async def snapshot_directory(
         self,
@@ -288,24 +252,14 @@ class _SidecarContainer:
             sidecar_2.filesystem.list_files("/workspace")
             ```
         """
-        wire_ttl_seconds = _ttl_to_wire_ttl(ttl)
-        posix_path = PurePosixPath(path)
-        if not posix_path.is_absolute():
-            raise InvalidError(f"Snapshot path must be absolute; got: {posix_path}")
-
-        task_id, command_router_client = await self._get_command_router()
-        response = await command_router_client.snapshot_directory(
-            sr_pb2.TaskSnapshotDirectoryRequest(
-                task_id=task_id,
-                path=posix_path.as_posix().encode("utf8"),
-                snapshot_id=str(uuid.uuid4()),
-                ttl_seconds=wire_ttl_seconds,
-                customer_supplied_encryption_key=_validate_experimental_encryption_key(_experimental_encryption_key),
-                container_id=self._container_id,
-            ),
-            timeout=float(timeout),
+        self._sandbox._ensure_attached()
+        return await self._sandbox._impl.snapshot_directory(
+            path,
+            timeout=timeout,
+            ttl=ttl,
+            encryption_key=_experimental_encryption_key,
+            container_id=self._container_id,
         )
-        return _Image._new_hydrated(response.image_id, self._sandbox._client, None)
 
     async def wait(self, raise_on_termination: bool = True) -> None:
         if self._result is not None and self._result.status != api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
@@ -313,18 +267,12 @@ class _SidecarContainer:
                 raise SandboxTerminatedError()
             return
 
-        task_id, command_router_client = await self._get_command_router()
+        self._sandbox._ensure_attached()
         while True:
-            resp = await command_router_client.container_wait(
-                sr_pb2.TaskContainerWaitRequest(
-                    task_id=task_id,
-                    container_id=self._container_id,
-                    timeout=10,
-                )
-            )
-            if resp.result.status:
-                self._result = resp.result
-                if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
+            result = await self._sandbox._impl.wait_sidecar(self._container_id, timeout=10)
+            if result is not None:
+                self._result = result
+                if result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
                     raise SandboxTerminatedError()
                 return
 
@@ -332,16 +280,10 @@ class _SidecarContainer:
         if self._result is not None and self._result.status != api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
             return _result_returncode(self._result)
 
-        task_id, command_router_client = await self._get_command_router()
-        resp = await command_router_client.container_wait(
-            sr_pb2.TaskContainerWaitRequest(
-                task_id=task_id,
-                container_id=self._container_id,
-                timeout=0,
-            )
-        )
-        if resp.result.status:
-            self._result = resp.result
+        self._sandbox._ensure_attached()
+        result = await self._sandbox._impl.wait_sidecar(self._container_id, timeout=0)
+        if result is not None:
+            self._result = result
         return _result_returncode(self._result)
 
     @overload
@@ -363,16 +305,12 @@ class _SidecarContainer:
         *,
         wait: bool = False,
     ) -> int | None:
-        task_id, command_router_client = await self._get_command_router()
-        await command_router_client.container_terminate(
-            sr_pb2.TaskContainerTerminateRequest(
-                task_id=task_id,
-                container_id=self._container_id,
-            )
-        )
+        self._sandbox._ensure_attached()
+        await self._sandbox._impl.terminate_sidecar(self._container_id)
         if wait:
             await self.wait(raise_on_termination=False)
             return _result_returncode(self._result)
+        return None
 
     async def reload_volumes(self, *, timeout: int = 55) -> None:
         """Reload all Volumes mounted in this sidecar container.
@@ -385,22 +323,8 @@ class _SidecarContainer:
         Args:
             timeout: Defaults to 55 seconds.
         """
-        await self._sandbox._reload_volumes(timeout=timeout, container_id=self._container_id)
-
-
-_MAIN_CONTAINER_NAME: str = "main"
-
-_CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR = "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE"
-
-
-def _use_control_plane_sidecar_create(is_v2: bool) -> bool:
-    """Whether a sidecar create request goes to the Modal server rather than over the Sandbox connection.
-
-    V2 Sandboxes do unless opted out via the `use_control_plane_sidecar_create` config
-    setting (`MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE=0`). V1 Sandboxes always create
-    sidecars over the Sandbox connection.
-    """
-    return is_v2 and config.get("use_control_plane_sidecar_create")
+        self._sandbox._ensure_attached()
+        await self._sandbox._impl.reload_volumes(timeout=timeout, container_id=self._container_id)
 
 
 class _SidecarManager:
@@ -408,12 +332,6 @@ class _SidecarManager:
 
     def __init__(self, sandbox: "modal.sandbox._sandbox._Sandbox") -> None:
         self._sandbox = sandbox
-
-    async def _get_command_router(self) -> tuple[str, "TaskCommandRouterClient"]:
-        """Get task ID and command router client."""
-        task_id = await self._sandbox._get_task_id()
-        command_router_client = await self._sandbox._get_command_router_client(task_id)
-        return task_id, command_router_client
 
     async def create(
         self,
@@ -423,7 +341,7 @@ class _SidecarManager:
         env: dict[str, str] | None = None,
         secrets: Collection[_Secret] | None = None,
         workdir: str | None = None,
-        volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] | None = None,
+        volumes: Mapping[str | PurePosixPath, _Volume | _CloudBucketMount] | None = None,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
         include_oidc_identity_token: bool = False,
@@ -471,6 +389,7 @@ class _SidecarManager:
         Returns:
             A `SidecarContainer` handle for the running container.
         """
+        self._sandbox._ensure_attached()
         if name == _MAIN_CONTAINER_NAME:
             raise InvalidError(f"The name {_MAIN_CONTAINER_NAME!r} is reserved for the sandbox's main container.")
         if workdir is not None and not workdir.startswith("/"):
@@ -482,36 +401,14 @@ class _SidecarManager:
                 f"got: {experimental_memory_reserve_consume_mib}"
             )
 
-        via_control_plane = _use_control_plane_sidecar_create(self._sandbox._is_v2)
         mounted_objects = validate_volumes(volumes if volumes is not None else {})
         cloud_bucket_mounts = [(path, v) for path, v in mounted_objects if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(path, v) for path, v in mounted_objects if isinstance(v, _Volume)]
-        if cloud_bucket_mounts and not self._sandbox._is_v2:
-            raise InvalidError(
-                "CloudBucketMount is not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU, "
-                "network file systems or a PTY, or when MODAL_SANDBOX_V2=0 is set; contact Modal support for more "
-                "information."
-            )
-        if cloud_bucket_mounts and not via_control_plane:
-            raise InvalidError(
-                "CloudBucketMount is not supported in sidecars when MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE=0 is set; "
-                "unset it to use cloud bucket mounts."
-            )
-        if proxy is not None and not self._sandbox._is_v2:
-            raise InvalidError("Sandbox._experimental_sidecars.create(proxy=...) is not supported for GPU Sandboxes.")
-        if proxy is not None and not via_control_plane:
-            raise InvalidError(
-                "Sandbox._experimental_sidecars.create(proxy=...) is not supported when "
-                f"{_CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use a proxy."
-            )
-
-        if include_oidc_identity_token and not self._sandbox._is_v2:
-            raise InvalidError("include_oidc_identity_token is not supported for GPU Sandboxes.")
-        if include_oidc_identity_token and not via_control_plane:
-            raise InvalidError(
-                f"include_oidc_identity_token is not supported when {_CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; "
-                "unset it to use it."
-            )
+        self._sandbox._impl.validate_sidecar_create(
+            cloud_bucket_mounts=cloud_bucket_mounts,
+            has_proxy=proxy is not None,
+            include_oidc_identity_token=include_oidc_identity_token,
+        )
 
         if image._mount_layers:
             raise InvalidError(
@@ -563,84 +460,40 @@ class _SidecarManager:
         volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
 
         network_access = _build_outbound_network_access(False, outbound_cidr_allowlist, outbound_domain_allowlist)
-        pty_info = self._sandbox._default_pty_info() if pty else None
+        pty_info = default_pty_info() if pty else None
 
-        if via_control_plane:
-            cloud_bucket_mount_protos, cloud_bucket_credentials = cloud_bucket_mounts_to_proto(
-                cloud_bucket_mounts, split_ephemeral_credentials=True
-            )
-            definition = api_pb2.Sandbox(
-                entrypoint_args=list(args),
-                image_id=image.object_id,
-                secret_ids=[secret.object_id for secret in resolvable_secrets],
-                workdir=workdir,
-                volume_mounts=volume_mounts,
-                cloud_bucket_mounts=cloud_bucket_mount_protos,
-                network_access=network_access,
-                include_oidc_identity_token=include_oidc_identity_token,
-                proxy_id=(proxy.object_id if proxy else None),
-                pty_info=pty_info,
-                resources=(
-                    api_pb2.Resources(memory_mb=experimental_memory_reserve_consume_mib)
-                    if experimental_memory_reserve_consume_mib is not None
-                    else None
-                ),
-            )
-            create_req = api_pb2.SandboxContainerCreateV2Request(
-                sandbox_id=self._sandbox.object_id,
-                container_name=name,
-                definition=definition,
-                secret_sources=secret_sources,
-                cloud_bucket_mount_credentials=cloud_bucket_credentials,
-            )
-            client = self._sandbox._client
-            create_resp = await client._stub.SandboxContainerCreateV2(
-                create_req, metadata=await self._sandbox._v2_metadata(client)
-            )
-        else:
-            task_id, command_router_client = await self._get_command_router()
-            create_resp = await command_router_client.container_create(
-                sr_pb2.TaskContainerCreateRequest(
-                    task_id=task_id,
-                    container_name=name,
-                    image_id=image.object_id,
-                    args=list(args),
-                    workdir=workdir or "",
-                    secret_sources=secret_sources,
-                    volume_mounts=volume_mounts,
-                    network_access=network_access,
-                    pty_info=pty_info,
-                    memory_reserve_consume_mib=experimental_memory_reserve_consume_mib,
-                )
-            )
-
-        container_id = create_resp.container_id
-        container_name = create_resp.container_name or name
+        container_id, container_name = await self._sandbox._impl.create_sidecar(
+            *args,
+            name=name,
+            image_id=image.object_id,
+            secret_ids=[secret.object_id for secret in resolvable_secrets],
+            secret_sources=secret_sources,
+            workdir=workdir,
+            volume_mounts=volume_mounts,
+            cloud_bucket_mounts=cloud_bucket_mounts,
+            network_access=network_access,
+            include_oidc_identity_token=include_oidc_identity_token,
+            proxy_id=proxy.object_id if proxy else None,
+            pty_info=pty_info,
+            memory_reserve_consume_mib=experimental_memory_reserve_consume_mib,
+        )
         return _SidecarContainer(self._sandbox, container_id, container_name)
 
     async def get(self, *, name: str, include_terminated: bool = False) -> "_SidecarContainer":
+        self._sandbox._ensure_attached()
         if name == _MAIN_CONTAINER_NAME:
             raise InvalidError(
                 "Cannot get the main sandbox container through the sidecars API. "
                 "Use Sandbox methods directly to interact with the main container."
             )
-        task_id, command_router_client = await self._get_command_router()
-        resp = await command_router_client.container_get(
-            sr_pb2.TaskContainerGetRequest(
-                task_id=task_id,
-                container_name=name,
-                include_terminated=include_terminated,
-            )
-        )
-        return _SidecarContainer._from_container_info(self._sandbox, resp.container)
+        container_info = await self._sandbox._impl.get_sidecar(name, include_terminated)
+        return _SidecarContainer._from_container_info(self._sandbox, container_info)
 
     async def list(self, include_terminated: bool = False) -> builtins.list[_SidecarContainer]:
-        task_id, command_router_client = await self._get_command_router()
-        resp = await command_router_client.container_list(
-            sr_pb2.TaskContainerListRequest(task_id=task_id, include_terminated=include_terminated)
-        )
+        self._sandbox._ensure_attached()
+        containers = await self._sandbox._impl.list_sidecars(include_terminated)
         return [
             _SidecarContainer._from_container_info(self._sandbox, container)
-            for container in resp.containers
+            for container in containers
             if container.container_name != _MAIN_CONTAINER_NAME
         ]

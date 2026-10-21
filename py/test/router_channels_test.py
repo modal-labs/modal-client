@@ -15,6 +15,11 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .supports.skip import skip_windows
 
+
+async def _unexpected_fetch_access():
+    raise AssertionError("unexpected command router access fetch")
+
+
 # Short, because these tests wait the countdown out on the real clock rather
 # than handing the client a clock reading of their own.
 IDLE_TIMEOUT = 0.05
@@ -71,13 +76,13 @@ async def make_client():
 
     async def _make(*, channel=None, idle_timeout: float = IDLE_TIMEOUT) -> TaskCommandRouterClient:
         client = TaskCommandRouterClient(
-            None,
             "ta-1",
             "https://router.test",
             "jwt",
             channel or FakeChannel(),  # type: ignore[arg-type]
             asyncio.get_running_loop(),
             asyncio.Lock(),
+            fetch_access=_unexpected_fetch_access,
         )
         client.idle_timeout_secs = idle_timeout
         # Arm as `_connect` does after construction.
@@ -359,18 +364,18 @@ def test_synchronous_detach_runs_cleanup_on_sdk_loop(client, active_lease):
                 closed.set()
 
         router = TaskCommandRouterClient(
-            None,
             "ta-1",
             "https://router.test",
             "jwt",
             LoopCheckingChannel(),  # type: ignore[arg-type]
             loop,
             asyncio.Lock(),
+            fetch_access=_unexpected_fetch_access,
         )
         router._arm_idle_release()
         if active_lease:
             router._take_lease()
-        raw_sandbox._command_router_client = router
+        raw_sandbox._impl._command_router._client = router
         yield
         assert router._closed
         if active_lease:
@@ -395,7 +400,7 @@ async def test_repeated_detach_closes_channel_once(client, make_client):
     sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
     raw_sandbox = synchronizer._translate_in(sandbox)
     router = await make_client(idle_timeout=3600)
-    raw_sandbox._command_router_client = router
+    raw_sandbox._impl._command_router._client = router
 
     await raw_sandbox.detach()
     assert not raw_sandbox._attached
@@ -420,7 +425,7 @@ async def test_detach_suppresses_router_cleanup_errors(client):
 
     sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
     raw_sandbox = synchronizer._translate_in(sandbox)
-    raw_sandbox._command_router_client = Router()  # type: ignore[assignment]
+    raw_sandbox._impl._command_router._client = Router()  # type: ignore[assignment]
 
     await raw_sandbox.detach()
     assert close_calls == ["router"]
@@ -447,12 +452,12 @@ async def test_router_initialized_during_detach_is_closed(client, monkeypatch):
 
     router = Router()
 
-    async def init_v2_by_sandbox_id(*args, **kwargs):  # noqa: ARG001
+    async def connect(*args, **kwargs):  # noqa: ARG001
         started.set()
         await finish_connect.wait()
         return router
 
-    monkeypatch.setattr(TaskCommandRouterClient, "init_v2_by_sandbox_id", init_v2_by_sandbox_id)
+    monkeypatch.setattr(TaskCommandRouterClient, "connect", connect)
 
     sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
     raw_sandbox = synchronizer._translate_in(sandbox)
@@ -465,7 +470,7 @@ async def test_router_initialized_during_detach_is_closed(client, monkeypatch):
     with pytest.raises(ClientClosed):
         await get_router
     assert router.close_calls == 1
-    assert raw_sandbox._command_router_client is None
+    assert raw_sandbox._impl._command_router._client is None
 
 
 @skip_windows("Needs subprocess support")
@@ -476,14 +481,14 @@ async def test_concurrent_first_operations_share_one_channel(servicer, client, m
     from modal.sandbox import Sandbox
 
     num_connects = 0
-    original = TaskCommandRouterClient.init_v2_by_sandbox_id
+    original = TaskCommandRouterClient.connect
 
     async def _count(*args, **kwargs):
         nonlocal num_connects
         num_connects += 1
         return await original(*args, **kwargs)
 
-    monkeypatch.setattr(TaskCommandRouterClient, "init_v2_by_sandbox_id", _count)
+    monkeypatch.setattr(TaskCommandRouterClient, "connect", _count)
 
     sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
     processes = await asyncio.gather(*(sandbox.exec.aio("echo", "hello") for _ in range(5)))
@@ -491,7 +496,7 @@ async def test_concurrent_first_operations_share_one_channel(servicer, client, m
         assert await process.wait.aio() == 0
 
     assert num_connects == 1
-    routers = {synchronizer._translate_in(sandbox)._command_router_client}
+    routers = {synchronizer._translate_in(sandbox)._impl._command_router._client}
     assert len(routers) == 1
 
 
@@ -657,14 +662,14 @@ async def test_detach_does_not_rebuild_the_router_client(servicer, client, monke
     from modal.sandbox import Sandbox
 
     connects = 0
-    original = TaskCommandRouterClient.init_v2_by_sandbox_id
+    original = TaskCommandRouterClient.connect
 
     async def _count(*args, **kwargs):
         nonlocal connects
         connects += 1
         return await original(*args, **kwargs)
 
-    monkeypatch.setattr(TaskCommandRouterClient, "init_v2_by_sandbox_id", _count)
+    monkeypatch.setattr(TaskCommandRouterClient, "connect", _count)
 
     sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
     await sandbox.detach.aio()

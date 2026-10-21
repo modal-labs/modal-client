@@ -11,7 +11,7 @@ import time
 import typing
 import urllib.parse
 import weakref
-from collections.abc import AsyncGenerator, AsyncIterable, Callable
+from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Callable
 from contextlib import suppress
 from typing import Any, BinaryIO, TypeVar
 
@@ -262,33 +262,8 @@ def _is_v2_task_id(task_id: str) -> bool:
     return task_id.startswith("ta-") and task_id.endswith(_V2_SANDBOX_TASK_KIND_MARKER)
 
 
-async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.TaskGetCommandRouterAccessResponse:
-    """Fetch direct command router access info from Modal server."""
-    return await server_client._stub.TaskGetCommandRouterAccess(
-        api_pb2.TaskGetCommandRouterAccessRequest(task_id=task_id),
-    )
-
-
-async def fetch_command_router_access_v2(
-    server_client,
-    *,
-    sandbox_id: str | None = None,
-    task_id: str | None = None,
-    sandbox_token: str | None = None,
-) -> api_pb2.SandboxGetCommandRouterAccessResponse:
-    """Fetch direct command router access info from Modal server for a V2 sandbox."""
-    if sandbox_id is not None:
-        request = api_pb2.SandboxGetCommandRouterAccessRequest(sandbox_id=sandbox_id)
-    elif task_id is not None:
-        request = api_pb2.SandboxGetCommandRouterAccessRequest(task_id=task_id)
-    else:
-        raise ValueError("Either sandbox_id or task_id must be provided")
-    assert server_client._auth_token_manager
-    auth_token = await server_client._auth_token_manager.get_token()
-    metadata = [("x-modal-auth-token", auth_token)]
-    if sandbox_token:
-        metadata.append(("x-modal-sandbox-token", sandbox_token))
-    return await server_client._stub.SandboxGetCommandRouterAccess(request, metadata=metadata)
+CommandRouterAccessFetcher = Callable[[], Awaitable[api_pb2.CommandRouterAccess]]
+"""Fetches the URL and a fresh JWT for a task's command router from the Modal server."""
 
 
 def _finalize_channel(loop, channel):
@@ -308,6 +283,25 @@ class TaskCommandRouterClient:
     """
 
     @classmethod
+    async def connect(
+        cls,
+        server_client,
+        task_id: str,
+        fetch_access: CommandRouterAccessFetcher,
+        *,
+        access: api_pb2.CommandRouterAccess | None = None,
+    ) -> "TaskCommandRouterClient":
+        """Connect to the command router of a task.
+
+        `fetch_access` is used to get the router's URL and JWT, and later to refresh the JWT.
+        Pass `access` to connect with access the caller already holds, without fetching it.
+        """
+        if access is None:
+            access = await fetch_access()
+        logger.debug(f"Using command router access for task {task_id}")
+        return await cls._connect(server_client, task_id, access.url, access.jwt, fetch_access=fetch_access)
+
+    @classmethod
     async def _connect(
         cls,
         server_client,
@@ -315,8 +309,7 @@ class TaskCommandRouterClient:
         url: str,
         jwt: str,
         *,
-        sandbox_id: str | None = None,
-        sandbox_token: str | None = None,
+        fetch_access: CommandRouterAccessFetcher,
     ) -> "TaskCommandRouterClient":
         """Build a connected client from a jwt and url."""
         o = urllib.parse.urlparse(url)
@@ -366,72 +359,13 @@ class TaskCommandRouterClient:
         loop = asyncio.get_running_loop()
         jwt_refresh_lock = asyncio.Lock()
 
-        client = cls(
-            server_client,
-            task_id,
-            url,
-            jwt,
-            channel,
-            loop,
-            jwt_refresh_lock,
-            sandbox_id=sandbox_id,
-            sandbox_token=sandbox_token,
-        )
+        client = cls(task_id, url, jwt, channel, loop, jwt_refresh_lock, fetch_access=fetch_access)
         # An unused client releases its connection too.
         client._arm_idle_release()
         return client
 
-    @classmethod
-    async def init(
-        cls,
-        server_client,
-        task_id: str,
-    ) -> "TaskCommandRouterClient":
-        resp = await fetch_command_router_access(server_client, task_id)
-        logger.debug(f"Using command router access for task {task_id}")
-        return await cls._connect(server_client, task_id, resp.url, resp.jwt)
-
-    @classmethod
-    async def init_v2_by_sandbox_id(
-        cls,
-        server_client,
-        sandbox_id: str,
-        task_id: str,
-        access: api_pb2.CommandRouterAccess | None = None,
-        *,
-        sandbox_token: str | None = None,
-    ) -> "TaskCommandRouterClient":
-        """Initialize a TaskCommandRouterClient for a V2 sandbox.
-
-        `access` is the router access returned by SandboxCreateV2/SandboxRestoreV2,
-        which lets a freshly scheduled sandbox connect without a round-trip. When it
-        is absent — a re-attached sandbox, or the server could not mint a token — we
-        ask for it.
-        """
-        if access is not None:
-            url, jwt = access.url, access.jwt
-        else:
-            resp = await fetch_command_router_access_v2(
-                server_client, sandbox_id=sandbox_id, sandbox_token=sandbox_token
-            )
-            url, jwt = resp.url, resp.jwt
-        logger.debug(f"Using command router access for sandbox {sandbox_id}")
-        return await cls._connect(server_client, task_id, url, jwt, sandbox_id=sandbox_id, sandbox_token=sandbox_token)
-
-    @classmethod
-    async def init_v2_by_task_id(
-        cls,
-        server_client,
-        task_id: str,
-    ) -> "TaskCommandRouterClient":
-        """Initialize a TaskCommandRouterClient for a V2 sandbox identified only by its task ID."""
-        resp = await fetch_command_router_access_v2(server_client, task_id=task_id)
-        logger.debug(f"Using command router access for V2 task {task_id}")
-        return await cls._connect(server_client, task_id, resp.url, resp.jwt)
-
     def __init__(
         self,
-        server_client,
         task_id: str,
         server_url: str,
         jwt: str,
@@ -439,22 +373,19 @@ class TaskCommandRouterClient:
         loop: asyncio.AbstractEventLoop,
         jwt_refresh_lock: asyncio.Lock,
         *,
-        sandbox_id: str | None = None,
-        sandbox_token: str | None = None,
+        fetch_access: CommandRouterAccessFetcher,
         stream_stdio_retry_delay_secs: float = 0.01,
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
     ) -> None:
-        """Callers should not use this directly. Use TaskCommandRouterClient.init() instead."""
+        """Callers should not use this directly. Use TaskCommandRouterClient.connect() instead."""
         # Record the loop this instance is bound to so __del__ can safely schedule cleanup
         # even if finalization happens from a different thread (e.g. via synchronicity).
         self._loop = loop
 
         # Attach the bearer token to every request.
-        self._server_client = server_client
         self._task_id = task_id
-        self._sandbox_id = sandbox_id
-        self._sandbox_token = sandbox_token
+        self._fetch_access = fetch_access
         self._server_url = server_url
         self._jwt = jwt
         self._channel = channel
@@ -483,10 +414,6 @@ class TaskCommandRouterClient:
         )
 
         self._stub = TaskCommandRouterStub(self._channel)
-
-    @property
-    def _is_v2_sandbox(self) -> bool:
-        return self._sandbox_id is not None or _is_v2_task_id(self._task_id)
 
     def _ensure_open(self) -> None:
         if self._closed:
@@ -969,21 +896,10 @@ class TaskCommandRouterClient:
                 )
                 return
 
-            if self._is_v2_sandbox:
-                logger.debug(f"Refreshing JWT for V2 exec with task ID {self._task_id}")
-                v2_resp = await fetch_command_router_access_v2(
-                    self._server_client,
-                    sandbox_id=self._sandbox_id,
-                    task_id=self._task_id,
-                    sandbox_token=self._sandbox_token,
-                )
-                logger.debug(f"Finished refreshing JWT for V2 exec with task ID {self._task_id}")
-                jwt, url = v2_resp.jwt, v2_resp.url
-            else:
-                logger.debug(f"Refreshing JWT for exec with task ID {self._task_id}")
-                v1_resp = await fetch_command_router_access(self._server_client, self._task_id)
-                logger.debug(f"Finished refreshing JWT for exec with task ID {self._task_id}")
-                jwt, url = v1_resp.jwt, v1_resp.url
+            logger.debug(f"Refreshing JWT for exec with task ID {self._task_id}")
+            access = await self._fetch_access()
+            logger.debug(f"Finished refreshing JWT for exec with task ID {self._task_id}")
+            jwt, url = access.jwt, access.url
 
             # Ensure the server URL remains stable for the lifetime of this client.
             if url != self._server_url:
@@ -1267,3 +1183,52 @@ class TaskCommandRouterClient:
         self, request: sr_pb2.TaskSnapshotMemoryRequest, *, timeout: float, **kwargs
     ) -> sr_pb2.TaskSnapshotMemoryResponse:
         return await self._unary_call_with_deadline(self._stub.TaskSnapshotMemory, request, timeout=timeout, **kwargs)
+
+
+class LazyCommandRouterClient:
+    """A connection to a task command router that is opened on first use and then shared.
+
+    Concurrent first callers share a single `open` attempt, and its client is reused until
+    `close`. After `close`, `get` raises `ClientClosed`, including for handles obtained earlier
+    that resolve the connection lazily; a connection that finishes opening after `close` is
+    closed instead of handed out.
+    """
+
+    def __init__(self, open: Callable[[str], Awaitable[TaskCommandRouterClient]]) -> None:
+        self._open = open
+        self._client: TaskCommandRouterClient | None = None
+        self._lock: asyncio.Lock | None = None
+        self._closed = False
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise ClientClosed("Unable to perform operation on a detached sandbox")
+
+    async def get(self, task_id: str) -> TaskCommandRouterClient:
+        self._ensure_open()
+        if self._client is not None:
+            return self._client
+        # Create the lock lazily, on the event loop that first uses the connection.
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            self._ensure_open()
+            if self._client is not None:
+                return self._client
+            client = await self._open(task_id)
+            # Opening yields control, so `close` may have been called in the meantime.
+            if self._closed:
+                await client.close()
+                self._ensure_open()
+            self._client = client
+            return client
+
+    async def close(self) -> None:
+        """Close permanently, releasing the connection once in-flight operations complete."""
+        self._closed = True
+        client, self._client = self._client, None
+        if client is not None:
+            try:
+                await client.close_when_idle()
+            except Exception as exc:
+                logger.debug(f"Failed to close sandbox command router: {exc}")

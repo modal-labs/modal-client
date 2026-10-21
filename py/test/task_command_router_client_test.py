@@ -26,6 +26,10 @@ from modal.sandbox._task_command_router_client import TaskCommandRouterClient, c
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
+async def _unexpected_fetch_access():
+    raise AssertionError("unexpected command router access fetch")
+
+
 def _start_index_for_offset(pieces: list[bytes], offset: int) -> int:
     """Return the index of the piece that starts at the given byte offset."""
     total = 0
@@ -69,20 +73,19 @@ async def make_router_client():
         channel: ModalChannel | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
         jwt_refresh_lock: asyncio.Lock | None = None,
-        sandbox_id: str | None = None,
         stream_stdio_retry_delay_secs: float = 0.01,
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
+        fetch_access=_unexpected_fetch_access,
     ) -> TaskCommandRouterClient:
         client = TaskCommandRouterClient(
-            None,
             task_id,
             server_url,
             jwt,
             channel or create_dummy_channel(),
             loop or asyncio.get_running_loop(),
             jwt_refresh_lock or asyncio.Lock(),
-            sandbox_id=sandbox_id,
+            fetch_access=fetch_access,
             stream_stdio_retry_delay_secs=stream_stdio_retry_delay_secs,
             stream_stdio_retry_delay_factor=stream_stdio_retry_delay_factor,
             stream_stdio_max_retries=stream_stdio_max_retries,
@@ -97,11 +100,29 @@ async def make_router_client():
 
 
 @pytest.mark.asyncio
+async def test_refresh_jwt_uses_fetch_access(make_router_client):
+    fetches = 0
+
+    async def fetch_access():
+        nonlocal fetches
+        fetches += 1
+        return api_pb2.CommandRouterAccess(url="https://router.test", jwt="t2")
+
+    client = make_router_client(jwt="t1", fetch_access=fetch_access)
+    await client._refresh_jwt()
+
+    assert fetches == 1
+    assert client._get_metadata()["authorization"] == "Bearer t2"
+
+
+@pytest.mark.asyncio
 async def test_connect_rejects_http_for_non_localhost_server_client():
     server_client = _Client("https://api.modal.com", api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
 
     with pytest.raises(ValueError, match="Task router URL must be https"):
-        await TaskCommandRouterClient._connect(server_client, "ta-123", "http://router.example:4321", "jwt")
+        await TaskCommandRouterClient._connect(
+            server_client, "ta-123", "http://router.example:4321", "jwt", fetch_access=_unexpected_fetch_access
+        )
 
 
 @pytest.mark.asyncio

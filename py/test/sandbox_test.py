@@ -18,6 +18,8 @@ from grpclib import GRPCError, Status
 
 import modal
 import modal.experimental
+import modal.sandbox._common
+import modal.sandbox._impl_v1
 from modal import (
     App,
     Image,
@@ -34,6 +36,8 @@ from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES
 from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
 from modal.sandbox import SidecarContainer
 from modal.sandbox._common import SandboxVersion, _get_sandbox_version
+from modal.sandbox._impl_v1 import SandboxImplV1
+from modal.sandbox._impl_v2 import SandboxImplV2
 from modal.sandbox._task_command_router_client import _is_v2_task_id
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
@@ -273,7 +277,7 @@ def test_sandbox_create_hydrates_app_id(app, monkeypatch, sandbox_version):
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
-def test_sandbox_initialize_from_other_preserves_app_id_and_version(app, monkeypatch, sandbox_version):
+def test_sandbox_initialize_from_other_preserves_app_id_and_impl(app, monkeypatch, sandbox_version):
     if sandbox_version == SandboxVersion.V1:
         monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
         source = Sandbox.create("echo", "hello", app=app)
@@ -286,7 +290,8 @@ def test_sandbox_initialize_from_other_preserves_app_id_and_version(app, monkeyp
     target_impl._initialize_from_other(source_impl)
 
     assert target_impl._app_id == source_impl._app_id == app.app_id
-    assert target_impl._is_v2 is source_impl._is_v2 is (sandbox_version == SandboxVersion.V2)
+    expected_impl = SandboxImplV2 if sandbox_version == SandboxVersion.V2 else SandboxImplV1
+    assert type(target_impl._impl) is type(source_impl._impl) is expected_impl
 
 
 def test_sandbox_nfs(client, app, servicer, tmpdir):
@@ -373,6 +378,28 @@ def test_sandbox_from_id_routes_v2(client, servicer):
 
     (terminate_req,) = ctx.get_requests("SandboxTerminateV2")
     assert terminate_req.sandbox_id == sandbox_id
+
+
+@pytest.mark.parametrize(
+    "sandbox_id,impl_cls",
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", SandboxImplV1),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", SandboxImplV2),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAVXY", SandboxImplV2),
+    ],
+)
+def test_sandbox_from_id_selects_impl(client, servicer, sandbox_id, impl_cls):
+    sb = Sandbox.from_id(sandbox_id, client=client)
+    assert type(synchronizer._translate_in(sb)._impl) is impl_cls
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True], ids=["v1", "v2"])
+def test_sandbox_create_selects_impl(app, servicer, monkeypatch, sandbox_v2):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    sb = Sandbox.create(app=app)
+    impl = synchronizer._translate_in(sb)._impl
+    assert type(impl) is (SandboxImplV2 if sandbox_v2 else SandboxImplV1)
+    assert impl.sandbox_id == sb.object_id
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
@@ -1753,8 +1780,8 @@ def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures(
 
 def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failures(app, servicer, monkeypatch):
     sb = Sandbox.create(app=app)
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -1777,8 +1804,8 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
 
 def test_sandbox_experimental_get_exit_snapshot_expired_poll_deadline_maps_to_timeout(app, servicer, monkeypatch):
     sb = Sandbox.create(app=app)
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -2079,8 +2106,8 @@ def test_sandbox_experimental_get_exit_snapshot_absorbs_transient_poll_failures_
 def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failures_v2(client, servicer, monkeypatch):
     sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
     # Shrink the hold and the slack so a wedged poll trips the network deadline quickly.
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -2105,8 +2132,8 @@ def test_sandbox_experimental_get_exit_snapshot_raises_after_repeated_poll_failu
 
 def test_sandbox_experimental_get_exit_snapshot_expired_poll_deadline_maps_to_timeout_v2(client, servicer, monkeypatch):
     sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
-    monkeypatch.setattr(modal.sandbox._sandbox, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_LONG_POLL_TIMEOUT", 0.05)
+    monkeypatch.setattr(modal.sandbox._common, "_EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN", 0.05)
 
     async def wedged(servicer, stream):
         await stream.recv_message()
@@ -3200,13 +3227,13 @@ def test_sandbox_create_v1_waits_for_task_id(servicer, app, monkeypatch):
     with servicer.intercept() as ctx:
         sb = Sandbox.create(app=app)
 
-    assert synchronizer._translate_in(sb)._task_id == "ta-modalcontainerexec"
+    assert synchronizer._translate_in(sb)._impl._task_id == "ta-modalcontainerexec"
     assert len(ctx.get_requests("SandboxGetTaskId")) == 1
 
 
 def test_sandbox_create_v1_scheduling_timeout(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._impl_v1._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def never_scheduled(self, stream):
         await stream.recv_message()
@@ -3270,14 +3297,14 @@ def test_sandbox_create_v1_task_id_transient_error_then_scheduled(servicer, app,
         ctx.set_responder("SandboxGetTaskId", transient_error_then_scheduled)
         sb = Sandbox.create(app=app)
 
-    assert synchronizer._translate_in(sb)._task_id == "ta-123"
+    assert synchronizer._translate_in(sb)._impl._task_id == "ta-123"
     assert len(ctx.get_requests("SandboxGetTaskId")) == 5
     assert ctx.get_requests("SandboxTerminate") == []
 
 
 def test_sandbox_create_v1_task_id_unavailable_until_deadline(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._impl_v1._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def always_unavailable(self, stream):
         await stream.recv_message()
@@ -3293,7 +3320,7 @@ def test_sandbox_create_v1_task_id_unavailable_until_deadline(servicer, app, mon
 
 def test_sandbox_create_v1_task_id_internal_until_deadline(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._impl_v1._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def always_internal(self, stream):
         await stream.recv_message()
@@ -3309,9 +3336,9 @@ def test_sandbox_create_v1_task_id_internal_until_deadline(servicer, app, monkey
 
 def test_sandbox_create_v1_task_id_internal_before_deadline(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    timeout = modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT
+    timeout = modal.sandbox._impl_v1._SANDBOX_SCHEDULING_TIMEOUT
     now = 0.0
-    monkeypatch.setattr("modal.sandbox._sandbox.time", SimpleNamespace(monotonic=lambda: now))
+    monkeypatch.setattr("modal.sandbox._common.time", SimpleNamespace(monotonic=lambda: now))
 
     calls = 0
 
@@ -3321,7 +3348,7 @@ def test_sandbox_create_v1_task_id_internal_before_deadline(servicer, app, monke
         await stream.recv_message()
         if calls <= DEFAULT_MAX_RETRIES + 1:
             # The deadline has not passed, but too little time remains for another poll.
-            now = timeout - modal.sandbox._sandbox._TASK_ID_POLL_INTERVAL / 2
+            now = timeout - modal.sandbox._common._TASK_ID_POLL_INTERVAL / 2
             raise GRPCError(Status.INTERNAL, "server bug")
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
 
@@ -3336,7 +3363,7 @@ def test_sandbox_create_v1_task_id_internal_before_deadline(servicer, app, monke
 
 def test_sandbox_create_v1_scheduling_timeout_terminate_fails(servicer, app, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "false")
-    monkeypatch.setattr("modal.sandbox._sandbox._SANDBOX_SCHEDULING_TIMEOUT", 0)
+    monkeypatch.setattr("modal.sandbox._impl_v1._SANDBOX_SCHEDULING_TIMEOUT", 0)
 
     async def never_scheduled(self, stream):
         await stream.recv_message()
@@ -3437,6 +3464,36 @@ def test_detach_twice(servicer, client, app):
     sb = Sandbox.create(app=app)
     sb.detach()
     sb.detach()
+
+
+@skip_non_subprocess
+def test_sidecar_handles_raise_after_detach(app, servicer):
+    """Sidecar handles obtained before detach raise once the Sandbox is detached."""
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    sidecars = sb._experimental_sidecars
+    container = sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
+    sb.detach()
+
+    for op in [
+        lambda: sidecars.create("bash", name="other", image=image),
+        lambda: sidecars.get(name="worker"),
+        lambda: sidecars.list(),
+        lambda: container.exec("echo", "hello"),
+        lambda: container.poll(),
+        lambda: container.wait(),
+        lambda: container.terminate(),
+        lambda: container.reload_volumes(),
+        lambda: container.snapshot_filesystem(),
+        lambda: container.snapshot_directory("/tmp"),
+        lambda: container.mount_image("/mnt", image),
+        lambda: container.unmount_image("/mnt"),
+    ]:
+        with pytest.raises(modal.exception.ClientClosed):
+            op()
 
 
 def test_sandbox_terminate_wait(app, servicer):
@@ -4242,8 +4299,8 @@ def test_sandbox_wait_allowed_after_detached(app, servicer):
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
 def test_sandbox_wait_retries_poll_the_server_never_answers(app, servicer, monkeypatch, sandbox_version):
-    monkeypatch.setattr("modal.sandbox._sandbox._WAIT_LONG_POLL_TIMEOUT", 0.1)
-    monkeypatch.setattr("modal.sandbox._sandbox._WAIT_POLL_DEADLINE_MARGIN", 0.2)
+    monkeypatch.setattr("modal.sandbox._common._WAIT_LONG_POLL_TIMEOUT", 0.1)
+    monkeypatch.setattr("modal.sandbox._common._WAIT_POLL_DEADLINE_MARGIN", 0.2)
     monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_version == SandboxVersion.V2 else "0")
     sb = _create_wait_until_ready_sandbox(app, sandbox_version)
     assert _get_sandbox_version(sb.object_id) == sandbox_version
