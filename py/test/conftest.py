@@ -1054,10 +1054,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): self.default_published_client_mount,
             **{
                 (
-                    python_standalone_mount_name(version),
+                    python_standalone_mount_name(version, builder_version),
                     api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 ): f"mo-py{version.replace('.', '')}"
-                for version in PYTHON_STANDALONE_VERSIONS
+                for builder_version, standalone_versions in PYTHON_STANDALONE_VERSIONS.items()
+                for version in standalone_versions
             },
         }
 

@@ -53,7 +53,7 @@ SUPPORTED_IMAGE_BUILDER_VERSIONS = [
 
 def test_supported_python_series():
     for builder_version in get_args(ImageBuilderVersion):
-        assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS)
+        assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS[builder_version])
 
 
 def build_image(image: Image, client: Client) -> None:
@@ -462,7 +462,9 @@ def test_from_registry_add_python(builder_version, servicer, client):
     commands = layers[0].dockerfile_commands
     assert layers[0].context_mount_id == "mo-py310"
     assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
-    assert any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
+    # Newer standalone releases ship a `python` binary, so the symlink would fail
+    has_symlink = any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
+    assert has_symlink == (builder_version <= "2025.06")
 
     if builder_version >= "2024.10":
         image = Image.from_registry("ubuntu", add_python="3.13")

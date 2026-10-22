@@ -247,9 +247,15 @@ def _check_prod(no_confirm: bool):
 @task
 def publish_base_mounts(ctx, no_confirm: bool = False):
     """Publish the client mount and other mounts."""
+    from modal._image import LATEST_IMAGE_BUILDER_VERSION
+
     _check_prod(no_confirm)
-    for mount in ["modal_client_package", "python_standalone", "modal_client_dependencies"]:
-        ctx.run(f"{sys.executable} {project_root}/modal_global_objects/mounts/{mount}.py", pty=True)
+    for mount, args in [
+        ("modal_client_package", ""),
+        ("python_standalone", f" --builder-version {LATEST_IMAGE_BUILDER_VERSION}"),
+        ("modal_client_dependencies", ""),
+    ]:
+        ctx.run(f"{sys.executable} {project_root}/modal_global_objects/mounts/{mount}.py{args}", pty=True)
 
 
 @task(

@@ -39,11 +39,11 @@ from .file_pattern_matcher import FilePatternMatcher
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
-# Supported releases and versions for python-build-standalone.
+# Supported releases and versions for python-build-standalone, keyed by image builder version.
 #
-# These can be updated safely, but changes will trigger a rebuild for all images
-# that rely on `add_python()` in their constructor.
-PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
+# Changing the versions for a builder version triggers a rebuild for all images on that builder
+# version that rely on `add_python()` in their constructor, so only "PREVIEW" should be updated.
+_PYTHON_STANDALONE_VERSIONS_2025_06: dict[str, tuple[str, str]] = {
     "3.10": ("20230826", "3.10.13"),
     "3.11": ("20230826", "3.11.5"),
     "3.12": ("20240107", "3.12.1"),
@@ -52,6 +52,22 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.14t": ("20251209", "3.14.2t"),
     "3.15": ("20261009", "3.15.0"),
     "3.15t": ("20261009", "3.15.0t"),
+}
+PYTHON_STANDALONE_VERSIONS: dict[str, dict[str, tuple[str, str]]] = {
+    "PREVIEW": {
+        "3.10": ("20261009", "3.10.22"),
+        "3.11": ("20261021", "3.11.17"),
+        "3.12": ("20261021", "3.12.15"),
+        "3.13": ("20261021", "3.13.17"),
+        "3.14": ("20261021", "3.14.9"),
+        "3.14t": ("20261021", "3.14.9t"),
+        "3.15": ("20261021", "3.15.1"),
+        "3.15t": ("20261021", "3.15.1t"),
+    },
+    "2025.06": _PYTHON_STANDALONE_VERSIONS_2025_06,
+    "2024.10": _PYTHON_STANDALONE_VERSIONS_2025_06,
+    "2024.04": _PYTHON_STANDALONE_VERSIONS_2025_06,
+    "2023.12": _PYTHON_STANDALONE_VERSIONS_2025_06,
 }
 
 MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
@@ -72,20 +88,20 @@ def client_mount_name() -> str:
     return f"modal-client-mount-{version}"
 
 
-def python_standalone_mount_name(version: str) -> str:
+def python_standalone_mount_name(version: str, builder_version: str) -> str:
     """Get the deployed name of the python-build-standalone mount."""
     if "-" in version:  # default to glibc
         version, libc = version.split("-")
     else:
         libc = "gnu"
-    if version not in PYTHON_STANDALONE_VERSIONS:
+    standalone_versions = PYTHON_STANDALONE_VERSIONS[builder_version]
+    if version not in standalone_versions:
         raise modal.exception.InvalidError(
-            f"Unsupported standalone python version: {version!r}, supported values are "
-            f"{list(PYTHON_STANDALONE_VERSIONS)}"
+            f"Unsupported standalone python version: {version!r}, supported values are {list(standalone_versions)}"
         )
     if libc != "gnu":
         raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
-    release, full_version = PYTHON_STANDALONE_VERSIONS[version]
+    release, full_version = standalone_versions[version]
     return f"python-build-standalone.{release}.{full_version}-{libc}"
 
 
@@ -950,19 +966,25 @@ async def _create_single_client_dependency_mount(
 
 async def _create_client_dependency_mounts(
     client=None,
-    python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
-    builder_versions: list[str] = ["2025.06"],  # Reenable "PREVIEW" during testing
+    python_versions: list[str] | None = None,
+    builder_versions: list[str] | None = None,  # Pass "PREVIEW" during testing
     check_if_exists=True,
     dry_run=False,
 ):
+    from ._image import LATEST_IMAGE_BUILDER_VERSION, SUPPORTED_PYTHON_SERIES
+
     arch = "x86_64"
     platform_tags = [
         ("manylinux_2_17", f"{arch}-manylinux_2_17"),  # glibc >= 2.17
         ("musllinux_1_2", f"{arch}-unknown-linux-musl"),  # musl >= 1.2
     ]
     coros = []
-    for python_version in python_versions:
-        for builder_version in builder_versions:
+    for builder_version in builder_versions or [LATEST_IMAGE_BUILDER_VERSION]:
+        if python_versions is None:
+            builder_python_versions = SUPPORTED_PYTHON_SERIES[builder_version]
+        else:
+            builder_python_versions = python_versions
+        for python_version in builder_python_versions:
             for platform, uv_python_platform in platform_tags:
                 coros.append(
                     _create_single_client_dependency_mount(

@@ -57,7 +57,7 @@ from .exception import (
     VersionError,
 )
 from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
-from .mount import _Mount, python_standalone_mount_name
+from .mount import PYTHON_STANDALONE_VERSIONS, _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .output import OutputManager
 from .secret import _Secret
@@ -70,6 +70,7 @@ if typing.TYPE_CHECKING:
 
 # This is used for both type checking and runtime validation
 ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVIEW"]
+LATEST_IMAGE_BUILDER_VERSION: ImageBuilderVersion = "2025.06"
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
@@ -402,7 +403,7 @@ def _create_context_mount_function(
 
     if ignore is AUTO_DOCKERIGNORE:
 
-        def auto_created_context_mount_fn() -> _Mount | None:
+        def auto_created_context_mount_fn(builder_version: ImageBuilderVersion) -> _Mount | None:
             nonlocal context_dir
             context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
             dockerignore_file = find_dockerignore_file(context_dir, dockerfile_path)
@@ -419,7 +420,7 @@ def _create_context_mount_function(
 
     else:
 
-        def auto_created_context_mount_fn() -> _Mount | None:
+        def auto_created_context_mount_fn(builder_version: ImageBuilderVersion) -> _Mount | None:
             # use COPY commands and ignore patterns to construct implicit context mount
             nonlocal context_dir
             context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
@@ -622,7 +623,7 @@ class _Image(_Object, type_prefix="im"):
         build_function: "modal._functions._Function | None" = None,
         build_function_input: api_pb2.FunctionInput | None = None,
         image_registry_config: _ImageRegistryConfig | None = None,
-        context_mount_function: Callable[[], _Mount | None] | None = None,
+        context_mount_function: Callable[[ImageBuilderVersion], _Mount | None] | None = None,
         force_build: bool = False,
         build_args: dict[str, str] = {},
         validated_volumes: Sequence[tuple[str, _Volume]] | None = None,
@@ -661,7 +662,13 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
-            context_mount = context_mount_function() if context_mount_function else None
+            assert load_context.app_id  # type narrowing
+            environment = await _get_environment_cached(load_context.environment_name or "", load_context.client)
+            # A bit hacky,but assume that the environment provides a valid builder version
+            image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
+            builder_version = _get_image_builder_version(image_builder_version)
+
+            context_mount = context_mount_function(builder_version) if context_mount_function else None
             if context_mount:
                 await resolver.load(context_mount, load_context)
 
@@ -669,12 +676,6 @@ class _Image(_Object, type_prefix="im"):
                 for image in base_images.values():
                     # base images can't have
                     image._assert_no_mount_layers()
-
-            assert load_context.app_id  # type narrowing
-            environment = await _get_environment_cached(load_context.environment_name or "", load_context.client)
-            # A bit hacky,but assume that the environment provides a valid builder version
-            image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
-            builder_version = _get_image_builder_version(image_builder_version)
 
             if dockerfile_function is None:
                 dockerfile = DockerfileSpec(commands=[], context_files={})
@@ -847,7 +848,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: mount,
+            context_mount_function=lambda builder_version: mount,
         )
 
     @_requires_image_instance
@@ -2191,12 +2192,9 @@ class _Image(_Object, type_prefix="im"):
                 "COPY /python/. /usr/local",
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
-            python_minor = add_python.split(".")[1]
-            if python_minor.endswith("t"):
-                python_minor = python_minor[:-1]
-            if int(python_minor) < 13:
-                # Previous versions did not include the `python` binary, but later ones do.
-                # (The important factor is not the Python version itself, but the standalone dist version.)
+            release, _ = PYTHON_STANDALONE_VERSIONS[builder_version][add_python]
+            if release < "20241008":
+                # Older standalone releases do not include the `python` binary.
                 # We insert the command in the list at the position it was previously always added
                 # for backwards compatibility with existing images.
                 add_python_commands.insert(1, "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python")
@@ -2271,10 +2269,10 @@ class _Image(_Object, type_prefix="im"):
             ```
         """
 
-        def context_mount_function() -> _Mount | None:
+        def context_mount_function(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
-                    python_standalone_mount_name(add_python),
+                    python_standalone_mount_name(add_python, builder_version),
                     namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 )
                 if add_python
@@ -2523,10 +2521,10 @@ class _Image(_Object, type_prefix="im"):
         # This happening in two steps is probably a vestigial consequence of previous limitations,
         # but it will be difficult to merge them without forcing rebuilds of images.
 
-        def add_python_mount():
+        def add_python_mount(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
-                    python_standalone_mount_name(add_python),
+                    python_standalone_mount_name(add_python, builder_version),
                     namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 )
                 if add_python

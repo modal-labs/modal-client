@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import argparse
 import shutil
 import tarfile
 import tempfile
@@ -16,8 +17,8 @@ from modal.mount import (
 from modal_proto import api_pb2
 
 
-def publish_python_standalone_mount(client, version: str) -> None:
-    release, full_version = PYTHON_STANDALONE_VERSIONS[version]
+def publish_python_standalone_mount(client, version: str, builder_version: str) -> None:
+    release, full_version = PYTHON_STANDALONE_VERSIONS[builder_version][version]
 
     libc = "gnu"
     arch = "x86_64_v3"
@@ -35,7 +36,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
         url = f"{root_url}/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-gnu-install_only.tar.gz"
 
     profile_environment = config.get("environment") or ""
-    mount_name = python_standalone_mount_name(f"{version}-{libc}")
+    mount_name = python_standalone_mount_name(f"{version}-{libc}", builder_version)
     try:
         Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate(client)
         print(f"➖ Found existing mount {mount_name} in global namespace.")
@@ -78,10 +79,27 @@ def publish_python_standalone_mount(client, version: str) -> None:
             print(f"✅ Deployed mount {mount_name} to global namespace.")
 
 
-def main(client=None):
-    for version in PYTHON_STANDALONE_VERSIONS:
-        publish_python_standalone_mount(client, version)
+def main(client=None, builder_versions: list[str] | None = None):
+    if builder_versions is None:
+        builder_versions = list(PYTHON_STANDALONE_VERSIONS)
+
+    published = set()
+    for builder_version in builder_versions:
+        for version in PYTHON_STANDALONE_VERSIONS[builder_version]:
+            mount_name = python_standalone_mount_name(version, builder_version)
+            if mount_name not in published:
+                publish_python_standalone_mount(client, version, builder_version)
+                published.add(mount_name)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Publish python-build-standalone mounts")
+    parser.add_argument(
+        "--builder-version",
+        action="append",
+        choices=list(PYTHON_STANDALONE_VERSIONS),
+        dest="builder_versions",
+        help="Image builder version to publish mounts for; repeatable. Defaults to all builder versions.",
+    )
+    args = parser.parse_args()
+    main(builder_versions=args.builder_versions)
