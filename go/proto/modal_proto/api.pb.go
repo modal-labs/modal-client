@@ -11340,6 +11340,9 @@ type CheckpointInfo struct {
 	xxx_hidden_ChecksumIsFileIndex bool                   `protobuf:"varint,6,opt,name=checksum_is_file_index,json=checksumIsFileIndex,proto3"`
 	xxx_hidden_OriginalTaskId      string                 `protobuf:"bytes,7,opt,name=original_task_id,json=originalTaskId,proto3"`
 	xxx_hidden_RunscRuntimeVersion string                 `protobuf:"bytes,9,opt,name=runsc_runtime_version,json=runscRuntimeVersion,proto3"`
+	xxx_hidden_GvisorPlatform      *string                `protobuf:"bytes,10,opt,name=gvisor_platform,json=gvisorPlatform,proto3,oneof"`
+	XXX_raceDetectHookData         protoimpl.RaceDetectHookData
+	XXX_presence                   [1]uint32
 	unknownFields                  protoimpl.UnknownFields
 	sizeCache                      protoimpl.SizeCache
 }
@@ -11425,6 +11428,16 @@ func (x *CheckpointInfo) GetRunscRuntimeVersion() string {
 	return ""
 }
 
+func (x *CheckpointInfo) GetGvisorPlatform() string {
+	if x != nil {
+		if x.xxx_hidden_GvisorPlatform != nil {
+			return *x.xxx_hidden_GvisorPlatform
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *CheckpointInfo) SetChecksum(v string) {
 	x.xxx_hidden_Checksum = v
 }
@@ -11457,6 +11470,23 @@ func (x *CheckpointInfo) SetRunscRuntimeVersion(v string) {
 	x.xxx_hidden_RunscRuntimeVersion = v
 }
 
+func (x *CheckpointInfo) SetGvisorPlatform(v string) {
+	x.xxx_hidden_GvisorPlatform = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 8, 9)
+}
+
+func (x *CheckpointInfo) HasGvisorPlatform() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 8)
+}
+
+func (x *CheckpointInfo) ClearGvisorPlatform() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 8)
+	x.xxx_hidden_GvisorPlatform = nil
+}
+
 type CheckpointInfo_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -11468,6 +11498,7 @@ type CheckpointInfo_builder struct {
 	ChecksumIsFileIndex bool
 	OriginalTaskId      string
 	RunscRuntimeVersion string
+	GvisorPlatform      *string
 }
 
 func (b0 CheckpointInfo_builder) Build() *CheckpointInfo {
@@ -11482,6 +11513,10 @@ func (b0 CheckpointInfo_builder) Build() *CheckpointInfo {
 	x.xxx_hidden_ChecksumIsFileIndex = b.ChecksumIsFileIndex
 	x.xxx_hidden_OriginalTaskId = b.OriginalTaskId
 	x.xxx_hidden_RunscRuntimeVersion = b.RunscRuntimeVersion
+	if b.GvisorPlatform != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 8, 9)
+		x.xxx_hidden_GvisorPlatform = b.GvisorPlatform
+	}
 	return m0
 }
 
@@ -76219,7 +76254,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10CancelInputEvent\x12\x1b\n" +
 	"\tinput_ids\x18\x01 \x03(\tR\binputIds\x121\n" +
 	"\x14terminate_containers\x18\x02 \x01(\bR\x13terminateContainers\x12/\n" +
-	"\x13cancellation_reason\x18\x03 \x01(\tR\x12cancellationReason\"\xe7\x02\n" +
+	"\x13cancellation_reason\x18\x03 \x01(\tR\x12cancellationReason\"\xa9\x03\n" +
 	"\x0eCheckpointInfo\x12\x1a\n" +
 	"\bchecksum\x18\x01 \x01(\tR\bchecksum\x126\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x1e.modal.client.CheckpointStatusR\x06status\x12#\n" +
@@ -76228,7 +76263,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x04size\x18\x05 \x01(\x03R\x04size\x123\n" +
 	"\x16checksum_is_file_index\x18\x06 \x01(\bR\x13checksumIsFileIndex\x12(\n" +
 	"\x10original_task_id\x18\a \x01(\tR\x0eoriginalTaskId\x122\n" +
-	"\x15runsc_runtime_version\x18\t \x01(\tR\x13runscRuntimeVersionJ\x04\b\b\x10\t\"\xc2\x01\n" +
+	"\x15runsc_runtime_version\x18\t \x01(\tR\x13runscRuntimeVersion\x12,\n" +
+	"\x0fgvisor_platform\x18\n" +
+	" \x01(\tH\x00R\x0egvisorPlatform\x88\x01\x01B\x12\n" +
+	"\x10_gvisor_platformJ\x04\b\b\x10\t\"\xc2\x01\n" +
 	"\x12ClassCreateRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12*\n" +
 	"\x11existing_class_id\x18\x02 \x01(\tR\x0fexistingClassId\x123\n" +
@@ -82133,6 +82171,7 @@ func file_modal_proto_api_proto_init() {
 		(*blobCreateResponse_UploadUrls)(nil),
 		(*blobCreateResponse_Multiparts)(nil),
 	}
+	file_modal_proto_api_proto_msgTypes[78].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[87].OneofWrappers = []any{
 		(*classParameterSpec_StringDefault)(nil),
 		(*classParameterSpec_IntDefault)(nil),

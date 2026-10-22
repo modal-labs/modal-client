@@ -1089,6 +1089,7 @@ message CheckpointInfo {
   string original_task_id = 7;
   reserved 8;
   string runsc_runtime_version = 9;
+  optional string gvisor_platform = 10;
 }
 
 message ClassCreateRequest {
