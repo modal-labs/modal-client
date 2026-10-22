@@ -23522,6 +23522,7 @@ type EnvironmentListItem struct {
 	xxx_hidden_DefaultMemberRole             EnvironmentRole        `protobuf:"varint,16,opt,name=default_member_role,json=defaultMemberRole,proto3,enum=modal.client.EnvironmentRole,oneof"`
 	xxx_hidden_BlockUnauthenticatedResources bool                   `protobuf:"varint,17,opt,name=block_unauthenticated_resources,json=blockUnauthenticatedResources,proto3,oneof"`
 	xxx_hidden_EffectiveRole                 EnvironmentRole        `protobuf:"varint,18,opt,name=effective_role,json=effectiveRole,proto3,enum=modal.client.EnvironmentRole,oneof"`
+	xxx_hidden_ImageBuilderVersion           *string                `protobuf:"bytes,19,opt,name=image_builder_version,json=imageBuilderVersion,proto3,oneof"`
 	XXX_raceDetectHookData                   protoimpl.RaceDetectHookData
 	XXX_presence                             [1]uint32
 	unknownFields                            protoimpl.UnknownFields
@@ -23683,6 +23684,16 @@ func (x *EnvironmentListItem) GetEffectiveRole() EnvironmentRole {
 	return EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED
 }
 
+func (x *EnvironmentListItem) GetImageBuilderVersion() string {
+	if x != nil {
+		if x.xxx_hidden_ImageBuilderVersion != nil {
+			return *x.xxx_hidden_ImageBuilderVersion
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *EnvironmentListItem) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -23709,12 +23720,12 @@ func (x *EnvironmentListItem) SetEnvironmentId(v string) {
 
 func (x *EnvironmentListItem) SetMaxConcurrentTasks(v int32) {
 	x.xxx_hidden_MaxConcurrentTasks = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 19)
 }
 
 func (x *EnvironmentListItem) SetMaxConcurrentGpus(v int32) {
 	x.xxx_hidden_MaxConcurrentGpus = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 19)
 }
 
 func (x *EnvironmentListItem) SetCurrentConcurrentTasks(v int32) {
@@ -23727,7 +23738,7 @@ func (x *EnvironmentListItem) SetCurrentConcurrentGpus(v int32) {
 
 func (x *EnvironmentListItem) SetCycleBudgetDollars(v float64) {
 	x.xxx_hidden_CycleBudgetDollars = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 19)
 }
 
 func (x *EnvironmentListItem) SetEffectiveCycleSpendLimit(v float64) {
@@ -23748,17 +23759,22 @@ func (x *EnvironmentListItem) SetEnvironmentType(v EnvironmentType) {
 
 func (x *EnvironmentListItem) SetDefaultMemberRole(v EnvironmentRole) {
 	x.xxx_hidden_DefaultMemberRole = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 15, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 15, 19)
 }
 
 func (x *EnvironmentListItem) SetBlockUnauthenticatedResources(v bool) {
 	x.xxx_hidden_BlockUnauthenticatedResources = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 16, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 16, 19)
 }
 
 func (x *EnvironmentListItem) SetEffectiveRole(v EnvironmentRole) {
 	x.xxx_hidden_EffectiveRole = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 18)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 19)
+}
+
+func (x *EnvironmentListItem) SetImageBuilderVersion(v string) {
+	x.xxx_hidden_ImageBuilderVersion = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 18, 19)
 }
 
 func (x *EnvironmentListItem) HasMaxConcurrentTasks() bool {
@@ -23803,6 +23819,13 @@ func (x *EnvironmentListItem) HasEffectiveRole() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 17)
 }
 
+func (x *EnvironmentListItem) HasImageBuilderVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 18)
+}
+
 func (x *EnvironmentListItem) ClearMaxConcurrentTasks() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
 	x.xxx_hidden_MaxConcurrentTasks = 0
@@ -23833,6 +23856,11 @@ func (x *EnvironmentListItem) ClearEffectiveRole() {
 	x.xxx_hidden_EffectiveRole = EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED
 }
 
+func (x *EnvironmentListItem) ClearImageBuilderVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 18)
+	x.xxx_hidden_ImageBuilderVersion = nil
+}
+
 type EnvironmentListItem_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -23854,6 +23882,7 @@ type EnvironmentListItem_builder struct {
 	DefaultMemberRole             *EnvironmentRole
 	BlockUnauthenticatedResources *bool
 	EffectiveRole                 *EnvironmentRole
+	ImageBuilderVersion           *string
 }
 
 func (b0 EnvironmentListItem_builder) Build() *EnvironmentListItem {
@@ -23867,17 +23896,17 @@ func (b0 EnvironmentListItem_builder) Build() *EnvironmentListItem {
 	x.xxx_hidden_IsManaged = b.IsManaged
 	x.xxx_hidden_EnvironmentId = b.EnvironmentId
 	if b.MaxConcurrentTasks != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 19)
 		x.xxx_hidden_MaxConcurrentTasks = *b.MaxConcurrentTasks
 	}
 	if b.MaxConcurrentGpus != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 19)
 		x.xxx_hidden_MaxConcurrentGpus = *b.MaxConcurrentGpus
 	}
 	x.xxx_hidden_CurrentConcurrentTasks = b.CurrentConcurrentTasks
 	x.xxx_hidden_CurrentConcurrentGpus = b.CurrentConcurrentGpus
 	if b.CycleBudgetDollars != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 19)
 		x.xxx_hidden_CycleBudgetDollars = *b.CycleBudgetDollars
 	}
 	x.xxx_hidden_EffectiveCycleSpendLimit = b.EffectiveCycleSpendLimit
@@ -23885,16 +23914,20 @@ func (b0 EnvironmentListItem_builder) Build() *EnvironmentListItem {
 	x.xxx_hidden_SpendLimitReached = b.SpendLimitReached
 	x.xxx_hidden_EnvironmentType = b.EnvironmentType
 	if b.DefaultMemberRole != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 15, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 15, 19)
 		x.xxx_hidden_DefaultMemberRole = *b.DefaultMemberRole
 	}
 	if b.BlockUnauthenticatedResources != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 16, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 16, 19)
 		x.xxx_hidden_BlockUnauthenticatedResources = *b.BlockUnauthenticatedResources
 	}
 	if b.EffectiveRole != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 18)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 19)
 		x.xxx_hidden_EffectiveRole = *b.EffectiveRole
+	}
+	if b.ImageBuilderVersion != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 18, 19)
+		x.xxx_hidden_ImageBuilderVersion = b.ImageBuilderVersion
 	}
 	return m0
 }
@@ -24780,6 +24813,7 @@ type EnvironmentUpdateRequest struct {
 	xxx_hidden_MaxConcurrentTasks            int32                                    `protobuf:"varint,4,opt,name=max_concurrent_tasks,json=maxConcurrentTasks,proto3,oneof"`
 	xxx_hidden_MaxConcurrentGpus             int32                                    `protobuf:"varint,5,opt,name=max_concurrent_gpus,json=maxConcurrentGpus,proto3,oneof"`
 	xxx_hidden_BlockUnauthenticatedResources EnvironmentBlockUnauthenticatedResources `protobuf:"varint,6,opt,name=block_unauthenticated_resources,json=blockUnauthenticatedResources,proto3,enum=modal.client.EnvironmentBlockUnauthenticatedResources,oneof"`
+	xxx_hidden_ImageBuilderVersion           *string                                  `protobuf:"bytes,7,opt,name=image_builder_version,json=imageBuilderVersion,proto3,oneof"`
 	XXX_raceDetectHookData                   protoimpl.RaceDetectHookData
 	XXX_presence                             [1]uint32
 	unknownFields                            protoimpl.UnknownFields
@@ -24855,6 +24889,16 @@ func (x *EnvironmentUpdateRequest) GetBlockUnauthenticatedResources() Environmen
 	return EnvironmentBlockUnauthenticatedResources_ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_UNSPECIFIED
 }
 
+func (x *EnvironmentUpdateRequest) GetImageBuilderVersion() string {
+	if x != nil {
+		if x.xxx_hidden_ImageBuilderVersion != nil {
+			return *x.xxx_hidden_ImageBuilderVersion
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *EnvironmentUpdateRequest) SetCurrentName(v string) {
 	x.xxx_hidden_CurrentName = v
 }
@@ -24869,17 +24913,22 @@ func (x *EnvironmentUpdateRequest) SetWebSuffix(v *wrapperspb.StringValue) {
 
 func (x *EnvironmentUpdateRequest) SetMaxConcurrentTasks(v int32) {
 	x.xxx_hidden_MaxConcurrentTasks = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 7)
 }
 
 func (x *EnvironmentUpdateRequest) SetMaxConcurrentGpus(v int32) {
 	x.xxx_hidden_MaxConcurrentGpus = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 7)
 }
 
 func (x *EnvironmentUpdateRequest) SetBlockUnauthenticatedResources(v EnvironmentBlockUnauthenticatedResources) {
 	x.xxx_hidden_BlockUnauthenticatedResources = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 7)
+}
+
+func (x *EnvironmentUpdateRequest) SetImageBuilderVersion(v string) {
+	x.xxx_hidden_ImageBuilderVersion = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 7)
 }
 
 func (x *EnvironmentUpdateRequest) HasName() bool {
@@ -24917,6 +24966,13 @@ func (x *EnvironmentUpdateRequest) HasBlockUnauthenticatedResources() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
 }
 
+func (x *EnvironmentUpdateRequest) HasImageBuilderVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 6)
+}
+
 func (x *EnvironmentUpdateRequest) ClearName() {
 	x.xxx_hidden_Name = nil
 }
@@ -24940,6 +24996,11 @@ func (x *EnvironmentUpdateRequest) ClearBlockUnauthenticatedResources() {
 	x.xxx_hidden_BlockUnauthenticatedResources = EnvironmentBlockUnauthenticatedResources_ENVIRONMENT_BLOCK_UNAUTHENTICATED_RESOURCES_UNSPECIFIED
 }
 
+func (x *EnvironmentUpdateRequest) ClearImageBuilderVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
+	x.xxx_hidden_ImageBuilderVersion = nil
+}
+
 type EnvironmentUpdateRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -24949,6 +25010,7 @@ type EnvironmentUpdateRequest_builder struct {
 	MaxConcurrentTasks            *int32
 	MaxConcurrentGpus             *int32
 	BlockUnauthenticatedResources *EnvironmentBlockUnauthenticatedResources
+	ImageBuilderVersion           *string
 }
 
 func (b0 EnvironmentUpdateRequest_builder) Build() *EnvironmentUpdateRequest {
@@ -24959,16 +25021,20 @@ func (b0 EnvironmentUpdateRequest_builder) Build() *EnvironmentUpdateRequest {
 	x.xxx_hidden_Name = b.Name
 	x.xxx_hidden_WebSuffix = b.WebSuffix
 	if b.MaxConcurrentTasks != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 7)
 		x.xxx_hidden_MaxConcurrentTasks = *b.MaxConcurrentTasks
 	}
 	if b.MaxConcurrentGpus != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 7)
 		x.xxx_hidden_MaxConcurrentGpus = *b.MaxConcurrentGpus
 	}
 	if b.BlockUnauthenticatedResources != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 7)
 		x.xxx_hidden_BlockUnauthenticatedResources = *b.BlockUnauthenticatedResources
+	}
+	if b.ImageBuilderVersion != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 7)
+		x.xxx_hidden_ImageBuilderVersion = b.ImageBuilderVersion
 	}
 	return m0
 }
@@ -76809,7 +76875,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13has_role_assignment\x18\f \x01(\bH\x01R\x11hasRoleAssignment\x88\x01\x01B\x1f\n" +
 	"\x1d_inherits_default_member_roleB\x16\n" +
 	"\x14_has_role_assignmentB\x16\n" +
-	"\x14_default_member_role\"\xd2\b\n" +
+	"\x14_default_member_role\"\xa5\t\n" +
 	"\x13EnvironmentListItem\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12%\n" +
 	"\x0ewebhook_suffix\x18\x02 \x01(\tR\rwebhookSuffix\x12\x1d\n" +
@@ -76831,13 +76897,15 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10environment_type\x18\x0f \x01(\x0e2\x1d.modal.client.EnvironmentTypeR\x0fenvironmentType\x12R\n" +
 	"\x13default_member_role\x18\x10 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x03R\x11defaultMemberRole\x88\x01\x01\x12K\n" +
 	"\x1fblock_unauthenticated_resources\x18\x11 \x01(\bH\x04R\x1dblockUnauthenticatedResources\x88\x01\x01\x12I\n" +
-	"\x0eeffective_role\x18\x12 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x05R\reffectiveRole\x88\x01\x01B\x17\n" +
+	"\x0eeffective_role\x18\x12 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x05R\reffectiveRole\x88\x01\x01\x127\n" +
+	"\x15image_builder_version\x18\x13 \x01(\tH\x06R\x13imageBuilderVersion\x88\x01\x01B\x17\n" +
 	"\x15_max_concurrent_tasksB\x16\n" +
 	"\x14_max_concurrent_gpusB\x17\n" +
 	"\x15_cycle_budget_dollarsB\x16\n" +
 	"\x14_default_member_roleB\"\n" +
 	" _block_unauthenticated_resourcesB\x11\n" +
-	"\x0f_effective_role\"R\n" +
+	"\x0f_effective_roleB\x18\n" +
+	"\x16_image_builder_version\"R\n" +
 	"\x17EnvironmentListResponse\x127\n" +
 	"\x05items\x18\x02 \x03(\v2!.modal.client.EnvironmentListItemR\x05items\"\xb2\x01\n" +
 	"\x13EnvironmentMetadata\x12\x12\n" +
@@ -76881,7 +76949,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1fblock_unauthenticated_resources\x18\x05 \x01(\bH\x02R\x1dblockUnauthenticatedResources\x88\x01\x01B\x16\n" +
 	"\x14_max_concurrent_gpusB\x17\n" +
 	"\x15_max_concurrent_tasksB\"\n" +
-	" _block_unauthenticated_resources\"\xf3\x03\n" +
+	" _block_unauthenticated_resources\"\xc6\x04\n" +
 	"\x18EnvironmentUpdateRequest\x12!\n" +
 	"\fcurrent_name\x18\x01 \x01(\tR\vcurrentName\x120\n" +
 	"\x04name\x18\x02 \x01(\v2\x1c.google.protobuf.StringValueR\x04name\x12;\n" +
@@ -76889,10 +76957,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"web_suffix\x18\x03 \x01(\v2\x1c.google.protobuf.StringValueR\twebSuffix\x125\n" +
 	"\x14max_concurrent_tasks\x18\x04 \x01(\x05H\x00R\x12maxConcurrentTasks\x88\x01\x01\x123\n" +
 	"\x13max_concurrent_gpus\x18\x05 \x01(\x05H\x01R\x11maxConcurrentGpus\x88\x01\x01\x12\x83\x01\n" +
-	"\x1fblock_unauthenticated_resources\x18\x06 \x01(\x0e26.modal.client.EnvironmentBlockUnauthenticatedResourcesH\x02R\x1dblockUnauthenticatedResources\x88\x01\x01B\x17\n" +
+	"\x1fblock_unauthenticated_resources\x18\x06 \x01(\x0e26.modal.client.EnvironmentBlockUnauthenticatedResourcesH\x02R\x1dblockUnauthenticatedResources\x88\x01\x01\x127\n" +
+	"\x15image_builder_version\x18\a \x01(\tH\x03R\x13imageBuilderVersion\x88\x01\x01B\x17\n" +
 	"\x15_max_concurrent_tasksB\x16\n" +
 	"\x14_max_concurrent_gpusB\"\n" +
-	" _block_unauthenticated_resources\"\x9a\x03\n" +
+	" _block_unauthenticated_resourcesB\x18\n" +
+	"\x16_image_builder_version\"\x9a\x03\n" +
 	"\x1aExperimentalOutboundPolicy\x12k\n" +
 	"\x13header_replacements\x18\x01 \x03(\v2:.modal.client.ExperimentalOutboundPolicy.HeaderReplacementR\x12headerReplacements\x1a\x8e\x02\n" +
 	"\x11HeaderReplacement\x12\x16\n" +

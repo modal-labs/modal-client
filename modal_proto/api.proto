@@ -1968,6 +1968,7 @@ message EnvironmentListItem {
   optional EnvironmentRole default_member_role = 16;
   optional bool block_unauthenticated_resources = 17;
   optional EnvironmentRole effective_role = 18;
+  optional string image_builder_version = 19;
 }
 
 message EnvironmentListResponse {
@@ -2039,6 +2040,7 @@ message EnvironmentUpdateRequest {
   optional int32 max_concurrent_tasks = 4;
   optional int32 max_concurrent_gpus = 5;
   optional EnvironmentBlockUnauthenticatedResources block_unauthenticated_resources = 6;
+  optional string image_builder_version = 7;
 }
 
 // Experimental policy for outbound traffic from a sandbox: header
