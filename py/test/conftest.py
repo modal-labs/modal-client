@@ -1090,6 +1090,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # that could not mint a token does.
         self.sandbox_create_v2_omits_router_access = False
         self.sandbox_create_v2_requests: list[api_pb2.SandboxCreateV2Request] = []
+        self.persistent_sandbox_create_requests: list[api_pb2.PersistentSandboxCreateRequest] = []
+        self.persistent_sandbox_terminated: set[str] = set()
+        self.persistent_sandbox_resumes = 0
         self.sandbox_token_metadata: dict[str, str | None] = {}
         self.sandbox_restore_v2_requests = []
         self.sandbox_result: api_pb2.GenericResult | None = None
@@ -3728,6 +3731,43 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxTerminate(self, stream):
         self._sandbox_terminated = True
         await stream.send_message(api_pb2.SandboxTerminateResponse())
+
+    async def PersistentSandboxCreate(self, stream):
+        request: api_pb2.PersistentSandboxCreateRequest = await stream.recv_message()
+        persistent_sandbox_id = f"sp-{len(self.persistent_sandbox_create_requests) + 1}"
+        self.persistent_sandbox_create_requests.append(request)
+        self._sandbox_terminated = False
+        self.sandbox_app_id = request.app_id
+        self.sandbox_defs.append(request.definition)
+        self.sandbox_task_ids["sb-v2-123"] = "ta-v2-123"
+        await stream.send_message(
+            api_pb2.PersistentSandboxCreateResponse(persistent_sandbox_id=persistent_sandbox_id, sandbox_id="sb-v2-123")
+        )
+
+    async def PersistentSandboxGet(self, stream):
+        request: api_pb2.PersistentSandboxGetRequest = await stream.recv_message()
+        terminated = request.persistent_sandbox_id in self.persistent_sandbox_terminated
+        running = not self._sandbox_terminated and not terminated
+        await stream.send_message(
+            api_pb2.PersistentSandboxGetResponse(
+                persistent_sandbox_id=request.persistent_sandbox_id, sandbox_id="sb-v2-123" if running else ""
+            )
+        )
+
+    async def PersistentSandboxResume(self, stream):
+        request: api_pb2.PersistentSandboxResumeRequest = await stream.recv_message()
+        if request.persistent_sandbox_id in self.persistent_sandbox_terminated:
+            raise GRPCError(Status.FAILED_PRECONDITION, "persistent sandbox is terminated")
+        if self._sandbox_terminated:
+            self.persistent_sandbox_resumes += 1
+        self._sandbox_terminated = False
+        await stream.send_message(api_pb2.PersistentSandboxResumeResponse(sandbox_id="sb-v2-123"))
+
+    async def PersistentSandboxTerminate(self, stream):
+        request: api_pb2.PersistentSandboxTerminateRequest = await stream.recv_message()
+        self.persistent_sandbox_terminated.add(request.persistent_sandbox_id)
+        self._sandbox_terminated = True
+        await stream.send_message(api_pb2.PersistentSandboxTerminateResponse())
 
     async def SandboxTerminateV2(self, stream):
         self.sandbox_token_metadata["SandboxTerminateV2"] = stream.metadata.get("x-modal-sandbox-token")

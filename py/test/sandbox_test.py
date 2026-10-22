@@ -3419,6 +3419,8 @@ detach_error_funcs = {
     ),
     "wait_until_ready": lambda sb: sb.wait_until_ready(),
     "poll": lambda sb: sb.poll(),
+    "_experimental_pause": None,  # Only supported for persistent Sandboxes.
+    "_experimental_resume": None,
     "exec": lambda sb: sb.exec("echo", "hello"),
     "mount_image": lambda sb: sb.mount_image("/mnt", modal._image._Image.from_scratch()),
     "unmount_image": lambda sb: sb.unmount_image("/mnt"),

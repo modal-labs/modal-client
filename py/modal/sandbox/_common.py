@@ -386,7 +386,7 @@ class SandboxCreateArgs:
     secrets: Collection[_Secret] | None = None
     env: dict[str, str | None] | None = None
     name: str | None = None
-    timeout: int = 300
+    timeout: int | None = 300
     idle_timeout: int | None = None
     workdir: str | None = None
     gpu: str | None = None
@@ -417,6 +417,7 @@ class SandboxCreateArgs:
     custom_domain: str | None = None
     include_oidc_identity_token: bool = False
     runtime: SandboxRuntime | None = None
+    persistent: bool = False
 
 
 class SandboxCreateCommon:
@@ -428,6 +429,8 @@ class SandboxCreateCommon:
 
     def __init__(self, create_args: SandboxCreateArgs, *, secrets: Sequence[_Secret]) -> None:
         a = create_args
+        if a.timeout is None:
+            raise InvalidError("`timeout=None` is only supported for experimental persistent Sandboxes.")
         _validate_exec_args(a.args)
         if a.name is not None:
             check_object_name(a.name, "Sandbox")
@@ -452,6 +455,7 @@ class SandboxCreateCommon:
             raise InvalidError("`inbound_cidr_allowlist` cannot be used when `block_network` is enabled")
 
         self.create_args = a
+        self.timeout = a.timeout
         self.secrets = secrets
         self.image = a.image or _default_image
         self.network_file_systems = validate_network_file_systems(a.network_file_systems)
@@ -503,7 +507,7 @@ class SandboxCreateCommon:
             secret_ids=[secret.object_id for secret in self.secrets],
             # Ephemeral disk requests are not supported on Sandboxes.
             resources=convert_fn_config_to_resources_config(cpu=a.cpu, memory=a.memory, gpu=a.gpu, ephemeral_disk=None),
-            timeout_secs=a.timeout,
+            timeout_secs=self.timeout,
             idle_timeout_secs=a.idle_timeout,
             workdir=a.workdir,
             cloud_provider_str=a.cloud if a.cloud else None,  # pyright: ignore[reportArgumentType]
@@ -637,6 +641,10 @@ class SandboxImpl(Protocol):
         """
         ...
 
+    def clone(self) -> "SandboxImpl":
+        """Create an implementation of the same type for another handle to the same Sandbox."""
+        ...
+
     @classmethod
     async def lookup_by_name(
         cls, client: _Client, req: api_pb2.SandboxGetFromNameRequest
@@ -673,6 +681,10 @@ class SandboxImpl(Protocol):
     ) -> api_pb2.SandboxCreateConnectTokenResponse: ...
 
     async def terminate(self) -> None: ...
+
+    async def pause(self) -> None: ...
+
+    async def resume(self) -> None: ...
 
     async def close(self) -> None:
         """Release connections held for the Sandbox once in-flight operations complete."""
@@ -905,6 +917,9 @@ async def snapshot_filesystem_via_tcr(
     )
     res = await command_router_client.snapshot_filesystem(req, timeout=float(timeout))
     return _Image._new_hydrated(res.image_id, client, None)
+
+
+_PERSISTENT_ONLY_MESSAGE = "`{}` requires a persistent Sandbox, created with `_experimental_persistent=True`."
 
 
 async def mount_image_via_tcr(

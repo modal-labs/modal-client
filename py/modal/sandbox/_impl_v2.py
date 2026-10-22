@@ -32,6 +32,7 @@ from ..io_streams import (
 from ..secret import _resolvable_secrets, _Secret, _secret_sources
 from ..stream_type import StreamType
 from ._common import (
+    _PERSISTENT_ONLY_MESSAGE,
     _TASK_ID_POLL_INTERVAL,
     ExitSnapshotPoll,
     SandboxCreateArgs,
@@ -146,6 +147,9 @@ class SandboxImplV2:
     @property
     def _client(self) -> _Client:
         return self.client
+
+    def clone(self) -> "SandboxImplV2":
+        return type(self)(self.client, self.sandbox_id, result=self.result)
 
     @classmethod
     async def create(
@@ -350,6 +354,12 @@ class SandboxImplV2:
     async def terminate(self) -> None:
         req = api_pb2.SandboxTerminateRequest(sandbox_id=self.sandbox_id)
         await self.client._stub.SandboxTerminateV2(req, metadata=await self._metadata())
+
+    async def pause(self) -> None:
+        raise NotImplementedError(_PERSISTENT_ONLY_MESSAGE.format("_experimental_pause()"))
+
+    async def resume(self) -> None:
+        raise NotImplementedError(_PERSISTENT_ONLY_MESSAGE.format("_experimental_resume()"))
 
     def _create_sidecar_via_control_plane(self) -> bool:
         # Opt out via the `use_control_plane_sidecar_create` config setting to create

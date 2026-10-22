@@ -46,6 +46,7 @@ from ._common import (
     default_pty_info,
 )
 from ._filesystem import _SandboxFilesystem
+from ._impl_persistent import SandboxImplPersistent
 from ._impl_v1 import SandboxImplV1, command_router_access_fetcher as v1_command_router_access_fetcher
 from ._impl_v2 import SandboxImplV2, command_router_access_fetcher as v2_command_router_access_fetcher
 from ._sidecar import _SidecarManager
@@ -69,6 +70,8 @@ def impl_class_for_sandbox_id(sandbox_id: str) -> type[SandboxImpl]:
 
 def impl_class_for_create_args(create_args: SandboxCreateArgs) -> type[SandboxImpl]:
     """Select the implementation that creates the Sandbox described by `create_args`."""
+    if create_args.persistent:
+        return SandboxImplPersistent
     if create_args.gpu is not None or create_args.network_file_systems or create_args.pty_info is not None:
         # GPUs, network file systems, and PTYs are not supported on V2, so those calls use the V1
         # backend regardless of the setting.
@@ -183,7 +186,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         env: dict[str, str | None] | None = None,
         secrets: Collection[_Secret] | None = None,
         network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
-        timeout: int = 300,
+        timeout: int | None = 300,
         idle_timeout: int | None = None,
         workdir: str | None = None,
         gpu: str | None = None,
@@ -209,6 +212,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         verbose: bool = False,
         experimental_options: dict[str, Any] | None = None,
         _experimental_enable_snapshot: bool = False,
+        _experimental_persistent: bool = False,
         client: _Client | None = None,
         environment_name: str | None = None,  # *DEPRECATED*
         pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED*
@@ -349,6 +353,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             custom_domain=custom_domain,
             include_oidc_identity_token=include_oidc_identity_token,
             runtime=runtime,
+            persistent=_experimental_persistent,
         )
         impl, metadata = await impl_class_for_create_args(create_args).create(create_args, app=app, client=client)
         return _Sandbox._from_impl(impl, metadata)
@@ -495,8 +500,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         super()._initialize_from_other(other)
         self._attached = other._attached
         self._app_id = other._app_id
-        other_impl = other._impl
-        self._impl = type(other_impl)(other_impl.client, other_impl.sandbox_id, result=other_impl.result)
+        self._impl = other._impl.clone()
 
     def _initialize_from_empty(self):
         super()._initialize_from_empty()
@@ -1028,6 +1032,20 @@ class _Sandbox(_Object, type_prefix="sb"):
             await self.wait(raise_on_termination=False)
             return self.returncode
         return None
+
+    async def _experimental_pause(self) -> None:
+        """Stop the Sandbox's current container, keeping its state so it can be resumed.
+
+        Only supported for experimental persistent Sandboxes.
+        """
+        await self._impl.pause()
+
+    async def _experimental_resume(self) -> None:
+        """Resume a paused Sandbox from its saved state.
+
+        Only supported for experimental persistent Sandboxes.
+        """
+        await self._impl.resume()
 
     async def poll(self) -> int | None:
         """Check if the Sandbox has finished running.

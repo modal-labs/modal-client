@@ -116,7 +116,7 @@ class InterceptionContext:
         """Adds one response payload to an expected queue of responses for a method.
 
         These responses will be used once each instead of calling the MockServicer's
-        implementation of the method.
+        implementation of the method. An exception payload is raised instead of being sent.
 
         The interception context will throw an exception on exit if not all of the added
         responses have been consumed.
@@ -184,6 +184,8 @@ class InterceptionContext:
         async def responder(servicer_self, stream):
             await stream.recv_message()  # get the input message so we can track that
             for msg in next_response_messages:
+                if isinstance(msg, Exception):
+                    raise msg
                 await stream.send_message(msg)
 
         return responder
