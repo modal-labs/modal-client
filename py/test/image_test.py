@@ -1447,6 +1447,14 @@ def test_image_force_build(builder_version, servicer, client):
     assert servicer.force_built_images == ["im-3", "im-4", "im-5", "im-6", "im-7", "im-8"]
 
 
+@pytest.mark.parametrize("force_build", [False, True])
+def test_image_from_dockerfile_force_build(builder_version, servicer, client, test_dir, force_build):
+    image = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile", force_build=force_build)
+    build_image(image, client)
+    assert len(servicer.images) == 2
+    assert servicer.force_built_images == (sorted(servicer.images) if force_build else [])
+
+
 def test_workdir(builder_version, servicer, client):
     image = Image.debian_slim().workdir("/foo/bar")
     build_image(image, client)

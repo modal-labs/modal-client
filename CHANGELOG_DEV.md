@@ -6,6 +6,8 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Fixed `modal.Image.from_dockerfile(..., force_build=True)` to rebuild the Dockerfile's own steps instead of reusing them from the cache.
+
 ## JS
 
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.

@@ -2516,6 +2516,7 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=gpu_config,
             secrets=secrets,
             build_args=build_args,
+            force_build=force_build,
         )
 
         # --- Now add in the modal dependencies, and, optionally a Python distribution
