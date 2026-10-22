@@ -349,6 +349,13 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
+async def _resolve_image_builder_version(load_context: LoadContext) -> ImageBuilderVersion:
+    environment = await _get_environment_cached(load_context.environment_name or "", load_context.client)
+    # A bit hacky,but assume that the environment provides a valid builder version
+    image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
+    return _get_image_builder_version(image_builder_version)
+
+
 def _create_context_mount(
     docker_commands: Sequence[str],
     ignore_fn: Callable[[Path], bool],
@@ -663,10 +670,7 @@ class _Image(_Object, type_prefix="im"):
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             assert load_context.app_id  # type narrowing
-            environment = await _get_environment_cached(load_context.environment_name or "", load_context.client)
-            # A bit hacky,but assume that the environment provides a valid builder version
-            image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
-            builder_version = _get_image_builder_version(image_builder_version)
+            builder_version = await _resolve_image_builder_version(load_context)
 
             context_mount = context_mount_function(builder_version) if context_mount_function else None
             if context_mount:
@@ -2289,12 +2293,48 @@ class _Image(_Object, type_prefix="im"):
                 context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
-        return _Image._from_args(
+        single_layer_image = _Image._from_args(
             dockerfile_function=build_dockerfile,
             context_mount_function=context_mount_function,
             force_build=force_build,
             **kwargs,
         )
+        if not add_python:
+            return single_layer_image
+
+        # Builder versions after 2025.06 put the registry image and the standalone Python in separate layers.
+        registry_image = _Image._from_args(
+            dockerfile_function=lambda version: DockerfileSpec(commands=[f"FROM {tag}"], context_files={}),
+            image_registry_config=kwargs.get("image_registry_config"),
+            force_build=force_build,
+        )
+
+        def build_python_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            commands = _Image._registry_setup_commands("base", version, setup_dockerfile_commands, add_python)
+            return DockerfileSpec(commands=commands, context_files={})
+
+        split_image = _Image._from_args(
+            base_images={"base": registry_image},
+            dockerfile_function=build_python_dockerfile,
+            context_mount_function=context_mount_function,
+            force_build=force_build,
+            **kwargs,
+        )
+
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
+            builder_version = await _resolve_image_builder_version(load_context)
+            # Validate before the registry base image of split_image is built.
+            _validate_python_version(
+                add_python, builder_version, allow_micro_granularity=False, allow_free_threading=True
+            )
+            image = split_image if builder_version > "2025.06" else single_layer_image
+            await resolver.load(image, load_context)
+            self._hydrate_from_other(image)
+            self._serve_mounts = image._serve_mounts
+
+        obj = _Image._from_loader(_load, f"Image.from_registry({tag!r})", load_context_overrides=LoadContext.empty())
+        obj.force_build = force_build
+        return obj
 
     @staticmethod
     def from_gcp_artifact_registry(

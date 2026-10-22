@@ -465,6 +465,14 @@ def test_from_registry_add_python(builder_version, servicer, client):
     # Newer standalone releases ship a `python` binary, so the symlink would fail
     has_symlink = any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
     assert has_symlink == (builder_version <= "2025.06")
+    if builder_version > "2025.06":
+        assert commands[0] == "FROM base"
+        assert len(layers) == 2
+        assert layers[1].dockerfile_commands == ["FROM ubuntu"]
+        assert not layers[1].context_mount_id
+    else:
+        assert commands[0] == "FROM ubuntu"
+        assert len(layers) == 1
 
     if builder_version >= "2024.10":
         image = Image.from_registry("ubuntu", add_python="3.13")
@@ -474,6 +482,110 @@ def test_from_registry_add_python(builder_version, servicer, client):
         assert layers[0].context_mount_id == "mo-py313"
         assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
         assert not any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
+
+
+def test_from_registry_add_python_downstream_layers(builder_version, servicer, client):
+    image = (
+        Image.from_registry("ubuntu", add_python="3.12", setup_dockerfile_commands=["RUN echo setup"])
+        .pip_install("numpy")
+        .run_commands("echo hello")
+        .env({"FOO": "bar"})
+    )
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+
+    assert any("ENV FOO=bar" in cmd for cmd in layers[0].dockerfile_commands)
+    assert any("echo hello" in cmd for cmd in layers[1].dockerfile_commands)
+    assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
+    for layer in layers[:3]:
+        assert layer.dockerfile_commands[0] == "FROM base"
+        assert not layer.context_mount_id
+
+    python_layer = layers[3]
+    assert python_layer.context_mount_id == "mo-py312"
+    assert "RUN echo setup" in python_layer.dockerfile_commands
+    assert any("COPY /python/. /usr/local" in cmd for cmd in python_layer.dockerfile_commands)
+    if builder_version > "2025.06":
+        assert python_layer.dockerfile_commands[0] == "FROM base"
+        assert len(layers) == 5
+        assert layers[4].dockerfile_commands == ["FROM ubuntu"]
+    else:
+        assert python_layer.dockerfile_commands[0] == "FROM ubuntu"
+        assert len(layers) == 4
+
+
+def test_from_registry_add_python_shares_registry_layer(builder_version, servicer, client):
+    image_311 = Image.from_registry("ubuntu", add_python="3.11").pip_install("numpy")
+    image_312 = Image.from_registry("ubuntu", add_python="3.12").pip_install("numpy")
+    build_image(image_311, client)
+    build_image(image_312, client)
+    python_layer_311 = get_image_layers(image_311.object_id, servicer)[1]
+    python_layer_312 = get_image_layers(image_312.object_id, servicer)[1]
+
+    if builder_version > "2025.06":
+        # Only the Python layers differ; both are built on the same registry layer.
+        assert python_layer_311.base_images[0].image_id == python_layer_312.base_images[0].image_id
+        assert len(servicer.images) == 5
+    else:
+        assert not python_layer_311.base_images and not python_layer_312.base_images
+        assert len(servicer.images) == 4
+
+
+@pytest.mark.parametrize("copy", [True, False])
+def test_from_registry_add_python_add_local_file(builder_version, servicer, client, tmp_path_with_content, copy):
+    image = (
+        Image.from_registry("ubuntu", add_python="3.12")
+        .pip_install("numpy")
+        .add_local_file(tmp_path_with_content / "data.txt", "/data.txt", copy=copy)
+    )
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+
+    if copy:
+        assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
+        assert set(servicer.mount_contents[layers[0].context_mount_id]) == {"/data.txt"}
+        layers = layers[1:]
+    else:
+        assert len(image._mount_layers) == 1
+        assert set(servicer.mount_contents[image._mount_layers[0].object_id]) == {"/data.txt"}
+
+    assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
+    assert layers[1].context_mount_id == "mo-py312"
+    assert len(layers) == (3 if builder_version > "2025.06" else 2)
+
+
+def test_from_registry_add_python_chained_registry_credentials(builder_version, servicer, client):
+    image_tag = "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:latest"
+    image = Image.from_aws_ecr(
+        image_tag,
+        secret=Secret.from_dict({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
+        add_python="3.12",
+    ).pip_install("numpy")
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+
+    assert any("pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
+    assert not layers[0].image_registry_config.registry_auth_type
+    assert layers[-1].dockerfile_commands[0] == f"FROM {image_tag}"
+    for layer in layers[1:]:
+        assert layer.image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_AWS
+
+
+def test_from_registry_empty_add_python(builder_version, servicer, client):
+    image = Image.from_registry("ubuntu", add_python="")
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert len(layers) == 1
+    assert layers[0].dockerfile_commands[0] == "FROM ubuntu"
+    assert not layers[0].context_mount_id
+    assert not any("COPY /python/. /usr/local" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_from_registry_unsupported_add_python(builder_version, servicer, client):
+    image = Image.from_registry("ubuntu", add_python="3.9")
+    with pytest.raises(InvalidError, match="Unsupported"):
+        build_image(image, client)
+    assert not servicer.images
 
 
 def test_image_pip_install_pyproject(builder_version, servicer, client):
@@ -642,6 +754,19 @@ def test_dockerhub_install(builder_version, servicer, client):
 
 def test_ecr_install(builder_version, servicer, client):
     image_tag = "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:latest"
+    image = Image.from_aws_ecr(
+        image_tag,
+        secret=Secret.from_dict({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
+        add_python="3.12",
+    )
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    registry_layer = layers[-1]
+    assert registry_layer.dockerfile_commands[0] == f"FROM {image_tag}"
+    assert registry_layer.image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_AWS
+    # Setup commands like `COPY --from` may pull from the registry, so every layer keeps the credentials.
+    assert all(layer.image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_AWS for layer in layers)
+
     image = Image.from_aws_ecr(
         image_tag,
         setup_dockerfile_commands=["RUN apt-get update"],
