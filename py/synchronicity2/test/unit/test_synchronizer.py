@@ -1,12 +1,15 @@
 # Copyright Modal Labs 2026
 import asyncio
+import logging
 import pytest
 import signal
+import subprocess
 import sys
 import threading
 import time
 import typing
 import weakref
+from pathlib import Path
 
 from synchronicity2.synchronizer import Synchronizer, _wrapped_from_impl
 
@@ -330,3 +333,83 @@ async def test_run_function_async_cancelled_before_task_is_scheduled(synchronize
     with pytest.raises(asyncio.CancelledError):
         await task
     assert states == ["cancelled", "done"]
+
+
+@pytest.mark.asyncio
+async def test_run_function_async_does_not_block_caller_loop_during_startup(synchronizer, monkeypatch):
+    original_start_loop = synchronizer._start_loop
+
+    def slow_start_loop():
+        time.sleep(0.3)
+        return original_start_loop()
+
+    monkeypatch.setattr(synchronizer, "_start_loop", slow_start_loop)
+
+    ticks = 0
+
+    async def ticker():
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    async def foo():
+        return "works"
+
+    ticker_task = asyncio.create_task(ticker())
+    try:
+        assert await synchronizer._run_function_async(foo()) == "works"
+    finally:
+        ticker_task.cancel()
+    # the caller's loop must keep running while the synchronizer loop starts up in the background
+    assert ticks >= 5
+
+
+@pytest.mark.filterwarnings("ignore")  # the synchronizer thread dies with an unhandled exception by design
+def test_unexpected_thread_death(synchronizer, caplog):
+    async def dummy():
+        return "works"
+
+    class CustomError(Exception):
+        pass
+
+    caplog.set_level(logging.ERROR)
+    assert synchronizer._run_function_sync(dummy()) == "works"
+    assert len(caplog.records) == 0
+
+    def make_event_raise():
+        # make the synchronizer thread's `await self._stopping.wait()` raise, as if the loop had died
+        for waiter in synchronizer._stopping._waiters:
+            if not waiter.done():
+                waiter.set_exception(CustomError())
+
+    synchronizer._loop.call_soon_threadsafe(make_event_raise)
+    synchronizer._thread.join(timeout=5)
+    coro = dummy()
+    try:
+        with pytest.raises(RuntimeError, match="Synchronizer thread unexpectedly died"):
+            synchronizer._run_function_sync(coro)
+    finally:
+        coro.close()
+
+    (error_log,) = caplog.records
+    assert "Traceback" in error_log.message
+    assert "CustomError" in error_log.message
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows can't fork")
+def test_fork_during_start_loop_no_deadlock():
+    with subprocess.Popen(
+        [sys.executable, Path(__file__).parent / "_fork_lock_support.py"],
+        encoding="utf8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as p:
+        try:
+            stdout, stderr = p.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            raise AssertionError("Fork lock test timed out (likely deadlocked)")
+
+        assert p.returncode == 0, f"Fork lock test failed:\nstdout: {stdout}\nstderr: {stderr}"
+        assert "PASS" in stdout
