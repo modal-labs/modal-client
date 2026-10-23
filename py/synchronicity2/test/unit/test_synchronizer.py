@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2026
 import asyncio
 import pytest
+import signal
+import sys
 import threading
 import time
 import typing
@@ -262,3 +264,69 @@ def test_run_generator_sync_closed_from_synchronizer_thread(synchronizer):
 
     synchronizer._run_function_sync(close_from_loop())
     assert finalized.wait(timeout=1)
+
+
+def _make_cancellation_recorder(states: list):
+    async def long_running():
+        try:
+            await asyncio.sleep(2)
+        except asyncio.CancelledError:
+            states.append("cancelled")
+            raise
+        finally:
+            states.append("done")
+
+    return long_running
+
+
+class CustomBaseException(BaseException):
+    pass
+
+
+def _raise_custom(*_):
+    raise CustomBaseException()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="requires SIGALRM")
+def test_run_function_sync_cancels_on_arbitrary_base_exception(synchronizer):
+    states: list[str] = []
+    previous = signal.signal(signal.SIGALRM, _raise_custom)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, 0.1)
+        with pytest.raises(CustomBaseException):
+            synchronizer._run_function_sync(_make_cancellation_recorder(states)())
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    assert states == ["cancelled", "done"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="requires SIGALRM")
+def test_run_function_sync_interrupted_before_task_is_scheduled(synchronizer):
+    states: list[str] = []
+    loop = synchronizer._get_loop(start=True)
+    previous = signal.signal(signal.SIGALRM, _raise_custom)
+    try:
+        # keep the synchronizer loop busy so the interrupt arrives before the task has been created
+        loop.call_soon_threadsafe(time.sleep, 0.3)
+        signal.setitimer(signal.ITIMER_REAL, 0.1)
+        with pytest.raises(CustomBaseException):
+            synchronizer._run_function_sync(_make_cancellation_recorder(states)())
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    assert states == ["cancelled", "done"]
+
+
+@pytest.mark.asyncio
+async def test_run_function_async_cancelled_before_task_is_scheduled(synchronizer):
+    states: list[str] = []
+    loop = synchronizer._get_loop(start=True)
+    # keep the synchronizer loop busy so the cancellation arrives before the task has been created
+    loop.call_soon_threadsafe(time.sleep, 0.3)
+    task = asyncio.create_task(synchronizer._run_function_async(_make_cancellation_recorder(states)()))
+    await asyncio.sleep(0.1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert states == ["cancelled", "done"]

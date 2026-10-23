@@ -97,6 +97,7 @@ class Synchronizer:
     ):
         self._synchronicity1_synchronizer = synchronicity1_synchronizer
         self._future_poll_interval = 0.1
+        self._cancellation_future_transfer_seconds = 1
         self._blocking_in_async_callback = None
         self._loop = None
         self._loop_creation_lock = threading.Lock()
@@ -291,21 +292,36 @@ class Synchronizer:
                     # timeout while the cross-thread future is still pending.
                     if fut.done():
                         raise
-        except KeyboardInterrupt as exc:
-            # in case there is a keyboard interrupt while we are waiting
-            # we cancel the *underlying* coro_task (unlike what fut.cancel() would do)
-            # and then wait for the *wrapper* coroutine to get a result back, which
-            # happens after the cancellation resolves
+        except BaseException as exc:
+            # If `fut.done()` is True, then (1) the exception was raised from user code, and (2) we
+            # don't need to do any cleanup as the future has already completed.
+            if fut.done():
+                raise exc
+
+            # Some other exception (KeyboardInterrupt, SystemExit, an exception injected by a
+            # signal handler, ...) interrupted the wait. We cancel the *underlying* coro_task
+            # (unlike what fut.cancel() would do) and then wait for the *wrapper* coroutine to get
+            # a result back, which happens after the cancellation resolves
             if inner_task_fut.done():
                 inner_task: asyncio.Task = inner_task_fut.result()
                 loop.call_soon_threadsafe(inner_task.cancel)
+            else:
+                # it's possible that the interrupt has raced with scheduling the task on the other
+                # thread, so give it a grace period to complete
+                try:
+                    inner_task = inner_task_fut.result(timeout=self._cancellation_future_transfer_seconds)
+                except concurrent.futures.TimeoutError:
+                    pass
+                else:
+                    loop.call_soon_threadsafe(inner_task.cancel)
+
             try:
                 value = fut.result()
             except concurrent.futures.CancelledError as expected_cancellation:
                 # we *expect* this cancellation, but defer to the passed coro to potentially
                 # intercept and treat the cancellation some other way
                 expected_cancellation.__suppress_context__ = True
-                raise exc  # if cancel - re-raise the original KeyboardInterrupt again
+                raise exc  # if cancel - re-raise the original exception again
 
         return value  # type: ignore
 
@@ -348,6 +364,19 @@ class Synchronizer:
                     # the cancellation in a_fut would be cancelled
 
                     await a_fut  # wait for cancellation logic to complete - this *normally* raises CancelledError
+                else:
+                    # it's possible that the cancellation has raced with scheduling the task on the other thread,
+                    # so give it a grace period to complete
+                    try:
+                        inner_task = await asyncio.wait_for(
+                            asyncio.shield(asyncio.wrap_future(inner_task_fut)),
+                            timeout=self._cancellation_future_transfer_seconds,
+                        )
+                    except asyncio.TimeoutError:
+                        pass
+                    else:
+                        loop.call_soon_threadsafe(inner_task.cancel)
+                        await a_fut
                 raise  # re-raise the CancelledError regardless - preventing unintended cancellation aborts
 
         return value  # type: ignore
