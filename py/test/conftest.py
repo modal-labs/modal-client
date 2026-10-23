@@ -1100,6 +1100,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._sandbox_terminated = False
         self.sandbox_tags: dict[str, dict[str, str]] = {}
         self.sandbox_names: dict[str, str] = {}
+        self.sandbox_outbound_policies: dict[str, api_pb2.OutboundPolicy] = {}
 
         self.shell_prompt = None
         self.container_exec: asyncio.subprocess.Process = None
@@ -3728,6 +3729,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 raise GRPCError(Status.ALREADY_EXISTS, f"sandbox name {request.name!r} is already in use")
         self.sandbox_names[request.sandbox_id] = request.name
         await stream.send_message(api_pb2.SandboxSetNameResponse())
+
+    async def SandboxSetOutboundPolicy(self, stream):
+        request: api_pb2.SandboxSetOutboundPolicyRequest = await stream.recv_message()
+        self.sandbox_outbound_policies[request.sandbox_id] = request.outbound_policy
+        await stream.send_message(api_pb2.SandboxSetOutboundPolicyResponse())
+
+    async def SandboxSetOutboundPolicyV2(self, stream):
+        request: api_pb2.SandboxSetOutboundPolicyRequest = await stream.recv_message()
+        self.sandbox_outbound_policies[request.sandbox_id] = request.outbound_policy
+        await stream.send_message(api_pb2.SandboxSetOutboundPolicyResponse())
 
     async def SandboxTerminate(self, stream):
         self._sandbox_terminated = True

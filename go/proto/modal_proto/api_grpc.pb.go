@@ -209,6 +209,8 @@ const (
 	ModalClient_SandboxRestore_FullMethodName                         = "/modal.client.ModalClient/SandboxRestore"
 	ModalClient_SandboxRestoreV2_FullMethodName                       = "/modal.client.ModalClient/SandboxRestoreV2"
 	ModalClient_SandboxSetName_FullMethodName                         = "/modal.client.ModalClient/SandboxSetName"
+	ModalClient_SandboxSetOutboundPolicy_FullMethodName               = "/modal.client.ModalClient/SandboxSetOutboundPolicy"
+	ModalClient_SandboxSetOutboundPolicyV2_FullMethodName             = "/modal.client.ModalClient/SandboxSetOutboundPolicyV2"
 	ModalClient_SandboxSnapshot_FullMethodName                        = "/modal.client.ModalClient/SandboxSnapshot"
 	ModalClient_SandboxSnapshotFs_FullMethodName                      = "/modal.client.ModalClient/SandboxSnapshotFs"
 	ModalClient_SandboxSnapshotFsAsync_FullMethodName                 = "/modal.client.ModalClient/SandboxSnapshotFsAsync"
@@ -510,6 +512,8 @@ type ModalClientClient interface {
 	SandboxRestore(ctx context.Context, in *SandboxRestoreRequest, opts ...grpc.CallOption) (*SandboxRestoreResponse, error)
 	SandboxRestoreV2(ctx context.Context, in *SandboxRestoreV2Request, opts ...grpc.CallOption) (*SandboxRestoreV2Response, error)
 	SandboxSetName(ctx context.Context, in *SandboxSetNameRequest, opts ...grpc.CallOption) (*SandboxSetNameResponse, error)
+	SandboxSetOutboundPolicy(ctx context.Context, in *SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) (*SandboxSetOutboundPolicyResponse, error)
+	SandboxSetOutboundPolicyV2(ctx context.Context, in *SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) (*SandboxSetOutboundPolicyResponse, error)
 	SandboxSnapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error)
 	SandboxSnapshotFs(ctx context.Context, in *SandboxSnapshotFsRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsResponse, error)
 	SandboxSnapshotFsAsync(ctx context.Context, in *SandboxSnapshotFsAsyncRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsAsyncResponse, error)
@@ -2512,6 +2516,26 @@ func (c *modalClientClient) SandboxSetName(ctx context.Context, in *SandboxSetNa
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxSetOutboundPolicy(ctx context.Context, in *SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) (*SandboxSetOutboundPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxSetOutboundPolicyResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxSetOutboundPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SandboxSetOutboundPolicyV2(ctx context.Context, in *SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) (*SandboxSetOutboundPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxSetOutboundPolicyResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxSetOutboundPolicyV2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxSnapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxSnapshotResponse)
@@ -3630,6 +3654,8 @@ type ModalClientServer interface {
 	SandboxRestore(context.Context, *SandboxRestoreRequest) (*SandboxRestoreResponse, error)
 	SandboxRestoreV2(context.Context, *SandboxRestoreV2Request) (*SandboxRestoreV2Response, error)
 	SandboxSetName(context.Context, *SandboxSetNameRequest) (*SandboxSetNameResponse, error)
+	SandboxSetOutboundPolicy(context.Context, *SandboxSetOutboundPolicyRequest) (*SandboxSetOutboundPolicyResponse, error)
+	SandboxSetOutboundPolicyV2(context.Context, *SandboxSetOutboundPolicyRequest) (*SandboxSetOutboundPolicyResponse, error)
 	SandboxSnapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error)
 	SandboxSnapshotFs(context.Context, *SandboxSnapshotFsRequest) (*SandboxSnapshotFsResponse, error)
 	SandboxSnapshotFsAsync(context.Context, *SandboxSnapshotFsAsyncRequest) (*SandboxSnapshotFsAsyncResponse, error)
@@ -4287,6 +4313,12 @@ func (UnimplementedModalClientServer) SandboxRestoreV2(context.Context, *Sandbox
 }
 func (UnimplementedModalClientServer) SandboxSetName(context.Context, *SandboxSetNameRequest) (*SandboxSetNameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxSetName not implemented")
+}
+func (UnimplementedModalClientServer) SandboxSetOutboundPolicy(context.Context, *SandboxSetOutboundPolicyRequest) (*SandboxSetOutboundPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxSetOutboundPolicy not implemented")
+}
+func (UnimplementedModalClientServer) SandboxSetOutboundPolicyV2(context.Context, *SandboxSetOutboundPolicyRequest) (*SandboxSetOutboundPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxSetOutboundPolicyV2 not implemented")
 }
 func (UnimplementedModalClientServer) SandboxSnapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxSnapshot not implemented")
@@ -7815,6 +7847,42 @@ func _ModalClient_SandboxSetName_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxSetOutboundPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxSetOutboundPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxSetOutboundPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxSetOutboundPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxSetOutboundPolicy(ctx, req.(*SandboxSetOutboundPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SandboxSetOutboundPolicyV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxSetOutboundPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxSetOutboundPolicyV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxSetOutboundPolicyV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxSetOutboundPolicyV2(ctx, req.(*SandboxSetOutboundPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxSnapshotRequest)
 	if err := dec(in); err != nil {
@@ -10063,6 +10131,14 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SandboxSetName",
 			Handler:    _ModalClient_SandboxSetName_Handler,
+		},
+		{
+			MethodName: "SandboxSetOutboundPolicy",
+			Handler:    _ModalClient_SandboxSetOutboundPolicy_Handler,
+		},
+		{
+			MethodName: "SandboxSetOutboundPolicyV2",
+			Handler:    _ModalClient_SandboxSetOutboundPolicyV2_Handler,
 		},
 		{
 			MethodName: "SandboxSnapshot",

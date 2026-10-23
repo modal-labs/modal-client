@@ -4436,6 +4436,14 @@ message SandboxSetNameRequest {
 
 message SandboxSetNameResponse {}
 
+message SandboxSetOutboundPolicyRequest {
+  string sandbox_id = 1;
+  // Replaces the Sandbox's route-based outbound policy.
+  OutboundPolicy outbound_policy = 2;
+}
+
+message SandboxSetOutboundPolicyResponse {}
+
 message SandboxSnapshotFsAsyncGetRequest {
   string image_id = 1;
   float timeout = 2;
@@ -5869,6 +5877,8 @@ service ModalClient {
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
   rpc SandboxRestoreV2(SandboxRestoreV2Request) returns (SandboxRestoreV2Response);
   rpc SandboxSetName(SandboxSetNameRequest) returns (SandboxSetNameResponse);
+  rpc SandboxSetOutboundPolicy(SandboxSetOutboundPolicyRequest) returns (SandboxSetOutboundPolicyResponse);
+  rpc SandboxSetOutboundPolicyV2(SandboxSetOutboundPolicyRequest) returns (SandboxSetOutboundPolicyResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
   rpc SandboxSnapshotFsAsync(SandboxSnapshotFsAsyncRequest) returns (SandboxSnapshotFsAsyncResponse);
