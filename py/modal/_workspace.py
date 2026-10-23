@@ -9,7 +9,7 @@ from typing import Optional
 from google.protobuf.empty_pb2 import Empty
 
 from modal.exception import DeprecationError, InvalidError, NotFoundError
-from modal.types import ServiceUserInfo
+from modal.types import MemberTokenInfo, ServiceUserInfo
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -138,6 +138,11 @@ class _Workspace(_Object, type_prefix="ac"):
         Users.
         """
         return _WorkspaceServiceUserManager(self)
+
+    @property
+    def member_tokens(self) -> "_WorkspaceMemberTokenManager":
+        """Namespace for managing Member API Tokens in a Workspace."""
+        return _WorkspaceMemberTokenManager(self)
 
 
 class _WorkspaceProxyTokenManager:
@@ -732,6 +737,65 @@ class _WorkspaceServiceUserManager:
             await self._workspace.client._stub.ServiceUserDelete(
                 api_pb2.ServiceUserDeleteRequest(service_user_name=name)
             )
+        except NotFoundError:
+            if not allow_missing:
+                raise
+
+
+class _WorkspaceMemberTokenManager:
+    """mdmd:namespace"""
+
+    def __init__(self, workspace: _Workspace):
+        self._workspace = workspace
+
+    async def list(self) -> list[MemberTokenInfo]:
+        """List Member Tokens in the specified Workspace.
+
+        If you are a Manager or an Owner of this Workspace, this method will return a list of all the
+        Member Tokens in the Workspace. Otherwise, this method will only return the Tokens you have
+        created.
+
+        Returns:
+            A list of `MemberTokenInfo` dataclasses.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        for member_token in ws.member_tokens.list():
+            print(member_token)
+        ```
+        """
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        resp = await self._workspace.client._stub.TokensList(Empty())
+
+        return [MemberTokenInfo._from_proto(token) for token in resp.tokens]
+
+    async def delete(self, token_id: str, *, allow_missing: bool = False) -> None:
+        """Delete a Member Token in the specified Workspace.
+
+        If you are a Workspace Manager or Owner, you can use this method to delete any Token in the
+        Workspace. Otherwise, you can only delete Member Tokens that you have created.
+
+        Args:
+            token_id: The ID of the Member Token you would like to delete.
+            allow_missing: If `True`, do not throw an exception if the Member Token does not exist.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        ws.member_tokens.delete(token_id="ak-0123456789abcdefghijkl")
+        ```
+        """
+
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        try:
+            await self._workspace.client._stub.TokenDelete(req=api_pb2.TokenDeleteRequest(token_id=token_id))
         except NotFoundError:
             if not allow_missing:
                 raise

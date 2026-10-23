@@ -442,6 +442,29 @@ class TokenData:
 
 
 @dataclass(frozen=True)
+class MemberTokenInfo:
+    name: str | None
+    token_id: str
+    user_id: str
+    username: str
+    created_at: datetime
+    last_used_at: datetime | None
+    expires_at: datetime | None
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.TokensListResponse.Token) -> "MemberTokenInfo":
+        return cls(
+            name=proto.name if proto.name else None,
+            token_id=proto.token_id,
+            user_id=proto.user_id,
+            username=proto.member_displayname,
+            created_at=datetime.fromtimestamp(proto.created_at, timezone.utc),
+            last_used_at=datetime.fromtimestamp(proto.last_used_at, timezone.utc) if proto.last_used_at else None,
+            expires_at=datetime.fromtimestamp(proto.expires_at, timezone.utc) if proto.expires_at else None,
+        )
+
+
+@dataclass(frozen=True)
 class ServiceUserInfo:
     """A lightweight dataclass containing metadata about a Modal Service User."""
 

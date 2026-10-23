@@ -1006,6 +1006,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 # last_active_at left unset: Bob has never been active
             ),
         ]
+        self.workspace_member_tokens: dict[str, api_pb2.TokensListResponse.Token | None] = {
+            "ak-MT1": api_pb2.TokensListResponse.Token(
+                token_id="ak-MT1",
+                user_id="us-1",
+                member_displayname="Alice",
+                created_at=1577836800.0,  # 2020-01-01 UTC
+                last_used_at=1609459200.0,  # 2021-01-01 UTC
+                identity_provider_type=api_pb2.IDENTITY_PROVIDER_TYPE_GITHUB,
+            ),
+            "ak-MT2": api_pb2.TokensListResponse.Token(
+                token_id="ak-MT2",
+                user_id="us-2",
+                member_displayname="Bob",
+                created_at=1577836800.0,  # 2020-01-01 UTC
+                identity_provider_type=api_pb2.IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH,
+                name="named-token",
+                expires_at=1609459200.0,  # 2021-01-01 UTC
+            ),
+        }
         self.resource_creation_timestamps = {}
 
         self.task_result = None
@@ -4332,6 +4351,53 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def WorkspaceSetDefaultEnvironment(self, stream):
         request: api_pb2.WorkspaceSetDefaultEnvironmentRequest = await stream.recv_message()
         self.workspace_default_environment_name = request.environment_name
+        await stream.send_message(Empty())
+
+    ### Member Tokens
+
+    def _create_token(self, name: str, expiration: int | None):
+        token_id = f"ak-MT{len(self.workspace_member_tokens) + 1}"
+        user_id = "us-1"
+        username = self.workspace_users[user_id].capitalize()
+
+        created_at = datetime.datetime.now(datetime.timezone.utc)
+        expires_at: datetime.datetime | None = None
+        if expiration:
+            expires_at = created_at + datetime.timedelta(seconds=expiration)
+
+        token = api_pb2.TokensListResponse.Token(
+            token_id=token_id,
+            user_id=user_id,
+            member_displayname=username,
+            created_at=created_at.timestamp(),
+        )
+        if expires_at:
+            token.expires_at = expires_at.timestamp()
+        if name:
+            token.name = name
+
+        self.workspace_member_tokens[token_id] = token
+
+        return api_pb2.TokenCreateResponse(
+            token_id=token_id,
+            token_secret="as-123",
+        )
+
+    async def TokensList(self, stream):
+        await stream.recv_message()  # Empty
+        await stream.send_message(
+            api_pb2.TokensListResponse(tokens=[mt for mt in self.workspace_member_tokens.values() if mt is not None])
+        )
+
+    async def TokenDelete(self, stream):
+        msg: api_pb2.TokenDeleteRequest = await stream.recv_message()
+
+        token = self.workspace_member_tokens.get(msg.token_id)
+        if token is None:
+            raise GRPCError(Status.NOT_FOUND, "Token not found")
+
+        self.workspace_member_tokens[msg.token_id] = None
+
         await stream.send_message(Empty())
 
     ### Proxy auth (webhook) tokens

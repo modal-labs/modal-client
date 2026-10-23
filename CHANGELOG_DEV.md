@@ -6,6 +6,8 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Added the `Workspace.member_tokens` manager, which allows users to list and delete tokens associated
+with Workspace Members.
 - Fixed `modal.Image.from_dockerfile(..., force_build=True)` to rebuild the Dockerfile's own steps instead of reusing them from the cache.
 - Added an `App.stop()` method.
 

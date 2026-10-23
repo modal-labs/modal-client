@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2025
 import pytest
+import re
 from datetime import datetime, timezone
 
 from grpclib import GRPCError, Status
@@ -10,6 +11,8 @@ from modal.environments import Environment
 from modal.exception import NotFoundError
 from modal.workspace import ProxyTokenInfo, TokenData, Workspace, WorkspaceMemberInfo
 from modal_proto import api_pb2
+
+from .conftest import MockClientServicer
 
 
 def test_workspace_from_context(servicer, client):
@@ -266,3 +269,58 @@ def test_workspace_service_users(servicer, client):
     assert info.expires_at is None
     assert len(info.environment_roles) == 1
     assert info.environment_roles["main"] == "viewer"
+
+
+def test_workspace_member_tokens(client, servicer: MockClientServicer):
+    ws = Workspace.from_context(client=client)
+
+    tokens = ws.member_tokens.list()
+    assert len(tokens) == 2
+    assert set(token.token_id for token in tokens) == {f"ak-MT{i}" for i in range(1, 3)}
+
+    for i in range(10):
+        expiration: int | None = None
+        if i % 2 == 0:
+            expiration = (i + 1) * 86_400
+
+        servicer._create_token(f"token-{i}", expiration=expiration)
+
+    tokens = ws.member_tokens.list()
+    assert len(tokens) == 12
+    assert set(token.token_id for token in tokens) == {f"ak-MT{i}" for i in range(1, 13)}
+
+    expr = re.compile(r"^token-(?P<idx>\d+)$")
+    for token in tokens:
+        if token.token_id in {"ak-MT1", "ak-MT2"}:
+            continue
+
+        assert token.name
+
+        match = expr.fullmatch(token.name)
+        assert match
+
+        i = int(match["idx"])
+        if i % 2 == 0:
+            assert token.expires_at is not None
+        else:
+            assert token.expires_at is None
+
+    for i in range(1, 6):
+        ws.member_tokens.delete(token_id=f"ak-MT{2 * i + 1}")
+
+    tokens = ws.member_tokens.list()
+    assert len(tokens) == 7
+    assert set(token.token_id for token in tokens) == {
+        "ak-MT1",
+        "ak-MT2",
+        "ak-MT4",
+        "ak-MT6",
+        "ak-MT8",
+        "ak-MT10",
+        "ak-MT12",
+    }
+
+    with pytest.raises(NotFoundError, match="Token not found"):
+        ws.member_tokens.delete(token_id="ak-MT3")
+
+    ws.member_tokens.delete(token_id="ak-MT3", allow_missing=True)
