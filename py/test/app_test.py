@@ -12,6 +12,7 @@ from modal import App, Image, Secret, Volume, enable_output, fastapi_endpoint, m
 from modal._functions import _Function
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
+from modal.client import _Client
 from modal.cls import _Cls
 from modal.exception import ExecutionError, InternalError, InvalidError, NotFoundError
 from modal.runner import deploy_app, run_app
@@ -644,6 +645,56 @@ def test_app_set_tags(servicer, client):
 
     request = ctx.pop_request("AppSetTags")
     assert request.tags == tags
+
+
+def test_app_stop(servicer, client):
+    app = App(include_source=False)
+    with pytest.raises(InvalidError, match="requires the App to have an ID"):
+        app.stop(client=client)
+
+    app.function()(square)
+    app.deploy(name="stop-test", client=client)
+
+    remote_app = App.lookup("stop-test", client=client)
+    with servicer.intercept() as ctx:
+        remote_app.stop()
+
+    request = ctx.pop_request("AppStop")
+    assert request.app_id == app.app_id
+    assert request.source == api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT
+    with pytest.raises(NotFoundError):
+        App.lookup("stop-test", client=client)
+
+
+@pytest.fixture
+def no_env_client(monkeypatch):
+    async def from_env(*args, **kwargs):
+        raise AssertionError("_Client.from_env should not be called")
+
+    monkeypatch.setattr(_Client, "from_env", from_env)
+
+
+def test_app_stop_after_deploy_uses_deploy_client(servicer, client, no_env_client):
+    app = App(include_source=False)
+    app.function()(square)
+    app.deploy(name="stop-test", client=client)
+
+    with servicer.intercept() as ctx:
+        app.stop()
+
+    assert ctx.pop_request("AppStop").app_id == app.app_id
+
+
+def test_app_stop_after_run_uses_run_client(servicer, client, no_env_client):
+    app = App(include_source=False)
+    app.function()(square)
+    with app.run(client=client):
+        pass
+
+    with servicer.intercept() as ctx:
+        app.stop()
+
+    assert ctx.pop_request("AppStop").app_id == app.app_id
 
 
 def test_dashboard_url(client):

@@ -210,7 +210,7 @@ type AppStopSource int32
 const (
 	AppStopSource_APP_STOP_SOURCE_UNSPECIFIED   AppStopSource = 0
 	AppStopSource_APP_STOP_SOURCE_CLI           AppStopSource = 1
-	AppStopSource_APP_STOP_SOURCE_PYTHON_CLIENT AppStopSource = 2
+	AppStopSource_APP_STOP_SOURCE_PYTHON_CLIENT AppStopSource = 2 // Now also used by JS and Go SDKs
 	AppStopSource_APP_STOP_SOURCE_WEB           AppStopSource = 3
 )
 

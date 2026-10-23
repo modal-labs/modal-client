@@ -3,6 +3,8 @@ import {
   AppGetInfoRequest,
   type AppHandleMetadata,
   AppState as AppStateProto,
+  AppStopRequest,
+  AppStopSource,
   ObjectCreationType,
 } from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
@@ -174,6 +176,9 @@ export function parseGpuConfig(gpu: string | undefined): GPUConfig {
   });
 }
 
+/** Optional parameters for {@link App#stop App.stop()}. */
+export type AppStopParams = Record<never, never>;
+
 /** Represents a Modal App. */
 export class App {
   readonly appId: string;
@@ -226,5 +231,36 @@ export class App {
       }
     }
     return structuredClone(this.#info);
+  }
+
+  /**
+   * Stop the App.
+   *
+   * Stopping an App terminates all of its running containers and Sandboxes and
+   * prevents new inputs from being processed.
+   */
+  async stop(_: AppStopParams = {}): Promise<void> {
+    if (!this.appId) {
+      throw new InvalidError(
+        "App.stop() cannot be called on an App without an ID.",
+      );
+    }
+    if (!this.#client) {
+      throw new InvalidError(
+        "App.stop() requires a handle retrieved through a ModalClient.",
+      );
+    }
+    try {
+      await this.#client.cpClient.appStop(
+        AppStopRequest.create({
+          appId: this.appId,
+          source: AppStopSource.APP_STOP_SOURCE_PYTHON_CLIENT,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+        throw new NotFoundError(`App '${this.appId}' not found`);
+      throw err;
+    }
   }
 }

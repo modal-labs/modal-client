@@ -6,6 +6,7 @@ export {
   type AppInfoParams,
   type AppLifecycle,
   type AppState,
+  type AppStopParams,
 } from "./app";
 export {
   Environment,

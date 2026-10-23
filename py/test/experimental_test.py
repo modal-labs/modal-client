@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime, timezone
 
 import modal
-from modal.exception import NotFoundError
+from modal.exception import DeprecationError, NotFoundError
 from modal_proto import api_pb2
 
 app = modal.App(include_source=False)
@@ -80,7 +80,8 @@ def test_image_delete(client, servicer):
 def test_stop_app(client, servicer):
     app_name, environment_name = "test", "dev"
     app.deploy(name=app_name, environment_name=environment_name, client=client)
-    modal.experimental.stop_app(app_name, environment_name=environment_name, client=client)
+    with pytest.warns(DeprecationError, match="App.lookup"):
+        modal.experimental.stop_app(app_name, environment_name=environment_name, client=client)
     with pytest.raises(NotFoundError):
         modal.App.lookup(app_name, environment_name=environment_name, client=client)
 

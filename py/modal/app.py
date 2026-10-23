@@ -178,7 +178,7 @@ class _App:
     # Running apps only (container apps or running local)
     _app_id: str | None  # Kept after app finishes
     _running_app: RunningApp | None  # Various app info
-    _client: _Client | None
+    _client: _Client | None  # Kept after app finishes
 
     # Metadata for loading objects within this app
     # passed by reference to functions and classes so it can be updated by run()/deploy()
@@ -400,9 +400,13 @@ class _App:
             print(app.get_dashboard_url())
             ```
         """
+        app_id = self._ensure_app_id("get_dashboard_url")
+        return f"https://modal.com/id/{app_id}"
+
+    def _ensure_app_id(self, method: str) -> str:
         if self._app_id is None:
-            raise InvalidError("App is not running")
-        return f"https://modal.com/id/{self._app_id}"
+            raise InvalidError(f"`App.{method}` requires the App to have an ID.")
+        return self._app_id
 
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Object):
@@ -425,7 +429,6 @@ class _App:
             yield
         finally:
             self._running_app = None
-            self._client = None
             self._uncreate_all_objects()
 
     @asynccontextmanager
@@ -582,6 +585,7 @@ class _App:
             self, name=name, environment_name=environment_name, tag=tag, client=client, deployment_strategy=strategy
         )
         self._app_id = result.app_id
+        self._client = self._root_load_context.client
         return self
 
     def _get_default_image(self):
@@ -1596,10 +1600,9 @@ class _App:
         # when the App is running, but lazy (and potentially ignored) otherwise. There would be
         # other complications, like what do you do with any tags set in the constructor, and
         # what should  `.get_tags()` do when it's called before the App is running?
-        if self._app_id is None:
-            raise InvalidError("`App.set_tags` cannot be called before the App is running.")
+        app_id = self._ensure_app_id("set_tags")
         check_tag_dict(tags)
-        req = api_pb2.AppSetTagsRequest(app_id=self._app_id, tags=tags)
+        req = api_pb2.AppSetTagsRequest(app_id=app_id, tags=tags)
 
         client = client or self._client or await _Client.from_env()
         await client._stub.AppSetTags(req)
@@ -1613,12 +1616,32 @@ class _App:
         Returns:
             Tags as a map from key to value.
         """
-        if self._app_id is None:
-            raise InvalidError("`App.get_tags` cannot be called before the App is running.")
-        req = api_pb2.AppGetTagsRequest(app_id=self._app_id)
+        app_id = self._ensure_app_id("get_tags")
+        req = api_pb2.AppGetTagsRequest(app_id=app_id)
         client = client or self._client or await _Client.from_env()
         resp = await client._stub.AppGetTags(req)
         return dict(resp.tags)
+
+    async def stop(self, *, client: _Client | None = None) -> None:
+        """Stop the App.
+
+        Stopping an App terminates all of its running containers and sandboxes and prevents
+        new inputs from being processed.
+
+        **Examples:**
+
+        ```python notest
+        app = modal.App.lookup("my-app")
+        app.stop()
+        ```
+
+        Args:
+            client: Modal client to use for the RPC.
+        """
+        app_id = self._ensure_app_id("stop")
+        req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
+        client = client or self._client or await _Client.from_env()
+        await client._stub.AppStop(req)
 
     @classmethod
     def _get_container_app(cls) -> "_App | None":
@@ -1634,11 +1657,10 @@ class _App:
 
     async def _get_log_query_data(self) -> _LogQueryData:
         """Get the data needed to query logs for this app."""
-        if not self._app_id:
-            raise InvalidError("`app.logs` requires a running/stopped app.")
+        app_id = self._ensure_app_id("logs")
         client = self._client or await _Client.from_env()
         filters = LogsFilters()
-        return _LogQueryData(client=client, app_id=self._app_id, filters=filters, source_object_id=self._app_id)
+        return _LogQueryData(client=client, app_id=app_id, filters=filters, source_object_id=app_id)
 
     @property
     def logs(self) -> _AppLogsManager:
@@ -1653,8 +1675,7 @@ class _App:
             - [`modal app logs`](https://modal.com/docs/cli/latest/app#modal-app-logs):
                 CLI access to logs for an App.
         """
-        if not self._app_id:
-            raise InvalidError("`app.logs` requires a running/stopped app.")
+        self._ensure_app_id("logs")
 
         return _AppLogsManager(self)
 
@@ -1682,12 +1703,11 @@ class _App:
                 servers=self._info.servers,
                 lifecycle=self._info.lifecycle,
             )
-        if not self._app_id:
-            raise InvalidError("`app.info` requires a running or stopped app.")
-        request = api_pb2.AppGetInfoRequest(app_id=self._app_id)
+        app_id = self._ensure_app_id("info")
+        request = api_pb2.AppGetInfoRequest(app_id=app_id)
         client = self._client or await _Client.from_env()
         resp = await client._stub.AppGetInfo(request)
-        self._info = AppInfo._from_proto(resp.info, self._app_id)
+        self._info = AppInfo._from_proto(resp.info, app_id)
         return self._info
 
 

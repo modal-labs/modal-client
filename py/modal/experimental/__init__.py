@@ -241,14 +241,15 @@ async def get_app_lifecycle(app_id: str, *, client: _Client | None = None) -> Ap
 async def stop_app(name: str, *, environment_name: str | None = None, client: _Client | None = None) -> None:
     """Stop a deployed App.
 
-    This interface is experimental and may change in the future,
-    although the functionality will continue to be supported.
+    Deprecated: use `modal.App.lookup(name).stop()` instead.
     """
+    deprecation_warning(
+        (2026, 9, 24),
+        "`modal.experimental.stop_app` is deprecated; use `modal.App.lookup(name).stop()` instead.",
+    )
     client_ = client or await _Client.from_env()
     app = await _App.lookup(name, environment_name=environment_name, client=client_)
-    assert app.app_id
-    req = api_pb2.AppStopRequest(app_id=app.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
-    await client_._stub.AppStop(req)
+    await app.stop(client=client_)
 
 
 @synchronizer.create_blocking

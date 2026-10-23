@@ -65,7 +65,7 @@ enum AppState {
 enum AppStopSource {
   APP_STOP_SOURCE_UNSPECIFIED = 0;
   APP_STOP_SOURCE_CLI = 1;
-  APP_STOP_SOURCE_PYTHON_CLIENT = 2;
+  APP_STOP_SOURCE_PYTHON_CLIENT = 2;  // Now also used by JS and Go SDKs
   APP_STOP_SOURCE_WEB = 3;
 }
 

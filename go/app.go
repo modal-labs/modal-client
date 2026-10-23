@@ -214,3 +214,27 @@ func (s *appServiceImpl) FromName(ctx context.Context, name string, params *AppF
 	s.client.logger.DebugContext(ctx, "Retrieved App", "app_id", resp.GetAppId(), "app_name", name)
 	return newApp(s.client, resp.GetAppId(), name, firstNonEmpty(params.Environment, s.client.profile.Environment), resp.GetHandleMetadata()), nil
 }
+
+// AppStopParams are options for App.Stop.
+type AppStopParams struct{}
+
+// Stop stops the App.
+//
+// Stopping an App terminates all of its running containers and Sandboxes and
+// prevents new inputs from being processed.
+func (a *App) Stop(ctx context.Context, params *AppStopParams) error {
+	if a.AppID == "" {
+		return InvalidError{Exception: "App.Stop() cannot be called on an App without an ID."}
+	}
+	if a.client == nil {
+		return InvalidError{Exception: "App.Stop() requires a handle retrieved through a Client."}
+	}
+	_, err := a.client.cpClient.AppStop(ctx, pb.AppStopRequest_builder{
+		AppId:  a.AppID,
+		Source: pb.AppStopSource_APP_STOP_SOURCE_PYTHON_CLIENT,
+	}.Build())
+	if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
+		return NotFoundError{fmt.Sprintf("App '%s' not found", a.AppID)}
+	}
+	return err
+}
