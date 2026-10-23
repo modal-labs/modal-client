@@ -32,7 +32,7 @@ from modal.types import LogEntry
 from modal_proto import api_pb2
 
 from . import helpers
-from .conftest import Volume, run_cli_command
+from .conftest import MockClientServicer, Volume, run_cli_command
 from .supports.skip import skip_windows
 
 dummy_app_file = """
@@ -6247,10 +6247,11 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
         "Management": ["list", "create", "rename", "dashboard", "delete"],
         "File operations": ["ls", "get", "put", "cp", "rm"],
     },
-    "workspace": {"Commands": ["members", "proxy-tokens", "settings", "service-users"]},
+    "workspace": {"Commands": ["members", "proxy-tokens", "settings", "service-users", "member-tokens"]},
     "workspace members": {"Commands": ["list"]},
     "workspace proxy-tokens": {"Commands": ["list", "create", "update", "allow", "revoke", "delete"]},
     "workspace settings": {"Commands": ["list", "set"]},
+    "workspace member-tokens": {"Commands": ["list", "delete"]},
     "workspace service-users": {"Commands": ["create", "list", "delete", "info", "set-role"]},
     "environment": {
         "Management": ["list", "create", "update", "delete", "roles"],
@@ -7118,3 +7119,85 @@ def test_metrics_schema_uses_server_rows(servicer, set_env_client, monkeypatch, 
             "future_c_avg",
         ]
     assert not ctx.calls
+
+
+def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, monkeypatch):
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+
+    resp = run_cli_command(["workspace", "member-tokens", "list"])
+    deformatted = re.sub(r"\s+", " ", resp.stdout)
+
+    assert "Token ID Name Created By Created At Expires" in deformatted
+    assert "ak-MT1 - Alice" in deformatted
+    assert "ak-MT2 named-token Bob" in deformatted
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+
+    assert json_output == [
+        {
+            "name": None,
+            "token_id": "ak-MT1",
+            "user_id": "us-1",
+            "username": "Alice",
+            "created_at": "2020-01-01 00:00:00+00:00",
+            "last_used_at": "2021-01-01 00:00:00+00:00",
+            "expires_at": None,
+        },
+        {
+            "name": "named-token",
+            "token_id": "ak-MT2",
+            "user_id": "us-2",
+            "username": "Bob",
+            "created_at": "2020-01-01 00:00:00+00:00",
+            "last_used_at": None,
+            "expires_at": "2021-01-01 00:00:00+00:00",
+        },
+    ]
+
+    run_cli_command(["workspace", "member-tokens", "delete", "-y", "ak-MT1"])
+
+    run_cli_command(
+        ["workspace", "member-tokens", "delete", "-y", "ak-MT1"],
+        expected_exit_code=1,
+        expected_error="Token not found",
+    )
+
+    run_cli_command(["workspace", "member-tokens", "delete", "-y", "ak-MT1", "--allow-missing"])
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+
+    assert json_output == [
+        {
+            "name": "named-token",
+            "token_id": "ak-MT2",
+            "user_id": "us-2",
+            "username": "Bob",
+            "created_at": "2020-01-01 00:00:00+00:00",
+            "last_used_at": None,
+            "expires_at": "2021-01-01 00:00:00+00:00",
+        },
+    ]
+
+    for i in range(10):
+        expiration: int | None = None
+        if i % 2 == 0:
+            expiration = (i + 1) * 86_400
+
+        servicer._create_token(f"token-{i}", expiration=expiration)
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+
+    assert len(json_output) == 11
+    assert set(t["name"] for t in json_output) == {"named-token", *([f"token-{i}" for i in range(10)])}
+    assert set(t["token_id"] for t in json_output) == {*([f"ak-MT{i}" for i in range(2, 13)])}
+    assert set(t["name"] for t in json_output if t["expires_at"] is not None) == {
+        "named-token",
+        "token-0",
+        "token-2",
+        "token-4",
+        "token-6",
+        "token-8",
+    }

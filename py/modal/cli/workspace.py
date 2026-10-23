@@ -639,3 +639,103 @@ def service_users_set_role(
             f"[green]✓[/green] Updated Service User [bold]{service_user_name}[/bold]'s role in "
             f"Environment [bold]{environment_name}[/bold] to {role.capitalize()}."
         )
+
+
+MEMBER_TOKENS_HELP_TEXT = """Manage Member API Tokens.
+
+All Member Tokens are associated with a unique Member of the Workspace. Any requests to Modal using a
+Token are authenticated as the associated Member (and as such, are governed by the permissions that
+have been assigned to the specific Member). Workspace Owners and Managers can use [`modal environment roles update`](https://modal.com/docs/cli/latest/environment#modal-environment-roles-update)
+to update these permissions programmatically.
+
+This CLI allows users to list and delete the tokens associated to themselves. Workspace Owners
+and Managers can list all tokens in their Workspace, and can delete any of them.
+"""
+
+member_tokens_cli = ModalGroup(name="member-tokens", help=MEMBER_TOKENS_HELP_TEXT)
+workspace_cli.add_command(member_tokens_cli)
+
+
+@member_tokens_cli.command("list")
+@click.option("--json", is_flag=True, default=False, help="Output as JSON.")
+def member_tokens_list(json: bool):
+    """List Member Tokens in the Workspace. Workspace Managers and Owners can see all tokens in the
+    Workspace.
+
+    ```bash
+    modal workspace member-tokens list
+
+    # Show list in JSON format:
+    modal workspace member-tokens list --json
+    ```
+    """
+    ws = Workspace.from_context()
+    tokens = ws.member_tokens.list()
+
+    output_manager = OutputManager.get()
+
+    if json:
+        output_manager.print_json(
+            json_mod.dumps(
+                [
+                    {
+                        "name": tok.name,
+                        "token_id": tok.token_id,
+                        "user_id": tok.user_id,
+                        "username": tok.username,
+                        "created_at": timestamp_to_localized_str(tok.created_at.timestamp()),
+                        "last_used_at": timestamp_to_localized_str(tok.last_used_at.timestamp())
+                        if tok.last_used_at is not None
+                        else None,
+                        "expires_at": timestamp_to_localized_str(tok.expires_at.timestamp())
+                        if tok.expires_at is not None
+                        else None,
+                    }
+                    for tok in tokens
+                ]
+            )
+        )
+        return
+
+    table = rich.table.Table(box=SIMPLE_HEAD)
+    table.add_column("Token ID")
+    table.add_column("Name")
+    table.add_column("Created By")
+    table.add_column("Created At")
+    table.add_column("Expires")
+
+    for tok in tokens:
+        table.add_row(
+            tok.token_id,
+            tok.name if tok.name else "-",
+            tok.username,
+            timestamp_to_localized_str(tok.created_at.timestamp(), isotz=False),
+            timestamp_to_localized_str(tok.expires_at.timestamp(), isotz=False) if tok.expires_at else "-",
+        )
+
+    output_manager.print(table)
+
+
+@member_tokens_cli.command("delete", no_args_is_help=True)
+@click.argument("token_id")
+@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Token doesn't exist.")
+@yes_option
+def member_tokens_delete(token_id: str, *, allow_missing: bool, yes: bool):
+    """Delete a Member Token in this Workspace.
+
+    Note that this action is irreversible. This will immediately invalidate the target token and will
+    render it unable to authenticate with Modal.
+
+    ```bash
+    # Delete the Token with ID `ak-0123456789abcdefghijkl`
+    modal workspace member-tokens delete ak-0123456789abcdefghijkl
+    ```
+    """
+    if not yes:
+        confirm_or_suggest_yes(f"Are you sure you want to irrevocably delete the Token '{token_id}'?")
+
+    ws = Workspace.from_context()
+    ws.member_tokens.delete(token_id, allow_missing=allow_missing)
+
+    output_manager = OutputManager.get()
+    output_manager.print(f"[green]✓[/green] Deleted Token `{token_id}`.")
