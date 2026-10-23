@@ -256,9 +256,11 @@ const (
 	ModalClient_TaskList_FullMethodName                               = "/modal.client.ModalClient/TaskList"
 	ModalClient_TaskResult_FullMethodName                             = "/modal.client.ModalClient/TaskResult"
 	ModalClient_TemplateList_FullMethodName                           = "/modal.client.ModalClient/TemplateList"
+	ModalClient_TokenDelete_FullMethodName                            = "/modal.client.ModalClient/TokenDelete"
 	ModalClient_TokenFlowCreate_FullMethodName                        = "/modal.client.ModalClient/TokenFlowCreate"
 	ModalClient_TokenFlowWait_FullMethodName                          = "/modal.client.ModalClient/TokenFlowWait"
 	ModalClient_TokenInfoGet_FullMethodName                           = "/modal.client.ModalClient/TokenInfoGet"
+	ModalClient_TokensList_FullMethodName                             = "/modal.client.ModalClient/TokensList"
 	ModalClient_TunnelStart_FullMethodName                            = "/modal.client.ModalClient/TunnelStart"
 	ModalClient_TunnelStop_FullMethodName                             = "/modal.client.ModalClient/TunnelStop"
 	ModalClient_UserGroupEnvironmentSet_FullMethodName                = "/modal.client.ModalClient/UserGroupEnvironmentSet"
@@ -566,9 +568,11 @@ type ModalClientClient interface {
 	// Templates
 	TemplateList(ctx context.Context, in *TemplateListRequest, opts ...grpc.CallOption) (*TemplateListResponse, error)
 	// Tokens (web auth flow)
+	TokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	TokenFlowCreate(ctx context.Context, in *TokenFlowCreateRequest, opts ...grpc.CallOption) (*TokenFlowCreateResponse, error)
 	TokenFlowWait(ctx context.Context, in *TokenFlowWaitRequest, opts ...grpc.CallOption) (*TokenFlowWaitResponse, error)
 	TokenInfoGet(ctx context.Context, in *TokenInfoGetRequest, opts ...grpc.CallOption) (*TokenInfoGetResponse, error)
+	TokensList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TokensListResponse, error)
 	// Tunnels
 	TunnelStart(ctx context.Context, in *TunnelStartRequest, opts ...grpc.CallOption) (*TunnelStartResponse, error)
 	TunnelStop(ctx context.Context, in *TunnelStopRequest, opts ...grpc.CallOption) (*TunnelStopResponse, error)
@@ -2995,6 +2999,16 @@ func (c *modalClientClient) TemplateList(ctx context.Context, in *TemplateListRe
 	return out, nil
 }
 
+func (c *modalClientClient) TokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_TokenDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) TokenFlowCreate(ctx context.Context, in *TokenFlowCreateRequest, opts ...grpc.CallOption) (*TokenFlowCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TokenFlowCreateResponse)
@@ -3019,6 +3033,16 @@ func (c *modalClientClient) TokenInfoGet(ctx context.Context, in *TokenInfoGetRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TokenInfoGetResponse)
 	err := c.cc.Invoke(ctx, ModalClient_TokenInfoGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) TokensList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TokensListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TokensListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_TokensList_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3708,9 +3732,11 @@ type ModalClientServer interface {
 	// Templates
 	TemplateList(context.Context, *TemplateListRequest) (*TemplateListResponse, error)
 	// Tokens (web auth flow)
+	TokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error)
 	TokenFlowCreate(context.Context, *TokenFlowCreateRequest) (*TokenFlowCreateResponse, error)
 	TokenFlowWait(context.Context, *TokenFlowWaitRequest) (*TokenFlowWaitResponse, error)
 	TokenInfoGet(context.Context, *TokenInfoGetRequest) (*TokenInfoGetResponse, error)
+	TokensList(context.Context, *emptypb.Empty) (*TokensListResponse, error)
 	// Tunnels
 	TunnelStart(context.Context, *TunnelStartRequest) (*TunnelStartResponse, error)
 	TunnelStop(context.Context, *TunnelStopRequest) (*TunnelStopResponse, error)
@@ -4455,6 +4481,9 @@ func (UnimplementedModalClientServer) TaskResult(context.Context, *TaskResultReq
 func (UnimplementedModalClientServer) TemplateList(context.Context, *TemplateListRequest) (*TemplateListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TemplateList not implemented")
 }
+func (UnimplementedModalClientServer) TokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method TokenDelete not implemented")
+}
 func (UnimplementedModalClientServer) TokenFlowCreate(context.Context, *TokenFlowCreateRequest) (*TokenFlowCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TokenFlowCreate not implemented")
 }
@@ -4463,6 +4492,9 @@ func (UnimplementedModalClientServer) TokenFlowWait(context.Context, *TokenFlowW
 }
 func (UnimplementedModalClientServer) TokenInfoGet(context.Context, *TokenInfoGetRequest) (*TokenInfoGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TokenInfoGet not implemented")
+}
+func (UnimplementedModalClientServer) TokensList(context.Context, *emptypb.Empty) (*TokensListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TokensList not implemented")
 }
 func (UnimplementedModalClientServer) TunnelStart(context.Context, *TunnelStartRequest) (*TunnelStartResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TunnelStart not implemented")
@@ -8686,6 +8718,24 @@ func _ModalClient_TemplateList_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_TokenDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TokenDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).TokenDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_TokenDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).TokenDelete(ctx, req.(*TokenDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_TokenFlowCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TokenFlowCreateRequest)
 	if err := dec(in); err != nil {
@@ -8736,6 +8786,24 @@ func _ModalClient_TokenInfoGet_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).TokenInfoGet(ctx, req.(*TokenInfoGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_TokensList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).TokensList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_TokensList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).TokensList(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -10317,6 +10385,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_TemplateList_Handler,
 		},
 		{
+			MethodName: "TokenDelete",
+			Handler:    _ModalClient_TokenDelete_Handler,
+		},
+		{
 			MethodName: "TokenFlowCreate",
 			Handler:    _ModalClient_TokenFlowCreate_Handler,
 		},
@@ -10327,6 +10399,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TokenInfoGet",
 			Handler:    _ModalClient_TokenInfoGet_Handler,
+		},
+		{
+			MethodName: "TokensList",
+			Handler:    _ModalClient_TokensList_Handler,
 		},
 		{
 			MethodName: "TunnelStart",
