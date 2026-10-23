@@ -657,6 +657,106 @@ def test_dockerfile_image(builder_version, servicer, client):
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
     assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
+    if builder_version > "2025.06":
+        assert len(layers) == 3
+        assert layers[1].dockerfile_commands[0] == "FROM base"
+        assert layers[2].dockerfile_commands == ["FROM python:3.10-slim-bullseye"]
+    else:
+        assert len(layers) == 2
+        assert layers[1].dockerfile_commands[0] == "FROM python:3.10-slim-bullseye"
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "FROM python:3.12-slim AS app\nFROM debian:bookworm-slim\nCOPY --from=app /usr/local /usr/local\n",
+        "ARG PY=3.12\nFROM python:${PY}-slim\nARG PY\nRUN echo $PY\n",
+        "# syntax=docker/dockerfile:1\nFROM python:3.12-slim\nRUN echo hi\n",
+        "# escape=`\nFROM python:3.12-slim\nRUN echo hi\n",
+        "FROM \\\n    python:3.12-slim\nRUN echo hi\n",
+        "FROM python:3.12-slim AS app\nRUN echo hi\n",
+        "FROM python:3.12-slim AS app\nRUN echo $((1<<2))\nFROM debian:bookworm-slim\n",
+        'FROM python:3.12-slim AS app\nRUN echo "x <<EOF"\nFROM debian:bookworm-slim\n',
+        "FROM python:3.12-slim\nRUN \\\n    cat <<EOF > /x\nFROM nothing\nEOF\n",
+    ],
+    ids=[
+        "multi-stage",
+        "global-arg",
+        "syntax-directive",
+        "escape-directive",
+        "continued-from",
+        "stage-alias",
+        "shift-not-heredoc",
+        "quoted-heredoc-marker",
+        "from-in-heredoc",
+    ],
+)
+def test_dockerfile_image_not_split(builder_version, servicer, client, tmp_path, contents):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(contents)
+    image = Image.from_dockerfile(dockerfile)
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert len(layers) == 2
+    assert layers[1].dockerfile_commands == contents.split("\n")
+
+
+@pytest.mark.parametrize(
+    "contents, expected_commands",
+    [
+        (
+            "from python:3.12-slim\nRUN \\\n    cat <<EOF > /x\nhello\nEOF\n",
+            ["FROM base", "RUN \\", "    cat <<EOF > /x", "hello", "EOF", ""],
+        ),
+    ],
+    ids=["heredoc-in-continuation"],
+)
+def test_dockerfile_image_split(builder_version, servicer, client, tmp_path, contents, expected_commands):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(contents)
+    image = Image.from_dockerfile(dockerfile)
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    if builder_version > "2025.06":
+        assert len(layers) == 3
+        assert layers[1].dockerfile_commands == expected_commands
+        assert layers[2].dockerfile_commands == [contents.split("\n")[0]]
+    else:
+        assert len(layers) == 2
+        assert layers[1].dockerfile_commands == contents.split("\n")
+
+
+def test_dockerfile_image_split_from_only(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM python:3.12-slim\n# trailing comment\n")
+    image = Image.from_dockerfile(dockerfile)
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert len(layers) == 2
+    if builder_version > "2025.06":
+        assert layers[1].dockerfile_commands == ["FROM python:3.12-slim"]
+    else:
+        assert layers[1].dockerfile_commands == ["FROM python:3.12-slim", "# trailing comment", ""]
+
+
+def test_dockerfile_image_unsupported_add_python(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM ubuntu\nRUN echo hi\n")
+    image = Image.from_dockerfile(dockerfile, add_python="3.9")
+    with pytest.raises(InvalidError, match="Unsupported"):
+        build_image(image, client)
+    assert not servicer.images
+
+
+def test_dockerfile_image_layer_on_top(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM ubuntu\nRUN echo hi\n")
+    image = Image.from_dockerfile(dockerfile, add_python="3.12").run_commands("echo bye")
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert layers[0].dockerfile_commands == ["FROM base", "RUN echo bye"]
+    assert layers[-1].dockerfile_commands[0] == "FROM ubuntu"
+    assert len(layers) == (4 if builder_version > "2025.06" else 3)
 
 
 def test_micromamba_install(builder_version, servicer, client):
@@ -1578,7 +1678,7 @@ def test_image_force_build(builder_version, servicer, client):
 def test_image_from_dockerfile_force_build(builder_version, servicer, client, test_dir, force_build):
     image = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile", force_build=force_build)
     build_image(image, client)
-    assert len(servicer.images) == 2
+    assert len(servicer.images) == (3 if builder_version > "2025.06" else 2)
     assert servicer.force_built_images == (sorted(servicer.images) if force_build else [])
 
 

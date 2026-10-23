@@ -40,6 +40,7 @@ from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
+    splittable_from_line_index,
 )
 from ._utils.function_utils import FunctionSourceInfo, parse_gpu_config
 from ._utils.mount_utils import validate_only_modal_volumes, validate_volumes_by_object_id
@@ -2538,24 +2539,21 @@ class _Image(_Object, type_prefix="im"):
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        # --- Build the base dockerfile
-
-        def build_dockerfile_base(version: ImageBuilderVersion) -> DockerfileSpec:
-            with open(os.path.expanduser(path)) as f:
-                commands = f.read().split("\n")
-            return DockerfileSpec(commands=commands, context_files={})
-
         gpu_config = parse_gpu_config(gpu)
-        base_image = _Image._from_args(
-            dockerfile_function=build_dockerfile_base,
-            context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_path=Path(path), context_dir=context_dir
-            ),
-            gpu_config=gpu_config,
-            secrets=secrets,
-            build_args=build_args,
-            force_build=force_build,
+        context_mount_function = _create_context_mount_function(
+            ignore=ignore, dockerfile_path=Path(path), context_dir=context_dir
         )
+
+        def dockerfile_image(commands: list[str], base_images: dict[str, _Image] | None = None) -> _Image:
+            return _Image._from_args(
+                base_images=base_images,
+                dockerfile_function=lambda version: DockerfileSpec(commands=commands, context_files={}),
+                context_mount_function=context_mount_function,
+                gpu_config=gpu_config,
+                secrets=secrets,
+                build_args=build_args,
+                force_build=force_build,
+            )
 
         # --- Now add in the modal dependencies, and, optionally a Python distribution
         # This happening in two steps is probably a vestigial consequence of previous limitations,
@@ -2579,12 +2577,49 @@ class _Image(_Object, type_prefix="im"):
                 context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
-        return _Image._from_args(
-            base_images={"base": base_image},
-            dockerfile_function=build_dockerfile_python,
-            context_mount_function=add_python_mount,
-            force_build=force_build,
-        )
+        def python_image(base_image: _Image) -> _Image:
+            return _Image._from_args(
+                base_images={"base": base_image},
+                dockerfile_function=build_dockerfile_python,
+                context_mount_function=add_python_mount,
+                force_build=force_build,
+            )
+
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
+            builder_version = await _resolve_image_builder_version(load_context)
+            if add_python:
+                # Validate before any Dockerfile layer is built.
+                _validate_python_version(
+                    add_python, builder_version, allow_micro_granularity=False, allow_free_threading=True
+                )
+            with open(os.path.expanduser(path)) as f:
+                dockerfile_lines = f.read().split("\n")
+
+            # Builder versions after 2025.06 put the FROM line of a single-stage Dockerfile in its own image.
+            # Dockerfiles the split could change (see splittable_from_line_index) stay in one layer.
+            from_index = splittable_from_line_index(dockerfile_lines) if builder_version > "2025.06" else None
+            if from_index is None:
+                image = python_image(dockerfile_image(dockerfile_lines))
+            else:
+                from_lines = dockerfile_lines[: from_index + 1]
+                from_image = _Image._from_args(
+                    dockerfile_function=lambda version: DockerfileSpec(commands=from_lines, context_files={}),
+                    force_build=force_build,
+                )
+                rest = dockerfile_lines[from_index + 1 :]
+                rest_is_empty = all(not line.strip() or line.strip().startswith("#") for line in rest)
+                if rest_is_empty:
+                    image = python_image(from_image)
+                else:
+                    image = python_image(dockerfile_image(["FROM base", *rest], base_images={"base": from_image}))
+            await resolver.load(image, load_context)
+            self._hydrate_from_other(image)
+            self._serve_mounts = image._serve_mounts
+
+        rep = f"Image.from_dockerfile({str(path)!r})"
+        obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext.empty())
+        obj.force_build = force_build
+        return obj
 
     @staticmethod
     def from_scratch(force_build: bool = False) -> "_Image":

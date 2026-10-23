@@ -74,6 +74,33 @@ def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
     return list(copy_source_patterns)
 
 
+_FROM_PATTERN = re.compile(r"^\s*FROM\s", re.IGNORECASE)
+_FROM_ALIAS_PATTERN = re.compile(r"\sAS\s+\S+\s*$", re.IGNORECASE)
+_PARSER_DIRECTIVE_PATTERN = re.compile(r"^#\s*[a-zA-Z][a-zA-Z0-9]*\s*=")
+
+
+def splittable_from_line_index(dockerfile_lines: Sequence[str]) -> int | None:
+    """Return the line index of the FROM instruction if it can be built as its own image.
+
+    Returns None unless the first instruction is a one-line FROM without a stage alias (no global ARGs), no
+    parser directives precede it, and no other line starts with FROM. Lines inside heredocs or continuations
+    count too, so a multi-stage Dockerfile is never split.
+    """
+    start = next(
+        (i for i, line in enumerate(dockerfile_lines) if line.strip() and not line.strip().startswith("#")),
+        None,
+    )
+    if start is None or not _FROM_PATTERN.match(dockerfile_lines[start]):
+        return None
+    if dockerfile_lines[start].rstrip().endswith("\\") or _FROM_ALIAS_PATTERN.search(dockerfile_lines[start]):
+        return None
+    if any(_PARSER_DIRECTIVE_PATTERN.match(line.strip()) for line in dockerfile_lines[:start]):
+        return None
+    if any(_FROM_PATTERN.match(line) for line in dockerfile_lines[start + 1 :]):
+        return None
+    return start
+
+
 def find_dockerignore_file(context_directory: Path, dockerfile_path: Path | None = None) -> Path | None:
     """
     Find dockerignore file relative to current context directory
