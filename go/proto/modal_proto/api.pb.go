@@ -1285,6 +1285,7 @@ const (
 	FunctionCallInputStatus_FUNCTION_CALL_INPUT_STATUS_IDLE_TIMEOUT              FunctionCallInputStatus = 9
 	FunctionCallInputStatus_FUNCTION_CALL_INPUT_STATUS_MEMORY_MANAGER_EVICTION   FunctionCallInputStatus = 10
 	FunctionCallInputStatus_FUNCTION_CALL_INPUT_STATUS_MEMORY_THRASHING_EVICTION FunctionCallInputStatus = 11
+	FunctionCallInputStatus_FUNCTION_CALL_INPUT_STATUS_KERNEL_OOM_KILL           FunctionCallInputStatus = 12
 )
 
 // Enum value maps for FunctionCallInputStatus.
@@ -1302,6 +1303,7 @@ var (
 		9:  "FUNCTION_CALL_INPUT_STATUS_IDLE_TIMEOUT",
 		10: "FUNCTION_CALL_INPUT_STATUS_MEMORY_MANAGER_EVICTION",
 		11: "FUNCTION_CALL_INPUT_STATUS_MEMORY_THRASHING_EVICTION",
+		12: "FUNCTION_CALL_INPUT_STATUS_KERNEL_OOM_KILL",
 	}
 	FunctionCallInputStatus_value = map[string]int32{
 		"FUNCTION_CALL_INPUT_STATUS_UNSPECIFIED":               0,
@@ -1316,6 +1318,7 @@ var (
 		"FUNCTION_CALL_INPUT_STATUS_IDLE_TIMEOUT":              9,
 		"FUNCTION_CALL_INPUT_STATUS_MEMORY_MANAGER_EVICTION":   10,
 		"FUNCTION_CALL_INPUT_STATUS_MEMORY_THRASHING_EVICTION": 11,
+		"FUNCTION_CALL_INPUT_STATUS_KERNEL_OOM_KILL":           12,
 	}
 )
 
@@ -2856,21 +2859,24 @@ const (
 	GenericResult_GENERIC_STATUS_MEMORY_MANAGER_EVICTION GenericResult_GenericStatus = 8
 	// Used when a task was killed by the memory manager after thrashing at its own memory limit.
 	GenericResult_GENERIC_STATUS_MEMORY_THRASHING_EVICTION GenericResult_GenericStatus = 9
+	// Used when the kernel OOM-killed a process in the task's container after it hit its own memory limit.
+	GenericResult_GENERIC_STATUS_KERNEL_OOM_KILL GenericResult_GenericStatus = 10
 )
 
 // Enum value maps for GenericResult_GenericStatus.
 var (
 	GenericResult_GenericStatus_name = map[int32]string{
-		0: "GENERIC_STATUS_UNSPECIFIED",
-		1: "GENERIC_STATUS_SUCCESS",
-		2: "GENERIC_STATUS_FAILURE",
-		3: "GENERIC_STATUS_TERMINATED",
-		4: "GENERIC_STATUS_TIMEOUT",
-		5: "GENERIC_STATUS_INIT_FAILURE",
-		6: "GENERIC_STATUS_INTERNAL_FAILURE",
-		7: "GENERIC_STATUS_IDLE_TIMEOUT",
-		8: "GENERIC_STATUS_MEMORY_MANAGER_EVICTION",
-		9: "GENERIC_STATUS_MEMORY_THRASHING_EVICTION",
+		0:  "GENERIC_STATUS_UNSPECIFIED",
+		1:  "GENERIC_STATUS_SUCCESS",
+		2:  "GENERIC_STATUS_FAILURE",
+		3:  "GENERIC_STATUS_TERMINATED",
+		4:  "GENERIC_STATUS_TIMEOUT",
+		5:  "GENERIC_STATUS_INIT_FAILURE",
+		6:  "GENERIC_STATUS_INTERNAL_FAILURE",
+		7:  "GENERIC_STATUS_IDLE_TIMEOUT",
+		8:  "GENERIC_STATUS_MEMORY_MANAGER_EVICTION",
+		9:  "GENERIC_STATUS_MEMORY_THRASHING_EVICTION",
+		10: "GENERIC_STATUS_KERNEL_OOM_KILL",
 	}
 	GenericResult_GenericStatus_value = map[string]int32{
 		"GENERIC_STATUS_UNSPECIFIED":               0,
@@ -2883,6 +2889,7 @@ var (
 		"GENERIC_STATUS_IDLE_TIMEOUT":              7,
 		"GENERIC_STATUS_MEMORY_MANAGER_EVICTION":   8,
 		"GENERIC_STATUS_MEMORY_THRASHING_EVICTION": 9,
+		"GENERIC_STATUS_KERNEL_OOM_KILL":           10,
 	}
 )
 
@@ -77875,7 +77882,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"itemsTotal\"\x8d\x01\n" +
 	"\x12GenericPayloadType\x128\n" +
 	"\tbase_type\x18\x01 \x01(\x0e2\x1b.modal.client.ParameterTypeR\bbaseType\x12=\n" +
-	"\tsub_types\x18\x02 \x03(\v2 .modal.client.GenericPayloadTypeR\bsubTypes\"\xd0\x05\n" +
+	"\tsub_types\x18\x02 \x03(\v2 .modal.client.GenericPayloadTypeR\bsubTypes\"\xf4\x05\n" +
 	"\rGenericResult\x12A\n" +
 	"\x06status\x18\x01 \x01(\x0e2).modal.client.GenericResult.GenericStatusR\x06status\x12\x1c\n" +
 	"\texception\x18\x02 \x01(\tR\texception\x12\x1a\n" +
@@ -77887,7 +77894,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\fdata_blob_id\x18\n" +
 	" \x01(\tH\x00R\n" +
 	"dataBlobId\x12-\n" +
-	"\x12propagation_reason\x18\r \x01(\tR\x11propagationReason\"\xe3\x02\n" +
+	"\x12propagation_reason\x18\r \x01(\tR\x11propagationReason\"\x87\x03\n" +
 	"\rGenericStatus\x12\x1e\n" +
 	"\x1aGENERIC_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16GENERIC_STATUS_SUCCESS\x10\x01\x12\x1a\n" +
@@ -77898,7 +77905,9 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1fGENERIC_STATUS_INTERNAL_FAILURE\x10\x06\x12\x1f\n" +
 	"\x1bGENERIC_STATUS_IDLE_TIMEOUT\x10\a\x12*\n" +
 	"&GENERIC_STATUS_MEMORY_MANAGER_EVICTION\x10\b\x12,\n" +
-	"(GENERIC_STATUS_MEMORY_THRASHING_EVICTION\x10\tB\f\n" +
+	"(GENERIC_STATUS_MEMORY_THRASHING_EVICTION\x10\t\x12\"\n" +
+	"\x1eGENERIC_STATUS_KERNEL_OOM_KILL\x10\n" +
+	"B\f\n" +
 	"\n" +
 	"data_oneof\"\x86\x03\n" +
 	"\n" +
@@ -79818,7 +79827,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1bFILE_DESCRIPTOR_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16FILE_DESCRIPTOR_STDOUT\x10\x01\x12\x1a\n" +
 	"\x16FILE_DESCRIPTOR_STDERR\x10\x02\x12\x18\n" +
-	"\x14FILE_DESCRIPTOR_INFO\x10\x03*\xb5\x04\n" +
+	"\x14FILE_DESCRIPTOR_INFO\x10\x03*\xe5\x04\n" +
 	"\x17FunctionCallInputStatus\x12*\n" +
 	"&FUNCTION_CALL_INPUT_STATUS_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"FUNCTION_CALL_INPUT_STATUS_PENDING\x10\x01\x12&\n" +
@@ -79832,7 +79841,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"'FUNCTION_CALL_INPUT_STATUS_IDLE_TIMEOUT\x10\t\x126\n" +
 	"2FUNCTION_CALL_INPUT_STATUS_MEMORY_MANAGER_EVICTION\x10\n" +
 	"\x128\n" +
-	"4FUNCTION_CALL_INPUT_STATUS_MEMORY_THRASHING_EVICTION\x10\v*\xfb\x01\n" +
+	"4FUNCTION_CALL_INPUT_STATUS_MEMORY_THRASHING_EVICTION\x10\v\x12.\n" +
+	"*FUNCTION_CALL_INPUT_STATUS_KERNEL_OOM_KILL\x10\f*\xfb\x01\n" +
 	"\x1aFunctionCallInvocationType\x12-\n" +
 	")FUNCTION_CALL_INVOCATION_TYPE_UNSPECIFIED\x10\x00\x12-\n" +
 	")FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY\x10\x01\x12.\n" +

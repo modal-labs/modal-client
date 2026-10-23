@@ -247,6 +247,7 @@ enum FunctionCallInputStatus {
   FUNCTION_CALL_INPUT_STATUS_IDLE_TIMEOUT = 9;
   FUNCTION_CALL_INPUT_STATUS_MEMORY_MANAGER_EVICTION = 10;
   FUNCTION_CALL_INPUT_STATUS_MEMORY_THRASHING_EVICTION = 11;
+  FUNCTION_CALL_INPUT_STATUS_KERNEL_OOM_KILL = 12;
 }
 
 enum FunctionCallInvocationType {
@@ -3081,6 +3082,8 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERIC_STATUS_MEMORY_MANAGER_EVICTION = 8;
     // Used when a task was killed by the memory manager after thrashing at its own memory limit.
     GENERIC_STATUS_MEMORY_THRASHING_EVICTION = 9;
+    // Used when the kernel OOM-killed a process in the task's container after it hit its own memory limit.
+    GENERIC_STATUS_KERNEL_OOM_KILL = 10;
   }
 
   GenericStatus status = 1; // Status of the task or function output.
