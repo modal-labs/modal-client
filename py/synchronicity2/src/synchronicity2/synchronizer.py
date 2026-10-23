@@ -4,6 +4,7 @@ import atexit
 import concurrent.futures
 import importlib
 import os
+import sys
 import threading
 import typing
 from typing import Optional
@@ -25,6 +26,27 @@ class WrapperClassProtocol(typing.Protocol):
 
 
 WRAPPER_CLASS_T = typing.TypeVar("WRAPPER_CLASS_T", bound=WrapperClassProtocol)
+
+
+# Calling asend/athrow/aclose/__anext__ on an async generator binds it to the asyncgen hooks
+# (sys.set_asyncgen_hooks) of the *calling* thread, even though the returned awaitable
+# isn't stepped until later. Wrapping the calls in coroutine functions defers them until
+# the coroutine runs on the synchronizer loop, so that loop owns the generator and GC
+# finalization (aclose) happens there, rather than on the caller's loop/thread.
+async def _asend(gen: typing.AsyncGenerator[typing.Any, typing.Any], value: typing.Any) -> typing.Any:
+    return await gen.asend(value)
+
+
+async def _athrow(gen: typing.AsyncGenerator[typing.Any, typing.Any], exc: BaseException) -> typing.Any:
+    return await gen.athrow(exc)
+
+
+async def _aclose(gen: typing.AsyncGenerator[typing.Any, typing.Any]) -> None:
+    await gen.aclose()
+
+
+async def _anext(async_iter: typing.AsyncIterator[T]) -> T:
+    return await async_iter.__anext__()
 
 
 def _wrapped_from_impl(
@@ -81,6 +103,7 @@ class Synchronizer:
         self._thread = None
         self._owner_pid = None
         self._stopping = None
+        self._asyncgen_finalizer_timeout_seconds = 10.0  # high default to allow async finalization in most cases
 
         # Special attribute we use to go from wrapped <-> original
         self._wrapped_attr = "_sync_wrapped_%d" % id(self)
@@ -286,6 +309,10 @@ class Synchronizer:
 
         return value  # type: ignore
 
+    def _run_function_sync_future(self, coro) -> concurrent.futures.Future:
+        loop = self._get_loop(start=True)
+        return asyncio.run_coroutine_threadsafe(coro, loop)
+
     async def _run_function_async(self, coro):
         loop = self._get_loop(start=True)
         if self._is_inside_loop():
@@ -335,9 +362,9 @@ class Synchronizer:
                     if is_exc:
                         # When is_exc is True, value is always a BaseException
                         assert isinstance(value, BaseException)
-                        value = self._run_function_sync(gen.athrow(value), _warn_if_running=False)
+                        value = self._run_function_sync(_athrow(gen, value), _warn_if_running=False)
                     else:
-                        value = self._run_function_sync(gen.asend(value), _warn_if_running=False)
+                        value = self._run_function_sync(_asend(gen, value), _warn_if_running=False)
                 except StopAsyncIteration:
                     break
 
@@ -351,9 +378,24 @@ class Synchronizer:
                     value = exc
                     is_exc = True
         finally:
-            # Ensure the underlying async generator is properly closed
-            # Need to run the aclose in the event loop thread
-            self._run_function_sync(gen.aclose(), _warn_if_running=False)
+            self._finalize_generator_sync(gen)
+
+    def _finalize_generator_sync(self, gen: typing.AsyncGenerator[typing.Any, typing.Any]) -> None:
+        # During interpreter shutdown, blocking here can deadlock.
+        if sys.is_finalizing():
+            return
+        try:
+            # Best-effort close on the synchronizer loop. We use a future so we don't block
+            # indefinitely in case the event loop closing races with this code and the aclose
+            # never returns.
+            finalization_fut = self._run_function_sync_future(_aclose(gen))
+            if self._is_inside_loop():
+                # The wrapper generator is being closed from the synchronizer thread itself
+                # (e.g. by the gc) - waiting for the scheduled aclose here would deadlock.
+                return
+            finalization_fut.result(timeout=self._asyncgen_finalizer_timeout_seconds)
+        except Exception:
+            pass
 
     async def _run_generator_async(self, gen: typing.AsyncGenerator[typing.Any, typing.Any]):
         value: typing.Any = None
@@ -364,9 +406,9 @@ class Synchronizer:
                     if is_exc:
                         # When is_exc is True, value is always a BaseException
                         assert isinstance(value, BaseException)
-                        value = await self._run_function_async(gen.athrow(value))
+                        value = await self._run_function_async(_athrow(gen, value))
                     else:
-                        value = await self._run_function_async(gen.asend(value))
+                        value = await self._run_function_async(_asend(gen, value))
                 except StopAsyncIteration:
                     break
 
@@ -380,8 +422,16 @@ class Synchronizer:
                     value = exc
                     is_exc = True
         finally:
-            # Ensure the underlying generator is properly closed
-            await gen.aclose()
+            # During interpreter shutdown, blocking here can deadlock.
+            if not sys.is_finalizing():
+                try:
+                    # Best-effort close on the synchronizer loop, bounded so a loop that is shutting
+                    # down concurrently can't block the caller forever. The shield lets the aclose
+                    # keep running in the background if it outlives the timeout.
+                    close_task = asyncio.create_task(self._run_function_async(_aclose(gen)))
+                    await asyncio.wait_for(asyncio.shield(close_task), timeout=self._asyncgen_finalizer_timeout_seconds)
+                except Exception:
+                    pass
 
     def _run_iterator_sync(self, async_iter: typing.AsyncIterator[T]) -> typing.Generator[T, None, None]:
         """Run an async iterator in sync mode.
@@ -392,7 +442,7 @@ class Synchronizer:
         self._maybe_warn_blocking_in_async()
         while True:
             try:
-                value = self._run_function_sync(async_iter.__anext__(), _warn_if_running=False)
+                value = self._run_function_sync(_anext(async_iter), _warn_if_running=False)
             except StopAsyncIteration:
                 break
             yield value
@@ -406,7 +456,7 @@ class Synchronizer:
         try:
             while True:
                 try:
-                    value = await self._run_function_async(async_iter.__anext__())
+                    value = await self._run_function_async(_anext(async_iter))
                 except StopAsyncIteration:
                     break
                 yield value

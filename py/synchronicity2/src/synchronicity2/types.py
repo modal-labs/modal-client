@@ -6,6 +6,8 @@ from __future__ import annotations
 import typing
 from typing import AsyncIterator, Callable, Generic, Iterator, TypeVar
 
+from .synchronizer import _anext
+
 if typing.TYPE_CHECKING:
     from .synchronizer import Synchronizer
 
@@ -67,7 +69,7 @@ class SyncOrAsyncIterator(Generic[T]):
     async def __anext__(self) -> T:
         """Get next item in async iteration."""
         try:
-            item = await self._synchronizer._run_function_async(self._async_iterator.__anext__())
+            item = await self._synchronizer._run_function_async(_anext(self._async_iterator))
             if self._item_wrapper:
                 return self._item_wrapper(item)
             return item

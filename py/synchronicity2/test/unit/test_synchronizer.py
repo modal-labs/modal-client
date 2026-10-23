@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2026
 import asyncio
 import pytest
+import threading
+import time
 import typing
 import weakref
 
@@ -130,3 +132,133 @@ def test_synchronicity1_synchronizer_registers_external_wrappers():
     assert owner._translate_out(impl) is wrapper
     assert owner._translate_in(wrapper) is impl
     assert _wrapped_from_impl(Wrapper, impl, Wrapper._instance_cache, sync) is wrapper
+
+
+@pytest.fixture
+def synchronizer():
+    sync = Synchronizer()
+    try:
+        yield sync
+    finally:
+        sync._close_loop()
+
+
+def _registered_asyncgens(loop, code):
+    return [agen for agen in loop._asyncgens if agen.ag_code is code]
+
+
+async def two_items():
+    yield 1
+    yield 2
+
+
+def test_asyncgen_hooks_bound_to_synchronizer_loop_sync(synchronizer):
+    iterator = synchronizer._run_generator_sync(two_items())
+    assert next(iterator) == 1
+    assert len(_registered_asyncgens(synchronizer._get_loop(), two_items.__code__)) == 1
+    iterator.close()
+
+
+@pytest.mark.asyncio
+async def test_asyncgen_hooks_bound_to_synchronizer_loop_async(synchronizer):
+    iterator = synchronizer._run_generator_async(two_items())
+    assert await iterator.__anext__() == 1
+    assert _registered_asyncgens(asyncio.get_running_loop(), two_items.__code__) == []
+    assert len(_registered_asyncgens(synchronizer._get_loop(), two_items.__code__)) == 1
+    await iterator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_iterator_asyncgen_hooks_bound_to_synchronizer_loop_async(synchronizer):
+    iterator = synchronizer._run_iterator_async(two_items())
+    assert await iterator.__anext__() == 1
+    assert _registered_asyncgens(asyncio.get_running_loop(), two_items.__code__) == []
+    assert len(_registered_asyncgens(synchronizer._get_loop(), two_items.__code__)) == 1
+    await iterator.aclose()
+
+
+def _make_recording_genfunc(synchronizer: Synchronizer, states: list):
+    async def genfunc(finalization_delay: float):
+        states.append("init")
+        try:
+            for i in range(2):
+                await asyncio.sleep(0.01)
+                states.append(f"yield {i}")
+                yield i
+                states.append(f"send after {i}")
+        except BaseException:
+            states.append("start finalization")
+            await asyncio.sleep(finalization_delay)
+            on_loop = asyncio.get_running_loop() is synchronizer._get_loop()
+            states.append(f"done on synchronizer loop: {on_loop}")
+
+    return genfunc
+
+
+def test_run_generator_sync_runs_aclose_on_synchronizer_loop(synchronizer):
+    states: list[str] = []
+    genfunc = _make_recording_genfunc(synchronizer, states)
+
+    for _ in synchronizer._run_generator_sync(genfunc(0.01)):
+        pass
+    assert states == ["init", "yield 0", "send after 0", "yield 1", "send after 1"]
+
+    states.clear()
+    gen = synchronizer._run_generator_sync(genfunc(0.01))
+    next(gen)
+    gen.close()  # the underlying async generator is closed before close() returns
+    assert states == ["init", "yield 0", "start finalization", "done on synchronizer loop: True"]
+
+    states.clear()
+    synchronizer._asyncgen_finalizer_timeout_seconds = 0.1
+    gen = synchronizer._run_generator_sync(genfunc(0.5))
+    next(gen)
+    gen.close()
+    assert states == ["init", "yield 0", "start finalization"]  # timed out waiting for finalization
+    time.sleep(1)
+    assert states == ["init", "yield 0", "start finalization", "done on synchronizer loop: True"]
+
+
+@pytest.mark.asyncio
+async def test_run_generator_async_runs_aclose_on_synchronizer_loop(synchronizer):
+    states: list[str] = []
+    genfunc = _make_recording_genfunc(synchronizer, states)
+
+    async for _ in synchronizer._run_generator_async(genfunc(0.01)):
+        pass
+    assert states == ["init", "yield 0", "send after 0", "yield 1", "send after 1"]
+
+    states.clear()
+    gen = synchronizer._run_generator_async(genfunc(0.01))
+    assert await gen.__anext__() == 0
+    await gen.aclose()
+    assert states == ["init", "yield 0", "start finalization", "done on synchronizer loop: True"]
+
+    states.clear()
+    synchronizer._asyncgen_finalizer_timeout_seconds = 0.1
+    gen = synchronizer._run_generator_async(genfunc(0.5))
+    assert await gen.__anext__() == 0
+    await gen.aclose()
+    assert states == ["init", "yield 0", "start finalization"]  # timed out waiting for finalization
+    await asyncio.sleep(1)
+    assert states == ["init", "yield 0", "start finalization", "done on synchronizer loop: True"]
+
+
+def test_run_generator_sync_closed_from_synchronizer_thread(synchronizer):
+    # e.g. the gc collecting an abandoned wrapper generator while running a callback on the loop
+    finalized = threading.Event()
+
+    async def genfunc():
+        try:
+            yield 1
+        finally:
+            finalized.set()
+
+    gen = synchronizer._run_generator_sync(genfunc())
+    next(gen)
+
+    async def close_from_loop():
+        gen.close()
+
+    synchronizer._run_function_sync(close_from_loop())
+    assert finalized.wait(timeout=1)
