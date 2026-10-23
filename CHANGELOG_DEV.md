@@ -9,6 +9,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added the `Workspace.member_tokens` manager, along with the `modal workspace member-tokens` CLI, which allows users to list and delete tokens associated with Workspace Members.
 - Fixed `modal.Image.from_dockerfile(..., force_build=True)` to rebuild the Dockerfile's own steps instead of reusing them from the cache.
 - Added an `App.stop()` method.
+- Added a `--set-image-builder-version` option to `modal environment update` for overriding the image builder version of a single Environment, and an image builder version column to `modal environment list`.
 
 ## JS
 

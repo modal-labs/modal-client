@@ -64,9 +64,11 @@ def list_(json: bool = False):
     for item in envs:
         is_active = item.name == active_env
         is_active_display: Text | str = str(is_active) if json else RenderableBool(is_active)
-        row = [item.name, item.webhook_suffix, is_active_display]
+        # Unset when the Environment inherits the Workspace's image builder version
+        image_builder_version = item.image_builder_version if item.HasField("image_builder_version") else None
+        row = [item.name, item.webhook_suffix, image_builder_version, is_active_display]
         table_data.append(row)
-    display_table(["name", "web suffix", "active"], table_data, json=json)
+    display_table(["name", "web suffix", "image builder version", "active"], table_data, json=json)
 
 
 @environment_cli.command(
@@ -108,18 +110,32 @@ Deletes all Apps in the selected Environment and deletes the Environment irrevoc
 @click.argument("current_name")
 @click.option("--set-name", default=None, help="New name of the Environment.")
 @click.option("--set-web-suffix", default=None, help="New web suffix of the Environment (empty string is no suffix).")
+@click.option(
+    "--set-image-builder-version",
+    default=None,
+    help="New image builder version of the Environment (empty string uses the Workspace default).",
+)
 def update(
     current_name: str,
     set_name: str | None = None,
     set_web_suffix: str | None = None,
+    set_image_builder_version: str | None = None,
 ):
-    if set_name is None and set_web_suffix is None:
-        raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
+    if set_name is None and set_web_suffix is None and set_image_builder_version is None:
+        raise UsageError(
+            "You need to set at least one new property"
+            " (using --set-name, --set-web-suffix, or --set-image-builder-version)"
+        )
 
     if set_name and set_name != current_name:
         check_environment_name(set_name, allow_periods=False)
 
-    environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
+    environments.update_environment(
+        current_name,
+        new_name=set_name,
+        new_web_suffix=set_web_suffix,
+        new_image_builder_version=set_image_builder_version,
+    )
     rich.print("[green]✓[/green] Environment updated")
 
 

@@ -4064,6 +4064,33 @@ def test_call_update_environment_suffix(servicer, set_env_client):
     run_cli_command(["environment", "update", "main", "--set-web-suffix", "_"])
 
 
+@pytest.mark.parametrize("version", ["2025.06", ""])
+def test_update_environment_image_builder_version(servicer, set_env_client, version):
+    with servicer.intercept() as ctx:
+        run_cli_command(["environment", "update", "main", "--set-image-builder-version", version])
+    (req,) = ctx.get_requests("EnvironmentUpdate")
+    assert req.HasField("image_builder_version")
+    assert req.image_builder_version == version
+    assert not req.HasField("name")
+    assert not req.HasField("web_suffix")
+
+
+def test_update_environment_requires_property(servicer, set_env_client):
+    run_cli_command(["environment", "update", "main"], 2, expected_stderr="--set-image-builder-version")
+
+
+def test_environment_list_image_builder_version(servicer, set_env_client):
+    run_cli_command(["environment", "create", "dev"])
+    run_cli_command(["environment", "update", "dev", "--set-image-builder-version", "2025.06"])
+    rows = {row["name"]: row for row in json.loads(run_cli_command(["environment", "list", "--json"]).stdout)}
+    assert rows["main"]["image_builder_version"] is None
+    assert rows["dev"]["image_builder_version"] == "2025.06"
+
+    run_cli_command(["environment", "update", "dev", "--set-image-builder-version", ""])
+    rows = {row["name"]: row for row in json.loads(run_cli_command(["environment", "list", "--json"]).stdout)}
+    assert rows["dev"]["image_builder_version"] is None
+
+
 def test_environment_roles_list_cli(servicer, set_env_client):
     roles = json.loads(run_cli_command(["environment", "roles", "list", "main", "--json"]).stdout)
     assert roles["users"]["alice"] == "contributor"

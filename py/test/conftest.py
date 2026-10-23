@@ -973,6 +973,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.classes = []
         self.environments = {"main": "en-1"}
         self.environment_managed: dict[str, bool] = {}
+        self.environment_image_builder_version: dict[str, str] = {}
         self.environment_type: "dict[str, api_pb2.EnvironmentType.ValueType]" = {}
         # Workspace principals that can be assigned roles in restricted Environments
         self.workspace_users: dict[str, str] = {"us-1": "alice", "us-2": "bob", "us-3": "carol"}
@@ -2266,6 +2267,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 default=name == "main",
                 is_managed=self.environment_managed.get(env_id, False),
                 environment_type=self.environment_type.get(env_id, api_pb2.ENVIRONMENT_TYPE_UNSPECIFIED),
+                image_builder_version=self.environment_image_builder_version.get(env_id),
             )
             for name, env_id in self.environments.items()
         ]
@@ -2418,6 +2420,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def EnvironmentUpdate(self, stream):
+        request: api_pb2.EnvironmentUpdateRequest = await stream.recv_message()
+        env_id = self.environments.get(request.current_name)
+        if env_id and request.HasField("image_builder_version"):
+            if request.image_builder_version:
+                self.environment_image_builder_version[env_id] = request.image_builder_version
+            else:
+                self.environment_image_builder_version.pop(env_id, None)
         await stream.send_message(api_pb2.EnvironmentListItem())
 
     async def EnvironmentGetOrCreate(self, stream):

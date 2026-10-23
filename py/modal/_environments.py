@@ -648,6 +648,7 @@ async def _update_environment(
     *,
     new_name: str | None = None,
     new_web_suffix: str | None = None,
+    new_image_builder_version: str | None = None,
     client: _Client | None = None,
 ):
     new_name_pb2 = None
@@ -662,7 +663,10 @@ async def _update_environment(
         new_web_suffix_pb2 = StringValue(value=new_web_suffix)
 
     update_payload = api_pb2.EnvironmentUpdateRequest(
-        current_name=current_name, name=new_name_pb2, web_suffix=new_web_suffix_pb2
+        current_name=current_name,
+        name=new_name_pb2,
+        web_suffix=new_web_suffix_pb2,
+        image_builder_version=new_image_builder_version,
     )
     if client is None:
         client = await _Client.from_env()
