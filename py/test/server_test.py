@@ -1628,7 +1628,7 @@ def test_image_info(client):
     with builder_app.run(client=client):
         modal.Image.debian_slim("3.12").build(builder_app).publish("named-image", client=client)
 
-    app = modal.App(image=modal.Image.debian_slim("3.10"))
+    app = modal.App(image=modal.Image.debian_slim("3.13"))
     anon_image = modal.Image.debian_slim("3.11").pip_install("aiohttp")
     named_image = modal.Image.from_name("named-image")
 

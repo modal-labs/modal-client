@@ -159,6 +159,22 @@ def test_python_version_validation(builder_version):
         _validate_python_version("3.14.2t", builder_version, allow_free_threading=False, allow_micro_granularity=True)
 
 
+def test_python_310_unsupported_after_2025_06(servicer, client, server_url_env, modal_config):
+    with modal_config():
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal["PREVIEW"]):  # type: ignore
+            for image in [
+                Image.debian_slim("3.10"),
+                Image.micromamba("3.10"),
+                Image.from_registry("ubuntu", add_python="3.10"),
+            ]:
+                with pytest.raises(InvalidError, match="Unsupported Python version: '3.10'"):
+                    build_image(image, client)
+
+            with mock.patch.object(sys, "version_info", (3, 10, 0)):
+                with pytest.raises(InvalidError, match="Modal tried to match your local Python"):
+                    build_image(Image.debian_slim(), client)
+
+
 def test_python_version_validation_free_threading():
     assert (
         _validate_python_version("3.14.2t", "PREVIEW", allow_free_threading=True, allow_micro_granularity=True)
@@ -238,6 +254,8 @@ def test_from_scratch(builder_version, servicer, client):
 
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
 def test_python_version(builder_version, servicer, client, python_version):
+    if python_version == "3.10" and builder_version > "2025.06":
+        pytest.skip("Python 3.10 is not supported by Image builder versions after 2025.06")
     local_python = "{}.{}".format(*sys.version_info)
     expected_python = local_python if python_version is None else python_version
 
@@ -456,11 +474,11 @@ def test_debian_slim_apt_install(builder_version, servicer, client):
 
 
 def test_from_registry_add_python(builder_version, servicer, client):
-    image = Image.from_registry("ubuntu", add_python="3.10")
+    image = Image.from_registry("ubuntu", add_python="3.11")
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
     commands = layers[0].dockerfile_commands
-    assert layers[0].context_mount_id == "mo-py310"
+    assert layers[0].context_mount_id == "mo-py311"
     assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
     # Newer standalone releases ship a `python` binary, so the symlink would fail
     has_symlink = any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)

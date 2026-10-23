@@ -55,7 +55,6 @@ _PYTHON_STANDALONE_VERSIONS_2025_06: dict[str, tuple[str, str]] = {
 }
 PYTHON_STANDALONE_VERSIONS: dict[str, dict[str, tuple[str, str]]] = {
     "PREVIEW": {
-        "3.10": ("20261009", "3.10.22"),
         "3.11": ("20261021", "3.11.17"),
         "3.12": ("20261021", "3.12.15"),
         "3.13": ("20261021", "3.13.17"),

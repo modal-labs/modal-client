@@ -43,7 +43,7 @@ from packaging.version import Version
 
 from modal import __version__, config
 from modal._functions import _Function
-from modal._image import ImageBuilderVersion
+from modal._image import SUPPORTED_PYTHON_SERIES, ImageBuilderVersion
 from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._runtime.task_lifecycle_manager import _TaskLifecycleManager
 from modal._serialization import deserialize, deserialize_data_format, deserialize_params, serialize_data_format
@@ -2414,7 +2414,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             environment_id = f"en-{len(self.environments) + 1}"
             self.environments[name] = environment_id
-        image_builder_version = max(get_args(ImageBuilderVersion))
+        # Default to the newest builder version that supports the local Python
+        local_series = "{}.{}".format(*sys.version_info)
+        builder_versions = get_args(ImageBuilderVersion)
+        image_builder_version = max(
+            (v for v in builder_versions if local_series in SUPPORTED_PYTHON_SERIES.get(v, [])),
+            default=max(builder_versions),
+        )
         settings = api_pb2.EnvironmentSettings(image_builder_version=image_builder_version)
         metadata = api_pb2.EnvironmentMetadata(name=name, settings=settings)
         await stream.send_message(

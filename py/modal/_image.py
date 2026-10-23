@@ -78,7 +78,7 @@ LATEST_IMAGE_BUILDER_VERSION: ImageBuilderVersion = "2025.06"
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
-    "PREVIEW": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"],
+    "PREVIEW": ["3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"],
     "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"],
     "2024.10": ["3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.10", "3.11", "3.12"],
@@ -175,6 +175,7 @@ def _validate_python_version(
     allow_free_threading: bool = False,
     caller_name: str = "",
 ) -> str:
+    python_version_unspecified = python_version is None
     if python_version is None:
         # If Python version is unspecified, match the local version, up to the minor component
         python_version = series_version = "{}.{}".format(*sys.version_info)
@@ -197,6 +198,12 @@ def _validate_python_version(
 
     supported_series = SUPPORTED_PYTHON_SERIES[builder_version]
     if series_version not in supported_series:
+        if python_version_unspecified:
+            raise InvalidError(
+                f"Python {series_version} is not supported by the {builder_version!r} Image builder."
+                f" Since `python_version` was not set, Modal tried to match your local Python ({series_version})."
+                f" Set `python_version` to one of the supported series: {supported_series!r}."
+            )
         raise InvalidError(
             f"Unsupported Python version: {python_version!r}."
             f" When using the {builder_version!r} Image builder, Modal supports the following series:"
