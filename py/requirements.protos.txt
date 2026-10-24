@@ -1,6 +1,6 @@
 # This requirements file is used for:
 # 1. CI testing: Overrides protobuf versions in `dev` group for the testing Python test matrix.
-# 2. Container entrypoint testing: Runs `uv run compile_protos.py --with-requirements`, to generate protos.
+# 2. Container entrypoint testing: Runs `uv run scripts/compile_protos.py --with-requirements`, to generate protos.
 # 3. Publishing to PyPI: Generate the protos with min supported Python + protobuf
 
 mypy-protobuf~=3.3.0  # TODO: can't use mypy-protobuf>=3.4 because of protobuf==3.20 support

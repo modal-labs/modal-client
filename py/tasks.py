@@ -43,12 +43,12 @@ def protoc(ctx, skip_mypy: bool = False, isolated: bool = False):
         skip_mypy_flag = " --skip-mypy" if skip_mypy else ""
         ctx.run(
             f"uv run --python {major}.{minor} --with-requirements requirements.protos.txt "
-            f"compile_protos.py{skip_mypy_flag}",
+            f"scripts/compile_protos.py{skip_mypy_flag}",
             echo=True,
         )
     else:
         print("Generating protos in the current environment")
-        cmd = f"{sys.executable} compile_protos.py"
+        cmd = f"{sys.executable} scripts/compile_protos.py"
         if skip_mypy:
             cmd = f"{cmd} --skip-mypy"
         ctx.run(cmd, echo=True)

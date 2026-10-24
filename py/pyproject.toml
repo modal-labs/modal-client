@@ -214,7 +214,7 @@ extend-select = ['PLR1702']
 "modal_docs/**" = ['T201']
 "modal_global_objects/**" = ['T201']
 "tasks.py" = ['T201']
-"compile_protos.py" = ['T201']
+"scripts/compile_protos.py" = ['T201']
 "modal/__init__.py" = ['T201']
 "modal/experimental/ipython.py" = ['T201']
 
