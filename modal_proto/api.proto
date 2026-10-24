@@ -3541,35 +3541,6 @@ message NetworkAccess {
   repeated string allowed_domains = 3;
 }
 
-message NotebookKernelPublishResultsRequest {
-  // See kernelshim.py for the differences between this and `ExecuteResult`.
-  // https://jupyter-client.readthedocs.io/en/stable/messaging.html#execution-results
-  message ExecuteReply {
-    string status = 1;
-    uint32 execution_count = 2;
-    double duration = 3;
-  }
-
-  // IOPub message or reply received from the kernel for a cell.
-  message CellResult {
-    string cell_id = 1;
-
-    oneof result_type {
-      // Persistent output that is saved in the notebook.
-      NotebookOutput output = 2;
-
-      // Clear all previous outputs of the cell.
-      bool clear_output = 3;
-
-      // Cell has finished executing, return the kernel's execute_reply.
-      ExecuteReply execute_reply = 4;
-    }
-  }
-
-  string notebook_id = 1;
-  repeated CellResult results = 2;
-}
-
 // A single output from a notebook. When you execute a cell, it produces an
 // array of these outputs as the code runs.
 //
@@ -5845,9 +5816,6 @@ service ModalClient {
   rpc MountBatchedCheckExistence(MountBatchedCheckExistenceRequest) returns (MountBatchedCheckExistenceResponse);
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
-
-  // Notebooks
-  rpc NotebookKernelPublishResults(NotebookKernelPublishResultsRequest) returns (google.protobuf.Empty);
 
   // Persistent sandboxes
   rpc PersistentSandboxCreate(PersistentSandboxCreateRequest) returns (PersistentSandboxCreateResponse);

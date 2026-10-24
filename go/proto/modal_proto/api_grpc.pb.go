@@ -166,7 +166,6 @@ const (
 	ModalClient_MountBatchedCheckExistence_FullMethodName             = "/modal.client.ModalClient/MountBatchedCheckExistence"
 	ModalClient_MountGetOrCreate_FullMethodName                       = "/modal.client.ModalClient/MountGetOrCreate"
 	ModalClient_MountPutFile_FullMethodName                           = "/modal.client.ModalClient/MountPutFile"
-	ModalClient_NotebookKernelPublishResults_FullMethodName           = "/modal.client.ModalClient/NotebookKernelPublishResults"
 	ModalClient_PersistentSandboxCreate_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxCreate"
 	ModalClient_PersistentSandboxGet_FullMethodName                   = "/modal.client.ModalClient/PersistentSandboxGet"
 	ModalClient_PersistentSandboxResume_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxResume"
@@ -466,8 +465,6 @@ type ModalClientClient interface {
 	MountBatchedCheckExistence(ctx context.Context, in *MountBatchedCheckExistenceRequest, opts ...grpc.CallOption) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(ctx context.Context, in *MountGetOrCreateRequest, opts ...grpc.CallOption) (*MountGetOrCreateResponse, error)
 	MountPutFile(ctx context.Context, in *MountPutFileRequest, opts ...grpc.CallOption) (*MountPutFileResponse, error)
-	// Notebooks
-	NotebookKernelPublishResults(ctx context.Context, in *NotebookKernelPublishResultsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Persistent sandboxes
 	PersistentSandboxCreate(ctx context.Context, in *PersistentSandboxCreateRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateResponse, error)
 	PersistentSandboxGet(ctx context.Context, in *PersistentSandboxGetRequest, opts ...grpc.CallOption) (*PersistentSandboxGetResponse, error)
@@ -2081,16 +2078,6 @@ func (c *modalClientClient) MountPutFile(ctx context.Context, in *MountPutFileRe
 	return out, nil
 }
 
-func (c *modalClientClient) NotebookKernelPublishResults(ctx context.Context, in *NotebookKernelPublishResultsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, ModalClient_NotebookKernelPublishResults_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *modalClientClient) PersistentSandboxCreate(ctx context.Context, in *PersistentSandboxCreateRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PersistentSandboxCreateResponse)
@@ -3630,8 +3617,6 @@ type ModalClientServer interface {
 	MountBatchedCheckExistence(context.Context, *MountBatchedCheckExistenceRequest) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(context.Context, *MountGetOrCreateRequest) (*MountGetOrCreateResponse, error)
 	MountPutFile(context.Context, *MountPutFileRequest) (*MountPutFileResponse, error)
-	// Notebooks
-	NotebookKernelPublishResults(context.Context, *NotebookKernelPublishResultsRequest) (*emptypb.Empty, error)
 	// Persistent sandboxes
 	PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error)
 	PersistentSandboxGet(context.Context, *PersistentSandboxGetRequest) (*PersistentSandboxGetResponse, error)
@@ -4210,9 +4195,6 @@ func (UnimplementedModalClientServer) MountGetOrCreate(context.Context, *MountGe
 }
 func (UnimplementedModalClientServer) MountPutFile(context.Context, *MountPutFileRequest) (*MountPutFileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MountPutFile not implemented")
-}
-func (UnimplementedModalClientServer) NotebookKernelPublishResults(context.Context, *NotebookKernelPublishResultsRequest) (*emptypb.Empty, error) {
-	return nil, status.Error(codes.Unimplemented, "method NotebookKernelPublishResults not implemented")
 }
 func (UnimplementedModalClientServer) PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxCreate not implemented")
@@ -7108,24 +7090,6 @@ func _ModalClient_MountPutFile_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).MountPutFile(ctx, req.(*MountPutFileRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ModalClient_NotebookKernelPublishResults_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(NotebookKernelPublishResultsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ModalClientServer).NotebookKernelPublishResults(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ModalClient_NotebookKernelPublishResults_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ModalClientServer).NotebookKernelPublishResults(ctx, req.(*NotebookKernelPublishResultsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -10031,10 +9995,6 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MountPutFile",
 			Handler:    _ModalClient_MountPutFile_Handler,
-		},
-		{
-			MethodName: "NotebookKernelPublishResults",
-			Handler:    _ModalClient_NotebookKernelPublishResults_Handler,
 		},
 		{
 			MethodName: "PersistentSandboxCreate",
