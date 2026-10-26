@@ -918,6 +918,45 @@ def test_ecr_install(builder_version, servicer, client):
     assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
 
 
+@pytest.mark.parametrize(
+    ["secret_dict", "expected_auth_type"],
+    [
+        ({"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "b", "AWS_REGION": "c"}, api_pb2.REGISTRY_AUTH_TYPE_AWS),
+        ({"AWS_ROLE_ARN": "a", "AWS_REGION": "b"}, api_pb2.REGISTRY_AUTH_TYPE_AWS),
+        ({"SERVICE_ACCOUNT_JSON": "{}"}, api_pb2.REGISTRY_AUTH_TYPE_GCP),
+        ({"REGISTRY_USERNAME": "a", "REGISTRY_PASSWORD": "b", "OTHER": "c"}, api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS),
+    ],
+)
+def test_from_registry_infers_auth_type(builder_version, servicer, client, secret_dict, expected_auth_type):
+    image = Image.from_registry("ghcr.io/my-org/my-image:latest", secret=Secret.from_dict(secret_dict))
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert layers[0].image_registry_config.registry_auth_type == expected_auth_type
+    assert layers[0].image_registry_config.secret_id
+
+
+@pytest.mark.parametrize(
+    ["tag", "secret_dict", "match"],
+    [
+        ("ghcr.io/my-org/my-image:latest", {"TOKEN": "a"}, "must include"),
+        (
+            "ghcr.io/my-org/my-image:latest",
+            {"SERVICE_ACCOUNT_JSON": "{}", "AWS_ROLE_ARN": "a", "AWS_REGION": "b"},
+            "more than one",
+        ),
+        (
+            "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-image:latest",
+            {"AWS_ROLE_ARN": "a", "AWS_REGION": "b", "REGISTRY_USERNAME": "c", "REGISTRY_PASSWORD": "d"},
+            "more than one",
+        ),
+    ],
+)
+def test_from_registry_rejects_unresolvable_secret(builder_version, servicer, client, tag, secret_dict, match):
+    image = Image.from_registry(tag, secret=Secret.from_dict(secret_dict))
+    with pytest.raises(InvalidError, match=match):
+        build_image(image, client)
+
+
 def run_f():
     print("foo!")
 

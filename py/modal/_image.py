@@ -445,6 +445,40 @@ def _create_context_mount_function(
         return auto_created_context_mount_fn
 
 
+_REGISTRY_AUTH_KEY_SETS: dict["api_pb2.RegistryAuthType.ValueType", list[set[str]]] = {
+    api_pb2.REGISTRY_AUTH_TYPE_AWS: [
+        {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"},
+        {"AWS_ROLE_ARN", "AWS_REGION"},
+    ],
+    api_pb2.REGISTRY_AUTH_TYPE_GCP: [{"SERVICE_ACCOUNT_JSON"}],
+    api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS: [{"REGISTRY_USERNAME", "REGISTRY_PASSWORD"}],
+}
+
+_REGISTRY_AUTH_NAMES = {
+    api_pb2.REGISTRY_AUTH_TYPE_AWS: "AWS",
+    api_pb2.REGISTRY_AUTH_TYPE_GCP: "GCP",
+    api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS: "username and password",
+}
+
+_REGISTRY_SECRET_KEYS_HELP = (
+    "Registry Secret must include exactly one of: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION "
+    "(or AWS_ROLE_ARN and AWS_REGION) for AWS ECR; SERVICE_ACCOUNT_JSON for GCP Artifact Registry; "
+    "or REGISTRY_USERNAME and REGISTRY_PASSWORD for other registries."
+)
+
+
+def _infer_registry_auth_type(keys: set[str]) -> "api_pb2.RegistryAuthType.ValueType":
+    matches = [auth for auth, key_sets in _REGISTRY_AUTH_KEY_SETS.items() if any(ks <= keys for ks in key_sets)]
+    if not matches:
+        raise InvalidError(f"{_REGISTRY_SECRET_KEYS_HELP} Found keys: {', '.join(sorted(keys)) or 'none'}.")
+    if len(matches) > 1:
+        names = ", ".join(_REGISTRY_AUTH_NAMES[auth] for auth in matches)
+        raise InvalidError(
+            f"Registry Secret has keys for more than one kind of authentication ({names}). {_REGISTRY_SECRET_KEYS_HELP}"
+        )
+    return matches[0]
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -453,13 +487,21 @@ class _ImageRegistryConfig:
         # TODO: change to _PUBLIC after worker starts handling it.
         registry_auth_type: "api_pb2.RegistryAuthType.ValueType" = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
         secret: _Secret | None = None,
+        *,
+        infer_auth_type: bool = False,
     ):
         self.registry_auth_type = registry_auth_type
         self.secret = secret
+        self.infer_auth_type = infer_auth_type
 
-    def get_proto(self) -> api_pb2.ImageRegistryConfig:
+    async def get_proto(self) -> api_pb2.ImageRegistryConfig:
+        registry_auth_type = self.registry_auth_type
+        if self.infer_auth_type and self.secret:
+            # The Secret is an Image dependency, so it's hydrated by now and its keys are cached
+            keys = await self.secret._get_keys()
+            registry_auth_type = _infer_registry_auth_type(keys)
         return api_pb2.ImageRegistryConfig(
-            registry_auth_type=self.registry_auth_type,
+            registry_auth_type=registry_auth_type,
             secret_id=(self.secret.object_id if self.secret else ""),
         )
 
@@ -762,7 +804,7 @@ class _Image(_Object, type_prefix="im"):
                 secret_ids=[secret.object_id for secret in secrets],
                 context_mount_id=(context_mount.object_id if context_mount else ""),
                 gpu_config=gpu_config,
-                image_registry_config=image_registry_config.get_proto(),
+                image_registry_config=await image_registry_config.get_proto(),
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 build_function=_build_function,
@@ -2255,16 +2297,21 @@ class _Image(_Object, type_prefix="im"):
         remaining commands run. This might be useful if you want a custom Python installation or to
         set a `SHELL`. Prefer `run_commands()` when possible though.
 
-        To authenticate against a private registry with static credentials, you must set the `secret` parameter to
-        a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and
-        an access token or password (`REGISTRY_PASSWORD`).
+        To pull from a private registry, set the `secret` parameter to a `modal.Secret` holding
+        registry credentials. The kind of authentication follows from the keys in the Secret:
 
-        To authenticate against private registries with credentials from a cloud provider,
-        use `Image.from_gcp_artifact_registry()` or `Image.from_aws_ecr()`.
+        - AWS ECR: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` (optionally `AWS_SESSION_TOKEN`),
+          or `AWS_ROLE_ARN` and `AWS_REGION` to assume a role with [OIDC](https://modal.com/docs/guide/oidc-integration).
+          See `Image.from_aws_ecr()` for details.
+        - GCP Artifact Registry: `SERVICE_ACCOUNT_JSON`, holding the service account key's JSON.
+          See `Image.from_gcp_artifact_registry()` for details.
+        - Other registries: a username (`REGISTRY_USERNAME`) and an access token or password (`REGISTRY_PASSWORD`).
+
+        The Secret must have the keys for exactly one of these; otherwise an error is raised.
 
         Args:
             tag: Registry image reference (e.g. ``python:3.11-slim``).
-            secret: Optional secret for static registry credentials.
+            secret: Optional Secret with registry credentials; its keys determine the kind of authentication.
             setup_dockerfile_commands: Extra Dockerfile lines run after ``FROM`` during base setup.
             force_build: If True, skip cached image builds.
             add_python: Optional standalone Python series to inject when the base image lacks Python.
@@ -2278,6 +2325,10 @@ class _Image(_Object, type_prefix="im"):
             modal.Image.from_registry("python:3.11-slim-bookworm")
             modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
             modal.Image.from_registry("nvcr.io/nvidia/pytorch:22.12-py3")
+            modal.Image.from_registry(
+                "ghcr.io/my-org/my-image:latest",
+                secret=modal.Secret.from_name("my-registry-secret"),
+            )
             ```
         """
 
@@ -2292,7 +2343,7 @@ class _Image(_Object, type_prefix="im"):
             )
 
         if "image_registry_config" not in kwargs and secret is not None:
-            kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
+            kwargs["image_registry_config"] = _ImageRegistryConfig(secret=secret, infer_auth_type=True)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = _Image._registry_setup_commands(tag, version, setup_dockerfile_commands, add_python)

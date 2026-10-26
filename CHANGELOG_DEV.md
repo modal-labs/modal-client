@@ -11,6 +11,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added an `App.stop()` method.
 - Added a `--set-image-builder-version` option to `modal environment update` for overriding the image builder version of a single Environment, and an image builder version column to `modal environment list`.
 - Added implicit OAuth refresh token authentication through the `MODAL_OAUTH_REFRESH_TOKEN`, `MODAL_OAUTH_CLIENT_ID`, and either `MODAL_OAUTH_CLIENT_SECRET` or `MODAL_OAUTH_JWT_KEY` environment variables, with [`modal.Client.from_oauth_credentials()`](/docs/sdk/py/latest/Client#from_oauth_credentials) available for explicitly constructed clients. RSA private keys require the `modal[oauth]` extra.
+- `Image.from_registry` now infers the kind of registry authentication from the keys in its `secret`, so a Secret with AWS ECR or GCP Artifact Registry credentials works without `Image.from_aws_ecr` or `Image.from_gcp_artifact_registry`.
 
 ## JS
 
