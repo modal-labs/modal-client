@@ -5608,6 +5608,14 @@ message WorkspaceNameLookupResponse {
   string username = 2;
 }
 
+message WorkspaceRoleDefinition {
+  string workspace_role_definition_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string permissions = 4;
+  double created_at = 5;
+}
+
 message WorkspaceSetDefaultEnvironmentRequest {
   string environment_name = 1;
 }
