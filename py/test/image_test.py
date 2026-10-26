@@ -746,6 +746,25 @@ def test_dockerfile_image_split(builder_version, servicer, client, tmp_path, con
         assert layers[1].dockerfile_commands == contents.split("\n")
 
 
+def test_dockerfile_image_split_ignores_header_comments(builder_version, servicer, client, tmp_path):
+    variants = [
+        "FROM python:3.12-slim\nRUN echo 0\n",
+        "# Service: billing-worker\n# Owner: platform\nFROM python:3.12-slim\nRUN echo 1\n",
+        "\n\nFROM python:3.12-slim\nRUN echo 2\n",
+        "  # indented comment\n   \nFROM python:3.12-slim\nRUN echo 3\n",
+    ]
+    for i, contents in enumerate(variants):
+        dockerfile = tmp_path / f"Dockerfile{i}"
+        dockerfile.write_text(contents)
+        build_image(Image.from_dockerfile(dockerfile), client)
+
+    root_images = [im for im in servicer.images.values() if not im.base_images]
+    if builder_version > "2025.06":
+        assert [im.dockerfile_commands for im in root_images] == [["FROM python:3.12-slim"]]
+    else:
+        assert len(root_images) == len(variants)
+
+
 def test_dockerfile_image_split_from_only(builder_version, servicer, client, tmp_path):
     dockerfile = tmp_path / "Dockerfile"
     dockerfile.write_text("FROM python:3.12-slim\n# trailing comment\n")

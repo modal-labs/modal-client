@@ -2604,7 +2604,10 @@ class _Image(_Object, type_prefix="im"):
             if from_index is None:
                 image = dockerfile_image(dockerfile_lines)
             else:
-                from_lines = dockerfile_lines[: from_index + 1]
+                # Drop the lines above FROM so Dockerfiles that differ only in header comments or blank lines
+                # share the cached image. Those lines can only be comments or blank lines, since
+                # splittable_from_line_index rejects parser directives.
+                from_lines = [dockerfile_lines[from_index]]
                 from_image = _Image._from_args(
                     dockerfile_function=lambda version: DockerfileSpec(commands=from_lines, context_files={}),
                     force_build=force_build,
