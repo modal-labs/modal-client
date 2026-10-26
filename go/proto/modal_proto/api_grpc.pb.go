@@ -201,6 +201,7 @@ const (
 	ModalClient_SandboxGetResourceUsage_FullMethodName                = "/modal.client.ModalClient/SandboxGetResourceUsage"
 	ModalClient_SandboxGetTaskId_FullMethodName                       = "/modal.client.ModalClient/SandboxGetTaskId"
 	ModalClient_SandboxGetTaskIdV2_FullMethodName                     = "/modal.client.ModalClient/SandboxGetTaskIdV2"
+	ModalClient_SandboxGetTimeRangeStats_FullMethodName               = "/modal.client.ModalClient/SandboxGetTimeRangeStats"
 	ModalClient_SandboxGetTunnels_FullMethodName                      = "/modal.client.ModalClient/SandboxGetTunnels"
 	ModalClient_SandboxGetTunnelsV2_FullMethodName                    = "/modal.client.ModalClient/SandboxGetTunnelsV2"
 	ModalClient_SandboxList_FullMethodName                            = "/modal.client.ModalClient/SandboxList"
@@ -504,6 +505,7 @@ type ModalClientClient interface {
 	SandboxGetResourceUsage(ctx context.Context, in *SandboxGetResourceUsageRequest, opts ...grpc.CallOption) (*SandboxGetResourceUsageResponse, error)
 	SandboxGetTaskId(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTaskIdV2(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error)
+	SandboxGetTimeRangeStats(ctx context.Context, in *SandboxGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*SandboxGetTimeRangeStatsResponse, error)
 	SandboxGetTunnels(ctx context.Context, in *SandboxGetTunnelsRequest, opts ...grpc.CallOption) (*SandboxGetTunnelsResponse, error)
 	SandboxGetTunnelsV2(ctx context.Context, in *SandboxGetTunnelsRequest, opts ...grpc.CallOption) (*SandboxGetTunnelsResponse, error)
 	SandboxList(ctx context.Context, in *SandboxListRequest, opts ...grpc.CallOption) (*SandboxListResponse, error)
@@ -2437,6 +2439,16 @@ func (c *modalClientClient) SandboxGetTaskIdV2(ctx context.Context, in *SandboxG
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxGetTimeRangeStats(ctx context.Context, in *SandboxGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*SandboxGetTimeRangeStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxGetTimeRangeStatsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxGetTimeRangeStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxGetTunnels(ctx context.Context, in *SandboxGetTunnelsRequest, opts ...grpc.CallOption) (*SandboxGetTunnelsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxGetTunnelsResponse)
@@ -3656,6 +3668,7 @@ type ModalClientServer interface {
 	SandboxGetResourceUsage(context.Context, *SandboxGetResourceUsageRequest) (*SandboxGetResourceUsageResponse, error)
 	SandboxGetTaskId(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTaskIdV2(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error)
+	SandboxGetTimeRangeStats(context.Context, *SandboxGetTimeRangeStatsRequest) (*SandboxGetTimeRangeStatsResponse, error)
 	SandboxGetTunnels(context.Context, *SandboxGetTunnelsRequest) (*SandboxGetTunnelsResponse, error)
 	SandboxGetTunnelsV2(context.Context, *SandboxGetTunnelsRequest) (*SandboxGetTunnelsResponse, error)
 	SandboxList(context.Context, *SandboxListRequest) (*SandboxListResponse, error)
@@ -4300,6 +4313,9 @@ func (UnimplementedModalClientServer) SandboxGetTaskId(context.Context, *Sandbox
 }
 func (UnimplementedModalClientServer) SandboxGetTaskIdV2(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetTaskIdV2 not implemented")
+}
+func (UnimplementedModalClientServer) SandboxGetTimeRangeStats(context.Context, *SandboxGetTimeRangeStatsRequest) (*SandboxGetTimeRangeStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxGetTimeRangeStats not implemented")
 }
 func (UnimplementedModalClientServer) SandboxGetTunnels(context.Context, *SandboxGetTunnelsRequest) (*SandboxGetTunnelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetTunnels not implemented")
@@ -7717,6 +7733,24 @@ func _ModalClient_SandboxGetTaskIdV2_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxGetTimeRangeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxGetTimeRangeStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxGetTimeRangeStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxGetTimeRangeStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxGetTimeRangeStats(ctx, req.(*SandboxGetTimeRangeStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxGetTunnels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxGetTunnelsRequest)
 	if err := dec(in); err != nil {
@@ -10131,6 +10165,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SandboxGetTaskIdV2",
 			Handler:    _ModalClient_SandboxGetTaskIdV2_Handler,
+		},
+		{
+			MethodName: "SandboxGetTimeRangeStats",
+			Handler:    _ModalClient_SandboxGetTimeRangeStats_Handler,
 		},
 		{
 			MethodName: "SandboxGetTunnels",

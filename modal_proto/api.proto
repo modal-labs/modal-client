@@ -4322,6 +4322,20 @@ message SandboxGetTaskIdResponse {
   optional GenericResult task_result = 2; // If the task has already exited, this is the result.
 }
 
+message SandboxGetTimeRangeStatsRequest {
+  google.protobuf.Timestamp created_after = 1;
+  google.protobuf.Timestamp created_before = 2;
+  repeated string group_by_tags = 3;
+  map<string, string> tags = 4;
+  string app_id = 5;
+  string page_token = 6;
+}
+
+message SandboxGetTimeRangeStatsResponse {
+  repeated SandboxStatsGroup groups = 1;
+  string next_page_token = 2;
+}
+
 message SandboxGetTunnelsRequest {
   string sandbox_id = 1;
   float timeout = 2;
@@ -4471,6 +4485,14 @@ message SandboxSnapshotWaitRequest {
 
 message SandboxSnapshotWaitResponse {
   GenericResult result = 1;
+}
+
+message SandboxStatsGroup {
+  map<string, string> tags = 1;
+  uint64 count = 2;
+  StatsSummary duration = 3;
+  StatsSummary cost = 4;
+  map<string, StatsSummary> cost_by_resource = 5;
 }
 
 message SandboxStdinWriteRequest {
@@ -4930,6 +4952,14 @@ message StatsPercentileDistribution {
   // Unit identifier such as "seconds", "cores", "gibibytes", or "fraction".
   string unit = 1;
   repeated StatsPercentile percentiles = 2;
+}
+
+message StatsSummary {
+  string unit = 1;
+  uint64 count = 2;
+  double sum = 3;
+  double mean = 4;
+  repeated StatsPercentile percentiles = 5;
 }
 
 message StringMap {
@@ -5867,6 +5897,7 @@ service ModalClient {
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTaskIdV2(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse);
+  rpc SandboxGetTimeRangeStats(SandboxGetTimeRangeStatsRequest) returns (SandboxGetTimeRangeStatsResponse);
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxGetTunnelsV2(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
