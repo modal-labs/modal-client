@@ -2562,10 +2562,6 @@ class _Image(_Object, type_prefix="im"):
                 force_build=force_build,
             )
 
-        # --- Now add in the modal dependencies, and, optionally a Python distribution
-        # This happening in two steps is probably a vestigial consequence of previous limitations,
-        # but it will be difficult to merge them without forcing rebuilds of images.
-
         def add_python_mount(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
@@ -2606,7 +2602,7 @@ class _Image(_Object, type_prefix="im"):
             # Dockerfiles the split could change (see splittable_from_line_index) stay in one layer.
             from_index = splittable_from_line_index(dockerfile_lines) if builder_version > "2025.06" else None
             if from_index is None:
-                image = python_image(dockerfile_image(dockerfile_lines))
+                image = dockerfile_image(dockerfile_lines)
             else:
                 from_lines = dockerfile_lines[: from_index + 1]
                 from_image = _Image._from_args(
@@ -2616,9 +2612,14 @@ class _Image(_Object, type_prefix="im"):
                 rest = dockerfile_lines[from_index + 1 :]
                 rest_is_empty = all(not line.strip() or line.strip().startswith("#") for line in rest)
                 if rest_is_empty:
-                    image = python_image(from_image)
+                    image = from_image
                 else:
-                    image = python_image(dockerfile_image(["FROM base", *rest], base_images={"base": from_image}))
+                    image = dockerfile_image(["FROM base", *rest], base_images={"base": from_image})
+            if add_python or builder_version <= "2025.06":
+                # Before 2025.06 we always created a python_image() layer because it's where we installed the
+                # client dependencies. From 2025.06, we no longer install client dependencies in base layers,
+                # so this was a no-op layer when add_python= is not used. Skip it on later image builders.
+                image = python_image(image)
             await resolver.load(image, load_context)
             self._hydrate_from_other(image)
             self._serve_mounts = image._serve_mounts

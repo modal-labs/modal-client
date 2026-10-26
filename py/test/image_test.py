@@ -674,14 +674,16 @@ def test_dockerfile_image(builder_version, servicer, client):
     image = Image.from_dockerfile(path)
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
-    assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
     if builder_version > "2025.06":
-        assert len(layers) == 3
-        assert layers[1].dockerfile_commands[0] == "FROM base"
-        assert layers[2].dockerfile_commands == ["FROM python:3.10-slim-bullseye"]
+        # Without add_python, there is no layer on top of the Dockerfile's layers.
+        assert len(layers) == 2
+        assert layers[0].dockerfile_commands[0] == "FROM base"
+        assert any("RUN pip install numpy" in cmd for cmd in layers[0].dockerfile_commands)
+        assert layers[1].dockerfile_commands == ["FROM python:3.10-slim-bullseye"]
     else:
         assert len(layers) == 2
         assert layers[1].dockerfile_commands[0] == "FROM python:3.10-slim-bullseye"
+        assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
 
 
 @pytest.mark.parametrize(
@@ -715,8 +717,8 @@ def test_dockerfile_image_not_split(builder_version, servicer, client, tmp_path,
     image = Image.from_dockerfile(dockerfile)
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
-    assert len(layers) == 2
-    assert layers[1].dockerfile_commands == contents.split("\n")
+    assert len(layers) == (1 if builder_version > "2025.06" else 2)
+    assert layers[-1].dockerfile_commands == contents.split("\n")
 
 
 @pytest.mark.parametrize(
@@ -736,9 +738,9 @@ def test_dockerfile_image_split(builder_version, servicer, client, tmp_path, con
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
     if builder_version > "2025.06":
-        assert len(layers) == 3
-        assert layers[1].dockerfile_commands == expected_commands
-        assert layers[2].dockerfile_commands == [contents.split("\n")[0]]
+        assert len(layers) == 2
+        assert layers[0].dockerfile_commands == expected_commands
+        assert layers[1].dockerfile_commands == [contents.split("\n")[0]]
     else:
         assert len(layers) == 2
         assert layers[1].dockerfile_commands == contents.split("\n")
@@ -750,10 +752,11 @@ def test_dockerfile_image_split_from_only(builder_version, servicer, client, tmp
     image = Image.from_dockerfile(dockerfile)
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
-    assert len(layers) == 2
     if builder_version > "2025.06":
-        assert layers[1].dockerfile_commands == ["FROM python:3.12-slim"]
+        assert len(layers) == 1
+        assert layers[0].dockerfile_commands == ["FROM python:3.12-slim"]
     else:
+        assert len(layers) == 2
         assert layers[1].dockerfile_commands == ["FROM python:3.12-slim", "# trailing comment", ""]
 
 
@@ -1329,7 +1332,7 @@ def test_image_docker_command_copy(
         maybe_dockerfile.write("\n".join(docker_commands))
         maybe_dockerfile.close()
         image = Image.from_dockerfile(maybe_dockerfile.name)
-        copy_layer_index = 1  # layer 0 is the base image
+        copy_layer_index = 1 if builder_version <= "2025.06" else 0  # Older builders add a Python layer on top
     else:
         image = Image.debian_slim().dockerfile_commands(*docker_commands)
         copy_layer_index = 0
@@ -1398,7 +1401,7 @@ def test_image_docker_command_ignore_implicit_symlinks(builder_version, servicer
         dockerfile = tmp_path / "Dockerfile"
         dockerfile.write_text(docker_command)
         image = Image.from_dockerfile(dockerfile, context_dir=context_dir)
-        copy_layer_index = 1
+        copy_layer_index = 1 if builder_version <= "2025.06" else 0
     else:
         image = Image.debian_slim().dockerfile_commands(docker_command, context_dir=context_dir)
         copy_layer_index = 0
@@ -1417,15 +1420,15 @@ def test_image_dockerfile_copy_auto_dockerignore(builder_version, servicer, clie
     (rel_top_dir / "data.txt").write_text("world")
     (rel_top_dir / "file.py").write_text("world")
     dockerfile = rel_top_dir / "Dockerfile"
-    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+    dockerfile.write_text(f"FROM python:3.12-slim\nCOPY {rel_top_dir} /dummy\n")
 
     # automatically find the .dockerignore file
     dockerignore = Path(".") / ".dockerignore"
     dockerignore.write_text("**/*.txt")
 
     if use_dockerfile:
-        image = Image.debian_slim().from_dockerfile(dockerfile)
-        layer = 1
+        image = Image.from_dockerfile(dockerfile)
+        layer = 1 if builder_version <= "2025.06" else 0
     else:
         image = Image.debian_slim().dockerfile_commands([f"COPY {rel_top_dir} /dummy"])
         layer = 0
@@ -1446,15 +1449,15 @@ def test_image_dockerfile_copy_ignore_from_file(builder_version, servicer, clien
     (rel_top_dir / "data.txt").write_text("world")
     (rel_top_dir / "file.py").write_text("world")
     dockerfile = rel_top_dir / "Dockerfile"
-    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+    dockerfile.write_text(f"FROM python:3.12-slim\nCOPY {rel_top_dir} /dummy\n")
 
     # explicitly provide the .dockerignore file
     dockerignore = rel_top_dir / "something_special.dockerignore"
     dockerignore.write_text("**/*.py")
 
     if use_dockerfile:
-        image = Image.debian_slim().from_dockerfile(dockerfile, ignore=FilePatternMatcher.from_file(dockerignore))
-        layer = 1
+        image = Image.from_dockerfile(dockerfile, ignore=FilePatternMatcher.from_file(dockerignore))
+        layer = 1 if builder_version <= "2025.06" else 0
     else:
         image = Image.debian_slim().dockerfile_commands(
             [f"COPY {rel_top_dir} /dummy"], ignore=FilePatternMatcher.from_file(dockerignore)
@@ -1487,14 +1490,14 @@ def test_image_dockerfile_ignore_context_dir(builder_version, servicer, client, 
 
     docker_cmd = "COPY . /dummy"
     dockerfile = rel_top_dir / "Dockerfile"
-    dockerfile.write_text(docker_cmd + "\n")
+    dockerfile.write_text(f"FROM python:3.12-slim\n{docker_cmd}\n")
 
     dockerignore = rel_top_dir / ".dockerignore"
     dockerignore.write_text("*.txt")
 
     if use_dockerfile:
-        image = Image.debian_slim().from_dockerfile(dockerfile, context_dir=rel_top_dir)
-        layer = 1
+        image = Image.from_dockerfile(dockerfile, context_dir=rel_top_dir)
+        layer = 1 if builder_version <= "2025.06" else 0
     else:
         image = Image.debian_slim().dockerfile_commands([docker_cmd], context_dir=rel_top_dir)
         layer = 0
@@ -1527,11 +1530,11 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
     (rel_top_dir / "data.txt").write_text("world")
     (rel_top_dir / "file.py").write_text("world")
     dockerfile = rel_top_dir / "Dockerfile"
-    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+    dockerfile.write_text(f"FROM python:3.12-slim\nCOPY {rel_top_dir} /dummy\n")
 
     if use_dockerfile:
-        image = Image.debian_slim().from_dockerfile(dockerfile, ignore=ignore)
-        layer = 1
+        image = Image.from_dockerfile(dockerfile, ignore=ignore)
+        layer = 1 if builder_version <= "2025.06" else 0
     else:
         image = Image.debian_slim().dockerfile_commands([f"COPY {rel_top_dir} /dummy"], ignore=ignore)
         layer = 0
@@ -1696,7 +1699,7 @@ def test_image_force_build(builder_version, servicer, client):
 def test_image_from_dockerfile_force_build(builder_version, servicer, client, test_dir, force_build):
     image = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile", force_build=force_build)
     build_image(image, client)
-    assert len(servicer.images) == (3 if builder_version > "2025.06" else 2)
+    assert len(servicer.images) == 2
     assert servicer.force_built_images == (sorted(servicer.images) if force_build else [])
 
 
