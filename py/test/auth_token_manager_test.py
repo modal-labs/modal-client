@@ -513,21 +513,31 @@ async def test_concurrent_refresh(auth_token_manager, token_due_for_refresh, val
 @pytest.mark.asyncio
 async def test_concurrent_fetch_failure_makes_one_request(auth_token_manager, monkeypatch):
     """Concurrent callers with no cached token share one failing request instead of one request each."""
+    num_callers = 5
     calls = 0
+    callers_entered = 0
 
     async def fail_auth_token_get(*args, **kwargs):
         nonlocal calls
         calls += 1
-        await asyncio.sleep(0.1)
+        # Fail only after every caller has joined, since each caller reaches the
+        # synchronicity event loop independently and may arrive late on a slow host.
+        while callers_entered < num_callers:
+            await asyncio.sleep(0.01)
         raise RuntimeError("auth server unavailable")
 
     monkeypatch.setattr(auth_token_manager._stub, "AuthTokenGet", fail_auth_token_get)
 
     @synchronize_api
     async def wrapped_get_token():
+        nonlocal callers_entered
+        callers_entered += 1
         return await auth_token_manager.get_token()
 
-    results = await asyncio.gather(*[wrapped_get_token.aio() for _ in range(5)], return_exceptions=True)
+    results = await asyncio.wait_for(
+        asyncio.gather(*[wrapped_get_token.aio() for _ in range(num_callers)], return_exceptions=True),
+        timeout=10,
+    )
 
     assert all(isinstance(result, RuntimeError) for result in results)
     assert calls == 1
