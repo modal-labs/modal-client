@@ -9,7 +9,7 @@ import time
 import typing
 import urllib.parse
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Any, Optional, TypeVar, Union
@@ -42,6 +42,7 @@ from .logger import logger
 
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
+MetadataProvider = Callable[[], Mapping[str, str]]
 
 if typing.TYPE_CHECKING:
     import modal._grpc_client
@@ -224,17 +225,29 @@ class ConnectionManager:
     should share the same connection.
     """
 
-    def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
+    def __init__(
+        self,
+        client: "modal.client._Client",
+        metadata: dict[str, str] = {},
+        metadata_provider: MetadataProvider | None = None,
+    ):
         self._client = client
         # This metadata is injected into all requests on all channels created by this manager.
         self._metadata = metadata
+        self._metadata_provider = metadata_provider
         self._channels: dict[str, asyncio.Future[grpclib.client.Channel]] = {}
 
     async def get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
         fut = self._channels.get(server_url)
         if fut is None or (fut.done() and (fut.cancelled() or fut.exception() is not None)):
             # Cache the attempt rather than the channel, so callers racing to connect share one.
-            fut = asyncio.ensure_future(create_channel_with_fallbacks(server_url, self._metadata))
+            fut = asyncio.ensure_future(
+                create_channel_with_fallbacks(
+                    server_url,
+                    self._metadata,
+                    metadata_provider=self._metadata_provider,
+                )
+            )
             self._channels[server_url] = fut
         # Shielded so one caller giving up doesn't cancel the connection for the others.
         return await asyncio.shield(fut)
@@ -357,6 +370,7 @@ def listen_for_server_warnings(channel: grpclib.client.Channel) -> None:
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
+    metadata_provider: MetadataProvider | None = None,
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel to be used by a GRPC stub.
 
@@ -387,6 +401,10 @@ def create_channel(
     async def send_request(event: grpclib.events.SendRequest) -> None:
         for k, v in metadata.items():
             event.metadata[k] = v
+        if metadata_provider is not None:
+            provided_metadata = await asyncio.to_thread(metadata_provider)
+            for k, v in provided_metadata.items():
+                event.metadata[k] = v
 
         if o.hostname is not None:
             # GRPC actually injects a :authority pseudo-header containing the hostname.
@@ -412,6 +430,7 @@ async def create_channel_with_fallbacks(
     server_url: str,
     metadata: dict[str, str] = {},
     stagger_delay: float = 3.0,
+    metadata_provider: MetadataProvider | None = None,
 ) -> grpclib.client.Channel:
     """Create a connected channel, supporting comma-separated fallback URLs.
 
@@ -440,7 +459,7 @@ async def create_channel_with_fallbacks(
                 await asyncio.wait_for(failed[index - 1].wait(), timeout=index * stagger_delay)
             except asyncio.TimeoutError:
                 pass
-        channel = create_channel(url, metadata)
+        channel = create_channel(url, metadata, metadata_provider)
         try:
             await channel.__connect__()
         except BaseException:

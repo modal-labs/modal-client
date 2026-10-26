@@ -33,6 +33,8 @@ def show(redact: bool, include_internal: bool, json: bool):
         config_dict["oauth_refresh_token"] = "***"
     if redact and config_dict.get("oauth_client_secret"):
         config_dict["oauth_client_secret"] = "***"
+    if redact and config_dict.get("oauth_jwt_key"):
+        config_dict["oauth_jwt_key"] = "***"
 
     # Accept --json as a no-op for consistency; we may change the default formatting later
     OutputManager.get().print_json(dumps(config_dict))

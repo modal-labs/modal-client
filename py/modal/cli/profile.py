@@ -67,6 +67,7 @@ async def list_(json: bool | None = False):
         "MODAL_OAUTH_REFRESH_TOKEN",
         "MODAL_OAUTH_CLIENT_ID",
         "MODAL_OAUTH_CLIENT_SECRET",
+        "MODAL_OAUTH_JWT_KEY",
     )
     if any(env_var in os.environ for env_var in credential_env_vars):
         try:

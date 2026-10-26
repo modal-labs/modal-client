@@ -1,4 +1,7 @@
 # Copyright Modal Labs 2022
+import base64
+import hashlib
+import json
 import platform
 import pytest
 import subprocess
@@ -6,6 +9,9 @@ import sys
 import urllib.parse
 import warnings
 
+import jwt
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from google.protobuf.empty_pb2 import Empty
 
 import modal._traceback
@@ -27,6 +33,46 @@ from modal_proto import api_pb2
 from .supports.skip import skip_bazel, skip_windows, skip_windows_unix_socket
 
 TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
+
+
+def _rsa_private_key_pem(key_size: int = 2048) -> tuple[str, rsa.RSAPrivateKey]:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
+    private_key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    return private_key_pem, private_key
+
+
+def _rsa_public_key_pem() -> str:
+    _, private_key = _rsa_private_key_pem()
+    return (
+        private_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
+
+
+def _encrypted_rsa_private_key_pem() -> str:
+    _, private_key = _rsa_private_key_pem()
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.BestAvailableEncryption(b"passphrase"),
+    ).decode()
+
+
+def _ec_private_key_pem() -> str:
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
 
 
 def test_client_type(servicer, client):
@@ -238,6 +284,28 @@ def test_client_from_env_oauth_refresh_token(servicer, credentials):
     assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
 
 
+def test_client_from_env_oauth_jwt_key(servicer, credentials):
+    token_id, token_secret = credentials
+    servicer.required_creds = {token_id: token_secret}
+    private_key_pem, _ = _rsa_private_key_pem()
+    override_config = {
+        "server_url": servicer.client_addr,
+        "token_id": None,
+        "token_secret": None,
+        "oauth_refresh_token": f"{token_id}.{token_secret}",
+        "oauth_client_id": "oc-client-id",
+        "oauth_client_secret": None,
+        "oauth_jwt_key": private_key_pem.replace("\n", "\\n"),
+    }
+
+    client = Client.from_env(_override_config=override_config)
+    client.hello()
+
+    assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
+    assert "x-modal-oauth-client-secret" not in servicer.last_metadata
+    assert servicer.last_metadata["x-modal-oauth-client-assertion"]
+
+
 @pytest.mark.parametrize(
     "override_config",
     [
@@ -266,7 +334,7 @@ def test_client_from_env_rejects_incomplete_oauth_credentials(servicer, override
         **override_config,
     }
 
-    with pytest.raises(InvalidError, match="must all be configured"):
+    with pytest.raises(InvalidError, match="must be configured"):
         Client.from_env(_override_config=full_config)
 
 
@@ -376,7 +444,10 @@ def test_from_env_container_with_tokens(servicer, container_env, token_env):
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
-@pytest.mark.parametrize("env_var", ["MODAL_OAUTH_REFRESH_TOKEN", "MODAL_OAUTH_CLIENT_ID", "MODAL_OAUTH_CLIENT_SECRET"])
+@pytest.mark.parametrize(
+    "env_var",
+    ["MODAL_OAUTH_REFRESH_TOKEN", "MODAL_OAUTH_CLIENT_ID", "MODAL_OAUTH_CLIENT_SECRET", "MODAL_OAUTH_JWT_KEY"],
+)
 def test_from_env_container_with_partial_oauth_credentials(servicer, container_env, monkeypatch, env_var):
     monkeypatch.setenv(env_var, "oauth-value")
     servicer.required_creds = {}  # Disallow default client creds
@@ -422,6 +493,42 @@ def test_from_oauth_credentials(servicer, server_url_env, credentials):
     assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
 
 
+def test_from_oauth_credentials_with_jwt_key(servicer, server_url_env, credentials):
+    token_id, token_secret = credentials
+    servicer.required_creds = {token_id: token_secret}
+    private_key_pem, private_key = _rsa_private_key_pem()
+    client = Client.from_oauth_credentials(
+        f"{token_id}.{token_secret}",
+        oauth_client_id="oc-client-id",
+        oauth_jwt_key=private_key_pem,
+    )
+
+    client.hello()
+    first_assertion = servicer.last_metadata["x-modal-oauth-client-assertion"]
+    client.hello()
+    second_assertion = servicer.last_metadata["x-modal-oauth-client-assertion"]
+
+    assert first_assertion != second_assertion
+    assert "x-modal-oauth-client-secret" not in servicer.last_metadata
+    for assertion in (first_assertion, second_assertion):
+        claims = jwt.decode(
+            assertion,
+            private_key.public_key(),
+            algorithms=["RS256"],
+            audience="modal-server",
+        )
+        assert claims["iss"] == "oc-client-id"
+        assert claims["sub"] == "oc-client-id"
+        assert claims["exp"] - claims["iat"] == 5 * 60
+        assert claims["jti"]
+
+        public_jwk = jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
+        thumbprint_jwk = {field: public_jwk[field] for field in ("e", "kty", "n")}
+        canonical_jwk = json.dumps(thumbprint_jwk, sort_keys=True, separators=(",", ":")).encode()
+        expected_kid = base64.urlsafe_b64encode(hashlib.sha256(canonical_jwk).digest()).rstrip(b"=").decode()
+        assert jwt.get_unverified_header(assertion) == {"alg": "RS256", "kid": expected_kid, "typ": "JWT"}
+
+
 def test_oauth_credentials_repr_redacts_secrets():
     credentials = _OAuthCredentials(
         refresh_token="refresh-token",
@@ -429,7 +536,14 @@ def test_oauth_credentials_repr_redacts_secrets():
         client_secret="client-secret",
     )
 
+    jwt_credentials = _OAuthCredentials(
+        refresh_token="refresh-token",
+        client_id="client-id",
+        jwt_key="private-key",
+    )
+
     assert repr(credentials) == "_OAuthCredentials(client_id='client-id')"
+    assert repr(jwt_credentials) == "_OAuthCredentials(client_id='client-id')"
 
 
 @pytest.mark.parametrize(
@@ -444,11 +558,44 @@ def test_from_oauth_credentials_rejects_missing_credentials(
     monkeypatch, refresh_token, oauth_client_id, oauth_client_secret
 ):
     monkeypatch.setenv("MODAL_SERVER_URL", "http://localhost:1234")
-    with pytest.raises(AuthError, match="must all be provided"):
+    with pytest.raises(AuthError, match="must be provided"):
         Client.from_oauth_credentials(
             refresh_token,
             oauth_client_id=oauth_client_id,
             oauth_client_secret=oauth_client_secret,
+        )
+
+
+def test_from_oauth_credentials_rejects_multiple_client_authentication_methods(monkeypatch):
+    monkeypatch.setenv("MODAL_SERVER_URL", "http://localhost:1234")
+    private_key_pem, _ = _rsa_private_key_pem()
+    with pytest.raises(AuthError, match="exactly one"):
+        Client.from_oauth_credentials(
+            "refresh-token",
+            oauth_client_id="oc-client-id",
+            oauth_client_secret="ov-client-secret",
+            oauth_jwt_key=private_key_pem,
+        )
+
+
+@pytest.mark.parametrize(
+    ("make_jwt_key", "error_match"),
+    [
+        (lambda: "not a private key", "RSA private key encoded as PEM"),
+        (_encrypted_rsa_private_key_pem, "RSA private key encoded as PEM"),
+        (_rsa_public_key_pem, "must be an RSA private key"),
+        (_ec_private_key_pem, "RSA private key"),
+        (lambda: _rsa_private_key_pem(key_size=1024)[0], "at least 2048 bits"),
+    ],
+    ids=["garbage", "encrypted", "public-key", "ec-key", "short-key"],
+)
+def test_from_oauth_credentials_rejects_invalid_jwt_key(monkeypatch, make_jwt_key, error_match):
+    monkeypatch.setenv("MODAL_SERVER_URL", "http://localhost:1234")
+    with pytest.raises(InvalidError, match=error_match):
+        Client.from_oauth_credentials(
+            "refresh-token",
+            oauth_client_id="oc-client-id",
+            oauth_jwt_key=make_jwt_key(),
         )
 
 

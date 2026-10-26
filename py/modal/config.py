@@ -9,7 +9,8 @@ Client processes can authenticate in two ways:
 1. Modal API tokens use `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. The
    `modal token set` command stores these values in `.modal.toml`.
 2. Third-party OAuth integrations typically inject `MODAL_OAUTH_REFRESH_TOKEN`,
-   `MODAL_OAUTH_CLIENT_ID`, and `MODAL_OAUTH_CLIENT_SECRET` into the process.
+   `MODAL_OAUTH_CLIENT_ID`, and either `MODAL_OAUTH_CLIENT_SECRET` or
+   `MODAL_OAUTH_JWT_KEY` into the process.
 
 The two authentication methods cannot be combined, and all values for the
 selected method must be provided.
@@ -370,6 +371,7 @@ _SETTINGS = {
     "oauth_refresh_token": _Setting(),
     "oauth_client_id": _Setting(),
     "oauth_client_secret": _Setting(),
+    "oauth_jwt_key": _Setting(),
     # --- Logging ----------------------------------------------------------------
     "loglevel": _Setting("WARNING", lambda s: s.upper()),
     "log_format": _Setting("STRING", lambda s: s.upper()),

@@ -38,6 +38,9 @@ classifiers = [
 
 [project.optional-dependencies]
 api-proxy-support = ["python-socks[asyncio]>=2.5", "aiohttp-socks>=0.8"]
+oauth = [
+    "pyjwt[crypto]>=2.7",
+]
 
 [dependency-groups]
 dev = [
@@ -46,7 +49,7 @@ dev = [
     "grpclib==0.4.9",
     "invoke~=2.2",
     "httpx~=0.28.1",
-    "pyjwt~=2.15.0",
+    "pyjwt[crypto]~=2.15.0",
     "pre-commit>=2.21,<4",
     "mypy~=1.18.2",
     "packaging>=23.1",
@@ -76,7 +79,6 @@ dev = [
     "python-json-logger==2.0.7",
     "build~=1.3.0",
     "ddtrace==4.8.4",
-
     "mypy-protobuf",
     "grpcio-tools",
     # Additional test-only dependencies (used by the Bazel client test

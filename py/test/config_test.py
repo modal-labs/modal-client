@@ -71,6 +71,11 @@ def test_config_oauth_refresh_token_env_override():
     assert config["oauth_refresh_token"] == "ak-oauth.as-oauth"
 
 
+def test_config_oauth_jwt_key_env_override():
+    config = _get_config(env={"MODAL_OAUTH_JWT_KEY": "private-key"})
+    assert config["oauth_jwt_key"] == "private-key"
+
+
 def test_config_store_user(servicer, modal_config):
     with modal_config(show_on_error=True) as config_file_path:
         env = {"MODAL_SERVER_URL": servicer.client_addr}
