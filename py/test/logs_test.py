@@ -1700,6 +1700,25 @@ async def test_logs_manager_stream_stop_does_not_wait_for_log(monkeypatch):
     assert asyncio.get_running_loop().time() - started_at < 1.0
 
 
+class _FakeMonotonicClock:
+    """Stands in for the `time` module so idle timeouts expire only when a test advances the clock."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.reads = 0
+
+    def monotonic(self) -> float:
+        self.reads += 1
+        return self.now
+
+    async def advance(self, seconds: float) -> None:
+        self.now += seconds
+        reads = self.reads
+        # Let the stream's stop watcher observe the new time before continuing.
+        while self.reads == reads:
+            await asyncio.sleep(0)
+
+
 class _ScriptedLogSource:
     def __init__(self, responses):
         self.object_id = "fu-test"
@@ -1721,6 +1740,9 @@ class _ScriptedLogSource:
                         await asyncio.sleep(request.timeout)
                         return
                     for batch in response:
+                        if callable(batch):
+                            await batch()
+                            continue
                         if isinstance(batch, tuple):
                             delay, batch = batch
                             await asyncio.sleep(delay)
@@ -1791,6 +1813,8 @@ async def test_logs_manager_stream_timeout_resets_after_log_entry(monkeypatch):
     from modal import _logs_manager
 
     monkeypatch.setattr(_logs_manager, "_STREAM_POLL_INTERVAL_SECONDS", 0.005)
+    clock = _FakeMonotonicClock()
+    monkeypatch.setattr(_logs_manager, "time", clock)
 
     first_batch = api_pb2.TaskLogsBatch(
         entry_id="1-0",
@@ -1800,9 +1824,21 @@ async def test_logs_manager_stream_timeout_resets_after_log_entry(monkeypatch):
         entry_id="2-0",
         items=[api_pb2.TaskLogs(data="second\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)],
     )
-    log_source = _ScriptedLogSource([[(0.05, first_batch), (0.05, second_batch)], None])
 
-    logs = [_ async for _ in _logs_manager._LogsManager(log_source).stream(timeout=0.08)]
+    async def idle_past_timeout():
+        await clock.advance(1.0)
+        await asyncio.Event().wait()
+
+    # Each gap is under the idle timeout, but the two together exceed it, so the
+    # stream only survives to the second batch if each entry resets the timeout.
+    log_source = _ScriptedLogSource(
+        [
+            [lambda: clock.advance(0.3), first_batch, lambda: clock.advance(0.3), second_batch],
+            [idle_past_timeout],
+        ]
+    )
+
+    logs = [_ async for _ in _logs_manager._LogsManager(log_source).stream(timeout=0.5)]
 
     assert [str(log) for log in logs] == ["first\n", "second\n"]
     assert len(log_source.requests) == 2
