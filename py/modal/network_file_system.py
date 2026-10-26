@@ -87,14 +87,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```
         modal nfs --help
         ```
-
-        A `NetworkFileSystem` can also be useful for some local scripting scenarios, e.g.:
-
-        ```python notest
-        nfs = modal.NetworkFileSystem.from_name("my-network-file-system")
-        for chunk in nfs.read_file("my_db_dump.csv"):
-            ...
-        ```
     """
 
     @staticmethod
@@ -106,6 +98,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         client: _Client | None = None,
     ) -> "_NetworkFileSystem":
         """Reference a NetworkFileSystem by name, optionally creating it on the server first.
+
+        **Note: `NetworkFileSystem` has been deprecated and will be removed.**
 
         Hydration is lazy: metadata is fetched from Modal the first time the handle is used.
 
@@ -169,6 +163,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncGenerator["_NetworkFileSystem", None]:
         """Create an anonymous NetworkFileSystem that exists for the duration of the context manager.
+
+        **Note: `NetworkFileSystem` has been deprecated and will be removed.**
 
         Args:
             client: Modal client to use; defaults to `Client.from_env()` when omitted.
