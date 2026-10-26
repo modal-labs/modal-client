@@ -962,6 +962,22 @@ message AuditLogPlanResponse {
   repeated AuditLogCursor cursors = 1;
 }
 
+message AuditLogSettingsGetRequest {
+}
+
+message AuditLogSettingsGetResponse {
+  uint32 bucket_size = 1;
+  uint32 page_size = 2;
+  uint32 max_concurrent_requests = 3;
+  uint32 max_buffered_buckets = 4;
+  uint32 max_attempts = 5;
+  float retry_delay_secs = 6;
+  float retry_backoff_factor = 7;
+  float request_timeout_secs = 8;
+  float plan_timeout_secs = 9;
+  uint32 plan_max_attempts = 10;
+}
+
 message AuditLogTarget {
   string type = 1;  // For example "app", "function" or "secret"
   string id = 2;
@@ -5710,6 +5726,7 @@ service ModalClient {
   rpc AuditLogCount(AuditLogCountRequest) returns (AuditLogCountResponse);
   rpc AuditLogList(AuditLogListRequest) returns (AuditLogListResponse);
   rpc AuditLogPlan(AuditLogBucketsRequest) returns (AuditLogPlanResponse);
+  rpc AuditLogSettingsGet(AuditLogSettingsGetRequest) returns (AuditLogSettingsGetResponse);
 
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);

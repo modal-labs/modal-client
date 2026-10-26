@@ -56,6 +56,7 @@ const (
 	ModalClient_AuditLogCount_FullMethodName                          = "/modal.client.ModalClient/AuditLogCount"
 	ModalClient_AuditLogList_FullMethodName                           = "/modal.client.ModalClient/AuditLogList"
 	ModalClient_AuditLogPlan_FullMethodName                           = "/modal.client.ModalClient/AuditLogPlan"
+	ModalClient_AuditLogSettingsGet_FullMethodName                    = "/modal.client.ModalClient/AuditLogSettingsGet"
 	ModalClient_AuthTokenGet_FullMethodName                           = "/modal.client.ModalClient/AuthTokenGet"
 	ModalClient_BlobCreate_FullMethodName                             = "/modal.client.ModalClient/BlobCreate"
 	ModalClient_BlobGet_FullMethodName                                = "/modal.client.ModalClient/BlobGet"
@@ -339,6 +340,7 @@ type ModalClientClient interface {
 	AuditLogCount(ctx context.Context, in *AuditLogCountRequest, opts ...grpc.CallOption) (*AuditLogCountResponse, error)
 	AuditLogList(ctx context.Context, in *AuditLogListRequest, opts ...grpc.CallOption) (*AuditLogListResponse, error)
 	AuditLogPlan(ctx context.Context, in *AuditLogBucketsRequest, opts ...grpc.CallOption) (*AuditLogPlanResponse, error)
+	AuditLogSettingsGet(ctx context.Context, in *AuditLogSettingsGetRequest, opts ...grpc.CallOption) (*AuditLogSettingsGetResponse, error)
 	// Auth Token
 	AuthTokenGet(ctx context.Context, in *AuthTokenGetRequest, opts ...grpc.CallOption) (*AuthTokenGetResponse, error)
 	// Blobs
@@ -929,6 +931,16 @@ func (c *modalClientClient) AuditLogPlan(ctx context.Context, in *AuditLogBucket
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AuditLogPlanResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AuditLogPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AuditLogSettingsGet(ctx context.Context, in *AuditLogSettingsGetRequest, opts ...grpc.CallOption) (*AuditLogSettingsGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuditLogSettingsGetResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AuditLogSettingsGet_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3502,6 +3514,7 @@ type ModalClientServer interface {
 	AuditLogCount(context.Context, *AuditLogCountRequest) (*AuditLogCountResponse, error)
 	AuditLogList(context.Context, *AuditLogListRequest) (*AuditLogListResponse, error)
 	AuditLogPlan(context.Context, *AuditLogBucketsRequest) (*AuditLogPlanResponse, error)
+	AuditLogSettingsGet(context.Context, *AuditLogSettingsGetRequest) (*AuditLogSettingsGetResponse, error)
 	// Auth Token
 	AuthTokenGet(context.Context, *AuthTokenGetRequest) (*AuthTokenGetResponse, error)
 	// Blobs
@@ -3878,6 +3891,9 @@ func (UnimplementedModalClientServer) AuditLogList(context.Context, *AuditLogLis
 }
 func (UnimplementedModalClientServer) AuditLogPlan(context.Context, *AuditLogBucketsRequest) (*AuditLogPlanResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuditLogPlan not implemented")
+}
+func (UnimplementedModalClientServer) AuditLogSettingsGet(context.Context, *AuditLogSettingsGetRequest) (*AuditLogSettingsGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AuditLogSettingsGet not implemented")
 }
 func (UnimplementedModalClientServer) AuthTokenGet(context.Context, *AuthTokenGetRequest) (*AuthTokenGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuthTokenGet not implemented")
@@ -5161,6 +5177,24 @@ func _ModalClient_AuditLogPlan_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AuditLogPlan(ctx, req.(*AuditLogBucketsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AuditLogSettingsGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuditLogSettingsGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AuditLogSettingsGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AuditLogSettingsGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AuditLogSettingsGet(ctx, req.(*AuditLogSettingsGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -9609,6 +9643,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AuditLogPlan",
 			Handler:    _ModalClient_AuditLogPlan_Handler,
+		},
+		{
+			MethodName: "AuditLogSettingsGet",
+			Handler:    _ModalClient_AuditLogSettingsGet_Handler,
 		},
 		{
 			MethodName: "AuthTokenGet",
