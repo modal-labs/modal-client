@@ -71,7 +71,7 @@ if typing.TYPE_CHECKING:
     import modal.client
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVIEW"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "2026.10", "PREVIEW"]
 LATEST_IMAGE_BUILDER_VERSION: ImageBuilderVersion = "2025.06"
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
@@ -80,6 +80,7 @@ LATEST_IMAGE_BUILDER_VERSION: ImageBuilderVersion = "2025.06"
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
     "PREVIEW": ["3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"],
+    "2026.10": ["3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"],
     "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"],
     "2024.10": ["3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.10", "3.11", "3.12"],

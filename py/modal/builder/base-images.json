@@ -1,6 +1,7 @@
 {
     "debian": {
         "PREVIEW": "trixie",
+        "2026.10": "trixie",
         "2025.06": "bookworm",
         "2024.10": "bookworm",
         "2024.04": "bookworm",
@@ -38,6 +39,7 @@
     },
     "micromamba": {
         "PREVIEW": "2.9.0-debian13-slim",
+        "2026.10": "2.9.0-debian13-slim",
         "2025.06": "2.1.1-debian12-slim",
         "2024.10": "1.5.10-bookworm-slim",
         "2024.04": "1.5.8-bookworm-slim",
@@ -45,6 +47,7 @@
     },
     "package_tools": {
         "PREVIEW": "pip wheel uv",
+        "2026.10": "pip wheel uv",
         "2025.06": "pip wheel uv",
         "2024.10": "pip wheel uv",
         "2024.04": "pip wheel uv",

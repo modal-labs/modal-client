@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 
+from modal._image import LATEST_IMAGE_BUILDER_VERSION
 from modal.mount import _create_client_dependency_mounts
 
 
@@ -15,7 +16,9 @@ def main():
     )
     args = parser.parse_args()
 
-    builder_versions = ["2025.06", "PREVIEW"] if args.preview else ["2025.06"]
+    builder_versions: list[str] = [LATEST_IMAGE_BUILDER_VERSION]
+    if args.preview:
+        builder_versions.append("PREVIEW")
     loop = asyncio.get_event_loop()
     loop.run_until_complete(_create_client_dependency_mounts(builder_versions=builder_versions, dry_run=args.dry_run))
 

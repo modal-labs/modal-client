@@ -261,14 +261,14 @@ def publish_base_mounts(ctx, no_confirm: bool = False):
 @task(
     help={
         "name": "Image name (e.g. 'debian_slim')",
-        "builder_version": "Docker builder version",
+        "builder_version": "Image builder version (defaults to the latest)",
         "allow_global_deployment": "Required flag to confirm global deployment",
     },
 )
 def publish_base_images(
     ctx,
     name: str,
-    builder_version: str = "2024.10",
+    builder_version: str | None = None,
     allow_global_deployment: bool = False,
     no_confirm: bool = False,
 ) -> None:
@@ -282,6 +282,11 @@ def publish_base_images(
 
         console = Console()
         console.print("This is a dry run. Rerun with `--allow-global-deployment` to publish.", style="yellow")
+
+    if builder_version is None:
+        from modal._image import LATEST_IMAGE_BUILDER_VERSION
+
+        builder_version = LATEST_IMAGE_BUILDER_VERSION
 
     _check_prod(no_confirm)
     ctx.run(

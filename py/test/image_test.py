@@ -17,6 +17,7 @@ from unittest import mock
 import modal
 from modal import App, Dict, Image, Secret
 from modal._image import (
+    LATEST_IMAGE_BUILDER_VERSION,
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
     _base_image_config,
@@ -122,7 +123,7 @@ def uv_lock_workspace_dir(tmp_path) -> Path:
 def builder_version(request, server_url_env, modal_config):
     builder_version = request.param
     if (
-        builder_version != SUPPORTED_IMAGE_BUILDER_VERSIONS[-2]
+        builder_version != LATEST_IMAGE_BUILDER_VERSION
         and platform.system() == "Darwin"
         and platform.machine() == "x86_64"
     ):
@@ -198,18 +199,19 @@ def test_dockerhub_python_version(builder_version):
         "2024.04": "3.11.8",
         "2024.10": "3.11.10",
         "2025.06": "3.11.12",
+        "2026.10": "3.11",
         "PREVIEW": "3.11",
     }[builder_version]
     assert _dockerhub_python_version(builder_version, "3.11") == expected_3_11_full
 
     if builder_version == "2025.06":
         assert _dockerhub_python_version(builder_version, "3.15") == "3.15.0"
-    if builder_version == "PREVIEW":
+    if builder_version > "2025.06":
         assert _dockerhub_python_version(builder_version, "3.15") == "3.15"
 
     v = _dockerhub_python_version(builder_version, None).split(".")
 
-    if builder_version == "PREVIEW":
+    if builder_version > "2025.06":
         assert len(v) == 2
     else:
         assert len(v) == 3
