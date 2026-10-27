@@ -1776,6 +1776,12 @@ message EndpointGetInfoResponse {
   optional EndpointHandleMetadata metadata = 2;
 }
 
+message EndpointGetLibraryRequest {}
+
+message EndpointGetLibraryResponse {
+  repeated EndpointModel models = 1;
+}
+
 message EndpointGetLifecycleRequest {
   string endpoint_id = 1;
 }
@@ -1845,6 +1851,13 @@ message EndpointMetadata {
 message EndpointModalVolumeModelSource {
   string volume_id = 1;
   string model_path = 2;
+}
+
+message EndpointModel {
+  // Canonical model identifier used in Endpoint configuration.
+  string base_model_repo_id = 1;
+  repeated EndpointInputModality supported_input_modalities = 4;
+  repeated EndpointServingMode available_serving_modes = 5;
 }
 
 message EndpointModelSource {
@@ -5787,6 +5800,7 @@ service ModalClient {
   rpc EndpointCreate(EndpointCreateRequest) returns (EndpointCreateResponse);
   rpc EndpointGetByName(EndpointGetByNameRequest) returns (EndpointGetByNameResponse);
   rpc EndpointGetInfo(EndpointGetInfoRequest) returns (EndpointGetInfoResponse);
+  rpc EndpointGetLibrary(EndpointGetLibraryRequest) returns (EndpointGetLibraryResponse);
   rpc EndpointGetLifecycle(EndpointGetLifecycleRequest) returns (EndpointGetLifecycleResponse);
   rpc EndpointList(EndpointListRequest) returns (EndpointListResponse);
   rpc EndpointStop(EndpointStopRequest) returns (EndpointStopResponse);
