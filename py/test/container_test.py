@@ -51,6 +51,7 @@ from .container_test_helpers import (
     ContainerResult,
     _batch_function_test_helper,
     _batch_function_test_helper_auto,
+    _communicate_or_dump_stacks,
     _flatten_outputs,
     _get_inputs,
     _get_inputs_batched_with_formats,
@@ -1626,7 +1627,7 @@ def test_lifecycle_full(servicer, tmp_path):
         cls_params=((), {"print_at_exit": 1}),
         is_class=True,
     )
-    stdout, _ = container_process.communicate(timeout=5)
+    stdout, _ = _communicate_or_dump_stacks(container_process, timeout=5)
     assert container_process.returncode == 0
     assert "[events:enter_sync,enter_async,f_sync,local,exit_sync,exit_async]" in stdout.decode()
 
@@ -1640,7 +1641,7 @@ def test_lifecycle_full(servicer, tmp_path):
         cls_params=((), {"print_at_exit": 1}),
         is_class=True,
     )
-    stdout, _ = container_process.communicate(timeout=5)
+    stdout, _ = _communicate_or_dump_stacks(container_process, timeout=5)
     assert container_process.returncode == 0
     assert "[events:enter_sync,enter_async,f_async,local,exit_sync,exit_async]" in stdout.decode()
 
@@ -1675,7 +1676,7 @@ def test_full_lifecycle_order_signals_disabled_before_asgi_exit(servicer, tmp_pa
         is_class=True,
         volume_mounts=volume_mounts,
     )
-    stdout, stderr = container_process.communicate(timeout=10)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=10)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     # Verify the order of lifecycle events - particularly that signals are disabled during ASGI shutdown
@@ -1727,7 +1728,7 @@ def test_flash_cls_enter_lifecycle(servicer, tmp_path):
         inputs=[],
         is_class=True,
     )
-    stdout, stderr = container_process.communicate(timeout=10)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=10)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     # Verify the enter methods ran in the correct order
@@ -1770,7 +1771,7 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
         is_class=True,
         http_config=http_config,
     )
-    stdout, stderr = container_process.communicate(timeout=15)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=15)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     # Verify the enter methods ran
@@ -1921,7 +1922,7 @@ def test_sigint_termination_input_concurrent(servicer, tmp_path):
         signal_time = time.monotonic()
         os.kill(container_process.pid, signal.SIGINT)
 
-    stdout, stderr = container_process.communicate(timeout=5)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=5)
     stop_duration = time.monotonic() - signal_time
     assert len(servicer.container_outputs) == 0
     assert (
@@ -1954,7 +1955,7 @@ def test_sigint_termination_input(servicer, tmp_path, method):
         signal_time = time.monotonic()
         os.kill(container_process.pid, signal.SIGINT)
 
-    stdout, stderr = container_process.communicate(timeout=5)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=5)
     stop_duration = time.monotonic() - signal_time
 
     if method == "delay":
@@ -1996,7 +1997,7 @@ def test_sigint_termination_enter_handler(servicer, tmp_path, method, enter_type
     time.sleep(1)  # allow module imports to complete so SIGINT arrives during the enter handler
     signal_time = time.monotonic()
     os.kill(container_process.pid, signal.SIGINT)
-    stdout, stderr = container_process.communicate(timeout=5)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=5)
     stop_duration = time.monotonic() - signal_time
     assert len(servicer.container_outputs) == 0
     assert container_process.returncode == 0
@@ -2030,7 +2031,7 @@ def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
     time.sleep(0.25)  # give some time for container to end up in the exit handler
     os.kill(container_process.pid, signal.SIGINT)
 
-    stdout, stderr = container_process.communicate(timeout=5)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=5)
 
     assert len(servicer.container_outputs) == 1
     assert container_process.returncode == 0
@@ -2673,7 +2674,7 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
         deployed_server_support_definitions,
         inputs=[],  # No method inputs - just an HTTP Server
     )
-    stdout, stderr = container_process.communicate(timeout=3)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=3)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     # TODO(claudia): refactor to use servicer.intercept()
@@ -2702,7 +2703,7 @@ def test_server_isolated_deploy_isolated_container(servicer, credentials, tmp_pa
         is_server=True,
         http_config=http_config,
     )
-    stdout, stderr = container_process.communicate(timeout=5)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=5)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
     expected_events = "enter,enter_post_snapshot"
     assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
@@ -2725,7 +2726,7 @@ def test_serialized_server_isolated_deploy_isolated_container(servicer, credenti
         is_server=True,
         http_config=http_config,
     )
-    stdout, stderr = container_process.communicate(timeout=5)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=5)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
     expected_events = "enter,enter_post_snapshot"
     assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
@@ -2749,7 +2750,7 @@ def test_server_lifecycle_signals_correctly_registered(servicer, tmp_path):
         deployed_server_support_definitions,
         inputs=[],  # No method inputs - just an HTTP Server
     )
-    stdout, stderr = container_process.communicate(timeout=5)
+    stdout, stderr = _communicate_or_dump_stacks(container_process, timeout=5)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     expected_events = "enter,enter_post_snapshot,exit_signals_disabled"

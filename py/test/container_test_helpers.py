@@ -357,13 +357,39 @@ def _run_container_process(
 
     process = subprocess.Popen(
         [sys.executable, "-m", "modal._container_entrypoint"],
-        env={**os.environ, **env},
+        # Lets _communicate_or_dump_stacks get thread stacks from a hung process.
+        env={**os.environ, "PYTHONFAULTHANDLER": "1", **env},
         stdout=subprocess.PIPE if not _print else None,
         stderr=subprocess.PIPE if not _print else None,
     )
     if is_server:
         _schedule_sigterm(process)
     return process
+
+
+def _communicate_or_dump_stacks(process: subprocess.Popen, timeout: float) -> tuple[bytes, bytes]:
+    """Like ``process.communicate(timeout=...)``, but on timeout fails the test with the
+    process's output and all of its thread stacks, so a hang can be told apart from slowness."""
+    start = time.monotonic()
+    try:
+        return process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        pass
+    # faulthandler dumps every thread's stack to stderr from its SIGABRT handler and the
+    # process then dies, so a short grace period is enough. Keep it short so the dump
+    # lands before a test's own pytest timeout fires.
+    process.send_signal(signal.SIGABRT)
+    try:
+        stdout, stderr = process.communicate(timeout=1)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        stdout, stderr = process.communicate()
+    pytest.fail(
+        f"Container process did not exit within {timeout}s"
+        f" ({time.monotonic() - start:.1f}s elapsed).\n"
+        f"stdout:\n{(stdout or b'').decode(errors='replace')}\n"
+        f"stderr:\n{(stderr or b'').decode(errors='replace')}"
+    )
 
 
 def _run_container_process_auto(
@@ -411,7 +437,7 @@ def _run_container_process_auto(
 
     process = subprocess.Popen(
         [sys.executable, "-m", "modal._container_entrypoint"],
-        env={**os.environ, **env},
+        env={**os.environ, "PYTHONFAULTHANDLER": "1", **env},
         stdout=subprocess.PIPE if not _print else None,
         stderr=subprocess.PIPE if not _print else None,
     )
