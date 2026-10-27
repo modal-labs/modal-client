@@ -260,7 +260,7 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
 @click.option(
     "--name",
     default=None,
-    help="Endpoint name. Defaults to inference-{number} if not provided.",
+    help="Endpoint name. If omitted, Modal chooses a name.",
 )
 @click.option(
     "--model",
@@ -268,18 +268,27 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
     help="Hugging Face repo ID for the base model architecture (e.g., 'Qwen/Qwen3.6-27B-FP8').",
 )
 @click.option(
+    "--shared",
+    is_flag=True,
+    default=False,
+    help="Create a Shared Endpoint. Defaults to a Dedicated Endpoint.",
+)
+@click.option(
     "--routing-region",
     "routing_region",
     multiple=True,
     callback=_single_routing_region_callback,
-    help=f"Region to route inference requests through. Defaults to {_DEFAULT_ROUTING_REGION}.",
+    help=(
+        f"Region to route inference requests through. Defaults to {_DEFAULT_ROUTING_REGION}. "
+        "Shared Endpoint routing cannot currently be customized."
+    ),
 )
 @click.option(
     "--compute-region",
     "compute_regions",
     multiple=True,
     help=(
-        "Region to run Endpoint containers in. May be specified multiple times. "
+        "Region to run Dedicated Endpoint containers in. May be specified multiple times. "
         "This incurs a region selection price multiplier."
     ),
 )
@@ -287,13 +296,16 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
     "--colocate-compute",
     is_flag=True,
     default=False,
-    help="Run all containers within the routing region. This incurs a region selection price multiplier.",
+    help=(
+        "Run all Dedicated Endpoint containers within the routing region. "
+        "This incurs a region selection price multiplier."
+    ),
 )
 @click.option(
     "--unauthenticated",
     is_flag=True,
     default=False,
-    help="Allow unauthenticated HTTP requests to the endpoint.",
+    help="Allow unauthenticated HTTP requests to a Dedicated Endpoint.",
 )
 @click.option("--custom-hf-repo", default=None, help="Hugging Face repo ID for fine-tuned model weights.")
 @click.option("--custom-hf-revision", default=None, help="Git revision for --custom-hf-repo.")
@@ -304,6 +316,7 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
 async def create(
     name: Optional[str],
     model: Optional[str] = None,
+    shared: bool = False,
     routing_region: str = _DEFAULT_ROUTING_REGION,
     compute_regions: tuple[str, ...] = (),
     colocate_compute: bool = False,
@@ -317,11 +330,19 @@ async def create(
 ):
     """Deploy a new Endpoint.
 
+    Creates a Dedicated Endpoint by default, with support for custom weights and compute placement.
+    Use --shared to serve a supported base model with Modal-managed capacity.
+
     Examples:
 
-    Create an Endpoint from a base model:
+    Create a Dedicated Endpoint from a base model:
     ```bash
     modal endpoint create --model Qwen/Qwen3.6-27B-FP8
+    ```
+
+    Create a Shared Endpoint from a supported base model:
+    ```bash
+    modal endpoint create --shared --model moonshotai/Kimi-K3
     ```
 
     Create an Endpoint with an explicit name:
@@ -348,6 +369,22 @@ async def create(
     ```
 
     """
+    if shared:
+        for option, provided in (
+            ("--compute-region", bool(compute_regions)),
+            ("--colocate-compute", colocate_compute),
+            ("--unauthenticated", unauthenticated),
+            ("--custom-hf-repo", custom_hf_repo is not None),
+            ("--custom-hf-revision", custom_hf_revision is not None),
+            ("--custom-hf-token", custom_hf_token is not None),
+            ("--custom-volume-name", custom_volume_name is not None),
+            ("--custom-volume-path", custom_volume_path is not None),
+        ):
+            if provided:
+                raise click.UsageError(f"{option} cannot be used with --shared.")
+        if routing_region != _DEFAULT_ROUTING_REGION:
+            raise click.UsageError(f"Shared Endpoints require --routing-region {_DEFAULT_ROUTING_REGION}.")
+
     if compute_regions and colocate_compute:
         raise click.UsageError("--compute-region and --colocate-compute are mutually exclusive.")
     if custom_hf_repo and custom_volume_name:
@@ -403,13 +440,18 @@ async def create(
         model=model_source,
         environment_name=environment_name,
         unauthenticated=unauthenticated,
+        serving_mode=(api_pb2.ENDPOINT_SERVING_MODE_SHARED if shared else api_pb2.ENDPOINT_SERVING_MODE_DEDICATED),
     )
     if name:
         req.name = name
     resp = await client._stub.EndpointCreate(req)
 
     output = OutputManager.get()
-    output.print(f"[green]✓[/green] Endpoint '{resp.name}' ({resp.endpoint_id}) was created and started provisioning.")
+    serving_mode = "Shared" if shared else "Dedicated"
+    output.print(
+        f"[green]✓[/green] {serving_mode} Endpoint '{resp.name}' ({resp.endpoint_id}) "
+        "was created and started provisioning."
+    )
     if resp.model_name:
         output.print(f'  → Send [cyan]"model": "{resp.model_name}"[/cyan] in requests to the Endpoint.')
     if resp.endpoint_page_url:

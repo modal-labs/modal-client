@@ -762,24 +762,33 @@ def test_token_info(servicer, set_env_client):
     assert "test-user" in res.stdout
 
 
-def test_endpoint_create(servicer, set_env_client):
+@pytest.mark.parametrize(
+    ("mode_args", "routing_region", "expected_mode", "label"),
+    [
+        ([], "us-east", api_pb2.ENDPOINT_SERVING_MODE_DEDICATED, "Dedicated"),
+        (["--shared"], "us-west", api_pb2.ENDPOINT_SERVING_MODE_SHARED, "Shared"),
+    ],
+)
+def test_endpoint_create(servicer, set_env_client, mode_args, routing_region, expected_mode, label):
     res = run_cli_command(
         [
             "endpoint",
             "create",
+            *mode_args,
             "--name=qwen-chat",
             "--model=Qwen/Qwen3.6-27B-FP8",
-            "--routing-region=us-east",
+            f"--routing-region={routing_region}",
             "--env=main",
         ]
     )
 
-    assert "Endpoint 'qwen-chat'" in res.stdout
+    assert f"{label} Endpoint 'qwen-chat'" in res.stdout
     assert "started provisioning" in " ".join(res.stdout.split())
     (request,) = servicer.endpoint_create_requests
     assert request.name == "qwen-chat"
     assert request.description == ""
-    assert list(request.proxy_regions) == ["us-east"]
+    assert request.serving_mode == expected_mode
+    assert list(request.proxy_regions) == [routing_region]
     assert request.compute_region.WhichOneof("placement") == "auto"
     assert request.model.base_model_repo_id == "Qwen/Qwen3.6-27B-FP8"
     # api_surfaces and input_modalities are defaulted by the server, not the client.
@@ -789,12 +798,14 @@ def test_endpoint_create(servicer, set_env_client):
     assert request.unauthenticated is False
 
 
-def test_endpoint_create_shows_url(servicer, set_env_client):
+@pytest.mark.parametrize("mode_args", [[], ["--shared"]])
+def test_endpoint_create_shows_url(servicer, set_env_client, mode_args):
     # Omit --routing-region to exercise the default (us-west).
     res = run_cli_command(
         [
             "endpoint",
             "create",
+            *mode_args,
             "--name=qwen-chat",
             "--model=Qwen/Qwen3.6-27B-FP8",
         ]
@@ -813,10 +824,11 @@ def test_endpoint_create_shows_url(servicer, set_env_client):
     assert request.compute_region.WhichOneof("placement") == "auto"
 
 
-def test_endpoint_create_shows_model_name(servicer, set_env_client):
+@pytest.mark.parametrize("mode_args", [[], ["--shared"]])
+def test_endpoint_create_shows_model_name(servicer, set_env_client, mode_args):
     servicer.endpoint_create_model_name = "qwen-chat"
 
-    res = run_cli_command(["endpoint", "create", "--name=qwen-chat", "--model=Qwen/Qwen3.6-27B-FP8"])
+    res = run_cli_command(["endpoint", "create", "--name=qwen-chat", "--model=Qwen/Qwen3.6-27B-FP8", *mode_args])
 
     assert 'Send "model": "qwen-chat" in requests to the Endpoint.' in " ".join(res.stdout.split())
 
@@ -901,18 +913,12 @@ def test_endpoint_create_unauthenticated(servicer, set_env_client):
     assert request.unauthenticated is True
 
 
-def test_endpoint_create_defaults_name_from_model(servicer, set_env_client):
-    run_cli_command(
-        [
-            "endpoint",
-            "create",
-            "--model=Qwen/Qwen3.6-27B-FP8",
-        ]
-    )
+@pytest.mark.parametrize("mode_args", [[], ["--shared"]])
+def test_endpoint_create_leaves_default_name_to_server(servicer, set_env_client, mode_args):
+    run_cli_command(["endpoint", "create", "--model=Qwen/Qwen3.6-27B-FP8", *mode_args])
 
     (request,) = servicer.endpoint_create_requests
     assert request.name == ""
-    assert "qwen3-6-27b-fp8" in servicer.endpoint_ids_by_name["main"]
 
 
 def test_endpoint_create_uses_empty_environment_without_default(servicer, set_env_client, modal_config):
@@ -1059,6 +1065,39 @@ def test_endpoint_create_custom_volume_requires_path(servicer, set_env_client):
     )
     assert "--custom-volume-path is required with --custom-volume-name" in res.stderr
     assert servicer.endpoint_create_requests == []
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        "--unauthenticated",
+        "--compute-region=us-west",
+        "--colocate-compute",
+        "--routing-region=us-east",
+        "--custom-hf-repo=acme/qwen-ft",
+        "--custom-hf-repo=",
+        "--custom-hf-revision=abc123",
+        "--custom-hf-revision=",
+        "--custom-hf-token=hf-secret",
+        "--custom-hf-token=",
+        "--custom-volume-name=qwen-ft",
+        "--custom-volume-name=",
+        "--custom-volume-path=/models/qwen",
+        "--custom-volume-path=",
+    ],
+)
+def test_endpoint_create_shared_rejects_incompatible_options(servicer, set_env_client, option):
+    with servicer.intercept() as ctx:
+        res = run_cli_command(
+            ["endpoint", "create", "--shared", "--model=Qwen/Qwen3.6-27B-FP8", option],
+            expected_exit_code=2,
+            expected_stderr=option.split("=")[0],
+        )
+    if option.startswith("--routing-region"):
+        assert "Shared Endpoints require --routing-region us-west" in res.stderr
+    else:
+        assert f"{option.split('=')[0]} cannot be used with --shared" in res.stderr
+    assert ctx.calls == []
 
 
 _TEST_ENDPOINT_ID = "ep-abcdefghABCDEFGH012345"
