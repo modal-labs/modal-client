@@ -48637,16 +48637,17 @@ func (b0 ResourceInfo_builder) Build() *ResourceInfo {
 }
 
 type Resources struct {
-	state                      protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_MemoryMb        uint32                 `protobuf:"varint,2,opt,name=memory_mb,json=memoryMb,proto3"`
-	xxx_hidden_MilliCpu        uint32                 `protobuf:"varint,3,opt,name=milli_cpu,json=milliCpu,proto3"`
-	xxx_hidden_GpuConfig       *GPUConfig             `protobuf:"bytes,4,opt,name=gpu_config,json=gpuConfig,proto3"`
-	xxx_hidden_MemoryMbMax     uint32                 `protobuf:"varint,5,opt,name=memory_mb_max,json=memoryMbMax,proto3"`
-	xxx_hidden_EphemeralDiskMb uint32                 `protobuf:"varint,6,opt,name=ephemeral_disk_mb,json=ephemeralDiskMb,proto3"`
-	xxx_hidden_MilliCpuMax     uint32                 `protobuf:"varint,7,opt,name=milli_cpu_max,json=milliCpuMax,proto3"`
-	xxx_hidden_Rdma            bool                   `protobuf:"varint,8,opt,name=rdma,proto3"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state                           protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_MemoryMb             uint32                 `protobuf:"varint,2,opt,name=memory_mb,json=memoryMb,proto3"`
+	xxx_hidden_MilliCpu             uint32                 `protobuf:"varint,3,opt,name=milli_cpu,json=milliCpu,proto3"`
+	xxx_hidden_GpuConfig            *GPUConfig             `protobuf:"bytes,4,opt,name=gpu_config,json=gpuConfig,proto3"`
+	xxx_hidden_MemoryMbMax          uint32                 `protobuf:"varint,5,opt,name=memory_mb_max,json=memoryMbMax,proto3"`
+	xxx_hidden_EphemeralDiskMb      uint32                 `protobuf:"varint,6,opt,name=ephemeral_disk_mb,json=ephemeralDiskMb,proto3"`
+	xxx_hidden_MilliCpuMax          uint32                 `protobuf:"varint,7,opt,name=milli_cpu_max,json=milliCpuMax,proto3"`
+	xxx_hidden_Rdma                 bool                   `protobuf:"varint,8,opt,name=rdma,proto3"`
+	xxx_hidden_NumThreadsFromCpuMax bool                   `protobuf:"varint,9,opt,name=num_threads_from_cpu_max,json=numThreadsFromCpuMax,proto3"`
+	unknownFields                   protoimpl.UnknownFields
+	sizeCache                       protoimpl.SizeCache
 }
 
 func (x *Resources) Reset() {
@@ -48723,6 +48724,13 @@ func (x *Resources) GetRdma() bool {
 	return false
 }
 
+func (x *Resources) GetNumThreadsFromCpuMax() bool {
+	if x != nil {
+		return x.xxx_hidden_NumThreadsFromCpuMax
+	}
+	return false
+}
+
 func (x *Resources) SetMemoryMb(v uint32) {
 	x.xxx_hidden_MemoryMb = v
 }
@@ -48751,6 +48759,10 @@ func (x *Resources) SetRdma(v bool) {
 	x.xxx_hidden_Rdma = v
 }
 
+func (x *Resources) SetNumThreadsFromCpuMax(v bool) {
+	x.xxx_hidden_NumThreadsFromCpuMax = v
+}
+
 func (x *Resources) HasGpuConfig() bool {
 	if x == nil {
 		return false
@@ -48765,13 +48777,14 @@ func (x *Resources) ClearGpuConfig() {
 type Resources_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	MemoryMb        uint32
-	MilliCpu        uint32
-	GpuConfig       *GPUConfig
-	MemoryMbMax     uint32
-	EphemeralDiskMb uint32
-	MilliCpuMax     uint32
-	Rdma            bool
+	MemoryMb             uint32
+	MilliCpu             uint32
+	GpuConfig            *GPUConfig
+	MemoryMbMax          uint32
+	EphemeralDiskMb      uint32
+	MilliCpuMax          uint32
+	Rdma                 bool
+	NumThreadsFromCpuMax bool
 }
 
 func (b0 Resources_builder) Build() *Resources {
@@ -48785,6 +48798,7 @@ func (b0 Resources_builder) Build() *Resources {
 	x.xxx_hidden_EphemeralDiskMb = b.EphemeralDiskMb
 	x.xxx_hidden_MilliCpuMax = b.MilliCpuMax
 	x.xxx_hidden_Rdma = b.Rdma
+	x.xxx_hidden_NumThreadsFromCpuMax = b.NumThreadsFromCpuMax
 	return m0
 }
 
@@ -79410,7 +79424,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\rResourceValue\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\rR\x05value\x12\x1d\n" +
 	"\n" +
-	"is_default\x18\x02 \x01(\bR\tisDefault\"\x85\x02\n" +
+	"is_default\x18\x02 \x01(\bR\tisDefault\"\xbd\x02\n" +
 	"\tResources\x12\x1b\n" +
 	"\tmemory_mb\x18\x02 \x01(\rR\bmemoryMb\x12\x1b\n" +
 	"\tmilli_cpu\x18\x03 \x01(\rR\bmilliCpu\x126\n" +
@@ -79419,7 +79433,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\rmemory_mb_max\x18\x05 \x01(\rR\vmemoryMbMax\x12*\n" +
 	"\x11ephemeral_disk_mb\x18\x06 \x01(\rR\x0fephemeralDiskMb\x12\"\n" +
 	"\rmilli_cpu_max\x18\a \x01(\rR\vmilliCpuMax\x12\x12\n" +
-	"\x04rdma\x18\b \x01(\bR\x04rdma\"f\n" +
+	"\x04rdma\x18\b \x01(\bR\x04rdma\x126\n" +
+	"\x18num_threads_from_cpu_max\x18\t \x01(\bR\x14numThreadsFromCpuMax\"f\n" +
 	"\x13RuntimeInputMessage\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\fR\amessage\x12#\n" +
 	"\rmessage_index\x18\x02 \x01(\x04R\fmessageIndex\x12\x10\n" +
