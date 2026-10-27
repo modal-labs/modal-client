@@ -369,35 +369,47 @@ class _StreamReaderThroughCommandRouterBase(_StreamReaderImpl[T]):
         """Open the underlying stream at the current offset."""
         raise NotImplementedError
 
+    def _current_stream(self) -> AsyncGenerator[T, None]:
+        if self._stream is None:
+            self._stream = self._iterate_stream()
+        return self._stream
+
     async def __anext__(self) -> T:
         async with self._lock:
-            if self._stream is None:
-                self._stream = self._iterate_stream()
-            return await self._stream.__anext__()
+            return await self._current_stream().__anext__()
 
     async def _consume_stream(self) -> AsyncGenerator[T, None]:
+        # An iterator abandoned mid-loop is finalized at an arbitrary later
+        # time, so it must only close the stream it pulled from, never one a
+        # later iterator has since reopened.
+        stream: AsyncGenerator[T, None] | None = None
         try:
             while True:
-                try:
-                    item = await self.__anext__()
-                except StopAsyncIteration:
-                    return
+                async with self._lock:
+                    stream = self._current_stream()
+                    try:
+                        item = await stream.__anext__()
+                    except StopAsyncIteration:
+                        return
                 yield item
         finally:
-            await self.aclose()
+            await self._close_stream(stream)
 
     def __aiter__(self) -> AsyncGenerator[T, None]:
         return self._consume_stream()
 
+    async def _close_stream(self, stream: AsyncGenerator[T, None] | None) -> None:
+        if stream is None or self._lock.locked():
+            return
+        async with self._lock:
+            if self._stream is stream:
+                self._stream = None
+                await stream.aclose()
+
     async def aclose(self) -> None:
         """Close the underlying stream. A stream another reader is currently
         pulling from is left open for that reader to close."""
-        if self._lock.locked():
-            return
-        async with self._lock:
-            stream, self._stream = self._stream, None
-            if stream is not None:
-                await stream.aclose()
+        await self._close_stream(self._stream)
 
 
 class _BytesStreamReaderThroughCommandRouter(_StreamReaderThroughCommandRouterBase[bytes]):

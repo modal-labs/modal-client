@@ -697,6 +697,22 @@ async def test_v2_stream_reader_aclose_closes_stream_and_resumes_from_offset():
 
 
 @pytest.mark.asyncio
+async def test_v2_stream_reader_late_close_of_abandoned_iterator_keeps_newer_stream_open():
+    router = _ClosableV2SandboxRouter(b"abcdefghi", chunk_size=3)
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    first = reader.__aiter__()
+    received = [await first.__anext__()]
+    await reader.aclose()
+    second = reader.__aiter__()
+    received.append(await second.__anext__())
+    await first.aclose()
+    async for chunk in second:
+        received.append(chunk)
+    assert received == [b"abc", b"def", b"ghi"]
+    assert router.start_offsets == [0, 3]
+
+
+@pytest.mark.asyncio
 async def test_v2_stream_reader_aclose_keeps_partial_line_for_resume():
     router = _ClosableV2SandboxRouter(b"ab\ncd\nef", chunk_size=4)
     reader: StreamReader[str] = await _make_v2_stream_reader.aio(router, text=True, by_line=True)
