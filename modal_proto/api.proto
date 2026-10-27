@@ -4042,7 +4042,7 @@ message Resources {
   uint32 ephemeral_disk_mb = 6;  // MiB
   uint32 milli_cpu_max = 7; // milli CPU cores
   bool rdma = 8; // Whether to use RDMA interfaces
-  bool num_threads_from_cpu_max = 9; // Size thread-count env vars (OMP_NUM_THREADS, ...) from the CPU limit instead of the request
+  bool skip_num_threads_env_vars = 9; // Leave thread-count env vars (OMP_NUM_THREADS, ...) unset so libraries size themselves from the visible CPUs. Ignored on runc.
 }
 
 message RuntimeInputMessage {
