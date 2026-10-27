@@ -471,7 +471,7 @@ def service_users_list(json: bool):
 
 @service_users_cli.command("delete", no_args_is_help=True)
 @click.argument("name")
-@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Volume doesn't exist.")
+@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Service User doesn't exist.")
 @yes_option
 def service_users_delete(name: str, *, allow_missing: bool, yes: bool):
     """Delete a Service User in this Workspace.
