@@ -20,6 +20,7 @@ from typing import cast
 from unittest import mock
 
 import click
+import pytest_asyncio
 import toml
 from grpclib import GRPCError, Status
 
@@ -32,7 +33,7 @@ from modal.types import LogEntry
 from modal_proto import api_pb2
 
 from . import helpers
-from .conftest import MockClientServicer, Volume, run_cli_command
+from .conftest import MockClientServicer, Volume, run_cli_command, servicer_factory
 from .supports.skip import skip_windows
 
 dummy_app_file = """
@@ -3317,16 +3318,18 @@ def test_cls(servicer, set_env_client, test_dir):
     run_cli_command(["run", f"{app_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
 
 
-def test_profile_list(servicer, server_url_env, modal_config):
-    config = """
+def test_profile_list(servicer, modal_config):
+    config = f"""
     [test-profile]
     token_id = "ak-abc"
     token_secret = "as-xyz"
+    server_url = "{servicer.client_addr}"
 
     [other-profile]
     token_id = "ak-123"
     token_secret = "as-789"
     active = true
+    server_url = "{servicer.client_addr}"
     """
 
     with modal_config(config):
@@ -3363,6 +3366,52 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 del os.environ["MODAL_TOKEN_SECRET"]
 
 
+@pytest_asyncio.fixture(scope="function")
+async def decoy_servicer(blob_server):
+    """A second mock server, standing in for whatever `MODAL_SERVER_URL` points at."""
+    async with servicer_factory(blob_server, ("ak-decoy", "as-decoy")) as s:
+        yield s
+
+
+def test_profile_list_does_not_send_profile_tokens_to_env_server_url(
+    servicer, decoy_servicer, modal_config, monkeypatch
+):
+    for env_var in (
+        "MODAL_TOKEN_ID",
+        "MODAL_TOKEN_SECRET",
+        "MODAL_OAUTH_REFRESH_TOKEN",
+        "MODAL_OAUTH_CLIENT_ID",
+        "MODAL_OAUTH_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+    monkeypatch.setenv("MODAL_SERVER_URL", decoy_servicer.client_addr)
+
+    config = f"""
+    [test-profile]
+    token_id = "ak-abc"
+    token_secret = "as-xyz"
+    server_url = "{servicer.client_addr}"
+
+    [other-profile]
+    token_id = "ak-123"
+    token_secret = "as-789"
+    active = true
+    server_url = "{servicer.client_addr}"
+    """
+
+    with modal_config(config):
+        servicer.required_creds = {"ak-abc": "as-xyz", "ak-123": "as-789"}
+        res = run_cli_command(["profile", "list", "--json"])
+
+    # The decoy server received no requests at all, so it never saw any stored token.
+    assert decoy_servicer.last_metadata is None
+    # Each profile was still checked against its own server.
+    assert [(p["name"], p["workspace"]) for p in json.loads(res.stdout)] == [
+        ("test-profile", "test-username"),
+        ("other-profile", "test-username"),
+    ]
+
+
 def test_profile_list_uses_oauth_env(servicer, server_url_env, modal_config, monkeypatch, credentials):
     token_id, token_secret = credentials
     monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
@@ -3397,6 +3446,7 @@ def test_profile_list_uses_oauth_profile(servicer, server_url_env, modal_config,
     oauth_client_id = "oc-client-id"
     oauth_client_secret = "ov-client-secret"
     active = true
+    server_url = "{servicer.client_addr}"
     """
     with modal_config(config):
         servicer.required_creds = {token_id: token_secret}

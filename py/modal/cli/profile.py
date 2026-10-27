@@ -33,7 +33,7 @@ async def list_(json: bool | None = False):
     profiles = config_profiles()
     lookup_coros = [
         _lookup_workspace(
-            config.get("server_url", profile=profile),
+            config.get("server_url", profile=profile, use_env=False),
             token_id=config.get("token_id", profile=profile, use_env=False),
             token_secret=config.get("token_secret", profile=profile, use_env=False),
             oauth_refresh_token=config.get("oauth_refresh_token", profile=profile, use_env=False),
