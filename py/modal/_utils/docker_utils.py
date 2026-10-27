@@ -79,6 +79,15 @@ _FROM_ALIAS_PATTERN = re.compile(r"\sAS\s+\S+\s*$", re.IGNORECASE)
 _PARSER_DIRECTIVE_PATTERN = re.compile(r"^#\s*[a-zA-Z][a-zA-Z0-9]*\s*=")
 
 
+def is_multi_stage_dockerfile(dockerfile_lines: Sequence[str]) -> bool:
+    """Return whether more than one line starts with a FROM instruction.
+
+    Can have false-positives for Dockerfiles with a Heredoc bodies of continuation lines
+    that contain "from" tokens.
+    """
+    return sum(1 for line in dockerfile_lines if _FROM_PATTERN.match(line)) > 1
+
+
 def splittable_from_line_index(dockerfile_lines: Sequence[str]) -> int | None:
     """Return the line index of the FROM instruction if it can be built as its own image.
 
@@ -96,7 +105,7 @@ def splittable_from_line_index(dockerfile_lines: Sequence[str]) -> int | None:
         return None
     if any(_PARSER_DIRECTIVE_PATTERN.match(line.strip()) for line in dockerfile_lines[:start]):
         return None
-    if any(_FROM_PATTERN.match(line) for line in dockerfile_lines[start + 1 :]):
+    if is_multi_stage_dockerfile(dockerfile_lines):
         return None
     return start
 

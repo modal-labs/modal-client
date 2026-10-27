@@ -788,6 +788,55 @@ def test_dockerfile_image_unsupported_add_python(builder_version, servicer, clie
     assert not servicer.images
 
 
+_STATIC_REGISTRY_SECRET = {"REGISTRY_USERNAME": "a", "REGISTRY_PASSWORD": "b"}
+
+
+def test_dockerfile_image_registry_secret_not_split(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("ARG TAG=latest\nFROM ghcr.io/my-org/my-image:${TAG}\nRUN echo hi\n")
+    image = Image.from_dockerfile(dockerfile, registry_secret=Secret.from_dict(_STATIC_REGISTRY_SECRET))
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    # The whole Dockerfile builds in the bottom layer, so that layer pulls with the Secret
+    assert layers[-1].dockerfile_commands[0] == "ARG TAG=latest"
+    assert layers[-1].image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+    assert layers[-1].image_registry_config.secret_id
+    for layer in layers[:-1]:
+        assert not layer.image_registry_config.secret_id
+
+
+def test_dockerfile_image_registry_secret_split(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM ghcr.io/my-org/my-image\nRUN echo hi\n")
+    image = Image.from_dockerfile(dockerfile, registry_secret=Secret.from_dict(_STATIC_REGISTRY_SECRET))
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert layers[-1].image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+    assert layers[-1].image_registry_config.secret_id
+    # Layers above the one that pulls the base image build from a Modal Image, so they don't use the Secret
+    for layer in layers[:-1]:
+        assert not layer.image_registry_config.secret_id
+    if builder_version > "2025.06":
+        assert layers[-1].dockerfile_commands == ["FROM ghcr.io/my-org/my-image"]
+
+
+def test_dockerfile_image_registry_secret_invalid(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM ghcr.io/my-org/my-image\nRUN echo hi\n")
+    image = Image.from_dockerfile(dockerfile, registry_secret=Secret.from_dict({"TOKEN": "a"}))
+    with pytest.raises(InvalidError, match="must include"):
+        build_image(image, client)
+
+
+def test_dockerfile_image_registry_secret_multi_stage(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM ghcr.io/my-org/builder AS build\nRUN echo hi\nFROM ghcr.io/my-org/runtime\n")
+    image = Image.from_dockerfile(dockerfile, registry_secret=Secret.from_dict(_STATIC_REGISTRY_SECRET))
+    with pytest.raises(InvalidError, match="multi-stage"):
+        build_image(image, client)
+    assert not servicer.images
+
+
 def test_dockerfile_image_layer_on_top(builder_version, servicer, client, tmp_path):
     dockerfile = tmp_path / "Dockerfile"
     dockerfile.write_text("FROM ubuntu\nRUN echo hi\n")

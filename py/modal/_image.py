@@ -40,6 +40,7 @@ from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
+    is_multi_stage_dockerfile,
     splittable_from_line_index,
 )
 from ._utils.function_utils import FunctionSourceInfo, parse_gpu_config
@@ -2523,28 +2524,33 @@ class _Image(_Object, type_prefix="im"):
         *,
         force_build: bool = False,
         context_dir: Path | str | None = None,
-        env: dict[str, str | None] | None = None,
+        ignore: Sequence[str] | Callable[[Path], bool] = AUTO_DOCKERIGNORE,
+        build_args: dict[str, str] = {},
+        registry_secret: _Secret | None = None,
         secrets: Collection[_Secret] | None = None,
+        env: dict[str, str | None] | None = None,
         gpu: str | None = None,
         add_python: str | None = None,
-        build_args: dict[str, str] = {},
-        ignore: Sequence[str] | Callable[[Path], bool] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image.
 
+        A `registry_secret` can be provided to pull the base image from a private registry.
+        Currently this is supported only for single-stage Dockerfiles.
+
         Args:
             path: Path to the Dockerfile on the local machine.
             force_build: If True, skip cached image builds.
             context_dir: Build context directory for resolving relative COPY paths.
-            env: Environment variables set in the build container.
-            secrets: Secrets injected as environment variables during the build.
-            gpu: GPU type to attach to the builder container.
-            add_python: Standalone Python version to add when the Dockerfile does not install Python.
-            build_args: Dockerfile ``ARG`` values forwarded to the build.
             ignore: Ignore rules for the implicit context mount (defaults to auto ``.dockerignore`` behavior).
+            build_args: Dockerfile ``ARG`` values forwarded to the build.
+            registry_secret: Optional Secret with credentials for pulling the base image from a private registry.
+            secrets: Secrets injected as environment variables in the build container.
+            env: Environment variables set in the build container.
+            gpu: GPU type to attach to the build container.
+            add_python: Standalone Python version to add when the Dockerfile does not install Python.
 
         Returns:
             An `Image` built from the Dockerfile plus Modal runtime dependencies.
@@ -2590,6 +2596,12 @@ class _Image(_Object, type_prefix="im"):
                 add_python="3.12",
                 ignore=FilePatternMatcher.from_file("/path/to/dockerignore"),
             )
+
+            # Pull the Dockerfile's base image from a private registry.
+            image = modal.Image.from_dockerfile(
+                "./Dockerfile",
+                registry_secret=modal.Secret.from_name("my-registry-secret"),
+            )
             ```
         """
 
@@ -2602,7 +2614,15 @@ class _Image(_Object, type_prefix="im"):
             ignore=ignore, dockerfile_path=Path(path), context_dir=context_dir
         )
 
-        def dockerfile_image(commands: list[str], base_images: dict[str, _Image] | None = None) -> _Image:
+        registry_config = (
+            _ImageRegistryConfig(secret=registry_secret, infer_auth_type=True) if registry_secret is not None else None
+        )
+
+        def dockerfile_image(
+            commands: list[str],
+            base_images: dict[str, _Image] | None = None,
+            image_registry_config: _ImageRegistryConfig | None = None,
+        ) -> _Image:
             return _Image._from_args(
                 base_images=base_images,
                 dockerfile_function=lambda version: DockerfileSpec(commands=commands, context_files={}),
@@ -2610,6 +2630,7 @@ class _Image(_Object, type_prefix="im"):
                 gpu_config=gpu_config,
                 secrets=secrets,
                 build_args=build_args,
+                image_registry_config=image_registry_config,
                 force_build=force_build,
             )
 
@@ -2648,19 +2669,23 @@ class _Image(_Object, type_prefix="im"):
                 )
             with open(os.path.expanduser(path)) as f:
                 dockerfile_lines = f.read().split("\n")
+            if registry_secret is not None and is_multi_stage_dockerfile(dockerfile_lines):
+                raise InvalidError("`registry_secret` is not supported with multi-stage Dockerfiles.")
 
             # Builder versions after 2025.06 put the FROM line of a single-stage Dockerfile in its own image.
             # Dockerfiles the split could change (see splittable_from_line_index) stay in one layer.
             from_index = splittable_from_line_index(dockerfile_lines) if builder_version > "2025.06" else None
             if from_index is None:
-                image = dockerfile_image(dockerfile_lines)
+                image = dockerfile_image(dockerfile_lines, image_registry_config=registry_config)
             else:
                 # Drop the lines above FROM so Dockerfiles that differ only in header comments or blank lines
                 # share the cached image. Those lines can only be comments or blank lines, since
                 # splittable_from_line_index rejects parser directives.
                 from_lines = [dockerfile_lines[from_index]]
+                # Only this layer pulls from the registry; the layers above it build on top of it.
                 from_image = _Image._from_args(
                     dockerfile_function=lambda version: DockerfileSpec(commands=from_lines, context_files={}),
+                    image_registry_config=registry_config,
                     force_build=force_build,
                 )
                 rest = dockerfile_lines[from_index + 1 :]
