@@ -6,15 +6,6 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
-- Added `--shared` to `modal endpoint create` to create a Shared Endpoint. The command creates a Dedicated Endpoint by default.
-- Added the `Workspace.member_tokens` manager, along with the `modal workspace member-tokens` CLI, which allows users to list and delete tokens associated with Workspace Members.
-- Fixed `modal.Image.from_dockerfile(..., force_build=True)` to rebuild the Dockerfile's own steps instead of reusing them from the cache.
-- Added an `App.stop()` method.
-- Added a `--set-image-builder-version` option to `modal environment update` for overriding the image builder version of a single Environment, and an image builder version column to `modal environment list`.
-- Added implicit OAuth refresh token authentication through the `MODAL_OAUTH_REFRESH_TOKEN`, `MODAL_OAUTH_CLIENT_ID`, and either `MODAL_OAUTH_CLIENT_SECRET` or `MODAL_OAUTH_JWT_KEY` environment variables, with [`modal.Client.from_oauth_credentials()`](/docs/sdk/py/latest/Client#from_oauth_credentials) available for explicitly constructed clients. RSA private keys require the `modal[oauth]` extra.
-- `Image.from_registry` now infers the kind of registry authentication from the keys in its `secret`, so a Secret with AWS ECR or GCP Artifact Registry credentials works without `Image.from_aws_ecr` or `Image.from_gcp_artifact_registry`.
-- Added a `registry_secret` parameter to `Image.from_dockerfile` for pulling the base image from a private registry. The kind of authentication is inferred from the Secret's keys, as with `Image.from_registry`. Multi-stage Dockerfiles are not supported.
-
 ## JS
 
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.

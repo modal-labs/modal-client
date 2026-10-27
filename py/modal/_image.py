@@ -2407,7 +2407,11 @@ class _Image(_Object, type_prefix="im"):
         add_python: str | None = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
+        """mdmd:hidden
+        Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
+
+        **Note:** This constructor is superseded by `Image.from_registry()`, which can also authenticate
+        to private repositories when provided with the appropriate keys in a `modal.Secret`.
 
         You will need to pass a `modal.Secret` containing [your GCP service account key data](https://cloud.google.com/iam/docs/keys-create-delete#creating)
         as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](https://modal.com/secrets) page.
@@ -2468,10 +2472,14 @@ class _Image(_Object, type_prefix="im"):
         add_python: str | None = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
+        """mdmd:hidden
+        Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
 
         You will need to pass a `modal.Secret` containing either IAM user credentials or OIDC
         configuration to access the target ECR registry.
+
+        **Note:** This constructor is superseded by `Image.from_registry()`, which can also authenticate
+        to private repositories when provided with the appropriate keys in a `modal.Secret`.
 
         For IAM user authentication, set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`.
 

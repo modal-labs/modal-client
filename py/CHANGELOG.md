@@ -2,6 +2,22 @@
 
 ## Latest
 
+### 1.6.3 (2026-10-27)
+
+This release includes a new [Image Builder version](/docs/guide/images#image-builder-updates), `2026.10`. After upgrading your SDK, opt into the new Image Builder in your [Workspace](/settings/image-builder-version) or [Environment](/settings/workspace-management/environments/all) settings. We recommend using the latest version for security updates and performance enhancements:
+- The new version includes updates to base Debian images, Python versions, and the Modal dependencies that are automatically included in Function containers.
+- In [`Image.from_dockerfile()`](/docs/sdk/py/latest/Image#from_dockerfile), the `FROM` instruction will be cached independently in a separate Modal Image layer and reused for subsequent builds that share the base image. This optimization only applies when the Dockerfile has a single stage and no instructions or parser directives preceding `FROM`. When caching the `FROM` instruction separately, any comments or whitespace preceding it will also be ignored.
+- In [`Image.from_registry()`](/docs/sdk/py/latest/Image#from_registry), the optional Python distribution (`add_python=`) will be added in a separate layer so that the Python version can be changed without invalidating the base layer cache.
+
+This release includes several additional updates, including Image enhancements that apply across Image Builder versions:
+- The [`Image.from_registry()`](/docs/sdk/py/latest/Image#from_registry) constructor can now be used to pull an image from AWS ECR or GCP Artifact Registry when the `secret=` keys correspond to appropriate credentials. We recommend using this instead of the separate `Image.from_aws_ecr()` and `Image.from_gcp_artifact_registry()` constructors.
+- The [`Image.from_dockerfile()`](/docs/sdk/py/latest/Image#from_dockerfile) constructor can now be provided with a `registry_secret=` to pull a private base image. Currently, this feature is limited to single-stage Dockerfile recipes.
+- Apps can now be programmatically stopped using the [`App.stop()`](/docs/sdk/py/latest/App#stop) method.
+- [Shared Endpoints](/docs/guide/shared-endpoints) can now be created from the CLI by passing `--shared` to [`modal endpoint create`](/docs/cli/latest/endpoint#modal-endpoint-create).
+- Environment-level Image Builder versions can now be configured via the [`modal environment update`](/docs/cli/latest/environment#modal-environment-update) CLI with `--set-image-builder-version`.
+- The [`Workspace.member_tokens`](/docs/sdk/py/latest/Workspace#member_tokens) SDK namespace and [`modal workspace member-tokens`](/docs/cli/latest/workspace#modal-workspace-member-tokens) CLI now let you list and delete tokens associated with Workspace members.
+- The [`Image.from_dockerfile()`](/docs/sdk/py/latest/Image#from_dockerfile) constructor now respects `force_build=True` to invalidate the build cache keyed by that Dockerfile.
+
 ### 1.6.2 (2026-10-15)
 
 - The new `metrics` observability surface provides a flexible query interface for fetching detailed time-resolved data about performance and resource consumption:
