@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=83,<84", "wheel"]
+requires = ["setuptools>=84.1,<85", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -61,7 +61,7 @@ dev = [
     "python-dotenv~=1.2.2",
     "requests==2.33.0",
     "ruff~=0.9.6",
-    "setuptools>=83,<84",
+    "setuptools>=84.1,<85",
     "types-croniter~=1.0.8",
     "types-python-dateutil~=2.8.10",
     "types-requests~=2.31.0",
