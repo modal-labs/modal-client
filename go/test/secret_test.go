@@ -105,6 +105,24 @@ func registerSandboxCreateDeps(mock *grpcmock.MockClient) {
 	)
 }
 
+func TestSecretFromMapInvalidKeyDoesNotExposeValues(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	mock := newGRPCMockClient(t)
+
+	_, err := mock.Secrets.FromMap(t.Context(), map[string]string{
+		"PASSWORD":    "secret-password",
+		"invalid-key": "secret-value",
+	}, nil)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(`Secret key name "invalid-key" is invalid for environment variables`))
+	g.Expect(err.Error()).NotTo(gomega.ContainSubstring("secret-password"))
+	g.Expect(err.Error()).NotTo(gomega.ContainSubstring("secret-value"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestSecretFromMapIsLazy(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

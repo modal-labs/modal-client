@@ -13,7 +13,7 @@ import {
   createMockModalClients,
   MockGrpcClient,
 } from "../test-support/grpc_mock";
-import { NotFoundError } from "../src/errors";
+import { InvalidError, NotFoundError } from "../src/errors";
 import { ClientError, Status } from "nice-grpc";
 import {
   GenericResult_GenericStatus,
@@ -97,21 +97,52 @@ test("SecretFromObject", async () => {
   expect(output).toBe("value\n");
 });
 
-test("SecretFromObjectInvalid", async () => {
-  await expect(
+test.each([
+  [123, "number"],
+  [null, "object"],
+  [undefined, "undefined"],
+  [["secret-value"], "object"],
+  [{ token: "secret-value" }, "object"],
+  [123n, "bigint"],
+])(
+  "SecretFromObjectInvalid does not expose values (%#)",
+  async (invalidValue, expectedType) => {
+    const { mockClient: client } = createMockModalClients();
+    const result = client.secrets.fromObject({
+      PASSWORD: "secret-password",
+      // @ts-expect-error testing runtime validation
+      INVALID: invalidValue,
+    });
+    await expect(result).rejects.toThrow(InvalidError);
+    await expect(result).rejects.toThrow(
+      `value for key "INVALID" has type ${expectedType}`,
+    );
+    await expect(result).rejects.not.toThrow("secret-password");
+    await expect(result).rejects.not.toThrow("secret-value");
+  },
+);
+
+test.each(["secret-password", null, undefined, ["secret-password"], 123])(
+  "SecretFromObjectNonObject does not expose values (%#)",
+  async (invalidEntries) => {
+    const { mockClient: client } = createMockModalClients();
     // @ts-expect-error testing runtime validation
-    tc.secrets.fromObject({ key: 123 }),
-  ).rejects.toThrow(
-    /entries must be an object mapping string keys to string values/,
-  );
-});
+    const result = client.secrets.fromObject(invalidEntries);
+    await expect(result).rejects.toThrow(
+      "entries must be an object mapping string keys to string values",
+    );
+    await expect(result).rejects.not.toThrow("secret-password");
+  },
+);
 
 test("SecretFromObjectInvalidKey", async () => {
   // Keys that aren't valid environment variable names are rejected up front.
   for (const badKey of ["1KEY", "with-dash", "with space", "with.dot", ""]) {
-    await expect(tc.secrets.fromObject({ [badKey]: "value" })).rejects.toThrow(
-      /is invalid for environment variables/,
+    const result = tc.secrets.fromObject({ [badKey]: "secret-value" });
+    await expect(result).rejects.toThrow(
+      `Secret key name ${JSON.stringify(badKey)} is invalid for environment variables.`,
     );
+    await expect(result).rejects.not.toThrow("secret-value");
   }
 
   // Valid keys (letters, numbers, underscores, not starting with a number).

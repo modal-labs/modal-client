@@ -15,9 +15,7 @@ const ENV_VAR_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 /**
  * Validate that every key in an env dict is a valid environment variable name
  * (letters, numbers, and underscores, not starting with a number). Throws an
- * {@link InvalidError} on the first invalid key. Mirrors the server-side
- * validation, and is applied client-side wherever env vars are sent directly to
- * a worker without a `SecretGetOrCreate` round-trip to validate them.
+ * {@link InvalidError} on the first invalid key.
  *
  * @internal
  * @hidden
@@ -109,11 +107,19 @@ export class SecretService {
     entries: Record<string, string>,
     params?: SecretFromObjectParams,
   ): Promise<Secret> {
-    for (const [, value] of Object.entries(entries)) {
-      if (value == null || typeof value !== "string") {
+    if (
+      typeof entries !== "object" ||
+      entries === null ||
+      Array.isArray(entries)
+    ) {
+      throw new InvalidError(
+        "entries must be an object mapping string keys to string values",
+      );
+    }
+    for (const [key, value] of Object.entries(entries)) {
+      if (typeof value !== "string") {
         throw new InvalidError(
-          "entries must be an object mapping string keys to string values, but got:\n" +
-            JSON.stringify(entries),
+          `entries must be an object mapping string keys to string values, but value for key ${JSON.stringify(key)} has type ${typeof value}`,
         );
       }
     }

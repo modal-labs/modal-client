@@ -110,12 +110,39 @@ def test_init_types():
         Secret.from_dict({"foo": 1.0})  # type: ignore
 
 
+@pytest.mark.parametrize(
+    "entries, detail",
+    [
+        ("secret-password", "got str"),
+        ({"PASSWORD": "secret-password", "INVALID": 123}, "value for key 'INVALID' has type int"),
+        ({"PASSWORD": "secret-password", "INVALID": ["secret-value"]}, "value for key 'INVALID' has type list"),
+        ({123: "secret-password"}, "key has type int"),
+    ],
+)
+def test_secret_from_dict_invalid_does_not_expose_values(entries, detail):
+    with pytest.raises(InvalidError) as exc:
+        Secret.from_dict(entries)
+    message = str(exc.value)
+    assert detail in message
+    assert "secret-password" not in message
+    assert "secret-value" not in message
+
+
 def test_secret_from_dict_none(servicer, client):
     app = App(include_source=False)
     secret = Secret.from_dict({"FOO": os.getenv("xyz"), "BAR": os.environ.get("abc"), "BAZ": "baz"})
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):
         assert servicer.secrets["st-0"] == {"BAZ": "baz"}
+
+
+def test_secret_from_dict_string_subclasses(servicer, client):
+    class StringSubclass(str):
+        pass
+
+    secret = Secret.from_dict({StringSubclass("KEY"): StringSubclass("value"), "SKIP": None})
+    secret.hydrate(client=client)
+    assert servicer.secrets[secret.object_id] == {"KEY": "value"}
 
 
 def test_secret_from_name(servicer, client):
