@@ -286,3 +286,172 @@ func TestFunctionStatsDefaultsAndErrors(t *testing.T) {
 	_, err := f.Stats(t.Context(), nil)
 	g.Expect(err).To(gomega.MatchError(rpcErr))
 }
+
+func TestFunctionInfo(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	ctx := context.Background()
+	mc, err := NewClient()
+	g.Expect(err).To(gomega.BeNil())
+
+	echo, err := mc.Functions.FromName(ctx, "libmodal-test-support", "echo_string", nil)
+	g.Expect(err).To(gomega.BeNil())
+
+	info, err := echo.Info(ctx, nil)
+	g.Expect(err).To(gomega.BeNil())
+
+	// Hack so we don't have to hardcode the Image ID
+	g.Expect(info.ImageID).ToNot(gomega.BeEmpty())
+	info.ImageID = ""
+
+	fiveMinutes := 5 * time.Minute
+	g.Expect(*info).To(gomega.BeEquivalentTo(FunctionInfo{
+		StartupTimeout: &fiveMinutes,
+		Timeout:        fiveMinutes,
+		GPUs: []struct {
+			GpuType string
+			Count   uint32
+		}{},
+		Volumes: map[string]struct {
+			VolumeID string
+			ReadOnly bool
+			SubPath  *string
+		}{},
+		CloudBucketMounts: map[string]struct {
+			BucketName string
+			BucketType string
+			ReadOnly   bool
+			KeyPrefix  *string
+		}{},
+	}))
+
+	CPU := 2.0
+	CPULimit := 3.0
+	MemoryMiB := 512
+	MemoryLimitMiB := 1024
+	GPU := "H100:8"
+
+	sec, err := mc.Secrets.FromName(ctx, "libmodal-test-secret", nil)
+	g.Expect(err).To(gomega.BeNil())
+
+	Secrets := []*Secret{sec}
+
+	vol, err := mc.Volumes.FromName(ctx, "libmodal-example-volume", nil)
+	g.Expect(err).To(gomega.BeNil())
+
+	tru := true
+	Volumes := map[string]*Volume{"/mnt/tmp": vol.WithMountOptions(&VolumeMountOptionsParams{&tru, nil})}
+	MaxContainers := 10
+	BufferContainers := 2
+	ScaledownWindow := 15 * time.Second
+	Timeout := 12 * time.Hour
+	RoutingRegion := "us-west"
+
+	unhydrated := echo.WithOptions(&FunctionWithOptionsParams{
+		&CPU,
+		&CPULimit,
+		&MemoryMiB,
+		&MemoryLimitMiB,
+		&GPU,
+		map[string]string{"ENV": "true"},
+		Secrets,
+		Volumes,
+		nil,
+		&MaxContainers,
+		&BufferContainers,
+		&ScaledownWindow,
+		&Timeout,
+		&RoutingRegion,
+	}).
+		WithBatching(&FunctionWithBatchingParams{10, 60 * time.Second}).
+		WithConcurrency(&FunctionWithConcurrencyParams{MaxInputs: 10})
+
+	unhydratedInfo, err := unhydrated.Info(ctx, nil)
+	g.Expect(err).To(gomega.BeNil())
+
+	g.Expect(*unhydratedInfo.CPU).To(gomega.BeEquivalentTo(2))
+	g.Expect(*unhydratedInfo.CPULimit).To(gomega.BeEquivalentTo(3))
+	g.Expect(*unhydratedInfo.MemoryMiB).To(gomega.BeEquivalentTo(512))
+	g.Expect(*unhydratedInfo.MemoryLimitMiB).To(gomega.BeEquivalentTo(1024))
+	g.Expect(unhydratedInfo.GPUs).To(gomega.BeEquivalentTo([]struct {
+		GpuType string
+		Count   uint32
+	}{{GpuType: "H100", Count: 8}}))
+	g.Expect(unhydratedInfo.EphemeralDiskMiB).To(gomega.BeNil())
+	g.Expect(*unhydratedInfo.StartupTimeout).To(gomega.BeEquivalentTo(fiveMinutes))
+	g.Expect(unhydratedInfo.Timeout).To(gomega.BeEquivalentTo(12 * time.Hour))
+	g.Expect(unhydratedInfo.MaxRetries).To(gomega.BeNil())
+	g.Expect(unhydratedInfo.Nonpreemptible).To(gomega.BeEquivalentTo(false))
+	g.Expect(unhydratedInfo.Regions).To(gomega.BeNil())
+	g.Expect(*unhydratedInfo.RoutingRegion).To(gomega.BeEquivalentTo("us-west"))
+	g.Expect(unhydratedInfo.Cloud).To(gomega.BeNil())
+	g.Expect(unhydratedInfo.ClusterInfo).To(gomega.BeNil())
+	g.Expect(*unhydratedInfo.BatchingInfo).To(gomega.BeEquivalentTo(struct {
+		MaxBatchSize uint32
+		WaitMs       uint64
+	}{MaxBatchSize: 10, WaitMs: 60000}))
+
+	ten := uint32(10)
+	g.Expect(*unhydratedInfo.ConcurrencyInfo).To(gomega.BeEquivalentTo(struct {
+		MaxInputs    *uint32
+		TargetInputs *uint32
+	}{MaxInputs: &ten, TargetInputs: nil}))
+	g.Expect(unhydratedInfo.Schedule).To(gomega.BeNil())
+	g.Expect(unhydratedInfo.RestrictModalAccess).To(gomega.BeEquivalentTo(false))
+	g.Expect(unhydratedInfo.BlockNetwork).To(gomega.BeEquivalentTo(false))
+	g.Expect(unhydratedInfo.SingleUseContainers).To(gomega.BeEquivalentTo(false))
+	g.Expect(unhydratedInfo.Volumes).To(gomega.BeEquivalentTo(
+		map[string]struct {
+			VolumeID string
+			ReadOnly bool
+			SubPath  *string
+		}{
+			"/mnt/tmp": {
+				VolumeID: vol.VolumeID,
+				ReadOnly: true,
+				SubPath:  nil,
+			},
+		},
+	))
+
+	g.Expect(unhydratedInfo.CloudBucketMounts).To(gomega.BeEmpty())
+	g.Expect(len(unhydratedInfo.SecretIDs)).To(gomega.Equal(1))
+	g.Expect(unhydratedInfo.WebInfo).To(gomega.BeNil())
+	g.Expect(unhydratedInfo.MethodNames).To(gomega.BeNil())
+	g.Expect(unhydratedInfo.MethodDetails).To(gomega.BeNil())
+
+	hydrated, err := unhydrated.Instance(ctx)
+	g.Expect(err).To(gomega.BeNil())
+
+	hydratedInfo, err := hydrated.Info(ctx, nil)
+	g.Expect(err).To(gomega.BeNil())
+
+	g.Expect(*hydratedInfo.CPU).To(gomega.BeEquivalentTo(*unhydratedInfo.CPU))
+	g.Expect(*hydratedInfo.CPULimit).To(gomega.BeEquivalentTo(*unhydratedInfo.CPULimit))
+	g.Expect(*hydratedInfo.MemoryMiB).To(gomega.BeEquivalentTo(*unhydratedInfo.MemoryMiB))
+	g.Expect(*hydratedInfo.MemoryLimitMiB).To(gomega.BeEquivalentTo(*unhydratedInfo.MemoryLimitMiB))
+	g.Expect(hydratedInfo.GPUs).To(gomega.BeEquivalentTo(unhydratedInfo.GPUs))
+	g.Expect(hydratedInfo.EphemeralDiskMiB).To(gomega.BeEquivalentTo(unhydratedInfo.EphemeralDiskMiB))
+	g.Expect(*hydratedInfo.StartupTimeout).To(gomega.BeEquivalentTo(*unhydratedInfo.StartupTimeout))
+	g.Expect(hydratedInfo.Timeout).To(gomega.BeEquivalentTo(unhydratedInfo.Timeout))
+	g.Expect(hydratedInfo.MaxRetries).To(gomega.BeEquivalentTo(unhydratedInfo.MaxRetries))
+	g.Expect(hydratedInfo.Nonpreemptible).To(gomega.BeEquivalentTo(unhydratedInfo.Nonpreemptible))
+	g.Expect(hydratedInfo.Regions).To(gomega.BeEquivalentTo(unhydratedInfo.Regions))
+	g.Expect(*hydratedInfo.RoutingRegion).To(gomega.BeEquivalentTo(*unhydratedInfo.RoutingRegion))
+	g.Expect(hydratedInfo.Cloud).To(gomega.BeEquivalentTo(unhydratedInfo.Cloud))
+	g.Expect(hydratedInfo.ClusterInfo).To(gomega.BeEquivalentTo(unhydratedInfo.ClusterInfo))
+	g.Expect(*hydratedInfo.BatchingInfo).To(gomega.BeEquivalentTo(*unhydratedInfo.BatchingInfo))
+	g.Expect(*hydratedInfo.ConcurrencyInfo).To(gomega.BeEquivalentTo(*unhydratedInfo.ConcurrencyInfo))
+	g.Expect(hydratedInfo.Schedule).To(gomega.BeEquivalentTo(unhydratedInfo.Schedule))
+	g.Expect(hydratedInfo.RestrictModalAccess).To(gomega.BeEquivalentTo(unhydratedInfo.RestrictModalAccess))
+	g.Expect(hydratedInfo.BlockNetwork).To(gomega.BeEquivalentTo(unhydratedInfo.BlockNetwork))
+	g.Expect(hydratedInfo.SingleUseContainers).To(gomega.BeEquivalentTo(unhydratedInfo.SingleUseContainers))
+	g.Expect(hydratedInfo.Volumes).To(gomega.BeEquivalentTo(unhydratedInfo.Volumes))
+	g.Expect(hydratedInfo.CloudBucketMounts).To(gomega.BeEquivalentTo(unhydratedInfo.CloudBucketMounts))
+	g.Expect(hydratedInfo.WebInfo).To(gomega.BeEquivalentTo(unhydratedInfo.WebInfo))
+	g.Expect(hydratedInfo.MethodNames).To(gomega.BeEquivalentTo(unhydratedInfo.MethodNames))
+	g.Expect(hydratedInfo.MethodDetails).To(gomega.BeEquivalentTo(unhydratedInfo.MethodDetails))
+
+	// The Env has been hydrated into a secret:
+	g.Expect(len(hydratedInfo.SecretIDs)).To(gomega.Equal(2))
+}

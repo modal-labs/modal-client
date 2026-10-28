@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -75,6 +77,8 @@ type Function struct {
 
 	client  *Client
 	options *functionOptions
+
+	cachedInfo *FunctionInfo
 }
 
 func newFunction(
@@ -1055,4 +1059,445 @@ func (f *Function) Stats(ctx context.Context, params *FunctionStatsParams) (*Fun
 		ContainerPercentileStats:    statsDistributions(resp.GetContainerPercentileStats()),
 		AllVariants:                 params.AllVariants,
 	}, nil
+}
+
+// FunctionInfoParams are options for Function.Info.
+type FunctionInfoParams struct {
+	Refresh bool
+}
+
+// FunctionInfo contains the configuration of a Function, including any
+// overrides applied with WithOptions, WithConcurrency, or WithBatching.
+type FunctionInfo struct {
+	CPU            *float64
+	CPULimit       *float64
+	MemoryMiB      *uint32
+	MemoryLimitMiB *uint32
+	GPUs           []struct {
+		GpuType string
+		Count   uint32
+	}
+	EphemeralDiskMiB *uint32
+
+	ImageID string
+
+	StartupTimeout *time.Duration
+	Timeout        time.Duration
+	MaxRetries     *uint32
+
+	Nonpreemptible bool
+	Regions        []string
+	RoutingRegion  *string
+	Cloud          *string
+
+	ClusterInfo *struct {
+		Size       uint32
+		Rdma       bool
+		FabricSize *uint32
+	}
+
+	BatchingInfo *struct {
+		MaxBatchSize uint32
+		WaitMs       uint64
+	}
+
+	ConcurrencyInfo *struct {
+		MaxInputs    *uint32
+		TargetInputs *uint32
+	}
+
+	Schedule *string
+
+	RestrictModalAccess bool
+	BlockNetwork        bool
+	SingleUseContainers bool
+
+	Volumes map[string]struct {
+		VolumeID string
+		ReadOnly bool
+		SubPath  *string
+	}
+
+	CloudBucketMounts map[string]struct {
+		BucketName string
+		BucketType string // "s3", "r2", "gcp"
+		ReadOnly   bool
+		KeyPrefix  *string
+	}
+
+	SecretIDs []string
+
+	WebInfo *struct {
+		WebURL          string
+		Method          *string
+		Unauthenticated bool
+	}
+
+	MethodNames   []string
+	MethodDetails map[string]struct {
+		WebURL          string
+		Method          *string
+		Unauthenticated bool
+	}
+}
+
+// applyFunctionOptions overrides fn's configuration with options, following the
+// same rules as binding a Function with those options.
+func applyFunctionOptions(fn *pb.Function, options *pb.FunctionOptions) {
+	if options.GetReplaceVolumeMounts() {
+		fn.SetVolumeMounts(options.GetVolumeMounts())
+	}
+	if options.GetReplaceSecretIds() {
+		fn.SetSecretIds(options.GetSecretIds())
+	}
+	if options.HasResources() {
+		resources := fn.GetResources()
+		if resources == nil {
+			resources = &pb.Resources{}
+			fn.SetResources(resources)
+		}
+		proto.Merge(resources, options.GetResources())
+	}
+	if options.HasRetryPolicy() {
+		fn.SetRetryPolicy(options.GetRetryPolicy())
+	}
+	if options.HasTimeoutSecs() {
+		fn.SetTimeoutSecs(options.GetTimeoutSecs())
+	}
+	if options.HasMaxConcurrentInputs() {
+		fn.SetMaxConcurrentInputs(options.GetMaxConcurrentInputs())
+	}
+	if options.HasTargetConcurrentInputs() {
+		fn.SetTargetConcurrentInputs(options.GetTargetConcurrentInputs())
+	}
+	if options.HasBatchMaxSize() {
+		fn.SetBatchMaxSize(options.GetBatchMaxSize())
+	}
+	if options.HasBatchLingerMs() {
+		fn.SetBatchLingerMs(options.GetBatchLingerMs())
+	}
+	if options.HasRoutingRegion() {
+		fn.SetRoutingRegion(options.GetRoutingRegion())
+	}
+}
+
+// Info returns the configuration of the Function, including any overrides
+// applied with WithOptions, WithConcurrency, or WithBatching.
+//
+// SecretIDs only includes Secrets that already exist on Modal. Secrets created
+// locally (e.g. with Secrets.FromMap) that have not been used yet, and the
+// Secret holding env vars passed to WithOptions, are not included.
+func (f *Function) Info(ctx context.Context, params *FunctionInfoParams) (*FunctionInfo, error) {
+	if params == nil {
+		params = &FunctionInfoParams{}
+	}
+
+	if !params.Refresh && f.cachedInfo != nil {
+		return f.cachedInfo, nil
+	}
+
+	options, err := buildFunctionOptionsProto(f.options)
+	if err != nil {
+		return nil, err
+	}
+	if options != nil {
+		// Only Secrets that already exist on Modal have IDs to report, but binding
+		// replaces the Function's Secrets whenever any Secrets or env vars are set.
+		var secrets []*Secret
+		if f.options.secrets != nil {
+			secrets = *f.options.secrets
+		}
+		hasEnv := f.options.env != nil && len(*f.options.env) > 0
+		if len(secrets) > 0 || hasEnv {
+			ids := []string{}
+			for i, s := range secrets {
+				if s == nil {
+					return nil, InvalidError{Exception: fmt.Sprintf("secret at index %d must not be nil", i)}
+				}
+				if s.SecretID != "" {
+					ids = append(ids, s.SecretID)
+				}
+			}
+			options.SetSecretIds(ids)
+			options.SetReplaceSecretIds(true)
+		}
+	}
+
+	req := pb.FunctionGetByIdRequest_builder{
+		FunctionId: f.FunctionID,
+	}.Build()
+
+	resp, err := f.client.cpClient.FunctionGetById(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	functionData := resp.GetFunction()
+	rankedFunctions := functionData.GetRankedFunctions()
+	if len(rankedFunctions) == 0 {
+		return nil, InvalidError{Exception: "Could not parse FunctionData proto - no functions provided"}
+	}
+
+	if options != nil {
+		for _, rf := range rankedFunctions {
+			applyFunctionOptions(rf.GetFunction(), options)
+		}
+	}
+
+	firstFunction := rankedFunctions[0].GetFunction()
+
+	ret := FunctionInfo{}
+
+	ret.ImageID = firstFunction.GetImageId()
+
+	if x := firstFunction.GetStartupTimeoutSecs(); x > 0 {
+		startupTimeout := time.Duration(x) * time.Second
+		ret.StartupTimeout = &startupTimeout
+	}
+
+	ret.Timeout = time.Duration(firstFunction.GetTimeoutSecs()) * time.Second
+
+	if x := firstFunction.GetRetryPolicy(); x != nil {
+		retries := x.GetRetries()
+		ret.MaxRetries = &retries
+	}
+
+	resources := firstFunction.GetResources()
+
+	if x := resources.GetMilliCpu(); x > 0 {
+		y := float64(x) / 1000.0
+		ret.CPU = &y
+	}
+	if x := resources.GetMilliCpuMax(); x > 0 {
+		y := float64(x) / 1000.0
+		ret.CPULimit = &y
+	}
+
+	if x := resources.GetMemoryMb(); x > 0 {
+		ret.MemoryMiB = &x
+	}
+	if x := resources.GetMemoryMbMax(); x > 0 {
+		ret.MemoryLimitMiB = &x
+	}
+
+	if x := resources.GetEphemeralDiskMb(); x > 0 {
+		ret.EphemeralDiskMiB = &x
+	}
+
+	type GpuConfig = struct {
+		GpuType string
+		Count   uint32
+	}
+
+	ret.GPUs = make([]GpuConfig, 0, len(rankedFunctions))
+	for _, fn := range rankedFunctions {
+		config := fn.GetFunction().GetResources().GetGpuConfig()
+		if config.GetCount() == 0 {
+			continue
+		}
+
+		ret.GPUs = append(ret.GPUs, GpuConfig{config.GetGpuType(), config.GetCount()})
+	}
+
+	schedulerPlacement := firstFunction.GetSchedulerPlacement()
+	ret.Nonpreemptible = schedulerPlacement.GetNonpreemptible()
+	if x := schedulerPlacement.GetRegions(); len(x) > 0 {
+		ret.Regions = x
+	}
+
+	if x := firstFunction.GetRoutingRegion(); x != "" {
+		ret.RoutingRegion = &x
+	}
+
+	if x := firstFunction.GetCloudProviderStr(); len(x) > 0 {
+		ret.Cloud = &x
+	}
+
+	if x := firstFunction.GetSchedule(); x != nil {
+		if cron := x.GetCron(); cron != nil {
+			cronStr := fmt.Sprintf("Cron(%s, %s)", cron.GetCronString(), cron.GetTimezone())
+			ret.Schedule = &cronStr
+		} else if period := x.GetPeriod(); period != nil {
+			periodArgs := make([]string, 0, 7)
+			if years := period.GetYears(); years > 0 {
+				periodArgs = append(periodArgs, fmt.Sprintf("years=%d", years))
+			}
+			if months := period.GetMonths(); months > 0 {
+				periodArgs = append(periodArgs, fmt.Sprintf("months=%d", months))
+			}
+			if weeks := period.GetWeeks(); weeks > 0 {
+				periodArgs = append(periodArgs, fmt.Sprintf("weeks=%d", weeks))
+			}
+			if days := period.GetDays(); days > 0 {
+				periodArgs = append(periodArgs, fmt.Sprintf("days=%d", days))
+			}
+			if hours := period.GetHours(); hours > 0 {
+				periodArgs = append(periodArgs, fmt.Sprintf("hours=%d", hours))
+			}
+			if minutes := period.GetMinutes(); minutes > 0 {
+				periodArgs = append(periodArgs, fmt.Sprintf("minutes=%d", minutes))
+			}
+			if seconds := period.GetSeconds(); seconds > 0 {
+				periodArgs = append(periodArgs, fmt.Sprintf("seconds=%f", seconds))
+			}
+
+			periodStr := fmt.Sprintf("Period(%s)", strings.Join(periodArgs, ", "))
+			ret.Schedule = &periodStr
+		}
+	}
+
+	type VolumeMountInfo = struct {
+		VolumeID string
+		ReadOnly bool
+		SubPath  *string
+	}
+
+	ret.Volumes = make(map[string]VolumeMountInfo, len(firstFunction.GetVolumeMounts()))
+	for _, vm := range firstFunction.GetVolumeMounts() {
+		var subPath *string = nil
+		if x := vm.GetSubPath(); x != "" {
+			subPath = &x
+		}
+
+		ret.Volumes[vm.GetMountPath()] = VolumeMountInfo{
+			vm.GetVolumeId(),
+			vm.GetReadOnly(),
+			subPath,
+		}
+	}
+
+	type CloudBucketMountInfo = struct {
+		BucketName string
+		BucketType string // "s3", "r2", "gcp"
+		ReadOnly   bool
+		KeyPrefix  *string
+	}
+
+	ret.CloudBucketMounts = make(map[string]CloudBucketMountInfo, len(firstFunction.GetCloudBucketMounts()))
+	for _, cbm := range firstFunction.GetCloudBucketMounts() {
+		var keyPrefix *string = nil
+		if x := cbm.GetKeyPrefix(); x != "" {
+			keyPrefix = &x
+		}
+
+		bucketType := "s3"
+		if x := cbm.GetBucketType(); x == pb.CloudBucketMount_R2 {
+			bucketType = "r2"
+		} else if x == pb.CloudBucketMount_GCP {
+			bucketType = "gcp"
+		}
+
+		ret.CloudBucketMounts[cbm.GetMountPath()] = CloudBucketMountInfo{
+			cbm.GetBucketName(),
+			bucketType,
+			cbm.GetReadOnly(),
+			keyPrefix,
+		}
+	}
+
+	type WebhookInfo = struct {
+		WebURL          string
+		Method          *string
+		Unauthenticated bool
+	}
+	if wc := functionData.GetWebhookConfig(); wc.GetType() != pb.WebhookType_WEBHOOK_TYPE_UNSPECIFIED {
+		var method *string = nil
+		if x := wc.GetMethod(); x != "" {
+			method = &x
+		}
+
+		ret.WebInfo = &WebhookInfo{
+			functionData.GetWebUrl(),
+			method,
+			!wc.GetRequiresProxyAuth(),
+		}
+	}
+
+	if mds := functionData.GetMethodDefinitions(); functionData.GetIsClass() {
+		methodNames := make([]string, 0, len(mds))
+		methodDetails := make(map[string]WebhookInfo, len(mds))
+
+		for name, def := range mds {
+			methodNames = append(methodNames, name)
+			if wc := def.GetWebhookConfig(); wc.GetType() != pb.WebhookType_WEBHOOK_TYPE_UNSPECIFIED {
+				var method *string = nil
+				if x := wc.GetMethod(); x != "" {
+					method = &x
+				}
+
+				methodDetails[name] = WebhookInfo{
+					def.GetWebUrl(),
+					method,
+					!wc.GetRequiresProxyAuth(),
+				}
+			}
+		}
+
+		slices.Sort(methodNames)
+		ret.MethodNames = methodNames
+		ret.MethodDetails = methodDetails
+	}
+
+	type ClusterInfo = struct {
+		Size       uint32
+		Rdma       bool
+		FabricSize *uint32
+	}
+
+	if functionData.GetXExperimentalGroupSize() > 0 {
+		var fabricSize *uint32 = nil
+		if x := functionData.GetXExperimentalFabricSize(); x > 0 {
+			fabricSize = &x
+		}
+
+		ret.ClusterInfo = &ClusterInfo{
+			functionData.GetXExperimentalGroupSize(),
+			resources.GetRdma(),
+			fabricSize,
+		}
+	}
+
+	type BatchingInfo = struct {
+		MaxBatchSize uint32
+		WaitMs       uint64
+	}
+
+	if firstFunction.GetBatchMaxSize() > 0 {
+		ret.BatchingInfo = &BatchingInfo{
+			firstFunction.GetBatchMaxSize(),
+			firstFunction.GetBatchLingerMs(),
+		}
+	}
+
+	type ConcurrencyInfo = struct {
+		MaxInputs    *uint32
+		TargetInputs *uint32
+	}
+
+	if mci, tci := firstFunction.GetMaxConcurrentInputs(), firstFunction.GetTargetConcurrentInputs(); mci > 0 || tci > 0 {
+		var m *uint32 = nil
+		if mci > 0 {
+			m = &mci
+		}
+
+		var t *uint32 = nil
+		if tci > 0 {
+			t = &tci
+		}
+
+		ret.ConcurrencyInfo = &ConcurrencyInfo{
+			m,
+			t,
+		}
+	}
+
+	ret.BlockNetwork = firstFunction.GetBlockNetwork()
+	ret.RestrictModalAccess = firstFunction.GetUntrusted()
+	ret.SingleUseContainers = firstFunction.GetSingleUseContainers()
+
+	ret.SecretIDs = firstFunction.GetSecretIds()
+
+	f.cachedInfo = &ret
+
+	return &ret, nil
 }

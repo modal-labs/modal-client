@@ -141,6 +141,7 @@ var excludedTypes = map[string]string{
 
 	"Environment":                     "resource handle with namespaces, no public methods",
 	"FunctionStats":                   "data type",
+	"FunctionInfo":                    "data type",
 	"StatsPercentile":                 "data type",
 	"StatsPercentileDistribution":     "data type",
 	"AppInfo":                         "data type, no public methods",
