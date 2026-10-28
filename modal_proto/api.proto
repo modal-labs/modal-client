@@ -4674,6 +4674,8 @@ message SecretMetadata {
   CreationInfo creation_info = 2;
   repeated string keys = 3;
   string environment_name = 4;
+  double last_used_at = 5;
+  string template_type = 6;
 }
 
 // One source of environment variables for a Sandbox container or exec.

@@ -56904,6 +56904,8 @@ type SecretMetadata struct {
 	xxx_hidden_CreationInfo    *CreationInfo          `protobuf:"bytes,2,opt,name=creation_info,json=creationInfo,proto3"`
 	xxx_hidden_Keys            []string               `protobuf:"bytes,3,rep,name=keys,proto3"`
 	xxx_hidden_EnvironmentName string                 `protobuf:"bytes,4,opt,name=environment_name,json=environmentName,proto3"`
+	xxx_hidden_LastUsedAt      float64                `protobuf:"fixed64,5,opt,name=last_used_at,json=lastUsedAt,proto3"`
+	xxx_hidden_TemplateType    string                 `protobuf:"bytes,6,opt,name=template_type,json=templateType,proto3"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -56961,6 +56963,20 @@ func (x *SecretMetadata) GetEnvironmentName() string {
 	return ""
 }
 
+func (x *SecretMetadata) GetLastUsedAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_LastUsedAt
+	}
+	return 0
+}
+
+func (x *SecretMetadata) GetTemplateType() string {
+	if x != nil {
+		return x.xxx_hidden_TemplateType
+	}
+	return ""
+}
+
 func (x *SecretMetadata) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -56975,6 +56991,14 @@ func (x *SecretMetadata) SetKeys(v []string) {
 
 func (x *SecretMetadata) SetEnvironmentName(v string) {
 	x.xxx_hidden_EnvironmentName = v
+}
+
+func (x *SecretMetadata) SetLastUsedAt(v float64) {
+	x.xxx_hidden_LastUsedAt = v
+}
+
+func (x *SecretMetadata) SetTemplateType(v string) {
+	x.xxx_hidden_TemplateType = v
 }
 
 func (x *SecretMetadata) HasCreationInfo() bool {
@@ -56995,6 +57019,8 @@ type SecretMetadata_builder struct {
 	CreationInfo    *CreationInfo
 	Keys            []string
 	EnvironmentName string
+	LastUsedAt      float64
+	TemplateType    string
 }
 
 func (b0 SecretMetadata_builder) Build() *SecretMetadata {
@@ -57005,6 +57031,8 @@ func (b0 SecretMetadata_builder) Build() *SecretMetadata {
 	x.xxx_hidden_CreationInfo = b.CreationInfo
 	x.xxx_hidden_Keys = b.Keys
 	x.xxx_hidden_EnvironmentName = b.EnvironmentName
+	x.xxx_hidden_LastUsedAt = b.LastUsedAt
+	x.xxx_hidden_TemplateType = b.TemplateType
 	return m0
 }
 
@@ -79901,12 +79929,15 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"pagination\"s\n" +
 	"\x12SecretListResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.modal.client.SecretListItemR\x05items\x12)\n" +
-	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\"\xa4\x01\n" +
+	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\"\xeb\x01\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12?\n" +
 	"\rcreation_info\x18\x02 \x01(\v2\x1a.modal.client.CreationInfoR\fcreationInfo\x12\x12\n" +
 	"\x04keys\x18\x03 \x03(\tR\x04keys\x12)\n" +
-	"\x10environment_name\x18\x04 \x01(\tR\x0fenvironmentName\"d\n" +
+	"\x10environment_name\x18\x04 \x01(\tR\x0fenvironmentName\x12 \n" +
+	"\flast_used_at\x18\x05 \x01(\x01R\n" +
+	"lastUsedAt\x12#\n" +
+	"\rtemplate_type\x18\x06 \x01(\tR\ftemplateType\"d\n" +
 	"\fSecretSource\x12\x1d\n" +
 	"\tsecret_id\x18\x01 \x01(\tH\x00R\bsecretId\x12+\n" +
 	"\x03env\x18\x02 \x01(\v2\x17.modal.client.StringMapH\x00R\x03envB\b\n" +
