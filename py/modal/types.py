@@ -165,6 +165,7 @@ class SecretInfo:
     environment_name: str
     created_at: datetime
     created_by: str | None
+    last_used: datetime | None
 
 
 class VolumeCreateOptions(TypedDict, total=False):

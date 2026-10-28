@@ -1085,6 +1085,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_nfss = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}
+        self.secret_use_times = {}
         self.deployed_volumes = {}
 
         self.secret_environment_names = {}
@@ -3915,9 +3916,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Secret
 
+    def _use_secret(self, secret_id: str):
+        self.secret_use_times[secret_id] = datetime.datetime.now(datetime.timezone.utc).timestamp()
+
     async def SecretDelete(self, stream):
         request: api_pb2.SecretDeleteRequest = await stream.recv_message()
         self.deployed_secrets = {k: v for k, v in self.deployed_secrets.items() if v != request.secret_id}
+        self.secret_use_times.pop(request.secret_id, None)
         self.secrets.pop(request.secret_id)
         self.resource_creation_timestamps.pop(request.secret_id)
         self.secret_environment_names.pop(request.secret_id)
@@ -3950,25 +3955,27 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if secret_id != request.secret_id:
                 continue
 
-            await stream.send_message(
-                api_pb2.SecretGetInfoResponse(
-                    metadata=api_pb2.SecretMetadata(
-                        name=secret_name,
-                        creation_info=creation_info,
-                        environment_name=environment_name,
-                        keys=list(env_dict.keys()),
-                    )
-                )
+            metadata = api_pb2.SecretMetadata(
+                name=secret_name,
+                creation_info=creation_info,
+                environment_name=environment_name,
+                keys=list(env_dict.keys()),
             )
+
+            if last_used := self.secret_use_times.get(secret_id):
+                metadata.last_used_at = last_used
+
+            await stream.send_message(api_pb2.SecretGetInfoResponse(metadata=metadata))
             return
 
-        await stream.send_message(
-            api_pb2.SecretGetInfoResponse(
-                metadata=api_pb2.SecretMetadata(
-                    creation_info=creation_info, environment_name=environment_name, keys=list(env_dict.keys())
-                )
-            )
+        metadata = api_pb2.SecretMetadata(
+            creation_info=creation_info, environment_name=environment_name, keys=list(env_dict.keys())
         )
+
+        if last_used := self.secret_use_times.get(secret_id):
+            metadata.last_used_at = last_used
+
+        await stream.send_message(api_pb2.SecretGetInfoResponse(metadata=metadata))
 
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
@@ -4037,6 +4044,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 environment_name=environment_name,
                 keys=list(env_dict.keys()),
             )
+
+            if last_used := self.secret_use_times.get(obj_id):
+                metadata.last_used_at = last_used
+
             secrets.append(api_pb2.SecretListItem(label=name, secret_id=obj_id, metadata=metadata))
             if req.pagination.max_objects and len(secrets) >= req.pagination.max_objects:
                 break

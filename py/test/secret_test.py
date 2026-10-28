@@ -169,18 +169,26 @@ def test_secret_from_id(servicer, client):
     assert info.name == name
     assert info.created_by == servicer.default_username
     assert info.environment_name == servicer.get_environment()
+    assert info.last_used is None
 
     # Look up secret through app
     app = App()
     secret = Secret._from_id(secret_id, client=client)
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):
+        servicer._use_secret(secret_id)
+
         assert secret.object_id == secret_id
 
         info = secret.info()
         assert info.name == name
         assert info.created_by == servicer.default_username
         assert info.environment_name == servicer.get_environment()
+        assert info.last_used is None
+
+        # Need to refresh to get updated usage time
+        info = secret.info(refresh=True)
+        assert info.last_used is not None
 
     Secret.objects.delete(name, client=client)
     with pytest.raises(NotFoundError):

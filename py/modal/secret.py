@@ -2,7 +2,7 @@
 import builtins
 import os
 from collections.abc import Collection
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -551,15 +551,21 @@ class _Secret(_Object, type_prefix="st"):
         return resp.secret_id
 
     @live_method
-    async def info(self) -> SecretInfo:
+    async def info(self, *, refresh: bool = False) -> SecretInfo:
         """Return information about the Secret object."""
+        if refresh:
+            await self._refresh_metadata()
+
         metadata = self._get_metadata()
         creation_info = metadata.creation_info
+        last_used = datetime.fromtimestamp(metadata.last_used_at, tz=timezone.utc)
+
         return SecretInfo(
             name=metadata.name or None,
             created_at=timestamp_to_localized_dt(creation_info.created_at),
             created_by=creation_info.created_by or None,
             environment_name=metadata.environment_name,
+            last_used=last_used if last_used.timestamp() > 0 else None,
         )
 
     @live_method
