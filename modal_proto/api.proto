@@ -4353,8 +4353,8 @@ message SandboxGetTaskIdResponse {
 }
 
 message SandboxGetTimeRangeStatsRequest {
-  google.protobuf.Timestamp created_after = 1;
-  google.protobuf.Timestamp created_before = 2;
+  google.protobuf.Timestamp since = 1;
+  google.protobuf.Timestamp until = 2;
   repeated string group_by_tags = 3;
   map<string, string> tags = 4;
   string app_id = 5;
@@ -4519,10 +4519,8 @@ message SandboxSnapshotWaitResponse {
 
 message SandboxStatsGroup {
   map<string, string> tags = 1;
-  uint64 count = 2;
-  StatsSummary duration = 3;
-  StatsSummary cost = 4;
-  map<string, StatsSummary> cost_by_resource = 5;
+  double cost = 2;
+  map<string, double> cost_by_resource = 3;
 }
 
 message SandboxStdinWriteRequest {
@@ -4984,14 +4982,6 @@ message StatsPercentileDistribution {
   // Unit identifier such as "seconds", "cores", "gibibytes", or "fraction".
   string unit = 1;
   repeated StatsPercentile percentiles = 2;
-}
-
-message StatsSummary {
-  string unit = 1;
-  uint64 count = 2;
-  double sum = 3;
-  double mean = 4;
-  repeated StatsPercentile percentiles = 5;
 }
 
 message StringMap {
