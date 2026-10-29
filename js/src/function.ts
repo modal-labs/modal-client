@@ -15,7 +15,12 @@ import {
   FunctionOptions as FunctionOptionsProto,
   FunctionRetryPolicy,
   ParameterType,
+  CloudBucketMount_BucketType,
+  Resources,
   VolumeMount,
+  WebhookType,
+  FunctionMessage,
+  FunctionData,
 } from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
 import { FunctionCall } from "./function_call";
@@ -114,6 +119,8 @@ export class FunctionService {
         functionId,
         undefined,
         resp.handleMetadata,
+        undefined,
+        resp.function,
       );
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
@@ -157,6 +164,8 @@ export class FunctionService {
         resp.functionId,
         undefined,
         resp.handleMetadata,
+        undefined,
+        resp.function,
       );
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
@@ -208,6 +217,61 @@ export interface FunctionStatsParams {
   /** Aggregate the base Function and its variants. Defaults to false. */
   allVariants?: boolean;
 }
+
+export interface FunctionInfoParams {
+  refresh?: boolean;
+}
+
+export type FunctionInfo = {
+  cpu?: number | [number, number];
+  memoryMiB?: number | [number, number];
+  gpus: { gpuType: string; count: number }[];
+  ephemeralDiskMiB?: number;
+
+  imageId: string;
+
+  startupTimeoutSecs?: number;
+  timeoutSecs: number;
+  maxRetries?: number;
+
+  nonpreemptible: boolean;
+  regions?: string[];
+  routingRegion?: string;
+  cloud?: string;
+
+  clusterInfo?: { size: number; rdma: boolean; fabricSize?: number };
+  batchingInfo?: { maxBatchSize: number; waitMs: number };
+  concurrencyInfo?: { maxInputs?: number; targetInputs?: number };
+
+  schedule?: string;
+
+  restrictModalAccess: boolean;
+  blockNetwork: boolean;
+  singleUseContainers: boolean;
+
+  volumes: Map<
+    string,
+    { volumeId: string; readOnly: boolean; subPath?: string }
+  >;
+  cloudBucketMounts: Map<
+    string,
+    {
+      bucketName: string;
+      bucketType: "s3" | "r2" | "gcp";
+      readOnly: boolean;
+      keyPrefix?: string;
+    }
+  >;
+  secretIds: string[];
+
+  webInfo?: { webUrl: string; method?: string; unauthenticated: boolean };
+
+  methodNames?: string[];
+  methodDetails?: Map<
+    string,
+    { webUrl: string; method?: string; unauthenticated: boolean }
+  >;
+};
 
 function statsDistributions(
   stats: Record<string, StatsPercentileDistributionProto>,
@@ -292,6 +356,77 @@ export function mergeServiceOptions(
   ) as Partial<FunctionOptions>;
   const merged = { ...(base ?? {}), ...filteredDiff } as FunctionOptions;
   return Object.keys(merged).length === 0 ? undefined : merged;
+}
+
+/**
+ * @internal
+ * @hidden
+ */
+function applyFunctionOptions(
+  proto: FunctionMessage,
+  options: FunctionOptions | undefined,
+): FunctionMessage {
+  if (options == null) return proto;
+
+  const resources = proto.resources ?? Resources.create();
+
+  if (options.cpu ?? 0 > 0) resources.milliCpu = (options.cpu ?? 0) * 1000;
+  if (options.cpuLimit ?? 0 > 0)
+    resources.milliCpuMax = (options.cpuLimit ?? 0) * 1000;
+  if (options.memoryMiB ?? 0 > 0) resources.memoryMb = options.memoryMiB ?? 0;
+  if (options.memoryLimitMiB ?? 0 > 0)
+    resources.memoryMbMax = options.memoryLimitMiB ?? 0;
+
+  proto.resources = resources;
+
+  if (options.timeoutMs != null) proto.timeoutSecs = options.timeoutMs / 1000;
+  if (options.retries != null) {
+    const retries = parseRetries(options.retries);
+    if (retries != null) {
+      proto.retryPolicy = {
+        retries: retries.maxRetries,
+        backoffCoefficient: retries.backoffCoefficient,
+        initialDelayMs: retries.initialDelayMs,
+        maxDelayMs: retries.maxDelayMs,
+      };
+    }
+  }
+
+  if (options.volumes != null && Object.entries(options.volumes).length > 0) {
+    proto.volumeMounts = Object.entries(options.volumes).map(
+      ([mountPath, vol]) => ({
+        volumeId: vol.volumeId,
+        mountPath,
+        readOnly: vol._mountOptions.readOnly,
+        subPath: vol._mountOptions.subPath,
+        allowBackgroundCommits: true,
+      }),
+    );
+  }
+
+  if (options.secrets != null && options.secrets.length > 0) {
+    proto.secretIds = options.secrets.map((s) => s.secretId);
+  }
+
+  if (options.routingRegion != null) {
+    proto.routingRegion = options.routingRegion;
+  }
+
+  if (options.batchMaxSize != null) {
+    proto.batchMaxSize = options.batchMaxSize;
+  }
+  if (options.batchWaitMs != null) {
+    proto.batchLingerMs = options.batchWaitMs;
+  }
+
+  if (options.maxConcurrentInputs != null) {
+    proto.maxConcurrentInputs = options.maxConcurrentInputs;
+  }
+  if (options.targetConcurrentInputs != null) {
+    proto.targetConcurrentInputs = options.targetConcurrentInputs;
+  }
+
+  return proto;
 }
 
 /**
@@ -540,6 +675,7 @@ export class Function_ {
   #client: ModalClient;
   #handleMetadata?: FunctionHandleMetadata;
   #options?: FunctionOptions;
+  #cachedFunctionData?: FunctionData;
 
   /** @ignore */
   constructor(
@@ -548,6 +684,7 @@ export class Function_ {
     methodName?: string,
     functionHandleMetadata?: FunctionHandleMetadata,
     options?: FunctionOptions,
+    cachedFunctionData?: FunctionData,
   ) {
     this.functionId = functionId;
     this.methodName = methodName;
@@ -555,6 +692,7 @@ export class Function_ {
     this.#client = client;
     this.#handleMetadata = functionHandleMetadata;
     this.#options = options;
+    this.#cachedFunctionData = cachedFunctionData;
   }
 
   #checkNoWebUrl(fnName: string): void {
@@ -597,6 +735,7 @@ export class Function_ {
       this.methodName,
       this.#handleMetadata,
       mergeServiceOptions(this.#options, options),
+      this.#cachedFunctionData,
     );
   }
 
@@ -611,6 +750,7 @@ export class Function_ {
         maxConcurrentInputs: params.maxInputs,
         targetConcurrentInputs: params.targetInputs,
       }),
+      this.#cachedFunctionData,
     );
   }
 
@@ -625,6 +765,7 @@ export class Function_ {
         batchMaxSize: params.maxBatchSize,
         batchWaitMs: params.waitMs,
       }),
+      this.#cachedFunctionData,
     );
   }
 
@@ -828,6 +969,294 @@ export class Function_ {
       backlog: resp.backlog,
       numTotalRunners: resp.numTotalTasks,
     };
+  }
+
+  #buildFunctionInfo(): FunctionInfo {
+    if (this.#cachedFunctionData == null)
+      throw new Error("Unable to load function metadata");
+
+    // hacky way of creating a clone of the functionData object
+    const functionData = FunctionData.fromJSON(
+      FunctionData.toJSON(this.#cachedFunctionData),
+    );
+
+    if (functionData.rankedFunctions.length === 0)
+      throw new Error("Could not parse FunctionData proto");
+
+    let firstFunction = functionData.rankedFunctions[0].function;
+    if (firstFunction == null)
+      throw new Error("Could not parse FunctionData proto");
+
+    const options = this.#options;
+    firstFunction = applyFunctionOptions(firstFunction, options);
+
+    const resources = firstFunction.resources;
+
+    let cpu: number | [number, number] | undefined = undefined;
+    if ((resources?.milliCpuMax ?? 0) > 0) {
+      cpu = [
+        (resources?.milliCpu ?? 0) / 1000,
+        (resources?.milliCpuMax ?? 0) / 1000,
+      ];
+    } else if ((resources?.milliCpu ?? 0) > 0) {
+      cpu = (resources?.milliCpu ?? 0) / 1000;
+    }
+
+    let memoryMiB: number | [number, number] | undefined = undefined;
+    if ((resources?.memoryMbMax ?? 0) > 0) {
+      memoryMiB = [resources?.memoryMb ?? 0, resources?.memoryMbMax ?? 0];
+    } else if ((resources?.memoryMb ?? 0) > 0) {
+      memoryMiB = resources?.memoryMb ?? 0;
+    }
+
+    let ephemeralDiskMiB: number | undefined = undefined;
+    if ((resources?.ephemeralDiskMb ?? 0) > 0) {
+      ephemeralDiskMiB = resources?.ephemeralDiskMb ?? 0;
+    }
+
+    let gpus: { gpuType: string; count: number }[] = [];
+    if (options?.gpu != null && options.gpu !== "") {
+      const parsed = parseGpuConfig(options.gpu);
+      gpus = [{ gpuType: parsed.gpuType, count: parsed.count }];
+    } else {
+      gpus = functionData.rankedFunctions
+        .filter(
+          (rf) =>
+            rf.function?.resources?.gpuConfig != null &&
+            rf.function.resources.gpuConfig.count > 0,
+        )
+        .map((rf) => {
+          const config = rf.function?.resources?.gpuConfig;
+          return { gpuType: config?.gpuType ?? "", count: config?.count ?? 0 };
+        });
+    }
+
+    const schedulerPlacement = firstFunction.schedulerPlacement;
+
+    const nonpreemptible = schedulerPlacement?.nonpreemptible ?? false;
+    let regions: string[] | undefined = undefined;
+    if ((schedulerPlacement?.regions.length ?? 0) > 0) {
+      regions = schedulerPlacement?.regions;
+    }
+
+    let cloud: string | undefined = undefined;
+    if (firstFunction.cloudProviderStr.length > 0) {
+      cloud = firstFunction.cloudProviderStr;
+    }
+
+    let schedule: string | undefined = undefined;
+    if (functionData.schedule != null) {
+      const cron = functionData.schedule.cron;
+      const period = functionData.schedule.period;
+      if (cron != null) {
+        schedule = `Cron(${cron.cronString}, ${cron.timezone})`;
+      } else if (period != null) {
+        const args: string[] = [];
+        if (period.years > 0) args.push(`years=${period.years}`);
+        if (period.months > 0) args.push(`months=${period.months}`);
+        if (period.weeks > 0) args.push(`weeks=${period.weeks}`);
+        if (period.days > 0) args.push(`days=${period.days}`);
+        if (period.hours > 0) args.push(`hours=${period.hours}`);
+        if (period.minutes > 0) args.push(`minutes=${period.minutes}`);
+        if (period.seconds > 0) args.push(`seconds=${period.seconds}`);
+
+        schedule = `Period(${args.join(", ")})`;
+      }
+    }
+
+    const volumes = new Map(
+      firstFunction.volumeMounts.map((vm) => [
+        vm.mountPath,
+        {
+          volumeId: vm.volumeId,
+          readOnly: vm.readOnly,
+          subPath: vm.subPath,
+        },
+      ]),
+    );
+
+    const cloudBucketMounts: Map<
+      string,
+      {
+        bucketName: string;
+        bucketType: "s3" | "r2" | "gcp";
+        readOnly: boolean;
+        keyPrefix?: string;
+      }
+    > = new Map(
+      firstFunction.cloudBucketMounts.map((cbm) => {
+        const bucketType =
+          cbm.bucketType === CloudBucketMount_BucketType.R2
+            ? "r2"
+            : cbm.bucketType === CloudBucketMount_BucketType.GCP
+              ? "gcp"
+              : "s3";
+
+        return [
+          cbm.mountPath,
+          {
+            bucketName: cbm.bucketName,
+            bucketType,
+            readOnly: cbm.readOnly,
+            keyPrefix: cbm.keyPrefix,
+          },
+        ];
+      }),
+    );
+
+    let webInfo:
+      | { webUrl: string; method?: string; unauthenticated: boolean }
+      | undefined = undefined;
+    if (
+      (firstFunction.webhookConfig?.type ??
+        WebhookType.WEBHOOK_TYPE_UNSPECIFIED) !=
+      WebhookType.WEBHOOK_TYPE_UNSPECIFIED
+    ) {
+      webInfo = {
+        webUrl: functionData.webUrl,
+        method: firstFunction.webhookConfig?.method,
+        unauthenticated: !(
+          firstFunction.webhookConfig?.requiresProxyAuth ?? false
+        ),
+      };
+    }
+
+    let methodNames: string[] | undefined = undefined;
+    let methodDetails:
+      | Map<
+          string,
+          { webUrl: string; method?: string; unauthenticated: boolean }
+        >
+      | undefined = undefined;
+    if (Object.entries(functionData.methodDefinitions).length > 0) {
+      methodNames = [];
+      methodDetails = new Map();
+
+      for (const [methodName, def] of Object.entries(
+        functionData.methodDefinitions,
+      )) {
+        methodNames.push(methodName);
+
+        if (
+          (def.webhookConfig?.type ?? WebhookType.WEBHOOK_TYPE_UNSPECIFIED) !=
+          WebhookType.WEBHOOK_TYPE_UNSPECIFIED
+        ) {
+          methodDetails.set(methodName, {
+            webUrl: def.webUrl,
+            method: def.webhookConfig?.method,
+            unauthenticated: !(def.webhookConfig?.requiresProxyAuth ?? false),
+          });
+        }
+      }
+    }
+
+    let clusterInfo:
+      | { size: number; rdma: boolean; fabricSize?: number }
+      | undefined = undefined;
+    if (functionData.ExperimentalGroupSize > 0) {
+      clusterInfo = {
+        size: functionData.ExperimentalGroupSize,
+        rdma: resources?.rdma ?? false,
+        fabricSize:
+          functionData.ExperimentalFabricSize > 0
+            ? functionData.ExperimentalFabricSize
+            : undefined,
+      };
+    }
+
+    let batchingInfo: { maxBatchSize: number; waitMs: number } | undefined =
+      undefined;
+    if (firstFunction.batchMaxSize > 0) {
+      batchingInfo = {
+        maxBatchSize: firstFunction.batchMaxSize,
+        waitMs: firstFunction.batchLingerMs,
+      };
+    }
+
+    let concurrencyInfo:
+      | { maxInputs?: number; targetInputs?: number }
+      | undefined = undefined;
+    if (
+      firstFunction.maxConcurrentInputs > 0 ||
+      firstFunction.targetConcurrentInputs > 0
+    ) {
+      concurrencyInfo = {
+        maxInputs:
+          firstFunction.maxConcurrentInputs > 0
+            ? firstFunction.maxConcurrentInputs
+            : undefined,
+        targetInputs:
+          firstFunction.targetConcurrentInputs > 0
+            ? firstFunction.targetConcurrentInputs
+            : undefined,
+      };
+    }
+
+    let secretIds: string[] = [];
+    if (
+      Object.entries(this.#options?.env ?? {}).length > 0 ||
+      (this.#options?.secrets?.length ?? 0) > 0
+    ) {
+      secretIds = this.#options?.secrets?.map((s) => s.secretId) ?? [];
+    } else {
+      secretIds = firstFunction.secretIds;
+    }
+
+    return {
+      cpu,
+      memoryMiB,
+      gpus,
+      ephemeralDiskMiB,
+
+      imageId: firstFunction.imageId,
+
+      startupTimeoutSecs: firstFunction.startupTimeoutSecs,
+      timeoutSecs:
+        options?.timeoutMs != null
+          ? options.timeoutMs / 1000
+          : functionData.timeoutSecs,
+      maxRetries: firstFunction.retryPolicy?.retries,
+
+      nonpreemptible,
+      regions,
+      routingRegion: options?.routingRegion ?? functionData.routingRegion,
+      cloud,
+
+      blockNetwork: firstFunction.blockNetwork,
+      restrictModalAccess: firstFunction.untrusted,
+      singleUseContainers: firstFunction.singleUseContainers,
+
+      schedule,
+
+      volumes,
+      cloudBucketMounts,
+      secretIds,
+
+      webInfo,
+
+      methodNames,
+      methodDetails,
+
+      clusterInfo,
+      batchingInfo,
+      concurrencyInfo,
+    };
+  }
+
+  async info(params: FunctionInfoParams = {}): Promise<FunctionInfo> {
+    if (params.refresh || this.#cachedFunctionData == null) {
+      const resp = await this.#client.cpClient.functionGetById({
+        functionId: this.functionId,
+      });
+
+      const functionData = resp.function;
+      if (functionData == null)
+        throw new Error("Unable to load function metadata");
+
+      this.#cachedFunctionData = functionData;
+    }
+
+    return this.#buildFunctionInfo();
   }
 
   // Overrides the current autoscaler behavior for this Function.

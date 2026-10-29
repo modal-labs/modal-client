@@ -1,6 +1,6 @@
 import { ClientError, Status } from "nice-grpc";
 import { tc } from "../test-support/test-client";
-import { InvalidError, NotFoundError } from "modal";
+import { InvalidError, NotFoundError, Retries } from "modal";
 import { expect, test } from "vitest";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { Function_ } from "../src/function";
@@ -11,6 +11,7 @@ import {
   AutoscalerSettings,
   DataFormat,
   FunctionUpdateSchedulingParamsRequest,
+  FunctionMessage,
 } from "../proto/modal_proto/api";
 
 test("FunctionCall", async () => {
@@ -603,4 +604,193 @@ test("FunctionStats rejects invalid ranges and propagates RPC errors", async () 
   });
   await expect(f.stats()).rejects.toThrow("stats unavailable");
   mockCpClient.assertExhausted();
+});
+
+test("FunctionInfo", async () => {
+  const f = await tc.functions.fromName("libmodal-test-support", "echo_string");
+
+  const freshInfo = await f.info();
+
+  expect(freshInfo.blockNetwork).toEqual(false);
+  expect(freshInfo.cloudBucketMounts).toEqual(new Map());
+  expect(freshInfo.gpus).toEqual([]);
+  expect(freshInfo.nonpreemptible).toEqual(false);
+  expect(freshInfo.restrictModalAccess).toEqual(false);
+  expect(freshInfo.routingRegion).toEqual("");
+  expect(freshInfo.secretIds).toEqual([]);
+  expect(freshInfo.singleUseContainers).toEqual(false);
+  expect(freshInfo.startupTimeoutSecs).toEqual(300);
+  expect(freshInfo.timeoutSecs).toEqual(300);
+  expect(freshInfo.volumes).toEqual(new Map());
+
+  const configured = f
+    .withOptions({
+      cpu: 1,
+      cpuLimit: 2,
+      memoryMiB: 512,
+      memoryLimitMiB: 1024,
+      gpu: "H100:8",
+      env: { test: "value" },
+      secrets: [await tc.secrets.fromName("libmodal-test-secret")],
+      volumes: {
+        "/mnt/tmp": (
+          await tc.volumes.fromName("libmodal-test-volume")
+        ).withMountOptions({ readOnly: true }),
+      },
+      retries: new Retries({ maxRetries: 10 }),
+      maxContainers: 4,
+      bufferContainers: 2,
+      scaledownWindowMs: 30_000,
+      timeoutMs: 60_000,
+      routingRegion: "us-west",
+    })
+    .withBatching({
+      maxBatchSize: 10,
+      waitMs: 100,
+    })
+    .withConcurrency({
+      maxInputs: 100,
+      targetInputs: 10,
+    });
+
+  const newUnhydratedInfo = await configured.info();
+
+  expect(newUnhydratedInfo.batchingInfo).toEqual({
+    maxBatchSize: 10,
+    waitMs: 100,
+  });
+  expect(newUnhydratedInfo.blockNetwork).toEqual(false);
+  expect(newUnhydratedInfo.concurrencyInfo).toEqual({
+    maxInputs: 100,
+    targetInputs: 10,
+  });
+  expect(newUnhydratedInfo.cpu).toEqual([1, 2]);
+  expect(newUnhydratedInfo.gpus).toEqual([{ count: 8, gpuType: "H100" }]);
+  expect(newUnhydratedInfo.maxRetries).toEqual(10);
+  expect(newUnhydratedInfo.memoryMiB).toEqual([512, 1024]);
+  expect(newUnhydratedInfo.nonpreemptible).toEqual(false);
+  expect(newUnhydratedInfo.restrictModalAccess).toEqual(false);
+  expect(newUnhydratedInfo.routingRegion).toEqual("us-west");
+  expect(newUnhydratedInfo.singleUseContainers).toEqual(false);
+  expect(newUnhydratedInfo.startupTimeoutSecs).toEqual(300);
+  expect(newUnhydratedInfo.timeoutSecs).toEqual(60);
+
+  expect(newUnhydratedInfo.volumes.size).toEqual(1);
+  expect(newUnhydratedInfo.volumes.get("/mnt/tmp")?.readOnly).toEqual(true);
+  expect(newUnhydratedInfo.secretIds.length).toEqual(1);
+
+  const newHydratedInfo = await (await configured.instance()).info();
+
+  expect(newHydratedInfo.batchingInfo).toEqual({
+    maxBatchSize: 10,
+    waitMs: 100,
+  });
+  expect(newHydratedInfo.blockNetwork).toEqual(false);
+  expect(newHydratedInfo.concurrencyInfo).toEqual({
+    maxInputs: 100,
+    targetInputs: 10,
+  });
+  expect(newHydratedInfo.cpu).toEqual([1, 2]);
+  expect(newHydratedInfo.gpus).toEqual([{ count: 8, gpuType: "H100" }]);
+  expect(newHydratedInfo.maxRetries).toEqual(10);
+  expect(newHydratedInfo.memoryMiB).toEqual([512, 1024]);
+  expect(newHydratedInfo.nonpreemptible).toEqual(false);
+  expect(newHydratedInfo.restrictModalAccess).toEqual(false);
+  expect(newHydratedInfo.routingRegion).toEqual("us-west");
+  expect(newHydratedInfo.singleUseContainers).toEqual(false);
+  expect(newHydratedInfo.startupTimeoutSecs).toEqual(300);
+  expect(newHydratedInfo.timeoutSecs).toEqual(60);
+
+  expect(newHydratedInfo.volumes.size).toEqual(1);
+  expect(newHydratedInfo.volumes.get("/mnt/tmp")?.readOnly).toEqual(true);
+  expect(newHydratedInfo.secretIds.length).toEqual(2);
+});
+
+test("FunctionInfoIsCached", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  let numCalls = 0;
+
+  for (let i = 0; i < 2; i++) {
+    mock.handleUnary("/FunctionGetById", (req) => {
+      numCalls++;
+
+      expect(req).toMatchObject({ functionId: "fu-test" });
+      return {
+        handleMetadata: { appId: `ap-${i}` },
+        function: {
+          rankedFunctions: [
+            {
+              rank: 0,
+              function: FunctionMessage.create({ imageId: `im-${i}` }),
+            },
+          ],
+          methodDefinitions: {},
+        },
+      };
+    });
+  }
+  const f = await mc.functions.fromId("fu-test");
+  expect(numCalls).toEqual(1);
+
+  // reuse proto from the fromId call
+  const freshInfo = await f.info();
+  expect(numCalls).toEqual(1);
+
+  const secondCall = await f.info();
+  expect(numCalls).toEqual(1);
+
+  expect(freshInfo).toEqual(secondCall);
+
+  const configured = f
+    .withOptions({
+      cpu: 1,
+      cpuLimit: 2,
+      memoryMiB: 512,
+      memoryLimitMiB: 1024,
+      gpu: "H100:8",
+      env: { test: "value" },
+      retries: new Retries({ maxRetries: 10 }),
+      maxContainers: 4,
+      bufferContainers: 2,
+      scaledownWindowMs: 30_000,
+      timeoutMs: 60_000,
+      routingRegion: "us-west",
+    })
+    .withBatching({
+      maxBatchSize: 10,
+      waitMs: 100,
+    })
+    .withConcurrency({
+      maxInputs: 100,
+      targetInputs: 10,
+    });
+
+  // should still be reusing the cached proto here
+  const configuredInfo = await configured.info();
+  expect(configuredInfo).not.toEqual(freshInfo);
+  expect(numCalls).toEqual(1);
+
+  const refreshedInfo = await f.info({ refresh: true });
+  expect(refreshedInfo).not.toEqual(freshInfo);
+  expect(numCalls).toEqual(2);
+
+  // check that multiple withOptions calls don't poison the cached functionData
+  const cpuInfo = await f
+    .withOptions({
+      cpu: 1,
+      cpuLimit: 2,
+    })
+    .info();
+  const memInfo = await f
+    .withOptions({
+      memoryMiB: 512,
+      memoryLimitMiB: 1024,
+    })
+    .info();
+
+  expect(cpuInfo.cpu).toEqual([1, 2]);
+  expect(cpuInfo.memoryMiB).toBeUndefined();
+
+  expect(memInfo.cpu).toBeUndefined();
+  expect(memInfo.memoryMiB).toEqual([512, 1024]);
 });

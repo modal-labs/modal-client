@@ -12,6 +12,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.stop()` method.
+- Added the `_Function.info()` method.
 
 ## Go
 

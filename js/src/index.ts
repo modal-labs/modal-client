@@ -64,6 +64,7 @@ export {
   type FunctionWithBatchingParams,
   type FunctionWithConcurrencyParams,
   type FunctionAutoscalerSettings,
+  type FunctionInfo,
 } from "./function";
 export {
   FunctionCall,
