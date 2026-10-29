@@ -4518,7 +4518,10 @@ message SandboxSnapshotWaitResponse {
 }
 
 message SandboxStatsGroup {
-  map<string, string> tags = 1;
+  message TagValue {
+    optional string value = 1;
+  }
+  map<string, TagValue> tags = 1;
   double cost = 2;
   map<string, double> cost_by_resource = 3;
 }
