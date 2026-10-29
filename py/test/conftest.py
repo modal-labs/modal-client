@@ -1172,6 +1172,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.endpoint_create_requests: list[api_pb2.EndpointCreateRequest] = []
         self.endpoint_create_model_name = ""
         self.endpoint_list_requests: list[api_pb2.EndpointListRequest] = []
+        self.endpoint_models: list[api_pb2.EndpointModel] = []
         self.endpoint_list_items: list[api_pb2.EndpointListItem] = []
         self.endpoint_list_item_environments: dict[str, str] = {}
         self.endpoint_get_by_name_requests: list[api_pb2.EndpointGetByNameRequest] = []
@@ -2158,6 +2159,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 model_name=self.endpoint_create_model_name,
             )
         )
+
+    async def EndpointGetLibrary(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.EndpointGetLibraryResponse(models=self.endpoint_models))
 
     async def EndpointList(self, stream):
         request: api_pb2.EndpointListRequest = await stream.recv_message()

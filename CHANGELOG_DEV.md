@@ -6,6 +6,8 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Added `modal endpoint library` to discover endpoint-compatible models.
+
 ## JS
 
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.

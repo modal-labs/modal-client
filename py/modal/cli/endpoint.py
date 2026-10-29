@@ -5,6 +5,7 @@ from json import dumps
 from typing import Optional
 
 import click
+from rich.box import SIMPLE
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -21,6 +22,7 @@ from modal_proto import api_pb2
 
 from ._help import ModalGroup
 from ._logs import _validate_logs_args
+from ._stats import STATS_METADATA_STYLE
 from .server import _run_server_logs, _run_server_stats, _server_stats_time_range
 
 _ENDPOINT_HELP = """
@@ -40,6 +42,11 @@ _DEFAULT_ROUTING_REGION = "us-west"
 _SERVING_MODE_LABELS = {
     api_pb2.ENDPOINT_SERVING_MODE_DEDICATED: "dedicated",
     api_pb2.ENDPOINT_SERVING_MODE_SHARED: "shared",
+}
+_INPUT_MODALITY_LABELS = {
+    api_pb2.ENDPOINT_INPUT_MODALITY_TEXT: "text",
+    api_pb2.ENDPOINT_INPUT_MODALITY_IMAGE: "image",
+    api_pb2.ENDPOINT_INPUT_MODALITY_AUDIO: "audio",
 }
 _ENDPOINT_STATUS_LABELS = {
     api_pb2.EndpointGetInfoResponse.ENDPOINT_STATUS_PROVISIONING: "provisioning",
@@ -500,6 +507,108 @@ async def stop(
         )
     else:
         output.print(f"[green]✓[/green] Stopped Endpoint {endpoint_id}.")
+
+
+@endpoint_cli.command("library", panel="Inspection")
+@click.option(
+    "--input-modality",
+    type=click.Choice(["text", "image", "audio"]),
+    multiple=True,
+    help="Only show models that accept any of these inputs. Can be repeated.",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output models as JSON.")
+@synchronizer.create_blocking
+async def library(*, input_modality: tuple[str, ...] = (), json_output: bool = False) -> None:
+    """List models you can serve with Modal Endpoints.
+
+    Models are listed by their Hugging Face repo ID, with the input types they
+    accept and whether they're available as shared endpoints, dedicated
+    endpoints, or both.
+
+    This is Modal's catalog of supported models, not the Endpoints in your
+    workspace. To see those, run `modal endpoint list`.
+
+    Examples:
+
+    List models that support text input modality:
+
+    ```
+    modal endpoint library --input-modality text
+    ```
+
+    Pick a model ID and then create a shared endpoint:
+
+    ```
+    modal endpoint create --model Qwen/Qwen3.8-27B --shared
+    ```
+    """
+    client = await _Client.from_env()
+    response = await client._stub.EndpointGetLibrary(api_pb2.EndpointGetLibraryRequest())
+    modalities = {modality for modality, label in _INPUT_MODALITY_LABELS.items() if label in input_modality}
+
+    models = sorted(
+        (
+            model
+            for model in response.models
+            if (not modalities or modalities.intersection(model.supported_input_modalities))
+        ),
+        key=lambda model: model.base_model_repo_id,
+    )
+    output = OutputManager.get()
+    if json_output:
+        output.print_json(
+            dumps(
+                [
+                    {
+                        "base_model_repo_id": model.base_model_repo_id,
+                        "input_modalities": [
+                            _INPUT_MODALITY_LABELS.get(modality, "unknown")
+                            for modality in model.supported_input_modalities
+                        ],
+                        "shared": api_pb2.ENDPOINT_SERVING_MODE_SHARED in model.available_serving_modes,
+                        "dedicated": api_pb2.ENDPOINT_SERVING_MODE_DEDICATED in model.available_serving_modes,
+                    }
+                    for model in models
+                ]
+            )
+        )
+        return
+    output.print(
+        Text(
+            f"Displaying {len(models):,} {'model' if len(models) == 1 else 'models'}",
+            style=STATS_METADATA_STYLE,
+        )
+    )
+    if not models:
+        output.print(
+            "No endpoint-compatible models match the filters."
+            if input_modality
+            else "No endpoint-compatible models are available."
+        )
+        return
+    display_table(
+        [
+            Column("Model ID", overflow="fold"),
+            "Input Modalities",
+            Column("Shared", justify="center"),
+            Column("Dedicated", justify="center"),
+        ],
+        [
+            (
+                Text.assemble(
+                    (model.base_model_repo_id, f"link https://huggingface.co/{model.base_model_repo_id}"),
+                    (" ↗", "bright_blue not underline"),
+                ),
+                ", ".join(
+                    _INPUT_MODALITY_LABELS.get(modality, "unknown") for modality in model.supported_input_modalities
+                ),
+                "✓" if api_pb2.ENDPOINT_SERVING_MODE_SHARED in model.available_serving_modes else "—",
+                "✓" if api_pb2.ENDPOINT_SERVING_MODE_DEDICATED in model.available_serving_modes else "—",
+            )
+            for model in models
+        ],
+        table_box=SIMPLE,
+    )
 
 
 @endpoint_cli.command("info", panel="Inspection", no_args_is_help=True)

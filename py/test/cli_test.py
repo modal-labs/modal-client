@@ -1439,6 +1439,115 @@ def test_endpoint_without_metadata_reports_missing_backing_server(set_env_client
     assert "does not have a backing server" in result.stderr
 
 
+def test_endpoint_library(servicer, set_env_client):
+    servicer.endpoint_models = [
+        api_pb2.EndpointModel(
+            base_model_repo_id="z/shared",
+            supported_input_modalities=[api_pb2.ENDPOINT_INPUT_MODALITY_TEXT, api_pb2.ENDPOINT_INPUT_MODALITY_IMAGE],
+            available_serving_modes=[api_pb2.ENDPOINT_SERVING_MODE_SHARED],
+        ),
+        api_pb2.EndpointModel(
+            base_model_repo_id="a/both",
+            supported_input_modalities=[api_pb2.ENDPOINT_INPUT_MODALITY_TEXT],
+            available_serving_modes=[api_pb2.ENDPOINT_SERVING_MODE_DEDICATED, api_pb2.ENDPOINT_SERVING_MODE_SHARED],
+        ),
+        api_pb2.EndpointModel(
+            base_model_repo_id="m/dedicated",
+            available_serving_modes=[api_pb2.ENDPOINT_SERVING_MODE_DEDICATED],
+        ),
+    ]
+    result = run_cli_command(["endpoint", "library", "--json"])
+    rows = json.loads(result.stdout)
+    assert [row["base_model_repo_id"] for row in rows] == ["a/both", "m/dedicated", "z/shared"]
+    assert rows[0] == {
+        "base_model_repo_id": "a/both",
+        "input_modalities": ["text"],
+        "shared": True,
+        "dedicated": True,
+    }
+    assert rows[1]["shared"] is False and rows[1]["dedicated"] is True
+    assert rows[2]["shared"] is True and rows[2]["dedicated"] is False
+    assert rows[2]["input_modalities"] == ["text", "image"]
+
+    result = run_cli_command(["endpoint", "library"])
+    assert "Displaying 3 models" in result.stdout
+    assert "Endpoint-compatible models" not in result.stdout
+    assert "Name" not in result.stdout and "Provider" not in result.stdout
+    assert "Input Modalities" in result.stdout and "Shared" in result.stdout and "Dedicated" in result.stdout
+    assert "Serving Mode" not in result.stdout
+    assert result.stdout.index("a/both") < result.stdout.index("m/dedicated") < result.stdout.index("z/shared")
+    for row in rows:
+        line = next(line for line in result.stdout.splitlines() if row["base_model_repo_id"] in line)
+        assert line.split()[-2:] == ["✓" if row["shared"] else "—", "✓" if row["dedicated"] else "—"]
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected_ids"),
+    [
+        (["--input-modality", "text"], ["both", "shared"]),
+        (["--input-modality", "image"], ["dedicated"]),
+        (["--input-modality", "audio"], ["both"]),
+        (["--input-modality", "image", "--input-modality", "audio"], ["both", "dedicated"]),
+        (["--input-modality", "text", "--input-modality", "text"], ["both", "shared"]),
+    ],
+)
+def test_endpoint_library_filters(servicer, set_env_client, flags, expected_ids):
+    servicer.endpoint_models = [
+        api_pb2.EndpointModel(
+            base_model_repo_id="shared",
+            supported_input_modalities=[api_pb2.ENDPOINT_INPUT_MODALITY_TEXT],
+            available_serving_modes=[api_pb2.ENDPOINT_SERVING_MODE_SHARED],
+        ),
+        api_pb2.EndpointModel(
+            base_model_repo_id="dedicated",
+            supported_input_modalities=[api_pb2.ENDPOINT_INPUT_MODALITY_IMAGE],
+            available_serving_modes=[api_pb2.ENDPOINT_SERVING_MODE_DEDICATED],
+        ),
+        api_pb2.EndpointModel(
+            base_model_repo_id="both",
+            supported_input_modalities=[api_pb2.ENDPOINT_INPUT_MODALITY_TEXT, api_pb2.ENDPOINT_INPUT_MODALITY_AUDIO],
+            available_serving_modes=[api_pb2.ENDPOINT_SERVING_MODE_SHARED, api_pb2.ENDPOINT_SERVING_MODE_DEDICATED],
+        ),
+    ]
+    command = ["endpoint", "library", *flags]
+    rows = json.loads(run_cli_command([*command, "--json"]).stdout)
+    assert [row["base_model_repo_id"] for row in rows] == expected_ids
+    result = run_cli_command(command)
+    count = len(expected_ids)
+    assert f"Displaying {count} {'model' if count == 1 else 'models'}" in result.stdout
+    table_ids = [line.split()[0] for line in result.stdout.splitlines() if "↗" in line]
+    assert table_ids == expected_ids
+    if not expected_ids:
+        assert "No endpoint-compatible models match the filters." in result.stdout
+
+
+def test_endpoint_library_invalid_modality():
+    result = run_cli_command(["endpoint", "library", "--input-modality", "video"], expected_exit_code=2)
+    assert "Invalid value for '--input-modality'" in result.stderr
+
+
+def test_endpoint_library_empty(servicer, set_env_client):
+    assert json.loads(run_cli_command(["endpoint", "library", "--json"]).stdout) == []
+    result = run_cli_command(["endpoint", "library"])
+    assert "No endpoint-compatible models" in result.stdout
+    assert "Displaying 0 models" in result.stdout
+
+
+def test_endpoint_library_registry_error(servicer, set_env_client):
+    async def unavailable(_servicer, stream):
+        raise GRPCError(Status.UNAVAILABLE, "Model catalog is unavailable")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("EndpointGetLibrary", unavailable)
+        result = run_cli_command(["endpoint", "library", "--json"], expected_exit_code=1)
+    assert "Model catalog is unavailable" in str(result.exception)
+    assert result.stdout.strip() != "[]"
+
+
+def test_endpoint_library_rejects_environment():
+    run_cli_command(["endpoint", "library", "--env", "main"], expected_exit_code=2)
+
+
 def _add_endpoint_list_item(
     servicer,
     *,
@@ -6350,7 +6459,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     "container": {"Commands": ["list", "logs", "exec", "stop"]},
     "endpoint": {
         "Management": ["list", "create", "stop"],
-        "Inspection": ["info", "logs", "stats"],
+        "Inspection": ["library", "info", "logs", "stats"],
     },
     "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "autoscaler", "metrics"]},
     "server": {"Commands": ["info", "logs", "stats", "requests", "autoscaler", "metrics"]},
