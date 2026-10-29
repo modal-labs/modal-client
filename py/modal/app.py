@@ -3,6 +3,7 @@ import inspect
 import typing
 from collections.abc import AsyncGenerator, Callable, Collection, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -56,7 +57,7 @@ from .retries import Retries
 from .running_app import RunningApp
 from .schedule import Schedule
 from .secret import _Secret
-from .types import AppInfo
+from .types import AppInfo, SandboxGroupStats
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -133,6 +134,82 @@ class _LocalAppState:
     include_source_default: bool
     secrets_default: Sequence[_Secret]
     volumes_default: dict[str | PurePosixPath, _Volume]
+
+
+class _AppSandboxesManager:
+    """mdmd:namespace"""
+
+    def __init__(self, app: "_App"):
+        """mdmd:hidden"""
+        self._app = app
+
+    async def stats(
+        self,
+        *,
+        since: datetime,
+        until: datetime | None = None,
+        group_by_tags: Sequence[str] | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> AsyncGenerator[SandboxGroupStats, None]:
+        """Return statistics for this App's Sandboxes over a time range, optionally grouped by tag values.
+
+        The maximum time range is 7 days.
+
+        Args:
+            since: The beginning of the time range, inclusive, on a UTC hour boundary. Values without a
+                timezone are interpreted as local time.
+            until: The end of the time range, exclusive, on a UTC hour boundary. If omitted, this defaults to
+                the current time. Values without a timezone are interpreted as local time.
+            group_by_tags: Tag names to group by. Sandboxes with the same values for these names form one group;
+                a name not present on a Sandbox counts as `None`. If omitted, all matching Sandboxes are returned
+                as a single group.
+            tags: Only include Sandboxes that have at least these tags.
+
+        Yields:
+            `SandboxGroupStats` objects, one per combination of tag values, with the following fields:
+            - `tags`: the value of each name in `group_by_tags` for the group's Sandboxes, `None` where not present.
+            - `cost`: total cost in USD, the sum of `cost_by_resource`.
+            - `cost_by_resource`: cost in USD by billed resource: `CPU`, `Memory`, and GPU types such as
+              `H100`. The resource names are subject to change as Modal's billing model evolves.
+
+        Raises:
+            InvalidError: If the time range is invalid or there are more than 10,000 groups.
+
+        Examples:
+            ```python notest
+            app = modal.App.lookup("my-app")
+            since = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(days=1)
+            for group in app.sandboxes.stats(since=since, group_by_tags=["team"]):
+                print(group.tags, group.cost, group.cost_by_resource)
+            ```
+        """
+        if self._app._app_id is None:
+            raise InvalidError("`App.sandboxes.stats` requires a running, deployed or looked-up App.")
+        if until is not None:
+            if until.tzinfo is None:
+                until = until.astimezone()
+            until = until.astimezone(timezone.utc)
+        if since.tzinfo is None:
+            since = since.astimezone()
+        since = since.astimezone(timezone.utc)
+        if since >= datetime.now(timezone.utc):
+            raise InvalidError("`since` must be in the past.")
+        if until is not None and since >= until:
+            raise InvalidError("`since` must be before `until`.")
+        client = self._app._client or await _Client.from_env()
+        request = api_pb2.SandboxGetTimeRangeStatsRequest(
+            group_by_tags=list(group_by_tags or []), tags=tags or {}, app_id=self._app._app_id
+        )
+        request.since.FromDatetime(since)
+        if until is not None:
+            request.until.FromDatetime(until)
+        while True:
+            response = await client._stub.SandboxGetTimeRangeStats(request)
+            for group in response.groups:
+                yield SandboxGroupStats._from_proto(group)
+            if not response.next_page_token:
+                return
+            request.page_token = response.next_page_token
 
 
 class _App:
@@ -1679,6 +1756,11 @@ class _App:
 
         return _AppLogsManager(self)
 
+    @property
+    def sandboxes(self) -> _AppSandboxesManager:
+        """Namespace for the Sandboxes belonging to this App."""
+        return _AppSandboxesManager(self)
+
     async def info(self, refresh: bool = False) -> AppInfo:
         """Return information for a modal `App`.
 
@@ -1711,4 +1793,5 @@ class _App:
         return self._info
 
 
+AppSandboxesManager = synchronize_api(_AppSandboxesManager)
 App = synchronize_api(_App)

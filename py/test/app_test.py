@@ -5,6 +5,7 @@ import pytest
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 from grpclib import GRPCError, Status
 
@@ -632,6 +633,41 @@ def test_app_composition_tags(servicer, client, inherit_tags):
         assert request.tags == {"foo": "bar", "baz": "qux"}
     else:
         assert request.tags == {"baz": "qux"}
+
+
+def test_app_sandboxes_stats(servicer, client):
+    app = App.lookup("sandbox-stats-test", create_if_missing=True, client=client)
+    servicer.sandbox_stats_pages = 3
+    servicer.sandbox_stats_throttle_remaining = 1
+
+    since = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    groups = list(app.sandboxes.stats(since=since, group_by_tags=["team"], tags={"env": "prod"}))
+    assert [g.tags for g in groups] == [{"team": None}, {"team": "team-1"}, {"team": "team-2"}]
+    assert groups[0].cost == 0.125
+    assert groups[0].cost_by_resource == {"CPU": 0.1, "Memory": 0.025}
+
+    requests = servicer.sandbox_stats_requests
+    assert len(requests) == 4  # one throttled attempt, then three pages
+    assert [r.page_token for r in requests] == ["", "", "1", "2"]
+    assert requests[0].app_id == app.app_id
+    assert dict(requests[0].tags) == {"env": "prod"}
+    assert requests[0].since.ToDatetime() == since.replace(tzinfo=None)
+    assert not requests[0].HasField("until")
+
+    until = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    list(app.sandboxes.stats(since=since, until=until))
+    assert requests[-1].until.ToDatetime() == until.replace(tzinfo=None)
+
+    with pytest.raises(InvalidError, match="before"):
+        list(app.sandboxes.stats(since=since, until=since))
+    with pytest.raises(InvalidError, match="past"):
+        list(app.sandboxes.stats(since=datetime.now(timezone.utc) + timedelta(days=1)))
+    with pytest.raises(InvalidError, match="past"):
+        future = datetime.now(timezone.utc) + timedelta(days=1)
+        list(app.sandboxes.stats(since=future, until=future + timedelta(days=1)))
+
+    with pytest.raises(InvalidError, match="requires"):
+        list(App().sandboxes.stats(since=since))
 
 
 def test_app_set_tags(servicer, client):

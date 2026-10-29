@@ -1120,6 +1120,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_result: api_pb2.GenericResult | None = None
         self._sandbox_terminated = False
         self.sandbox_tags: dict[str, dict[str, str]] = {}
+        self.sandbox_stats_requests: list[api_pb2.SandboxGetTimeRangeStatsRequest] = []
+        self.sandbox_stats_pages = 1
+        self.sandbox_stats_throttle_remaining = 0
         self.sandbox_names: dict[str, str] = {}
         self.sandbox_outbound_policies: dict[str, api_pb2.OutboundPolicy] = {}
 
@@ -3738,6 +3741,27 @@ class MockClientServicer(api_grpc.ModalClientBase):
         tags = self.sandbox_tags.get(request.sandbox_id, {})
         await stream.send_message(
             api_pb2.SandboxTagsGetResponse(tags=[api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()])
+        )
+
+    async def SandboxGetTimeRangeStats(self, stream):
+        request: api_pb2.SandboxGetTimeRangeStatsRequest = await stream.recv_message()
+        self.sandbox_stats_requests.append(request)
+        if self.sandbox_stats_throttle_remaining > 0:
+            self.sandbox_stats_throttle_remaining -= 1
+            raise GRPCError(Status.UNAVAILABLE, "too many in-flight queries")
+
+        page = int(request.page_token or 0)
+        group = api_pb2.SandboxStatsGroup(
+            tags={
+                name: api_pb2.SandboxStatsGroup.TagValue(value=f"{name}-{page}" if page else None)
+                for name in request.group_by_tags
+            },
+            cost=0.125,
+            cost_by_resource={"CPU": 0.1, "Memory": 0.025},
+        )
+        next_page_token = str(page + 1) if page + 1 < self.sandbox_stats_pages else ""
+        await stream.send_message(
+            api_pb2.SandboxGetTimeRangeStatsResponse(groups=[group], next_page_token=next_page_token)
         )
 
     async def SandboxTagsSet(self, stream):

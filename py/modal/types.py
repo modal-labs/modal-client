@@ -215,7 +215,10 @@ class StatsPercentileDistribution:
 
     @classmethod
     def _from_proto(cls, proto: api_pb2.StatsPercentileDistribution) -> "StatsPercentileDistribution":
-        return cls(unit=proto.unit, percentiles=[StatsPercentile._from_proto(p) for p in proto.percentiles])
+        return cls(
+            unit=proto.unit,
+            percentiles=[StatsPercentile._from_proto(p) for p in proto.percentiles],
+        )
 
 
 @dataclass(frozen=True)
@@ -568,6 +571,23 @@ class BillingReportItem:
             cost=Decimal(pb_item.cost),
             cost_by_resource={k: Decimal(v) for k, v in pb_item.cost_by_resource.items()},
             tags=dict(pb_item.tags),
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class SandboxGroupStats:
+    """Statistics for a group of Sandboxes over a time range."""
+
+    tags: dict[str, str | None]
+    cost: float
+    cost_by_resource: dict[str, float]
+
+    @classmethod
+    def _from_proto(cls, pb: "api_pb2.SandboxStatsGroup") -> "SandboxGroupStats":
+        return cls(
+            tags={name: tag.value if tag.HasField("value") else None for name, tag in pb.tags.items()},
+            cost=pb.cost,
+            cost_by_resource=dict(pb.cost_by_resource),
         )
 
 
