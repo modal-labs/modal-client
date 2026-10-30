@@ -78,7 +78,6 @@ dev = [
     "synchronicity[compile]~=0.12.5",
     "python-json-logger==2.0.7",
     "build~=1.3.0",
-    "ddtrace==4.8.4",
     "mypy-protobuf",
     "grpcio-tools",
     # Additional test-only dependencies (used by the Bazel client test
