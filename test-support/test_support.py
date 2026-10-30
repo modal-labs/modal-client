@@ -60,6 +60,6 @@ class EchoClsParametrized:
 
 
 @app.function(image=modal.Image.debian_slim().pip_install("fastapi"))
-@modal.fastapi_endpoint()
+@modal.fastapi_endpoint(requires_proxy_auth=True)
 def web_endpoint_echo(s: str) -> str:
     return "output: " + s
