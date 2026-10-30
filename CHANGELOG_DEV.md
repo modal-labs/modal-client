@@ -7,6 +7,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 ## Python
 
 - Added `modal endpoint library` to discover endpoint-compatible models.
+- Functions restored from a memory snapshot now see current secret values in os.environ, instead of the secrets from when the snapshot was taken.
 
 ## JS
 

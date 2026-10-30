@@ -25,8 +25,18 @@ from modal._utils.blob_utils import format_blob_data
 from modal._utils.grpc_utils import Retry
 from modal._utils.package_utils import parse_major_minor_version
 from modal.client import _Client
-from modal.config import config, logger
+from modal.config import _env_var_name, config, logger
 from modal_proto import api_pb2
+
+SPEC_ENVIRON_PATH: str = "/proc/gvisor/spec_environ"
+
+
+def _read_spec_environ() -> dict[str, str]:
+    path = Path(SPEC_ENVIRON_PATH)
+    if not path.exists():
+        return {}
+    entries = (entry.partition("=") for entry in path.read_text("utf8").split("\0"))
+    return {key: value for key, sep, value in entries if sep}
 
 
 class UserException(Exception):
@@ -42,6 +52,7 @@ class _TaskLifecycleManager:
     checkpoint_id: str | None
     _client: _Client
     _cuda_checkpoint_session: gpu_memory_snapshot.CudaCheckpointSession | None
+    _snapshot_spec_environ: dict[str, str]
 
     def _init(
         self,
@@ -57,6 +68,7 @@ class _TaskLifecycleManager:
         self.checkpoint_id = checkpoint_id
         self._client = client
         self._cuda_checkpoint_session = None
+        self._snapshot_spec_environ = {}
 
     def __new__(
         cls,
@@ -171,10 +183,18 @@ class _TaskLifecycleManager:
                 setattr(self, key, restored_state[key])
 
         # Env vars and global state.
+        env_updates = {}
+        for key, value in _read_spec_environ().items():
+            if self._snapshot_spec_environ.get(key) != value:
+                env_updates[key] = value
+
+        # Values from the restore state take precedence.
         for key, value in restored_state.items():
             # Empty string indicates that value does not need to be updated.
             if value != "":
-                config.override_locally(key, value)
+                env_updates[_env_var_name(key)] = value
+
+        os.environ.update(env_updates)
 
         # Restore GPU memory.
         if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
@@ -205,6 +225,7 @@ class _TaskLifecycleManager:
             self._cuda_checkpoint_session = gpu_memory_snapshot.CudaCheckpointSession()
             self._cuda_checkpoint_session.checkpoint()
 
+        self._snapshot_spec_environ = _read_spec_environ()
         await self._client._stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )

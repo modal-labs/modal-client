@@ -320,6 +320,39 @@ async def test_container_checkpoint_failure_unpauses_heartbeats(servicer, contai
 
 
 @pytest.mark.asyncio
+async def test_container_restore_refreshes_changed_spec_environ(tmpdir, servicer, container_client, monkeypatch):
+    io_manager = _ContainerIOManager(
+        api_pb2.ContainerArguments(checkpoint_id="ch-123"),
+        synchronizer._translate_in(container_client),
+    )
+    task_lifecycle_manager = io_manager._task_lifecycle_manager
+    spec_environ_path = tmpdir.join("spec_environ")
+    spec_environ_path.write_text("TOKEN=old\0HF_HOME=/image\0EMPTY=old\0API_KEY=key\0", encoding="utf-8")
+    monkeypatch.setattr("modal._runtime.task_lifecycle_manager.SPEC_ENVIRON_PATH", str(spec_environ_path))
+    monkeypatch.setenv("TOKEN", "old")
+    monkeypatch.setenv("HF_HOME", "/user")
+    monkeypatch.setenv("EMPTY", "old")
+    monkeypatch.delenv("API_KEY", raising=False)
+
+    async def checkpoint_then_restore(request):
+        spec_environ_path.write_text(
+            "TOKEN=rotated\0HF_HOME=/image\0EMPTY=\0NEW=added\0API_KEY=key\0MODAL_TASK_ID=ta-from-spec\0",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(task_lifecycle_manager._client._stub, "ContainerCheckpoint", checkpoint_then_restore)
+
+    with set_env_vars(temp_restore_path(tmpdir), servicer.container_addr):
+        await task_lifecycle_manager.memory_snapshot()
+        assert os.environ["TOKEN"] == "rotated"
+        assert os.environ["EMPTY"] == ""
+        assert os.environ["NEW"] == "added"
+        assert os.environ["HF_HOME"] == "/user"
+        assert "API_KEY" not in os.environ
+        assert os.environ["MODAL_TASK_ID"] == "ta-i-am-restored"
+
+
+@pytest.mark.asyncio
 async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     # Get an IO manager, where restore takes place
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)

@@ -414,6 +414,10 @@ _SETTINGS = {
 }
 
 
+def _env_var_name(key: str) -> str:
+    return f"MODAL_{key.upper()}" if key in _SETTINGS else key.upper()
+
+
 class Config:
     """Singleton that holds configuration used by Modal internally."""
 
@@ -474,13 +478,7 @@ class Config:
         # Override setting in this process by overriding environment variable for the setting
         #
         # Does NOT write back to settings file etc.
-        try:
-            self.get(key)
-            os.environ["MODAL_" + key.upper()] = value
-        except KeyError:
-            # Override env vars not available in config, e.g. NVIDIA_VISIBLE_DEVICES.
-            # This is used for restoring env vars from a memory snapshot.
-            os.environ[key.upper()] = value
+        os.environ[_env_var_name(key)] = value
 
     def __getitem__(self, key):
         return self.get(key)
