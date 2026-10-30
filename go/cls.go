@@ -135,7 +135,7 @@ func (c *Cls) Instance(ctx context.Context, parameters map[string]any) (*ClsInst
 
 	methods := make(map[string]*Function, len(methodHandleMetadata))
 	for name, methodMetadata := range methodHandleMetadata {
-		methods[name] = newFunction(c.client, functionID, methodMetadata, nil)
+		methods[name] = newFunction(c.client, functionID, methodMetadata, nil, nil)
 	}
 	return &ClsInstance{methods: methods}, nil
 }

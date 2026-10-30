@@ -48,7 +48,7 @@ func TestMetricsExport(t *testing.T) {
 			}}.Build(),
 		}}.Build(), nil
 	}}
-	fn := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil)
+	fn := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil, nil)
 	result, err := fn.Metrics.Export(context.Background(), &FunctionMetricsExportParams{Since: &since, Until: &until, BucketSize: &bucket, Groups: []string{"calls"}, AllVariants: true})
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(result.ObjectID).To(Equal("fu-test"))
@@ -71,7 +71,7 @@ func TestMetricsExportDefaults(t *testing.T) {
 		g.Expect(req.GetGroups()).To(BeEmpty())
 		return pb.FunctionGetMetricsResponse_builder{Since: req.GetSince(), Until: req.GetUntil(), BucketSecs: 60}.Build(), nil
 	}}
-	result, err := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil).Metrics.Export(context.Background(), nil)
+	result, err := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil, nil).Metrics.Export(context.Background(), nil)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(result.Series).To(BeEmpty())
 	g.Expect(result.PointCount).To(BeZero())
@@ -91,7 +91,7 @@ func TestMetricsSchema(t *testing.T) {
 					pb.MetricGroupDefinition_builder{Name: "calls", Metrics: []*pb.MetricDefinition{pb.MetricDefinition_builder{Name: "b_count", Unit: "calls", Description: "B"}.Build()}}.Build(),
 				}}.Build(), nil
 			}}
-			result, err := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil).Metrics.Schema(context.Background(), &MetricsSchemaParams{Groups: groups})
+			result, err := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil, nil).Metrics.Schema(context.Background(), &MetricsSchemaParams{Groups: groups})
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(result).To(Equal(map[string]MetricsSchema{"calls": {Name: "calls", Definitions: []MetricDefinition{{Name: "a_avg", Unit: "seconds", Description: "A"}, {Name: "b_count", Unit: "calls", Description: "B"}}}}))
 		})
@@ -116,7 +116,7 @@ func TestMetricsValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			g := NewWithT(t)
-			_, err := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: &mockMetricsClient{}}}, "fu-test", nil, nil).Metrics.Export(context.Background(), tc.params)
+			_, err := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: &mockMetricsClient{}}}, "fu-test", nil, nil, nil).Metrics.Export(context.Background(), tc.params)
 			g.Expect(err).To(BeAssignableToTypeOf(InvalidError{}))
 		})
 	}
@@ -138,7 +138,7 @@ func TestMetricsPropagateErrors(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	manager := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil).Metrics
+	manager := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil, nil).Metrics
 	_, err := manager.Export(ctx, nil)
 	g.Expect(err).To(MatchError(expected))
 	_, err = manager.Schema(ctx, nil)
@@ -154,7 +154,7 @@ func TestMetricsExportExplicitUntilAndServerLimits(t *testing.T) {
 		g.Expect(req.GetSince().AsTime()).To(Equal(until.Add(-time.Hour)))
 		return pb.FunctionGetMetricsResponse_builder{Since: req.GetSince(), Until: req.GetUntil(), BucketSecs: 60}.Build(), nil
 	}}
-	fn := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil)
+	fn := newFunction(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "fu-test", nil, nil, nil)
 	_, err := fn.Metrics.Export(context.Background(), &FunctionMetricsExportParams{Until: &until})
 	g.Expect(err).NotTo(HaveOccurred())
 	since := until.Add(-31 * 24 * time.Hour)

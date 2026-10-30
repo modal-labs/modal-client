@@ -889,7 +889,7 @@ func TestFunctionInfoWithOptions(t *testing.T) {
 	g.Expect(info.GPUs).To(gomega.Equal([]struct {
 		GpuType string
 		Count   uint32
-	}{{GpuType: "L4", Count: 2}, {GpuType: "L4", Count: 2}}))
+	}{{GpuType: "L4", Count: 2}}))
 	g.Expect(info.SecretIDs).To(gomega.Equal([]string{"st-orig"}))
 	g.Expect(info.Volumes).To(gomega.Equal(map[string]struct {
 		VolumeID string
@@ -925,7 +925,7 @@ func TestFunctionInfoInvalidOptions(t *testing.T) {
 	mock := newGRPCMockClient(t)
 	grpcmock.HandleUnary(mock, "/FunctionGet",
 		func(req *pb.FunctionGetRequest) (*pb.FunctionGetResponse, error) {
-			return pb.FunctionGetResponse_builder{FunctionId: "fu-info"}.Build(), nil
+			return pb.FunctionGetResponse_builder{FunctionId: "fu-info", Function: &pb.FunctionData{}}.Build(), nil
 		},
 	)
 	f, err := mock.Functions.FromName(t.Context(), "test-app", "test-function", nil)
@@ -991,50 +991,52 @@ func TestFunctionInfoCaching(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
+	numCalls := 0
+	getFunctionData := func(idx int) *pb.FunctionData {
+		numCalls++
+
+		return pb.FunctionData_builder{
+			IsClass: true,
+			RankedFunctions: []*pb.FunctionData_RankedFunction{
+				pb.FunctionData_RankedFunction_builder{
+					Rank: 0,
+					Function: pb.Function_builder{
+						ImageId:     fmt.Sprintf("im-%d", idx),
+						TimeoutSecs: 300,
+					}.Build(),
+				}.Build(),
+			},
+			MethodDefinitions: map[string]*pb.MethodDefinition{},
+		}.Build()
+	}
+
 	mock := newGRPCMockClient(t)
 	grpcmock.HandleUnary(mock, "/FunctionGet",
 		func(req *pb.FunctionGetRequest) (*pb.FunctionGetResponse, error) {
-			return pb.FunctionGetResponse_builder{FunctionId: "fu-info"}.Build(), nil
+			return pb.FunctionGetResponse_builder{FunctionId: "fu-info", Function: getFunctionData(0)}.Build(), nil
 		},
 	)
 
-	numCalls := 0
+	grpcmock.HandleUnary(mock, "/FunctionGetById",
+		func(req *pb.FunctionGetByIdRequest) (*pb.FunctionGetByIdResponse, error) {
+			if req.GetFunctionId() != "fu-info" {
+				return nil, status.Errorf(
+					codes.NotFound,
+					"unexpected function %s",
+					req.GetFunctionId(),
+				)
+			}
 
-	for idx := range 2 {
-		grpcmock.HandleUnary(mock, "/FunctionGetById",
-			func(req *pb.FunctionGetByIdRequest) (*pb.FunctionGetByIdResponse, error) {
-				numCalls++
-
-				if req.GetFunctionId() != "fu-info" {
-					return nil, status.Errorf(
-						codes.NotFound,
-						"unexpected function %s",
-						req.GetFunctionId(),
-					)
-				}
-
-				return pb.FunctionGetByIdResponse_builder{
-					Function: pb.FunctionData_builder{
-						IsClass: true,
-						RankedFunctions: []*pb.FunctionData_RankedFunction{
-							pb.FunctionData_RankedFunction_builder{
-								Rank: 0,
-								Function: pb.Function_builder{
-									ImageId:     fmt.Sprintf("im-%d", idx),
-									TimeoutSecs: 300,
-								}.Build(),
-							}.Build(),
-						},
-						MethodDefinitions: map[string]*pb.MethodDefinition{},
-					}.Build(),
-				}.Build(), nil
-			},
-		)
-	}
+			return pb.FunctionGetByIdResponse_builder{
+				Function: getFunctionData(1),
+			}.Build(), nil
+		},
+	)
 
 	ctx := t.Context()
 	f, err := mock.Functions.FromName(ctx, "test-app", "test-function", nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(numCalls).To(gomega.Equal(1))
 
 	firstInfo, err := f.Info(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -1048,10 +1050,43 @@ func TestFunctionInfoCaching(t *testing.T) {
 	// Equality of pointers so they should be the same exact object
 	g.Expect(firstInfo).To(gomega.Equal(secondInfo))
 
+	memoryLimitMiB, memoryMiB := 1024, 512
+	configuredInfo, err := f.WithOptions(&modal.FunctionWithOptionsParams{
+		MemoryMiB:      &memoryMiB,
+		MemoryLimitMiB: &memoryLimitMiB,
+	}).Info(t.Context(), nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(numCalls).To(gomega.Equal(1))
+	g.Expect(firstInfo).ShouldNot(gomega.Equal(configuredInfo))
+
 	refreshedInfo, err := f.Info(ctx, &modal.FunctionInfoParams{Refresh: true})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	// Third call did hit RPC
+	// refresh call did hit RPC
 	g.Expect(numCalls).To(gomega.Equal(2))
 
 	g.Expect(firstInfo).ShouldNot(gomega.Equal(refreshedInfo))
+
+	// Check that multiple calls to .WithOptions() doesn't poison the cached FunctionData struct
+	cpuLimit, cpu := 16.0, 8.0
+	configuredInfo1, err := f.WithOptions(&modal.FunctionWithOptionsParams{
+		CPU:      &cpu,
+		CPULimit: &cpuLimit,
+	}).Info(t.Context(), nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	configuredInfo2, err := f.WithOptions(&modal.FunctionWithOptionsParams{
+		MemoryMiB:      &memoryMiB,
+		MemoryLimitMiB: &memoryLimitMiB,
+	}).Info(t.Context(), nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(*configuredInfo1.CPU).To(gomega.BeEquivalentTo(cpu))
+	g.Expect(*configuredInfo1.CPULimit).To(gomega.BeEquivalentTo(cpuLimit))
+	g.Expect(configuredInfo1.MemoryMiB).To(gomega.BeNil())
+	g.Expect(configuredInfo1.MemoryLimitMiB).To(gomega.BeNil())
+
+	g.Expect(configuredInfo2.CPU).To(gomega.BeNil())
+	g.Expect(configuredInfo2.CPULimit).To(gomega.BeNil())
+	g.Expect(*configuredInfo2.MemoryMiB).To(gomega.BeEquivalentTo(memoryMiB))
+	g.Expect(*configuredInfo2.MemoryLimitMiB).To(gomega.BeEquivalentTo(memoryLimitMiB))
 }

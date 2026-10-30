@@ -78,7 +78,7 @@ type Function struct {
 	client  *Client
 	options *functionOptions
 
-	cachedInfo *FunctionInfo
+	cachedFunctionData *pb.FunctionData
 }
 
 func newFunction(
@@ -86,6 +86,7 @@ func newFunction(
 	functionID string,
 	handleMetadata *pb.FunctionHandleMetadata,
 	options *functionOptions,
+	cachedFunctionData *pb.FunctionData,
 ) *Function {
 	return &Function{
 		FunctionID: functionID,
@@ -95,9 +96,10 @@ func newFunction(
 			appID:      handleMetadata.GetAppId(),
 			functionID: functionID,
 		},
-		handleMetadata: handleMetadata,
-		client:         client,
-		options:        options,
+		handleMetadata:     handleMetadata,
+		client:             client,
+		options:            options,
+		cachedFunctionData: cachedFunctionData,
 	}
 }
 
@@ -127,7 +129,7 @@ func (s *functionServiceImpl) FromID(ctx context.Context, functionID string) (*F
 	if resp.GetFunction().GetIsClass() {
 		return nil, InvalidError{fmt.Sprintf("%s is a Cls and cannot be loaded with Functions.FromID().", functionID)}
 	}
-	return newFunction(s.client, functionID, resp.GetHandleMetadata(), &functionOptions{}), nil
+	return newFunction(s.client, functionID, resp.GetHandleMetadata(), &functionOptions{}, resp.GetFunction()), nil
 }
 
 // FunctionFromNameParams are options for client.Functions.FromName.
@@ -174,7 +176,7 @@ func (s *functionServiceImpl) FromName(ctx context.Context, appName string, name
 		"app_name", appName,
 		"function_name", name)
 
-	return newFunction(s.client, resp.GetFunctionId(), handleMetadata, &functionOptions{}), nil
+	return newFunction(s.client, resp.GetFunctionId(), handleMetadata, &functionOptions{}, resp.GetFunction()), nil
 }
 
 // pickleSerialize serializes Go data types to the Python pickle format.
@@ -714,7 +716,7 @@ func (f *Function) WithOptions(options *FunctionWithOptionsParams) *Function {
 		routingRegion:    options.RoutingRegion,
 	})
 
-	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged)
+	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged, f.cachedFunctionData)
 }
 
 func (f *Function) WithConcurrency(params *FunctionWithConcurrencyParams) *Function {
@@ -727,7 +729,7 @@ func (f *Function) WithConcurrency(params *FunctionWithConcurrencyParams) *Funct
 		targetConcurrentInputs: params.TargetInputs,
 	})
 
-	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged)
+	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged, f.cachedFunctionData)
 }
 
 func (f *Function) WithBatching(params *FunctionWithBatchingParams) *Function {
@@ -740,7 +742,7 @@ func (f *Function) WithBatching(params *FunctionWithBatchingParams) *Function {
 		batchWait:    &params.Wait,
 	})
 
-	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged)
+	return newFunction(f.client, f.FunctionID, f.handleMetadata, merged, f.cachedFunctionData)
 }
 
 func (f *Function) Instance(ctx context.Context) (*Function, error) {
@@ -761,7 +763,7 @@ func (f *Function) Instance(ctx context.Context) (*Function, error) {
 		handleMetadata = bindResp.GetHandleMetadata()
 	}
 
-	return newFunction(f.client, boundFnID, handleMetadata, &functionOptions{}), nil
+	return newFunction(f.client, boundFnID, handleMetadata, &functionOptions{}, nil), nil
 }
 
 // FunctionGetCurrentStatsParams are options for Function.GetCurrentStats.
@@ -1192,10 +1194,23 @@ func (f *Function) Info(ctx context.Context, params *FunctionInfoParams) (*Funct
 		params = &FunctionInfoParams{}
 	}
 
-	if !params.Refresh && f.cachedInfo != nil {
-		return f.cachedInfo, nil
+	if params.Refresh || f.cachedFunctionData == nil {
+		req := pb.FunctionGetByIdRequest_builder{
+			FunctionId: f.FunctionID,
+		}.Build()
+
+		resp, err := f.client.cpClient.FunctionGetById(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+
+		f.cachedFunctionData = resp.GetFunction()
 	}
 
+	return f.buildInfo()
+}
+
+func (f *Function) buildInfo() (*FunctionInfo, error) {
 	options, err := buildFunctionOptionsProto(f.options)
 	if err != nil {
 		return nil, err
@@ -1223,16 +1238,15 @@ func (f *Function) Info(ctx context.Context, params *FunctionInfoParams) (*Funct
 		}
 	}
 
-	req := pb.FunctionGetByIdRequest_builder{
-		FunctionId: f.FunctionID,
-	}.Build()
-
-	resp, err := f.client.cpClient.FunctionGetById(ctx, req)
-	if err != nil {
-		return nil, err
+	if f.cachedFunctionData == nil {
+		return nil, InvalidError{Exception: "Could not parse FunctionData proto"}
 	}
 
-	functionData := resp.GetFunction()
+	functionData, ok := proto.Clone(f.cachedFunctionData).(*pb.FunctionData)
+	if !ok {
+		return nil, InvalidError{Exception: "Could not parse FunctionData proto"}
+	}
+
 	rankedFunctions := functionData.GetRankedFunctions()
 	if len(rankedFunctions) == 0 {
 		return nil, InvalidError{Exception: "Could not parse FunctionData proto - no functions provided"}
@@ -1290,13 +1304,23 @@ func (f *Function) Info(ctx context.Context, params *FunctionInfoParams) (*Funct
 	}
 
 	ret.GPUs = make([]GpuConfig, 0, len(rankedFunctions))
-	for _, fn := range rankedFunctions {
-		config := fn.GetFunction().GetResources().GetGpuConfig()
-		if config.GetCount() == 0 {
-			continue
-		}
+
+	// In the case where the base function has multiple GPU fallbacks and this is a variant with a
+	// GPU override, we don't want to repeat that override multiple times for each fallback, hence
+	// we have this check up front which creates a single entry for the GPU override.
+	if options != nil && options.GetResources().GetGpuConfig().GetCount() != 0 {
+		config := options.GetResources().GetGpuConfig()
 
 		ret.GPUs = append(ret.GPUs, GpuConfig{config.GetGpuType(), config.GetCount()})
+	} else {
+		for _, fn := range rankedFunctions {
+			config := fn.GetFunction().GetResources().GetGpuConfig()
+			if config.GetCount() == 0 {
+				continue
+			}
+
+			ret.GPUs = append(ret.GPUs, GpuConfig{config.GetGpuType(), config.GetCount()})
+		}
 	}
 
 	schedulerPlacement := firstFunction.GetSchedulerPlacement()
@@ -1496,8 +1520,6 @@ func (f *Function) Info(ctx context.Context, params *FunctionInfoParams) (*Funct
 	ret.SingleUseContainers = firstFunction.GetSingleUseContainers()
 
 	ret.SecretIDs = firstFunction.GetSecretIds()
-
-	f.cachedInfo = &ret
 
 	return &ret, nil
 }

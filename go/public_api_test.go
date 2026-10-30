@@ -230,7 +230,7 @@ func TestLogsNamespacesAreFields(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 
-	function := newFunction(nil, "fu-123", nil, nil)
+	function := newFunction(nil, "fu-123", nil, nil, nil)
 	g.Expect(function.Logs).NotTo(gomega.BeNil())
 	g.Expect(function.Logs.functionID).To(gomega.Equal("fu-123"))
 	_, hasFunctionLogsMethod := reflect.TypeOf(function).MethodByName("Logs")
