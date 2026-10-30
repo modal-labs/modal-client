@@ -4,21 +4,27 @@ from __future__ import annotations
 
 import asyncio
 import json as json_module
+import os
 from collections.abc import AsyncIterator
 from typing import Optional
 
 import click
+from rich.syntax import Syntax
 
 from modal._environments import ensure_env
-from modal._image import _upgrade_image_name
+from modal._image import _Image, _infer_registry_auth_type, _upgrade_image_name
 from modal._logs_manager import _resolve_source
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
+from modal.app import _App
 from modal.cli.utils import display_table, env_option
 from modal.client import _Client
 from modal.config import config
+from modal.exception import InvalidError
 from modal.image import Image
 from modal.output import OutputManager
+from modal.runner import _run_app
+from modal.secret import _Secret
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
@@ -34,6 +40,118 @@ image_cli = ModalGroup(name="image", help="Manage Images.")
 def _print_result_summary(count: int) -> None:
     result_label = "result" if count == 1 else "results"
     OutputManager.get().print(f"Showing {count} {result_label}")
+
+
+async def _registry_secret(
+    secret_name: Optional[str], secret_vars: Optional[str], env: str
+) -> tuple[Optional[_Secret], set[str]]:
+    if secret_name and secret_vars:
+        raise click.UsageError("--registry-secret and --registry-secret-from-env cannot be used together.")
+    if secret_name:
+        secret = _Secret.from_name(secret_name, environment_name=env)
+        return secret, await secret._get_keys()
+    keys = [key.strip() for key in (secret_vars or "").split(",") if key.strip()]
+    if not keys:
+        return None, set()
+    return _Secret.from_local_environ(keys), set(keys)
+
+
+@image_cli.command("build", no_args_is_help=True)
+@click.argument("context_dir", metavar="CONTEXT_DIR")
+@click.option(
+    "-t",
+    "--name",
+    "name",
+    metavar="[ENV/]NAME[:TAG]",
+    required=True,
+    help="Name to publish the Image as, e.g. `my-image`, `my-image:v2`, or `my-env/my-image`.",
+)
+@click.option(
+    "-f",
+    "--file",
+    "dockerfile",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Path to the Dockerfile. Defaults to `CONTEXT_DIR/Dockerfile`.",
+)
+@click.option(
+    "--registry-secret",
+    "registry_secret_name",
+    metavar="SECRET_NAME",
+    default=None,
+    help="Name of a Secret with credentials for pulling the base image from a private registry.",
+)
+@click.option(
+    "--registry-secret-from-env",
+    "registry_secret_vars",
+    default=None,
+    metavar="VAR[,VAR...]",
+    help=(
+        "Comma-separated local environment variable names holding registry credentials. "
+        "Cannot be combined with --registry-secret."
+    ),
+)
+@click.option("--force-build", is_flag=True, help="Rebuild every layer of the Image, ignoring cached builds.")
+@env_option
+@synchronizer.create_blocking
+async def build(
+    context_dir: str,
+    name: str,
+    dockerfile: Optional[str],
+    registry_secret_name: Optional[str],
+    registry_secret_vars: Optional[str],
+    force_build: bool,
+    env: Optional[str],
+) -> None:
+    """Build an Image from a Dockerfile and publish it as NAME.
+
+    CONTEXT_DIR is the build context used to resolve relative COPY paths. Use `.` for the current directory.
+
+    NAME defaults to the `latest` tag. `--env` sets the environment the build runs in and where
+    `--registry-secret` is looked up. The Image is published into that environment unless NAME has an
+    environment prefix, e.g. `my-env/my-image`.
+
+    Examples:
+
+    ```
+    modal image build -t my-image .
+    modal image build --name my-image:v2 -f docker/Dockerfile .
+    modal image build -t my-env/my-image .
+    modal image build -t my-image --registry-secret my-registry-creds .
+    modal image build -t my-image --registry-secret-from-env REGISTRY_USERNAME,REGISTRY_PASSWORD .
+    ```
+    """
+    if not os.path.isdir(context_dir):
+        raise click.UsageError(f"CONTEXT_DIR {context_dir!r} is not a directory.")
+    if dockerfile is None:
+        dockerfile = os.path.join(context_dir, "Dockerfile")
+        if not os.path.isfile(dockerfile):
+            raise click.UsageError(f"No Dockerfile found at {dockerfile}. Use --file to specify one.")
+    env = ensure_env(env)
+    try:
+        tag = _upgrade_image_name(name, fallback_environment_name=env)
+    except InvalidError as exc:
+        raise click.UsageError(str(exc))
+
+    secret, keys = await _registry_secret(registry_secret_name, registry_secret_vars, env)
+    if secret is not None:
+        # Fail before creating the app; from_dockerfile runs the same check during the build
+        try:
+            _infer_registry_auth_type(keys)
+        except InvalidError as exc:
+            raise click.UsageError(str(exc)) from exc
+    image = _Image.from_dockerfile(dockerfile, context_dir=context_dir, registry_secret=secret, force_build=force_build)
+    app = _App("modal-image-build")
+    # Only show the Image build output, which includes its logs
+    async with _run_app(app, environment_name=env, stream_output=False):
+        await image.build(app)
+        await image.publish(tag)
+
+    output_mgr = OutputManager.get()
+    output_mgr.step_completed(f"Image built: [bold]{image.object_id}[/bold]")
+    output_mgr.step_completed(f"Image published as [bold magenta]{tag}[/bold magenta]! 🎉")
+    output_mgr.print("\nUse it with:\n")
+    output_mgr.print(Syntax(f'modal.Image.from_name("{tag}")', "python"))
 
 
 @image_cli.command("logs", no_args_is_help=True)

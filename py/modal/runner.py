@@ -25,6 +25,7 @@ from modal_proto import api_pb2
 from ._environments import _get_environment_cached
 from ._functions import _Function
 from ._object import _get_environment_name, _Object
+from ._output.manager import _DISABLED_OUTPUT_MANAGER
 from ._output.pty import get_app_logs_loop, get_pty_info
 from ._resolver import Resolver
 from ._traceback import print_server_warnings, traceback_contains_remote_call
@@ -139,6 +140,7 @@ async def _create_all_objects(
     running_app: RunningApp,
     local_app_state: "modal.app._LocalAppState",
     load_context: LoadContext,
+    output_mgr: OutputManager,
 ) -> None:
     """Create objects that have been defined but not created on the server.
 
@@ -149,7 +151,6 @@ async def _create_all_objects(
     tc = load_context.task_context
 
     resolver = Resolver()
-    output_mgr = OutputManager.get()
     with output_mgr.display_object_tree():
         # Get current objects, and reset all objects.
         # Only reuse an existing object id when its type matches the object now being
@@ -377,6 +378,7 @@ async def _run_app(
     environment_name: str | None = None,
     interactive: bool = False,
     deployment_strategy: str = "rolling",
+    stream_output: bool = True,
 ) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
     if modal._runtime.execution_context._in_import_context():
@@ -409,7 +411,8 @@ async def _run_app(
             app._description = __main__.__name__
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    output_mgr = OutputManager.get()
+    # stream_output covers the App's own status, spinner, and log stream; objects print their own output
+    output_mgr = OutputManager.get() if stream_output else _DISABLED_OUTPUT_MANAGER
 
     if interactive and not output_mgr.is_enabled:
         msg = "Interactive mode requires output to be enabled. (Use the the `modal.enable_output()` context manager.)"
@@ -454,7 +457,7 @@ async def _run_app(
 
         try:
             # Create all members
-            await _create_all_objects(running_app, local_app_state, load_context)
+            await _create_all_objects(running_app, local_app_state, load_context, output_mgr)
 
             # Publish the app
             await _publish_app(
@@ -467,7 +470,7 @@ async def _run_app(
             )
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
-            OutputManager.get().print("Aborting app initialization...\n")
+            output_mgr.print("Aborting app initialization...\n")
             await _status_based_disconnect(load_context.client, running_app.app_id, e)
             raise
         except BaseException as e:
@@ -541,7 +544,7 @@ async def _run_app(
 
     # Print completion message if output is still enabled (it may have been disabled during PTY mode)
     # Re-fetch the output manager in case it was disabled
-    output_mgr = OutputManager.get()
+    output_mgr = OutputManager.get() if stream_output else _DISABLED_OUTPUT_MANAGER
     if output_mgr.is_enabled:
         output_mgr.step_completed(
             f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
@@ -564,7 +567,7 @@ async def _serve_update(
         # Create objects with a TaskContext for proper exception handling
         async with TaskContext() as tc:
             await load_context.in_place_upgrade(task_context=tc, app_id=running_app.app_id)
-            await _create_all_objects(running_app, local_app_state, load_context)
+            await _create_all_objects(running_app, local_app_state, load_context, OutputManager.get())
 
         # Publish the updated app
         await _publish_app(
@@ -665,7 +668,7 @@ async def _deploy_app(
 
         try:
             # Create all members
-            await _create_all_objects(running_app, local_app_state, root_load_context)
+            await _create_all_objects(running_app, local_app_state, root_load_context, OutputManager.get())
 
             commit_info = None
             try:

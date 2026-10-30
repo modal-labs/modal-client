@@ -5,6 +5,7 @@ import os
 import platform
 import pytest
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -394,6 +395,191 @@ def test_image_cli_logs_empty(set_env_client, monkeypatch):
     monkeypatch.setattr("modal.cli.image.Image", image_api)
 
     assert run_cli_command(["image", "logs", "im-123"]).stdout == "No build logs found for Image im-123.\n"
+
+
+@pytest.fixture
+def image_build_context(tmp_path, test_dir):
+    shutil.copy(test_dir / "supports" / "test-dockerfile", tmp_path / "Dockerfile")
+    return str(tmp_path)
+
+
+@pytest.mark.parametrize("flag", ["--name", "-t"])
+def test_image_cli_build_name_forms(servicer, set_env_client, image_build_context, flag):
+    run_cli_command(["image", "build", flag, "my-image", image_build_context])
+    assert list(servicer.image_tags) == ["my-image:latest"]
+
+
+def test_image_cli_build_dot_context_dir(servicer, set_env_client, image_build_context, monkeypatch):
+    monkeypatch.chdir(image_build_context)
+    run_cli_command(["image", "build", "-t", "my-image", "."])
+    assert list(servicer.image_tags) == ["my-image:latest"]
+
+
+def test_image_cli_build_requires_context_dir(servicer, set_env_client, image_build_context, monkeypatch):
+    monkeypatch.chdir(image_build_context)
+    res = run_cli_command(["image", "build", "-t", "my-image"], expected_exit_code=2)
+    assert "Missing argument 'CONTEXT_DIR'." in res.stderr
+    assert servicer.image_tags == {}
+
+
+def test_image_cli_build_help(set_env_client):
+    res = run_cli_command(["image", "build", "--help"])
+    assert "CONTEXT_DIR" in res.stdout
+    assert "-t, --name [ENV/]NAME[:TAG]" in res.stdout
+
+
+def test_image_cli_build_requires_name(servicer, set_env_client, image_build_context):
+    res = run_cli_command(["image", "build", image_build_context], expected_exit_code=2)
+    assert "Missing option '-t' / '--name'" in res.stderr
+    assert servicer.image_tags == {}
+
+
+def test_image_cli_build_rejects_positional_name(servicer, set_env_client, image_build_context):
+    res = run_cli_command(["image", "build", "-t", "a", "b", image_build_context], expected_exit_code=2)
+    assert "Got unexpected extra argument" in res.stderr
+    assert servicer.image_tags == {}
+
+
+def test_image_cli_build_rejects_missing_context_dir(servicer, set_env_client, tmp_path):
+    res = run_cli_command(["image", "build", "-t", "my-image", str(tmp_path / "missing")], expected_exit_code=2)
+    assert "is not a directory" in res.stderr
+    assert servicer.image_tags == {}
+
+
+def test_image_cli_build_requires_dockerfile(servicer, set_env_client, tmp_path):
+    res = run_cli_command(["image", "build", "-t", "my-image", str(tmp_path)], expected_exit_code=2)
+    assert "No Dockerfile found" in res.stderr
+    assert servicer.image_tags == {}
+
+
+def test_image_cli_build_publishes(servicer, set_env_client, image_build_context):
+    res = run_cli_command(["image", "build", "-t", "my-image", image_build_context])
+    assert list(servicer.image_tags) == ["my-image:latest"]
+    image_id = servicer.image_tags["my-image:latest"]
+    assert image_id in servicer.images
+    assert f"Image built: {image_id}" in res.stdout
+    assert "Image published as my-image:latest!" in res.stdout
+    assert 'modal.Image.from_name("my-image:latest")' in res.stdout
+
+
+def test_image_cli_build_with_tag_and_env(servicer, set_env_client, image_build_context):
+    with servicer.intercept() as ctx:
+        run_cli_command(["image", "build", "-t", "my-image:v1", image_build_context, "--env", "other"])
+    assert list(servicer.image_tags) == ["other/my-image:v1"]
+    app_requests = ctx.get_requests("AppCreate")
+    assert app_requests and all(req.environment_name == "other" for req in app_requests)
+
+
+def test_image_cli_build_context_dir(servicer, set_env_client, tmp_path):
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    (context_dir / "data.txt").write_text("hello")
+    (context_dir / "Dockerfile").write_text("FROM python:3.12-slim\nCOPY data.txt /data.txt\n")
+
+    run_cli_command(["image", "build", "-t", "my-image", str(context_dir)])
+    assert list(servicer.image_tags) == ["my-image:latest"]
+    assert any(filename.endswith("data.txt") for contents in servicer.mount_contents.values() for filename in contents)
+
+
+def test_image_cli_build_file_option(servicer, set_env_client, tmp_path):
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    (context_dir / "data.txt").write_text("hello")
+    dockerfile = tmp_path / "Dockerfile.custom"
+    dockerfile.write_text("FROM python:3.12-slim\nCOPY data.txt /data.txt\n")
+
+    run_cli_command(["image", "build", "-t", "my-image", str(context_dir), "-f", str(dockerfile)])
+    assert list(servicer.image_tags) == ["my-image:latest"]
+    assert any(filename.endswith("data.txt") for contents in servicer.mount_contents.values() for filename in contents)
+
+
+@pytest.mark.parametrize("force_build", [False, True])
+def test_image_cli_build_force_build(servicer, set_env_client, image_build_context, force_build):
+    args = ["image", "build", "-t", "my-image", image_build_context]
+    run_cli_command(args + (["--force-build"] if force_build else []))
+    assert servicer.force_built_images == (sorted(servicer.images) if force_build else [])
+
+
+def _base_layer(servicer, tag: str) -> api_pb2.Image:
+    image = servicer.images[servicer.image_tags[tag]]
+    while image.base_images:
+        image = servicer.images[image.base_images[0].image_id]
+    return image
+
+
+def test_image_cli_build_registry_secret(servicer, set_env_client, image_build_context):
+    run_cli_command(["secret", "create", "my-registry", "REGISTRY_USERNAME=a", "REGISTRY_PASSWORD=b"])
+    run_cli_command(["image", "build", "-t", "my-image", "--registry-secret", "my-registry", image_build_context])
+    image = _base_layer(servicer, "my-image:latest")
+    assert image.dockerfile_commands[0].startswith("FROM ")
+    assert image.image_registry_config.secret_id == servicer.deployed_secrets[("my-registry", "main")]
+    assert image.image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+
+
+def test_image_cli_build_registry_secret_not_found(servicer, set_env_client, image_build_context):
+    res = run_cli_command(
+        ["image", "build", "-t", "my-image", "--registry-secret", "missing", image_build_context], expected_exit_code=1
+    )
+    assert isinstance(res.exception, NotFoundError)
+    assert servicer.image_tags == {}
+
+
+def test_image_cli_build_registry_secret_from_env(servicer, set_env_client, image_build_context, monkeypatch):
+    monkeypatch.setenv("REGISTRY_USERNAME", "me")
+    monkeypatch.setenv("REGISTRY_PASSWORD", "s3cret")
+    run_cli_command(
+        [
+            "image",
+            "build",
+            "-t",
+            "my-image",
+            "--registry-secret-from-env",
+            "REGISTRY_USERNAME, REGISTRY_PASSWORD,",
+            image_build_context,
+        ]
+    )
+    config = _base_layer(servicer, "my-image:latest").image_registry_config
+    assert config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+    assert dict(servicer.secrets[config.secret_id]) == {"REGISTRY_USERNAME": "me", "REGISTRY_PASSWORD": "s3cret"}
+
+
+@pytest.mark.parametrize(
+    ("args", "error"),
+    [
+        (
+            ["--registry-secret", "my-registry", "--registry-secret-from-env", "REGISTRY_USERNAME"],
+            "--registry-secret and --registry-secret-from-env cannot be used together",
+        ),
+        (["--registry-secret-from-env", "REGISTRY_USERNAME"], "Registry Secret must include exactly one of"),
+    ],
+)
+def test_image_cli_build_registry_secret_errors(
+    servicer, set_env_client, image_build_context, monkeypatch, args, error
+):
+    monkeypatch.setenv("REGISTRY_USERNAME", "me")
+    monkeypatch.delenv("UNSET_VAR", raising=False)
+    res = run_cli_command(["image", "build", "-t", "my-image", *args, image_build_context], expected_exit_code=2)
+    assert error in res.stderr
+    assert not servicer.images
+
+
+def test_image_cli_build_registry_secret_from_unset_env(servicer, set_env_client, image_build_context, monkeypatch):
+    monkeypatch.delenv("UNSET_VAR", raising=False)
+    args = ["image", "build", "-t", "my-image", "--registry-secret-from-env", "UNSET_VAR", image_build_context]
+    res = run_cli_command(args, expected_exit_code=1)
+    assert isinstance(res.exception, InvalidError)
+    assert "UNSET_VAR" in str(res.exception)
+    assert not servicer.images
+
+
+def test_image_cli_build_env_prefix_with_env(servicer, set_env_client, image_build_context):
+    run_cli_command(["secret", "create", "my-registry", "REGISTRY_USERNAME=a", "REGISTRY_PASSWORD=b", "--env", "dev"])
+    args = ["-t", "prod/my-image", "--registry-secret", "my-registry", "--env", "dev", image_build_context]
+    run_cli_command(["image", "build", *args])
+    assert list(servicer.image_tags) == ["prod/my-image:latest"]
+    assert list(servicer.app_environments.values()) == ["dev"]
+    image = _base_layer(servicer, "prod/my-image:latest")
+    assert image.image_registry_config.secret_id == servicer.deployed_secrets[("my-registry", "dev")]
 
 
 def test_image_cli_history(servicer, set_env_client, monkeypatch):
@@ -6463,7 +6649,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     },
     "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "autoscaler", "metrics"]},
     "server": {"Commands": ["info", "logs", "stats", "requests", "autoscaler", "metrics"]},
-    "image": {"Commands": ["logs", "names"]},
+    "image": {"Commands": ["build", "logs", "names"]},
     "image names": {"Commands": ["list"]},
     "dict": {
         "Management": ["list", "create", "clear", "delete"],
