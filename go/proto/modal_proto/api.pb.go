@@ -11574,6 +11574,7 @@ type CheckpointInfo struct {
 	xxx_hidden_OriginalTaskId      string                 `protobuf:"bytes,7,opt,name=original_task_id,json=originalTaskId,proto3"`
 	xxx_hidden_RunscRuntimeVersion string                 `protobuf:"bytes,9,opt,name=runsc_runtime_version,json=runscRuntimeVersion,proto3"`
 	xxx_hidden_GvisorPlatform      *string                `protobuf:"bytes,10,opt,name=gvisor_platform,json=gvisorPlatform,proto3,oneof"`
+	xxx_hidden_Encrypted           bool                   `protobuf:"varint,11,opt,name=encrypted,proto3"`
 	XXX_raceDetectHookData         protoimpl.RaceDetectHookData
 	XXX_presence                   [1]uint32
 	unknownFields                  protoimpl.UnknownFields
@@ -11671,6 +11672,13 @@ func (x *CheckpointInfo) GetGvisorPlatform() string {
 	return ""
 }
 
+func (x *CheckpointInfo) GetEncrypted() bool {
+	if x != nil {
+		return x.xxx_hidden_Encrypted
+	}
+	return false
+}
+
 func (x *CheckpointInfo) SetChecksum(v string) {
 	x.xxx_hidden_Checksum = v
 }
@@ -11705,7 +11713,11 @@ func (x *CheckpointInfo) SetRunscRuntimeVersion(v string) {
 
 func (x *CheckpointInfo) SetGvisorPlatform(v string) {
 	x.xxx_hidden_GvisorPlatform = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 8, 9)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 8, 10)
+}
+
+func (x *CheckpointInfo) SetEncrypted(v bool) {
+	x.xxx_hidden_Encrypted = v
 }
 
 func (x *CheckpointInfo) HasGvisorPlatform() bool {
@@ -11732,6 +11744,7 @@ type CheckpointInfo_builder struct {
 	OriginalTaskId      string
 	RunscRuntimeVersion string
 	GvisorPlatform      *string
+	Encrypted           bool
 }
 
 func (b0 CheckpointInfo_builder) Build() *CheckpointInfo {
@@ -11747,9 +11760,10 @@ func (b0 CheckpointInfo_builder) Build() *CheckpointInfo {
 	x.xxx_hidden_OriginalTaskId = b.OriginalTaskId
 	x.xxx_hidden_RunscRuntimeVersion = b.RunscRuntimeVersion
 	if b.GvisorPlatform != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 8, 9)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 8, 10)
 		x.xxx_hidden_GvisorPlatform = b.GvisorPlatform
 	}
+	x.xxx_hidden_Encrypted = b.Encrypted
 	return m0
 }
 
@@ -77234,7 +77248,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10CancelInputEvent\x12\x1b\n" +
 	"\tinput_ids\x18\x01 \x03(\tR\binputIds\x121\n" +
 	"\x14terminate_containers\x18\x02 \x01(\bR\x13terminateContainers\x12/\n" +
-	"\x13cancellation_reason\x18\x03 \x01(\tR\x12cancellationReason\"\xa9\x03\n" +
+	"\x13cancellation_reason\x18\x03 \x01(\tR\x12cancellationReason\"\xc7\x03\n" +
 	"\x0eCheckpointInfo\x12\x1a\n" +
 	"\bchecksum\x18\x01 \x01(\tR\bchecksum\x126\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x1e.modal.client.CheckpointStatusR\x06status\x12#\n" +
@@ -77245,7 +77259,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10original_task_id\x18\a \x01(\tR\x0eoriginalTaskId\x122\n" +
 	"\x15runsc_runtime_version\x18\t \x01(\tR\x13runscRuntimeVersion\x12,\n" +
 	"\x0fgvisor_platform\x18\n" +
-	" \x01(\tH\x00R\x0egvisorPlatform\x88\x01\x01B\x12\n" +
+	" \x01(\tH\x00R\x0egvisorPlatform\x88\x01\x01\x12\x1c\n" +
+	"\tencrypted\x18\v \x01(\bR\tencryptedB\x12\n" +
 	"\x10_gvisor_platformJ\x04\b\b\x10\t\"\xc2\x01\n" +
 	"\x12ClassCreateRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12*\n" +

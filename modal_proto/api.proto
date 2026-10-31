@@ -1107,6 +1107,7 @@ message CheckpointInfo {
   reserved 8;
   string runsc_runtime_version = 9;
   optional string gvisor_platform = 10;
+  bool encrypted = 11;
 }
 
 message ClassCreateRequest {
