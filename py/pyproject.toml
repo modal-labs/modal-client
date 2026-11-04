@@ -43,6 +43,7 @@ oauth = [
 ]
 
 [dependency-groups]
+publish = ["pypi-attestations==0.0.30"]
 dev = [
     "fastapi~=0.125",
     "flaky~=3.8",
