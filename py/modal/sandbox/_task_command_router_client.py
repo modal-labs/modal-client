@@ -55,6 +55,36 @@ _STREAMING_STDIN_RESUMABLE_EXCEPTIONS = (
 )
 
 
+_shared_verifying_ssl_context_instance: ssl.SSLContext | None = None
+
+
+def _shared_verifying_ssl_context() -> ssl.SSLContext:
+    """Process-wide TLS context that verifies certificates against the system CAs.
+
+    Creating a context parses the system CA bundle while holding the GIL, so one
+    per channel blocks the event loop when many Sandboxes connect at once. Every
+    Sandbox's command router channel shares this context, so it must never be
+    modified; a change would apply to every connection in the process.
+    """
+    global _shared_verifying_ssl_context_instance
+    if _shared_verifying_ssl_context_instance is None:
+        _shared_verifying_ssl_context_instance = ssl.create_default_context()
+    return _shared_verifying_ssl_context_instance
+
+
+def _unverified_ssl_context() -> ssl.SSLContext:
+    """New TLS context that skips certificate and hostname checks.
+
+    Only for local e2e servers on localhost, which use self-signed certificates.
+    Built per call so that turning verification off cannot reach the shared
+    verifying context.
+    """
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    return ssl_context
+
+
 @retry(n_attempts=34, base_delay=1, max_delay=10, attempt_timeout=10, total_timeout=310)
 async def _connect_channel(channel: grpclib.client.Channel):
     """Connect to the command router channel.
@@ -320,13 +350,11 @@ class TaskCommandRouterClient:
                 raise ValueError(f"Task router URL must be https, got: {url}")
             ssl_context = None
         elif o.scheme == "https":
-            ssl_context = ssl.create_default_context()
             if is_localhost_client:
-                # Allow insecure TLS when the Modal server client points to localhost
-                # This is typically triggered from local e2e testing
                 logger.warning("Using insecure TLS for task command router because server client points to localhost")
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
+                ssl_context = _unverified_ssl_context()
+            else:
+                ssl_context = _shared_verifying_ssl_context()
         else:
             raise ValueError(f"Task router URL must be https, got: {url}")
 
