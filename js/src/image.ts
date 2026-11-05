@@ -2,6 +2,7 @@ import {
   GenericResult,
   GenericResult_GenericStatus,
   RegistryAuthType,
+  ImageGetOrCreateResponse,
   ImageRegistryConfig,
   Image as ImageProto,
   GPUConfig,
@@ -450,19 +451,26 @@ export class Image {
           ? await this.#buildRegistryConfig(this.#client)
           : undefined;
 
-      const resp = await this.#client.cpClient.imageGetOrCreate({
-        appId: app.appId,
-        image: ImageProto.create({
-          dockerfileCommands,
-          imageRegistryConfig,
-          secretIds,
-          gpuConfig,
-          contextFiles: [],
-          baseImages,
-        }),
-        builderVersion: imageBuilderVersion,
-        forceBuild: layer.forceBuild || false,
-      });
+      let resp: ImageGetOrCreateResponse;
+      try {
+        resp = await this.#client.cpClient.imageGetOrCreate({
+          appId: app.appId,
+          image: ImageProto.create({
+            dockerfileCommands,
+            imageRegistryConfig,
+            secretIds,
+            gpuConfig,
+            contextFiles: [],
+            baseImages,
+          }),
+          builderVersion: imageBuilderVersion,
+          forceBuild: layer.forceBuild || false,
+        });
+      } catch (err) {
+        if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+          throw new NotFoundError(err.details);
+        throw err;
+      }
 
       let result: GenericResult;
 

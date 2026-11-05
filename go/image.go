@@ -443,6 +443,9 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 			}.Build(),
 		)
 		if err != nil {
+			if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+				return nil, NotFoundError{st.Message()}
+			}
 			return nil, err
 		}
 

@@ -18,8 +18,10 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.stop()` method.
 - Added the `_Function.info()` method.
+- `Image.build()` now throws `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
 
 ## Go
 
 - Added `client.Environments.FromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.Stop()` method.
+- `Image.Build()` now returns `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.

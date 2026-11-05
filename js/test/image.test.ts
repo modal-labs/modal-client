@@ -4,7 +4,8 @@ import { expect, onTestFinished, test, vi } from "vitest";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { Secret } from "../src/secret";
 import { App } from "../src/app";
-import { Image } from "modal";
+import { ClientError, Status } from "nice-grpc";
+import { Image, NotFoundError } from "modal";
 
 test("ImageFromId", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
@@ -372,6 +373,39 @@ test("DockerfileCommandsFromNameUsesResolvedImageAsBase", async () => {
     .build(new App("ap-test", "libmodal-test"));
 
   expect(builtImage.imageId).toBe("im-layer");
+  mock.assertExhausted();
+});
+
+test("ImageBuildMapsMissingBaseImageToNotFoundError", async () => {
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageFromId", () => ({ imageId: "im-base" }));
+  mock.handleUnary("/ImageGetOrCreate", (req: any) => {
+    expect(req.image.baseImages).toEqual([
+      { dockerTag: "base", imageId: "im-base" },
+    ]);
+    throw new ClientError(
+      "/ImageGetOrCreate",
+      Status.NOT_FOUND,
+      "No Image with ID 'im-missing' found",
+    );
+  });
+
+  const baseImage = await mc.images.fromId("im-base");
+  const error = await baseImage
+    .dockerfileCommands(["RUN echo layer"])
+    .build(new App("ap-test", "libmodal-test"))
+    .catch((err: unknown) => err);
+
+  expect(error).toBeInstanceOf(NotFoundError);
+  expect(error).toHaveProperty(
+    "message",
+    "No Image with ID 'im-missing' found",
+  );
   mock.assertExhausted();
 });
 
