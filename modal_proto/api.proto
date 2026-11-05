@@ -4342,6 +4342,33 @@ message SandboxGetResourceUsageResponse {
   optional string gpu_type = 4;
 }
 
+message SandboxGetStatsRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetStatsResponse {
+  // Estimated compute cost in USD at the workspace's current plan rates, without
+  // reservation discounts or network egress. Unset when no usage is available.
+  optional string cost = 1;
+  map<string, string> cost_by_resource = 2;
+
+  message ResourceStats {
+    // Exact, equally weighted sample percentiles: p50, p90, p99, and p99.9.
+    repeated StatsPercentile percentiles = 1;
+    double mean = 2;
+    double max = 3;
+  }
+
+  uint64 num_datapoints = 3;
+  ResourceStats cpu_cores = 4;
+  ResourceStats memory_gib = 5;
+  double duration_hours = 6;
+  // Billing-adjusted usage: the greater of measured and reserved resources per
+  // sample, less any resources bundled with a GPU.
+  double billed_cpu_core_seconds = 7;
+  double billed_memory_gib_seconds = 8;
+}
+
 message SandboxGetTaskIdRequest {
   string sandbox_id = 1;
   optional float timeout = 2; // Legacy clients do not provide a timeout. New clients must always provide a timeout.
@@ -5923,6 +5950,9 @@ service ModalClient {
   rpc SandboxGetFromNameV2(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
+  // Statistics over available usage samples; ingestion can lag execution.
+  rpc SandboxGetStats(SandboxGetStatsRequest) returns (SandboxGetStatsResponse);
+  rpc SandboxGetStatsV2(SandboxGetStatsRequest) returns (SandboxGetStatsResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTaskIdV2(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse);
   rpc SandboxGetTimeRangeStats(SandboxGetTimeRangeStatsRequest) returns (SandboxGetTimeRangeStatsResponse);
