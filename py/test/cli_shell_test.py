@@ -462,6 +462,21 @@ def test_shell_experimental_options_with_image(servicer, set_env_client, mock_sh
     assert call.args[-3] == {"sparkle_mode": "true"}
 
 
+@skip_windows("modal shell is not supported on Windows.")
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "python -c \"print('hello world')\"",
+        "python -c 'print(\"hello world\")'",
+    ],
+)
+def test_shell_cmd_with_quotes_passed_verbatim_to_bash(servicer, set_env_client, mock_shell_routing, cmd):
+    run_cli_command(["shell", "--cmd", cmd])
+
+    call = mock_shell_routing["start_from_image"].call_args
+    assert call.args[1] == ["/bin/bash", "-c", cmd]
+
+
 @pytest.fixture(params=["flag", "environment", "default"])
 def v2_shell_args(request, monkeypatch):
     if request.param == "flag":

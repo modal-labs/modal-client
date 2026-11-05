@@ -448,7 +448,7 @@ def shell(
     app = App("modal shell")
 
     # NB: invoking under bash makes --cmd a lot more flexible.
-    cmds = shlex.split(f'/bin/bash -c "{cmd}"')
+    cmds = ["/bin/bash", "-c", cmd]
     timeout = 3600
     parsed_experimental_options = _parse_experimental_options(experimental_options)
 
