@@ -62,6 +62,7 @@ const (
 	ModalClient_BlobGet_FullMethodName                                = "/modal.client.ModalClient/BlobGet"
 	ModalClient_ClassCreate_FullMethodName                            = "/modal.client.ModalClient/ClassCreate"
 	ModalClient_ClassGet_FullMethodName                               = "/modal.client.ModalClient/ClassGet"
+	ModalClient_CliCommandSuggest_FullMethodName                      = "/modal.client.ModalClient/CliCommandSuggest"
 	ModalClient_ClientHello_FullMethodName                            = "/modal.client.ModalClient/ClientHello"
 	ModalClient_ClusterGet_FullMethodName                             = "/modal.client.ModalClient/ClusterGet"
 	ModalClient_ClusterList_FullMethodName                            = "/modal.client.ModalClient/ClusterList"
@@ -168,6 +169,7 @@ const (
 	ModalClient_MountBatchedCheckExistence_FullMethodName             = "/modal.client.ModalClient/MountBatchedCheckExistence"
 	ModalClient_MountGetOrCreate_FullMethodName                       = "/modal.client.ModalClient/MountGetOrCreate"
 	ModalClient_MountPutFile_FullMethodName                           = "/modal.client.ModalClient/MountPutFile"
+	ModalClient_ObjectSuggest_FullMethodName                          = "/modal.client.ModalClient/ObjectSuggest"
 	ModalClient_PersistentSandboxCreate_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxCreate"
 	ModalClient_PersistentSandboxGet_FullMethodName                   = "/modal.client.ModalClient/PersistentSandboxGet"
 	ModalClient_PersistentSandboxResume_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxResume"
@@ -352,6 +354,8 @@ type ModalClientClient interface {
 	// Classes
 	ClassCreate(ctx context.Context, in *ClassCreateRequest, opts ...grpc.CallOption) (*ClassCreateResponse, error)
 	ClassGet(ctx context.Context, in *ClassGetRequest, opts ...grpc.CallOption) (*ClassGetResponse, error)
+	// CLI guidance
+	CliCommandSuggest(ctx context.Context, in *CliCommandSuggestRequest, opts ...grpc.CallOption) (*CliCommandSuggestResponse, error)
 	// Clients
 	ClientHello(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ClientHelloResponse, error)
 	// Clusters
@@ -472,6 +476,8 @@ type ModalClientClient interface {
 	MountBatchedCheckExistence(ctx context.Context, in *MountBatchedCheckExistenceRequest, opts ...grpc.CallOption) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(ctx context.Context, in *MountGetOrCreateRequest, opts ...grpc.CallOption) (*MountGetOrCreateResponse, error)
 	MountPutFile(ctx context.Context, in *MountPutFileRequest, opts ...grpc.CallOption) (*MountPutFileResponse, error)
+	// Object name suggestions
+	ObjectSuggest(ctx context.Context, in *ObjectSuggestRequest, opts ...grpc.CallOption) (*ObjectSuggestResponse, error)
 	// Persistent sandboxes
 	PersistentSandboxCreate(ctx context.Context, in *PersistentSandboxCreateRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateResponse, error)
 	PersistentSandboxGet(ctx context.Context, in *PersistentSandboxGetRequest, opts ...grpc.CallOption) (*PersistentSandboxGetResponse, error)
@@ -998,6 +1004,16 @@ func (c *modalClientClient) ClassGet(ctx context.Context, in *ClassGetRequest, o
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ClassGetResponse)
 	err := c.cc.Invoke(ctx, ModalClient_ClassGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) CliCommandSuggest(ctx context.Context, in *CliCommandSuggestRequest, opts ...grpc.CallOption) (*CliCommandSuggestResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CliCommandSuggestResponse)
+	err := c.cc.Invoke(ctx, ModalClient_CliCommandSuggest_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2103,6 +2119,16 @@ func (c *modalClientClient) MountPutFile(ctx context.Context, in *MountPutFileRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MountPutFileResponse)
 	err := c.cc.Invoke(ctx, ModalClient_MountPutFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) ObjectSuggest(ctx context.Context, in *ObjectSuggestRequest, opts ...grpc.CallOption) (*ObjectSuggestResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ObjectSuggestResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ObjectSuggest_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3560,6 +3586,8 @@ type ModalClientServer interface {
 	// Classes
 	ClassCreate(context.Context, *ClassCreateRequest) (*ClassCreateResponse, error)
 	ClassGet(context.Context, *ClassGetRequest) (*ClassGetResponse, error)
+	// CLI guidance
+	CliCommandSuggest(context.Context, *CliCommandSuggestRequest) (*CliCommandSuggestResponse, error)
 	// Clients
 	ClientHello(context.Context, *emptypb.Empty) (*ClientHelloResponse, error)
 	// Clusters
@@ -3680,6 +3708,8 @@ type ModalClientServer interface {
 	MountBatchedCheckExistence(context.Context, *MountBatchedCheckExistenceRequest) (*MountBatchedCheckExistenceResponse, error)
 	MountGetOrCreate(context.Context, *MountGetOrCreateRequest) (*MountGetOrCreateResponse, error)
 	MountPutFile(context.Context, *MountPutFileRequest) (*MountPutFileResponse, error)
+	// Object name suggestions
+	ObjectSuggest(context.Context, *ObjectSuggestRequest) (*ObjectSuggestResponse, error)
 	// Persistent sandboxes
 	PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error)
 	PersistentSandboxGet(context.Context, *PersistentSandboxGetRequest) (*PersistentSandboxGetResponse, error)
@@ -3950,6 +3980,9 @@ func (UnimplementedModalClientServer) ClassCreate(context.Context, *ClassCreateR
 }
 func (UnimplementedModalClientServer) ClassGet(context.Context, *ClassGetRequest) (*ClassGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ClassGet not implemented")
+}
+func (UnimplementedModalClientServer) CliCommandSuggest(context.Context, *CliCommandSuggestRequest) (*CliCommandSuggestResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CliCommandSuggest not implemented")
 }
 func (UnimplementedModalClientServer) ClientHello(context.Context, *emptypb.Empty) (*ClientHelloResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ClientHello not implemented")
@@ -4268,6 +4301,9 @@ func (UnimplementedModalClientServer) MountGetOrCreate(context.Context, *MountGe
 }
 func (UnimplementedModalClientServer) MountPutFile(context.Context, *MountPutFileRequest) (*MountPutFileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MountPutFile not implemented")
+}
+func (UnimplementedModalClientServer) ObjectSuggest(context.Context, *ObjectSuggestRequest) (*ObjectSuggestResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ObjectSuggest not implemented")
 }
 func (UnimplementedModalClientServer) PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxCreate not implemented")
@@ -5335,6 +5371,24 @@ func _ModalClient_ClassGet_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).ClassGet(ctx, req.(*ClassGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_CliCommandSuggest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CliCommandSuggestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).CliCommandSuggest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_CliCommandSuggest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).CliCommandSuggest(ctx, req.(*CliCommandSuggestRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7208,6 +7262,24 @@ func _ModalClient_MountPutFile_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).MountPutFile(ctx, req.(*MountPutFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_ObjectSuggest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ObjectSuggestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ObjectSuggest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ObjectSuggest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ObjectSuggest(ctx, req.(*ObjectSuggestRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -9773,6 +9845,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_ClassGet_Handler,
 		},
 		{
+			MethodName: "CliCommandSuggest",
+			Handler:    _ModalClient_CliCommandSuggest_Handler,
+		},
+		{
 			MethodName: "ClientHello",
 			Handler:    _ModalClient_ClientHello_Handler,
 		},
@@ -10175,6 +10251,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MountPutFile",
 			Handler:    _ModalClient_MountPutFile_Handler,
+		},
+		{
+			MethodName: "ObjectSuggest",
+			Handler:    _ModalClient_ObjectSuggest_Handler,
 		},
 		{
 			MethodName: "PersistentSandboxCreate",

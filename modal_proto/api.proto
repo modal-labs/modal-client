@@ -1200,6 +1200,22 @@ message ClassParameterValue {  // TODO: rename into NamedPayloadValue
   }
 }
 
+// Suggest guidance for an unknown static CLI command using its syntax and client version.
+// The client version is supplied in request metadata.
+message CliCommandSuggestRequest {
+  // Successfully parsed parent commands, excluding "modal".
+  repeated string parent_path = 1;
+  // The command token that could not be resolved. No arguments or option values.
+  string unknown_command = 2;
+}
+
+message CliCommandSuggestResponse {
+  // Complete guidance text; empty when local CLI suggestions should be used.
+  string message = 1;
+  // Append the original invocation locally, preserving its arguments and flags.
+  bool append_original_command = 2;
+}
+
 message ClientHelloResponse {
   string warning = 1;
   string image_builder_version = 2;  // Deprecated, no longer used in client
@@ -3625,6 +3641,41 @@ message ObjectDependency {
   string object_id = 1;
 }
 
+// Optional name suggestions for CLI error paths. Only objects visible to the
+// caller in the selected environment are considered; no object is modified.
+message ObjectSuggestRequest {
+  enum ObjectSuggestKind {
+    OBJECT_SUGGEST_KIND_UNSPECIFIED = 0;
+    OBJECT_SUGGEST_KIND_APP = 1;
+    OBJECT_SUGGEST_KIND_FUNCTION = 2;
+    OBJECT_SUGGEST_KIND_SERVER = 3;
+  }
+
+  // Empty selects the workspace's default environment.
+  string environment_name = 1;
+  // Required; UNSPECIFIED is invalid.
+  ObjectSuggestKind kind = 2;
+  // The reference exactly as typed. For Functions and Servers this may be an
+  // APP_NAME/OBJECT_NAME reference or a reference with an incorrect separator.
+  string query = 3;
+  // Maximum number of suggestions. Zero defaults to 3; values above 10 are
+  // capped at 10.
+  uint32 limit = 4;
+}
+
+message ObjectSuggestResponse {
+  // Distinct suggestions, best match first. Empty if no suitable match exists.
+  repeated ObjectSuggestion suggestions = 1;
+}
+
+message ObjectSuggestion {
+  // Set for Functions and Servers; empty for Apps.
+  string app_name = 1;
+  // The object's name or tag, including any class method suffix. For Apps,
+  // this is the deployment name. Combine with app_name using '/' when set.
+  string object_name = 2;
+}
+
 // Route-based policy for outbound network traffic. A sandbox applies it to
 // its main container.
 //
@@ -5774,6 +5825,9 @@ service ModalClient {
   rpc ClassCreate(ClassCreateRequest) returns (ClassCreateResponse);
   rpc ClassGet(ClassGetRequest) returns (ClassGetResponse);
 
+  // CLI guidance
+  rpc CliCommandSuggest(CliCommandSuggestRequest) returns (CliCommandSuggestResponse);
+
   // Clients
   rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
 
@@ -5907,6 +5961,9 @@ service ModalClient {
   rpc MountBatchedCheckExistence(MountBatchedCheckExistenceRequest) returns (MountBatchedCheckExistenceResponse);
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
+
+  // Object name suggestions
+  rpc ObjectSuggest(ObjectSuggestRequest) returns (ObjectSuggestResponse);
 
   // Persistent sandboxes
   rpc PersistentSandboxCreate(PersistentSandboxCreateRequest) returns (PersistentSandboxCreateResponse);
