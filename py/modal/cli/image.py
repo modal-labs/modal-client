@@ -42,6 +42,26 @@ def _print_result_summary(count: int) -> None:
     OutputManager.get().print(f"Showing {count} {result_label}")
 
 
+async def _build_and_publish(image: _Image, image_ref: str, app: _App, env: str, name: Optional[str]) -> None:
+    built_image = await image.build(app)
+
+    output_mgr = OutputManager.get()
+    if built_image._cache_hit:
+        message = f"Used a cached pull of [bold]{image_ref}[/bold] as [bold]{built_image.object_id}[/bold]"
+        # A digest reference can't change in the registry, so pulling it again would be a no-op
+        if "@" not in image_ref:
+            message += " [dim](Pass --force-build to pull it from the registry again.)[/dim]"
+        output_mgr.step_completed(message)
+    else:
+        output_mgr.step_completed(f"Pulled [bold]{image_ref}[/bold] as [bold]{built_image.object_id}[/bold]")
+    if name:
+        upgraded_image_name = _upgrade_image_name(name, fallback_environment_name=env)
+        await built_image.publish(upgraded_image_name)
+        output_mgr.step_completed(f"Image published as [bold magenta]{upgraded_image_name}[/bold magenta]! 🎉")
+        output_mgr.print("\nUse it with:\n")
+        output_mgr.print(Syntax(f'modal.Image.from_name("{upgraded_image_name}")', "python"))
+
+
 async def _registry_secret(
     secret_name: Optional[str], secret_vars: Optional[str], env: str
 ) -> tuple[Optional[_Secret], set[str]]:
@@ -54,6 +74,15 @@ async def _registry_secret(
     if not keys:
         return None, set()
     return _Secret.from_local_environ(keys), set(keys)
+
+
+def _check_registry_host(image_ref: str) -> None:
+    first, sep, _ = image_ref.partition("/")
+    # A leading path component is a registry host only if it looks like one; otherwise it's a Docker Hub name
+    if not sep or ("." not in first and ":" not in first and first != "localhost"):
+        raise click.UsageError(
+            f"IMAGE_REF must start with the registry host, e.g. docker.io/{image_ref} for a Docker Hub image."
+        )
 
 
 @image_cli.command("build", no_args_is_help=True)
@@ -152,6 +181,100 @@ async def build(
     output_mgr.step_completed(f"Image published as [bold magenta]{tag}[/bold magenta]! 🎉")
     output_mgr.print("\nUse it with:\n")
     output_mgr.print(Syntax(f'modal.Image.from_name("{tag}")', "python"))
+
+
+@image_cli.command("pull", no_args_is_help=True)
+@click.argument("image_ref")
+@click.option(
+    "--name",
+    "name",
+    metavar="[ENV/]NAME[:TAG]",
+    help="Publish the pulled Image under this name. An ENV/ prefix publishes it to that Environment.",
+)
+@click.option(
+    "--registry-secret",
+    "registry_secret_name",
+    default=None,
+    help="Name of a modal.Secret holding registry credentials.",
+)
+@click.option(
+    "--registry-secret-from-env",
+    "registry_secret_vars",
+    default=None,
+    metavar="VAR[,VAR...]",
+    help=(
+        "Comma-separated local environment variable names holding registry credentials. "
+        "Cannot be combined with --registry-secret."
+    ),
+)
+@click.option(
+    "--force-build",
+    is_flag=True,
+    help="Pull the image from the registry again, replacing a cached Image.",
+)
+@env_option
+@synchronizer.create_blocking
+async def pull(
+    image_ref: str,
+    *,
+    name: Optional[str] = None,
+    registry_secret_name: Optional[str] = None,
+    registry_secret_vars: Optional[str] = None,
+    force_build: bool = False,
+    env: Optional[str] = None,
+) -> None:
+    """Pull an Image from a container registry into Modal.
+
+    The `image_ref` is a registry image name (and optional tag), as passed to `modal.Image.from_registry`.
+    It must start with the registry host, e.g. `docker.io/node:20` for a Docker Hub image.
+    If `--name` is provided, the Modal Image will also be published under that name.
+    Use `ENV/NAME` to publish to another Environment; `--env` still selects the Environment
+    used for the pull and for looking up `--registry-secret`.
+
+    Examples:
+
+    ```bash
+    modal image pull docker.io/node:20
+    modal image pull nvcr.io/nvidia/pytorch:25.01-py3 --name pytorch:25
+    modal image pull docker.io/node:20 --name prod/node:20
+    ```
+
+    Pass `--force-build` to pull a tag again after it changes in the registry, e.g. `latest`.
+
+    Private registries need credentials from a `modal.Secret`, either one that already exists
+    (`--registry-secret`) or one assembled from local environment variables (`--registry-secret-from-env`).
+    The kind of authentication follows from the keys in the credentials:
+
+    - AWS: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` (optionally `AWS_SESSION_TOKEN`),
+      or `AWS_ROLE_ARN` and `AWS_REGION` to assume a role with OIDC
+    - GCP: `SERVICE_ACCOUNT_JSON`, holding the service account key's JSON
+    - Username and password: `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`
+
+    ```bash
+    # Authenticate with a named Secret
+    modal image pull ghcr.io/my-org/my-image --registry-secret my-registry-secret
+
+    # Authenticate with credentials in environment variables
+    modal image pull $AWS_ECR_URL/my-image \\
+        --registry-secret-from-env AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION
+    ```
+
+    """
+    _check_registry_host(image_ref)
+    env = ensure_env(env)
+    secret, keys = await _registry_secret(registry_secret_name, registry_secret_vars, env)
+    if secret is not None:
+        # Fail before creating the app; from_registry runs the same check during the build
+        try:
+            _infer_registry_auth_type(keys)
+        except InvalidError as exc:
+            raise click.UsageError(str(exc)) from exc
+    image = _Image.from_registry(image_ref, secret, force_build=force_build)
+
+    app = _App("modal-image-pull")
+    async with _run_app(app, environment_name=env, stream_output=False):
+        OutputManager.get().print(f"Pulling [bold]{image_ref}[/bold]")
+        await _build_and_publish(image, image_ref, app, env, name)
 
 
 @image_cli.command("logs", no_args_is_help=True)

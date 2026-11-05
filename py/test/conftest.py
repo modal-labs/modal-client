@@ -1418,7 +1418,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_state_history[app_id].append(api_pb2.APP_STATE_INITIALIZING)
         self.app_environments[app_id] = self.get_environment(request.environment_name)
         await stream.send_message(
-            api_pb2.AppCreateResponse(app_id=app_id, app_page_url="https://modaltest.com/apps/ap-123")
+            api_pb2.AppCreateResponse(
+                app_id=app_id,
+                app_page_url="https://modaltest.com/apps/ap-123",
+                app_logs_url="https://modaltest.com/apps/ap-123?activeTab=logs",
+            )
         )
 
     async def AppGetOrCreate(self, stream):
@@ -3153,6 +3157,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 await stream.send_message(
                     api_pb2.ImageGetOrCreateResponse(
                         image_id=image_id,
+                        result=None
+                        if request.force_build
+                        else api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
                         metadata=api_pb2.ImageMetadata(image_builder_version=self.image_builder_versions[image_id]),
                     )
                 )

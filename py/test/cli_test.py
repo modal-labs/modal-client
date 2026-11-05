@@ -683,6 +683,257 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
     assert sleep_calls == [1.0, 1.0]
 
 
+def _built_image_id(result) -> str:
+    """Return the ID of the Image that the CLI reported building."""
+    match = re.search(r"(?:Pulled|Used a cached pull of) \S+ as (im-\S+)", result.stdout)
+    assert match, f"no built Image ID in output:\n{result.stdout}"
+    return match.group(1)
+
+
+def _built_image(servicer, result) -> api_pb2.Image:
+    """Return the Image that the CLI reported building."""
+    return servicer.images[_built_image_id(result)]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected_tag"),
+    [
+        ("my-image", "cli-env/my-image:latest"),
+        ("my-image:v1", "cli-env/my-image:v1"),
+        ("name-env/my-image", "name-env/my-image:latest"),
+        ("name-env/my-image:v1", "name-env/my-image:v1"),
+    ],
+)
+def test_image_cli_publish_name_environment_scoping(servicer, set_env_client, modal_config, name, expected_tag):
+    # An environment prefix in --name takes precedence over --env; an unscoped name derives from --env
+    with modal_config("[default]\nenvironment = 'profile-env'\n"):
+        result = run_cli_command(["image", "pull", "docker.io/python:3.13-slim", "--name", name, "--env", "cli-env"])
+
+    assert list(servicer.image_tags) == [expected_tag]
+    assert servicer.image_tags[expected_tag] == _built_image_id(result)
+    assert f"Image published as {expected_tag}" in result.stdout
+    assert f'modal.Image.from_name("{expected_tag}")' in result.stdout
+
+    # The builder App runs in the --env environment even when --name is scoped to another one
+    assert list(servicer.app_environments.values()) == ["cli-env"]
+
+
+def test_image_cli_publish_name_environment_prefix_with_registry_secret(servicer, set_env_client):
+    # The registry Secret is looked up in --env, while the Image is published to the --name prefix
+    servicer.secrets["st-registry"] = dict.fromkeys(["REGISTRY_USERNAME", "REGISTRY_PASSWORD"], "x")
+    servicer.deployed_secrets[("my-registry-secret", "cli-env")] = "st-registry"
+    result = run_cli_command(
+        [
+            "image",
+            "pull",
+            "docker.io/my-org/my-image",
+            "--registry-secret",
+            "my-registry-secret",
+            "--name",
+            "name-env/my-image",
+            "--env",
+            "cli-env",
+        ]
+    )
+
+    assert _built_image(servicer, result).image_registry_config.secret_id == "st-registry"
+    assert list(servicer.image_tags) == ["name-env/my-image:latest"]
+    assert list(servicer.app_environments.values()) == ["cli-env"]
+
+
+def test_image_cli_publish_name_uses_profile_environment_as_fallback(servicer, set_env_client, modal_config):
+    # Without --env, an unscoped name derives from the environment set in the config profile
+    with modal_config("[default]\nenvironment = 'profile-env'\n"):
+        run_cli_command(["image", "pull", "docker.io/python:3.13-slim", "--name", "my-image"])
+
+    assert list(servicer.image_tags) == ["profile-env/my-image:latest"]
+
+
+def test_image_cli_pull(servicer, set_env_client):
+    result = run_cli_command(["image", "pull", "docker.io/python:3.13-slim", "--name", "my-python"])
+    image = _built_image(servicer, result)
+
+    assert any("FROM docker.io/python:3.13-slim" in cmd for cmd in image.dockerfile_commands)
+    assert image.image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED
+    assert not image.image_registry_config.secret_id
+    assert "Pulling docker.io/python:3.13-slim" in result.stdout
+    assert "Initialized." not in result.stdout
+    assert "Created objects." not in result.stdout
+    assert "App completed." not in result.stdout
+    # Build logs are shown, but not the App's log stream, where the server reports the App stopping
+    assert "build starting" in result.stdout
+    assert servicer.app_get_logs_initial_count == 0
+
+    # The build runs in an ephemeral App that is stopped afterwards
+    assert not servicer.deployed_apps
+    [app_id] = servicer.app_environments
+    assert servicer.app_state_history[app_id][-1] == api_pb2.APP_STATE_STOPPED
+    assert servicer.image_tags["my-python:latest"] == _built_image_id(result)
+
+
+@pytest.mark.parametrize(("args", "force_built"), [([], False), (["--force-build"], True)])
+def test_image_cli_pull_force_build(servicer, set_env_client, monkeypatch, args, force_built):
+    monkeypatch.delenv("MODAL_FORCE_BUILD", raising=False)
+    result = run_cli_command(["image", "pull", "docker.io/python:3.13-slim", *args])
+
+    assert (_built_image_id(result) in servicer.force_built_images) == force_built
+
+
+@pytest.mark.parametrize(
+    ("image_ref", "repull_args", "cached", "hint_shown"),
+    [
+        ("docker.io/python:3.13-slim", [], True, True),
+        ("docker.io/python:3.13-slim", ["--force-build"], False, False),
+        ("docker.io/python@sha256:0123abcd", [], True, False),
+    ],
+)
+def test_image_cli_pull_cached(servicer, set_env_client, monkeypatch, image_ref, repull_args, cached, hint_shown):
+    monkeypatch.delenv("MODAL_FORCE_BUILD", raising=False)
+    first = run_cli_command(["image", "pull", image_ref])
+    assert f"Pulled {image_ref} as {_built_image_id(first)}" in first.stdout
+
+    second = run_cli_command(["image", "pull", image_ref, *repull_args])
+    assert ("Used a cached pull of" in second.stdout) == cached
+    # Rich wraps the long cached-pull line at the terminal width
+    assert ("Pass --force-build to pull it from the registry again." in " ".join(second.stdout.split())) == hint_shown
+    assert _built_image_id(second) == _built_image_id(first)
+
+
+@pytest.mark.parametrize(
+    ("keys", "auth_type"),
+    [
+        (["REGISTRY_USERNAME", "REGISTRY_PASSWORD"], api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS),
+        (["AWS_ROLE_ARN", "AWS_REGION", "OTHER"], api_pb2.REGISTRY_AUTH_TYPE_AWS),
+    ],
+)
+def test_image_cli_pull_named_secret(servicer, set_env_client, keys, auth_type):
+    servicer.secrets["st-registry"] = dict.fromkeys(keys, "x")
+    servicer.deployed_secrets[("my-registry-secret", "main")] = "st-registry"
+    result = run_cli_command(["image", "pull", "docker.io/my-org/my-image", "--registry-secret", "my-registry-secret"])
+    image = _built_image(servicer, result)
+
+    assert image.image_registry_config.registry_auth_type == auth_type
+    assert image.image_registry_config.secret_id == "st-registry"
+
+
+AWS_KEYS = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"]
+AWS_SESSION_KEYS = [*AWS_KEYS, "AWS_SESSION_TOKEN"]
+AWS_OIDC_KEYS = ["AWS_ROLE_ARN", "AWS_REGION"]
+GCP_KEYS = ["SERVICE_ACCOUNT_JSON"]
+BASIC_KEYS = ["REGISTRY_USERNAME", "REGISTRY_PASSWORD"]
+
+
+@pytest.mark.parametrize(
+    ("image_ref", "keys", "auth_type"),
+    [
+        ("123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image", AWS_KEYS, api_pb2.REGISTRY_AUTH_TYPE_AWS),
+        ("123456789012.dkr.ecr.cn-north-1.amazonaws.com.cn/my-image", AWS_SESSION_KEYS, api_pb2.REGISTRY_AUTH_TYPE_AWS),
+        ("123456789012.dkr-ecr.us-east-1.on.aws/my-image", AWS_OIDC_KEYS, api_pb2.REGISTRY_AUTH_TYPE_AWS),
+        ("us-east1-docker.pkg.dev/my-project/my-repo/my-image", GCP_KEYS, api_pb2.REGISTRY_AUTH_TYPE_GCP),
+        ("my-registry.example.com/my-image", GCP_KEYS, api_pb2.REGISTRY_AUTH_TYPE_GCP),
+        ("us-east1-docker.pkg.dev/my-project/my-repo/my-image", BASIC_KEYS, api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS),
+        ("123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image", BASIC_KEYS, api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS),
+    ],
+)
+def test_image_cli_pull_infers_registry_auth(servicer, set_env_client, monkeypatch, image_ref, keys, auth_type):
+    for key in keys:
+        monkeypatch.setenv(key, "x")
+    result = run_cli_command(["image", "pull", image_ref, "--registry-secret-from-env", ",".join(keys)])
+    image = _built_image(servicer, result)
+
+    assert image.image_registry_config.registry_auth_type == auth_type
+    assert dict(servicer.secrets[image.image_registry_config.secret_id]) == dict.fromkeys(keys, "x")
+
+
+@pytest.mark.parametrize(
+    "secret_vars",
+    ["REGISTRY_USERNAME,REGISTRY_PASSWORD,REGISTRY_REGION", "REGISTRY_USERNAME, REGISTRY_PASSWORD,,REGISTRY_REGION,"],
+)
+def test_image_cli_pull_secret_from_env_comma_separated(servicer, set_env_client, monkeypatch, secret_vars):
+    monkeypatch.setenv("REGISTRY_USERNAME", "me")
+    monkeypatch.setenv("REGISTRY_PASSWORD", "s3cret")
+    monkeypatch.setenv("REGISTRY_REGION", "us-east-1")
+    result = run_cli_command(["image", "pull", "docker.io/my-org/my-image", "--registry-secret-from-env", secret_vars])
+    image = _built_image(servicer, result)
+
+    assert dict(servicer.secrets[image.image_registry_config.secret_id]) == {
+        "REGISTRY_USERNAME": "me",
+        "REGISTRY_PASSWORD": "s3cret",
+        "REGISTRY_REGION": "us-east-1",
+    }
+
+
+def test_image_cli_pull_without_credentials_skips_inference(servicer, set_env_client):
+    result = run_cli_command(["image", "pull", "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image"])
+    image = _built_image(servicer, result)
+    assert image.image_registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED
+    assert not image.image_registry_config.secret_id
+
+
+def test_image_cli_pull_secret_errors(servicer, set_env_client, monkeypatch):
+    monkeypatch.delenv("REGISTRY_PASSWORD", raising=False)
+
+    result = run_cli_command(
+        [
+            "image",
+            "pull",
+            "docker.io/my-org/my-image",
+            "--registry-secret",
+            "my-secret",
+            "--registry-secret-from-env",
+            "REGISTRY_PASSWORD",
+        ],
+        expected_exit_code=2,
+    )
+    assert "--registry-secret and --registry-secret-from-env cannot be used together" in result.stderr
+
+    result = run_cli_command(
+        ["image", "pull", "docker.io/my-org/my-image", "--registry-secret-from-env", "REGISTRY_PASSWORD"],
+        expected_exit_code=1,
+    )
+    assert isinstance(result.exception, InvalidError)
+    assert "REGISTRY_PASSWORD" in str(result.exception)
+
+    # A partial set of keys matches no kind of authentication
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "x")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "x")
+    result = run_cli_command(
+        [
+            "image",
+            "pull",
+            "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image",
+            "--registry-secret-from-env",
+            "AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY",
+        ],
+        expected_exit_code=2,
+    )
+    assert "Registry Secret must include exactly one of" in result.stderr
+
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("REGISTRY_USERNAME", "x")
+    monkeypatch.setenv("REGISTRY_PASSWORD", "x")
+    result = run_cli_command(
+        [
+            "image",
+            "pull",
+            "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image",
+            "--registry-secret-from-env",
+            "AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,REGISTRY_USERNAME,REGISTRY_PASSWORD",
+        ],
+        expected_exit_code=2,
+    )
+    assert (
+        "Registry Secret has keys for more than one kind of authentication (AWS, username and password)"
+        in result.stderr
+    )
+
+    for image_ref in ["node:20", "my-org/my-image"]:
+        result = run_cli_command(["image", "pull", image_ref], expected_exit_code=2)
+        assert f"IMAGE_REF must start with the registry host, e.g. docker.io/{image_ref}" in result.stderr
+
+    assert not servicer.images
+
+
 def test_image_cli_history_uses_implicit_environment_as_fallback(servicer, set_env_client, modal_config):
     def history_response(tag: str) -> api_pb2.ImageTagRevisionsResponse:
         return api_pb2.ImageTagRevisionsResponse(
@@ -6649,7 +6900,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     },
     "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "autoscaler", "metrics"]},
     "server": {"Commands": ["info", "logs", "stats", "requests", "autoscaler", "metrics"]},
-    "image": {"Commands": ["build", "logs", "names"]},
+    "image": {"Commands": ["build", "pull", "logs", "names"]},
     "image names": {"Commands": ["list"]},
     "dict": {
         "Management": ["list", "create", "clear", "delete"],

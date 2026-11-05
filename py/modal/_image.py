@@ -584,6 +584,7 @@ class _Image(_Object, type_prefix="im"):
     ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
     _added_python_source_set: frozenset[str]  # used to warn about missing mounts during auto-mount deprecation
     _metadata: api_pb2.ImageMetadata | None = None  # set on hydration, private for now
+    _cache_hit: bool | None = None  # set when built, True if an existing build was reused
     _is_empty: bool
     _build_steps: list[api_pb2.ImageBuildStep] | None = None
     # A failed image ID is only queryable through the client that performed the build.
@@ -832,6 +833,7 @@ class _Image(_Object, type_prefix="im"):
             result: api_pb2.GenericResult
             metadata: api_pb2.ImageMetadata | None = None
 
+            self._cache_hit = bool(resp.result.status)
             if resp.result.status:
                 # image already built
                 result = resp.result
