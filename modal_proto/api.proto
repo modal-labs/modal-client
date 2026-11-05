@@ -970,12 +970,9 @@ message AuditLogSettingsGetResponse {
   uint32 page_size = 2;
   uint32 max_concurrent_requests = 3;
   uint32 max_buffered_buckets = 4;
-  uint32 max_attempts = 5;
-  float retry_delay_secs = 6;
-  float retry_backoff_factor = 7;
+  reserved 5, 6, 7, 10;
   float request_timeout_secs = 8;
   float plan_timeout_secs = 9;
-  uint32 plan_max_attempts = 10;
 }
 
 message AuditLogTarget {

@@ -9793,12 +9793,8 @@ type AuditLogSettingsGetResponse struct {
 	xxx_hidden_PageSize              uint32                 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3"`
 	xxx_hidden_MaxConcurrentRequests uint32                 `protobuf:"varint,3,opt,name=max_concurrent_requests,json=maxConcurrentRequests,proto3"`
 	xxx_hidden_MaxBufferedBuckets    uint32                 `protobuf:"varint,4,opt,name=max_buffered_buckets,json=maxBufferedBuckets,proto3"`
-	xxx_hidden_MaxAttempts           uint32                 `protobuf:"varint,5,opt,name=max_attempts,json=maxAttempts,proto3"`
-	xxx_hidden_RetryDelaySecs        float32                `protobuf:"fixed32,6,opt,name=retry_delay_secs,json=retryDelaySecs,proto3"`
-	xxx_hidden_RetryBackoffFactor    float32                `protobuf:"fixed32,7,opt,name=retry_backoff_factor,json=retryBackoffFactor,proto3"`
 	xxx_hidden_RequestTimeoutSecs    float32                `protobuf:"fixed32,8,opt,name=request_timeout_secs,json=requestTimeoutSecs,proto3"`
 	xxx_hidden_PlanTimeoutSecs       float32                `protobuf:"fixed32,9,opt,name=plan_timeout_secs,json=planTimeoutSecs,proto3"`
-	xxx_hidden_PlanMaxAttempts       uint32                 `protobuf:"varint,10,opt,name=plan_max_attempts,json=planMaxAttempts,proto3"`
 	unknownFields                    protoimpl.UnknownFields
 	sizeCache                        protoimpl.SizeCache
 }
@@ -9856,27 +9852,6 @@ func (x *AuditLogSettingsGetResponse) GetMaxBufferedBuckets() uint32 {
 	return 0
 }
 
-func (x *AuditLogSettingsGetResponse) GetMaxAttempts() uint32 {
-	if x != nil {
-		return x.xxx_hidden_MaxAttempts
-	}
-	return 0
-}
-
-func (x *AuditLogSettingsGetResponse) GetRetryDelaySecs() float32 {
-	if x != nil {
-		return x.xxx_hidden_RetryDelaySecs
-	}
-	return 0
-}
-
-func (x *AuditLogSettingsGetResponse) GetRetryBackoffFactor() float32 {
-	if x != nil {
-		return x.xxx_hidden_RetryBackoffFactor
-	}
-	return 0
-}
-
 func (x *AuditLogSettingsGetResponse) GetRequestTimeoutSecs() float32 {
 	if x != nil {
 		return x.xxx_hidden_RequestTimeoutSecs
@@ -9887,13 +9862,6 @@ func (x *AuditLogSettingsGetResponse) GetRequestTimeoutSecs() float32 {
 func (x *AuditLogSettingsGetResponse) GetPlanTimeoutSecs() float32 {
 	if x != nil {
 		return x.xxx_hidden_PlanTimeoutSecs
-	}
-	return 0
-}
-
-func (x *AuditLogSettingsGetResponse) GetPlanMaxAttempts() uint32 {
-	if x != nil {
-		return x.xxx_hidden_PlanMaxAttempts
 	}
 	return 0
 }
@@ -9914,28 +9882,12 @@ func (x *AuditLogSettingsGetResponse) SetMaxBufferedBuckets(v uint32) {
 	x.xxx_hidden_MaxBufferedBuckets = v
 }
 
-func (x *AuditLogSettingsGetResponse) SetMaxAttempts(v uint32) {
-	x.xxx_hidden_MaxAttempts = v
-}
-
-func (x *AuditLogSettingsGetResponse) SetRetryDelaySecs(v float32) {
-	x.xxx_hidden_RetryDelaySecs = v
-}
-
-func (x *AuditLogSettingsGetResponse) SetRetryBackoffFactor(v float32) {
-	x.xxx_hidden_RetryBackoffFactor = v
-}
-
 func (x *AuditLogSettingsGetResponse) SetRequestTimeoutSecs(v float32) {
 	x.xxx_hidden_RequestTimeoutSecs = v
 }
 
 func (x *AuditLogSettingsGetResponse) SetPlanTimeoutSecs(v float32) {
 	x.xxx_hidden_PlanTimeoutSecs = v
-}
-
-func (x *AuditLogSettingsGetResponse) SetPlanMaxAttempts(v uint32) {
-	x.xxx_hidden_PlanMaxAttempts = v
 }
 
 type AuditLogSettingsGetResponse_builder struct {
@@ -9945,12 +9897,8 @@ type AuditLogSettingsGetResponse_builder struct {
 	PageSize              uint32
 	MaxConcurrentRequests uint32
 	MaxBufferedBuckets    uint32
-	MaxAttempts           uint32
-	RetryDelaySecs        float32
-	RetryBackoffFactor    float32
 	RequestTimeoutSecs    float32
 	PlanTimeoutSecs       float32
-	PlanMaxAttempts       uint32
 }
 
 func (b0 AuditLogSettingsGetResponse_builder) Build() *AuditLogSettingsGetResponse {
@@ -9961,12 +9909,8 @@ func (b0 AuditLogSettingsGetResponse_builder) Build() *AuditLogSettingsGetRespon
 	x.xxx_hidden_PageSize = b.PageSize
 	x.xxx_hidden_MaxConcurrentRequests = b.MaxConcurrentRequests
 	x.xxx_hidden_MaxBufferedBuckets = b.MaxBufferedBuckets
-	x.xxx_hidden_MaxAttempts = b.MaxAttempts
-	x.xxx_hidden_RetryDelaySecs = b.RetryDelaySecs
-	x.xxx_hidden_RetryBackoffFactor = b.RetryBackoffFactor
 	x.xxx_hidden_RequestTimeoutSecs = b.RequestTimeoutSecs
 	x.xxx_hidden_PlanTimeoutSecs = b.PlanTimeoutSecs
-	x.xxx_hidden_PlanMaxAttempts = b.PlanMaxAttempts
 	return m0
 }
 
@@ -77515,20 +77459,16 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"nextCursor\"N\n" +
 	"\x14AuditLogPlanResponse\x126\n" +
 	"\acursors\x18\x01 \x03(\v2\x1c.modal.client.AuditLogCursorR\acursors\"\x1c\n" +
-	"\x1aAuditLogSettingsGetRequest\"\xce\x03\n" +
+	"\x1aAuditLogSettingsGetRequest\"\xbb\x02\n" +
 	"\x1bAuditLogSettingsGetResponse\x12\x1f\n" +
 	"\vbucket_size\x18\x01 \x01(\rR\n" +
 	"bucketSize\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x126\n" +
 	"\x17max_concurrent_requests\x18\x03 \x01(\rR\x15maxConcurrentRequests\x120\n" +
-	"\x14max_buffered_buckets\x18\x04 \x01(\rR\x12maxBufferedBuckets\x12!\n" +
-	"\fmax_attempts\x18\x05 \x01(\rR\vmaxAttempts\x12(\n" +
-	"\x10retry_delay_secs\x18\x06 \x01(\x02R\x0eretryDelaySecs\x120\n" +
-	"\x14retry_backoff_factor\x18\a \x01(\x02R\x12retryBackoffFactor\x120\n" +
+	"\x14max_buffered_buckets\x18\x04 \x01(\rR\x12maxBufferedBuckets\x120\n" +
 	"\x14request_timeout_secs\x18\b \x01(\x02R\x12requestTimeoutSecs\x12*\n" +
-	"\x11plan_timeout_secs\x18\t \x01(\x02R\x0fplanTimeoutSecs\x12*\n" +
-	"\x11plan_max_attempts\x18\n" +
-	" \x01(\rR\x0fplanMaxAttempts\"4\n" +
+	"\x11plan_timeout_secs\x18\t \x01(\x02R\x0fplanTimeoutSecsJ\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\n" +
+	"\x10\v\"4\n" +
 	"\x0eAuditLogTarget\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"\x15\n" +
