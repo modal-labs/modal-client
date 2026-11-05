@@ -2064,8 +2064,7 @@ class _Image(_Object, type_prefix="im"):
         if not isinstance(entrypoint_commands, list) or not all(isinstance(x, str) for x in entrypoint_commands):
             raise InvalidError("entrypoint_commands must be a list of strings.")
         args = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
-        args_str = '"' + '", "'.join(args) + '"' if args else ""
-        dockerfile_cmd = f"ENTRYPOINT [{args_str}]"
+        dockerfile_cmd = f"ENTRYPOINT {json.dumps(args, ensure_ascii=False)}"
 
         return self.dockerfile_commands(dockerfile_cmd)
 
@@ -2085,8 +2084,7 @@ class _Image(_Object, type_prefix="im"):
         if not isinstance(shell_commands, list) or not all(isinstance(x, str) for x in shell_commands):
             raise InvalidError("shell_commands must be a list of strings.")
         args = _flatten_str_args("shell", "shell_commands", shell_commands)
-        args_str = '"' + '", "'.join(args) + '"' if args else ""
-        dockerfile_cmd = f"SHELL [{args_str}]"
+        dockerfile_cmd = f"SHELL {json.dumps(args, ensure_ascii=False)}"
 
         return self.dockerfile_commands(dockerfile_cmd)
 
@@ -3076,8 +3074,7 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("Image CMD must be a list of strings.")
 
         cmd_args = _flatten_str_args("cmd", "cmd", cmd)
-        cmd_str = '"' + '", "'.join(cmd_args) + '"' if cmd_args else ""
-        dockerfile_cmd = f"CMD [{cmd_str}]"
+        dockerfile_cmd = f"CMD {json.dumps(cmd_args, ensure_ascii=False)}"
 
         return self.dockerfile_commands(dockerfile_cmd)
 

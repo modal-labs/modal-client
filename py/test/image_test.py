@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import json
 import os
 import platform
 import pytest
@@ -1740,6 +1741,17 @@ def test_image_cmd_nonempty(builder_version, servicer, client, tmp_path_with_con
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
     assert 'CMD ["echo", "hello"]' in layers[0].dockerfile_commands
+
+
+@pytest.mark.parametrize("method,instruction", [("shell", "SHELL"), ("entrypoint", "ENTRYPOINT"), ("cmd", "CMD")])
+def test_image_exec_form_commands_escape_arguments(builder_version, servicer, client, method, instruction):
+    args = ["sh", "-c", 'echo "hi" C:\\path', "café"]
+    image = getattr(Image.debian_slim(), method)(args)
+    build_image(image, client)
+    commands = get_image_layers(image.object_id, servicer)[0].dockerfile_commands
+    [line] = [cmd for cmd in commands if cmd.startswith(instruction)]
+    assert json.loads(line.removeprefix(f"{instruction} ")) == args
+    assert "café" in line
 
 
 def test_image_cmd_malformed():
