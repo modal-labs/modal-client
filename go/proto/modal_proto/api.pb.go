@@ -69491,6 +69491,7 @@ type WorkspaceRoleDefinition struct {
 	xxx_hidden_Description               string                 `protobuf:"bytes,3,opt,name=description,proto3"`
 	xxx_hidden_Permissions               []string               `protobuf:"bytes,4,rep,name=permissions,proto3"`
 	xxx_hidden_CreatedAt                 float64                `protobuf:"fixed64,5,opt,name=created_at,json=createdAt,proto3"`
+	xxx_hidden_IsBuiltin                 bool                   `protobuf:"varint,6,opt,name=is_builtin,json=isBuiltin,proto3"`
 	unknownFields                        protoimpl.UnknownFields
 	sizeCache                            protoimpl.SizeCache
 }
@@ -69555,6 +69556,13 @@ func (x *WorkspaceRoleDefinition) GetCreatedAt() float64 {
 	return 0
 }
 
+func (x *WorkspaceRoleDefinition) GetIsBuiltin() bool {
+	if x != nil {
+		return x.xxx_hidden_IsBuiltin
+	}
+	return false
+}
+
 func (x *WorkspaceRoleDefinition) SetWorkspaceRoleDefinitionId(v string) {
 	x.xxx_hidden_WorkspaceRoleDefinitionId = v
 }
@@ -69575,6 +69583,10 @@ func (x *WorkspaceRoleDefinition) SetCreatedAt(v float64) {
 	x.xxx_hidden_CreatedAt = v
 }
 
+func (x *WorkspaceRoleDefinition) SetIsBuiltin(v bool) {
+	x.xxx_hidden_IsBuiltin = v
+}
+
 type WorkspaceRoleDefinition_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -69583,6 +69595,7 @@ type WorkspaceRoleDefinition_builder struct {
 	Description               string
 	Permissions               []string
 	CreatedAt                 float64
+	IsBuiltin                 bool
 }
 
 func (b0 WorkspaceRoleDefinition_builder) Build() *WorkspaceRoleDefinition {
@@ -69594,6 +69607,7 @@ func (b0 WorkspaceRoleDefinition_builder) Build() *WorkspaceRoleDefinition {
 	x.xxx_hidden_Description = b.Description
 	x.xxx_hidden_Permissions = b.Permissions
 	x.xxx_hidden_CreatedAt = b.CreatedAt
+	x.xxx_hidden_IsBuiltin = b.IsBuiltin
 	return m0
 }
 
@@ -80944,14 +80958,16 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\amembers\x18\x01 \x03(\v2&.modal.client.WorkspaceMembersListItemR\amembers\"d\n" +
 	"\x1bWorkspaceNameLookupResponse\x12)\n" +
 	"\x0eworkspace_name\x18\x01 \x01(\tB\x02\x18\x01R\rworkspaceName\x12\x1a\n" +
-	"\busername\x18\x02 \x01(\tR\busername\"\xd1\x01\n" +
+	"\busername\x18\x02 \x01(\tR\busername\"\xf0\x01\n" +
 	"\x17WorkspaceRoleDefinition\x12?\n" +
 	"\x1cworkspace_role_definition_id\x18\x01 \x01(\tR\x19workspaceRoleDefinitionId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12 \n" +
 	"\vpermissions\x18\x04 \x03(\tR\vpermissions\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\x01R\tcreatedAt\"R\n" +
+	"created_at\x18\x05 \x01(\x01R\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"is_builtin\x18\x06 \x01(\bR\tisBuiltin\"R\n" +
 	"%WorkspaceSetDefaultEnvironmentRequest\x12)\n" +
 	"\x10environment_name\x18\x01 \x01(\tR\x0fenvironmentName\"\xd9\x01\n" +
 	"-WorkspaceSetDefaultEnvironmentSettingsRequest\x12\x83\x01\n" +

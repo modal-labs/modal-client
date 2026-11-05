@@ -5697,6 +5697,7 @@ message WorkspaceRoleDefinition {
   string description = 3;
   repeated string permissions = 4;
   double created_at = 5;
+  bool is_builtin = 6;
 }
 
 message WorkspaceSetDefaultEnvironmentRequest {
