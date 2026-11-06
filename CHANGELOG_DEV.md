@@ -15,6 +15,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Fixed `Image.cmd()`, `Image.entrypoint()`, and `Image.shell()` for arguments that contain double quotes or backslashes. Such arguments are now passed to the container exactly as written; previously a command like `Image.cmd(["sh", "-c", 'echo "hi"'])` failed when the container started.
 - Functions restored from a memory snapshot now see current secret values in os.environ, instead of the secrets from when the snapshot was taken.
 - Added `modal token new --delete-existing` and `modal token rotate` CLI commands to enable easy token rotation.
+- `Function.from_id` will now accept Cls IDs. When called with a Cls ID, only the following APIs can be called: `.logs`, `.metrics`, `.info()`, `.stats()`, `.get_current_stats()`, `.get_web_url()` and `.autoscaler.settings()`. Use `modal.Cls.from_name(...)` to invoke all other methods.
 
 ## JS
 

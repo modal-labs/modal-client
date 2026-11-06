@@ -2607,7 +2607,6 @@ def test_function_from_id_failed_lookup(client):
     ("function", "error"),
     [
         (api_pb2.FunctionData(is_server=True), "is a Server"),
-        (api_pb2.FunctionData(is_class=True), "is a Cls"),
     ],
 )
 def test_function_from_id_rejects_other_types(client, servicer, function, error):
@@ -2619,6 +2618,131 @@ def test_function_from_id_rejects_other_types(client, servicer, function, error)
         ctx.set_responder("FunctionGetById", function_get_by_id)
         with pytest.raises(InvalidError, match=error) as exc_info:
             Function.from_id("fu-123", client=client).hydrate()
+
+
+@pytest.fixture
+def class_function_id(client, servicer):
+    app = App("class-function-lookup", include_source=False)
+
+    @app.cls(serialized=True, cpu=2, memory=1024, min_containers=1)
+    class MyCls:
+        @modal.method()
+        def method(self):
+            pass
+
+    result = deploy_app(app, client=client)
+    return servicer.app_objects[result.app_id]["MyCls.*"]
+
+
+@pytest.mark.parametrize("has_data", [False, True])
+def test_function_from_id_class_observability(client, servicer, class_function_id, has_data):
+    function = Function.from_id(class_function_id, client=client)
+    assert not function._is_hydrated
+    method = modal.Cls.from_name("class-function-lookup", "MyCls", client=client)().method
+    assert function.info() == method.info()
+    assert function.object_id == class_function_id
+    assert function.get_web_url() == ""
+    assert function.autoscaler.settings().min_containers == 1
+
+    count = 3 if has_data else 0
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGetCurrentStats", api_pb2.FunctionStats(backlog=count))
+        assert function.get_current_stats().backlog == count
+
+        ctx.add_response(
+            "FunctionGetTimeRangeStats", api_pb2.FunctionGetTimeRangeStatsResponse(input_success_count=count)
+        )
+        assert function.stats().input_success_count == count
+
+        batches = []
+        if has_data:
+            batches.append(
+                api_pb2.TaskLogsBatch(
+                    function_id=class_function_id,
+                    items=[
+                        api_pb2.TaskLogs(
+                            data="hello\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT, timestamp=time.time()
+                        )
+                    ],
+                )
+            )
+
+        async def fetch_logs(servicer, stream):
+            await stream.recv_message()
+            await stream.send_message(api_pb2.AppFetchLogsResponse(batches=batches))
+
+        ctx.set_responder("AppFetchLogs", fetch_logs)
+        assert [str(log) for log in function.logs.tail(1)] == (["hello\n"] if has_data else [])
+        assert ctx.get_requests("AppFetchLogs")[0].function_id == class_function_id
+
+        ctx.add_response("MetricsGetInfo", api_pb2.MetricsGetInfoResponse())
+        assert function.metrics.schema() == {}
+
+
+_CLASS_FUNCTION_BLOCKED_OPERATIONS = [
+    ("remote", lambda f: f.remote()),
+    ("remote_gen", lambda f: list(f.remote_gen())),
+    ("spawn", lambda f: f.spawn()),
+    ("map", lambda f: list(f.map([1]))),
+    ("starmap", lambda f: list(f.starmap([(1,)]))),
+    ("for_each", lambda f: f.for_each([1])),
+    ("spawn_map", lambda f: f.spawn_map([1])),
+    ("experimental_spawn_map", lambda f: f.experimental_spawn_map([1])),
+    ("_experimental_spawn", lambda f: f._experimental_spawn()),
+    ("update_autoscaler", lambda f: f.update_autoscaler(min_containers=1)),
+    ("autoscaler.update", lambda f: f.autoscaler.update(min_containers=1)),
+    ("with_options", lambda f: f.with_options(cpu=2).hydrate()),
+    ("with_concurrency", lambda f: f.with_concurrency(max_inputs=2).hydrate()),
+    ("with_batching", lambda f: f.with_batching(max_batch_size=2, wait_ms=100).hydrate()),
+    ("with_options", lambda f: f.with_options(cpu=2).with_concurrency(max_inputs=2).remote()),
+]
+
+
+_CLASS_FUNCTION_ALLOWED_APIS = {"logs", "metrics", "info", "stats", "get_current_stats", "get_web_url", "autoscaler"}
+
+_CLASS_FUNCTION_IRRELEVANT_APIS = {
+    "from_id",
+    "from_name",
+    "hydrate",
+    "object_id",
+    "is_hydrated",
+    "client",
+    "local",
+    "app",
+    "get_dashboard_url",
+}
+
+
+def test_function_from_id_class_public_api_classification():
+    # Require an explicit observability-only classification for every public API.
+    public = {name for name in dir(modal.Function) if not name.startswith("_")}
+    blocked = {name for name, _ in _CLASS_FUNCTION_BLOCKED_OPERATIONS}
+    unclassified = public - _CLASS_FUNCTION_ALLOWED_APIS - blocked - _CLASS_FUNCTION_IRRELEVANT_APIS
+    assert not unclassified, (
+        f"Classify new public Function attributes for observability-only handles: {sorted(unclassified)}"
+    )
+
+
+@pytest.mark.parametrize("hydrated", [False, True])
+@pytest.mark.parametrize("operation_name, operation", _CLASS_FUNCTION_BLOCKED_OPERATIONS)
+def test_function_from_id_class_blocks_invocation(
+    client, servicer, class_function_id, operation_name, operation, hydrated
+):
+    function = Function.from_id(class_function_id, client=client)
+    if hydrated:
+        function.hydrate()
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError) as exc_info:
+            operation(function)
+    assert str(exc_info.value) == (
+        f"`{class_function_id}` belongs to the Cls `MyCls`. A Function loaded with "
+        "`Function.from_id` only supports `.logs`, `.metrics`, `.info()`, `.stats()`, "
+        "`.get_current_stats()`, `.get_web_url()` and `.autoscaler.settings()`. "
+        "Use `modal.Cls.from_name(...)` to invoke all other methods."
+    )
+    assert not ctx.get_requests("FunctionBindParams")
+    assert not ctx.get_requests("FunctionMap")
+    assert not ctx.get_requests("FunctionUpdateSchedulingParams")
 
 
 @pytest.mark.parametrize("decorator", ["function", "cls"])

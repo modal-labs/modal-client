@@ -408,6 +408,7 @@ def _make_function_variant(
         if not base_function._is_hydrated:
             await base_function.hydrate(load_context.client)
 
+        base_function._check_not_observability_only()
         assert base_function._client and base_function._client._stub
 
         if parameter_schema is None:

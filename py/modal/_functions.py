@@ -119,6 +119,15 @@ if TYPE_CHECKING:
     import modal.functions
 
 MAX_INTERNAL_FAILURE_COUNT = 8
+_OBSERVABILITY_ONLY_APIS = (
+    ".logs",
+    ".metrics",
+    ".info()",
+    ".stats()",
+    ".get_current_stats()",
+    ".get_web_url()",
+    ".autoscaler.settings()",
+)
 TERMINAL_STATUSES = (
     api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
     api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
@@ -651,6 +660,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _base_function: "_Function | None" = None
     _app_id: str | None = None
     _function_info: FunctionInfo | None = None
+    _is_observability_only: bool = False
 
     async def _get_log_query_data(self) -> _LogQueryData:
         await self.hydrate()
@@ -1398,6 +1408,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         """
 
+        self._check_not_observability_only()
         deprecation_warning(
             (2026, 10, 16),
             "`Function.update_autoscaler()` is deprecated and will be removed in a future version "
@@ -1485,16 +1496,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 # refine the error message
                 msg = f"Lookup failed for {called_from} '{function_id}': {exc}."
                 raise NotFoundError(msg) from None
-            if called_from == "Function" and (response.function.is_server or response.function.is_class):
-                if response.function.is_server:
-                    raise InvalidError(f"{function_id} is a Server. Use \n ``modal.Server.from_id('{function_id}')``")
-                raise InvalidError(f"{function_id} is a Cls and cannot be loaded with Function.from_id().")
+            if called_from == "Function" and response.function.is_server:
+                raise InvalidError(f"{function_id} is a Server. Use \n ``modal.Server.from_id('{function_id}')``")
             if called_from == "Server" and not response.function.is_server:
                 if response.function.is_class:
                     raise InvalidError(f"{function_id} is a Cls and cannot be loaded with Server.from_id().")
                 raise InvalidError(f"{function_id} is a Function. Use \n ``modal.Function.from_id('{function_id}')``")
             self._hydrate(function_id, load_context.client, response.handle_metadata)
             self._function_info = FunctionInfo._from_function_proto(response.function)
+            self._is_observability_only = called_from == "Function" and response.function.is_class
 
         rep = f"modal.Function.from_id('{function_id}')"
         return cls._from_loader(
@@ -1513,6 +1523,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         This is a lazy method that defers hydrating the local
         object with metadata from Modal servers until the first
         time it is actually used.
+
+        If the ID belongs to a Cls, the Function only supports the following APIs:
+        `.logs`, `.metrics`, `.info()`, `.stats()`, `.get_current_stats()`,
+        `.get_web_url()` and `.autoscaler.settings()`. Use `modal.Cls.from_name(...)`
+        to invoke all other methods.
 
         Args:
             function_id: ID of the function.
@@ -1744,6 +1759,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 + f"or call it locally: {self._function_name}.local()"
             )
 
+    def _check_not_observability_only(self):
+        if self._is_observability_only:
+            assert self._function_name
+            class_name = self._function_name.removesuffix(".*")
+            apis = [f"`{name}`" for name in _OBSERVABILITY_ONLY_APIS]
+            allowed_apis = ", ".join(apis[:-1]) + " and " + apis[-1]
+            raise InvalidError(
+                f"`{self.object_id}` belongs to the Cls `{class_name}`. A Function loaded with "
+                f"`Function.from_id` only supports {allowed_apis}. "
+                "Use `modal.Cls.from_name(...)` to invoke all other methods."
+            )
+
     @live_method
     async def get_web_url(self) -> str | None:
         """URL for addressing a Web Function via HTTP.
@@ -1779,6 +1806,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         config_method_name: str,
     ) -> "_Function[P, ReturnType, OriginalReturnType]":
         base_function = self._base_function or self
+        base_function._check_not_observability_only()
         combined_options = self._options.merge_options(new_options)
 
         # For "True Functions" (i.e. not the Function inside a Cls), we will use
@@ -1941,6 +1969,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
         """
+        self._check_not_observability_only()
         self._check_no_web_url("map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
@@ -1978,6 +2007,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @live_method
     async def _spawn_map(self, input_queue: _SynchronizedQueue) -> "_FunctionCall[ReturnType]":
+        self._check_not_observability_only()
         self._check_no_web_url("spawn_map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.spawn_map(...)`.")
@@ -1995,6 +2025,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return fc
 
     async def _call_function(self, args, kwargs) -> ReturnType:
+        self._check_not_observability_only()
         invocation: _Invocation | _InputPlaneInvocation
         if self._input_plane_url:
             invocation = await _InputPlaneInvocation.create(
@@ -2024,6 +2055,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         from_spawn_map: bool = False,
     ) -> _Invocation:
+        self._check_not_observability_only()
         return await _Invocation.create(
             self,
             args,
@@ -2037,6 +2069,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
+        self._check_not_observability_only()
         invocation: _Invocation | _InputPlaneInvocation
         if self._input_plane_url:
             invocation = await _InputPlaneInvocation.create(
@@ -2093,6 +2126,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             Values produced by the remote generator.
         """
         # TODO: Generics/TypeVars
+        self._check_not_observability_only()
         self._check_no_web_url("remote_gen")
 
         if not self._is_generator:
@@ -2669,6 +2703,7 @@ class _FunctionAutoscalerManager:
         if not self._function._is_hydrated:
             await self._function.hydrate()
 
+        self._function._check_not_observability_only()
         settings: api_pb2.AutoscalerSettings = api_pb2.AutoscalerSettings()
 
         if min_containers != UNSET_PARAMETER:
