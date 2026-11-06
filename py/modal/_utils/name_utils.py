@@ -16,6 +16,13 @@ def replace_invalid_subdomain_chars(label: str) -> str:
     return re.sub("[^a-z0-9-]", "-", label.lower())
 
 
+app_id_regex = re.compile("^ap-[a-zA-Z0-9]{22}$")
+
+
+def is_app_id(identifier: str) -> bool:
+    return app_id_regex.match(identifier) is not None
+
+
 def is_valid_object_name(name: str) -> bool:
     return (
         # Limit object name length
@@ -23,7 +30,7 @@ def is_valid_object_name(name: str) -> bool:
         # Limit character set
         and re.match("^[a-zA-Z0-9-_.]+$", name) is not None
         # Avoid collisions with App IDs
-        and re.match("^ap-[a-zA-Z0-9]{22}$", name) is None
+        and not is_app_id(name)
     )
 
 
