@@ -360,6 +360,7 @@ class _Client:
                             "Run `modal profile list` to see available profiles, or "
                             f"`modal token new --profile {profile}` to configure it."
                         )
+
                     raise AuthError(
                         "Token missing. Could not authenticate client."
                         " If you have token credentials, see modal.com/docs/sdk/py/latest/config for setup help."

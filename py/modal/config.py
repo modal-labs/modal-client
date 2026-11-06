@@ -521,6 +521,7 @@ def _store_user_config(
     """Internal method, used by the CLI to set tokens."""
     if profile is None:
         profile = _profile
+
     user_config = _read_user_config()
     user_config.setdefault(profile, {}).update(**new_settings)
     if active_profile is not None:

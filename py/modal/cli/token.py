@@ -70,18 +70,7 @@ async def info():
         output.print(f"[bold]Expires at:[/bold] [white]{expires_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")
 
 
-@token_cli.command("new")
-@click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
-@click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
-@click.option(
-    "--expires-in",
-    default=None,
-    help="Lifetime of the new token, e.g. 12h, 7d, or 90d. Defaults to the workspace's maximum allowed lifetime.",
-)
-@click.option("--source", default=None, hidden=True)
-@synchronizer.create_blocking
-async def new(activate: bool, verify: bool, expires_in: str | None, source: str | None):
-    """Create a new token by using an authenticated web session."""
+def _validate_expires_in(expires_in: str | None) -> int | None:
     expires_in_seconds: int | None = None
     if expires_in is not None:
         try:
@@ -94,7 +83,74 @@ async def new(activate: bool, verify: bool, expires_in: str | None, source: str 
             raise click.BadParameter("Duration must be positive.", param_hint="--expires-in")
         if expires_in_seconds > 2**32 - 1:
             raise click.BadParameter("Duration is too large.", param_hint="--expires-in")
-    await _new_token(activate=activate, verify=verify, source=source, expires_in_seconds=expires_in_seconds)
+
+    return expires_in_seconds
+
+
+@token_cli.command("new")
+@click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
+@click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
+@click.option(
+    "--expires-in",
+    default=None,
+    help="Lifetime of the new token, e.g. 12h, 7d, or 90d. Defaults to the workspace's maximum allowed lifetime.",
+)
+@click.option(
+    "--delete-existing",
+    default=False,
+    is_flag=True,
+    help="In addition to creating a new token, delete the existing token in the active profile",
+)
+@click.option("--source", default=None, hidden=True)
+@synchronizer.create_blocking
+async def new(
+    activate: bool,
+    verify: bool,
+    expires_in: str | None,
+    delete_existing: bool,
+    source: str | None,
+):
+    """Create a new token by using an authenticated web session."""
+
+    await _new_token(
+        activate=activate,
+        verify=verify,
+        source=source,
+        expires_in_seconds=_validate_expires_in(expires_in),
+        delete_existing=delete_existing,
+    )
+
+
+@token_cli.command("rotate")
+@click.option(
+    "--expires-in",
+    default=None,
+    help="Lifetime of the new token, e.g. 12h, 7d, or 90d. Defaults to the workspace's maximum allowed lifetime.",
+)
+@synchronizer.create_blocking
+async def rotate(expires_in: str | None):
+    """Create a new token in a web session, then delete the current token.
+
+    Note that this is equivalent to `modal token new --delete-existing --no-activate`. You may also
+    optionally provide a custom expiration window with `--expires-in`. If not provided, the token's
+    TTL will fall back to the workspace default.
+
+    Examples:
+
+    ```bash
+    modal token rotate
+
+    # Set a custom TTL of 1 week
+    modal token rotate --expires-in 7d
+    ```
+    """
+
+    await _new_token(
+        activate=False,
+        verify=True,
+        expires_in_seconds=_validate_expires_in(expires_in),
+        delete_existing=True,
+    )
 
 
 @token_cli.command("set")
@@ -102,12 +158,19 @@ async def new(activate: bool, verify: bool, expires_in: str | None, source: str 
 @click.option("--token-secret", default=None, help="Account token secret.")
 @click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
 @click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
+@click.option(
+    "--delete-existing",
+    default=False,
+    is_flag=True,
+    help="In addition to setting a new token, delete the existing token in the active profile",
+)
 @synchronizer.create_blocking
 async def set(
     token_id: str | None,
     token_secret: str | None,
     activate: bool,
     verify: bool,
+    delete_existing: bool,
 ):
     """Set account credentials for connecting to Modal.
 
@@ -117,4 +180,10 @@ async def set(
         token_id = getpass.getpass("Token ID:")
     if token_secret is None:
         token_secret = getpass.getpass("Token secret:")
-    await _set_token(token_id, token_secret, activate=activate, verify=verify)
+    await _set_token(
+        token_id,
+        token_secret,
+        activate=activate,
+        verify=verify,
+        delete_existing=delete_existing,
+    )

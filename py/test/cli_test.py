@@ -1200,6 +1200,31 @@ def test_token_info(servicer, set_env_client):
     assert "test-user" in res.stdout
 
 
+@pytest.mark.parametrize("command", (["token", "new", "--delete-existing"], ["token", "rotate"]))
+def test_token_new_delete_existing(command, servicer, set_env_client, server_url_env, modal_config, mock_webbrowser):
+    mock_webbrowser()
+
+    resp: api_pb2.TokenCreateResponse = servicer._create_token("old-token", None)
+
+    config = f"""
+    [test-username]
+    token_id = "{resp.token_id}"
+    token_secret = "{resp.token_secret}"
+    active = true
+    """
+
+    servicer.required_creds = {"abc": "xyz", resp.token_id: resp.token_secret}
+
+    with servicer.intercept() as ctx, modal_config(config):
+        res = run_cli_command(command)
+        assert "Previous token in profile" in res.stdout
+        assert "has been deleted." in res.stdout
+
+    assert ctx.calls.pop() == ("TokenDelete", api_pb2.TokenDeleteRequest(token_id=resp.token_id))
+    # Indicates that the deletion request was sent to the mock
+    assert servicer.workspace_member_tokens[resp.token_id] is None
+
+
 @pytest.mark.parametrize(
     ("mode_args", "routing_region", "expected_mode", "label"),
     [
@@ -6933,7 +6958,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     "environment billing": {"Commands": ["summary", "report"]},
     "profile": {"Commands": ["list", "current", "activate"]},
     "config": {"Commands": ["show", "set-environment"]},
-    "token": {"Commands": ["info", "new", "set"]},
+    "token": {"Commands": ["info", "new", "rotate", "set"]},
     "skills": {"Commands": ["install", "update", "show"]},
     "billing": {"Commands": ["summary", "report", "rates"]},
 }

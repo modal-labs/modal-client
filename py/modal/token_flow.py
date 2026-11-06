@@ -11,7 +11,15 @@ from ._utils.async_utils import synchronize_api
 from ._utils.browser_utils import open_url
 from ._utils.http_utils import run_temporary_http_server
 from .client import _Client
-from .config import DEFAULT_SERVER_URL, _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
+from .config import (
+    DEFAULT_SERVER_URL,
+    _lookup_workspace,
+    _read_user_config,
+    _store_user_config,
+    config,
+    config_profiles,
+    user_config_path,
+)
 from .exception import AuthError
 from .output import OutputManager
 
@@ -75,6 +83,7 @@ async def _new_token(
     source: str | None = None,
     next_url: str | None = None,
     expires_in_seconds: int | None = None,
+    delete_existing: bool = False,
 ):
     server_url = config.get("server_url", profile=profile)
 
@@ -119,7 +128,13 @@ async def _new_token(
         )
 
     await _set_token(
-        result.token_id, result.token_secret, profile=profile, activate=activate, verify=verify, server_url=server_url
+        result.token_id,
+        result.token_secret,
+        profile=profile,
+        activate=activate,
+        verify=verify,
+        server_url=server_url,
+        delete_existing=delete_existing,
     )
 
 
@@ -131,6 +146,7 @@ async def _set_token(
     activate: bool = True,
     verify: bool = True,
     server_url: str | None = None,
+    delete_existing: bool = False,
 ):
     if server_url is None:
         server_url = config.get("server_url", profile=profile)
@@ -156,6 +172,8 @@ async def _set_token(
                 raise exc
             profile = workspace.username
 
+    existing_config = _read_user_config()
+
     config_data = {"token_id": token_id, "token_secret": token_secret}
     if server_url != DEFAULT_SERVER_URL:
         config_data["server_url"] = server_url
@@ -167,6 +185,18 @@ async def _set_token(
         f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile "
         f"[magenta]{profile}[/magenta].[/green]"
     )
+
+    if delete_existing:
+        old_token_id = existing_config.get(profile, {}).get("token_id")
+        old_token_secret = existing_config.get(profile, {}).get("token_secret")
+        if old_token_id is not None and old_token_secret is not None:
+            client = await _Client.from_credentials(old_token_id, old_token_secret)
+            try:
+                await client._stub.TokenDelete(api_pb2.TokenDeleteRequest(token_id=old_token_id))
+            except AuthError:
+                pass
+
+            output.print(f"[green]Previous token in profile [magenta]{profile}[/magenta] has been deleted.[/green]")
 
     # Warn the user if their token will be ignored
     credential_env_vars = [
