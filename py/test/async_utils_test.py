@@ -1384,7 +1384,9 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert set(tail) == {"cancel", "bye", "KeyboardInterrupt"}, tail
     assert tail.index("cancel") < tail.index("bye"), tail
     assert p.wait() == 0
-    assert p.stderr.read() == ""
+    stderr = p.stderr.read()
+    if sys.version_info >= (3, 11):  # Python 3.10 emits a deprecation warning on import
+        assert stderr == ""
 
 
 @pytest.mark.asyncio

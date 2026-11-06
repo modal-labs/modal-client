@@ -165,6 +165,7 @@ filterwarnings = [
     "error::DeprecationWarning",
     "ignore:Type google._upb.*MapContainer uses PyType_Spec.*Python 3.14:DeprecationWarning",
     "error::modal.exception.DeprecationError",
+    "ignore:.*Python 3.10 is EOL and Modal will not support it:modal.exception.DeprecationError",
     "error::modal.exception.AsyncUsageWarning",
     "ignore:distutils Version classes are deprecated:DeprecationWarning",                     # pytest-freezegun internals
 ]

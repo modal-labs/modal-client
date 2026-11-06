@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Python 3.10 support is deprecated and will be removed in Modal 1.7.0. The client now warns when imported on Python 3.10 and when building an Image that uses Python 3.10.
 - Fixed `modal shell --cmd` mangling quotes in the command when starting a new container; the command is now passed verbatim to `/bin/bash -c`.
 - Added `modal image build -t NAME CONTEXT_DIR` to build and publish an Image from a Dockerfile. Use `--registry-secret` or `--registry-secret-from-env` to pull a base image from a private registry. Prefix NAME with an environment, e.g. `-t my-env/my-image`, to publish it into that environment.
 - Added a `modal image pull` CLI command that pulls an Image from a container registry into Modal, e.g. `modal image pull docker.io/node:20 --name node`.

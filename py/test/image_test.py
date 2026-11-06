@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 import threading
+import warnings
 from collections.abc import Callable, Sequence
 from hashlib import sha256
 from pathlib import Path
@@ -31,6 +32,7 @@ from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import (
+    DeprecationError,
     ExecutionError,
     ImageBuildError,
     InvalidError,
@@ -61,6 +63,42 @@ def test_supported_python_series():
 def build_image(image: Image, client: Client) -> None:
     with App().run(client=client) as app:
         image.build(app)
+
+
+def test_python_310_deprecation_warning(servicer, client):
+    servicer.image_python_version_info = "Python 3.10.14 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]"
+    image = Image.from_registry("python:3.10-slim").pip_install("numpy").run_commands("echo hi")
+
+    with pytest.warns(DeprecationError, match="uses Python 3.10") as warnings_checker:
+        build_image(image, client)
+
+    assert sum("uses Python 3.10" in str(warning.message) for warning in warnings_checker) == 1
+
+
+def test_python_310_deprecation_warning_from_id(servicer, client):
+    servicer.image_python_version_info = "Python 3.10.14 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]"
+    base_image = Image.from_registry("python:3.10-slim")
+
+    with pytest.warns(DeprecationError, match="uses Python 3.10") as base_warnings:
+        build_image(base_image, client)
+    assert sum("uses Python 3.10" in str(warning.message) for warning in base_warnings) == 1
+
+    image = Image.from_id(base_image.object_id, client).pip_install("numpy")
+    with pytest.warns(DeprecationError, match="uses Python 3.10") as warnings_checker:
+        build_image(image, client)
+
+    assert sum("uses Python 3.10" in str(warning.message) for warning in warnings_checker) == 1
+
+
+def test_python_311_image_does_not_emit_python_310_deprecation_warning(servicer, client):
+    servicer.image_python_version_info = "Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]"
+    image = Image.from_registry("python:3.11-slim")
+
+    with warnings.catch_warnings(record=True) as recorded_warnings:
+        warnings.simplefilter("always", DeprecationError)
+        build_image(image, client)
+
+    assert not any(isinstance(warning.message, DeprecationError) for warning in recorded_warnings)
 
 
 def get_image_layers(image_id: str, servicer) -> list[api_pb2.Image]:

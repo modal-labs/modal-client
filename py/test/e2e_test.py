@@ -28,13 +28,15 @@ def _cli(args, server_url, credentials, extra_env={}, check=True) -> tuple[int, 
 
 def test_run_e2e(servicer, credentials):
     _, _, err = _cli(["-m", "test.supports.script"], servicer.client_addr, credentials)
-    assert err == ""
+    if sys.version_info >= (3, 11):  # Python 3.10 emits a deprecation warning on import
+        assert err == ""
 
 
 def test_run_progress_info(servicer, credentials):
     returncode, stdout, stderr = _cli(["-m", "test.supports.progress_info"], servicer.client_addr, credentials)
     assert returncode == 0
-    assert stderr == ""
+    if sys.version_info >= (3, 11):  # Python 3.10 emits a deprecation warning on import
+        assert stderr == ""
     lines = stdout.splitlines()
     assert "Initialized. View run at https://modaltest.com/apps/ap-123" in lines[0]
     assert "App completed" in lines[-1]

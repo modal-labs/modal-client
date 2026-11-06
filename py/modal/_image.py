@@ -37,6 +37,7 @@ from ._serialization import get_preferred_payload_format, serialize
 from ._supports_logs import _ImageLogQueryData
 from ._utils.async_utils import TaskContext, deprecate_aio_usage, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.deprecation import deprecation_warning
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
@@ -86,6 +87,23 @@ SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
     "2024.04": ["3.10", "3.11", "3.12"],
     "2023.12": ["3.10", "3.11", "3.12"],
 }
+
+
+def _uses_python_310(metadata: api_pb2.ImageMetadata | None) -> bool:
+    return metadata is not None and bool(re.match(r"Python 3\.10\.", metadata.python_version_info))
+
+
+def _warn_if_python_310(image_id: str, metadata: api_pb2.ImageMetadata | None) -> None:
+    if _uses_python_310(metadata):
+        deprecation_warning(
+            (2026, 11, 4),
+            f"Image {image_id} uses Python 3.10, which is EOL. Modal 1.7.0 and later will not run or deploy apps "
+            "that use Images with Python 3.10; apps already deployed with older clients keep working. "
+            "Please update the Image to use Python 3.11 or later "
+            "(e.g. via `python_version=` or `add_python=`).",
+            show_source=False,
+        )
+
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "builder"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
@@ -877,6 +895,8 @@ class _Image(_Object, type_prefix="im"):
                 raise ImageBuildError("Unknown status %s!" % result.status, image_id)
 
             self._hydrate(image_id, load_context.client, metadata)
+            if not any(_uses_python_310(base._metadata) for base in base_images.values()):
+                _warn_if_python_310(image_id, metadata)
             local_mounts: set[_Mount] = set()
             for base in base_images.values():
                 local_mounts |= base._serve_mounts
@@ -1098,6 +1118,7 @@ class _Image(_Object, type_prefix="im"):
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             resp = await load_context.client._stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
+            _warn_if_python_310(resp.image_id, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
 

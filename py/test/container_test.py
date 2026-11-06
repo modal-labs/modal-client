@@ -982,7 +982,8 @@ def test_cli(servicer, tmp_path, credentials):
     if ret.returncode != 0:
         raise Exception(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
     assert stdout == ""
-    assert stderr == ""
+    if sys.version_info >= (3, 11):  # Python 3.10 emits a deprecation warning on import
+        assert stderr == ""
 
 
 @skip_github_non_linux

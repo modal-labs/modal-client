@@ -1036,6 +1036,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.images = {}
         self.image_build_function_ids = {}
         self.image_builder_versions = {}
+        self.image_python_version_info: str | None = None
         self.force_built_images = []
         self.image_tags: dict[str, str] = {}  # full name:tag -> image_id
         self.image_list_tags_requests: list[api_pb2.ImageListTagsRequest] = []
@@ -3150,6 +3151,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Image
 
+    def _image_metadata(self, image_builder_version: str | None) -> api_pb2.ImageMetadata:
+        metadata = api_pb2.ImageMetadata(image_builder_version=image_builder_version)
+        if self.image_python_version_info is not None:
+            metadata.python_version_info = self.image_python_version_info
+        return metadata
+
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
         for image_id, image in self.images.items():
@@ -3160,7 +3167,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                         result=None
                         if request.force_build
                         else api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
-                        metadata=api_pb2.ImageMetadata(image_builder_version=self.image_builder_versions[image_id]),
+                        metadata=self._image_metadata(self.image_builder_versions[image_id]),
                     )
                 )
                 return
@@ -3175,7 +3182,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(
             api_pb2.ImageGetOrCreateResponse(
                 image_id=image_id,
-                metadata=api_pb2.ImageMetadata(image_builder_version=request.builder_version),
+                metadata=self._image_metadata(request.builder_version),
             )
         )
 
@@ -3196,9 +3203,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
-                metadata=api_pb2.ImageMetadata(
-                    image_builder_version=self.image_builder_versions.get(req.image_id),
-                ),
+                metadata=self._image_metadata(self.image_builder_versions.get(req.image_id)),
             )
         )
 
@@ -3228,7 +3233,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ImageFromIdRequest = await stream.recv_message()
         if request.image_id not in self.images:
             raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
-        await stream.send_message(api_pb2.ImageFromIdResponse(image_id=request.image_id))
+        await stream.send_message(
+            api_pb2.ImageFromIdResponse(
+                image_id=request.image_id,
+                metadata=self._image_metadata(self.image_builder_versions.get(request.image_id)),
+            )
+        )
 
     async def ImageListTags(self, stream):
         request: api_pb2.ImageListTagsRequest = await stream.recv_message()

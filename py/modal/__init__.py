@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 import sys
 
 if sys.version_info[:2] < (3, 10):
@@ -58,6 +59,16 @@ except Exception:
     print("#" * 80)
     print()
     raise
+
+if sys.version_info[:2] == (3, 10) and os.environ.get("MODAL_IS_REMOTE") != "1":
+    from ._utils.deprecation import deprecation_warning
+
+    deprecation_warning(
+        (2026, 11, 4),
+        "Python 3.10 is EOL and Modal will not support it in version 1.7.0. "
+        "Please upgrade your local Python to 3.11 or later.",
+        show_source=False,
+    )
 
 
 __all__ = [
