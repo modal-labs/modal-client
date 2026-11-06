@@ -5,11 +5,12 @@ import os
 from contextlib import suppress
 
 import click
-from rich.json import JSON
-from rich.table import Table
+from rich.box import SIMPLE_HEAD
+from rich.text import Text
 
 from modal import config as config_module
 from modal._utils.async_utils import synchronizer
+from modal.cli.utils import display_table
 from modal.config import (
     Config,
     _lookup_workspace,
@@ -28,7 +29,7 @@ profile_cli = ModalGroup(name="profile", help="Switch between Modal profiles.")
 @profile_cli.command("list", help="Show all Modal profiles and highlight the active one.")
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(json: bool | None = False):
+async def list_(json: bool = False):
     config = Config()
     profiles = config_profiles()
     lookup_coros = [
@@ -43,22 +44,6 @@ async def list_(json: bool | None = False):
         for profile in profiles
     ]
     responses = await asyncio.gather(*lookup_coros, return_exceptions=True)
-
-    rows = []
-    for profile, resp in zip(profiles, responses):
-        active = profile == config_module._profile
-        if isinstance(resp, AuthError):
-            workspace = "Unknown (authentication failure)"
-        elif isinstance(resp, TimeoutError):
-            workspace = "Unknown (timed out)"
-        elif isinstance(resp, Exception):
-            # Catch-all for other exceptions, like incorrect server url
-            workspace = "Unknown (profile misconfigured)"
-        else:
-            assert not isinstance(resp, BaseException)
-            workspace = resp.username
-        content = ["•" if active else "", profile, workspace]
-        rows.append((active, content))
 
     env_based_workspace: str | None = None
     credential_env_vars = (
@@ -87,18 +72,44 @@ async def list_(json: bool | None = False):
 
     output = OutputManager.get()
     highlight = "bold green" if env_based_workspace is None else "yellow"
-    if json:
-        json_data = []
-        for active, content in rows:
-            json_data.append({"name": content[1], "workspace": content[2], "active": active})
-        output.print(JSON.from_data(json_data))
-    else:
-        table = Table(" ", "Profile", "Workspace")
-        for active, content in rows:
-            table.add_row(*content, style=highlight if active else "dim")
-        output.print(table)
 
-    if env_based_workspace is not None:
+    if not json:
+        table_columns = ["  Profile", "Workspace"]
+    else:
+        table_columns = ["name", "workspace", "active"]
+
+    table_rows: list[list[str | Text | bool]] = []
+    for profile, resp in zip(profiles, responses):
+        active = profile == config_module._profile
+
+        if isinstance(resp, AuthError):
+            workspace = "Unknown (authentication failure)"
+        elif isinstance(resp, TimeoutError):
+            workspace = "Unknown (timed out)"
+        elif isinstance(resp, Exception):
+            # Catch-all for other exceptions, like incorrect server url
+            workspace = "Unknown (profile misconfigured)"
+        else:
+            assert not isinstance(resp, BaseException)
+            workspace = resp.username
+
+        if json:
+            table_rows.append([profile, workspace, active])
+            continue
+
+        rendered_profile = f"• {profile}" if active else f"  {profile}"
+        style = highlight if active else "dim"
+
+        table_rows.append(
+            [
+                Text(rendered_profile, style=style),
+                Text(workspace, style=style),
+            ]
+        )
+
+    display_table(table_columns, table_rows, json=json, table_box=SIMPLE_HEAD)
+
+    if not json and env_based_workspace is not None:
         output.print(
             f"[yellow]Using [bold]{env_based_workspace}[/bold] workspace based on environment variables[/yellow]"
         )
