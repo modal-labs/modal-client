@@ -535,12 +535,10 @@ message AppFunctionStats {
 }
 
 message AppFunctionStatsGroup {
-  // Counts for all Functions, including removed Functions.
+  // Counts summed across current Functions.
   AppFunctionCounts total = 1;
-  // Counts for Functions absent from current membership.
-  AppFunctionCounts removed = 2;
   // Current Functions keyed by name.
-  map<string, AppFunctionStats> by_name = 3;
+  map<string, AppFunctionStats> by_name = 2;
 }
 
 message AppGetByDeploymentNameRequest {
@@ -794,12 +792,10 @@ message AppServerStats {
 }
 
 message AppServerStatsGroup {
-  // Counts for all Servers, including removed Servers.
+  // Counts summed across current Servers.
   AppServerCounts total = 1;
-  // Counts for Servers absent from current membership.
-  AppServerCounts removed = 2;
   // Current Servers keyed by name.
-  map<string, AppServerStats> by_name = 3;
+  map<string, AppServerStats> by_name = 2;
 }
 
 message AppSetObjectsRequest {
