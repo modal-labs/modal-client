@@ -40,6 +40,7 @@ const (
 	ModalClient_AppGetObjects_FullMethodName                          = "/modal.client.ModalClient/AppGetObjects"
 	ModalClient_AppGetOrCreate_FullMethodName                         = "/modal.client.ModalClient/AppGetOrCreate"
 	ModalClient_AppGetTags_FullMethodName                             = "/modal.client.ModalClient/AppGetTags"
+	ModalClient_AppGetTimeRangeStats_FullMethodName                   = "/modal.client.ModalClient/AppGetTimeRangeStats"
 	ModalClient_AppHeartbeat_FullMethodName                           = "/modal.client.ModalClient/AppHeartbeat"
 	ModalClient_AppList_FullMethodName                                = "/modal.client.ModalClient/AppList"
 	ModalClient_AppLookup_FullMethodName                              = "/modal.client.ModalClient/AppLookup"
@@ -327,6 +328,7 @@ type ModalClientClient interface {
 	AppGetObjects(ctx context.Context, in *AppGetObjectsRequest, opts ...grpc.CallOption) (*AppGetObjectsResponse, error)
 	AppGetOrCreate(ctx context.Context, in *AppGetOrCreateRequest, opts ...grpc.CallOption) (*AppGetOrCreateResponse, error)
 	AppGetTags(ctx context.Context, in *AppGetTagsRequest, opts ...grpc.CallOption) (*AppGetTagsResponse, error)
+	AppGetTimeRangeStats(ctx context.Context, in *AppGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*AppGetTimeRangeStatsResponse, error)
 	AppHeartbeat(ctx context.Context, in *AppHeartbeatRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AppList(ctx context.Context, in *AppListRequest, opts ...grpc.CallOption) (*AppListResponse, error)
 	AppLookup(ctx context.Context, in *AppLookupRequest, opts ...grpc.CallOption) (*AppLookupResponse, error)
@@ -784,6 +786,16 @@ func (c *modalClientClient) AppGetTags(ctx context.Context, in *AppGetTagsReques
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppGetTagsResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AppGetTags_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AppGetTimeRangeStats(ctx context.Context, in *AppGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*AppGetTimeRangeStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppGetTimeRangeStatsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AppGetTimeRangeStats_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3559,6 +3571,7 @@ type ModalClientServer interface {
 	AppGetObjects(context.Context, *AppGetObjectsRequest) (*AppGetObjectsResponse, error)
 	AppGetOrCreate(context.Context, *AppGetOrCreateRequest) (*AppGetOrCreateResponse, error)
 	AppGetTags(context.Context, *AppGetTagsRequest) (*AppGetTagsResponse, error)
+	AppGetTimeRangeStats(context.Context, *AppGetTimeRangeStatsRequest) (*AppGetTimeRangeStatsResponse, error)
 	AppHeartbeat(context.Context, *AppHeartbeatRequest) (*emptypb.Empty, error)
 	AppList(context.Context, *AppListRequest) (*AppListResponse, error)
 	AppLookup(context.Context, *AppLookupRequest) (*AppLookupResponse, error)
@@ -3914,6 +3927,9 @@ func (UnimplementedModalClientServer) AppGetOrCreate(context.Context, *AppGetOrC
 }
 func (UnimplementedModalClientServer) AppGetTags(context.Context, *AppGetTagsRequest) (*AppGetTagsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppGetTags not implemented")
+}
+func (UnimplementedModalClientServer) AppGetTimeRangeStats(context.Context, *AppGetTimeRangeStatsRequest) (*AppGetTimeRangeStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AppGetTimeRangeStats not implemented")
 }
 func (UnimplementedModalClientServer) AppHeartbeat(context.Context, *AppHeartbeatRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppHeartbeat not implemented")
@@ -4975,6 +4991,24 @@ func _ModalClient_AppGetTags_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AppGetTags(ctx, req.(*AppGetTagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AppGetTimeRangeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AppGetTimeRangeStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AppGetTimeRangeStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AppGetTimeRangeStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AppGetTimeRangeStats(ctx, req.(*AppGetTimeRangeStatsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -9755,6 +9789,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AppGetTags",
 			Handler:    _ModalClient_AppGetTags_Handler,
+		},
+		{
+			MethodName: "AppGetTimeRangeStats",
+			Handler:    _ModalClient_AppGetTimeRangeStats_Handler,
 		},
 		{
 			MethodName: "AppHeartbeat",

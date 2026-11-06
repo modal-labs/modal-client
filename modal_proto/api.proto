@@ -410,10 +410,23 @@ enum WebhookType {
   WEBHOOK_TYPE_WEB_SERVER = 4;
 }
 
+message AppCallCounts {
+  uint64 total = 1;
+  uint64 succeeded = 2;
+  uint64 failed = 3;  // All non-success outcomes, including timeouts.
+}
+
 message AppClientDisconnectRequest {
   string app_id = 1;
   AppDisconnectReason reason = 2;
   string exception = 3;
+}
+
+message AppContainerCounts {
+  // Containers that finished with an error in [since, until).
+  uint64 container_errors = 1;
+  // Distinct containers that published heartbeats in [since, until).
+  uint64 container_active_count = 2;
 }
 
 message AppCountLogsRequest {
@@ -509,6 +522,25 @@ message AppFetchLogsRequest {
 
 message AppFetchLogsResponse {
   repeated TaskLogsBatch batches = 1;
+}
+
+message AppFunctionCounts {
+  AppCallCounts calls = 1;
+  AppContainerCounts containers = 2;
+}
+
+message AppFunctionStats {
+  string object_id = 1;  // Root Function ID
+  AppFunctionCounts counts = 2;
+}
+
+message AppFunctionStatsGroup {
+  // Counts for all Functions, including removed Functions.
+  AppFunctionCounts total = 1;
+  // Counts for Functions absent from current membership.
+  AppFunctionCounts removed = 2;
+  // Current Functions keyed by name.
+  map<string, AppFunctionStats> by_name = 3;
 }
 
 message AppGetByDeploymentNameRequest {
@@ -607,6 +639,23 @@ message AppGetTagsResponse {
   map<string, string> tags = 1;
 }
 
+message AppGetTimeRangeStatsRequest {
+  string app_id = 1;
+  google.protobuf.Timestamp since = 2;  // Required, inclusive.
+  google.protobuf.Timestamp until = 3;  // Required, exclusive; at most seven days after since.
+}
+
+message AppGetTimeRangeStatsResponse {
+  google.protobuf.Timestamp since = 1;  // Inclusive.
+  google.protobuf.Timestamp until = 2;  // Exclusive.
+  AppFunctionStatsGroup functions = 3;
+  AppServerStatsGroup servers = 4;
+  AppSandboxCounts sandboxes = 7;
+  AppLifecycle lifecycle = 8;  // Current App metadata at query time.
+  // Live publishes in [since, until); absent for ephemeral and detached run Apps.
+  optional uint64 deployment_count = 9;
+}
+
 message AppHandleMetadata {
   string description = 1;
   string app_id = 2;
@@ -701,6 +750,12 @@ message AppPublishResponse {
   double deployed_at = 4;
 }
 
+message AppRequestCounts {
+  uint64 total = 1;
+  uint64 ok_2xx = 2;
+  uint64 other = 3;  // All non-2xx responses, including status zero.
+}
+
 message AppRollbackRequest {
   string app_id = 1;
   int32 version = 2;  // signed as we support negative "roll back n versions" requests
@@ -720,6 +775,31 @@ message AppRolloverResponse {
   string url = 1;
   repeated Warning server_warnings = 3;
   double deployed_at = 4;
+}
+
+message AppSandboxCounts {
+  uint64 total = 1;  // finished + live; not the number created during the window.
+  uint64 finished = 2;  // Finished in [since, until), regardless of terminal outcome.
+  uint64 live = 3;  // Pending, starting, or running at the exclusive until cutoff.
+}
+
+message AppServerCounts {
+  AppRequestCounts requests = 1;
+  AppContainerCounts containers = 2;
+}
+
+message AppServerStats {
+  string object_id = 1;
+  AppServerCounts counts = 2;
+}
+
+message AppServerStatsGroup {
+  // Counts for all Servers, including removed Servers.
+  AppServerCounts total = 1;
+  // Counts for Servers absent from current membership.
+  AppServerCounts removed = 2;
+  // Current Servers keyed by name.
+  map<string, AppServerStats> by_name = 3;
 }
 
 message AppSetObjectsRequest {
@@ -5792,6 +5872,7 @@ service ModalClient {
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
   rpc AppGetTags(AppGetTagsRequest) returns (AppGetTagsResponse);
+  rpc AppGetTimeRangeStats(AppGetTimeRangeStatsRequest) returns (AppGetTimeRangeStatsResponse);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
