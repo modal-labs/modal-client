@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2025
+import types
 import typing
 from typing import Any
 
@@ -186,6 +187,12 @@ class SchemaRegistry:
 
     def get_proto_generic_type(self, declared_type: type):
         if origin := typing_extensions.get_origin(declared_type):
+            if origin in (typing.Union, types.UnionType):
+                args = [arg for arg in typing_extensions.get_args(declared_type) if arg is not type(None)]
+                if len(args) == 1:
+                    return self.get_proto_generic_type(args[0])
+                return unknown_type_schema(declared_type)
+
             base_type = origin
         else:
             base_type = declared_type

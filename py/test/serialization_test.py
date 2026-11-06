@@ -247,6 +247,77 @@ def test_schema_extraction_list():
         )
 
 
+def optional_str_union(a: str | None = None): ...
+
+
+def optional_str_typing(a: typing.Optional[str] = None): ...
+
+
+def optional_str_typing_union(a: typing.Union[None, str] = None): ...  # noqa: UP007
+
+
+def optional_list(a: list[bytes] | None = None): ...
+
+
+@pytest.mark.parametrize(
+    "f, expected_type",
+    [
+        (
+            optional_str_union,
+            api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
+        ),
+        (
+            optional_str_typing,
+            api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
+        ),
+        (
+            optional_str_typing_union,
+            api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
+        ),
+        (
+            optional_list,
+            api_pb2.GenericPayloadType(
+                base_type=api_pb2.PARAM_TYPE_LIST,
+                sub_types=[api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES)],
+            ),
+        ),
+    ],
+)
+def test_schema_extraction_optional(f, expected_type):
+    (spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
+    assert spec == api_pb2.ClassParameterSpec(name="a", full_type=expected_type, has_default=True)
+
+
+def test_schema_extraction_optional_without_default():
+    # The schema has no nullability flag, so a required `X | None` is recorded as a required `X`.
+    def f(a: int | None) -> str | None: ...
+
+    schema = get_callable_schema(f, is_web_endpoint=False)
+    (spec,) = schema.arguments
+    assert spec == api_pb2.ClassParameterSpec(
+        name="a",
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_INT),
+        has_default=False,
+    )
+    assert schema.return_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+
+
+def multi_type_union(a: int | str): ...
+
+
+def multi_type_optional_union(a: int | str | None): ...
+
+
+@pytest.mark.parametrize("f", [multi_type_union, multi_type_optional_union])
+def test_schema_extraction_multi_type_union_is_unknown(f):
+    (spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
+    assert spec == api_pb2.ClassParameterSpec(
+        name="a",
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN),
+        has_default=False,
+    )
+
+
 def test_schema_extraction_nested_list():
     def f(nested_list: list[list[bytes]]): ...
 
