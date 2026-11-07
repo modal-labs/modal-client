@@ -29,3 +29,4 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added `client.Environments.FromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.Stop()` method.
 - `Image.Build()` now returns `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
+- **Breaking:** Removed `Sandboxes.ExperimentalCreate()`, `Sandboxes.ExperimentalFromName()`, and `Sandboxes.ExperimentalList()`, along with the `SandboxExperimentalFromNameParams` and `SandboxExperimentalListParams` types. Use `Sandboxes.Create()`, `Sandboxes.FromName()`, and `Sandboxes.List()`, which use the V2 backend by default.
