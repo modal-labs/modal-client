@@ -1849,6 +1849,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
         await stream.send_message(api_pb2.BlobGetResponse(download_url=download_url))
 
+    async def FunctionBlobGet(self, stream):
+        raise GRPCError(Status.UNIMPLEMENTED, "FunctionBlobGet is not mocked")
+
     ### Class
 
     async def ClassCreate(self, stream):

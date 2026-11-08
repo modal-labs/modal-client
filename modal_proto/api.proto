@@ -1139,6 +1139,7 @@ message BlobCreateResponse {
 
 message BlobGetRequest {
   string blob_id = 1;
+  string function_id = 2;
 }
 
 message BlobGetResponse {
@@ -5982,6 +5983,7 @@ service ModalClient {
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
+  rpc FunctionBlobGet(BlobGetRequest) returns (BlobGetResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallCount(FunctionCallCountRequest) returns (FunctionCallCountResponse);
   rpc FunctionCallFetch(FunctionCallFetchRequest) returns (FunctionCallFetchResponse);

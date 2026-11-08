@@ -122,6 +122,7 @@ const (
 	ModalClient_FlashSetTargetSlotsMetrics_FullMethodName             = "/modal.client.ModalClient/FlashSetTargetSlotsMetrics"
 	ModalClient_FunctionAsyncInvoke_FullMethodName                    = "/modal.client.ModalClient/FunctionAsyncInvoke"
 	ModalClient_FunctionBindParams_FullMethodName                     = "/modal.client.ModalClient/FunctionBindParams"
+	ModalClient_FunctionBlobGet_FullMethodName                        = "/modal.client.ModalClient/FunctionBlobGet"
 	ModalClient_FunctionCallCancel_FullMethodName                     = "/modal.client.ModalClient/FunctionCallCancel"
 	ModalClient_FunctionCallCount_FullMethodName                      = "/modal.client.ModalClient/FunctionCallCount"
 	ModalClient_FunctionCallFetch_FullMethodName                      = "/modal.client.ModalClient/FunctionCallFetch"
@@ -426,6 +427,7 @@ type ModalClientClient interface {
 	// Functions
 	FunctionAsyncInvoke(ctx context.Context, in *FunctionAsyncInvokeRequest, opts ...grpc.CallOption) (*FunctionAsyncInvokeResponse, error)
 	FunctionBindParams(ctx context.Context, in *FunctionBindParamsRequest, opts ...grpc.CallOption) (*FunctionBindParamsResponse, error)
+	FunctionBlobGet(ctx context.Context, in *BlobGetRequest, opts ...grpc.CallOption) (*BlobGetResponse, error)
 	FunctionCallCancel(ctx context.Context, in *FunctionCallCancelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	FunctionCallCount(ctx context.Context, in *FunctionCallCountRequest, opts ...grpc.CallOption) (*FunctionCallCountResponse, error)
 	FunctionCallFetch(ctx context.Context, in *FunctionCallFetchRequest, opts ...grpc.CallOption) (*FunctionCallFetchResponse, error)
@@ -1624,6 +1626,16 @@ func (c *modalClientClient) FunctionBindParams(ctx context.Context, in *Function
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FunctionBindParamsResponse)
 	err := c.cc.Invoke(ctx, ModalClient_FunctionBindParams_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) FunctionBlobGet(ctx context.Context, in *BlobGetRequest, opts ...grpc.CallOption) (*BlobGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BlobGetResponse)
+	err := c.cc.Invoke(ctx, ModalClient_FunctionBlobGet_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3669,6 +3681,7 @@ type ModalClientServer interface {
 	// Functions
 	FunctionAsyncInvoke(context.Context, *FunctionAsyncInvokeRequest) (*FunctionAsyncInvokeResponse, error)
 	FunctionBindParams(context.Context, *FunctionBindParamsRequest) (*FunctionBindParamsResponse, error)
+	FunctionBlobGet(context.Context, *BlobGetRequest) (*BlobGetResponse, error)
 	FunctionCallCancel(context.Context, *FunctionCallCancelRequest) (*emptypb.Empty, error)
 	FunctionCallCount(context.Context, *FunctionCallCountRequest) (*FunctionCallCountResponse, error)
 	FunctionCallFetch(context.Context, *FunctionCallFetchRequest) (*FunctionCallFetchResponse, error)
@@ -4173,6 +4186,9 @@ func (UnimplementedModalClientServer) FunctionAsyncInvoke(context.Context, *Func
 }
 func (UnimplementedModalClientServer) FunctionBindParams(context.Context, *FunctionBindParamsRequest) (*FunctionBindParamsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionBindParams not implemented")
+}
+func (UnimplementedModalClientServer) FunctionBlobGet(context.Context, *BlobGetRequest) (*BlobGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FunctionBlobGet not implemented")
 }
 func (UnimplementedModalClientServer) FunctionCallCancel(context.Context, *FunctionCallCancelRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method FunctionCallCancel not implemented")
@@ -6453,6 +6469,24 @@ func _ModalClient_FunctionBindParams_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).FunctionBindParams(ctx, req.(*FunctionBindParamsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_FunctionBlobGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlobGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).FunctionBlobGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_FunctionBlobGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).FunctionBlobGet(ctx, req.(*BlobGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -10109,6 +10143,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FunctionBindParams",
 			Handler:    _ModalClient_FunctionBindParams_Handler,
+		},
+		{
+			MethodName: "FunctionBlobGet",
+			Handler:    _ModalClient_FunctionBlobGet_Handler,
 		},
 		{
 			MethodName: "FunctionCallCancel",
