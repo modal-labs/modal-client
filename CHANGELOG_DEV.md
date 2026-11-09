@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
 - Function parameters annotated as `X | None` / `Optional[X]` are now recorded with the type of `X` in the Function schema, so the dashboard's Try it form accepts input for them.
 - Python 3.10 support is deprecated and will be removed in Modal 1.7.0. The client now warns when imported on Python 3.10 and when building an Image that uses Python 3.10.
 - Fixed `modal shell --cmd` mangling quotes in the command when starting a new container; the command is now passed verbatim to `/bin/bash -c`.
@@ -21,6 +22,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.stop()` method.
+- Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
 - Added the `_Function.info()` method.
 - `Image.build()` now throws `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
 
@@ -28,5 +30,6 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 - Added `client.Environments.FromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.Stop()` method.
+- Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
 - `Image.Build()` now returns `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
 - **Breaking:** Removed `Sandboxes.ExperimentalCreate()`, `Sandboxes.ExperimentalFromName()`, and `Sandboxes.ExperimentalList()`, along with the `SandboxExperimentalFromNameParams` and `SandboxExperimentalListParams` types. Use `Sandboxes.Create()`, `Sandboxes.FromName()`, and `Sandboxes.List()`, which use the V2 backend by default.
