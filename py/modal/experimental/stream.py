@@ -5,7 +5,7 @@ import re
 import time
 import urllib.parse
 import uuid
-from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -17,7 +17,7 @@ from .._object import _get_environment_name
 from .._utils.async_utils import synchronize_api
 from .._utils.http_utils import ClientSessionRegistry
 from ..client import _Client
-from ..config import DEFAULT_STREAMS_URL, config
+from ..config import DEFAULT_STREAMS_URL, config, logger
 from ..exception import (
     AlreadyExistsError,
     AuthError,
@@ -50,6 +50,10 @@ FOLLOW_REOPEN_DELAY_S = 0.1
 FENCED_RETRIES = 10
 # The most entries the service returns per read request.
 READ_PAGE_SIZE = 1000
+# Values per write request, which keeps a request to a few MiB at the largest values.
+WRITER_MAX_BATCH = 100
+# Values a writer queues before `append` waits, at most about 64 MiB of serialized JSON at the largest values.
+WRITER_MAX_PENDING = 1000
 
 
 @dataclass(frozen=True)
@@ -540,5 +544,153 @@ class _Stream:
         """Close the stream to writers and return the sequence number of its final `seal` entry."""
         return int((await self._write("/seal", {}))["sealed_seq"])
 
+    def writer(
+        self,
+        *,
+        on_written: Callable[[str, AppendResult], None] | None = None,
+        on_conflict: Callable[[IdempotencyConflict], None] | None = None,
+    ) -> "_StreamWriter":
+        """A writer that appends in the background, batching values that arrive while a write is in flight."""
+        return _StreamWriter(self, on_written, on_conflict)
+
+
+class _StreamWriter:
+    """Appends to a Stream from a background task, in order and in batches.
+
+    `append` queues a value and returns at once, or waits while 1000 values are queued. Do not change a
+    value after appending it. Each value written is reported to `on_written` with its idempotency key and
+    result, and a reused key with a different value to `on_conflict`. A write that fails after retries, or
+    a conflict without an `on_conflict` handler, stops the writer: the error is raised from the next
+    `append`, `flush` or `close`, and values still queued are dropped. Use the writer as an async context
+    manager or call `close`, so every value is written or the error is raised. Callbacks run on Modal's
+    event loop thread, not the caller's, and should return quickly.
+    """
+
+    def __init__(
+        self,
+        stream: _Stream,
+        on_written: Callable[[str, AppendResult], None] | None,
+        on_conflict: Callable[[IdempotencyConflict], None] | None,
+    ):
+        """mdmd:hidden"""
+        self._stream = stream
+        self._on_written = on_written
+        self._on_conflict = on_conflict
+        self._queue: list[tuple[str, Any]] = []
+        self._error: BaseException | None = None
+        self._wake = asyncio.Event()
+        self._idle = asyncio.Event()
+        self._idle.set()
+        self._progress = asyncio.Event()
+        self._task: asyncio.Task | None = None
+        self._closed = False
+
+    async def append(self, value: Any, *, idempotency_key: str | None = None) -> None:
+        """Queue a value to be appended; see `Stream.append` for the limits and idempotency."""
+        _check_value(value)
+        while not self._try_enqueue(value, idempotency_key):
+            self._progress.clear()
+            await self._progress.wait()
+        self._start()
+
+    def _try_enqueue(self, value: Any, idempotency_key: str | None) -> bool:
+        """Queue the value and return True, or return False while the queue is full."""
+        if self._closed:
+            raise InvalidError("This StreamWriter is closed.")
+        if self._error is not None:
+            raise self._error
+        if len(self._queue) >= WRITER_MAX_PENDING:
+            return False
+        self._queue.append((uuid.uuid4().hex if idempotency_key is None else idempotency_key, value))
+        return True
+
+    def _start(self) -> None:
+        if self._closed and not self._queue:
+            return
+        self._idle.clear()
+        self._wake.set()
+        # A `close` cancelled mid-write leaves a finished task behind; a new one resumes the queue.
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._run())
+
+    async def flush(self) -> None:
+        """Wait until every queued value is written."""
+        while True:
+            await self._idle.wait()
+            if self._error is not None:
+                raise self._error
+            if not self._queue:
+                return
+            # A cancelled `close` stops the writer with values still queued.
+            self._start()
+
+    async def close(self) -> None:
+        """Flush and stop the background task; an `append` still waiting for room raises `InvalidError`."""
+        self._closed = True
+        self._progress.set()
+        try:
+            await self.flush()
+        finally:
+            if self._task is not None:
+                self._task.cancel()
+                await asyncio.gather(self._task, return_exceptions=True)
+
+    async def __aenter__(self) -> "_StreamWriter":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
+
+    async def _run(self) -> None:
+        try:
+            await self._drain()
+        finally:
+            self._idle.set()
+
+    async def _drain(self) -> None:
+        while True:
+            await self._wake.wait()
+            self._wake.clear()
+            while self._queue:
+                batch, keys = [], set()
+                for key, value in self._queue[:WRITER_MAX_BATCH]:
+                    if key in keys:
+                        break
+                    batch.append((key, value))
+                    keys.add(key)
+                try:
+                    await self._write(batch)
+                except Exception as exc:
+                    logger.warning(f"Stream '{self._stream.name}' writer stopped: {exc}")
+                    self._error = exc
+                    self._queue.clear()
+                del self._queue[: len(batch)]
+                self._progress.set()
+            self._idle.set()
+
+    async def _write(self, batch: list[tuple[str, Any]]) -> None:
+        while batch:
+            try:
+                results = await self._stream.append_many([v for _, v in batch], idempotency_keys=[k for k, _ in batch])
+            except IdempotencyConflict as exc:
+                rest = [item for item in batch if item[0] != exc.idempotency_key]
+                if self._on_conflict is None or len(rest) == len(batch):
+                    raise
+                self._report(self._on_conflict, exc)
+                # A conflict writes nothing, so the rest of the batch is resent.
+                batch = rest
+                continue
+            if self._on_written is not None:
+                for (key, _), result in zip(batch, results):
+                    self._report(self._on_written, key, result)
+            return
+
+    def _report(self, callback: Callable[..., None], *args: Any) -> None:
+        try:
+            callback(*args)
+        except Exception:
+            logger.exception(f"Stream '{self._stream.name}' writer callback raised")
+
 
 Stream = synchronize_api(_Stream, target_module=__name__)
+StreamWriter = synchronize_api(_StreamWriter, target_module=__name__)

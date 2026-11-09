@@ -42,6 +42,7 @@ from .stream import (
     IdempotencyConflict as IdempotencyConflict,
     Stream as Stream,
     StreamInfo as StreamInfo,
+    StreamWriter as StreamWriter,
 )
 
 

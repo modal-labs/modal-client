@@ -32,6 +32,9 @@ class FakeStreamsService:
         self.requests: list[aiohttp.web.Request] = []
         # Ends the next follow response, without a seal, after this many entries.
         self.drop_follow_after: int | None = None
+        # Appends set `append_arrived`, then wait while `hold_appends` is set.
+        self.append_arrived = asyncio.Event()
+        self.hold_appends: asyncio.Event | None = None
         # Per follow request in order: an error status to send, or 0 to end the response with no entries.
         self.follow_script: list[int] = []
         # Creates and deletes that apply and then answer 503, as if the response were lost.
@@ -104,9 +107,14 @@ class FakeStreamsService:
         )
 
     async def append(self, request):
+        self.append_arrived.set()
+        if self.hold_appends is not None:
+            await self.hold_appends.wait()
         if (run := self.runs.get(request.match_info["run"])) is None:
             return _error(404, "not_found")
         body = await request.json()
+        if not all(ev["op_id"] for ev in body["events"]):
+            return _error(400, "invalid_argument")
         stored = {e["op_id"]: e for e in run["events"]}
         for ev in body["events"]:
             if (prior := stored.get(ev["op_id"])) is not None and prior["value"] != ev["value"]:
@@ -367,3 +375,118 @@ async def test_follow_gives_up_on_repeated_errors(client, service, monkeypatch):
     with pytest.raises(NotFoundError):
         async for _ in stream.read.aio(follow=True):
             pass
+
+
+@pytest.mark.asyncio
+async def test_writer_reports_written_and_conflicts(client, service):
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    await stream.append.aio("taken", idempotency_key="dup")
+    written: list[tuple[str, AppendResult]] = []
+    conflicts: list[IdempotencyConflict] = []
+    async with stream.writer(on_written=lambda k, r: written.append((k, r)), on_conflict=conflicts.append) as w:
+        await w.append.aio("a", idempotency_key="k1")
+        await w.flush.aio()
+        service.hold_appends, service.append_arrived = asyncio.Event(), asyncio.Event()
+        await w.append.aio("b", idempotency_key="k2")
+        await service.append_arrived.wait()
+        # Queued behind "b", these go in one batch up to the reused "k3"; the conflicting "dup" is dropped from it.
+        for key, value in [("k3", "c"), ("dup", "other"), ("k4", "d"), ("k3", "not c")]:
+            await w.append.aio(value, idempotency_key=key)
+        service.hold_appends.set()
+        await w.flush.aio()
+        assert written == [
+            ("k1", AppendResult(2, False)),
+            ("k2", AppendResult(3, False)),
+            ("k3", AppendResult(4, False)),
+            ("k4", AppendResult(5, False)),
+        ]
+        assert [(c.idempotency_key, c.seq) for c in conflicts] == [("dup", 1), ("k3", 4)]
+    with pytest.raises(InvalidError, match="closed"):
+        await w.append.aio("late")
+
+    writer = stream.writer()
+    await writer.append.aio("other", idempotency_key="dup")
+    with pytest.raises(IdempotencyConflict):
+        await writer.flush.aio()
+    with pytest.raises(IdempotencyConflict):
+        await writer.append.aio("next")
+    with pytest.raises(IdempotencyConflict):
+        await writer.close.aio()
+
+    # An empty key is sent as given, as `Stream.append` sends it.
+    with pytest.raises(InvalidError):
+        await stream.append.aio("v", idempotency_key="")
+    writer = stream.writer()
+    await writer.append.aio("v", idempotency_key="")
+    with pytest.raises(InvalidError):
+        await writer.close.aio()
+
+
+@pytest.mark.asyncio
+async def test_writer_waits_while_full(client, service, monkeypatch):
+    monkeypatch.setattr("modal.experimental.stream.WRITER_MAX_PENDING", 1)
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    service.hold_appends = asyncio.Event()
+    async with stream.writer() as w:
+        await w.append.aio("a")
+        await service.append_arrived.wait()
+        second = asyncio.ensure_future(w.append.aio("b"))
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(second), 0.2)
+        service.hold_appends.set()
+        await second
+    assert [e["value"] for e in service.runs["s"]["events"]] == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_writer_sync_append_from_threads(client, service, monkeypatch):
+    monkeypatch.setattr("modal.experimental.stream.WRITER_MAX_PENDING", 20)
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    w = stream.writer()
+
+    def produce(i: int) -> None:
+        for n in range(50):
+            w.append(f"{i}-{n}")
+
+    await asyncio.gather(*(asyncio.to_thread(produce, i) for i in range(4)))
+    await w.close.aio()
+    written = [e["value"] for e in service.runs["s"]["events"]]
+    assert len(written) == 200
+    for i in range(4):
+        assert [v for v in written if v.startswith(f"{i}-")] == [f"{i}-{n}" for n in range(50)]
+
+
+@pytest.mark.asyncio
+async def test_writer_close_again_after_a_cancelled_close(client, service):
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    service.hold_appends = asyncio.Event()
+    w = stream.writer()
+    await w.append.aio("a")
+    await service.append_arrived.wait()
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(w.close.aio(), 0.2)
+    service.hold_appends.set()
+    await asyncio.wait_for(w.close.aio(), 10)
+    assert [e["value"] for e in service.runs["s"]["events"]] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_writer_close_rejects_waiting_append(client, service, monkeypatch):
+    monkeypatch.setattr("modal.experimental.stream.WRITER_MAX_PENDING", 1)
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    service.hold_appends = asyncio.Event()
+    w = stream.writer()
+    await w.append.aio("a")
+    await service.append_arrived.wait()
+    waiting = asyncio.ensure_future(w.append.aio("b"))
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(waiting), 0.2)
+    closing = asyncio.ensure_future(w.close.aio())
+    try:
+        with pytest.raises(InvalidError, match="closed"):
+            await asyncio.wait_for(waiting, 5)
+        assert not closing.done()
+    finally:
+        service.hold_appends.set()
+    await closing
+    assert [e["value"] for e in service.runs["s"]["events"]] == ["a"]
