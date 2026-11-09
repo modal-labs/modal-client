@@ -115,6 +115,7 @@ from .exception import AuthError, InvalidError, NotFoundError
 
 # By default, try api.modal.com and fail over to api.modal2.com
 DEFAULT_SERVER_URL = "https://api.modal.com,https://api.modal2.com"
+DEFAULT_STREAMS_URL = "https://modal-labs-streams--streams-service-proxy.modal.run"
 
 
 # Locate config file and read it
@@ -397,6 +398,7 @@ _SETTINGS = {
     "sandbox_channel_idle_timeout": _Setting(30, transform=float),
     "volume_block_read_timeout": _Setting(60, transform=float),
     # --- Internal configuration --------------------------------------------------
+    "streams_url": _Setting(DEFAULT_STREAMS_URL, internal=True),
     "sync_entrypoint": _Setting(internal=True),
     "heartbeat_interval": _Setting(15, float, internal=True),
     "function_runtime": _Setting(internal=True),
