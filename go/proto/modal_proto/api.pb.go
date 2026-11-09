@@ -10000,11 +10000,13 @@ func (b0 AttemptStartResponse_builder) Build() *AttemptStartResponse {
 }
 
 type AuditLogActor struct {
-	state           protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Type string                 `protobuf:"bytes,1,opt,name=type,proto3"`
-	xxx_hidden_Id   string                 `protobuf:"bytes,2,opt,name=id,proto3"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Type  string                 `protobuf:"bytes,1,opt,name=type,proto3"`
+	xxx_hidden_Id    string                 `protobuf:"bytes,2,opt,name=id,proto3"`
+	xxx_hidden_Name  string                 `protobuf:"bytes,3,opt,name=name,proto3"`
+	xxx_hidden_Email string                 `protobuf:"bytes,4,opt,name=email,proto3"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *AuditLogActor) Reset() {
@@ -10046,6 +10048,20 @@ func (x *AuditLogActor) GetId() string {
 	return ""
 }
 
+func (x *AuditLogActor) GetName() string {
+	if x != nil {
+		return x.xxx_hidden_Name
+	}
+	return ""
+}
+
+func (x *AuditLogActor) GetEmail() string {
+	if x != nil {
+		return x.xxx_hidden_Email
+	}
+	return ""
+}
+
 func (x *AuditLogActor) SetType(v string) {
 	x.xxx_hidden_Type = v
 }
@@ -10054,11 +10070,21 @@ func (x *AuditLogActor) SetId(v string) {
 	x.xxx_hidden_Id = v
 }
 
+func (x *AuditLogActor) SetName(v string) {
+	x.xxx_hidden_Name = v
+}
+
+func (x *AuditLogActor) SetEmail(v string) {
+	x.xxx_hidden_Email = v
+}
+
 type AuditLogActor_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Type string
-	Id   string
+	Type  string
+	Id    string
+	Name  string
+	Email string
 }
 
 func (b0 AuditLogActor_builder) Build() *AuditLogActor {
@@ -10067,6 +10093,8 @@ func (b0 AuditLogActor_builder) Build() *AuditLogActor {
 	_, _ = b, x
 	x.xxx_hidden_Type = b.Type
 	x.xxx_hidden_Id = b.Id
+	x.xxx_hidden_Name = b.Name
+	x.xxx_hidden_Email = b.Email
 	return m0
 }
 
@@ -10170,14 +10198,15 @@ func (b0 AuditLogBucketsRequest_builder) Build() *AuditLogBucketsRequest {
 }
 
 type AuditLogContext struct {
-	state                    protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3"`
-	xxx_hidden_EnvironmentId string                 `protobuf:"bytes,2,opt,name=environment_id,json=environmentId,proto3"`
-	xxx_hidden_Source        string                 `protobuf:"bytes,3,opt,name=source,proto3"`
-	xxx_hidden_IpAddress     string                 `protobuf:"bytes,4,opt,name=ip_address,json=ipAddress,proto3"`
-	xxx_hidden_IsModalAdmin  bool                   `protobuf:"varint,5,opt,name=is_modal_admin,json=isModalAdmin,proto3"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_WorkspaceId     string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3"`
+	xxx_hidden_EnvironmentId   string                 `protobuf:"bytes,2,opt,name=environment_id,json=environmentId,proto3"`
+	xxx_hidden_Source          string                 `protobuf:"bytes,3,opt,name=source,proto3"`
+	xxx_hidden_IpAddress       string                 `protobuf:"bytes,4,opt,name=ip_address,json=ipAddress,proto3"`
+	xxx_hidden_IsModalAdmin    bool                   `protobuf:"varint,5,opt,name=is_modal_admin,json=isModalAdmin,proto3"`
+	xxx_hidden_EnvironmentName string                 `protobuf:"bytes,6,opt,name=environment_name,json=environmentName,proto3"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *AuditLogContext) Reset() {
@@ -10240,6 +10269,13 @@ func (x *AuditLogContext) GetIsModalAdmin() bool {
 	return false
 }
 
+func (x *AuditLogContext) GetEnvironmentName() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentName
+	}
+	return ""
+}
+
 func (x *AuditLogContext) SetWorkspaceId(v string) {
 	x.xxx_hidden_WorkspaceId = v
 }
@@ -10260,14 +10296,19 @@ func (x *AuditLogContext) SetIsModalAdmin(v bool) {
 	x.xxx_hidden_IsModalAdmin = v
 }
 
+func (x *AuditLogContext) SetEnvironmentName(v string) {
+	x.xxx_hidden_EnvironmentName = v
+}
+
 type AuditLogContext_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	WorkspaceId   string
-	EnvironmentId string
-	Source        string
-	IpAddress     string
-	IsModalAdmin  bool
+	WorkspaceId     string
+	EnvironmentId   string
+	Source          string
+	IpAddress       string
+	IsModalAdmin    bool
+	EnvironmentName string
 }
 
 func (b0 AuditLogContext_builder) Build() *AuditLogContext {
@@ -10279,6 +10320,7 @@ func (b0 AuditLogContext_builder) Build() *AuditLogContext {
 	x.xxx_hidden_Source = b.Source
 	x.xxx_hidden_IpAddress = b.IpAddress
 	x.xxx_hidden_IsModalAdmin = b.IsModalAdmin
+	x.xxx_hidden_EnvironmentName = b.EnvironmentName
 	return m0
 }
 
@@ -79096,23 +79138,26 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\aproxied\x18\x04 \x01(\bR\aproxied\"\x81\x01\n" +
 	"\x14AttemptStartResponse\x12#\n" +
 	"\rattempt_token\x18\x01 \x01(\tR\fattemptToken\x12D\n" +
-	"\fretry_policy\x18\x02 \x01(\v2!.modal.client.FunctionRetryPolicyR\vretryPolicy\"3\n" +
+	"\fretry_policy\x18\x02 \x01(\v2!.modal.client.FunctionRetryPolicyR\vretryPolicy\"]\n" +
 	"\rAuditLogActor\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"\x81\x01\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x14\n" +
+	"\x05email\x18\x04 \x01(\tR\x05email\"\x81\x01\n" +
 	"\x16AuditLogBucketsRequest\x12\f\n" +
 	"\x01q\x18\x01 \x01(\tR\x01q\x12\x1b\n" +
 	"\toldest_ms\x18\x02 \x01(\x03R\boldestMs\x12\x1b\n" +
 	"\tnewest_ms\x18\x03 \x01(\x03R\bnewestMs\x12\x1f\n" +
 	"\vbucket_size\x18\x04 \x01(\rR\n" +
-	"bucketSize\"\xb8\x01\n" +
+	"bucketSize\"\xe3\x01\n" +
 	"\x0fAuditLogContext\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12%\n" +
 	"\x0eenvironment_id\x18\x02 \x01(\tR\renvironmentId\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x12\x1d\n" +
 	"\n" +
 	"ip_address\x18\x04 \x01(\tR\tipAddress\x12$\n" +
-	"\x0eis_modal_admin\x18\x05 \x01(\bR\fisModalAdmin\"^\n" +
+	"\x0eis_modal_admin\x18\x05 \x01(\bR\fisModalAdmin\x12)\n" +
+	"\x10environment_name\x18\x06 \x01(\tR\x0fenvironmentName\"^\n" +
 	"\x14AuditLogCountRequest\x12\f\n" +
 	"\x01q\x18\x01 \x01(\tR\x01q\x12\x1b\n" +
 	"\toldest_ms\x18\x02 \x01(\x03R\boldestMs\x12\x1b\n" +

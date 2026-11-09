@@ -973,6 +973,8 @@ message AttemptStartResponse {
 message AuditLogActor {
   string type = 1;  // "user", "service_user", "oauth_grant" or "system"
   string id = 2;
+  string name = 3;   // Display or service user name; OAuth authorizing user's name. Empty if unresolved.
+  string email = 4;  // User or OAuth authorizing user's email. Empty if unresolved.
 }
 
 message AuditLogBucketsRequest {
@@ -988,6 +990,7 @@ message AuditLogContext {
   string source = 3;  // "sdk", "web" or "unknown"
   string ip_address = 4;
   bool is_modal_admin = 5;
+  string environment_name = 6;  // Empty if unresolved.
 }
 
 message AuditLogCountRequest {
