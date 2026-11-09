@@ -916,7 +916,7 @@ func TestSandboxListByAppId(t *testing.T) {
 	g.Expect(count).ToNot(gomega.Equal(0))
 }
 
-func TestSandboxListV2Mock(t *testing.T) {
+func TestSandboxExperimentalListMock(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -940,7 +940,7 @@ func TestSandboxListV2Mock(t *testing.T) {
 			return pb.SandboxListResponse_builder{}.Build(), nil
 		})
 
-	it, err := mock.Sandboxes.List(ctx, &modal.SandboxListParams{AppID: "ap-1234"})
+	it, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{AppID: "ap-1234"})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	var ids []string
@@ -1335,7 +1335,7 @@ func TestSandboxGetExitSnapshotRateLimitWithoutPolicyMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxListV2EnvironmentScoped(t *testing.T) {
+func TestSandboxExperimentalListEnvironmentScoped(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -1357,7 +1357,7 @@ func TestSandboxListV2EnvironmentScoped(t *testing.T) {
 			return pb.SandboxListResponse_builder{}.Build(), nil
 		})
 
-	it, err := mock.Sandboxes.List(ctx, &modal.SandboxListParams{Environment: "my-env"})
+	it, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{Environment: "my-env"})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	var ids []string
@@ -1701,7 +1701,7 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxV2CreateCachesEncryptedOnlyTunnels(t *testing.T) {
+func TestExperimentalCreateCachesEncryptedOnlyTunnels(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
@@ -1760,7 +1760,7 @@ func TestSandboxV2CreateCachesEncryptedOnlyTunnels(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	image := mock.Images.FromRegistry("alpine:3.21", nil)
 
-	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		EncryptedPorts: []int{8080},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -1774,7 +1774,7 @@ func TestSandboxV2CreateCachesEncryptedOnlyTunnels(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxV2CreateFetchesUnencryptedTunnels(t *testing.T) {
+func TestExperimentalCreateFetchesUnencryptedTunnels(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
@@ -1860,7 +1860,7 @@ func TestSandboxV2CreateFetchesUnencryptedTunnels(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	image := mock.Images.FromRegistry("alpine:3.21", nil)
 
-	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		EncryptedPorts:   []int{8080},
 		UnencryptedPorts: []int{9000},
 	})
@@ -2029,7 +2029,7 @@ func TestSandboxExperimentalFromSnapshotRoutesV2(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxFromNameRoutesV2(t *testing.T) {
+func TestSandboxExperimentalFromNameRoutesV2(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -2050,7 +2050,7 @@ func TestSandboxFromNameRoutesV2(t *testing.T) {
 			return pb.SandboxTerminateResponse_builder{}.Build(), nil
 		})
 
-	sb, err := mock.Sandboxes.FromName(ctx, "libmodal-test", "my-sandbox", nil)
+	sb, err := mock.Sandboxes.ExperimentalFromName(ctx, "libmodal-test", "my-sandbox", nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(sb.SandboxID).To(gomega.Equal(sandboxID))
 
@@ -2627,7 +2627,7 @@ func TestSandboxFirstStdoutReadAfterTerminate(t *testing.T) {
 	g.Expect(string(out)).To(gomega.ContainSubstring("only-line"))
 }
 
-// The same for a Sandbox on the V2 backend.
+// The same for a Sandbox created with ExperimentalCreate.
 func TestSandboxFirstStdoutReadAfterTerminateV2(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -2644,7 +2644,7 @@ func TestSandboxFirstStdoutReadAfterTerminateV2(t *testing.T) {
 	probe, err := modal.NewExecProbe([]string{"true"}, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
-	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := tc.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		Command:        []string{"sh", "-c", "echo only-line; sleep 60"},
 		ReadinessProbe: probe,
 	})

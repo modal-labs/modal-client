@@ -175,7 +175,7 @@ func TestSandboxCreatePassesFromMapSecretAsSecretSources(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxV2CreatePassesEnvAsSecretSources(t *testing.T) {
+func TestSandboxExperimentalCreatePassesEnvAsSecretSources(t *testing.T) {
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -199,7 +199,7 @@ func TestSandboxV2CreatePassesEnvAsSecretSources(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	image := mock.Images.FromRegistry("alpine:3.21", nil)
 
-	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		Env: map[string]string{"FOO": "bar"},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -208,7 +208,7 @@ func TestSandboxV2CreatePassesEnvAsSecretSources(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxV2CreatePassesFromMapSecretAsSecretSources(t *testing.T) {
+func TestSandboxExperimentalCreatePassesFromMapSecretAsSecretSources(t *testing.T) {
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -238,7 +238,7 @@ func TestSandboxV2CreatePassesFromMapSecretAsSecretSources(t *testing.T) {
 	secret, err := mock.Secrets.FromMap(ctx, map[string]string{"FOO": "from-secret", "BAZ": "qux"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		Secrets: []*modal.Secret{secret},
 		Env:     map[string]string{"FOO": "from-env"},
 	})
@@ -251,7 +251,7 @@ func TestSandboxV2CreatePassesFromMapSecretAsSecretSources(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxV2CreateLaterFromNameSecretOverridesFromMap(t *testing.T) {
+func TestSandboxExperimentalCreateLaterFromNameSecretOverridesFromMap(t *testing.T) {
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -289,7 +289,7 @@ func TestSandboxV2CreateLaterFromNameSecretOverridesFromMap(t *testing.T) {
 	named, err := mock.Secrets.FromName(ctx, "my-secret", nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		Secrets: []*modal.Secret{local, named},
 		Env:     map[string]string{"ENV_ONLY": "env"},
 	})
@@ -299,7 +299,7 @@ func TestSandboxV2CreateLaterFromNameSecretOverridesFromMap(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxV2CreateRejectsInvalidEnvVarName(t *testing.T) {
+func TestSandboxExperimentalCreateRejectsInvalidEnvVarName(t *testing.T) {
 	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
@@ -313,7 +313,7 @@ func TestSandboxV2CreateRejectsInvalidEnvVarName(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	image := mock.Images.FromRegistry("alpine:3.21", nil)
 
-	_, err = mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	_, err = mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		Env: map[string]string{"1INVALID": "value"},
 	})
 	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("is invalid for environment variables")))

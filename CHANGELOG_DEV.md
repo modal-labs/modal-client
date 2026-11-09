@@ -32,4 +32,3 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added an `App.Stop()` method.
 - Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
 - `Image.Build()` now returns `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
-- **Breaking:** Removed `Sandboxes.ExperimentalCreate()`, `Sandboxes.ExperimentalFromName()`, and `Sandboxes.ExperimentalList()`, along with the `SandboxExperimentalFromNameParams` and `SandboxExperimentalListParams` types. Use `Sandboxes.Create()`, `Sandboxes.FromName()`, and `Sandboxes.List()`, which use the V2 backend by default.

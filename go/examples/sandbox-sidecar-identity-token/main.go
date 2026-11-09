@@ -26,7 +26,7 @@ func main() {
 		log.Fatalf("Failed to build Image: %v", err)
 	}
 
-	sb, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mc.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"sleep", "infinity"},
 	})
 	if err != nil {

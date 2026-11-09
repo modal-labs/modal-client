@@ -26,10 +26,13 @@ import (
 // SandboxService provides Sandbox related operations.
 type SandboxService interface {
 	Create(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error)
+	ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error)
 	FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error)
 	FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error)
+	ExperimentalFromName(ctx context.Context, appName, name string, params *SandboxExperimentalFromNameParams) (*Sandbox, error)
 	ExperimentalFromSnapshot(ctx context.Context, snapshot *SandboxSnapshot, params *SandboxExperimentalFromSnapshotParams) (*Sandbox, error)
 	List(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error)
+	ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error)
 }
 
 type sandboxServiceImpl struct{ client *Client }
@@ -532,7 +535,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 
 func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreateParams, secretSources []*pb.SecretSource) (*pb.SandboxCreateV2Request, error) {
 	if params.GPU != "" {
-		return nil, fmt.Errorf("GPUs are not supported by the V2 Sandbox backend")
+		return nil, fmt.Errorf("GPUs are not supported by ExperimentalCreate")
 	}
 
 	req, err := buildSandboxCreateRequestProto(appID, imageID, params)
@@ -557,7 +560,7 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 	// GPUs are not supported on V2, so those calls use the V1 backend
 	// regardless of the setting.
 	if s.client.profile.SandboxV2 && params.GPU == "" {
-		return s.createV2(ctx, app, image, params)
+		return s.ExperimentalCreate(ctx, app, image, params)
 	}
 
 	image, err := image.Build(ctx, app, nil)
@@ -601,8 +604,23 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 	return sb, nil
 }
 
-// createV2 creates a new Sandbox on the V2 backend, which does not support GPUs.
-func (s *sandboxServiceImpl) createV2(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
+// ExperimentalCreate creates a new Sandbox using the experimental V2 backend.
+//
+// Supported features include exec, encrypted tunnels, wait/poll/terminate,
+// CPU and memory configuration, region placement, volumes, cloud bucket
+// mounts (with static credentials via Secret or OidcAuthRoleArn), OIDC identity
+// tokens, proxies, filesystem snapshots, and custom domains (CustomDomain
+// allows connections to the Sandbox via a subdomain of that parent domain
+// rather than a default Modal domain; requires prior setup by Modal).
+//
+// Set ExperimentalEnableSnapshot to create a Sandbox that can be snapshotted
+// with [Sandbox.ExperimentalSnapshot]. Features like network file systems and
+// GPUs are not supported.
+//
+// V2 sandboxes created with this method are not currently returned by List. A
+// named Sandbox can be looked up with ExperimentalFromName; otherwise store
+// Sandbox.SandboxID and use FromID to reattach.
+func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
 	if params == nil {
 		params = &SandboxCreateParams{}
 	}
@@ -934,7 +952,10 @@ func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string,
 	}
 
 	if params.IncludeTerminated || s.client.profile.SandboxV2 {
-		sb, err := s.fromNameV2(ctx, appName, name, params)
+		sb, err := s.ExperimentalFromName(ctx, appName, name, &SandboxExperimentalFromNameParams{
+			Environment:       params.Environment,
+			IncludeTerminated: params.IncludeTerminated,
+		})
 		var notFound NotFoundError
 		if err == nil {
 			return sb, nil
@@ -958,8 +979,23 @@ func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string,
 	return newSandbox(s.client, resp.GetSandboxId()), nil
 }
 
-// fromNameV2 gets a V2 Sandbox by name from a deployed App.
-func (s *sandboxServiceImpl) fromNameV2(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error) {
+// SandboxExperimentalFromNameParams are options for SandboxService.ExperimentalFromName.
+type SandboxExperimentalFromNameParams struct {
+	Environment string
+	// If IncludeTerminated is set to true and no Sandbox with the name is
+	// currently running, the most recent terminated Sandbox will be returned instead.
+	IncludeTerminated bool
+}
+
+// ExperimentalFromName gets a running V2 Sandbox by name from a deployed App,
+// i.e. a Sandbox created via ExperimentalCreate.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (s *sandboxServiceImpl) ExperimentalFromName(ctx context.Context, appName, name string, params *SandboxExperimentalFromNameParams) (*Sandbox, error) {
+	if params == nil {
+		params = &SandboxExperimentalFromNameParams{}
+	}
+
 	resp, err := s.client.cpClient.SandboxGetFromNameV2(ctx, pb.SandboxGetFromNameRequest_builder{
 		SandboxName:       name,
 		AppName:           appName,
@@ -2260,9 +2296,9 @@ func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string, params *
 }
 
 // ExperimentalSetName assigns a name to a running V2 Sandbox that was created
-// without one. A name may only be set once, and only on a Sandbox that has
-// never had one; afterwards the Sandbox can be looked up with FromName. Names
-// must be unique within an App.
+// without one, i.e. a Sandbox created via ExperimentalCreate. A name may only be
+// set once, and only on a Sandbox that has never had one; afterwards the Sandbox
+// can be looked up with ExperimentalFromName. Names must be unique within an App.
 //
 // EXPERIMENTAL: the API is subject to change.
 func (sb *Sandbox) ExperimentalSetName(ctx context.Context, name string, params *SandboxExperimentalSetNameParams) error {
@@ -2337,7 +2373,11 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 	}
 
 	if s.client.profile.SandboxV2 {
-		return s.listV2(ctx, params)
+		return s.ExperimentalList(ctx, &SandboxExperimentalListParams{
+			AppID:       params.AppID,
+			Tags:        params.Tags,
+			Environment: params.Environment,
+		})
 	}
 
 	tagsList := make([]*pb.SandboxTag, 0, len(params.Tags))
@@ -2378,14 +2418,28 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 	}, nil
 }
 
-// listV2 lists both V1 and V2 Sandboxes. Without an AppID it lists across
-// the environment, which is deprecated.
-func (s *sandboxServiceImpl) listV2(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error) {
+// SandboxExperimentalListParams are options for SandboxService.ExperimentalList.
+type SandboxExperimentalListParams struct {
+	AppID       string            // The App to list Sandboxes under. Omit to list across the environment (deprecated).
+	Tags        map[string]string // Only include Sandboxes that have all these tags.
+	Environment string            // Override environment for this request (used only when AppID is empty).
+}
+
+// ExperimentalList lists all sandboxes (v1 and v2).
+// Pass AppID to scope to an App; omit it to list across the
+// environment (deprecated — prefer scoping by AppID). If Tags are specified,
+// only Sandboxes that have all those tags are returned.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *SandboxExperimentalListParams) (iter.Seq2[*Sandbox, error], error) {
+	if params == nil {
+		params = &SandboxExperimentalListParams{}
+	}
 
 	var environmentName string
 	if params.AppID == "" {
 		s.client.logger.WarnContext(ctx,
-			"Sandboxes.List without an AppID lists across the whole environment and is deprecated; pass AppID to scope the query")
+			"Sandboxes.ExperimentalList without an AppID lists across the whole environment and is deprecated; pass AppID to scope the query")
 		environmentName = firstNonEmpty(params.Environment, s.client.profile.Environment)
 	}
 
