@@ -31,7 +31,7 @@ from ._partial_function import (
     _PartialFunctionFlags,
     verify_concurrent_params,
 )
-from ._server import _Server, validate_http_server_config
+from ._server import _DirectServerCls, _Server, validate_http_server_config
 from ._supports_logs import _LogQueryData
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_warning, handle_deprecated_parameters, with_deprecation_warning
@@ -1506,25 +1506,27 @@ class _App:
         if scaleup_window is not None and scaleup_window <= 0:
             raise InvalidError("`scaleup_window` must be > 0")
 
-        http_config = api_pb2.HTTPConfig(
-            port=port,
-            proxy_regions=[routing_region],
-            startup_timeout=startup_timeout,
-            exit_grace_period=exit_grace_period,
-            h2_enabled=h2_enabled,
-            unauthenticated=unauthenticated,
-        )
-
         # Build secrets list
         secrets_list: list[_Secret] = list(secrets) if secrets else []
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
         def wrapper(wrapped_user_cls: type[Any] | _PartialFunction[..., Any, Any] | Callable[..., Any]) -> _Server:
-            _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
+            direct = _Server._extract_user_cls(wrapped_user_cls) is _DirectServerCls
+            _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot, direct)
 
             # Validate the server class
             _Server._validate_construction_mechanism(wrapped_user_cls)
+
+            http_config = api_pb2.HTTPConfig(
+                port=port,
+                proxy_regions=[routing_region],
+                startup_timeout=startup_timeout,
+                exit_grace_period=exit_grace_period,
+                h2_enabled=h2_enabled,
+                unauthenticated=unauthenticated,
+                lift_and_shift_config=api_pb2.LiftAndShiftConfig() if direct else None,
+            )
 
             # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
             cluster_size = None
@@ -1586,6 +1588,7 @@ class _App:
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 restrict_output=False,
+                include_client_mounts=not direct,
             )
 
             self._add_function(service_function, is_web_endpoint=False)

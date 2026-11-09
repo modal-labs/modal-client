@@ -80,6 +80,10 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
     _add_endpoint_lifecycle(servicer)
     if path == ("nfs", "delete"):
         run_cli_command(["nfs", "create", "test-name"])
+    required_options = {("server", "deploy"): ["--image", "docker.io/nginx", "--port", "80"]}.get(path, [])
+    if path == ("server", "deploy"):
+        # Deploy once so that deploying again asks to confirm the redeploy.
+        run_cli_command([*path, *required_options, "--yes"])
     argument_values = {
         "app_identifier": app_id,
         "endpoint_identifier": "ep-aaaaaaaaaaaaaaaaaaaaaa",
@@ -90,6 +94,7 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
         if isinstance(param, click.Argument) and param.required:
             assert param.nargs == 1, f"Provide test arguments for {' '.join(path)}"
             args.append(argument_values.get(param.name, "test-name"))
+    args.extend(required_options)
 
     # A non-TTY stdin may remain open indefinitely. Never attempt to read it.
     def unexpected_prompt(*args, **kwargs):
@@ -6924,7 +6929,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
         "Inspection": ["library", "info", "logs", "stats"],
     },
     "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "autoscaler", "metrics"]},
-    "server": {"Commands": ["info", "logs", "stats", "requests", "autoscaler", "metrics"]},
+    "server": {"Commands": ["deploy", "info", "logs", "stats", "requests", "autoscaler", "metrics"]},
     "image": {"Commands": ["build", "pull", "logs", "names"]},
     "image names": {"Commands": ["list"]},
     "dict": {
@@ -7169,6 +7174,694 @@ def test_cli_does_not_import_aiohttp():
     # Runs in a subprocess because the test suite itself imports aiohttp.
     code = "import sys, modal.__main__; assert 'aiohttp' not in sys.modules"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def _deployed_server_def(servicer):
+    """The single Function definition recorded by a `modal server deploy` run."""
+    assert len(servicer.app_functions) == 1
+    return next(iter(servicer.app_functions.values()))
+
+
+def _deployed_server_image_commands(servicer) -> list[str]:
+    """Dockerfile commands of the deployed Server's Image, oldest layer first."""
+    commands: list[str] = []
+    image_id = _deployed_server_def(servicer).image_id
+    while image_id:
+        image = servicer.images[image_id]
+        commands = list(image.dockerfile_commands) + commands
+        image_id = image.base_images[0].image_id if image.base_images else ""
+    return commands
+
+
+def test_server_deploy_runs_the_image_cmd(servicer, set_env_client):
+    run_cli_command(["server", "deploy", "--image", "docker.io/nginx", "--port", "80"])
+
+    function_def = _deployed_server_def(servicer)
+    # The App holds a single Server, which always carries this name.
+    assert function_def.function_name == "Server"
+    assert function_def.http_config.port == 80
+    # Lift and shift runs the Image's own ENTRYPOINT and CMD, which are left untouched.
+    assert function_def.http_config.HasField("lift_and_shift_config")
+    dockerfile_commands = _deployed_server_image_commands(servicer)
+    assert not any(command.startswith(("ENTRYPOINT", "CMD")) for command in dockerfile_commands)
+    # The placeholder class carries no behavior and none of it reaches the container.
+    assert function_def.function_serialized == b""
+    assert function_def.class_serialized == b""
+    assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+
+
+@pytest.mark.parametrize(
+    "image_ref, app_name",
+    [
+        ("docker.io/nginx", "nginx"),
+        ("ghcr.io/org/api:v2", "api"),
+        ("my-registry.com:5000/team/api@sha256:" + "0" * 64, "api"),
+        ("my-image:v1", "my-image"),
+        ("prod/my-image:v1", "my-image"),
+    ],
+)
+def test_server_deploy_infers_app_name(servicer, set_env_client, image_ref, app_name):
+    servicer.image_tags["my-image:v1"] = servicer.image_tags["prod/my-image:v1"] = "im-named"
+    servicer.images["im-named"] = api_pb2.Image()
+
+    run_cli_command(["server", "deploy", "--image", image_ref, "--port", "80"])
+
+    assert [name for _, name in servicer.deployed_apps] == [app_name]
+
+
+def test_server_deploy_app_name(servicer, set_env_client):
+    run_cli_command(["server", "deploy", "--app-name", "my-app", "--image", "docker.io/nginx", "--port", "80"])
+
+    assert [name for _, name in servicer.deployed_apps] == ["my-app"]
+
+
+def test_server_deploy_existing_app_requires_confirmation(servicer, set_env_client):
+    args = ["server", "deploy", "--image", "docker.io/nginx", "--port", "80"]
+    run_cli_command(args)
+    deployed_states = list(servicer.app_state_history["ap-1"])
+
+    res = run_cli_command(args, expected_exit_code=1, expected_stderr=None)
+
+    assert (
+        "App 'nginx' is already deployed. Redeploying replaces everything in it with this Server."
+        " Pass --app-name to deploy under a different name. Do you want to redeploy it?"
+    ) in res.stdout
+    assert "no interactive terminal detected. Rerun with --yes (-y)" in str(res.exception)
+    assert servicer.app_state_history["ap-1"] == deployed_states
+
+
+def test_server_deploy_existing_app_confirmed(servicer, set_env_client):
+    args = ["server", "deploy", "--image", "docker.io/nginx", "--port", "80"]
+    run_cli_command(args)
+    deployed_states = list(servicer.app_state_history["ap-1"])
+
+    with mock.patch("modal.cli.server.confirm_or_suggest_yes") as confirm:
+        run_cli_command(args)
+
+    confirm.assert_called_once_with(
+        "App 'nginx' is already deployed. Redeploying replaces everything in it with this Server."
+        " Pass --app-name to deploy under a different name. Do you want to redeploy it?"
+    )
+    assert len(servicer.app_state_history["ap-1"]) > len(deployed_states)
+
+
+def test_server_deploy_existing_app_with_explicit_name_omits_hint(servicer, set_env_client):
+    args = ["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--app-name", "web"]
+    run_cli_command(args)
+
+    res = run_cli_command(args, expected_exit_code=1, expected_stderr=None)
+
+    assert (
+        "App 'web' is already deployed. Redeploying replaces everything in it with this Server."
+        " Do you want to redeploy it?"
+    ) in res.stdout
+
+
+def test_server_deploy_yes_skips_confirmation(servicer, set_env_client):
+    args = ["server", "deploy", "--image", "docker.io/nginx", "--port", "80"]
+    run_cli_command(args)
+    deployed_states = list(servicer.app_state_history["ap-1"])
+
+    with mock.patch("modal.cli.server.confirm_or_suggest_yes") as confirm:
+        run_cli_command([*args, "--yes"])
+
+    confirm.assert_not_called()
+    assert len(servicer.app_state_history["ap-1"]) > len(deployed_states)
+
+
+def test_server_deploy_force_build(servicer, set_env_client):
+    run_cli_command(["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--force-build"])
+
+    assert servicer.force_built_images == [_deployed_server_def(servicer).image_id]
+
+
+def test_server_deploy_force_build_rejects_published_image(servicer, set_env_client):
+    servicer.image_tags["my-image:v1"] = "im-named"
+    servicer.images["im-named"] = api_pb2.Image()
+
+    res = run_cli_command(
+        ["server", "deploy", "--image", "my-image:v1", "--port", "80", "--force-build"],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "Invalid value for --force-build" in res.stderr
+
+
+def test_server_deploy_cmd(servicer, set_env_client):
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "docker.io/python:3.12",
+            "--port",
+            "8000",
+            "--cmd",
+            "python -m http.server 8000 --bind '0.0.0.0'",
+        ]
+    )
+
+    dockerfile_commands = _deployed_server_image_commands(servicer)
+    assert dockerfile_commands[-1] == 'CMD ["python", "-m", "http.server", "8000", "--bind", "0.0.0.0"]'
+
+
+def test_server_deploy_entrypoint(servicer, set_env_client):
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "docker.io/python:3.12",
+            "--port",
+            "8000",
+            "--entrypoint",
+            "python -m",
+            "--cmd",
+            "http.server 8000",
+        ]
+    )
+
+    dockerfile_commands = _deployed_server_image_commands(servicer)
+    # CMD follows ENTRYPOINT, since an ENTRYPOINT instruction resets any CMD before it.
+    assert [c for c in dockerfile_commands if c.startswith(("ENTRYPOINT", "CMD"))] == [
+        'ENTRYPOINT ["python", "-m"]',
+        'CMD ["http.server", "8000"]',
+    ]
+
+
+@pytest.mark.parametrize(
+    "image_ref, image_tag",
+    [("my-image", "my-image:latest"), ("my-image:v1", "my-image:v1"), ("prod/my-image:v1", "prod/my-image:v1")],
+)
+def test_server_deploy_named_image(servicer, set_env_client, image_ref, image_tag):
+    servicer.image_tags[image_tag] = "im-named"
+    servicer.images["im-named"] = api_pb2.Image()
+
+    run_cli_command(["server", "deploy", "--image", image_ref, "--port", "80"])
+
+    function_def = _deployed_server_def(servicer)
+    assert function_def.image_id == "im-named"
+    assert function_def.http_config.HasField("lift_and_shift_config")
+
+
+@pytest.mark.parametrize("image_ref", ["nginx", "library/nginx", "docker.io/", "localhost:5000/"])
+def test_server_deploy_unknown_image(servicer, set_env_client, image_ref):
+    res = run_cli_command(
+        ["server", "deploy", "--image", image_ref, "--port", "80"],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "is not a published Modal Image or a registry reference" in res.stderr
+
+
+def test_server_deploy_named_image_takes_precedence_over_registry(servicer, set_env_client):
+    servicer.image_tags["my.env/my-image:latest"] = "im-named"
+    servicer.images["im-named"] = api_pb2.Image()
+
+    run_cli_command(["server", "deploy", "--image", "my.env/my-image", "--port", "80"])
+
+    assert _deployed_server_def(servicer).image_id == "im-named"
+
+
+@pytest.mark.parametrize("image_tag", ["docker.io/nginx", "ghcr.io/org/api:v2"])
+def test_server_deploy_accepts_registry_qualified_images(servicer, set_env_client, image_tag):
+    run_cli_command(["server", "deploy", "--image", image_tag, "--port", "80"])
+
+    assert _deployed_server_def(servicer).http_config.port == 80
+
+
+@pytest.mark.parametrize("missing_option", ["--image", "--port"])
+def test_server_deploy_requires_image_and_port(servicer, set_env_client, missing_option):
+    options = {"--image": "docker.io/nginx", "--port": "80"}
+    del options[missing_option]
+    args = [arg for option, value in options.items() for arg in (option, value)]
+
+    res = run_cli_command(["server", "deploy", *args], expected_exit_code=2, expected_stderr=None)
+    assert f"Missing option '{missing_option}'" in res.stderr
+
+
+def test_server_deploy_passes_through_resources(servicer, set_env_client):
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "my-registry.com/api:v2",
+            "--port",
+            "8000",
+            "--gpu",
+            "A100",
+            "--cpu",
+            "2",
+            "--memory",
+            "4096",
+            "--env-var",
+            "LOG_LEVEL=debug",
+            "--min-containers",
+            "1",
+            "--max-containers",
+            "5",
+            "--buffer-containers",
+            "2",
+            "--scaleup-window",
+            "10",
+            "--scaledown-window",
+            "120",
+            "--target-concurrency",
+            "1.5",
+            "--max-concurrency",
+            "4",
+            "--exit-grace-period",
+            "20",
+            "--unauthenticated",
+        ]
+    )
+
+    function_def = _deployed_server_def(servicer)
+    assert function_def.http_config.port == 8000
+    assert function_def.http_config.unauthenticated
+    assert function_def.http_config.exit_grace_period == 20
+    assert function_def.resources.gpu_config.gpu_type == "A100"
+    assert function_def.resources.milli_cpu == 2000
+    assert function_def.resources.memory_mb == 4096
+    assert function_def.autoscaler_settings.min_containers == 1
+    assert function_def.autoscaler_settings.max_containers == 5
+    assert function_def.autoscaler_settings.buffer_containers == 2
+    assert function_def.autoscaler_settings.scaleup_window == 10
+    assert function_def.autoscaler_settings.scaledown_window == 120
+    assert function_def.autoscaler_settings.target_concurrency_float == 1.5
+    assert function_def.max_concurrent_inputs == 4
+
+
+def test_server_deploy_gpu_fallbacks(servicer, set_env_client):
+    run_cli_command(
+        ["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--gpu", "H100:2, A100"],
+    )
+
+    function_data = _deployed_server_def(servicer)
+    gpus = [
+        (ranked.rank, ranked.function.resources.gpu_config.gpu_type, ranked.function.resources.gpu_config.count)
+        for ranked in function_data.ranked_functions
+    ]
+    assert gpus == [(0, "H100", 2), (1, "A100", 1)]
+
+
+@pytest.mark.parametrize("gpu", ["H100,", ",A100", "H100,,A100"])
+def test_server_deploy_rejects_empty_gpu_entries(servicer, set_env_client, gpu):
+    with servicer.intercept() as ctx:
+        res = run_cli_command(
+            ["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--gpu", gpu],
+            expected_exit_code=2,
+            expected_stderr=None,
+        )
+    assert "no empty entries" in res.stderr
+    assert ctx.calls == []
+
+
+def test_server_deploy_cpu_and_memory_limits(servicer, set_env_client):
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "docker.io/nginx",
+            "--port",
+            "80",
+            "--cpu",
+            "0.5,4",
+            "--memory",
+            "4096, 8192",
+        ]
+    )
+
+    resources = _deployed_server_def(servicer).resources
+    assert (resources.milli_cpu, resources.milli_cpu_max) == (500, 4000)
+    assert (resources.memory_mb, resources.memory_mb_max) == (4096, 8192)
+
+
+def test_server_deploy_none_values(servicer, set_env_client):
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "docker.io/nginx",
+            "--port",
+            "80",
+            "--target-concurrency",
+            "none",
+            "--max-concurrency",
+            "None",
+            "--max-containers",
+            "none",
+        ]
+    )
+
+    function_def = _deployed_server_def(servicer)
+    assert function_def.autoscaler_settings.HasField("target_concurrency_float")
+    assert function_def.autoscaler_settings.target_concurrency_float == 0
+    assert function_def.max_concurrent_inputs == 0
+    assert not function_def.autoscaler_settings.HasField("max_containers")
+
+
+def test_server_deploy_env_var_splits_on_first_equals(servicer, set_env_client):
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "docker.io/nginx",
+            "--port",
+            "80",
+            "--env-var",
+            "DATABASE_URL=postgres://db?sslmode=require",
+            "--env-var",
+            "EMPTY=",
+        ]
+    )
+
+    function_def = _deployed_server_def(servicer)
+    assert [servicer.secrets[secret_id] for secret_id in function_def.secret_ids] == [
+        {"DATABASE_URL": "postgres://db?sslmode=require", "EMPTY": ""}
+    ]
+
+
+def test_server_deploy_bad_env_var(servicer, set_env_client):
+    res = run_cli_command(
+        ["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--env-var", "NOPE"],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "KEY=VALUE" in res.stderr
+
+
+def test_server_deploy_secret_from_env(servicer, set_env_client, monkeypatch):
+    monkeypatch.setenv("API_KEY", "abc")
+    monkeypatch.setenv("API_TOKEN", "xyz")
+
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "docker.io/nginx",
+            "--port",
+            "80",
+            "--secret-from-env",
+            "API_KEY,API_TOKEN",
+        ]
+    )
+
+    secret_ids = _deployed_server_def(servicer).secret_ids
+    assert [servicer.secrets[secret_id] for secret_id in secret_ids] == [{"API_KEY": "abc", "API_TOKEN": "xyz"}]
+
+
+def test_server_deploy_secret_from_env_missing(servicer, set_env_client, monkeypatch):
+    monkeypatch.delenv("MISSING", raising=False)
+
+    res = run_cli_command(
+        ["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--secret-from-env", "MISSING"],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "not set in the local environment: MISSING" in res.stderr
+
+
+def test_server_deploy_registry_secret(servicer, set_env_client, client):
+    modal.Secret.objects.create("registry-creds", {"REGISTRY_USERNAME": "u", "REGISTRY_PASSWORD": "p"}, client=client)
+
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "my-registry.com/api:v2",
+            "--port",
+            "80",
+            "--registry-secret",
+            "registry-creds",
+        ]
+    )
+
+    image = servicer.images[_deployed_server_def(servicer).image_id]
+    registry_config = image.image_registry_config
+    assert registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+    assert registry_config.secret_id == servicer.deployed_secrets[("registry-creds", "main")]
+
+
+def test_server_deploy_registry_secret_rejects_named_image(servicer, set_env_client):
+    servicer.image_tags["my-image:v1"] = "im-named"
+    servicer.images["im-named"] = api_pb2.Image()
+
+    res = run_cli_command(
+        ["server", "deploy", "--image", "my-image:v1", "--port", "80", "--registry-secret", "creds"],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "only applies to registry images" in res.stderr
+
+
+def test_server_deploy_registry_secret_from_env(servicer, set_env_client, monkeypatch):
+    monkeypatch.setenv("REGISTRY_USERNAME", "u")
+    monkeypatch.setenv("REGISTRY_PASSWORD", "p")
+    monkeypatch.setenv("API_KEY", "abc")
+
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "my-registry.com/api:v2",
+            "--port",
+            "80",
+            "--registry-secret-from-env",
+            "REGISTRY_USERNAME,REGISTRY_PASSWORD",
+            "--secret-from-env",
+            "API_KEY",
+        ]
+    )
+
+    function_def = _deployed_server_def(servicer)
+    registry_config = servicer.images[function_def.image_id].image_registry_config
+    assert registry_config.registry_auth_type == api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+    assert servicer.secrets[registry_config.secret_id] == {"REGISTRY_USERNAME": "u", "REGISTRY_PASSWORD": "p"}
+    assert [servicer.secrets[secret_id] for secret_id in function_def.secret_ids] == [{"API_KEY": "abc"}]
+
+
+def test_server_deploy_registry_secret_from_env_missing(servicer, set_env_client, monkeypatch):
+    monkeypatch.delenv("MISSING", raising=False)
+
+    res = run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "my-registry.com/api:v2",
+            "--port",
+            "80",
+            "--registry-secret-from-env",
+            "MISSING",
+        ],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "--registry-secret-from-env" in res.stderr
+    assert "not set in the local environment: MISSING" in res.stderr
+
+
+def test_server_deploy_registry_secret_from_env_rejects_named_image(servicer, set_env_client, monkeypatch):
+    monkeypatch.setenv("REGISTRY_USERNAME", "u")
+    servicer.image_tags["my-image:v1"] = "im-named"
+    servicer.images["im-named"] = api_pb2.Image()
+
+    res = run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "my-image:v1",
+            "--port",
+            "80",
+            "--registry-secret-from-env",
+            "REGISTRY_USERNAME",
+        ],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "--registry-secret-from-env" in res.stderr
+    assert "only applies to registry images" in res.stderr
+
+
+def test_server_deploy_registry_secret_flags_are_exclusive(servicer, set_env_client, monkeypatch):
+    monkeypatch.setenv("REGISTRY_USERNAME", "u")
+
+    res = run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "my-registry.com/api:v2",
+            "--port",
+            "80",
+            "--registry-secret",
+            "creds",
+            "--registry-secret-from-env",
+            "REGISTRY_USERNAME",
+        ],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "cannot be used together" in res.stderr
+
+
+_AWS_KEYS = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"]
+_BASIC_KEYS = ["REGISTRY_USERNAME", "REGISTRY_PASSWORD"]
+_OIDC_KEYS = ["AWS_ROLE_ARN", "AWS_REGION"]
+_ECR_IMAGE = "123456789012.dkr.ecr.us-east-1.amazonaws.com/api:v2"
+
+
+def test_server_deploy_volumes(servicer, set_env_client, client):
+    modal.Volume.objects.create("my-models", client=client)
+
+    run_cli_command(["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--volume", "my-models:/models"])
+
+    assert list(_deployed_server_def(servicer).volume_mounts) == [
+        api_pb2.VolumeMount(
+            mount_path="/models",
+            volume_id=servicer.deployed_volumes[("my-models", "main")],
+            allow_background_commits=True,
+        )
+    ]
+
+
+def test_server_deploy_creates_missing_volume(servicer, set_env_client):
+    args = ["server", "deploy", "--image", "docker.io/nginx", "--port", "80"]
+    res = run_cli_command([*args, "--volume", "new-vol:/data"])
+
+    assert "Creating Volume 'new-vol', which does not exist yet." in res.stdout
+    assert list(_deployed_server_def(servicer).volume_mounts) == [
+        api_pb2.VolumeMount(
+            mount_path="/data",
+            volume_id=servicer.deployed_volumes[("new-vol", "main")],
+            allow_background_commits=True,
+        )
+    ]
+
+
+def test_server_deploy_existing_volume_has_no_creation_message(servicer, set_env_client, client):
+    modal.Volume.objects.create("my-models", client=client)
+
+    args = ["server", "deploy", "--image", "docker.io/nginx", "--port", "80"]
+    res = run_cli_command([*args, "--volume", "my-models:/m"])
+
+    assert "Creating Volume" not in res.stdout
+
+
+@pytest.mark.parametrize(
+    "first, second, error",
+    [
+        ("/data", "/data", "more than one Volume is mounted at /data"),
+        ("/data", "/data/", "more than one Volume is mounted at /data"),
+    ],
+)
+def test_server_deploy_rejects_conflicting_volume_mount_paths(servicer, set_env_client, first, second, error):
+    with servicer.intercept() as ctx:
+        res = run_cli_command(
+            [
+                "server",
+                "deploy",
+                "--image",
+                "docker.io/nginx",
+                "--port",
+                "80",
+                "--volume",
+                f"a:{first}",
+                "--volume",
+                f"b:{second}",
+            ],
+            expected_exit_code=2,
+            expected_stderr=None,
+        )
+    assert error in res.stderr
+    assert ctx.calls == []
+
+
+def test_server_deploy_accepts_sibling_volume_mount_paths(servicer, set_env_client):
+    run_cli_command(
+        [
+            "server",
+            "deploy",
+            "--image",
+            "docker.io/nginx",
+            "--port",
+            "80",
+            "--volume",
+            "a:/mnt/stuff",
+            "--volume",
+            "b:/mnt/stuff2",
+        ]
+    )
+
+    function_def = _deployed_server_def(servicer)
+    assert sorted(mount.mount_path for mount in function_def.volume_mounts) == ["/mnt/stuff", "/mnt/stuff2"]
+
+
+@pytest.mark.parametrize("flag", ["--secret-from-env", "--registry-secret-from-env"])
+def test_server_deploy_from_env_requires_keys(servicer, set_env_client, flag):
+    res = run_cli_command(
+        ["server", "deploy", "--image", "docker.io/nginx", "--port", "80", flag, " , "],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "must name at least one environment variable" in res.stderr
+
+
+@pytest.mark.parametrize("volume_spec", ["my-models", "my-models:models", ":/models"])
+def test_server_deploy_bad_volume(servicer, set_env_client, volume_spec):
+    res = run_cli_command(
+        ["server", "deploy", "--image", "docker.io/nginx", "--port", "80", "--volume", volume_spec],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "NAME:/absolute/path" in res.stderr
+
+
+@pytest.mark.parametrize(
+    "bad_option",
+    [
+        ["--env-var", "NOPE"],
+        ["--volume", "my-models"],
+        ["--secret-from-env", "MODAL_TEST_UNSET_VAR"],
+        ["--app-name", ""],
+        ["--app-name", "not a valid name"],
+        ["--target-concurrency", "0"],
+        ["--target-concurrency", "nan"],
+        ["--max-concurrency", "0"],
+        ["--max-containers", "0"],
+        ["--cpu", "4,2"],
+        ["--cpu", "1,2,3"],
+        ["--memory", "0"],
+    ],
+)
+def test_server_deploy_rejects_bad_options_before_contacting_modal(servicer, set_env_client, bad_option):
+    with servicer.intercept() as ctx:
+        run_cli_command(
+            ["server", "deploy", "--image", "my-image:v1", "--port", "80", *bad_option],
+            expected_exit_code=2,
+            expected_stderr=None,
+        )
+
+    assert ctx.calls == []
+
+
+@pytest.mark.parametrize("sessioned", [False, True])
+def test_server_deploy_sessioned(servicer, set_env_client, sessioned):
+    args = ["server", "deploy", "--image", "docker.io/nginx", "--port", "80"]
+    run_cli_command([*args, "--sessioned"] if sessioned else args)
+
+    function_def = _deployed_server_def(servicer)
+    assert function_def.is_sessioned is sessioned
+    assert function_def.http_config.HasField("lift_and_shift_config")
 
 
 def test_service_users_cli(set_env_client):

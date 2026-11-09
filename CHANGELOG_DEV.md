@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Added `modal server deploy` to deploy a container image that serves HTTP as a Server, without writing any Python. See `modal server deploy --help` for options.
 - Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
 - Function parameters annotated as `X | None` / `Optional[X]` are now recorded with the type of `X` in the Function schema, so the dashboard's Try it form accepts input for them.
 - Python 3.10 support is deprecated and will be removed in Modal 1.7.0. The client now warns when imported on Python 3.10 and when building an Image that uses Python 3.10.

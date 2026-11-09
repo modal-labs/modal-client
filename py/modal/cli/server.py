@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import dataclasses
 import json as json_lib
+import math
+import os
+import shlex
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import PurePosixPath
 from typing import AsyncGenerator, Sequence, cast
 
 import click
@@ -15,17 +19,24 @@ from rich.table import Column, Table
 from rich.text import Text
 
 from modal._environments import ensure_env
+from modal._image import _Image, _upgrade_image_name
 from modal._logs import _fetch_time_range, _seconds_to_timestamp, _timestamp_to_seconds
 from modal._object import _get_environment_name
-from modal._server import _Server
+from modal._partial_function import _sessioned
+from modal._server import _DirectServerCls, _Server
 from modal._utils.async_utils import async_map_ordered, synchronizer
+from modal._utils.name_utils import is_valid_object_name
 from modal._utils.time_utils import parse_duration, timestamp_to_localized_str
+from modal.app import _App
 from modal.cli.utils import humanize_filesize
 from modal.client import _Client
-from modal.exception import LogsFetchError, NotFoundError
+from modal.cloud_bucket_mount import _CloudBucketMount
+from modal.exception import InvalidError, LogsFetchError, NotFoundError
 from modal.output import OutputManager
+from modal.runner import _deploy_app
 from modal.secret import _Secret
 from modal.types import ServerAutoscalerSettings
+from modal.volume import _Volume
 from modal_proto import api_pb2
 
 from ._help import ModalGroup
@@ -50,13 +61,16 @@ from ._stats import (
 from .utils import (
     HEADER_ONLY,
     _resolve_function_id,
+    _stream_app_logs,
+    confirm_or_suggest_yes,
     display_table,
     env_option,
     grouped_utc_timestamp,
     parse_int,
+    yes_option,
 )
 
-server_cli = ModalGroup(name="server", help="Inspect Modal Servers.")
+server_cli = ModalGroup(name="server", help="Deploy and inspect Modal Servers.")
 
 _DEFAULT_REQUEST_TAIL = 10
 _MAX_REQUEST_TAIL = 1000
@@ -65,6 +79,554 @@ _MAX_REQUEST_FETCH = 1_000_000
 
 def _server_request_status_cell(status: int, no_color: bool = False) -> Text:
     return Text(str(status), style="red") if status >= 400 and not no_color else Text(str(status))
+
+
+# Deploying from an image declares exactly one Server per App, so it always gets this name.
+_SERVER_NAME = "Server"
+
+
+async def _resolve_image(
+    image_ref: str,
+    environment_name: str,
+    registry_secret: _Secret | None,
+    registry_secret_flag: str,
+    force_build: bool,
+) -> _Image:
+    """A published Modal Image with this name, or else the registry image it references."""
+    client = await _Client.from_env()
+    try:
+        tag = _upgrade_image_name(image_ref, fallback_environment_name=environment_name)
+        response = await client._stub.ImageGetByTag(api_pb2.ImageGetByTagRequest(tag=tag))
+    except (NotFoundError, InvalidError):
+        pass
+    else:
+        if registry_secret is not None:
+            raise click.BadParameter(
+                f"only applies to registry images, but '{image_ref}' is a published Modal Image.",
+                param_hint=registry_secret_flag,
+            )
+        if force_build:
+            raise click.BadParameter(
+                f"only applies to registry images, but '{image_ref}' is a published Modal Image.",
+                param_hint="--force-build",
+            )
+        # `from_id` returns the public `Image`, so translate it back for use in async code.
+        return cast(_Image, synchronizer._translate_in(_Image.from_id(response.image_id)))
+
+    host, separator, repository = image_ref.partition("/")
+    # A first component counts as a registry host only when it looks like one, which is how
+    # container tooling tells `docker.io/nginx` apart from the `library/nginx` shorthand.
+    if not separator or not repository or not ("." in host or ":" in host or host == "localhost"):
+        raise click.BadParameter(
+            f"'{image_ref}' is not a published Modal Image or a registry reference such as 'docker.io/nginx'.",
+            param_hint="--image",
+        )
+    return _Image.from_registry(image_ref, secret=registry_secret, force_build=force_build)
+
+
+def _infer_app_name(image_ref: str) -> str:
+    """The image's repository name without its registry, namespace, tag, or digest."""
+    app_name = image_ref.partition("@")[0].rpartition("/")[2].partition(":")[0]
+    if not is_valid_object_name(app_name):
+        raise UsageError(f"Cannot infer an App name from '{image_ref}'; pass one with --app-name.")
+    return app_name
+
+
+def _parse_env_vars(env_vars: tuple[str, ...]) -> dict[str, str | None]:
+    parsed: dict[str, str | None] = {}
+    for env_var in env_vars:
+        key, separator, value = env_var.partition("=")
+        if not key or not separator:
+            raise click.BadParameter("must use KEY=VALUE", param_hint="--env-var")
+        parsed[key] = value
+    return parsed
+
+
+def _secret_from_env(keys_csv: str | None, flag: str) -> _Secret | None:
+    if keys_csv is None:
+        return None
+    keys = [key.strip() for key in keys_csv.split(",") if key.strip()]
+    if not keys:
+        raise click.BadParameter("must name at least one environment variable", param_hint=flag)
+    if missing := [key for key in keys if key not in os.environ]:
+        raise click.BadParameter(f"not set in the local environment: {', '.join(missing)}", param_hint=flag)
+    return _Secret.from_local_environ(keys)
+
+
+class _NumberOrNone(click.ParamType):
+    """A number in a range, or the string "none" for a setting's no-limit value."""
+
+    def __init__(self, number_type: click.FloatRange | click.IntRange, none_value: float | None, description: str):
+        # Typed as the base ParamType: convert() parses the raw CLI string, which the range types' stubs reject.
+        self.number_type: click.ParamType = number_type
+        self.none_value = none_value
+        self.description = description
+        self.name = f"{number_type.name} or none"
+
+    def convert(self, value, param, ctx):
+        if not isinstance(value, str):
+            return value
+        if value.strip().lower() == "none":
+            return self.none_value
+        try:
+            number = self.number_type.convert(value, param, ctx)
+        except click.BadParameter:
+            number = math.nan
+        if not math.isfinite(number):
+            self.fail(f"{value!r} is not {self.description}.", param, ctx)
+        return number
+
+
+class _RequestLimit(click.ParamType):
+    """A resource request, optionally followed by a comma and a hard limit."""
+
+    def __init__(self, number_type: click.FloatRange | click.IntRange):
+        # Typed as the base ParamType: convert() parses the raw CLI string, which the range types' stubs reject.
+        self.number_type: click.ParamType = number_type
+        self.name = f"{number_type.name}[,limit]"
+
+    def convert(self, value, param, ctx):
+        if not isinstance(value, str):
+            return value
+        parts = [part.strip() for part in value.split(",")]
+        if len(parts) > 2:
+            self.fail(f"{value!r} must be REQUEST or REQUEST,LIMIT.", param, ctx)
+        numbers = [self.number_type.convert(part, param, ctx) for part in parts]
+        if not all(math.isfinite(number) for number in numbers):
+            self.fail(f"{value!r} must be finite.", param, ctx)
+        if len(numbers) == 1:
+            return numbers[0]
+        request, limit = numbers
+        if limit < request:
+            self.fail(f"limit {limit} is lower than request {request}.", param, ctx)
+        return (request, limit)
+
+
+class _GpuRequest(click.ParamType):
+    """A GPU type, or a comma-separated list of GPU types to fall back through in order."""
+
+    name = "gpu"
+
+    def convert(self, value, param, ctx):
+        if not isinstance(value, str):
+            return value
+        gpus = [gpu.strip() for gpu in value.split(",")]
+        if not all(gpus):
+            self.fail(f"{value!r} must be GPU or GPU,FALLBACK,... with no empty entries.", param, ctx)
+        return gpus[0] if len(gpus) == 1 else gpus
+
+
+def _parse_volume_specs(volumes: tuple[str, ...]) -> dict[str, str]:
+    """The Volume names by mount path."""
+    parsed: dict[str, str] = {}
+    for volume_spec in volumes:
+        name, separator, mount_path = volume_spec.partition(":")
+        if not name or not separator or not mount_path.startswith("/"):
+            raise click.BadParameter("must use NAME:/absolute/path", param_hint="--volume")
+        path = str(PurePosixPath(mount_path))
+        if path in parsed:
+            raise click.BadParameter(f"more than one Volume is mounted at {path}", param_hint="--volume")
+        parsed[path] = name
+    return parsed
+
+
+async def _resolve_volumes(
+    volume_names: dict[str, str], environment_name: str
+) -> tuple[dict[str | PurePosixPath, _Volume | _CloudBucketMount], list[str]]:
+    """The Volume mounts by path, and the names of Volumes that deploying will create."""
+    resolved: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {}
+    missing: list[str] = []
+    for mount_path, name in volume_names.items():
+        volume = _Volume.from_name(name, environment_name=environment_name)
+        try:
+            await volume.hydrate()
+        except NotFoundError:
+            volume = _Volume.from_name(name, environment_name=environment_name, create_if_missing=True)
+            missing.append(name)
+        resolved[mount_path] = volume
+    return resolved, missing
+
+
+@server_cli.command(
+    "deploy",
+    no_args_is_help=True,
+)
+@click.option(
+    "--image",
+    "image_ref",
+    required=True,
+    help=(
+        "Container image including its registry, e.g. 'docker.io/nginx', "
+        "or the name of a published Modal Image, e.g. 'my-image:v1'."
+    ),
+)
+@click.option("--port", required=True, type=int, help="Port the server listens on inside the container.")
+@click.option(
+    "--registry-secret",
+    "registry_secret_name",
+    default=None,
+    help=(
+        "Name of a Modal Secret with credentials for pulling a private registry image. Its keys select the kind "
+        "of authentication: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION (optionally "
+        "AWS_SESSION_TOKEN), or AWS_ROLE_ARN and AWS_REGION, for AWS ECR; SERVICE_ACCOUNT_JSON for GCP; or "
+        "REGISTRY_USERNAME and REGISTRY_PASSWORD for any other registry."
+    ),
+)
+@click.option(
+    "--registry-secret-from-env",
+    "registry_secret_env_keys",
+    default=None,
+    metavar="KEYS",
+    help=(
+        "Comma-separated names of local environment variables whose values are used to pull a private "
+        "registry image, e.g. REGISTRY_USERNAME,REGISTRY_PASSWORD. Accepts the same keys as --registry-secret."
+    ),
+)
+@click.option(
+    "--force-build",
+    is_flag=True,
+    default=False,
+    help=(
+        "Pull the registry image again instead of using a cached pull, e.g. after its tag is updated. "
+        "Later builds from the same image reference also use the new pull."
+    ),
+)
+@click.option(
+    "--entrypoint",
+    default=None,
+    help=(
+        "Override the image's ENTRYPOINT, which also clears its CMD unless --cmd is given. "
+        "--cmd is appended as arguments, e.g. --entrypoint 'python -m' --cmd 'http.server 8000'."
+    ),
+)
+@click.option(
+    "--cmd",
+    default=None,
+    help=(
+        "Command to start the server, overriding the image's CMD, e.g. 'python -m http.server 8000'. "
+        "Split into arguments with shell quoting rules, so quote an argument that contains spaces, "
+        "e.g. --cmd 'sh -c \"python -m http.server 8000\"'."
+    ),
+)
+@click.option(
+    "--env-var",
+    "env_vars",
+    multiple=True,
+    metavar="KEY=VALUE",
+    help="Set an environment variable in the container, e.g. LOG_LEVEL=debug. Repeatable.",
+)
+@click.option(
+    "--secret",
+    "secret_names",
+    multiple=True,
+    help=(
+        "Name of a Modal Secret whose keys are set as environment variables in the running container. "
+        "Repeatable. Unlike --registry-secret, it is not used to pull the image."
+    ),
+)
+@click.option(
+    "--secret-from-env",
+    "secret_env_keys",
+    default=None,
+    metavar="KEYS",
+    help=(
+        "Comma-separated names of local environment variables whose values are set as environment variables "
+        "in the running container, e.g. API_KEY,API_TOKEN. Unlike --registry-secret-from-env, they are not "
+        "used to pull the image."
+    ),
+)
+@click.option(
+    "--volume",
+    "volume_specs",
+    multiple=True,
+    metavar="NAME:PATH",
+    help="Mount a Modal Volume at an absolute path in the container, creating it if needed. Repeatable.",
+)
+@click.option(
+    "--cpu",
+    default=None,
+    type=_RequestLimit(click.FloatRange(min=0, min_open=True)),
+    metavar="CORES[,LIMIT]",
+    help=(
+        "CPU cores to request, which may be fractional, e.g. 2. Add a comma and a hard limit to also cap usage, "
+        "e.g. 2,4."
+    ),
+)
+@click.option(
+    "--memory",
+    default=None,
+    type=_RequestLimit(click.IntRange(min=1)),
+    metavar="MIB[,LIMIT]",
+    help="Memory in MiB to request, e.g. 4096. Add a comma and a hard limit to also cap usage, e.g. 4096,8192.",
+)
+@click.option(
+    "--gpu",
+    default=None,
+    type=_GpuRequest(),
+    metavar="GPU[,FALLBACK...]",
+    help=(
+        "GPU request, e.g. 'A100' or 'H100:8'. Pass a comma-separated list to fall back to the next GPU type "
+        "when the earlier ones are unavailable, e.g. 'H100,A100'."
+    ),
+)
+@click.option(
+    "--region",
+    "routing_region",
+    default="us-east",
+    show_default=True,
+    help="Region where Server requests enter Modal before reaching a container.",
+)
+@click.option(
+    "--unauthenticated",
+    is_flag=True,
+    default=False,
+    help=(
+        "Accept requests without credentials. By default, requests must carry a workspace proxy token in "
+        "Modal-Key and Modal-Secret headers; see 'modal workspace proxy-tokens'."
+    ),
+)
+@click.option(
+    "--h2",
+    "h2_enabled",
+    is_flag=True,
+    default=False,
+    help="Forward requests to the container over HTTP/2. The server must accept cleartext HTTP/2 (h2c) on --port.",
+)
+@click.option(
+    "--sessioned",
+    is_flag=True,
+    default=False,
+    help=(
+        "Enable sticky sessions. Clients start a session with 'Server.sessions.start()' and send its token in "
+        "a 'Modal-Authorization: Bearer <token>' header; requests with the same token reach the same container."
+    ),
+)
+@click.option(
+    "--target-concurrency",
+    default=None,
+    type=_NumberOrNone(click.FloatRange(min=0, min_open=True), 0.0, "a positive number or 'none'"),
+    metavar="FLOAT|none",
+    help=(
+        "Concurrent requests each container aims to handle before scaling up. May be fractional. "
+        "'none' keeps the server on a single container."
+    ),
+)
+@click.option(
+    "--max-concurrency",
+    default=None,
+    type=_NumberOrNone(click.IntRange(min=1), 0, "a positive integer or 'none'"),
+    metavar="INTEGER|none",
+    help="Maximum concurrent requests per container; requests above it receive a 429. 'none' means unlimited.",
+)
+@click.option("--min-containers", default=None, type=int, help="Minimum number of containers to keep warm.")
+@click.option(
+    "--max-containers",
+    default=None,
+    type=_NumberOrNone(click.IntRange(min=1), None, "a positive integer or 'none'"),
+    metavar="INTEGER|none",
+    help="Maximum number of containers. 'none' means bounded only by your workspace's container limit.",
+)
+@click.option("--buffer-containers", default=None, type=int, help="Additional idle containers under active load.")
+@click.option(
+    "--scaleup-window", default=None, type=int, help="Seconds of sustained demand before scaling up containers."
+)
+@click.option(
+    "--scaledown-window", default=None, type=int, help="Maximum seconds idle containers wait before scaling down."
+)
+@click.option(
+    "--startup-timeout",
+    default=30,
+    type=int,
+    show_default=True,
+    help="Maximum container startup time in seconds.",
+)
+@click.option(
+    "--exit-grace-period",
+    default=0,
+    type=int,
+    show_default=True,
+    help="Seconds to let in-flight requests finish on container shutdown.",
+)
+@click.option(
+    "--app-name",
+    default=None,
+    help="App to deploy under. Defaults to the image's repository name, e.g. 'api' for 'ghcr.io/org/api:v2'.",
+)
+@click.option("--stream-logs", is_flag=True, default=False, help="Stream logs from the Server upon deployment.")
+@yes_option
+@env_option
+@synchronizer.create_blocking
+async def deploy(
+    image_ref: str,
+    port: int,
+    app_name: str | None = None,
+    registry_secret_name: str | None = None,
+    registry_secret_env_keys: str | None = None,
+    force_build: bool = False,
+    entrypoint: str | None = None,
+    cmd: str | None = None,
+    routing_region: str = "us-east",
+    startup_timeout: int = 30,
+    exit_grace_period: int = 0,
+    unauthenticated: bool = False,
+    h2_enabled: bool = False,
+    cpu: float | tuple[float, float] | None = None,
+    memory: int | tuple[int, int] | None = None,
+    gpu: str | list[str] | None = None,
+    secret_names: tuple[str, ...] = (),
+    secret_env_keys: str | None = None,
+    env_vars: tuple[str, ...] = (),
+    volume_specs: tuple[str, ...] = (),
+    target_concurrency: float | None = None,
+    max_concurrency: int | None = None,
+    min_containers: int | None = None,
+    max_containers: int | None = None,
+    buffer_containers: int | None = None,
+    scaleup_window: int | None = None,
+    scaledown_window: int | None = None,
+    sessioned: bool = False,
+    stream_logs: bool = False,
+    *,
+    yes: bool = False,
+    env: str | None = None,
+) -> None:
+    """Deploy a container image as a Server.
+
+    Runs an existing container image on Modal without writing any Python. ``--image`` is either a
+    container image reference that includes its registry, such as ``docker.io/nginx``, or the
+    name of a Modal Image published with ``modal image build`` or ``Image.publish()``, such as
+    ``my-image:v1``. A published Modal Image takes precedence over a registry image with the
+    same reference. The image needs no Python and no Modal client; it only has to serve HTTP
+    on ``--port``.
+    The server is started by the image's own ENTRYPOINT and CMD; ``--entrypoint`` and ``--cmd``
+    override them.
+
+    A registry image is pulled once and reused by later deploys of the same reference. If a
+    tag such as ``latest`` changes in the registry, pass ``--force-build`` to pull it again,
+    or reference the image by digest.
+
+    The Server is named "Server" and deployed under the App given by ``--app-name``, which
+    defaults to the image's repository name without its tag, so deploying a new tag of an
+    image updates the same App. For example, ``ghcr.io/org/api:v2`` and ``ghcr.io/org/api:v3``
+    both deploy to the App ``api``. Other ``modal server`` commands refer to it as
+    ``APP_NAME/Server``, e.g. ``modal server logs api/Server``. Redeploying an App that is
+    already deployed asks for confirmation first unless ``--yes`` is given. Without an
+    interactive terminal, such as in CI, redeploying aborts unless ``--yes`` is given.
+
+    Examples:
+
+    Deploy a public image that starts its server through its own ENTRYPOINT and CMD:
+
+    ```
+    modal server deploy --image docker.io/nginx --port 80 --unauthenticated
+    ```
+
+    Deploy a private image with GPU, a Secret, a Volume, and an environment variable:
+
+    ```
+    modal server deploy --image my-registry.com/api:v2 --port 8000 \\
+        --registry-secret my-registry-creds --gpu A100 --secret my-api-keys \\
+        --volume my-models:/models --env-var LOG_LEVEL=debug
+    ```
+
+    Deploy an AWS ECR image with registry credentials and an API key taken from the local
+    environment:
+
+    ```
+    modal server deploy --image 123456789012.dkr.ecr.us-east-1.amazonaws.com/api:v2 --port 8000 \\
+        --registry-secret-from-env AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION \\
+        --secret-from-env OPENAI_API_KEY
+    ```
+
+    Deploy an image with a custom entrypoint and command:
+
+    ```
+    modal server deploy --image docker.io/python:3.12 --port 8000 \\
+        --entrypoint "python -m" --cmd "http.server 8000"
+    ```
+
+    Build a Dockerfile in the current directory into a named Modal Image, then deploy it:
+
+    ```
+    modal image build -t my-image:v1 .
+    modal server deploy --image my-image:v1 --port 8000
+    ```
+    """
+    env = ensure_env(env)
+
+    # Validate local input before any request to Modal.
+    parsed_env_vars = _parse_env_vars(env_vars)
+    volume_names = _parse_volume_specs(volume_specs)
+    env_secret = _secret_from_env(secret_env_keys, "--secret-from-env")
+    if app_name is not None and not is_valid_object_name(app_name):
+        raise click.BadParameter(f"'{app_name}' is not a valid App name.", param_hint="--app-name")
+    if registry_secret_name and registry_secret_env_keys:
+        raise UsageError("--registry-secret and --registry-secret-from-env cannot be used together.")
+    if registry_secret_name:
+        registry_secret = _Secret.from_name(registry_secret_name, environment_name=env)
+        registry_secret_flag = "--registry-secret"
+    else:
+        registry_secret_flag = "--registry-secret-from-env"
+        registry_secret = _secret_from_env(registry_secret_env_keys, registry_secret_flag)
+    image = await _resolve_image(image_ref, env, registry_secret, registry_secret_flag, force_build)
+    inferred_app_name = app_name is None
+    if app_name is None:
+        app_name = _infer_app_name(image_ref)
+    if entrypoint is not None:
+        image = image.entrypoint(shlex.split(entrypoint))
+    if cmd is not None:
+        image = image.cmd(shlex.split(cmd))
+    secrets = [_Secret.from_name(secret_name, environment_name=env) for secret_name in secret_names]
+    if env_secret:
+        secrets.append(env_secret)
+    volumes, missing_volumes = await _resolve_volumes(volume_names, env)
+
+    client = await _Client.from_env()
+    existing = await client._stub.AppGetByDeploymentName(
+        api_pb2.AppGetByDeploymentNameRequest(name=app_name, environment_name=env)
+    )
+    if existing.app_id and not yes:
+        msg = f"App '{app_name}' is already deployed. Redeploying replaces everything in it with this Server."
+        if inferred_app_name:
+            msg += " Pass --app-name to deploy under a different name."
+        confirm_or_suggest_yes(f"{msg} Do you want to redeploy it?")
+    for volume_name in missing_volumes:
+        OutputManager.get().print(f"Creating Volume '{volume_name}', which does not exist yet.")
+
+    app = _App(app_name)
+    app.server(
+        image=image,
+        name=_SERVER_NAME,
+        port=port,
+        routing_region=routing_region,
+        startup_timeout=startup_timeout,
+        exit_grace_period=exit_grace_period,
+        unauthenticated=unauthenticated,
+        h2_enabled=h2_enabled,
+        cpu=cpu,
+        memory=memory,
+        gpu=gpu,
+        secrets=secrets,
+        env=parsed_env_vars,
+        volumes=volumes,
+        target_concurrency=target_concurrency,
+        max_concurrency=max_concurrency,
+        min_containers=min_containers,
+        max_containers=max_containers,
+        buffer_containers=buffer_containers,
+        scaleup_window=scaleup_window,
+        scaledown_window=scaledown_window,
+        include_source=False,
+    )(_sessioned()(_DirectServerCls) if sessioned else _DirectServerCls)
+
+    res = await _deploy_app(app, name=app_name, environment_name=env or "")
+
+    if stream_logs:
+        await _stream_app_logs(
+            app_id=res.app_id,
+            app_logs_url=res.app_logs_url,
+            follow=True,
+        )
 
 
 async def _run_server_logs(

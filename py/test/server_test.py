@@ -11,7 +11,7 @@ import aiohttp.web
 
 import modal
 from modal._serialization import deserialize
-from modal._server import _Server, _ServerSessionsManager
+from modal._server import _DirectServerCls, _Server, _ServerSessionsManager
 from modal._utils.async_utils import synchronizer
 from modal._utils.http_utils import ClientSessionRegistry, run_temporary_http_server
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
@@ -1057,6 +1057,68 @@ def test_server_http_config_parameters(client, servicer):
         assert function_def.http_config.startup_timeout == 30
         assert function_def.http_config.exit_grace_period == 0
         assert function_def.http_config.h2_enabled is False
+
+
+def test_server_lift_and_shift_config(client, servicer):
+    """Test that a direct server sends a lift and shift config."""
+    app = modal.App("server-lift-and-shift-test", include_source=False)
+
+    server = app.server(name="LiftAndShiftServer", port=8000, routing_region="us-east")(_DirectServerCls)
+    assert isinstance(server, Server)
+
+    with app.run(client=client):
+        service_function = server._get_service_function()  # type: ignore[attr-defined]
+        function_def = servicer.app_functions[service_function.object_id]
+
+        assert function_def.function_name == "LiftAndShiftServer"
+        assert function_def.http_config.HasField("lift_and_shift_config")
+        assert not function_def.mount_ids
+
+
+def test_server_lift_and_shift_config_unset_with_enter(client, servicer):
+    """Test that no lift and shift config is sent when `@modal.enter()` starts the server."""
+    app = modal.App("server-no-lift-and-shift-test", include_source=False)
+
+    @app.server(port=8000, routing_region="us-east", serialized=True)
+    class NoLiftAndShiftServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        service_function = NoLiftAndShiftServer._get_service_function()  # type: ignore[attr-defined]
+        function_def = servicer.app_functions[service_function.object_id]
+
+        assert not function_def.http_config.HasField("lift_and_shift_config")
+        assert function_def.mount_ids
+
+
+def test_server_lift_and_shift_config_unset_with_snap_enter(client, servicer):
+    """Test that an `@modal.enter(snap=True)` server sends no lift and shift config."""
+    app = modal.App("server-snap-lift-and-shift-test", include_source=False)
+
+    @app.server(port=8000, routing_region="us-east", serialized=True, enable_memory_snapshot=True)
+    class SnapLiftAndShiftServer:
+        @modal.enter(snap=True)
+        def pre_snapshot(self):
+            pass
+
+    with app.run(client=client):
+        service_function = SnapLiftAndShiftServer._get_service_function()  # type: ignore[attr-defined]
+        function_def = servicer.app_functions[service_function.object_id]
+
+        assert not function_def.http_config.HasField("lift_and_shift_config")
+
+
+def test_server_without_enter_requires_direct():
+    """Test that a server class without `@modal.enter()` is rejected."""
+    app = modal.App("server-without-enter-test", include_source=False)
+
+    with pytest.raises(InvalidError, match=r"must have an @modal\.enter\(\)"):
+
+        @app.server(port=8000, routing_region="us-east", serialized=True)
+        class NoEnterServer:
+            pass
 
 
 # =============================================================================

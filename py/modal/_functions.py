@@ -744,6 +744,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         experimental_options: dict[str, str] | None = None,
         restrict_output: bool = False,
         http_config: api_pb2.HTTPConfig | None = None,
+        include_client_mounts: bool = True,
     ) -> "_Function":
         """mdmd:hidden
 
@@ -787,7 +788,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         entrypoint_mount = info.get_entrypoint_mount() if include_source else {}
         all_mounts = [
-            _get_client_mount(),
+            *([_get_client_mount()] if include_client_mounts else []),
             *entrypoint_mount.values(),
         ]
 

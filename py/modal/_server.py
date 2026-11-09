@@ -62,6 +62,10 @@ def validate_http_server_config(
         raise InvalidError("The `proxy_regions` argument must be non-empty.")
 
 
+class _DirectServerCls:
+    """Placeholder class for a direct Server, which is started by its Image's own command."""
+
+
 class _Server:
     """Server runs an HTTP server started in an `@modal.enter` method.
 
@@ -390,7 +394,7 @@ class _Server:
 
     @staticmethod
     def _validate_wrapped_user_cls_decorators(
-        wrapped_user_cls: "type | _PartialFunction", enable_memory_snapshot: bool
+        wrapped_user_cls: "type | _PartialFunction", enable_memory_snapshot: bool, direct: bool = False
     ):
         user_cls = _Server._extract_user_cls(wrapped_user_cls)
 
@@ -405,9 +409,11 @@ class _Server:
                 "Servers do not support parameterization."
             )
 
-        if not _find_partial_methods_for_user_cls(
-            user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
-        ) and not _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
+        if (
+            not direct
+            and not _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+            and not _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
+        ):
             raise InvalidError("Server class must have an @modal.enter() to setup the server.")
 
         # Check for disallowed decorators
