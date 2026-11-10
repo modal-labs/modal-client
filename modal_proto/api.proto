@@ -793,8 +793,8 @@ message AppPublishResponse {
 
 message AppRequestCounts {
   uint64 total = 1;
-  uint64 ok_2xx = 2;
-  uint64 other = 3;  // All non-2xx responses, including status zero.
+  uint64 ok = 2;
+  uint64 failed = 3;  // All non-1xx, non-2xx, and non-3xx responses, including status zero.
 }
 
 message AppRollbackRequest {

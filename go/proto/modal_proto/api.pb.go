@@ -7963,8 +7963,8 @@ func (b0 AppPublishResponse_builder) Build() *AppPublishResponse {
 type AppRequestCounts struct {
 	state             protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Total  uint64                 `protobuf:"varint,1,opt,name=total,proto3"`
-	xxx_hidden_Ok_2Xx uint64                 `protobuf:"varint,2,opt,name=ok_2xx,json=ok2xx,proto3"`
-	xxx_hidden_Other  uint64                 `protobuf:"varint,3,opt,name=other,proto3"`
+	xxx_hidden_Ok     uint64                 `protobuf:"varint,2,opt,name=ok,proto3"`
+	xxx_hidden_Failed uint64                 `protobuf:"varint,3,opt,name=failed,proto3"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -8001,16 +8001,16 @@ func (x *AppRequestCounts) GetTotal() uint64 {
 	return 0
 }
 
-func (x *AppRequestCounts) GetOk_2Xx() uint64 {
+func (x *AppRequestCounts) GetOk() uint64 {
 	if x != nil {
-		return x.xxx_hidden_Ok_2Xx
+		return x.xxx_hidden_Ok
 	}
 	return 0
 }
 
-func (x *AppRequestCounts) GetOther() uint64 {
+func (x *AppRequestCounts) GetFailed() uint64 {
 	if x != nil {
-		return x.xxx_hidden_Other
+		return x.xxx_hidden_Failed
 	}
 	return 0
 }
@@ -8019,20 +8019,20 @@ func (x *AppRequestCounts) SetTotal(v uint64) {
 	x.xxx_hidden_Total = v
 }
 
-func (x *AppRequestCounts) SetOk_2Xx(v uint64) {
-	x.xxx_hidden_Ok_2Xx = v
+func (x *AppRequestCounts) SetOk(v uint64) {
+	x.xxx_hidden_Ok = v
 }
 
-func (x *AppRequestCounts) SetOther(v uint64) {
-	x.xxx_hidden_Other = v
+func (x *AppRequestCounts) SetFailed(v uint64) {
+	x.xxx_hidden_Failed = v
 }
 
 type AppRequestCounts_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Total  uint64
-	Ok_2Xx uint64
-	Other  uint64
+	Ok     uint64
+	Failed uint64
 }
 
 func (b0 AppRequestCounts_builder) Build() *AppRequestCounts {
@@ -8040,8 +8040,8 @@ func (b0 AppRequestCounts_builder) Build() *AppRequestCounts {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Total = b.Total
-	x.xxx_hidden_Ok_2Xx = b.Ok_2Xx
-	x.xxx_hidden_Other = b.Other
+	x.xxx_hidden_Ok = b.Ok
+	x.xxx_hidden_Failed = b.Failed
 	return m0
 }
 
@@ -79121,11 +79121,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x12>\n" +
 	"\x0fserver_warnings\x18\x03 \x03(\v2\x15.modal.client.WarningR\x0eserverWarnings\x12\x1f\n" +
 	"\vdeployed_at\x18\x04 \x01(\x01R\n" +
-	"deployedAt\"U\n" +
+	"deployedAt\"P\n" +
 	"\x10AppRequestCounts\x12\x14\n" +
-	"\x05total\x18\x01 \x01(\x04R\x05total\x12\x15\n" +
-	"\x06ok_2xx\x18\x02 \x01(\x04R\x05ok2xx\x12\x14\n" +
-	"\x05other\x18\x03 \x01(\x04R\x05other\"E\n" +
+	"\x05total\x18\x01 \x01(\x04R\x05total\x12\x0e\n" +
+	"\x02ok\x18\x02 \x01(\x04R\x02ok\x12\x16\n" +
+	"\x06failed\x18\x03 \x01(\x04R\x06failed\"E\n" +
 	"\x12AppRollbackRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x05R\aversion\"\x88\x01\n" +
