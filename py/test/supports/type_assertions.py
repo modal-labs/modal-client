@@ -10,9 +10,17 @@ from modal.partial_function import method
 from modal.queue import Queue, QueueManager
 from modal.sandbox import SidecarContainer
 from modal.secret import Secret, SecretManager
+from modal.types import AppStats
 from modal.volume import AbstractVolumeUploadContextManager, Volume, VolumeManager
 
 app = modal.App()
+
+app_stats = app.stats()
+assert_type(app_stats, AppStats)
+assert_type(app_stats.functions["embed"], AppStats.FunctionStats)
+assert_type(app_stats.servers["gateway"], AppStats.ServerStats)
+assert_type(app_stats.servers.total.containers, AppStats.ContainerCounts)
+assert_type(app_stats.deployment_count, typing.Optional[int])
 
 
 @app.function()

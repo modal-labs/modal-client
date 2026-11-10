@@ -4,6 +4,8 @@ import sys
 import time
 import warnings
 from collections.abc import Mapping
+from dataclasses import asdict
+from datetime import datetime, timezone
 from json import dumps
 from typing import Literal, get_args
 
@@ -11,6 +13,7 @@ import click
 import rich
 from click import ClickException, UsageError
 from google.protobuf.json_format import MessageToDict
+from rich.box import SIMPLE
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -19,15 +22,26 @@ from modal._object import _get_environment_name
 from modal._traceback import print_server_warnings
 from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
+from modal._utils.time_utils import relative_timestamp
+from modal.app import _App
 from modal.client import _Client
 from modal.exception import InvalidError, NotFoundError
 from modal.output import OutputManager
 from modal.runner import DEPLOYMENT_STRATEGY_TYPE, _stop_and_wait_for_containers
+from modal.types import AppState, AppStats
 from modal_proto import api_pb2
 
 from .._utils.time_utils import timestamp_to_localized_str
 from ._help import ModalGroup
-from ._logs import _run_logs_command, _validate_logs_args
+from ._logs import _parse_time_arg, _run_logs_command, _validate_logs_args
+from ._stats import (
+    _DEFAULT_STATS_WINDOW,
+    STATS_HEADING_STYLE,
+    STATS_METADATA_STYLE,
+    STATS_SECTION_STYLE,
+    problem_style,
+    stats_style,
+)
 from .utils import (
     HEADER_ONLY,
     confirm_or_suggest_yes,
@@ -408,6 +422,93 @@ async def stop(
     await client._stub.AppStop(req)
 
 
+def _app_stats_failure(failed: int, total: int, use_color: bool) -> Text:
+    label = f"{failed / total:.1%}" if total else "—"
+    return Text(label, style=problem_style(failed, total, use_color) or "")
+
+
+def _app_stats_has_data(counts: AppStats.FunctionCounts | AppStats.ServerCounts) -> bool:
+    traffic = counts.requests if isinstance(counts, AppStats.ServerCounts) else counts.calls
+    return any(asdict(traffic).values()) or any(asdict(counts.containers).values())
+
+
+def _app_stats_cells(
+    counts: AppStats.FunctionCounts | AppStats.ServerCounts, use_color: bool
+) -> tuple[str, Text, str, str]:
+    traffic = counts.requests if isinstance(counts, AppStats.ServerCounts) else counts.calls
+    return (
+        f"{traffic.total:,}",
+        _app_stats_failure(traffic.failed, traffic.total, use_color),
+        f"{counts.containers.total:,}",
+        f"{counts.containers.errors:,}",
+    )
+
+
+def _app_stats_column_widths(result: AppStats) -> tuple[int, int, int, int, int]:
+    names = ["FUNCTIONS", "SERVERS", "SANDBOXES", *result.functions, *result.servers]
+    cells: list[tuple[str, Text, str, str]] = []
+    for group in (result.functions, result.servers):
+        cells.extend(_app_stats_cells(row.counts, False) for row in group.values())
+        cells.append(_app_stats_cells(group.total, False))
+    return (
+        max(Text(name).cell_len for name in names),
+        max(len("requests"), *(len(row[0]) for row in cells)),
+        max(len("failed"), *(row[1].cell_len for row in cells)),
+        max(len("containers"), *(len(row[2]) for row in cells)),
+        max(len("errors"), *(len(row[3]) for row in cells)),
+    )
+
+
+def _app_stats_table(
+    result: AppStats, *, servers: bool, use_color: bool, column_widths: tuple[int, int, int, int, int]
+) -> Table:
+    group: AppStats.ServerStatsGroup | AppStats.FunctionStatsGroup = result.servers if servers else result.functions
+    show_footer = len(group) > 1
+    table = Table(
+        box=SIMPLE,
+        show_edge=False,
+        pad_edge=False,
+        padding=(0, 1),
+        show_header=False,
+        show_footer=show_footer,
+        footer_style="",
+        border_style=stats_style(STATS_METADATA_STYLE, use_color),
+        header_style=stats_style(STATS_SECTION_STYLE, use_color),
+    )
+    footer = _app_stats_cells(group.total, use_color)
+    table.add_column("SERVERS" if servers else "FUNCTIONS", footer=Text("Total", style="bold"))
+    table.add_column("requests" if servers else "calls", justify="right", footer=footer[0])
+    table.add_column("failed", justify="right", footer=footer[1])
+    table.add_column("containers", justify="right", footer=footer[2])
+    table.add_column("errors", justify="right", footer=footer[3])
+    for column, width in zip(table.columns, column_widths):
+        column.width = width
+    table.add_row(*(column.header for column in table.columns), style=table.header_style)
+    rows: Mapping[str, AppStats.FunctionStats | AppStats.ServerStats] = group
+    for name, row in sorted(rows.items()):
+        table.add_row(Text(name), *_app_stats_cells(row.counts, use_color))
+    return table
+
+
+def _app_stats_header(identifier: str, result: AppStats, use_color: bool) -> Text:
+    lifecycle = result.lifecycle
+    if lifecycle.state == AppState.DEPLOYED:
+        label = "deployed"
+        if lifecycle.deployed_at is not None:
+            label += f" {relative_timestamp(lifecycle.deployed_at)}"
+        if lifecycle.version is not None:
+            label += f" (v{lifecycle.version})"
+    elif lifecycle.state in (AppState.EPHEMERAL, AppState.DETACHED):
+        label = f"running {relative_timestamp(lifecycle.created_at)}"
+    else:
+        label = lifecycle.state.value
+        if lifecycle.state == AppState.STOPPED and lifecycle.stopped_at is not None:
+            label += f" {relative_timestamp(lifecycle.stopped_at)}"
+    heading = Text(identifier, style=stats_style(STATS_HEADING_STYLE, use_color))
+    heading.append(f" · {label}", style=stats_style(STATS_METADATA_STYLE, use_color))
+    return heading
+
+
 @app_cli.command("info", panel="Inspection", no_args_is_help=True)
 @click.argument("app_identifier")
 @env_option
@@ -743,6 +844,121 @@ async def logs(
         timestamps=timestamps,
         prefix_fields=prefix_fields,
     )
+
+
+@app_cli.command("stats", panel="Inspection", no_args_is_help=True)
+@click.argument("app_identifier", metavar="APP")
+@click.option(
+    "--since", help="Inclusive start: an ISO 8601 datetime or relative time such as '2h'. Naive times are local."
+)
+@click.option("--until", help="Exclusive end: an ISO 8601 datetime or relative time such as '1h'. Defaults to now.")
+@click.option("--json", "json_output", is_flag=True, help="Output exact counts and lifecycle metadata as JSON.")
+@click.option("--no-color", is_flag=True, help="Disable colors in the output.")
+@env_option
+@synchronizer.create_blocking
+async def stats(
+    app_identifier: str,
+    since: str | None = None,
+    until: str | None = None,
+    json_output: bool = False,
+    no_color: bool = False,
+    *,
+    env: str | None = None,
+):
+    """Show aggregate statistics for an App name or ID.
+
+    If --since and --until are omitted, the stats are returned for the last hour.
+    The values of --since and --until can span at most seven days.
+
+    App stats show total call counts, request counts, and the count of active and errored containers in
+    the time window. The count of sandboxes that finished in the interval as well as the count
+    that were still running as of the end of the window is also returned.
+
+    The available stats and their definitions are subject to change and are provided
+    on a best-effort basis. They may be delayed or incomplete.
+
+    Examples:
+
+    Calculate App stats for the last four days
+
+    ```
+    modal app stats my-app --since 4d
+    ```
+
+    Calculate App stats for a three hour window ending two hours ago in json
+    ```
+    modal app stats ap-123 --since 5h --until 2h --json
+    ```
+    """
+    now = datetime.now(timezone.utc)
+    until_dt = _parse_time_arg(until, default=now, now=now)
+    since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW, now=now)
+    if since_dt >= until_dt:
+        raise UsageError("--since must be before --until.")
+    environment_name = _get_environment_name(ensure_env(env))
+    client = await _Client.from_env()
+    if re.fullmatch(r"ap-[a-zA-Z0-9]{22}", app_identifier):
+        app = _App._new_remote(None, app_identifier, environment_name, client)
+    else:
+        app_id, environment_name, _ = await resolve_app_identifier(app_identifier, environment_name, client)
+        app = _App._new_remote(app_identifier, app_id, environment_name, client)
+    result = await app.stats(since=since_dt, until=until_dt)
+    output = OutputManager.get()
+    if json_output:
+        lifecycle = result.lifecycle
+        output.print_json(
+            dumps(
+                {
+                    "app_id": app.app_id,
+                    "since": result.since.astimezone(timezone.utc).isoformat(),
+                    "until": result.until.astimezone(timezone.utc).isoformat(),
+                    "lifecycle": {
+                        "state": lifecycle.state.value,
+                        "version": lifecycle.version,
+                        "created_at": timestamp_to_localized_str(lifecycle.created_at.timestamp(), True),
+                        "created_by": lifecycle.created_by,
+                        "deployed_at": timestamp_to_localized_str(lifecycle.deployed_at.timestamp(), True)
+                        if lifecycle.deployed_at is not None
+                        else None,
+                        "deployed_by": lifecycle.deployed_by,
+                        "stopped_at": timestamp_to_localized_str(lifecycle.stopped_at.timestamp(), True)
+                        if lifecycle.stopped_at is not None
+                        else None,
+                        "stopped_by": lifecycle.stopped_by,
+                    },
+                    "functions": asdict(result.functions),
+                    "servers": asdict(result.servers),
+                    "sandboxes": asdict(result.sandboxes),
+                    "deployment_count": result.deployment_count,
+                }
+            )
+        )
+        return
+    use_color = not no_color
+    output.print(_app_stats_header(app_identifier, result, use_color))
+    window = f"{result.since:%Y-%m-%d %H:%M:%S} – {result.until:%Y-%m-%d %H:%M:%S} UTC"
+    if result.deployment_count is not None:
+        window += f" · {result.deployment_count:,} deployment{'s' if result.deployment_count != 1 else ''}"
+    output.print(Text(window, style=stats_style(STATS_METADATA_STYLE, use_color)))
+    output.print("")
+    column_widths = _app_stats_column_widths(result)
+    if _app_stats_has_data(result.functions.total):
+        output.print(_app_stats_table(result, servers=False, use_color=use_color, column_widths=column_widths))
+        output.print("")
+    if _app_stats_has_data(result.servers.total):
+        output.print(_app_stats_table(result, servers=True, use_color=use_color, column_widths=column_widths))
+        output.print("")
+    live_label = "live"
+    if until is not None:
+        live_label += f" as of {result.until.astimezone(timezone.utc):%Y-%m-%d %H:%M:%S UTC}"
+    sandboxes = Table.grid(padding=(0, 4))
+    sandboxes.add_column(width=column_widths[0])
+    sandboxes.add_column()
+    sandboxes.add_row(
+        Text("SANDBOXES", style=stats_style(STATS_SECTION_STYLE, use_color)),
+        Text(f"{result.sandboxes.live:,} {live_label} · {result.sandboxes.finished:,} finished"),
+    )
+    output.print(sandboxes)
 
 
 @app_cli.command("dashboard", panel="Inspection", no_args_is_help=True)

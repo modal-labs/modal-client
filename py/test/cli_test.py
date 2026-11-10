@@ -4246,6 +4246,380 @@ def square(x):
 """
 
 
+def _run_app_stats_cli(servicer, response, *options, identifier="my-app"):
+    with servicer.intercept() as ctx:
+        if identifier == "my-app":
+            ctx.add_response(
+                "AppGetByDeploymentName",
+                api_pb2.AppGetByDeploymentNameResponse(app_id="ap-aaaaaaaaaaaaaaaaaaaaaa", environment_name="other"),
+            )
+        ctx.add_response("AppGetTimeRangeStats", response)
+        result = run_cli_command(["app", "stats", identifier, *options])
+    return result, ctx
+
+
+def test_app_stats_cli(servicer, set_env_client, app_stats_response, monkeypatch):
+    result, ctx = _run_app_stats_cli(
+        servicer,
+        app_stats_response,
+        "--since",
+        "2026-10-19T12:00:00+00:00",
+        "--until",
+        "2026-10-19T13:00:00+00:00",
+        "--env",
+        "other",
+        "--no-color",
+    )
+    # assert len(calls) == 1
+    assert ctx.get_requests("AppGetInfo") == ctx.get_requests("AppGetLifecycle") == []
+    assert ctx.get_requests("AppGetOrCreate") == []
+    lookup = ctx.pop_request("AppGetByDeploymentName")
+    assert lookup.name == "my-app" and lookup.environment_name == "other"
+    request = ctx.pop_request("AppGetTimeRangeStats")
+    assert request.app_id == "ap-aaaaaaaaaaaaaaaaaaaaaa"
+    assert request.since == app_stats_response.since and request.until == app_stats_response.until
+    output = result.stdout
+    assert "my-app · deployed" in output and "(v42)" in output
+    assert "2026-10-19 12:00:00 – 2026-10-19 13:00:00 UTC" in output
+    assert "2 deployments" in output
+    assert "FUNCTIONS" in output and "SERVERS" in output and "containers" in output
+    assert "errors" in output
+    assert re.search(r"embed\s+60\s+5\.0%\s+4\s+1", output)
+    assert re.search(r"reindex\s+0\s+—\s+0\s+3", output)
+    assert re.search(r"Total\s+80\s+6\.2%\s+6\s+7", output)
+    assert re.search(r"gateway\s+80\s+2\.5%\s+3\s+1", output)
+    assert "2 live as of 2026-10-19 13:00:00 UTC · 5 finished" in output
+    assert "\x1b[" not in output
+    assert "spillover" not in output.lower()
+    lines = output.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith(("FUNCTIONS", "SERVERS")):
+            assert "─" not in lines[i + 1]
+        if line.startswith("Total"):
+            assert set(lines[i - 1]) == {"─"}
+            assert len(lines[i - 1]) == len(line)
+
+
+def test_app_stats_cli_stopped_app_by_name(servicer, set_env_client, app_stats_response):
+    response = app_stats_response
+    response.lifecycle.app_state = api_pb2.APP_STATE_STOPPED
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppGetByDeploymentName",
+            api_pb2.AppGetByDeploymentNameResponse(previous_app_id="ap-stopped", environment_name="other"),
+        )
+        ctx.add_response("AppGetTimeRangeStats", response)
+        result = run_cli_command(["app", "stats", "stopped-app", "--env", "other", "--no-color"])
+    assert "stopped-app · stopped" in result.stdout
+    assert ctx.pop_request("AppGetByDeploymentName").environment_name == "other"
+    assert ctx.pop_request("AppGetTimeRangeStats").app_id == "ap-stopped"
+    assert ctx.get_requests("AppGetOrCreate") == ctx.get_requests("AppGetLifecycle") == []
+
+
+def test_app_stats_cli_missing_app_by_name(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetByDeploymentName", api_pb2.AppGetByDeploymentNameResponse(environment_name="other"))
+        result = run_cli_command(["app", "stats", "missing-app", "--env", "other"], expected_exit_code=1)
+    assert isinstance(result.exception, NotFoundError)
+    assert "No App with name 'missing-app'" in str(result.exception)
+    assert ctx.get_requests("AppGetTimeRangeStats") == ctx.get_requests("AppGetOrCreate") == []
+
+
+def test_app_stats_cli_class_name_and_zero_calls(servicer, set_env_client, app_stats_response):
+    response = app_stats_response
+    response.functions.by_name.clear()
+    response.functions.total.Clear()
+    response.functions.total.containers.container_errors = 1
+    response.functions.by_name["MyCls.*"].CopyFrom(
+        api_pb2.AppFunctionStats(
+            object_id="fu-class",
+            counts=api_pb2.AppFunctionCounts(containers=api_pb2.AppContainerCounts(container_errors=1)),
+        )
+    )
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    section = result.stdout.split("FUNCTIONS")[1].split("SERVERS")[0]
+    assert re.search(r"MyCls\.\*\s+0\s+—\s+0\s+1", section)
+    assert not re.search(r"(?m)^Total\s+\d", section)
+    assert "— failed" not in result.stdout
+
+
+@pytest.mark.parametrize("name", ["MyCls.*", "a_long_function_name", "関数"])
+def test_app_stats_cli_column_alignment(servicer, set_env_client, app_stats_response, name):
+    from rich.cells import cell_len
+
+    response = app_stats_response
+    function = api_pb2.AppFunctionStats()
+    function.CopyFrom(response.functions.by_name["embed"])
+    del response.functions.by_name["embed"]
+    response.functions.by_name[name].CopyFrom(function)
+    server = api_pb2.AppServerStats()
+    server.CopyFrom(response.servers.by_name["gateway"])
+    del response.servers.by_name["gateway"]
+    response.servers.by_name["FileServer"].CopyFrom(server)
+    response.servers.by_name["FileServer"].counts.requests.total = 1_234_567_890
+    response.servers.by_name["FileServer"].counts.requests.ok = 1_234_567_888
+    response.servers.total.CopyFrom(response.servers.by_name["FileServer"].counts)
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    lines = result.stdout.splitlines()
+    functions = next(line for line in lines if line.startswith("FUNCTIONS"))
+    servers = next(line for line in lines if line.startswith("SERVERS"))
+    for label in ("failed", "containers", "errors"):
+        assert functions.index(label) == servers.index(label)
+    assert functions.index("calls") + len("calls") == servers.index("requests") + len("requests")
+    function_line = next(line for line in lines if line.startswith(name))
+    server_line = next(line for line in lines if line.startswith("FileServer"))
+    function_count_end = cell_len(function_line[: function_line.index("60") + 2])
+    server_count_end = cell_len(server_line[: server_line.index("1,234,567,890") + len("1,234,567,890")])
+    assert function_count_end == server_count_end
+    sandbox_line = next(line for line in lines if line.startswith("SANDBOXES"))
+    name_width = max(cell_len(n) for n in ["SANDBOXES", name, "ingest", "reindex", "FileServer"])
+    assert sandbox_line.index("2 live") == name_width + 4
+
+
+@pytest.mark.parametrize("deployment_count", [None, 0, 1])
+@pytest.mark.parametrize("stopped", [False, True])
+def test_app_stats_cli_json(servicer, set_env_client, app_stats_response, deployment_count, stopped, monkeypatch):
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone(timedelta(hours=-4)))
+    response = app_stats_response
+    if stopped:
+        response.lifecycle.deployed_at = 0
+        response.lifecycle.stopped_at = response.until.seconds
+        response.lifecycle.stopped_by = "stopper"
+    response.ClearField("deployment_count")
+    if deployment_count is not None:
+        response.deployment_count = deployment_count
+    response.functions.by_name["ingest"].counts.calls.CopyFrom(
+        api_pb2.AppCallCounts(total=2**60 - 59, succeeded=2**60 - 61, failed=2)
+    )
+    response.functions.total.calls.CopyFrom(api_pb2.AppCallCounts(total=2**60 + 1, succeeded=2**60 - 4, failed=5))
+    result, ctx = _run_app_stats_cli(servicer, response, "--json", identifier="ap-aaaaaaaaaaaaaaaaaaaaaa")
+    data = json.loads(result.stdout)
+    assert data["app_id"] == "ap-aaaaaaaaaaaaaaaaaaaaaa"
+    assert data["since"] == "2026-10-19T12:00:00+00:00"
+    assert data["until"] == "2026-10-19T13:00:00+00:00"
+    assert data["functions"]["total"] == {
+        "calls": {"total": 2**60 + 1, "succeeded": 2**60 - 4, "failed": 5},
+        "containers": {"errors": 7, "total": 6},
+    }
+    assert data["functions"]["by_name"]["embed"] == {
+        "object_id": "fu-embed",
+        "counts": {
+            "calls": {"total": 60, "succeeded": 57, "failed": 3},
+            "containers": {"errors": 1, "total": 4},
+        },
+    }
+    assert data["servers"]["total"] == {
+        "requests": {"total": 80, "ok": 78, "failed": 2},
+        "containers": {"errors": 1, "total": 3},
+    }
+    assert data["servers"]["by_name"]["gateway"] == {
+        "object_id": "fu-gateway",
+        "counts": {
+            "requests": {"total": 80, "ok": 78, "failed": 2},
+            "containers": {"errors": 1, "total": 3},
+        },
+    }
+    assert '"function_id"' not in result.stdout
+    assert data["sandboxes"] == {"total": 7, "finished": 5, "live": 2}
+    assert data["lifecycle"] == {
+        "state": "deployed",
+        "version": 42,
+        "created_at": "2026-10-16 08:00:00-04:00",
+        "created_by": "creator",
+        "deployed_at": None if stopped else "2026-10-17 08:00:00-04:00",
+        "deployed_by": "publisher",
+        "stopped_at": "2026-10-19 09:00:00-04:00" if stopped else None,
+        "stopped_by": "stopper" if stopped else None,
+    }
+    assert set(data) == {
+        "app_id",
+        "since",
+        "until",
+        "lifecycle",
+        "functions",
+        "servers",
+        "sandboxes",
+        "deployment_count",
+    }
+    assert data["deployment_count"] == deployment_count
+    assert "%" not in result.stdout
+    assert ctx.get_requests("AppGetInfo") == ctx.get_requests("AppGetLifecycle") == []
+    assert ctx.get_requests("AppGetByDeploymentName") == ctx.get_requests("AppGetOrCreate") == []
+
+
+@pytest.mark.parametrize(
+    "state", [api_pb2.APP_STATE_EPHEMERAL, api_pb2.APP_STATE_DETACHED, api_pb2.APP_STATE_DETACHED_DISCONNECTED]
+)
+def test_app_stats_cli_run_header(servicer, set_env_client, app_stats_response, state):
+    response = app_stats_response
+    response.lifecycle.app_state = state
+    response.ClearField("deployment_count")
+    result, _ = _run_app_stats_cli(servicer, response)
+    assert "my-app · running" in result.stdout
+    assert "v42" not in result.stdout and "deployment" not in result.stdout
+    assert "2026-10-19 12:00:00 – 2026-10-19 13:00:00 UTC" in result.stdout
+    assert "2 live · 5 finished" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "state,label",
+    [
+        (api_pb2.APP_STATE_STOPPED, "stopped"),
+        (api_pb2.APP_STATE_STOPPING, "stopping"),
+        (api_pb2.APP_STATE_DISABLED, "disabled"),
+        (api_pb2.APP_STATE_INITIALIZING, "initializing"),
+    ],
+)
+def test_app_stats_cli_other_lifecycle_states(servicer, set_env_client, app_stats_response, state, label):
+    app_stats_response.lifecycle.app_state = state
+    result, _ = _run_app_stats_cli(servicer, app_stats_response)
+    assert f"my-app · {label}" in result.stdout
+
+
+@pytest.mark.parametrize("servers", ["single", "multiple", "zero"])
+def test_app_stats_cli_server_footer(servicer, set_env_client, app_stats_response, servers):
+    response = app_stats_response
+    if servers in ("single", "multiple"):
+        response.servers.total.CopyFrom(response.servers.by_name["gateway"].counts)
+        if servers == "multiple":
+            response.servers.by_name["idle"].object_id = "fu-idle"
+    else:
+        response.servers.by_name.clear()
+        response.servers.total.Clear()
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    if servers == "zero":
+        assert "SERVERS" not in result.stdout
+        assert "SANDBOXES" in result.stdout
+        return
+    section = result.stdout.split("SERVERS")[1].split("SANDBOXES")[0]
+    lines = section.splitlines()
+    assert bool(re.search(r"(?m)^Total\s+\d", section)) == (servers == "multiple")
+    if servers == "multiple":
+        index = next(i for i, line in enumerate(lines) if line.startswith("Total"))
+        assert set(lines[index - 1]) == {"─"}
+        assert len(lines[index - 1]) == len(lines[index])
+
+
+@pytest.mark.parametrize("single", [False, True])
+def test_app_stats_cli_function_footer(servicer, set_env_client, app_stats_response, single):
+    response = app_stats_response
+    if single:
+        del response.functions.by_name["ingest"]
+        del response.functions.by_name["reindex"]
+    total, succeeded, failed, errors, active = (60, 57, 3, 1, 4) if single else (80, 75, 5, 7, 6)
+    response.functions.total.CopyFrom(
+        api_pb2.AppFunctionCounts(
+            calls=api_pb2.AppCallCounts(total=total, succeeded=succeeded, failed=failed),
+            containers=api_pb2.AppContainerCounts(container_errors=errors, container_active_count=active),
+        )
+    )
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    section = result.stdout.split("FUNCTIONS")[1].split("SERVERS")[0]
+    show_total = not single
+    assert bool(re.search(r"(?m)^Total\s+\d", section)) == show_total
+    assert ("─" in section) == show_total
+
+
+@pytest.mark.parametrize("count", [0, 1])
+def test_app_stats_cli_deployment_pluralization(servicer, set_env_client, app_stats_response, count):
+    app_stats_response.deployment_count = count
+    result, _ = _run_app_stats_cli(servicer, app_stats_response)
+    assert f"{count} deployment" in result.stdout
+    assert ("1 deployments" if count else "0 deployment ·") not in result.stdout
+    if count == 0:
+        assert "0 deployments" in result.stdout
+    else:
+        assert "1 deployments" not in result.stdout
+
+
+def test_app_stats_cli_relative_window(servicer, set_env_client, app_stats_response):
+    _, ctx = _run_app_stats_cli(servicer, app_stats_response, "--since", "5h", "--until", "2h", "--json")
+    request = ctx.pop_request("AppGetTimeRangeStats")
+    assert request.until.ToDatetime(tzinfo=timezone.utc) - request.since.ToDatetime(tzinfo=timezone.utc) == timedelta(
+        hours=3
+    )
+
+
+@pytest.mark.parametrize("options", [["--since", "bad"], ["--until", "bad"], ["--since", "1h", "--until", "2h"]])
+def test_app_stats_cli_invalid_window(set_env_client, options):
+    run_cli_command(["app", "stats", "my-app", *options], expected_exit_code=2)
+
+
+@pytest.mark.parametrize("failed,total", [(0, 100), (4, 100), (5, 100), (10, 100), (0, 0)])
+def test_app_stats_cli_failure_percentage(servicer, set_env_client, app_stats_response, failed, total):
+    response = app_stats_response
+    response.servers.by_name["gateway"].counts.requests.CopyFrom(
+        api_pb2.AppRequestCounts(total=total, ok=total - failed, failed=failed)
+    )
+    response.servers.total.CopyFrom(response.servers.by_name["gateway"].counts)
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    server_line = next(line for line in result.stdout.splitlines() if "gateway" in line)
+    assert "⚠" not in result.stdout
+    if total:
+        assert f"{failed / total:.1%}" in server_line
+    if total == 0:
+        assert "—" in server_line
+
+
+def test_app_stats_cli_no_functions(servicer, set_env_client, app_stats_response):
+    response = app_stats_response
+    response.functions.by_name.clear()
+    response.functions.total.Clear()
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    assert "FUNCTIONS" not in result.stdout
+    assert "SERVERS" in result.stdout
+    assert "SANDBOXES" in result.stdout
+
+
+@pytest.mark.parametrize("section", ["functions", "servers"])
+@pytest.mark.parametrize("data", ["none", "traffic", "container_errors", "active_containers"])
+def test_app_stats_cli_section_presence(servicer, set_env_client, app_stats_response, section, data):
+    response = app_stats_response
+    group = getattr(response, section)
+    group.total.Clear()
+    for row in group.by_name.values():
+        row.counts.Clear()
+    traffic = group.total.calls if section == "functions" else group.total.requests
+    if data == "traffic":
+        traffic.total = 1
+        if section == "functions":
+            traffic.succeeded = 1
+        else:
+            traffic.ok = 1
+    group.total.containers.container_errors = 1 if data == "container_errors" else 0
+    group.total.containers.container_active_count = 1 if data == "active_containers" else 0
+    next(iter(group.by_name.values())).counts.CopyFrom(group.total)
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    assert (section.upper() in result.stdout) == (data != "none")
+
+
+def test_app_stats_cli_ninety_minute_window(servicer, set_env_client, app_stats_response):
+    response = app_stats_response
+    response.until.FromDatetime(datetime(2026, 10, 19, 13, 30, tzinfo=timezone.utc))
+    result, _ = _run_app_stats_cli(
+        servicer, response, "--since", "2026-10-19T12:00:00+00:00", "--until", "2026-10-19T13:30:00+00:00", "--no-color"
+    )
+    assert "2026-10-19 12:00:00 – 2026-10-19 13:30:00 UTC" in result.stdout
+    assert "Duration" not in result.stdout
+
+
+def test_app_stats_cli_empty_app(servicer, set_env_client, app_stats_response):
+    response = api_pb2.AppGetTimeRangeStatsResponse(
+        since=app_stats_response.since,
+        until=app_stats_response.until,
+        lifecycle=app_stats_response.lifecycle,
+        deployment_count=0,
+    )
+    result, _ = _run_app_stats_cli(servicer, response, "--no-color")
+    assert "Total" not in result.stdout
+    assert "FUNCTIONS" not in result.stdout
+    assert "SERVERS" not in result.stdout
+    assert "─" not in result.stdout
+    assert "0 live · 0 finished" in result.stdout
+    assert "0 deployments" in result.stdout
+    assert "⚠" not in result.stdout
+
+
 def test_app_info(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": app_file_with_function}):
         run_cli_command(["deploy", "myapp.py", "--name", "my_app_foo"])
@@ -6921,7 +7295,7 @@ def test_function_info_cli(set_env_client, mock_dir, servicer):
 _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     "app": {
         "Management": ["list", "rollover", "rollback", "stop"],
-        "Inspection": ["info", "history", "logs", "dashboard"],
+        "Inspection": ["info", "history", "logs", "stats", "dashboard"],
     },
     "container": {"Commands": ["list", "logs", "exec", "stop"]},
     "endpoint": {

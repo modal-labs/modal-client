@@ -5778,3 +5778,65 @@ def mock_shell_pty(servicer, monkeypatch):
         mock.patch("modal.container_process.write_to_fd", write_to_fd),
     ):
         yield fake_stdin, captured_out
+
+
+@pytest.fixture
+def app_stats_response():
+    since = datetime.datetime(2026, 10, 19, 12, tzinfo=datetime.timezone.utc)
+    until = since + datetime.timedelta(hours=1)
+    response = api_pb2.AppGetTimeRangeStatsResponse(
+        functions=api_pb2.AppFunctionStatsGroup(
+            total=api_pb2.AppFunctionCounts(
+                calls=api_pb2.AppCallCounts(total=80, succeeded=75, failed=5),
+                containers=api_pb2.AppContainerCounts(container_errors=7, container_active_count=6),
+            ),
+            by_name={
+                "embed": api_pb2.AppFunctionStats(
+                    object_id="fu-embed",
+                    counts=api_pb2.AppFunctionCounts(
+                        calls=api_pb2.AppCallCounts(total=60, succeeded=57, failed=3),
+                        containers=api_pb2.AppContainerCounts(container_errors=1, container_active_count=4),
+                    ),
+                ),
+                "ingest": api_pb2.AppFunctionStats(
+                    object_id="fu-ingest",
+                    counts=api_pb2.AppFunctionCounts(
+                        calls=api_pb2.AppCallCounts(total=20, succeeded=18, failed=2),
+                        containers=api_pb2.AppContainerCounts(container_errors=3, container_active_count=2),
+                    ),
+                ),
+                "reindex": api_pb2.AppFunctionStats(
+                    object_id="fu-reindex",
+                    counts=api_pb2.AppFunctionCounts(containers=api_pb2.AppContainerCounts(container_errors=3)),
+                ),
+            },
+        ),
+        servers=api_pb2.AppServerStatsGroup(
+            total=api_pb2.AppServerCounts(
+                requests=api_pb2.AppRequestCounts(total=80, ok=78, failed=2),
+                containers=api_pb2.AppContainerCounts(container_errors=1, container_active_count=3),
+            ),
+            by_name={
+                "gateway": api_pb2.AppServerStats(
+                    object_id="fu-gateway",
+                    counts=api_pb2.AppServerCounts(
+                        requests=api_pb2.AppRequestCounts(total=80, ok=78, failed=2),
+                        containers=api_pb2.AppContainerCounts(container_errors=1, container_active_count=3),
+                    ),
+                ),
+            },
+        ),
+        sandboxes=api_pb2.AppSandboxCounts(total=7, finished=5, live=2),
+        lifecycle=api_pb2.AppLifecycle(
+            app_state=api_pb2.APP_STATE_DEPLOYED,
+            created_at=(since - datetime.timedelta(days=3)).timestamp(),
+            deployed_at=(since - datetime.timedelta(days=2)).timestamp(),
+            version=42,
+            created_by="creator",
+            deployed_by="publisher",
+        ),
+        deployment_count=2,
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+    return response

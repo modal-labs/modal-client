@@ -2,6 +2,7 @@
 """Public data types returned by Modal APIs."""
 
 import enum
+from collections.abc import Iterator, Mapping
 from dataclasses import FrozenInstanceError, dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -1147,7 +1148,7 @@ class AppLifecycle:
 
 @dataclass(frozen=True)
 class AppInfo:
-    """Information about a modal App, including its lifecycle and member functions and servers."""
+    """Information about a modal App, including its lifecycle and member Functions and Servers."""
 
     app_id: str
     description: str
@@ -1163,4 +1164,156 @@ class AppInfo:
             functions=dict(proto.functions),
             servers=dict(proto.servers),
             app_id=app_id,
+        )
+
+
+@dataclass(frozen=True)
+class AppStats:
+    """App-wide statistics over [since, until), with current Functions and Servers indexed by name.
+
+    Lifecycle metadata describes the App when queried, including for historical windows.
+    """
+
+    @dataclass(frozen=True)
+    class CallCounts:
+        """Completed Function inputs; each map item counts separately."""
+
+        total: int
+        succeeded: int
+        failed: int
+
+    @dataclass(frozen=True)
+    class ContainerCounts:
+        """Terminal container errors and distinct containers reporting resource activity in the window."""
+
+        errors: int
+        total: int
+
+        @classmethod
+        def _from_proto(cls, proto: api_pb2.AppContainerCounts) -> "AppStats.ContainerCounts":
+            return cls(errors=proto.container_errors, total=proto.container_active_count)
+
+    @dataclass(frozen=True)
+    class FunctionCounts:
+        """Function call and container counts."""
+
+        calls: "AppStats.CallCounts"
+        containers: "AppStats.ContainerCounts"
+
+        @classmethod
+        def _from_proto(cls, proto: api_pb2.AppFunctionCounts) -> "AppStats.FunctionCounts":
+            return cls(
+                AppStats.CallCounts(proto.calls.total, proto.calls.succeeded, proto.calls.failed),
+                AppStats.ContainerCounts._from_proto(proto.containers),
+            )
+
+    @dataclass(frozen=True)
+    class FunctionStats:
+        """Object ID and counts for a Function."""
+
+        object_id: str
+        counts: "AppStats.FunctionCounts"
+
+    @dataclass(frozen=True)
+    class RequestCounts:
+        """Server requests split into HTTP 1xx/2xx/3xx and all other outcomes, including status zero."""
+
+        total: int
+        ok: int
+        failed: int
+
+    @dataclass(frozen=True)
+    class ServerCounts:
+        """Server request and container counts."""
+
+        requests: "AppStats.RequestCounts"
+        containers: "AppStats.ContainerCounts"
+
+        @classmethod
+        def _from_proto(cls, proto: api_pb2.AppServerCounts) -> "AppStats.ServerCounts":
+            return cls(
+                AppStats.RequestCounts(proto.requests.total, proto.requests.ok, proto.requests.failed),
+                AppStats.ContainerCounts._from_proto(proto.containers),
+            )
+
+    @dataclass(frozen=True)
+    class ServerStats:
+        """Object ID and counts for a Server."""
+
+        object_id: str
+        counts: "AppStats.ServerCounts"
+
+    @dataclass(frozen=True)
+    class FunctionStatsGroup(Mapping[str, "AppStats.FunctionStats"]):
+        """Totals across current Functions, with individual Function stats keyed by name."""
+
+        total: "AppStats.FunctionCounts"
+        by_name: dict[str, "AppStats.FunctionStats"]
+
+        def __getitem__(self, name: str) -> "AppStats.FunctionStats":
+            return self.by_name[name]
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(self.by_name)
+
+        def __len__(self) -> int:
+            return len(self.by_name)
+
+    @dataclass(frozen=True)
+    class ServerStatsGroup(Mapping[str, "AppStats.ServerStats"]):
+        """Totals across current Servers, with individual Server stats keyed by name."""
+
+        total: "AppStats.ServerCounts"
+        by_name: dict[str, "AppStats.ServerStats"]
+
+        def __getitem__(self, name: str) -> "AppStats.ServerStats":
+            return self.by_name[name]
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(self.by_name)
+
+        def __len__(self) -> int:
+            return len(self.by_name)
+
+    @dataclass(frozen=True)
+    class SandboxCounts:
+        """Sandboxes that finished in the window and those that are live as of the until cutoff.
+
+        Total is finished + live.
+        """
+
+        total: int
+        finished: int
+        live: int
+
+    since: datetime
+    until: datetime
+    functions: FunctionStatsGroup
+    servers: ServerStatsGroup
+    sandboxes: SandboxCounts
+    lifecycle: AppLifecycle
+    deployment_count: int | None
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.AppGetTimeRangeStatsResponse) -> "AppStats":
+        return cls(
+            since=proto.since.ToDatetime(tzinfo=timezone.utc),
+            until=proto.until.ToDatetime(tzinfo=timezone.utc),
+            functions=cls.FunctionStatsGroup(
+                total=cls.FunctionCounts._from_proto(proto.functions.total),
+                by_name={
+                    name: cls.FunctionStats(row.object_id, cls.FunctionCounts._from_proto(row.counts))
+                    for name, row in proto.functions.by_name.items()
+                },
+            ),
+            servers=cls.ServerStatsGroup(
+                total=cls.ServerCounts._from_proto(proto.servers.total),
+                by_name={
+                    name: cls.ServerStats(row.object_id, cls.ServerCounts._from_proto(row.counts))
+                    for name, row in proto.servers.by_name.items()
+                },
+            ),
+            sandboxes=cls.SandboxCounts(proto.sandboxes.total, proto.sandboxes.finished, proto.sandboxes.live),
+            lifecycle=AppLifecycle._from_proto(proto.lifecycle),
+            deployment_count=proto.deployment_count if proto.HasField("deployment_count") else None,
         )

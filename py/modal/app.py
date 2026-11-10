@@ -3,7 +3,7 @@ import inspect
 import typing
 from collections.abc import AsyncGenerator, Callable, Collection, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -57,7 +57,7 @@ from .retries import Retries
 from .running_app import RunningApp
 from .schedule import Schedule
 from .secret import _Secret
-from .types import AppInfo, SandboxGroupStats
+from .types import AppInfo, AppStats, SandboxGroupStats
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -1763,6 +1763,45 @@ class _App:
     def sandboxes(self) -> _AppSandboxesManager:
         """Namespace for the Sandboxes belonging to this App."""
         return _AppSandboxesManager(self)
+
+    async def stats(self, *, since: datetime | None = None, until: datetime | None = None) -> AppStats:
+        """Return aggregate Function, Server, and Sandbox statistics for this App.
+
+        The default window is the most recent hour. Windows can span at most seven days,
+        with a start in the past 30 days.
+
+        App stats show total call counts, request counts, and the count of active and errored containers in
+        the time window. The count of sandboxes that finished in the interval as well as the count
+        that were still running as of the end of the window is also returned.
+
+        The available stats and their definitions are subject to change and are provided
+        on a best-effort basis. They may be delayed or incomplete.
+
+        Args:
+            since: The beginning of the time range, inclusive. If omitted, this defaults to an hour before `until`.
+               Values without a timezone are interpeted as local time.
+            until: The end of the time range, exclusive. If omitted, this defaults to current time.
+                Values without a timezone are interpeted as local time.
+
+        Examples:
+            ```python notest
+            stats = modal.App.lookup("my-app").stats()
+            print(stats.functions.total.calls.failed)
+            print(stats.functions["embed"].counts.containers.errors)
+            ```
+        """
+        if not self._app_id:
+            raise InvalidError("`app.stats` requires a running or stopped app.")
+        until = (until or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        since = (since or until - timedelta(hours=1)).astimezone(timezone.utc)
+        if since >= until:
+            raise InvalidError("`since` must be before `until`.")
+        request = api_pb2.AppGetTimeRangeStatsRequest(app_id=self._app_id)
+        request.since.FromDatetime(since)
+        request.until.FromDatetime(until)
+        client = self._client or await _Client.from_env()
+        response = await client._stub.AppGetTimeRangeStats(request)
+        return AppStats._from_proto(response)
 
     async def info(self, refresh: bool = False) -> AppInfo:
         """Return information for a modal `App`.

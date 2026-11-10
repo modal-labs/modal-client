@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 from grpclib import GRPCError, Status
 
@@ -15,12 +16,152 @@ from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
 from modal.cls import _Cls
-from modal.exception import ExecutionError, InternalError, InvalidError, NotFoundError
+from modal.exception import ExecutionError, InternalError, InvalidError, NotFoundError, ResourceExhaustedError
 from modal.runner import deploy_app, run_app
-from modal.types import AppState
+from modal.types import AppState, AppStats
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
+
+
+def test_app_stats(client, servicer, app_stats_response):
+    response = app_stats_response
+    since = response.since.ToDatetime(tzinfo=timezone.utc)
+    until = response.until.ToDatetime(tzinfo=timezone.utc)
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
+        ctx.add_response("AppGetTimeRangeStats", response)
+        app = App.lookup("my-app", client=client, environment_name="other")
+        stats = app.stats(since=since, until=until)
+    assert ctx.get_requests("AppGetInfo") == []
+    assert ctx.get_requests("AppGetLifecycle") == []
+    lookup = ctx.pop_request("AppGetOrCreate")
+    assert lookup.app_name == "my-app" and lookup.environment_name == "other"
+    assert lookup.object_creation_type != api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+    request = ctx.pop_request("AppGetTimeRangeStats")
+    assert request.app_id == "ap-stats"
+    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
+    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert stats.since == since and stats.until == until
+    assert stats.functions.total == AppStats.FunctionCounts(
+        calls=AppStats.CallCounts(total=80, succeeded=75, failed=5),
+        containers=AppStats.ContainerCounts(errors=7, total=6),
+    )
+    assert stats.functions["embed"].counts.calls == AppStats.CallCounts(total=60, succeeded=57, failed=3)
+    assert stats.functions["embed"].counts.containers == AppStats.ContainerCounts(1, 4)
+    assert stats.functions["embed"].object_id == "fu-embed"
+    assert stats.functions["reindex"].counts.calls.total == 0
+    assert stats.functions["reindex"].counts.containers.errors == 3
+    assert set(stats.functions) == {"embed", "ingest", "reindex"}
+    assert sum(row.counts.calls.total for row in stats.functions.values()) == 80
+    assert stats.servers.total == AppStats.ServerCounts(
+        requests=AppStats.RequestCounts(total=80, ok=78, failed=2),
+        containers=AppStats.ContainerCounts(errors=1, total=3),
+    )
+    assert stats.servers["gateway"].counts.requests.failed == 2
+    assert stats.servers["gateway"].object_id == "fu-gateway"
+    assert stats.sandboxes == AppStats.SandboxCounts(total=7, finished=5, live=2)
+    assert stats.deployment_count == 2
+    assert stats.lifecycle.state == AppState.DEPLOYED
+    assert stats.lifecycle.version == 42 and stats.lifecycle.deployed_by == "publisher"
+    with pytest.raises(KeyError):
+        stats.functions["Embed"]
+
+
+@pytest.mark.asyncio
+async def test_app_stats_async(client, servicer, app_stats_response):
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
+        ctx.add_response("AppGetTimeRangeStats", app_stats_response)
+        app = await App.lookup.aio("my-app", client=client)
+        result = await app.stats.aio()
+    assert isinstance(result, AppStats)
+    assert result.functions["ingest"].counts.containers.errors == 3
+
+
+@pytest.mark.parametrize("supplied_until", [None, datetime(2026, 10, 19, 12, tzinfo=timezone(timedelta(hours=2)))])
+def test_app_stats_default_window(client, servicer, app_stats_response, supplied_until):
+    now_before = datetime.now(timezone.utc)
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
+        ctx.add_response("AppGetTimeRangeStats", app_stats_response)
+        App.lookup("my-app", client=client).stats(until=supplied_until)
+    now_after = datetime.now(timezone.utc)
+    request = ctx.pop_request("AppGetTimeRangeStats")
+    until = request.until.ToDatetime(tzinfo=timezone.utc)
+    if supplied_until is None:
+        assert now_before <= until <= now_after
+    else:
+        assert until == supplied_until
+    assert until - request.since.ToDatetime(tzinfo=timezone.utc) == timedelta(hours=1)
+
+
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="Requires timezone switching")
+def test_app_stats_naive_datetimes(client, servicer, app_stats_response):
+    try:
+        with mock.patch.dict("os.environ", {"TZ": "Etc/GMT+4"}), servicer.intercept() as ctx:
+            time.tzset()
+            ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
+            ctx.add_response("AppGetTimeRangeStats", app_stats_response)
+            App.lookup("my-app", client=client).stats(since=datetime(2026, 10, 19, 8), until=datetime(2026, 10, 19, 9))
+    finally:
+        time.tzset()
+    request = ctx.pop_request("AppGetTimeRangeStats")
+    assert request.since.ToDatetime(tzinfo=timezone.utc) == datetime(2026, 10, 19, 12, tzinfo=timezone.utc)
+    assert request.until.ToDatetime(tzinfo=timezone.utc) == datetime(2026, 10, 19, 13, tzinfo=timezone.utc)
+
+
+def test_app_stats_requires_remote_app(client, servicer):
+    with pytest.raises(InvalidError, match="requires a running or stopped app"):
+        App().stats()
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
+        app = App.lookup("my-app", client=client)
+        now = datetime.now(timezone.utc)
+        with pytest.raises(InvalidError, match="must be before"):
+            app.stats(since=now, until=now)
+    assert ctx.get_requests("AppGetTimeRangeStats") == []
+
+
+@pytest.mark.parametrize("deployment_count", [None, 0])
+def test_app_stats_empty_and_deployment_presence(client, servicer, deployment_count):
+    response = api_pb2.AppGetTimeRangeStatsResponse()
+    if deployment_count is not None:
+        response.deployment_count = deployment_count
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
+        ctx.add_response("AppGetTimeRangeStats", response)
+        result = App.lookup("my-app", client=client).stats()
+    assert result.deployment_count == deployment_count
+    assert len(result.functions) == len(result.servers) == 0
+    assert result.functions.total.calls == AppStats.CallCounts(0, 0, 0)
+    assert result.servers.total.requests == AppStats.RequestCounts(0, 0, 0)
+    assert result.functions.total.containers == result.servers.total.containers == AppStats.ContainerCounts(0, 0)
+    assert result.sandboxes.total == 0
+
+
+def test_app_stats_running_app(client, servicer, app_stats_response):
+    app = App(include_source=False)
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetTimeRangeStats", app_stats_response)
+        with app.run(client=client):
+            result = app.stats()
+            app_id = app.app_id
+    assert ctx.pop_request("AppGetTimeRangeStats").app_id == app_id
+    assert result.sandboxes.live == 2
+
+
+def test_app_stats_propagates_error(client, servicer):
+    async def unavailable(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.RESOURCE_EXHAUSTED, "App stats query exhausted size limit")
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
+        ctx.set_responder("AppGetTimeRangeStats", unavailable)
+        app = App.lookup("my-app", client=client)
+        with pytest.raises(ResourceExhaustedError, match="App stats query exhausted size limit"):
+            app.stats()
 
 
 def square(x):
