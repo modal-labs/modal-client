@@ -1316,7 +1316,9 @@ async def test_snapshot_filesystem_retries_resource_exhausted_with_server_retry_
     assert response.image_id == "im-123"
 
     assert len(attempt_times) == 2
-    assert attempt_times[1] - attempt_times[0] >= 0.2
+    # asyncio fires timers up to the monotonic clock's resolution early (~16ms on Windows).
+    clock_resolution = time.get_clock_info("monotonic").resolution
+    assert attempt_times[1] - attempt_times[0] >= 0.2 - clock_resolution
     assert throttle_retry_attempts == ["0", "1"]
 
 
