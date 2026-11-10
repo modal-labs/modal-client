@@ -4,17 +4,26 @@ import json
 import os
 import pytest
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import aiohttp.web
 import jwt
 import pytest_asyncio
 
+from modal import App, Sandbox
 from modal._utils.http_utils import run_temporary_http_server
 from modal.client import Client
-from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, ServiceError
+from modal.exception import (
+    AlreadyExistsError,
+    AuthError,
+    InvalidError,
+    NotFoundError,
+    PermissionDeniedError,
+    ServiceError,
+)
 from modal.experimental import IdempotencyConflict, Stream, StreamInfo
-from modal.experimental.stream import AppendResult
+from modal.experimental.stream import AppendResult, StreamToken
 from modal_proto import api_pb2
 
 WORKSPACE_ID = "ac-" + "a" * 22
@@ -29,6 +38,13 @@ class FakeStreamsService:
 
     def __init__(self):
         self.runs: dict[str, dict] = {}
+        self.tokens: dict[str, dict] = {}
+        # Identity tokens the service accepts, by the sandbox each proves.
+        self.identities: dict[str, str] = {}
+        self.refreshes: list[dict] = []
+        self.expired_rejections = 0
+        # Refreshes wait while `hold_refreshes` is set.
+        self.hold_refreshes: asyncio.Event | None = None
         self.requests: list[aiohttp.web.Request] = []
         # Ends the next follow response, without a seal, after this many entries.
         self.drop_follow_after: int | None = None
@@ -49,13 +65,57 @@ class FakeStreamsService:
                 aiohttp.web.post("/v1/runs/{run}/append", self.append),
                 aiohttp.web.post("/v1/runs/{run}/seal", self.seal),
                 aiohttp.web.get("/v1/runs/{run}/events", self.events),
+                aiohttp.web.post("/v1/runs/{run}/tokens", self.mint_token),
+                aiohttp.web.post("/v1/tokens/refresh", self.refresh_token),
             ]
         )
 
     @aiohttp.web.middleware
     async def _record(self, request, handler):
         self.requests.append(request)
+        grant = self.tokens.get(request.headers["Authorization"].removeprefix("Bearer "))
+        if grant is not None and request.path != "/v1/tokens/refresh":
+            if "x-streams-environment" in request.headers:
+                return _error(400, "invalid")
+            if time.time() >= grant["expires_at"]:
+                self.expired_rejections += 1
+                return _error(401, "token_expired")
+            if request.match_info.get("run") != grant["run"] or request.path.endswith("/tokens"):
+                return _error(403, "permission_denied")
+            if grant["access"] == "read" and request.method != "GET":
+                return _error(403, "permission_denied")
         return await handler(request)
+
+    async def mint_token(self, request):
+        body, run = await request.json(), request.match_info["run"]
+        if body.get("create_if_missing"):
+            self.runs.setdefault(run, {"gen": 1, "events": [], "sealed": False, "retention_s": body.get("retention_s")})
+        if run not in self.runs:
+            return _error(404, "not_found")
+        grant = {"run": run, "access": body["access"], "ttl_s": body["ttl_s"], "sandbox": body.get("sandbox_id")}
+        return self._mint(grant)
+
+    def _mint(self, grant):
+        expires_at = int(time.time()) + grant["ttl_s"]
+        sandbox = grant["sandbox"] or ""
+        token = f"v4.{WORKSPACE_ID}.main.{grant['run']}.r1.{grant['access']}.{sandbox}.{grant['ttl_s']}.{expires_at}."
+        token += uuid.uuid4().hex
+        self.tokens[token] = {**grant, "expires_at": expires_at}
+        return aiohttp.web.json_response({"token": token, "expires_at": expires_at})
+
+    async def refresh_token(self, request):
+        body = await request.json()
+        self.refreshes.append({"token": request.headers["Authorization"].removeprefix("Bearer "), **body})
+        if self.hold_refreshes is not None:
+            await self.hold_refreshes.wait()
+        grant = self.tokens.get(self.refreshes[-1]["token"])
+        if grant is None:
+            return _error(401, "unauthenticated")
+        if grant["sandbox"] is None:
+            return _error(403, "forbidden")
+        if self.identities.get(body["identity_token"]) != grant["sandbox"]:
+            return _error(403, "forbidden")
+        return self._mint(grant)
 
     async def create(self, request):
         body = await request.json()
@@ -490,3 +550,123 @@ async def test_writer_close_rejects_waiting_append(client, service, monkeypatch)
         service.hold_appends.set()
     await closing
     assert [e["value"] for e in service.runs["s"]["events"]] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_access_tokens(client, service, monkeypatch):
+    stream = Stream.from_name("s", client=client)
+    with pytest.raises(NotFoundError):
+        await stream.create_token.aio()
+    write_token = (await stream.create_token.aio(create_if_missing=True, retention=timedelta(hours=2))).token
+    assert service.runs["s"]["retention_s"] == 7200
+    before = time.time()
+    read = await stream.create_token.aio(access="read", ttl=timedelta(minutes=5))
+    assert isinstance(read, StreamToken)
+    assert int(before) + 300 <= read.expires_at.timestamp() <= time.time() + 300
+    with pytest.raises(InvalidError, match="between one second and one hour"):
+        await stream.create_token.aio(ttl=timedelta(hours=2))
+    read_token = read.token
+
+    # Token holders need no Modal credentials.
+    async def no_client():
+        raise AssertionError("token handles must not create a Modal client")
+
+    monkeypatch.setattr("modal.experimental.stream._Client.from_env", no_client)
+    writer = Stream.from_token(write_token, name="s")
+    assert await writer.append.aio("a") == AppendResult(1, False)
+    async with writer.writer() as w:
+        await w.append.aio("b")
+    reader = Stream.from_token(read_token, name="s")
+    assert [e.value async for e in reader.read.aio()] == ["a", "b"]
+    with pytest.raises(PermissionDeniedError):
+        await reader.append.aio("c")
+    with pytest.raises(PermissionDeniedError):
+        await Stream.from_token(write_token, name="other").read.aio().__anext__()
+    assert await writer.seal.aio() == 3
+    assert [e.seq async for e in reader.read.aio(follow=True)] == [1, 2, 3]
+
+    service.tokens[read_token]["expires_at"] = 0
+    with pytest.raises(AuthError, match="token_expired"):
+        async for _ in reader.read.aio(follow=True):
+            pass
+    with pytest.raises(InvalidError, match="Modal credentials"):
+        await writer.create_token.aio()
+    with pytest.raises(InvalidError, match="create_if_missing"):
+        await stream.create_token.aio(retention=timedelta(hours=1))
+
+
+@pytest_asyncio.fixture
+async def sandbox(client, servicer):
+    app = App()
+    async with app.run(client=client):
+        yield await Sandbox.create.aio(app=app, include_oidc_identity_token=True, client=client)
+
+
+@pytest.mark.asyncio
+async def test_sandbox_bound_token_refreshes(client, service, sandbox, monkeypatch, tmp_path):
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    bound = await stream.create_token.aio(sandbox=sandbox)
+    assert service.tokens[bound.token]["sandbox"] == sandbox.object_id
+    identity_file = tmp_path / "identity"
+    identity_file.write_text("identity-1\n")
+    monkeypatch.setenv("MODAL_IDENTITY_TOKEN_FILE", str(identity_file))
+    service.identities = {"identity-1": sandbox.object_id, "identity-2": sandbox.object_id}
+
+    handle = Stream.from_token(bound.token, name="s")
+    assert await handle.append.aio("a") == AppendResult(1, False)
+    assert service.refreshes == []
+    # An expired token is refreshed with the identity token, and the request is resent with the new one.
+    service.tokens[bound.token]["expires_at"] = 0
+    assert await handle.append.aio("b") == AppendResult(2, False)
+    assert service.refreshes == [{"token": bound.token, "identity_token": "identity-1"}]
+    current = service.requests[-1].headers["Authorization"].removeprefix("Bearer ")
+    assert current != bound.token and service.tokens[current]["sandbox"] == sandbox.object_id
+
+    # The identity token file is reread, since it is rewritten as the identity token renews.
+    identity_file.write_text("identity-2")
+    service.tokens[current]["expires_at"] = 0
+    assert await handle.append.aio("c") == AppendResult(3, False)
+    assert service.refreshes[-1] == {"token": current, "identity_token": "identity-2"}
+
+    # So is one that expires under a followed read.
+    current = service.requests[-1].headers["Authorization"].removeprefix("Bearer ")
+    service.tokens[current]["expires_at"] = 0
+    await stream.seal.aio()
+    assert [e.seq async for e in handle.read.aio(follow=True)] == [1, 2, 3, 4]
+    assert len(service.refreshes) == 3
+
+    # Requests that find the token expired together share one refresh.
+    current = service.requests[-1].headers["Authorization"].removeprefix("Bearer ")
+    service.tokens[current]["expires_at"] = 0
+    service.hold_refreshes, rejected = asyncio.Event(), service.expired_rejections
+    reads = [asyncio.ensure_future(handle.read.aio().__anext__()) for _ in range(5)]
+    while service.expired_rejections < rejected + 5:
+        await asyncio.sleep(0.01)
+    service.hold_refreshes.set()
+    assert [(await r).seq for r in reads] == [1] * 5
+    assert len(service.refreshes) == 4
+
+
+@pytest.mark.asyncio
+async def test_token_refresh_needs_a_bound_token_and_identity(client, service, sandbox, monkeypatch):
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    unbound = (await stream.create_token.aio()).token
+    bound = (await stream.create_token.aio(sandbox=sandbox)).token
+    service.identities = {"identity": sandbox.object_id}
+    for token in (unbound, bound):
+        service.tokens[token]["expires_at"] = 0
+
+    # Without an identity token, an expired token raises without a refresh.
+    with pytest.raises(AuthError, match="token_expired"):
+        await Stream.from_token(bound, name="s").append.aio("a")
+    assert service.refreshes == []
+    # A refresh the service refuses, for an unbound token or another sandbox's identity, raises the expiry.
+    monkeypatch.setenv("MODAL_IDENTITY_TOKEN", "identity")
+    with pytest.raises(AuthError, match="token_expired"):
+        await Stream.from_token(unbound, name="s").append.aio("a")
+    monkeypatch.setenv("MODAL_IDENTITY_TOKEN", "another-sandbox")
+    with pytest.raises(AuthError, match="token_expired"):
+        await Stream.from_token(bound, name="s").append.aio("a")
+    assert len(service.refreshes) == 2
+    monkeypatch.setenv("MODAL_IDENTITY_TOKEN", "identity")
+    assert await Stream.from_token(bound, name="s").append.aio("a") == AppendResult(1, False)

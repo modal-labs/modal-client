@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2026
 import asyncio
 import json
+import os
 import re
 import time
 import urllib.parse
@@ -22,11 +23,13 @@ from ..exception import (
     AlreadyExistsError,
     AuthError,
     ConflictError,
+    Error,
     InvalidError,
     NotFoundError,
     PermissionDeniedError,
     ServiceError,
 )
+from ..sandbox._sandbox import _Sandbox
 
 ENVIRONMENT_HEADER = "x-streams-environment"
 # URL-safe characters only, since names appear in URL paths; 64 matches other Modal object names.
@@ -35,6 +38,8 @@ STREAM_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 MAX_VALUE_BYTES = 64 * 1024
 # The service expires streams in an hourly pass, so a shorter retention would not be honored.
 MIN_RETENTION = timedelta(hours=1)
+# Tokens cannot be revoked, so the service caps their lifetime to bound what a leaked one exposes.
+MAX_TOKEN_TTL = timedelta(hours=1)
 # Generous for one append or one page of reads; a request that takes longer is retried.
 REQUEST_TIMEOUT_S = 30.0
 # Followed reads receive a keep-alive every 15 s, so only a dead connection goes this long without data.
@@ -85,6 +90,14 @@ class Entry:
     kind: Literal["value", "seal"]
     value: Any
     ts: datetime
+
+
+@dataclass(frozen=True)
+class StreamToken:
+    """An access token for one Stream, for use with `Stream.from_token` until `expires_at`."""
+
+    token: str
+    expires_at: datetime
 
 
 class IdempotencyConflict(ConflictError):
@@ -158,6 +171,18 @@ def _check_value(value: Any) -> None:
         raise InvalidError(f"Stream values must be JSON-serializable: {exc}") from None
     if size > MAX_VALUE_BYTES:
         raise InvalidError(f"Stream values are limited to {MAX_VALUE_BYTES} bytes of JSON; this one is {size} bytes.")
+
+
+def _identity_token() -> str | None:
+    """This container's Modal identity token, if it has one; a token file is reread since it is rewritten
+    as the token renews."""
+    if path := os.environ.get("MODAL_IDENTITY_TOKEN_FILE"):
+        try:
+            with open(path) as f:
+                return f.read().strip() or None
+        except OSError:
+            pass
+    return os.environ.get("MODAL_IDENTITY_TOKEN") or None
 
 
 def _entry(event: dict[str, Any]) -> Entry:
@@ -259,6 +284,7 @@ class _Stream:
         create_if_missing: bool,
         retention: timedelta | None,
         client: _Client | None,
+        token: str | None = None,
     ):
         """mdmd:hidden"""
         self.name = name
@@ -267,6 +293,8 @@ class _Stream:
         self._create_if_missing = create_if_missing
         self._retention = retention
         self._client = client
+        self._token = token
+        self._refreshing: asyncio.Task[bool] | None = None
         self._gen: int | None = None
         self._lock = asyncio.Lock()
 
@@ -294,7 +322,64 @@ class _Stream:
         _check_name(name)
         return _Stream(name, _get_environment_name(environment_name), create_if_missing, retention, client)
 
+    @staticmethod
+    def from_token(token: str, *, name: str) -> "_Stream":
+        """Reference the Stream named `name` with an access token from `Stream.create_token`, in place of Modal
+        credentials.
+
+        The handle supports the operations the token's access allows until it expires; others raise
+        `PermissionDeniedError`, and an expired token raises `AuthError`. A handle inside the Sandbox a
+        token was created for (`sandbox=`) instead replaces the expired token with a new one and continues;
+        the Sandbox must be created with `include_oidc_identity_token=True`.
+        """
+        _check_name(name)
+        return _Stream(name, "", False, None, None, token)
+
+    async def create_token(
+        self,
+        *,
+        access: Literal["read", "write"] = "write",
+        ttl: timedelta = timedelta(hours=1),
+        create_if_missing: bool = False,
+        retention: timedelta | None = None,
+        sandbox: _Sandbox | None = None,
+    ) -> StreamToken:
+        """Create an access token for this Stream, for code without Modal credentials such as a Sandbox
+        or a browser; see `Stream.from_token`.
+
+        A `read` token can read the stream, and a `write` token can also append to and seal it. The token
+        is valid for `ttl`, at most one hour. `create_if_missing` and `retention` create the stream as
+        `Stream.from_name` does.
+
+        A token for a `sandbox` keeps working inside that Sandbox beyond `ttl`: a handle from
+        `Stream.from_token` there replaces it when it expires, proving it runs in the Sandbox with the
+        Sandbox's identity token. The Sandbox must be created with `include_oidc_identity_token=True`.
+        """
+        if self._token is not None:
+            raise InvalidError("Access tokens can only be created with Modal credentials.")
+        if access not in ("read", "write"):
+            raise InvalidError("`access` must be 'read' or 'write'.")
+        if not timedelta(seconds=1) <= ttl <= MAX_TOKEN_TTL:
+            raise InvalidError("`ttl` must be between one second and one hour.")
+        body: dict[str, Any] = {"access": access, "ttl_s": int(ttl.total_seconds())}
+        if create_if_missing:
+            body["create_if_missing"] = True
+            if retention is not None:
+                _check_retention(retention)
+                body["retention_s"] = int(retention.total_seconds())
+        elif retention is not None:
+            raise InvalidError("`retention` requires `create_if_missing=True`.")
+        if sandbox is not None:
+            body["sandbox_id"] = sandbox.object_id
+        async with self._lock:
+            await self._create_locked()
+        data, _ = await self._call("POST", f"{self._path}/tokens", body)
+        out = json.loads(data)
+        return StreamToken(out["token"], datetime.fromtimestamp(out["expires_at"], tz=timezone.utc))
+
     async def _headers(self) -> dict[str, str]:
+        if self._token is not None:
+            return {"Authorization": f"Bearer {self._token}"}
         if self._client is None:
             self._client = await _Client.from_env()
         assert self._client._auth_token_manager, "Client is not open"
@@ -310,32 +395,68 @@ class _Stream:
         body: Any = None,
         params: Mapping[str, Any] | None = None,
         retry: bool = True,
+        headers: Mapping[str, str] | None = None,
     ) -> tuple[bytes, Mapping[str, str]]:
-        """One request, retried on transient failures until `RETRY_DEADLINE_S` passes, if `retry`."""
+        """One request, retried on transient failures until `RETRY_DEADLINE_S` passes, if `retry`, and once
+        with a refreshed token if its token has expired. `headers` replaces the handle's credentials."""
         import aiohttp
 
         deadline = time.monotonic() + RETRY_DEADLINE_S
-        attempt = 0
+        attempt, renewed = 0, False
         while True:
             attempt += 1
+            sent = headers if headers is not None else await self._headers()
+            token = self._token
             try:
                 async with ClientSessionRegistry.get_session().request(
                     method,
                     _service_url() + path,
                     json=body,
                     params=params,
-                    headers=await self._headers(),
+                    headers=sent,
                     timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_S),
                 ) as resp:
                     data = await resp.read()
                     if resp.status < 400:
                         return data, resp.headers
                     raise _error_for(resp.status, data, self.name)
+            except AuthError:
+                if headers is not None or token is None or renewed or not await self._renew(token):
+                    raise
+                renewed = True
             except (aiohttp.ClientError, asyncio.TimeoutError, _Transient) as exc:
                 delay = _backoff(attempt)
                 if not retry or time.monotonic() + delay > deadline:
                     raise self._unreachable(exc) from exc
                 await asyncio.sleep(delay)
+
+    async def _renew(self, stale: str) -> bool:
+        """Whether the access token `stale` has been replaced, refreshing it if this handle can; concurrent
+        callers share one refresh."""
+        if self._token != stale:
+            return True
+        if self._refreshing is None or self._refreshing.done():
+            self._refreshing = asyncio.create_task(self._refresh())
+        # Shielded so a caller that is cancelled does not cancel the refresh others wait on.
+        return await asyncio.shield(self._refreshing)
+
+    async def _refresh(self) -> bool:
+        identity_token = _identity_token()
+        if identity_token is None:
+            return False
+        try:
+            data, _ = await self._call(
+                "POST",
+                "/v1/tokens/refresh",
+                {"identity_token": identity_token},
+                headers={"Authorization": f"Bearer {self._token}"},
+            )
+        except Error as exc:
+            # Tokens created without a Sandbox cannot be refreshed, so a refused refresh is expected.
+            logger.debug(f"Stream '{self.name}': could not refresh the access token: {exc}")
+            return False
+        self._token = json.loads(data)["token"]
+        return True
 
     def _unreachable(self, exc: Exception) -> Exception:
         if isinstance(exc, _Transient):
@@ -472,14 +593,16 @@ class _Stream:
         import aiohttp
 
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT_S, sock_read=FOLLOW_IDLE_TIMEOUT_S)
-        failures, deadline = 0, 0.0
+        failures, deadline, renewed = 0, 0.0, False
         while True:
             params = {"follow": "true", "from_seq": start}
+            headers = await self._headers()
+            token = self._token
             try:
                 async with ClientSessionRegistry.get_session().get(
                     _service_url() + self._path + "/events",
                     params=params,
-                    headers=await self._headers(),
+                    headers=headers,
                     timeout=timeout,
                 ) as resp:
                     if resp.status >= 400:
@@ -493,8 +616,13 @@ class _Stream:
                                 int(err.get("status", 500)), json.dumps({"error": err}).encode(), self.name
                             )
                         entry = _entry(json.loads(data))
-                        start, failures = entry.seq + 1, 0
+                        start, failures, renewed = entry.seq + 1, 0, False
                         yield entry
+            except AuthError:
+                if token is None or renewed or not await self._renew(token):
+                    raise
+                renewed = True
+                continue
             except (aiohttp.ClientError, asyncio.TimeoutError, _Transient) as exc:
                 failures += 1
                 if failures == 1:
