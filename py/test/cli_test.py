@@ -5,6 +5,7 @@ import os
 import platform
 import pytest
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -108,6 +109,11 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
     assert "Aborted: no interactive terminal detected. Rerun with --yes (-y) to skip confirmation." in str(
         res.exception
     )
+
+
+@pytest.fixture(autouse=True)
+def command_suggestion_server(server_url_env):
+    """Keep command guidance requests on the mock server."""
 
 
 def windows_sleep():
@@ -8965,3 +8971,585 @@ def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, mon
         "token-6",
         "token-8",
     }
+
+
+_SUGGEST_APP = textwrap.dedent("""\
+import modal
+
+app = modal.App("suggest-app")
+
+
+@app.function()
+def train():
+    pass
+
+
+@app.function()
+def evaluate():
+    pass
+""")
+
+
+def test_cli_unknown_command_suggests(set_env_client):
+    result = run_cli_command(["fucntion", "list"], expected_exit_code=2)
+    assert "No such command 'fucntion'." in result.stderr
+    assert "function" in result.stderr
+    assert result.stderr.count("Did you mean") == 1
+
+
+@pytest.mark.parametrize("arguments", [["list"], ["list", "--env", "dev", "--json"]])
+def test_cli_unknown_command_suggests_only_command_name(set_env_client, arguments):
+    result = run_cli_command(["deployment", *arguments], expected_exit_code=2)
+    assert "No such command 'deployment'." in result.stderr
+    assert "Did you mean 'deploy'?" in result.stderr
+    assert "modal deploy list" not in result.stderr
+    assert "--env" not in result.stderr
+    assert "--json" not in result.stderr
+
+
+def test_cli_command_in_wrong_group_suggests(set_env_client):
+    result = run_cli_command(["logs", "my-app"], expected_exit_code=2)
+    assert "app logs" in result.stderr
+    assert "function logs" in result.stderr
+
+
+def test_function_ref_with_dot_suggests_slash(set_env_client, mock_dir, servicer):
+    with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+        run_cli_command(["deploy", "suggest_app.py"])
+        result = run_cli_command(["function", "info", "suggest-app.train"], expected_exit_code=2)
+    assert "APP_NAME/FUNCTION_NAME" in result.stderr
+    assert "Did you mean:" in result.stderr
+    assert "suggest-app/train" in result.stderr
+    assert "function info suggest-app/train" in result.stderr
+
+
+def test_function_ref_with_dot_suggests_slash_without_lookup(set_env_client):
+    # Nothing deployed: the rewrite is still suggested because the separator is wrong.
+    result = run_cli_command(["server", "logs", "my-app.web"], expected_exit_code=2)
+    assert "Did you mean:" in result.stderr
+    assert "my-app/web" in result.stderr
+
+
+def test_function_ref_typo_suggests_close_name(set_env_client, mock_dir, servicer):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_FUNCTION] = [
+        api_pb2.ObjectSuggestion(app_name="suggest-app", object_name="train")
+    ]
+    with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+        run_cli_command(["deploy", "suggest_app.py"])
+        result = run_cli_command(["function", "info", "suggest-app/trian"], expected_exit_code=1)
+    assert "Did you mean:" in str(result.exception)
+    assert "suggest-app/train" in str(result.exception)
+
+
+def test_function_ref_app_typo_suggests_close_app(set_env_client, mock_dir, servicer):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_FUNCTION] = [
+        api_pb2.ObjectSuggestion(app_name="suggest-app", object_name="train")
+    ]
+    with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+        run_cli_command(["deploy", "suggest_app.py"])
+        result = run_cli_command(["function", "info", "suggest-ap/train"], expected_exit_code=1)
+    assert "suggest-app/train" in str(result.exception)
+
+
+def test_run_object_path_typo_suggests(set_env_client, mock_dir):
+    with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+        result = run_cli_command(["run", "suggest_app.py::trian"], expected_exit_code=1)
+    assert "Did you mean:" in result.stderr
+    assert "suggest_app.py::train" in result.stderr
+
+
+def test_run_module_typo_suggestion_preserves_module_flag(set_env_client, mock_dir, monkeypatch):
+    from click.testing import CliRunner
+
+    argv = ["modal", "run", "-m", "hint_package.worker::trian"]
+    monkeypatch.setattr(sys, "argv", argv)
+    with mock_dir({"hint_package": {"__init__.py": "", "worker.py": _SUGGEST_APP}}):
+        result = CliRunner().invoke(entrypoint_cli, argv[1:])
+        assert result.exit_code == 1
+        assert "run -m hint_package.worker::train" in result.stderr
+        run_cli_command(["run", "-m", "hint_package.worker::train"])
+
+
+def test_run_ambiguous_parent_has_no_typo_hint(set_env_client, mock_dir):
+    source = _SUGGEST_APP.replace("app =", "training_app =").replace("@app.function()", "@training_app.function()")
+    with mock_dir({"suggest_app.py": source}):
+        result = run_cli_command(["run", "suggest_app.py::training_app"], expected_exit_code=1)
+    assert "Specify a Modal Function or local entrypoint" in result.stderr
+    assert "training_app.train" in result.stderr
+    assert "training_app.evaluate" in result.stderr
+    assert "Could not find" not in result.stderr
+    assert "Did you mean" not in result.stderr
+
+
+_DOTTED_APP = textwrap.dedent("""\
+import modal
+
+app = modal.App("simple-app.name")
+
+
+@app.function()
+def train():
+    pass
+""")
+
+
+def test_function_ref_dotted_app_name_picks_real_split(set_env_client, mock_dir, servicer):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_FUNCTION] = [
+        api_pb2.ObjectSuggestion(app_name="simple-app.name", object_name="train")
+    ]
+    # `simple-app.name.train` could be `simple-app/name.train` or `simple-app.name/train`;
+    # only the latter matches a deployed App, so it is the single suggestion.
+    with mock_dir({"dotted_app.py": _DOTTED_APP}):
+        run_cli_command(["deploy", "dotted_app.py"])
+        result = run_cli_command(["function", "info", "simple-app.name.train"], expected_exit_code=2)
+    assert "Did you mean:" in result.stderr
+    assert "simple-app.name/train" in result.stderr
+    assert "simple-app/name.train" not in result.stderr
+
+
+def test_function_ref_dotted_ambiguous_lists_all_splits(set_env_client):
+    # Nothing deployed: don't guess a split, list them all.
+    result = run_cli_command(["function", "info", "simple-app.name.foo.bar"], expected_exit_code=2)
+    assert "Did you mean:" in result.stderr
+    for ref in ["simple-app/name.foo.bar", "simple-app.name/foo.bar", "simple-app.name.foo/bar"]:
+        assert f"function info {ref}" in result.stderr
+
+
+def test_function_ref_with_dots_on_both_sides_is_not_rewritten(set_env_client):
+    # `/` present: this is a valid-shaped ref, so a miss is a plain not-found, not a separator hint.
+    result = run_cli_command(["function", "info", "simple-app.name/foo.bar"], expected_exit_code=1)
+    assert "APP_NAME/FUNCTION_NAME" not in str(result.exception)
+
+
+_SUGGEST_CLS_APP = textwrap.dedent("""\
+import modal
+
+app = modal.App("suggest-cls-app")
+
+
+@app.function()
+def train():
+    pass
+
+
+@app.cls()
+class Model:
+    @modal.method()
+    def generate(self):
+        pass
+""")
+
+
+def test_server_ref_typo_suggests_only_servers(set_env_client, mock_dir, servicer):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_SERVER] = [
+        api_pb2.ObjectSuggestion(app_name="suggest-app", object_name="train")
+    ]
+    with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+        run_cli_command(["deploy", "suggest_app.py"])
+    app_id = servicer.deployed_apps[("main", "suggest-app")]
+    # The mock servicer can't classify servers from a definition, so say so directly.
+    servicer.app_servers[app_id] = {"train": servicer.app_objects[app_id]["train"]}
+
+    result = run_cli_command(["server", "info", "suggest-app/trian"], expected_exit_code=1)
+    assert "Did you mean:" in str(result.exception)
+    assert "suggest-app/train" in str(result.exception)
+    assert "server info suggest-app/train" in str(result.exception)
+
+    # `train` is a Server, so it is not offered for a Function command.
+    result = run_cli_command(["function", "info", "suggest-app/trian"], expected_exit_code=1)
+    assert "Did you mean" not in str(result.exception)
+
+
+@pytest.mark.parametrize("method", ["generate", "g", "*"])
+def test_function_ref_cls_typo_keeps_method(set_env_client, mock_dir, servicer, method):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_FUNCTION] = [
+        api_pb2.ObjectSuggestion(app_name="suggest-cls-app", object_name=f"Model.{method}")
+    ]
+    with mock_dir({"suggest_cls_app.py": _SUGGEST_CLS_APP}):
+        run_cli_command(["deploy", "suggest_cls_app.py"])
+        result = run_cli_command(["function", "info", f"suggest-cls-app/Modl.{method}"], expected_exit_code=1)
+    assert "Did you mean:" in str(result.exception)
+    assert f"suggest-cls-app/Model.{method}" in str(result.exception)
+
+
+@pytest.mark.parametrize("group", ["function", "server"])
+@pytest.mark.parametrize(
+    "ref_args",
+    [
+        ["my-app.web"],  # `.` instead of `/`
+        ["my-app::web"],  # `::` (as in `modal run file.py::fn`) instead of `/`
+        ["my-app:web"],
+    ],
+)
+def test_ref_separator_mistakes_suggest_slash(set_env_client, group, ref_args):
+    result = run_cli_command([group, "info", *ref_args], expected_exit_code=2)
+    assert "Did you mean:" in result.stderr
+    assert "my-app/web" in result.stderr
+    assert f"{group} info my-app/web" in result.stderr
+
+
+@pytest.mark.parametrize("group", ["function", "server"])
+@pytest.mark.parametrize("separator", [":", "::"])
+def test_colon_separator_fails_without_lookups_and_preserves_invocation(set_env_client, servicer, group, separator):
+    ref = f"my-app.name{separator}Model.train"
+    with servicer.intercept() as ctx:
+        result = run_cli_command([group, "logs", "-e", "staging", ref, "--since=1h"], expected_exit_code=2)
+    assert f"Invalid {group.title()} reference {ref!r}." in result.stderr
+    assert f"Use '/' between the App and {group.title()} names." in result.stderr
+    assert "Did you mean:" in result.stderr
+    assert "my-app.name/Model.train" in result.stderr
+    assert f"modal {group} logs -e staging my-app.name/Model.train --since=1h" in result.stderr
+    assert not ctx.get_requests("ObjectSuggest")
+    assert not ctx.get_requests("FunctionGet")
+
+
+def test_extra_argument_outside_ref_groups_has_no_ref_hint(set_env_client):
+    result = run_cli_command(["app", "logs", "my-app", "train"], expected_exit_code=2)
+    assert "unexpected extra argument" in result.stderr
+    assert "Did you mean" not in result.stderr
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "timeout"])
+@pytest.mark.parametrize("ref", ["my-app.web", "my-app/web"])
+def test_suggestion_lookup_failure_preserves_original_error(set_env_client, servicer, monkeypatch, failure, ref):
+    monkeypatch.setattr("modal.cli.utils.SUGGESTION_RPC_TIMEOUT", 0.05)
+
+    async def fail_suggestion(servicer, stream):
+        await stream.recv_message()
+        if failure == "timeout":
+            await asyncio.sleep(1)
+        raise GRPCError(Status.UNAVAILABLE, "suggestions unavailable")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ObjectSuggest", fail_suggestion)
+        started = time.monotonic()
+        result = run_cli_command(["function", "info", ref], expected_exit_code=2 if "/" not in ref else 1)
+        assert time.monotonic() - started < 1
+
+    if "/" not in ref:
+        assert "APP_NAME/FUNCTION_NAME" in result.stderr
+        assert "Did you mean:" in result.stderr
+        assert "my-app/web" in result.stderr
+    else:
+        assert isinstance(result.exception, NotFoundError)
+        assert "Did you mean" not in str(result.exception)
+
+
+def test_ambiguous_separator_hint_shows_canonical_commands(set_env_client, monkeypatch):
+    from click.testing import CliRunner
+
+    from modal.cli.entry_point import entrypoint_cli
+
+    argv = ["modal", "function", "logs", "my-app.name.train", "--since", "1h"]
+    monkeypatch.setattr(sys, "argv", argv)
+    result = CliRunner().invoke(entrypoint_cli, argv[1:])
+    assert result.exit_code == 2
+    assert "function logs my-app/name.train" in result.stderr
+    assert "function logs my-app.name/train" in result.stderr
+    assert "--since 1h" in result.stderr
+
+
+def test_missing_object_hint_lists_corrected_commands(set_env_client, servicer):
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "ObjectSuggest",
+            api_pb2.ObjectSuggestResponse(
+                suggestions=[
+                    api_pb2.ObjectSuggestion(app_name="my-app", object_name="train1"),
+                    api_pb2.ObjectSuggestion(app_name="my-app", object_name="train2"),
+                ]
+            ),
+        )
+        result = run_cli_command(["function", "info", "my-app/train"], expected_exit_code=1)
+    assert "function info my-app/train1" in str(result.exception)
+    assert "function info my-app/train2" in str(result.exception)
+
+
+@pytest.mark.parametrize(
+    "group,kind,ref",
+    [
+        ("app", api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_APP, "my-ap"),
+        ("function", api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_FUNCTION, "my-app/trian"),
+        ("server", api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_SERVER, "my-app/trian"),
+    ],
+)
+def test_object_suggestion_request_is_bounded_and_scoped(set_env_client, servicer, group, kind, ref):
+    with servicer.intercept() as ctx:
+        run_cli_command([group, "info", ref, "--env", "staging"], expected_exit_code=1)
+    # Error-path suggestions use one scoped request instead of enumerating workspace objects.
+    requests = ctx.get_requests("ObjectSuggest")
+    assert len(requests) == 1
+    assert requests[0].query == ref
+    assert requests[0].kind == kind
+    assert requests[0].environment_name == "staging"
+    assert not ctx.get_requests("AppList")
+    assert not ctx.get_requests("AppGetInfo")
+
+
+def test_app_name_typo_suggests_corrected_command(set_env_client, servicer):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_APP] = [
+        api_pb2.ObjectSuggestion(object_name="training-app")
+    ]
+    result = run_cli_command(["app", "logs", "training-ap", "--env", "staging"], expected_exit_code=1)
+    assert "Did you mean:" in str(result.exception)
+    assert "training-app" in str(result.exception)
+    assert "app logs training-app" in str(result.exception)
+
+
+@pytest.mark.parametrize("env_first", [False, True])
+@pytest.mark.parametrize("suggestions", [["staging-app"], ["staging-app", "staging-worker"]])
+def test_object_hint_suggests_names_only_when_reference_is_ambiguous(set_env_client, servicer, env_first, suggestions):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_APP] = [
+        api_pb2.ObjectSuggestion(object_name=name) for name in suggestions
+    ]
+    args = ["--env", "staging", "staging"] if env_first else ["staging", "--env", "staging"]
+    result = run_cli_command(["app", "logs", *args], expected_exit_code=1)
+    lines = [line.strip() for line in str(result.exception).splitlines()]
+    assert "Did you mean:" in lines
+    for name in suggestions:
+        assert name in lines
+    assert not any(line.startswith("modal ") for line in lines)
+
+
+@pytest.mark.parametrize(
+    "group,subcommand,options",
+    [
+        ("app", ["info"], ["--json", "--no-color"]),
+        ("app", ["stop"], ["--yes"]),
+        ("app", ["logs"], ["--function", "fu-abc", "--timestamps", "--search", "a b"]),
+        ("function", ["logs"], ["--since", "1h", "--all-variants", "--function-call", "fc-abc", "--timestamps"]),
+        ("function", ["calls"], ["--since", "2h", "--until", "1h", "--all-variants", "--json"]),
+        ("function", ["variants"], ["--limit", "0", "--json"]),
+        ("function", ["autoscaler", "update"], ["--min-containers", "0", "--scaledown-window", "30"]),
+        ("server", ["logs"], ["--since", "1h", "--show-server-id", "--search", "a b"]),
+        ("server", ["stats"], ["--since", "2h", "--container-id", "ta-abc", "--json", "--no-color"]),
+        ("server", ["autoscaler", "update"], ["--min-containers", "0", "--target-concurrency", "none"]),
+    ],
+)
+def test_object_suggestion_preserves_handler_options(set_env_client, servicer, group, subcommand, options):
+    kind = {
+        "app": api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_APP,
+        "function": api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_FUNCTION,
+        "server": api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_SERVER,
+    }[group]
+    app_name = "" if group == "app" else "training-app"
+    object_name = "training-app" if group == "app" else "train"
+    servicer.object_suggestions[kind] = [api_pb2.ObjectSuggestion(app_name=app_name, object_name=object_name)]
+    ref = "training-ap" if group == "app" else "training-app/trian"
+    corrected_ref = "training-app" if group == "app" else "training-app/train"
+    result = run_cli_command([group, *subcommand, ref, "--env", "staging", *options], expected_exit_code=1)
+    message = str(result.exception)
+    retry = next(line.strip() for line in message.splitlines() if line.strip().startswith("modal "))
+    assert shlex.split(retry) == ["modal", group, *subcommand, corrected_ref, "--env", "staging", *options]
+
+
+def test_run_suggestion_places_explicit_options_before_reference(set_env_client, mock_dir):
+    with mock_dir({"hint_options_package": {"__init__.py": "", "worker.py": _SUGGEST_APP}}):
+        result = run_cli_command(
+            [
+                "run",
+                "--profile",
+                "staging",
+                "-m",
+                "--name",
+                "named retry",
+                "--quiet",
+                "--env",
+                "staging",
+                "hint_options_package.worker::trian",
+            ],
+            expected_exit_code=1,
+        )
+        retry = next(line.strip() for line in result.stderr.splitlines() if line.strip().startswith("modal "))
+        args = shlex.split(retry)
+        assert args == [
+            "modal",
+            "run",
+            "--profile",
+            "staging",
+            "-m",
+            "--name",
+            "named retry",
+            "--quiet",
+            "--env",
+            "staging",
+            "hint_options_package.worker::train",
+        ]
+        run_cli_command(args[1:])
+        result = run_cli_command(["run", "-m", "hint_options_package.worker::trian"], expected_exit_code=1)
+        retry = next(line.strip() for line in result.stderr.splitlines() if line.strip().startswith("modal "))
+        assert shlex.split(retry) == ["modal", "run", "-m", "hint_options_package.worker::train"]
+
+
+def test_run_suggestion_omits_entrypoint_arguments(set_env_client, mock_dir):
+    with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+        result = run_cli_command(["run", "suggest_app.py::trian", "--api-key", "sk-123"], expected_exit_code=1)
+    lines = [line.strip() for line in result.stderr.splitlines()]
+    assert "suggest_app.py::train" in lines
+    assert "sk-123" not in result.stderr
+    assert not any(line.startswith("modal ") for line in lines)
+
+
+def test_app_rollback_suggestion_preserves_requested_version(set_env_client, servicer):
+    servicer.object_suggestions[api_pb2.ObjectSuggestRequest.OBJECT_SUGGEST_KIND_APP] = [
+        api_pb2.ObjectSuggestion(object_name="training-app")
+    ]
+    args = ["app", "rollback", "training-ap", "v2", "--env", "staging", "--strategy", "recreate"]
+    result = run_cli_command(args, expected_exit_code=1)
+    assert "modal app rollback training-app v2 --env staging --strategy recreate" in str(result.exception)
+
+
+@pytest.mark.parametrize(
+    "group,command,arguments",
+    [("app", "rollback", ["v2"]), ("app", "stop", ["--yes"]), ("function", "info", []), ("server", "info", [])],
+)
+@pytest.mark.parametrize("profile_first", [False, True])
+def test_object_suggestion_preserves_selected_profile(
+    set_env_client, servicer, group, command, arguments, profile_first
+):
+    kinds = api_pb2.ObjectSuggestRequest
+    kind = {
+        "app": kinds.OBJECT_SUGGEST_KIND_APP,
+        "function": kinds.OBJECT_SUGGEST_KIND_FUNCTION,
+        "server": kinds.OBJECT_SUGGEST_KIND_SERVER,
+    }[group]
+    servicer.object_suggestions[kind] = [
+        api_pb2.ObjectSuggestion(app_name="" if group == "app" else "training-app", object_name="train")
+    ]
+    ref = "trian" if group == "app" else "training-app/trian"
+    for profile in ("staging", "production"):
+        invocation = [group, command, ref, *arguments]
+        profile_args = ["--profile", profile]
+        invocation = profile_args + invocation if profile_first else invocation + profile_args
+        result = run_cli_command(invocation, expected_exit_code=1)
+        retry = next(line.strip() for line in str(result.exception).splitlines() if line.strip().startswith("modal "))
+        corrected_ref = "train" if group == "app" else "training-app/train"
+        assert shlex.split(retry) == ["modal", *(corrected_ref if arg == ref else arg for arg in invocation)]
+
+    # A later invocation inherits the active profile, but did not pass --profile.
+    result = run_cli_command([group, command, ref, *arguments], expected_exit_code=1)
+    retry = next(line.strip() for line in str(result.exception).splitlines() if line.strip().startswith("modal "))
+    assert shlex.split(retry)[:3] == ["modal", group, command]
+    assert "--profile" not in shlex.split(retry)
+
+
+def test_successful_function_lookup_does_not_request_suggestions(set_env_client, mock_dir, servicer):
+    with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+        run_cli_command(["deploy", "suggest_app.py"])
+        with servicer.intercept() as ctx:
+            run_cli_command(["function", "info", "suggest-app/train"])
+    assert not ctx.get_requests("ObjectSuggest")
+
+
+def test_hallucinated_auth_command_explained_without_credentials(servicer, monkeypatch):
+    servicer.command_suggestion.message = "Modal authentication is managed with 'modal token'.\n    modal token --help"
+    monkeypatch.setattr("modal.client._Client.from_env", mock.Mock(side_effect=AssertionError("Needs no credentials")))
+    with servicer.intercept() as ctx:
+        result = run_cli_command(["auth", "login", "--token-secret", "do-not-send"], expected_exit_code=2)
+    assert "No such command 'auth'." in result.stderr
+    assert "authentication is managed with 'modal token'" in result.stderr
+    assert "modal token --help" in result.stderr
+    assert "modal token login" not in result.stderr
+    assert "Did you mean" not in result.stderr
+    requests = ctx.get_requests("CliCommandSuggest")
+    assert requests
+    assert all(b"do-not-send" not in request.SerializeToString() for request in requests)
+    assert "x-modal-token-secret" not in servicer.last_metadata
+    assert "x-modal-token-id" not in servicer.last_metadata
+
+
+@pytest.mark.parametrize(
+    "override_headers",
+    [{}, {"x-modal-test-route": "worker-b", "x-modal-client-version": "99.0.0"}],
+)
+def test_command_suggestion_preserves_cached_authenticated_client(
+    servicer, set_env_client, monkeypatch, override_headers
+):
+    monkeypatch.setenv("MODAL_OVERRIDE_HEADERS", ",".join(f"{key}:{value}" for key, value in override_headers.items()))
+    original = modal.Client.from_env()
+    servicer.command_suggestion.message = "Use 'modal token' to authenticate."
+    result = run_cli_command(["auth"], expected_exit_code=2)
+    assert "Use 'modal token' to authenticate." in result.stderr
+    assert modal.Client.from_env() is original
+    assert not original.is_closed()
+    for key, value in override_headers.items():
+        assert servicer.last_metadata[key] == value
+    original.hello()
+
+
+def test_newer_command_suggestion_overrides_local_fuzzy_hint(servicer):
+    servicer.command_suggestion.CopyFrom(
+        api_pb2.CliCommandSuggestResponse(
+            message="A newer version provides 'modal serve-next'. Upgrade Modal, then retry:",
+            append_original_command=True,
+        )
+    )
+    result = run_cli_command(["serve-next", "logs", "my-app/web", "--since", "1h"], expected_exit_code=2)
+    assert "A newer version provides 'modal serve-next'" in result.stderr
+    assert "modal serve-next logs my-app/web --since 1h" in result.stderr
+    assert "Did you mean" not in result.stderr
+
+
+def test_command_suggestion_does_not_replace_local_logs_suggestions(servicer):
+    result = run_cli_command(["logs"], expected_exit_code=2)
+    assert "Did you mean:" in result.stderr
+    for group in ["app", "container", "endpoint", "function", "image"]:
+        assert f"entrypoint-cli {group} logs" in result.stderr
+    assert "... (see 'entrypoint-cli --help')" in result.stderr
+
+
+def test_nested_command_suggestion_sends_only_command_path(servicer):
+    with servicer.intercept() as ctx:
+        run_cli_command(["endpoint", "statistics", "private-app/secret", "--since", "1h"], expected_exit_code=2)
+    requests = ctx.get_requests("CliCommandSuggest")
+    assert requests
+    for request in requests:
+        assert request == api_pb2.CliCommandSuggestRequest(parent_path=["endpoint"], unknown_command="statistics")
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "timeout", "unimplemented"])
+def test_command_suggestion_failure_preserves_local_hints(servicer, monkeypatch, failure):
+    monkeypatch.setattr("modal.cli._help.COMMAND_SUGGESTION_TIMEOUT", 0.05)
+
+    async def fail_explanation(servicer, stream):
+        await stream.recv_message()
+        if failure == "timeout":
+            await asyncio.sleep(1)
+        raise GRPCError(Status.UNIMPLEMENTED if failure == "unimplemented" else Status.UNAVAILABLE, "No guidance")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("CliCommandSuggest", fail_explanation)
+        started = time.monotonic()
+        result = run_cli_command(["fucntion", "logs", "my-app/train"], expected_exit_code=2)
+        assert time.monotonic() - started < 1
+    assert "Did you mean 'function'?" in result.stderr
+    assert "my-app/train" not in result.stderr
+
+
+@pytest.mark.parametrize("append_original", [False, True])
+def test_empty_command_suggestion_preserves_local_hints(servicer, append_original):
+    servicer.command_suggestion.append_original_command = append_original
+    result = run_cli_command(["fucntion"], expected_exit_code=2)
+    assert "Did you mean" in result.stderr
+
+
+@pytest.mark.parametrize("append_original", [False, True])
+def test_command_suggestion_preserves_full_invocation_locally(servicer, append_original):
+    servicer.command_suggestion.message = "Server-provided guidance."
+    servicer.command_suggestion.append_original_command = append_original
+    result = run_cli_command(
+        ["--profile", "dev", "endpoint", "statistics", "my app/web", "--since", "1h"], expected_exit_code=2
+    )
+    assert "Server-provided guidance." in result.stderr
+    retry = "modal --profile dev endpoint statistics 'my app/web' --since 1h"
+    assert (retry in result.stderr) == append_original
+    assert "Did you mean" not in result.stderr
+
+
+def test_command_suggestion_skips_help_options_and_dynamic_run_refs(servicer, mock_dir, set_env_client):
+    with servicer.intercept() as ctx:
+        run_cli_command(["--help"])
+        run_cli_command(["function", "--no-such-option"], expected_exit_code=2)
+        with mock_dir({"suggest_app.py": _SUGGEST_APP}):
+            run_cli_command(["run", "suggest_app.py::trian"], expected_exit_code=1)
+    assert not ctx.get_requests("CliCommandSuggest")

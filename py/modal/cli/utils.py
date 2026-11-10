@@ -25,8 +25,10 @@ from .._traceback import print_server_warnings
 from .._utils.async_utils import synchronizer
 from .._utils.grpc_utils import is_class_function_lookup_error
 from ..client import _Client
+from ..config import logger
 from ..exception import InvalidError, NotFoundError
 from ..output import OutputManager
+from ._suggest import corrected_commands, format_hint, slash_ref_candidates
 
 HEADER_ONLY = SIMPLE_HEAD
 
@@ -286,6 +288,9 @@ async def _resolve_function_id(
                 raise NotFoundError(
                     f"'{function_identifier}' is a modal.Cls. Use\n modal function {command} '{function_identifier}.*'"
                 ) from None
+            hint = await object_suggestion_hint(client, function_identifier, environment_name, object_type)
+            if hint:
+                raise NotFoundError(f"{exc}\n\n{hint}") from None
             raise
 
         print_server_warnings(response.server_warnings)
@@ -300,7 +305,21 @@ async def _resolve_function_id(
         function = get_by_id_response.function
         metadata = get_by_id_response.handle_metadata
     else:
-        raise UsageError(usage)
+        if ":" in function_identifier:
+            separator = "::" if "::" in function_identifier else ":"
+            app_name, _, object_name = function_identifier.partition(separator)
+            refs = [f"{app_name}/{object_name}"] if app_name and object_name else []
+            commands = corrected_commands(function_identifier, refs)
+            message = (
+                f"Invalid {object_type} reference {function_identifier!r}. "
+                f"Use '/' between the App and {object_type} names."
+            )
+            hint = format_hint(refs, commands)
+            raise UsageError(f"{message}\n\n{hint}" if hint else message)
+        hint = ""
+        if slash_ref_candidates(function_identifier):
+            hint = await object_suggestion_hint(client, function_identifier, environment_name, object_type)
+        raise UsageError(f"{usage}\n\n{hint}" if hint else usage)
 
     if function.is_server != (object_type == "Server"):
         actual_type = "Server" if function.is_server else "Function"
@@ -309,6 +328,48 @@ async def _resolve_function_id(
         raise UsageError(f"'{function_identifier}' is a {actual_type}. Use `modal {actual_type.lower()} {command}`.")
 
     return function_id, metadata, function
+
+
+MAX_REF_SUGGESTIONS = 4
+# Hints are optional: one request, one second, and no retries.
+SUGGESTION_RPC_TIMEOUT = 1.0
+
+
+async def object_suggestion_hint(
+    client: _Client,
+    identifier: str,
+    environment_name: str | None,
+    object_type: Literal["App", "Function", "Server"],
+) -> str:
+    """Request name suggestions only after a failed lookup or malformed reference."""
+    kinds = api_pb2.ObjectSuggestRequest
+    kind = {
+        "App": kinds.OBJECT_SUGGEST_KIND_APP,
+        "Function": kinds.OBJECT_SUGGEST_KIND_FUNCTION,
+        "Server": kinds.OBJECT_SUGGEST_KIND_SERVER,
+    }[object_type]
+    refs: list[str] = []
+    try:
+        response = await client._stub.ObjectSuggest(
+            api_pb2.ObjectSuggestRequest(
+                environment_name=environment_name or "", kind=kind, query=identifier, limit=MAX_REF_SUGGESTIONS
+            ),
+            retry=None,
+            timeout=SUGGESTION_RPC_TIMEOUT,
+        )
+        refs = list(
+            dict.fromkeys(
+                f"{suggestion.app_name}/{suggestion.object_name}" if suggestion.app_name else suggestion.object_name
+                for suggestion in response.suggestions
+                if suggestion.object_name
+            )
+        )
+    except Exception as exc:
+        logger.debug(f"ObjectSuggest request failed: {exc!r}")
+
+    if not refs and object_type != "App":
+        refs = slash_ref_candidates(identifier)[:MAX_REF_SUGGESTIONS]
+    return format_hint(refs, corrected_commands(identifier, refs))
 
 
 def parse_int(s: str, *, allow_negative: bool = True, allow_zero: bool = True, allow_positive: bool = True) -> int:

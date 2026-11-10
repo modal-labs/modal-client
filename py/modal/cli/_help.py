@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import os
+import re
+import shlex
 import shutil
 import sys
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Callable, Sequence
+from typing import Any, cast
 
 import click
 from rich.console import Console, Group, RenderableType
@@ -17,6 +20,12 @@ from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
+from modal._utils.async_utils import synchronizer
+from modal_proto import api_pb2
+from modal_version import __version__
+
+from ._suggest import _invocation_args, unknown_command_hint
 
 _HEADING_STYLE = "bold bright_green"
 _COMMAND_NAME_STYLE = ""
@@ -27,6 +36,56 @@ _ERROR_STYLE = "red"
 
 _MAX_HELP_WIDTH = 80
 _HELP_PADDING = 1
+COMMAND_SUGGESTION_TIMEOUT = 1.0
+
+
+async def _fetch_command_suggestion_async(
+    parent_path: list[str], unknown_command: str
+) -> api_pb2.CliCommandSuggestResponse:
+    from modal._utils.grpc_utils import create_channel
+    from modal.client import _get_metadata
+    from modal.config import config
+    from modal_proto import api_grpc
+
+    async def fetch() -> api_pb2.CliCommandSuggestResponse:
+        # Command guidance is public and must also work before authentication.
+        metadata = _get_metadata(api_pb2.CLIENT_TYPE_CLIENT, credentials=None, version=__version__)
+        async with create_channel(config["server_url"], metadata) as channel:
+            return await api_grpc.ModalClientStub(channel).CliCommandSuggest(
+                api_pb2.CliCommandSuggestRequest(parent_path=parent_path, unknown_command=unknown_command),
+                timeout=COMMAND_SUGGESTION_TIMEOUT,
+            )
+
+    # The deadline includes opening the connection, not just receiving a response.
+    return await asyncio.wait_for(fetch(), timeout=COMMAND_SUGGESTION_TIMEOUT)
+
+
+_fetch_command_suggestion = cast(
+    Callable[[list[str], str], api_pb2.CliCommandSuggestResponse],
+    synchronizer.create_blocking(_fetch_command_suggestion_async, "_fetch_command_suggestion"),
+)
+
+
+def _command_suggestion_hint(ctx: click.Context, name: str, rest: Sequence[str]) -> str:
+    parent_path: list[str] = []
+    parent = ctx
+    while parent.parent is not None:
+        parent_path.append(parent.info_name or "")
+        parent = parent.parent
+    parent_path.reverse()
+    path = [*parent_path, name]
+    if len(path) > 8 or any(not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]{0,63}", word) for word in path):
+        return ""
+    try:
+        response = _fetch_command_suggestion(parent_path, name)
+        hint = response.message
+        if hint and response.append_original_command:
+            original_args = ctx.meta.get("modal_original_args", [*path, *rest])
+            hint += f"\n    {shlex.join(['modal', *original_args])}"
+        return hint
+    except Exception:
+        pass
+    return ""
 
 
 class ModalGlobalOption(click.Option):
@@ -320,12 +379,21 @@ class ModalCommand(click.Command):
         )
 
 
+def _is_no_such_command(exc: click.UsageError) -> bool:
+    no_such_command = getattr(click.exceptions, "NoSuchCommand", None)  # click >= 8.4
+    if no_such_command is not None:
+        return isinstance(exc, no_such_command)
+    return exc.message.startswith("No such command")
+
+
 class ModalGroup(click.Group):
     """click.Group whose subcommands and subgroups inherit `ModalCommand`."""
 
     command_class = ModalCommand
     group_class = type  # nested @group.group() reuses the enclosing class
     defer_global_option_parsing = False
+    # Groups that resolve subcommands from user input (e.g. `modal run`) opt out of "Did you mean".
+    dynamic_subcommands = False
 
     def __init__(self, *args: Any, panel: str | None = None, **kwargs: Any) -> None:
         # Default to showing help when a group is invoked with no subcommand.
@@ -348,7 +416,34 @@ class ModalGroup(click.Group):
         if hidden is not None:
             cmd.hidden = hidden
 
+    def invoke(self, ctx: click.Context) -> Any:
+        token = _invocation_args.set(ctx.meta.get("modal_original_args"))
+        try:
+            return super().invoke(ctx)
+        finally:
+            _invocation_args.reset(token)
+
+    def resolve_command(
+        self, ctx: click.Context, args: list[str]
+    ) -> tuple[str | None, click.Command | None, list[str]]:
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as exc:
+            if self.dynamic_subcommands or not args or not _is_no_such_command(exc):
+                raise
+            name = click.utils.make_str(args[0])
+            message = f"No such command '{name}'."
+            # Replaces click's own suggestion (8.4+ only, and it can include hidden commands)
+            # so the hint is the same on every supported click version.
+            rest = [click.utils.make_str(a) for a in args[1:]]
+            hint = _command_suggestion_hint(ctx, name, rest) or unknown_command_hint(self, ctx, name)
+            if hint:
+                message += f"\n\n{hint}"
+            raise click.UsageError(message, ctx) from None
+
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if ctx.parent is None:
+            ctx.meta["modal_original_args"] = tuple(args)
         index = 0
         while index < len(args):
             arg = args[index]

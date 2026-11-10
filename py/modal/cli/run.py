@@ -26,11 +26,14 @@ from ..output import OutputManager
 from ..runner import DEPLOYMENT_STRATEGY_TYPE, deploy_app, run_app
 from ..serving import serve_app
 from ._help import ModalCommand, ModalGroup, _consume_global_options, _global_option_token_length
+from ._suggest import close_matches, corrected_commands, format_hint
 from .import_refs import (
     STDIN_REF,
     CLICommand,
+    ImportRef,
     MethodReference,
     _get_runnable_app,
+    filter_cli_commands,
     format_lazy_imports_note,
     import_and_filter,
     import_app_from_ref,
@@ -420,10 +423,26 @@ def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
     return "\n".join(usable_command_lines)
 
 
+def _object_path_hint(func_ref: str, import_ref: ImportRef, all_usable_commands: list[CLICommand]) -> str:
+    """Suggest the closest runnable when `file.py::name` names something that doesn't exist."""
+    if not import_ref.object_path or filter_cli_commands(all_usable_commands, import_ref.object_path):
+        return ""
+    names = [name for cmd in all_usable_commands for name in cmd.names]
+    matches = close_matches(import_ref.object_path, names)
+    if not matches:
+        return ""
+    refs = [f"{import_ref.file_or_module}::{m}" for m in matches]
+    message = f"Could not find '{import_ref.object_path}' in '{import_ref.file_or_module}'."
+    # Arguments after the reference belong to the user's entrypoint and may hold secrets.
+    commands = corrected_commands(func_ref, refs, allow_trailing_args=False)
+    return f"{message}\n\n{format_hint(refs, commands)}"
+
+
 class RunGroup(ModalGroup):
     """Click group that resolves subcommands dynamically from a file/module ref."""
 
     defer_global_option_parsing = True
+    dynamic_subcommands = True
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         option_params: dict[str, click.Option] = {}
@@ -500,6 +519,8 @@ class RunGroup(ModalGroup):
                 help_footer = f"'{import_ref.file_or_module}' has no functions or local entrypoints."
 
             help_footer += format_lazy_imports_note(lazy_imports, found_commands=bool(all_usable_commands))
+            if hint := _object_path_hint(func_ref, import_ref, all_usable_commands):
+                help_header = f"{hint}\n\n{help_header}"
 
             raise ClickException(f"{help_header}\n\n{help_footer}")
 

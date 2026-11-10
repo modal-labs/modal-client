@@ -944,6 +944,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]
         self.app_objects = {}
         self.app_servers: dict[str, dict[str, str]] = {}
+        self.object_suggestions: dict[int, list[api_pb2.ObjectSuggestion]] = {}
+        self.command_suggestion = api_pb2.CliCommandSuggestResponse()
         self.app_tags: dict[str, dict[str, str]] = {}
         self.app_unindexed_objects = {}
         self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
@@ -1229,13 +1231,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await asyncio.sleep(60)
         elif client_version == "deprecated":
             pass  # dumb magic fixture constant
-        elif Version(client_version) < Version(__version__):
+        elif (
+            Version(client_version) < Version(__version__)
+            and event.method_name != "/modal.client.ModalClient/CliCommandSuggest"
+        ):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
 
         if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
             if event.method_name in [
                 "/modal.client.ModalClient/TokenFlowCreate",
                 "/modal.client.ModalClient/TokenFlowWait",
+                "/modal.client.ModalClient/CliCommandSuggest",
             ]:
                 pass  # Methods that don't require authentication
             else:
@@ -1675,6 +1681,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.NOT_FOUND, f"App '{request.app_id}' not found")
         lifecycle = api_pb2.AppLifecycle(app_state=self.app_state_history[request.app_id][-1])
         await stream.send_message(api_pb2.AppGetLifecycleResponse(lifecycle=lifecycle))
+
+    async def CliCommandSuggest(self, stream):
+        await stream.recv_message()
+        await stream.send_message(self.command_suggestion)
+
+    async def ObjectSuggest(self, stream):
+        request: api_pb2.ObjectSuggestRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.ObjectSuggestResponse(suggestions=self.object_suggestions.get(request.kind, []))
+        )
 
     async def AppGetInfo(self, stream):
         request: api_pb2.AppGetInfoRequest = await stream.recv_message()

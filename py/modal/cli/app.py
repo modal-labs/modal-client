@@ -47,6 +47,7 @@ from .utils import (
     confirm_or_suggest_yes,
     display_table,
     env_option,
+    object_suggestion_hint,
     yes_option,
 )
 
@@ -107,7 +108,8 @@ async def resolve_app_identifier(
             return resp.previous_app_id, resp.environment_name, resp.lifecycle
         else:
             msg = f"No App with name '{app_identifier}' found in the '{resp.environment_name}' environment."
-            raise NotFoundError(msg)
+            hint = await object_suggestion_hint(client, app_identifier, env, "App")
+            raise NotFoundError(f"{msg}\n\n{hint}" if hint else msg)
 
 
 @app_cli.command("list", panel="Management")
