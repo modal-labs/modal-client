@@ -1351,19 +1351,13 @@ async def autoscaler_info(function_identifier: str, json: bool = False, env: str
 
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
-    function_id, handle_metadata, _ = await _resolve_function_id(
+    function_id, _, _ = await _resolve_function_id(
         client,
         function_identifier,
         environment_name,
         object_type="Function",
         command="autoscaler settings",
     )
-
-    if not handle_metadata.base_function_id and len(handle_metadata.class_parameter_info.schema) > 0:
-        raise ValueError(
-            f"`{function_identifier}` is a modal.Cls with parameters. Provide a specific "
-            "parameterization via a Function ID. See `modal function variants`."
-        )
 
     autoscaler_response = await client._stub.FunctionGetSchedulingParams(
         api_pb2.FunctionGetSchedulingParamsRequest(function_id=function_id)
@@ -1538,12 +1532,6 @@ async def autoscaler_update(
         object_type="Function",
         command="autoscaler update",
     )
-
-    if not handle_metadata.base_function_id and len(handle_metadata.class_parameter_info.schema) > 0:
-        raise ValueError(
-            f"`{function_identifier}` is a modal.Cls with parameters. Provide a specific "
-            "parameterization via a Function ID. See `modal function variants`."
-        )
 
     f: _Function = _Function._new_hydrated(function_id, client, handle_metadata)
     await f.autoscaler.update(**updates)

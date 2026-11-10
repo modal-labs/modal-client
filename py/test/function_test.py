@@ -2689,8 +2689,6 @@ _CLASS_FUNCTION_BLOCKED_OPERATIONS = [
     ("spawn_map", lambda f: f.spawn_map([1])),
     ("experimental_spawn_map", lambda f: f.experimental_spawn_map([1])),
     ("_experimental_spawn", lambda f: f._experimental_spawn()),
-    ("update_autoscaler", lambda f: f.update_autoscaler(min_containers=1)),
-    ("autoscaler.update", lambda f: f.autoscaler.update(min_containers=1)),
     ("with_options", lambda f: f.with_options(cpu=2).hydrate()),
     ("with_concurrency", lambda f: f.with_concurrency(max_inputs=2).hydrate()),
     ("with_batching", lambda f: f.with_batching(max_batch_size=2, wait_ms=100).hydrate()),
@@ -2698,7 +2696,48 @@ _CLASS_FUNCTION_BLOCKED_OPERATIONS = [
 ]
 
 
-_CLASS_FUNCTION_ALLOWED_APIS = {"logs", "metrics", "info", "stats", "get_current_stats", "get_web_url", "autoscaler"}
+_CLASS_FUNCTION_ALLOWED_APIS = {
+    "logs",
+    "metrics",
+    "info",
+    "stats",
+    "get_current_stats",
+    "get_web_url",
+    "autoscaler",
+    "update_autoscaler",
+}
+
+
+@pytest.mark.parametrize("hydrated", [False, True])
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("kwargs", [{}, {"min_containers": 2, "max_containers": 5}])
+def test_function_from_id_class_updates_autoscaler(client, servicer, class_function_id, hydrated, legacy, kwargs):
+    function = Function.from_id(class_function_id, client=client)
+    if hydrated:
+        function.hydrate()
+
+    with servicer.intercept() as ctx:
+        if legacy:
+            with pytest.warns(DeprecationError, match=r"`Function.update_autoscaler\(\)` is deprecated"):
+                settings = function.update_autoscaler(**kwargs)
+        else:
+            settings = function.autoscaler.update(**kwargs)
+
+    requests = ctx.get_requests("FunctionUpdateSchedulingParams")
+    assert len(requests) == 1
+    assert requests[0].function_id == class_function_id
+    assert requests[0].settings == api_pb2.AutoscalerSettings(**kwargs)
+    assert settings.min_containers == kwargs.get("min_containers", 1)
+    assert settings.max_containers == kwargs.get("max_containers")
+
+
+def test_function_from_id_class_autoscaler_rejects_invalid_settings(client, servicer, class_function_id):
+    function = Function.from_id(class_function_id, client=client)
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="min_containers.*nonnegative"):
+            function.autoscaler.update(min_containers=-2)
+    assert not ctx.get_requests("FunctionUpdateSchedulingParams")
+
 
 _CLASS_FUNCTION_IRRELEVANT_APIS = {
     "from_id",
@@ -2737,7 +2776,7 @@ def test_function_from_id_class_blocks_invocation(
     assert str(exc_info.value) == (
         f"`{class_function_id}` belongs to the Cls `MyCls`. A Function loaded with "
         "`Function.from_id` only supports `.logs`, `.metrics`, `.info()`, `.stats()`, "
-        "`.get_current_stats()`, `.get_web_url()` and `.autoscaler.settings()`. "
+        "`.get_current_stats()`, `.get_web_url()`, `.autoscaler` and `.update_autoscaler()`. "
         "Use `modal.Cls.from_name(...)` to invoke all other methods."
     )
     assert not ctx.get_requests("FunctionBindParams")

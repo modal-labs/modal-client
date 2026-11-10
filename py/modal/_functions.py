@@ -126,7 +126,8 @@ _OBSERVABILITY_ONLY_APIS = (
     ".stats()",
     ".get_current_stats()",
     ".get_web_url()",
-    ".autoscaler.settings()",
+    ".autoscaler",
+    ".update_autoscaler()",
 )
 TERMINAL_STATUSES = (
     api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -1409,7 +1410,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         """
 
-        self._check_not_observability_only()
         deprecation_warning(
             (2026, 10, 16),
             "`Function.update_autoscaler()` is deprecated and will be removed in a future version "
@@ -1527,7 +1527,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         If the ID belongs to a Cls, the Function only supports the following APIs:
         `.logs`, `.metrics`, `.info()`, `.stats()`, `.get_current_stats()`,
-        `.get_web_url()` and `.autoscaler.settings()`. Use `modal.Cls.from_name(...)`
+        `.get_web_url()`, `.autoscaler` and `.update_autoscaler()`. Use `modal.Cls.from_name(...)`
         to invoke all other methods.
 
         Args:
@@ -2704,7 +2704,6 @@ class _FunctionAutoscalerManager:
         if not self._function._is_hydrated:
             await self._function.hydrate()
 
-        self._function._check_not_observability_only()
         settings: api_pb2.AutoscalerSettings = api_pb2.AutoscalerSettings()
 
         if min_containers != UNSET_PARAMETER:
