@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2026
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -34,14 +35,23 @@ from ..sandbox._sandbox import _Sandbox
 ENVIRONMENT_HEADER = "x-streams-environment"
 # URL-safe characters only, since names appear in URL paths; 64 matches other Modal object names.
 STREAM_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
-# The service's per-value limit, checked here so an oversized value fails before it is sent.
-MAX_VALUE_BYTES = 64 * 1024
+# The service's limit on a value stored in its entry; a larger one is uploaded separately and its entry refers to it.
+MAX_VALUE_BYTES: int = 64 * 1024
+# The service's limit on an uploaded value, checked here so an oversized value fails before it is uploaded.
+MAX_BLOB_BYTES = 1 << 30
+# Uploads one handle runs at once, which bounds the connections that large values take.
+MAX_CONCURRENT_UPLOADS = 4
+# Serialized bytes one handle holds for uploads in flight; a new upload waits while this many are held, so a
+# value larger than this uploads with little else and memory stays near the budget plus one value.
+UPLOAD_BUDGET_BYTES = 64 * 1024 * 1024
 # The service expires streams in an hourly pass, so a shorter retention would not be honored.
 MIN_RETENTION = timedelta(hours=1)
 # Tokens cannot be revoked, so the service caps their lifetime to bound what a leaked one exposes.
 MAX_TOKEN_TTL = timedelta(hours=1)
 # Generous for one append or one page of reads; a request that takes longer is retried.
 REQUEST_TIMEOUT_S = 30.0
+# Moves the largest value at about 2 MiB/s, and matches the 10 minutes an upload or download URL is valid.
+BLOB_TIMEOUT_S = 600.0
 # Followed reads receive a keep-alive every 15 s, so only a dead connection goes this long without data.
 FOLLOW_IDLE_TIMEOUT_S = 60.0
 # Transient failures are retried for this long, which covers the streams service recovering from a full restart.
@@ -154,6 +164,8 @@ def _error_for(status: int, body: bytes, stream_name: str) -> Exception:
         pass
     code: str = err.get("code") or ""
     message = f"Stream '{stream_name}': {err.get('message') or body.decode(errors='replace')[:500] or status}"
+    if code == "too_large":
+        return InvalidError(f"Stream '{stream_name}': the value is too large to store: {err.get('message') or status}")
     if status in (429, 500, 502, 503, 504):
         return _Transient(message)
     if status == 409:
@@ -164,13 +176,16 @@ def _error_for(status: int, body: bytes, stream_name: str) -> Exception:
     return errors.get(status, NotFoundError if status == 410 else ServiceError)(message)
 
 
-def _check_value(value: Any) -> None:
+def _serialize(value: Any) -> bytes:
     try:
-        size = len(json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
+        data = json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
     except (TypeError, ValueError) as exc:
         raise InvalidError(f"Stream values must be JSON-serializable: {exc}") from None
-    if size > MAX_VALUE_BYTES:
-        raise InvalidError(f"Stream values are limited to {MAX_VALUE_BYTES} bytes of JSON; this one is {size} bytes.")
+    if len(data) > MAX_BLOB_BYTES:
+        raise InvalidError(
+            f"Stream values are limited to {MAX_BLOB_BYTES} bytes of JSON; this one is {len(data)} bytes."
+        )
+    return data
 
 
 def _identity_token() -> str | None:
@@ -295,6 +310,9 @@ class _Stream:
         self._client = client
         self._token = token
         self._refreshing: asyncio.Task[bool] | None = None
+        self._uploads = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
+        self._upload_bytes = 0
+        self._upload_room = asyncio.Condition()
         self._gen: int | None = None
         self._lock = asyncio.Lock()
 
@@ -396,9 +414,12 @@ class _Stream:
         params: Mapping[str, Any] | None = None,
         retry: bool = True,
         headers: Mapping[str, str] | None = None,
+        content: bytes | None = None,
+        timeout: float = REQUEST_TIMEOUT_S,
     ) -> tuple[bytes, Mapping[str, str]]:
-        """One request, retried on transient failures until `RETRY_DEADLINE_S` passes, if `retry`, and once
-        with a refreshed token if its token has expired. `headers` replaces the handle's credentials."""
+        """One request to the streams service, or to an absolute `path`, retried on transient failures until
+        `RETRY_DEADLINE_S` passes, if `retry`, and once with a refreshed token if its token has expired.
+        `headers` replaces the handle's credentials."""
         import aiohttp
 
         deadline = time.monotonic() + RETRY_DEADLINE_S
@@ -410,11 +431,12 @@ class _Stream:
             try:
                 async with ClientSessionRegistry.get_session().request(
                     method,
-                    _service_url() + path,
+                    path if "://" in path else _service_url() + path,
                     json=body,
+                    data=content,
                     params=params,
                     headers=sent,
-                    timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_S),
+                    timeout=aiohttp.ClientTimeout(total=timeout),
                 ) as resp:
                     data = await resp.read()
                     if resp.status < 400:
@@ -429,6 +451,45 @@ class _Stream:
                 if not retry or time.monotonic() + delay > deadline:
                     raise self._unreachable(exc) from exc
                 await asyncio.sleep(delay)
+
+    async def _put_blob(self, data: bytes) -> str:
+        """Upload `data` for this stream and return the reference an entry holds in its place."""
+        async with self._lock:
+            await self._create_locked()
+        body = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+        out = json.loads((await self._call("POST", f"{self._path}/blobs", body))[0])
+        await self._transfer("PUT", out["url"], out["headers"], data)
+        return out["ref"]
+
+    async def _get_blob(self, ref: str) -> bytes:
+        out, _ = await self._call("GET", f"{self._path}/blobs/{ref.removeprefix('blob:')}")
+        return await self._transfer("GET", json.loads(out)["url"], {})
+
+    async def _transfer(self, method: str, url: str, headers: Mapping[str, str], content: bytes | None = None) -> bytes:
+        # The URL carries its own authorization, so the handle's credentials are not sent with it.
+        data, _ = await self._call(method, url, headers=headers, content=content, timeout=BLOB_TIMEOUT_S)
+        return data
+
+    async def _payload(self, value: Any) -> dict[str, Any]:
+        """The entry fields that carry `value`: the value, or a reference to its upload."""
+        async with self._uploads:
+            async with self._upload_room:
+                await self._upload_room.wait_for(lambda: self._upload_bytes < UPLOAD_BUDGET_BYTES)
+                data = _serialize(value)
+                if len(data) <= MAX_VALUE_BYTES:
+                    return {"value": value}
+                self._upload_bytes += len(data)
+            try:
+                return {"ref": await self._put_blob(data)}
+            finally:
+                async with self._upload_room:
+                    self._upload_bytes -= len(data)
+                    self._upload_room.notify_all()
+
+    async def _resolve(self, event: dict[str, Any]) -> Entry:
+        if (ref := event.get("ref") or "").startswith("blob:"):
+            event = {**event, "value": json.loads(await self._get_blob(ref))}
+        return _entry(event)
 
     async def _renew(self, stale: str) -> bool:
         """Whether the access token `stale` has been replaced, refreshing it if this handle can; concurrent
@@ -505,7 +566,8 @@ class _Stream:
         raise AssertionError("unreachable")
 
     async def append(self, value: Any, *, idempotency_key: str | None = None) -> AppendResult:
-        """Append a JSON-serializable value of at most 64 KiB and return its sequence number.
+        """Append a JSON-serializable value of at most 1 GiB and return its sequence number. A value over
+        64 KiB is uploaded before its entry is written; reads return it like any other.
 
         Appending again with the same `idempotency_key` and value returns the original result with
         `deduped=True`; the same key with a different value raises `IdempotencyConflict`.
@@ -527,9 +589,11 @@ class _Stream:
             raise InvalidError("`idempotency_keys` must have one key per value.")
         if len(set(idempotency_keys)) != len(idempotency_keys):
             raise InvalidError("`idempotency_keys` must be distinct within one call.")
-        for value in values:
-            _check_value(value)
-        events = [{"op_id": k, "kind": "value", "value": v} for k, v in zip(idempotency_keys, values)]
+        payloads = await asyncio.gather(*(self._payload(value) for value in values))
+        return await self._append(list(zip(idempotency_keys, payloads)))
+
+    async def _append(self, entries: list[tuple[str, dict[str, Any]]]) -> list[AppendResult]:
+        events = [{"op_id": key, "kind": "value", **payload} for key, payload in entries]
         out = await self._write("/append", {"events": events})
         return [AppendResult(int(r["seq"]), bool(r.get("deduped"))) for r in out["results"]]
 
@@ -563,7 +627,7 @@ class _Stream:
         line = next((line for line in data.splitlines() if line.strip()), None)
         if line is None:
             raise IndexError(f"Stream '{self.name}' has no entry {seq}.")
-        return _entry(json.loads(line))
+        return await self._resolve(json.loads(line))
 
     async def read(self, start: int = 1, *, follow: bool = False) -> AsyncGenerator[Entry, None]:
         """Iterate over the stream's entries from sequence number `start`.
@@ -584,7 +648,7 @@ class _Stream:
             )
             events = [json.loads(line) for line in data.splitlines() if line.strip()]
             for event in events:
-                yield _entry(event)
+                yield await self._resolve(event)
             start = int(headers["x-dlog-next-seq"])
             if not events or start > int(headers["x-dlog-head-seq"]):
                 return
@@ -615,7 +679,7 @@ class _Stream:
                             raise _error_for(
                                 int(err.get("status", 500)), json.dumps({"error": err}).encode(), self.name
                             )
-                        entry = _entry(json.loads(data))
+                        entry = await self._resolve(json.loads(data))
                         start, failures, renewed = entry.seq + 1, 0, False
                         yield entry
             except AuthError:
@@ -704,7 +768,7 @@ class _StreamWriter:
         self._stream = stream
         self._on_written = on_written
         self._on_conflict = on_conflict
-        self._queue: list[tuple[str, Any]] = []
+        self._queue: list[tuple[str, dict[str, Any]]] = []
         self._error: BaseException | None = None
         self._wake = asyncio.Event()
         self._idle = asyncio.Event()
@@ -714,22 +778,23 @@ class _StreamWriter:
         self._closed = False
 
     async def append(self, value: Any, *, idempotency_key: str | None = None) -> None:
-        """Queue a value to be appended; see `Stream.append` for the limits and idempotency."""
-        _check_value(value)
-        while not self._try_enqueue(value, idempotency_key):
+        """Queue a value to be appended; see `Stream.append` for the limits and idempotency. A value over
+        64 KiB is uploaded before it is queued."""
+        payload = await self._stream._payload(value)
+        while not self._try_enqueue(payload, idempotency_key):
             self._progress.clear()
             await self._progress.wait()
         self._start()
 
-    def _try_enqueue(self, value: Any, idempotency_key: str | None) -> bool:
-        """Queue the value and return True, or return False while the queue is full."""
+    def _try_enqueue(self, payload: dict[str, Any], idempotency_key: str | None) -> bool:
+        """Queue the value's entry fields and return True, or return False while the queue is full."""
         if self._closed:
             raise InvalidError("This StreamWriter is closed.")
         if self._error is not None:
             raise self._error
         if len(self._queue) >= WRITER_MAX_PENDING:
             return False
-        self._queue.append((uuid.uuid4().hex if idempotency_key is None else idempotency_key, value))
+        self._queue.append((uuid.uuid4().hex if idempotency_key is None else idempotency_key, payload))
         return True
 
     def _start(self) -> None:
@@ -781,10 +846,10 @@ class _StreamWriter:
             self._wake.clear()
             while self._queue:
                 batch, keys = [], set()
-                for key, value in self._queue[:WRITER_MAX_BATCH]:
+                for key, payload in self._queue[:WRITER_MAX_BATCH]:
                     if key in keys:
                         break
-                    batch.append((key, value))
+                    batch.append((key, payload))
                     keys.add(key)
                 try:
                     await self._write(batch)
@@ -796,10 +861,10 @@ class _StreamWriter:
                 self._progress.set()
             self._idle.set()
 
-    async def _write(self, batch: list[tuple[str, Any]]) -> None:
+    async def _write(self, batch: list[tuple[str, dict[str, Any]]]) -> None:
         while batch:
             try:
-                results = await self._stream.append_many([v for _, v in batch], idempotency_keys=[k for k, _ in batch])
+                results = await self._stream._append(batch)
             except IdempotencyConflict as exc:
                 rest = [item for item in batch if item[0] != exc.idempotency_key]
                 if self._on_conflict is None or len(rest) == len(batch):

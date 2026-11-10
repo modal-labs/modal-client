@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2026
 import asyncio
+import base64
+import hashlib
 import json
 import os
 import pytest
@@ -23,7 +25,7 @@ from modal.exception import (
     ServiceError,
 )
 from modal.experimental import IdempotencyConflict, Stream, StreamInfo
-from modal.experimental.stream import AppendResult, StreamToken
+from modal.experimental.stream import MAX_VALUE_BYTES, AppendResult, StreamToken
 from modal_proto import api_pb2
 
 WORKSPACE_ID = "ac-" + "a" * 22
@@ -45,6 +47,12 @@ class FakeStreamsService:
         self.expired_rejections = 0
         # Refreshes wait while `hold_refreshes` is set.
         self.hold_refreshes: asyncio.Event | None = None
+        # Blob uploads by `<run id>/<sha256>`, served at presigned URLs that need no credentials.
+        self.blobs: dict[str, bytes] = {}
+        self.max_blob_bytes = 1 << 30
+        self.uploading = self.max_uploading = 0
+        # Uploads wait while `hold_uploads` is set.
+        self.hold_uploads: asyncio.Event | None = None
         self.requests: list[aiohttp.web.Request] = []
         # Ends the next follow response, without a seal, after this many entries.
         self.drop_follow_after: int | None = None
@@ -67,12 +75,19 @@ class FakeStreamsService:
                 aiohttp.web.get("/v1/runs/{run}/events", self.events),
                 aiohttp.web.post("/v1/runs/{run}/tokens", self.mint_token),
                 aiohttp.web.post("/v1/tokens/refresh", self.refresh_token),
+                aiohttp.web.post("/v1/runs/{run}/blobs", self.presign_put),
+                aiohttp.web.get("/v1/runs/{run}/blobs/{run_id}/{sha256}", self.presign_get),
+                aiohttp.web.put("/presigned/{run_id}/{sha256}", self.put_blob),
+                aiohttp.web.get("/presigned/{run_id}/{sha256}", self.get_blob),
             ]
         )
 
     @aiohttp.web.middleware
     async def _record(self, request, handler):
         self.requests.append(request)
+        if request.path.startswith("/presigned/"):
+            assert "Authorization" not in request.headers
+            return await handler(request)
         grant = self.tokens.get(request.headers["Authorization"].removeprefix("Bearer "))
         if grant is not None and request.path != "/v1/tokens/refresh":
             if "x-streams-environment" in request.headers:
@@ -175,9 +190,12 @@ class FakeStreamsService:
         body = await request.json()
         if not all(ev["op_id"] for ev in body["events"]):
             return _error(400, "invalid_argument")
+        if any(len(json.dumps(ev.get("value"), separators=(",", ":")).encode()) > 64 * 1024 for ev in body["events"]):
+            return _error(413, "too_large")
         stored = {e["op_id"]: e for e in run["events"]}
         for ev in body["events"]:
-            if (prior := stored.get(ev["op_id"])) is not None and prior["value"] != ev["value"]:
+            prior = stored.get(ev["op_id"])
+            if prior is not None and (prior.get("value"), prior.get("ref")) != (ev.get("value"), ev.get("ref")):
                 return _error(409, "idempotency_conflict", op_id=ev["op_id"], seq=prior["seq"])
         if any(ev["op_id"] not in stored for ev in body["events"]) and body["gen"] != run["gen"]:
             return _error(409, "fenced")
@@ -193,6 +211,53 @@ class FakeStreamsService:
         async with self.changed:
             self.changed.notify_all()
         return aiohttp.web.json_response({"results": results})
+
+    async def presign_put(self, request):
+        body, run_id = await request.json(), f"st-{request.match_info['run']}"
+        assert body.keys() == {"sha256", "size"}
+        if request.match_info["run"] not in self.runs:
+            return _error(404, "not_found")
+        if body["size"] > self.max_blob_bytes:
+            return _error(413, "too_large")
+        checksum = base64.b64encode(bytes.fromhex(body["sha256"])).decode()
+        return aiohttp.web.json_response(
+            {
+                "ref": f"blob:{run_id}/{body['sha256']}",
+                "url": f"{request.url.origin()}/presigned/{run_id}/{body['sha256']}?signature=fake",
+                "headers": {"content-length": str(body["size"]), "x-amz-checksum-sha256": checksum},
+                "expires_at": int(time.time()) + 600,
+            }
+        )
+
+    async def presign_get(self, request):
+        run_id, sha256 = request.match_info["run_id"], request.match_info["sha256"]
+        if run_id != f"st-{request.match_info['run']}":
+            return _error(403, "forbidden")
+        url = f"{request.url.origin()}/presigned/{run_id}/{sha256}?signature=fake"
+        return aiohttp.web.json_response({"url": url, "expires_at": int(time.time()) + 600})
+
+    async def put_blob(self, request):
+        self.uploading += 1
+        self.max_uploading = max(self.max_uploading, self.uploading)
+        async with self.changed:
+            self.changed.notify_all()
+        try:
+            if self.hold_uploads is not None:
+                await self.hold_uploads.wait()
+            data, sha256 = await request.read(), request.match_info["sha256"]
+            checksum = base64.b64encode(hashlib.sha256(data).digest()).decode()
+            if request.headers.get("x-amz-checksum-sha256") != checksum or hashlib.sha256(data).hexdigest() != sha256:
+                return aiohttp.web.Response(status=400)
+            self.blobs[f"{request.match_info['run_id']}/{sha256}"] = data
+            return aiohttp.web.Response()
+        finally:
+            self.uploading -= 1
+
+    async def get_blob(self, request):
+        key = f"{request.match_info['run_id']}/{request.match_info['sha256']}"
+        if key not in self.blobs:
+            return aiohttp.web.Response(status=404)
+        return aiohttp.web.Response(body=self.blobs[key])
 
     async def seal(self, request):
         run = self.runs[request.match_info["run"]]
@@ -272,8 +337,6 @@ async def test_from_name_and_append(client, servicer, service, monkeypatch):
 
     with pytest.raises(InvalidError, match="JSON"):
         await stream.append.aio(float("nan"))
-    with pytest.raises(InvalidError, match="65536 bytes"):
-        await stream.append.aio("x" * 65536)
     with pytest.raises(InvalidError, match="surrogates"):
         await stream.append.aio("\ud800")
     with pytest.raises(InvalidError, match="Invalid Stream name"):
@@ -670,3 +733,86 @@ async def test_token_refresh_needs_a_bound_token_and_identity(client, service, s
     assert len(service.refreshes) == 2
     monkeypatch.setenv("MODAL_IDENTITY_TOKEN", "identity")
     assert await Stream.from_token(bound, name="s").append.aio("a") == AppendResult(1, False)
+
+
+@pytest.mark.asyncio
+async def test_large_values_are_uploaded(client, service, monkeypatch):
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    # The largest value an entry holds, and the smallest that is uploaded instead (2 bytes are JSON quotes).
+    inline, large = "x" * (MAX_VALUE_BYTES - 2), "y" * (MAX_VALUE_BYTES - 1)
+    assert await stream.append_many.aio([inline, large], idempotency_keys=["k1", "k2"]) == [
+        AppendResult(1, False),
+        AppendResult(2, False),
+    ]
+    first, second = service.runs["s"]["events"]
+    assert first["value"] == inline and "ref" not in first
+    sha256 = hashlib.sha256(json.dumps(large).encode()).hexdigest()
+    assert second["ref"] == f"blob:st-s/{sha256}" and "value" not in second
+    assert json.loads(service.blobs[f"st-s/{sha256}"]) == large
+    # Uploads are content-addressed, so a resent value dedupes and a changed one conflicts.
+    assert await stream.append.aio(large, idempotency_key="k2") == AppendResult(2, True)
+    with pytest.raises(IdempotencyConflict):
+        await stream.append.aio(large + "z", idempotency_key="k2")
+
+    token = (await stream.create_token.aio()).token
+    handle = Stream.from_token(token, name="s")
+    big = {"chunks": ["z" * 1000] * 1000}
+    assert await handle.append.aio(big) == AppendResult(3, False)
+    assert [e.value async for e in handle.read.aio()] == [inline, large, big]
+    assert (await asyncio.to_thread(lambda: handle[2])).value == large
+    # Refs other than uploads are left as they are.
+    service.runs["s"]["events"].append({"op_id": "k", "kind": "value", "ref": "sha256:" + "0" * 64, "seq": 4})
+    await stream.seal.aio()
+    assert [e.value async for e in stream.read.aio(follow=True)] == [inline, large, big, None, {"gen": 1}]
+
+    monkeypatch.setattr("modal.experimental.stream.MAX_BLOB_BYTES", MAX_VALUE_BYTES * 2)
+    with pytest.raises(InvalidError, match=f"limited to {MAX_VALUE_BYTES * 2} bytes"):
+        await stream.append.aio("x" * MAX_VALUE_BYTES * 2)
+    sent = len(service.requests)
+    service.max_blob_bytes = MAX_VALUE_BYTES
+    with pytest.raises(InvalidError, match="too large to store"):
+        await stream.append.aio(large)
+    assert len(service.requests) == sent + 1
+
+
+@pytest.mark.asyncio
+async def test_writer_uploads_large_values_before_queueing(client, service, monkeypatch):
+    monkeypatch.setattr("modal.experimental.stream.MAX_CONCURRENT_UPLOADS", 2)
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    values = [f"{n}" * MAX_VALUE_BYTES for n in range(5)]
+    service.hold_uploads = asyncio.Event()
+    extending = asyncio.ensure_future(stream.append_many.aio(values))
+    async with service.changed:
+        await service.changed.wait_for(lambda: service.uploading == 2)
+    service.hold_uploads.set()
+    await extending
+    assert service.max_uploading == 2
+
+    async with stream.writer() as w:
+        await w.append.aio("small")
+        await w.append.aio(values[0] + "!")
+        await w.append.aio("last")
+    events = service.runs["s"]["events"]
+    assert [e.get("value") for e in events[5:]] == ["small", None, "last"]
+    assert [e.value async for e in stream.read.aio(6)] == ["small", values[0] + "!", "last"]
+
+
+@pytest.mark.asyncio
+async def test_uploads_hold_a_bounded_number_of_bytes(client, service, monkeypatch):
+    # Two values just over the inline limit fill the budget, so a third waits although four uploads may run.
+    monkeypatch.setattr("modal.experimental.stream.UPLOAD_BUDGET_BYTES", 2 * MAX_VALUE_BYTES)
+    stream = Stream.from_name("s", create_if_missing=True, client=client)
+    values = [f"{n}" * MAX_VALUE_BYTES for n in range(4)]
+    service.hold_uploads = asyncio.Event()
+    extending = asyncio.ensure_future(stream.append_many.aio(values))
+    async with service.changed:
+        await service.changed.wait_for(lambda: service.uploading == 2)
+    service.hold_uploads.set()
+    await extending
+    assert service.max_uploading == 2
+
+    # A value larger than the whole budget still uploads.
+    monkeypatch.setattr("modal.experimental.stream.UPLOAD_BUDGET_BYTES", 1000)
+    large = "z" * (2 * MAX_VALUE_BYTES)
+    assert await stream.append.aio(large) == AppendResult(5, False)
+    assert (await asyncio.to_thread(stream.__getitem__, 5)).value == large
