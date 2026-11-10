@@ -2929,8 +2929,8 @@ class _Image(_Object, type_prefix="im"):
             volumes: Volume and bucket mounts attached for the build.
             network_file_systems: Network file systems attached for the build.
             gpu: GPU type or list of types for the builder container.
-            cpu: CPU cores to request (soft limit).
-            memory: Memory to request in MiB (soft limit).
+            cpu: CPU cores to request.
+            memory: Memory to request in MiB.
             timeout: Maximum build-step runtime in seconds.
             cloud: Cloud provider for the builder function.
             region: Region or regions for the builder function.
