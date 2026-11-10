@@ -383,6 +383,49 @@ enum TaskState {
   TASK_STATE_LOADING_CHECKPOINT_IMAGE = 11;
 }
 
+enum TaskTerminationReason {
+  // Our internal taxonomy for why a task stopped running. Reported alongside
+  // GenericResult, which stays the coarse outcome. This should not be exposed
+  // directly to clients; instead, public-facing statuses should derive from it.
+  // Values 1-11 match the integers historically stored for V1 tasks (tasks.termination_reason).
+  TASK_TERMINATION_REASON_UNSPECIFIED = 0;
+
+  // Control-plane initiated.
+  TASK_TERMINATION_REASON_PREEMPTED_BY_SCHEDULER = 1;
+  TASK_TERMINATION_REASON_USER_CANCELLED = 2;
+  TASK_TERMINATION_REASON_WORKER_PREEMPTED = 3;
+  TASK_TERMINATION_REASON_INPUT_CANCELLED = 4;
+  TASK_TERMINATION_REASON_WORKSPACE_FROZEN = 5;
+  TASK_TERMINATION_REASON_BILLING_LIMIT_REACHED = 6;
+  TASK_TERMINATION_REASON_CLUSTER_FAILURE = 7;
+  // 8-10 were the NOTEBOOK_KERNEL_{DISAPPEARED,IDLE,STOPPED} reasons of the retired Notebooks product.
+  reserved 8, 9, 10;
+  TASK_TERMINATION_REASON_LOW_PRIORITY_PREEMPTED_FOR_WORKER_SHUTDOWN = 11;
+  TASK_TERMINATION_REASON_APP_STOPPED = 12;
+  TASK_TERMINATION_REASON_APP_DISABLED = 13;
+  TASK_TERMINATION_REASON_APP_NOT_FOUND = 14;
+  TASK_TERMINATION_REASON_NAME_LOST = 15;
+  TASK_TERMINATION_REASON_SECURITY_EVENT = 16;
+  // The worker lost contact with the control plane for too long.
+  TASK_TERMINATION_REASON_WORKER_HEARTBEAT_TIMEOUT = 17;
+  TASK_TERMINATION_REASON_FUNCTION_NOT_FOUND = 18;
+
+  // Worker initiated.
+  TASK_TERMINATION_REASON_TIMEOUT = 20;
+  TASK_TERMINATION_REASON_IDLE_TIMEOUT = 21;
+  TASK_TERMINATION_REASON_STARTUP_TIMEOUT = 22;
+  TASK_TERMINATION_REASON_MEMORY_MANAGER_EVICTION = 23;
+  TASK_TERMINATION_REASON_MEMORY_THRASHING_EVICTION = 24;
+  TASK_TERMINATION_REASON_KERNEL_OOM_KILL = 25;
+  TASK_TERMINATION_REASON_CONTAINER_HEARTBEAT_TIMEOUT = 26;
+  TASK_TERMINATION_REASON_RUNTIME_ERROR = 27;
+
+  // Not a termination: the process ended on its own.
+  TASK_TERMINATION_REASON_EXITED = 30;
+  TASK_TERMINATION_REASON_PROCESS_FAILED = 31;
+  TASK_TERMINATION_REASON_INIT_FAILURE = 32;
+}
+
 enum TunnelType {
   TUNNEL_TYPE_UNSPECIFIED = 0;
   TUNNEL_TYPE_H2 = 1; // HTTP/2 tunnel
@@ -5249,6 +5292,7 @@ message TaskProgress {
 
 message TaskResultRequest {
   GenericResult result = 2;
+  TaskTerminationReason termination_reason = 3;
 }
 
 message TaskStats {
