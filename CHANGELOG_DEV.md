@@ -21,6 +21,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added `modal token new --delete-existing` and `modal token rotate` CLI commands to enable easy token rotation.
 - Added `App.stats()` and `modal app stats` to report high-level Function, Server, and Sandbox stats for an App.
 - `Function.from_id` will now accept Cls IDs. When called with a Cls ID, only the following APIs can be called: `.logs`, `.metrics`, `.info()`, `.stats()`, `.get_current_stats()`, `.get_web_url()`, `.autoscaler` and `.update_autoscaler()`. Use `modal.Cls.from_name(...)` to invoke all other methods.
+- Added `modal image names delete NAME:TAG` for deleting a named Image.
 
 ## JS
 

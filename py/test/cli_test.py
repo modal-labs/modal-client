@@ -24,6 +24,7 @@ from unittest import mock
 import click
 import pytest_asyncio
 import toml
+from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal
@@ -89,6 +90,7 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
         "app_identifier": app_id,
         "endpoint_identifier": "ep-aaaaaaaaaaaaaaaaaaaaaa",
         "container_id": "ta-123",
+        "name": "test-name:latest" if path == ("image", "names", "delete") else "test-name",
     }
     args = list(path)
     for param in command.params:
@@ -355,11 +357,18 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
     assert "history" not in help_text
 
     names_help_text = run_cli_command(["image", "names", "--help"]).stdout
+    assert "delete" in names_help_text
     assert "list" in names_help_text
     assert "history" not in names_help_text
 
     list_help_text = run_cli_command(["image", "names", "list", "--help"]).stdout
     assert "--prefix" in list_help_text
+
+    delete_help_text = run_cli_command(["image", "names", "delete", "--help"]).stdout
+    assert "--all" not in delete_help_text
+    assert "--filter-name" not in delete_help_text
+    assert "--env" in delete_help_text
+    assert "--yes" in delete_help_text
 
 
 def test_image_cli_logs(set_env_client, monkeypatch):
@@ -975,6 +984,144 @@ def test_image_cli_history_uses_implicit_environment_as_fallback(servicer, set_e
         run_cli_command(["image", "names", "history", "some-prefix/demo-image"])
         req = ctx.pop_request("ImageTagRevisions")
     assert req.tag == "some-prefix/demo-image:latest"
+
+
+@pytest.mark.parametrize(
+    ("args", "expected_tag", "expected_output"),
+    [
+        (
+            ["sglang-image:latest", "--yes"],
+            "sglang-image:latest",
+            "Deleted named Image 'sglang-image:latest'",
+        ),
+        (["sglang-image:v1", "-y"], "sglang-image:v1", "Deleted named Image 'sglang-image:v1'"),
+    ],
+)
+def test_image_cli_delete(
+    servicer,
+    set_env_client,
+    args: list[str],
+    expected_tag: str,
+    expected_output: str,
+):
+    with servicer.intercept() as ctx:
+        ctx.add_response("ImageNameDelete", Empty())
+        result = run_cli_command(["image", "names", "delete", *args])
+        request = ctx.pop_request("ImageNameDelete")
+
+    assert request.tag == expected_tag
+    assert expected_output in result.stdout
+
+
+def test_image_cli_delete_requires_confirmation(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        result = run_cli_command(
+            ["image", "names", "delete", "sglang-image:latest"],
+            expected_exit_code=1,
+        )
+        requests = ctx.get_requests("ImageNameDelete")
+
+    assert requests == []
+    assert "Rerun with --yes" in str(result.exception)
+    assert (
+        "Are you sure you want to delete 'sglang-image:latest'? This also deletes the associated publishing history."
+    ) in result.stdout
+
+
+@pytest.mark.parametrize("name", ["demo:v1", "prod/demo:v1"])
+def test_image_cli_delete_single_tag_with_env(servicer, set_env_client, modal_config, name):
+    with modal_config('[default]\nenvironment = "profile-env"'), servicer.intercept() as ctx:
+        ctx.add_response("ImageNameDelete", Empty())
+        run_cli_command(["image", "names", "delete", name, "--env", "prod", "--yes"])
+        assert ctx.pop_request("ImageNameDelete").tag == "prod/demo:v1"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--yes"],
+        ["demo:v1", "--filter-name", "demo"],
+        ["demo", "--all"],
+        ["dev/demo:v1", "--env", "prod"],
+    ],
+)
+def test_image_cli_delete_rejects_conflicting_selection(servicer, set_env_client, args):
+    with servicer.intercept() as ctx:
+        run_cli_command(["image", "names", "delete", *args], expected_exit_code=2)
+        assert ctx.get_requests("ImageListTags") == []
+        assert ctx.get_requests("ImageNameDelete") == []
+
+
+def test_image_cli_delete_requires_explicit_tag(servicer, set_env_client):
+    with servicer.intercept() as ctx:
+        result = run_cli_command(
+            ["image", "names", "delete", "sglang-image", "--yes"],
+            expected_exit_code=2,
+        )
+
+    assert ctx.get_requests("ImageNameDelete") == []
+    assert "An explicit tag is required" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["workspace/environment/sglang-image:v1", "--yes"],
+    ],
+)
+def test_image_cli_delete_rejects_workspace_qualified_name(servicer, set_env_client, args):
+    with servicer.intercept() as ctx:
+        result = run_cli_command(
+            ["image", "names", "delete", *args],
+            expected_exit_code=2,
+        )
+
+    assert ctx.get_requests("ImageListTags") == []
+    assert ctx.get_requests("ImageNameDelete") == []
+    assert "Workspace-qualified Image names are not supported" in result.stderr
+
+
+def test_image_cli_reports_failure(servicer, set_env_client):
+    async def delete_responder(self, stream):
+        from grpclib import GRPCError, Status
+
+        request = await stream.recv_message()
+        if request.tag == "main/partial-delete:v1":
+            raise GRPCError(Status.INVALID_ARGUMENT, "deletion failed")
+        await stream.send_message(Empty())
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ImageNameDelete", delete_responder)
+        result = run_cli_command(
+            ["image", "names", "delete", "main/partial-delete:v1", "--yes"],
+            expected_exit_code=1,
+        )
+        requests = ctx.get_requests("ImageNameDelete")
+
+    assert [request.tag for request in requests] == [
+        "main/partial-delete:v1",
+    ]
+    assert isinstance(result.exception, GRPCError)
+    assert "deletion failed" in str(result.exception)
+    assert "Deleted named Image" not in result.stdout
+
+
+def test_image_cli_delete_uses_implicit_environment_as_fallback(
+    servicer,
+    set_env_client,
+    modal_config,
+):
+    config = """
+    [default]
+    environment = "profile-env"
+    """
+
+    with modal_config(config), servicer.intercept() as ctx:
+        ctx.add_response("ImageNameDelete", Empty())
+        run_cli_command(["image", "names", "delete", "sglang-image:v1", "--yes"])
+        request = ctx.pop_request("ImageNameDelete")
+
+    assert request.tag == "profile-env/sglang-image:v1"
 
 
 @pytest.mark.parametrize(
@@ -7311,7 +7458,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     "function": {"Commands": ["info", "logs", "stats", "calls", "variants", "autoscaler", "metrics"]},
     "server": {"Commands": ["deploy", "info", "logs", "stats", "requests", "autoscaler", "metrics"]},
     "image": {"Commands": ["build", "pull", "logs", "names"]},
-    "image names": {"Commands": ["list"]},
+    "image names": {"Commands": ["list", "delete"]},
     "dict": {
         "Management": ["list", "create", "clear", "delete"],
         "Inspection": ["get", "items"],

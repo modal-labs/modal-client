@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from typing import Optional
 
 import click
+import rich
 from rich.syntax import Syntax
 
 from modal._environments import ensure_env
@@ -17,7 +18,7 @@ from modal._logs_manager import _resolve_source
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.app import _App
-from modal.cli.utils import display_table, env_option
+from modal.cli.utils import confirm_or_suggest_yes, display_table, env_option, yes_option
 from modal.client import _Client
 from modal.config import config
 from modal.exception import InvalidError
@@ -482,3 +483,47 @@ async def history(
         count += len(response.items)
 
     _print_result_summary(count)
+
+
+@image_names_cli.command("delete", no_args_is_help=True)
+@click.argument("name", metavar="NAME:TAG")
+@env_option
+@yes_option
+@synchronizer.create_blocking
+async def delete(
+    name: str,
+    yes: bool = False,
+    env: Optional[str] = None,
+) -> None:
+    """
+    Delete a named Image.
+
+    This does not delete the underlying Image, just the
+    association with the name and its publishing history.
+
+    Pass an explicit tag as NAME:TAG.
+
+    Example:
+
+    ```
+    modal image names delete sglang-image:v1
+    ```
+    """
+    if name.count("/") > 1:
+        raise click.UsageError("Workspace-qualified Image names are not supported. Use '[environment/]name[:tag]'.")
+    if ":" not in name:
+        raise click.UsageError("An explicit tag is required. Use 'name:tag'.")
+    if env is not None and "/" in name and name.split("/", 1)[0] != env:
+        raise click.UsageError("The environment in the Image name must match --env.")
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    upgraded_image_name = _upgrade_image_name(name, fallback_environment_name=env)
+
+    if not yes:
+        confirm_or_suggest_yes(
+            f"Are you sure you want to delete {upgraded_image_name!r}? "
+            "This also deletes the associated publishing history."
+        )
+
+    await client.stub.ImageNameDelete(api_pb2.ImageNameDeleteRequest(tag=upgraded_image_name))
+    rich.print(f"[green]✓[/green] Deleted named Image {upgraded_image_name!r}")
