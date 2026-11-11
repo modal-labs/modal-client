@@ -1101,7 +1101,7 @@ def test_sandbox_stats(app, client, servicer):
             unit=unit,
             percentiles=[
                 api_pb2.StatsPercentile(percentile_basis_points=bps, value=value)
-                for bps, value in zip((5000, 9000, 9900, 9990, 10000), values)
+                for bps, value in zip((5000, 9000, 9900), values)
             ],
         )
 
@@ -1112,8 +1112,8 @@ def test_sandbox_stats(app, client, servicer):
         cost_by_resource={"CPU": "0.10000000", "Memory": "0.02500000"},
         num_datapoints=360,
         percentile_stats={
-            "CPU Usage (cores)": distribution("cores", 0.5, 1.0, 1.25, 1.5, 1.5),
-            "Memory Usage (GiB)": distribution("GiB", 1.5, 1.75, 2.0, 2.0, 2.0),
+            "CPU Usage (cores)": distribution("cores", 0.5, 1.0, 1.25),
+            "Memory Usage (GiB)": distribution("GiB", 1.5, 1.75, 2.0),
         },
         duration_hours=0.5,
         billed_cpu_core_seconds=1800.0,
@@ -1138,8 +1138,6 @@ def test_sandbox_stats(app, client, servicer):
                     StatsPercentile(percentile=50.0, value=0.5),
                     StatsPercentile(percentile=90.0, value=1.0),
                     StatsPercentile(percentile=99.0, value=1.25),
-                    StatsPercentile(percentile=99.9, value=1.5),
-                    StatsPercentile(percentile=100.0, value=1.5),
                 ],
             ),
             "Memory Usage (GiB)": StatsPercentileDistribution(
@@ -1148,8 +1146,6 @@ def test_sandbox_stats(app, client, servicer):
                     StatsPercentile(percentile=50.0, value=1.5),
                     StatsPercentile(percentile=90.0, value=1.75),
                     StatsPercentile(percentile=99.0, value=2.0),
-                    StatsPercentile(percentile=99.9, value=2.0),
-                    StatsPercentile(percentile=100.0, value=2.0),
                 ],
             ),
         },

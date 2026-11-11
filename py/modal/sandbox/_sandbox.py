@@ -678,21 +678,19 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             - `duration`: how long the Sandbox ran within the time range.
             - `percentile_stats`: measured usage as `StatsPercentileDistribution` values keyed by
               `"CPU Usage (cores)"` and `"Memory Usage (GiB)"`.
-              Each has the p50, p90, p99, and p99.9 across usage samples, and the maximum as p100. A key is
-              missing if no usage has been recorded in the time range.
+              Each has the p50, p90, and p99 across usage samples. A key is missing if no usage has been
+              recorded in the time range.
             - `cost`: estimated cost in USD at your workspace's current rates, as a `decimal.Decimal`, the sum
               of `cost_by_resource`. `None` if no usage has been recorded in the time range.
             - `cost_by_resource`: cost in USD as `decimal.Decimal`s, by billed resource: `CPU`, `Memory`, and
               GPU types such as `H100`. The resource names are subject to change as Modal's billing model evolves.
             - `billed_cpu_core_seconds`: CPU usage that pricing is based on, in core-seconds: each sample
-              counts the greater of the measured and requested cores. Multipliers such as region pricing
-              apply to `cost`, not to this value.
+              counts the greater of the measured and requested cores.
             - `billed_memory_gib_seconds`: memory usage that pricing is based on, in GiB-seconds, counted
               the same way as CPU.
 
         Raises:
             InvalidError: If `since` is not before `until`.
-            NotImplementedError: If this is a persistent Sandbox.
 
         Examples:
             ```python notest
