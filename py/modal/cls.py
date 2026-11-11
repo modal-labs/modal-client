@@ -465,7 +465,7 @@ class _Obj:
 Obj = synchronize_api(_Obj)
 
 
-class _Cls(_Object, type_prefix="cs"):
+class _Cls(_Object, type_prefixes=("cs",)):
     """
     Cls adds method pooling and [lifecycle hook](https://modal.com/docs/guide/lifecycle-functions) behavior
     to [modal.Function](https://modal.com/docs/sdk/py/latest/Function).

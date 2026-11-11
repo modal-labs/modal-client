@@ -160,7 +160,7 @@ class Probe:
         raise InvalidError("Probe must be created with Probe.with_tcp(...) or Probe.with_exec(...)")
 
 
-class _Sandbox(_Object, type_prefix="sb"):
+class _Sandbox(_Object, type_prefixes=("sb",)):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
 

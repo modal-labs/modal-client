@@ -9,7 +9,7 @@ from ._utils.async_utils import synchronize_api
 from .client import _Client
 
 
-class _Proxy(_Object, type_prefix="pr"):
+class _Proxy(_Object, type_prefixes=("pr",)):
     """Proxy objects give your Modal containers a static outbound IP address.
 
     This can be used for connecting to a remote address with network whitelist, for example

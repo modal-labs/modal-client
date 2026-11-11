@@ -18,7 +18,7 @@ async def test_multi_resolve_sequential_loads_once(client):
 
     load_count = 0
 
-    class _DumbObject(_Object, type_prefix="zz"):
+    class _DumbObject(_Object, type_prefixes=("zz",)):
         pass
 
     async def _load(self: _DumbObject, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
@@ -44,7 +44,7 @@ async def test_multi_resolve_concurrent_loads_once(client):
 
     load_count = 0
 
-    class _DumbObject(_Object, type_prefix="zz"):
+    class _DumbObject(_Object, type_prefixes=("zz",)):
         pass
 
     async def _load(self: _DumbObject, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
@@ -81,7 +81,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
 
     # Use unique type prefixes that don't conflict with real Modal object types
     # A "Volume-like" object that takes time to load (simulates slow dependency)
-    class _SharedVolume(_Object, type_prefix="t1"):
+    class _SharedVolume(_Object, type_prefixes=("t1",)):
         pass
 
     async def _load_volume(
@@ -95,7 +95,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
     )
 
     # A "Secret-like" object that fails to load
-    class _FailingSecret(_Object, type_prefix="t2"):
+    class _FailingSecret(_Object, type_prefixes=("t2",)):
         pass
 
     async def _load_failing_secret(
@@ -108,7 +108,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
     )
 
     # func_a depends on BOTH the shared volume and the failing secret
-    class _FunctionA(_Object, type_prefix="t3"):
+    class _FunctionA(_Object, type_prefixes=("t3",)):
         pass
 
     async def _load_func_a(
@@ -126,7 +126,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
     func_a = _FunctionA._from_loader(_load_func_a, "Function(a)", load_context_overrides=LoadContext.empty())
 
     # func_b depends ONLY on the shared volume
-    class _FunctionB(_Object, type_prefix="t4"):
+    class _FunctionB(_Object, type_prefixes=("t4",)):
         pass
 
     async def _load_func_b(

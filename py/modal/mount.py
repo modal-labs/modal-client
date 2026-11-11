@@ -320,7 +320,7 @@ class NonLocalMountError(Exception):
     pass
 
 
-class _Mount(_Object, type_prefix="mo"):
+class _Mount(_Object, type_prefixes=("mo",)):
     """
     **Deprecated**: Mounts should not be used explicitly anymore, use `Image.add_local_*` commands instead.
 
@@ -359,7 +359,7 @@ class _Mount(_Object, type_prefix="mo"):
                 included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, entries)
             except NonLocalMountError:
                 return None
-            return (_Mount._type_prefix, "local", frozenset(included_files))
+            return (_Mount._type_prefixes[0], "local", frozenset(included_files))
 
         obj = _Mount._from_loader(
             _Mount._load_mount,

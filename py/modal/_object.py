@@ -82,7 +82,8 @@ def live_method_contextmanager(
 
 
 class _Object:
-    _type_prefix: ClassVar[str | None] = None
+    # Prefixes of the object IDs that hydrate this type, e.g. `("sb",)` for `sb-...` IDs.
+    _type_prefixes: ClassVar[tuple[str, ...]] = ()
     _prefix_to_type: ClassVar[dict[str, type["_Object"]]] = {}
 
     # For constructors
@@ -114,11 +115,16 @@ class _Object:
         self.__is_hydrated = value
 
     @classmethod
-    def __init_subclass__(cls, type_prefix: str | None = None):
+    def __init_subclass__(cls, type_prefixes: Sequence[str] = ()):
         super().__init_subclass__()
-        if type_prefix is not None:
-            cls._type_prefix = type_prefix
-            cls._prefix_to_type[type_prefix] = cls
+        if type_prefixes:
+            cls._type_prefixes = tuple(type_prefixes)
+            for prefix in cls._type_prefixes:
+                cls._prefix_to_type[prefix] = cls
+
+    @classmethod
+    def _has_type_prefix(cls, object_id: str) -> bool:
+        return any(object_id.startswith(prefix + "-") for prefix in cls._type_prefixes)
 
     def __init__(self, *args, **kwargs):
         """mdmd:hidden"""
@@ -174,11 +180,11 @@ class _Object:
         self._client = other._client
 
     def _hydrate(self, object_id: str, client: _Client, metadata: Message | None):
-        assert isinstance(object_id, str) and self._type_prefix is not None
-        if not object_id.startswith(self._type_prefix):
+        assert isinstance(object_id, str) and self._type_prefixes
+        if not self._has_type_prefix(object_id):
             raise ExecutionError(
                 f"Can not hydrate {type(self)}: "
-                f" it has type prefix {self._type_prefix}"
+                f" it has type prefixes {self._type_prefixes}"
                 f" but the object_id starts with {object_id[:3]}. "
                 "This usually means the object name was previously used for a different type. "
                 "Rename the object/app or stop the previous deployment and redeploy."
@@ -270,11 +276,11 @@ class _Object:
         rep: str | None = None,
     ) -> Self:
         obj_cls: type[Self]
-        if cls._type_prefix is not None:
+        if cls._type_prefixes:
             # This is called directly on a subclass, e.g. Secret.from_id
             # validate the id matching the expected id type of the Object subclass
-            if not object_id.startswith(cls._type_prefix + "-"):
-                raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
+            if not cls._has_type_prefix(object_id):
+                raise InvalidError(f"Object {object_id} does not start with any of {cls._type_prefixes}")
 
             obj_cls = cls
         else:

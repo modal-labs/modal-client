@@ -71,7 +71,7 @@ class _WorkspaceMembersManager:
         ]
 
 
-class _Workspace(_Object, type_prefix="ac"):
+class _Workspace(_Object, type_prefixes=("ac",)):
     _name: Optional[str] = None
 
     def __init__(self):

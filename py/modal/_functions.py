@@ -620,7 +620,7 @@ OriginalReturnType = typing.TypeVar(
 T = typing.TypeVar("T", covariant=True)
 
 
-class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="fu"):
+class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefixes=("fu",)):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -2371,7 +2371,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     experimental_spawn_map = MethodWithAio(_experimental_spawn_map_sync, _experimental_spawn_map_async, synchronizer)
 
 
-class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
+class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefixes=("fc",)):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same

@@ -14,7 +14,7 @@ from .._utils.async_utils import deprecate_aio_usage, synchronizer
 from ..client import _Client
 
 
-class _SandboxSnapshot(_Object, type_prefix="sn"):
+class _SandboxSnapshot(_Object, type_prefixes=("sn",)):
     """
     > Sandbox memory snapshots are in **early preview**.
 

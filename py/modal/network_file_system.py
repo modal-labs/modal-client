@@ -58,7 +58,7 @@ def network_file_system_mount_protos(
     return network_file_system_mounts
 
 
-class _NetworkFileSystem(_Object, type_prefix="sv"):
+class _NetworkFileSystem(_Object, type_prefixes=("sv",)):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can

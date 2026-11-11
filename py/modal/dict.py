@@ -250,7 +250,7 @@ class _DictManager:
 DictManager = synchronize_api(_DictManager)
 
 
-class _Dict(_Object, type_prefix="di"):
+class _Dict(_Object, type_prefixes=("di",)):
     """Distributed dictionary for storage in Modal apps.
 
     Dict contents can be essentially any object so long as they can be serialized by

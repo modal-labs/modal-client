@@ -587,7 +587,7 @@ class _FailedBuildAttempt:
     client: _Client
 
 
-class _Image(_Object, type_prefix="im"):
+class _Image(_Object, type_prefixes=("im",)):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,

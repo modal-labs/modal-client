@@ -353,7 +353,7 @@ class _EnvironmentAppsManager:
         ]
 
 
-class _Environment(_Object, type_prefix="en"):
+class _Environment(_Object, type_prefixes=("en",)):
     _name: str | None = None
     _settings: EnvironmentSettings
 

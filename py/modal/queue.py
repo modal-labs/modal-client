@@ -223,7 +223,7 @@ class _QueueManager:
 QueueManager = synchronize_api(_QueueManager)
 
 
-class _Queue(_Object, type_prefix="qu"):
+class _Queue(_Object, type_prefixes=("qu",)):
     """Distributed, FIFO queue for data flow in Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`, including Modal objects.

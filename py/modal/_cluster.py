@@ -40,7 +40,7 @@ def get_current_cluster_context() -> ClusterContext:
     return current_cluster_context
 
 
-class _Cluster(_Object, type_prefix="cu"):
+class _Cluster(_Object, type_prefixes=("cu",)):
     """A group of containers scheduled together for a clustered Function or Server.
 
     Use `Cluster.from_context()` inside a cluster, or `Cluster.from_id()` to

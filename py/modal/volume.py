@@ -483,7 +483,7 @@ def _volume_to_mount_proto(path: str, volume: "_Volume") -> api_pb2.VolumeMount:
     )
 
 
-class _Volume(_Object, type_prefix="vo"):
+class _Volume(_Object, type_prefixes=("vo",)):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
     The contents of a volume is exposed as a filesystem. You can use it to share data between different functions, or

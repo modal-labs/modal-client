@@ -233,7 +233,7 @@ async def _load_from_env_dict(instance: "_Secret", load_context: LoadContext, en
     instance._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
 
-class _Secret(_Object, type_prefix="st"):
+class _Secret(_Object, type_prefixes=("st",)):
     """Secrets provide a dictionary of environment variables for images.
 
     Secrets are a secure way to add credentials and other sensitive information
