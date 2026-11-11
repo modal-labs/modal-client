@@ -455,6 +455,7 @@ class MemberTokenInfo:
     created_at: datetime
     last_used_at: datetime | None
     expires_at: datetime | None
+    disabled: bool
 
     @classmethod
     def _from_proto(cls, proto: api_pb2.TokensListResponse.Token) -> "MemberTokenInfo":
@@ -466,6 +467,7 @@ class MemberTokenInfo:
             created_at=datetime.fromtimestamp(proto.created_at, timezone.utc),
             last_used_at=datetime.fromtimestamp(proto.last_used_at, timezone.utc) if proto.last_used_at else None,
             expires_at=datetime.fromtimestamp(proto.expires_at, timezone.utc) if proto.expires_at else None,
+            disabled=proto.disabled,
         )
 
 

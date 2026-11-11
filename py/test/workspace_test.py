@@ -324,3 +324,27 @@ def test_workspace_member_tokens(client, servicer: MockClientServicer):
         ws.member_tokens.delete(token_id="ak-MT3")
 
     ws.member_tokens.delete(token_id="ak-MT3", allow_missing=True)
+
+    assert set(token.token_id for token in tokens if token.disabled) == set()
+    ws.member_tokens.disable("ak-MT1", "ak-MT2", "ak-MT4")
+    tokens = ws.member_tokens.list()
+    assert len(tokens) == 7
+    assert set(token.token_id for token in tokens if token.disabled) == {"ak-MT1", "ak-MT2", "ak-MT4"}
+
+    ws.member_tokens.disable("ak-MT2", "ak-MT4", "ak-MT6")
+    tokens = ws.member_tokens.list()
+    assert set(token.token_id for token in tokens if token.disabled) == {"ak-MT1", "ak-MT2", "ak-MT4", "ak-MT6"}
+
+    with pytest.raises(NotFoundError, match="Token not found"):
+        ws.member_tokens.disable("ak-MT3")
+
+    ws.member_tokens.enable("ak-MT2", "ak-MT4")
+    tokens = ws.member_tokens.list()
+    assert set(token.token_id for token in tokens if token.disabled) == {"ak-MT1", "ak-MT6"}
+
+    ws.member_tokens.enable("ak-MT2", "ak-MT4", "ak-MT1", "ak-MT6")
+    tokens = ws.member_tokens.list()
+    assert set(token.token_id for token in tokens if token.disabled) == set()
+
+    with pytest.raises(NotFoundError, match="Token not found"):
+        ws.member_tokens.enable("ak-MT3")

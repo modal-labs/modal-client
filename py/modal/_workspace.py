@@ -773,6 +773,57 @@ class _WorkspaceMemberTokenManager:
 
         return [MemberTokenInfo._from_proto(token) for token in resp.tokens]
 
+    async def disable(self, *token_ids: str) -> None:
+        """Disable member tokens in the specified Workspace.
+
+        If you are a Workspace Manager or Owner, you can use this method to disable any token in the
+        Workspace. Otherwise, you can only disable tokens that you have created. Disabled tokens cannot
+        be used to authenticate with Modal, but can be re-enabled at any point.
+
+        Args:
+            *token_ids: The ID(s) of any tokens you want to disable.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        ws.member_tokens.disable("ak-0123456789abcdefghijkl", "ak-mnopqrstuvwxyz01234567")
+        ```
+
+        See Also:
+            - [`Workspace.member_tokens.enable()`](https://modal.com/docs/sdk/py/latest/Workspace#member_tokensenable):
+              A function that re-enables a disabled token, so that it may be used again.
+        """
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        await self._workspace.client._stub.TokenDisable(api_pb2.TokenDisableRequest(token_ids=list(set(token_ids))))
+
+    async def enable(self, *token_ids: str) -> None:
+        """Re-enable member tokens that have been disabled in the specified Workspace.
+
+        If you are a Workspace Manager or Owner, you can use this method to enable any token in the
+        Workspace. Otherwise, you can only enable tokens that you have created.
+
+        Args:
+            *token_ids: The ID(s) of any tokens you want to enable.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        ws.member_tokens.enable("ak-0123456789abcdefghijkl", "ak-mnopqrstuvwxyz01234567")
+        ```
+
+        See Also:
+            - [`Workspace.member_tokens.disable()`](https://modal.com/docs/sdk/py/latest/Workspace#member_tokensdisable).
+              A function that disables a token, so that it may not be used to authenticate with Modal.
+        """
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        await self._workspace.client._stub.TokenEnable(api_pb2.TokenEnableRequest(token_ids=list(set(token_ids))))
+
     async def delete(self, token_id: str, *, allow_missing: bool = False) -> None:
         """Delete a Member Token in the specified Workspace.
 

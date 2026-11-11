@@ -4522,6 +4522,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
             token_secret="as-123",
         )
 
+    async def TokenDisable(self, stream):
+        msg: api_pb2.TokenDisableRequest = await stream.recv_message()
+
+        for token_id in msg.token_ids:
+            token = self.workspace_member_tokens.get(token_id)
+            if token is None:
+                raise GRPCError(Status.NOT_FOUND, "Token not found")
+
+            token.disabled = True
+
+        await stream.send_message(Empty())
+
+    async def TokenEnable(self, stream):
+        msg: api_pb2.TokenEnableRequest = await stream.recv_message()
+
+        for token_id in msg.token_ids:
+            token = self.workspace_member_tokens.get(token_id)
+            if token is None:
+                raise GRPCError(Status.NOT_FOUND, "Token not found")
+
+            token.disabled = False
+
+        await stream.send_message(Empty())
+
     async def TokensList(self, stream):
         await stream.recv_message()  # Empty
         await stream.send_message(
