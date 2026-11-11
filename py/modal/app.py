@@ -43,7 +43,7 @@ from ._utils.function_utils import (
     validate_target_concurrency,
 )
 from ._utils.mount_utils import validate_volumes
-from ._utils.name_utils import check_object_name, check_tag_dict
+from ._utils.name_utils import check_object_name, check_tag_dict, is_app_id
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
@@ -421,28 +421,47 @@ class _App:
         environment_name: str | None = None,
         create_if_missing: bool = False,
     ) -> "_App":
-        """Look up an App with a given name, creating a new App if necessary.
+        """Look up an App by name or App ID, creating a new App if necessary.
 
         Note that Apps created through this method will be in a deployed state,
         but they will not have any associated Functions or Classes. This method
         is mainly useful for creating an App to associate with a Sandbox.
 
+        Passing an App ID (`ap-...`) instead of a name looks up that specific App,
+        which also works for ephemeral Apps started with `app.run()` and for stopped
+        Apps. A lookup by ID ignores `environment_name` and cannot be combined with
+        `create_if_missing`.
+
         Args:
-            name: App name to resolve or create.
+            name: App name to resolve or create, or the ID of an existing App.
             client: Modal client to use; defaults to `Client.from_env()` when omitted.
             environment_name: Optional environment name; defaults to the configured environment.
+                Ignored when `name` is an App ID.
             create_if_missing: If True, create the app when it does not already exist.
+                Not supported when looking up an App by ID.
 
         Returns:
-            An `App` handle tied to the deployed app record.
+            An `App` handle tied to the App record.
 
         Examples:
             ```python
             app = modal.App.lookup("my-app", create_if_missing=True)
             modal.Sandbox.create("echo", "hi", app=app)
             ```
+
+            Look up an ephemeral App by its ID and read its most recent logs:
+
+            ```python notest
+            app = modal.App.lookup("ap-Xk7fT2qLm9RzVb4NwYc8Hd")
+            for entry in app.logs.tail(20):
+                print(entry.message, end="")
+            ```
         """
-        check_object_name(name, "App")
+        if is_app_id(name):
+            if create_if_missing:
+                raise InvalidError("`create_if_missing=True` is not supported when looking up an App by ID.")
+        else:
+            check_object_name(name, "App")
 
         if client is None:
             client = await _Client.from_env()

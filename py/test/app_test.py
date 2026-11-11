@@ -10,7 +10,7 @@ from unittest import mock
 
 from grpclib import GRPCError, Status
 
-from modal import App, Image, Secret, Volume, enable_output, fastapi_endpoint, method
+from modal import App, Image, Sandbox, Secret, Volume, enable_output, fastapi_endpoint, method
 from modal._functions import _Function
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
@@ -729,6 +729,48 @@ def test_overriding_function_warning(caplog):
 def test_lookup_invalid_name(name):
     with pytest.raises(InvalidError, match="Invalid App name"):
         App.lookup(name)
+
+
+EPHEMERAL_APP_ID = "ap-" + "a" * 22
+
+
+@pytest.fixture
+def ephemeral_app_id(servicer):
+    servicer.app_state_history[EPHEMERAL_APP_ID].append(api_pb2.APP_STATE_EPHEMERAL)
+    servicer.app_environments[EPHEMERAL_APP_ID] = "dev"
+    return EPHEMERAL_APP_ID
+
+
+def test_lookup_by_app_id(client, servicer, ephemeral_app_id):
+    with servicer.intercept() as ctx:
+        app = App.lookup(ephemeral_app_id, client=client)
+        Sandbox.create("echo", "hi", app=app, client=client)
+
+    (lookup_request,) = ctx.get_requests("AppGetOrCreate")
+    assert lookup_request.app_name == ephemeral_app_id
+    assert lookup_request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+
+    assert app.app_id == ephemeral_app_id
+    assert app.info().lifecycle.state == AppState.EPHEMERAL
+    assert ctx.pop_request("SandboxCreateV2").app_id == ephemeral_app_id
+
+
+def test_lookup_by_app_id_rejects_create_if_missing(client, servicer, ephemeral_app_id):
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="not supported when looking up an App by ID"):
+            App.lookup(ephemeral_app_id, client=client, create_if_missing=True)
+
+    assert ctx.get_requests("AppGetOrCreate") == []
+
+
+def test_lookup_by_app_id_ignores_environment_name(client, ephemeral_app_id):
+    app = App.lookup(ephemeral_app_id, client=client, environment_name="does-not-exist")
+    assert app.app_id == ephemeral_app_id
+
+
+def test_lookup_by_app_id_not_found(client):
+    with pytest.raises(NotFoundError):
+        App.lookup("ap-" + "b" * 22, client=client)
 
 
 @pytest.mark.parametrize("mode", ["run", "deploy"])

@@ -53,6 +53,7 @@ from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import custom_detail_codec
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
+from modal._utils.name_utils import is_app_id
 from modal._utils.time_utils import add_months
 from modal._vendor import cloudpickle
 from modal.app import _App
@@ -1446,6 +1447,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppGetOrCreate(self, stream):
         request: api_pb2.AppGetOrCreateRequest = await stream.recv_message()
         self.requests.append(request)
+
+        if is_app_id(request.app_name):
+            # A lookup by ID ignores environment_name and object_creation_type.
+            app_id = request.app_name
+            if app_id not in self.app_state_history:
+                raise GRPCError(Status.NOT_FOUND, f"App {app_id!r} not found")
+            app_state = self.app_state_history[app_id][-1]
+            handle_metadata = api_pb2.AppHandleMetadata(
+                app_id=app_id,
+                environment_name=self.app_environments[app_id],
+                lifecycle=api_pb2.AppLifecycle(app_state=app_state),
+            )
+            await stream.send_message(api_pb2.AppGetOrCreateResponse(app_id=app_id, handle_metadata=handle_metadata))
+            return
 
         environment_name = self.get_environment(request.environment_name)
         try:
