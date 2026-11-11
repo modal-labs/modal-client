@@ -2473,6 +2473,9 @@ message Function {
 
   // True when the function is a Sessioned Server. Only valid together with is_server.
   bool is_sessioned = 95;
+
+  // Outbound network access of the Function's containers. Takes precedence over block_network.
+  optional NetworkAccess network_access = 96;
 }
 
 message FunctionAsyncInvokeRequest {
