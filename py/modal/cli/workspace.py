@@ -8,6 +8,7 @@ import rich
 import rich.box
 import rich.table
 from rich.box import SIMPLE, SIMPLE_HEAD
+from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -690,12 +691,15 @@ def member_tokens_list(json: bool):
                         "expires_at": timestamp_to_localized_str(tok.expires_at.timestamp())
                         if tok.expires_at is not None
                         else None,
+                        "disabled": tok.disabled,
                     }
                     for tok in tokens
                 ]
             )
         )
         return
+
+    show_disabled = any(tok.disabled for tok in tokens)
 
     table = rich.table.Table(box=SIMPLE_HEAD)
     table.add_column("Token ID")
@@ -704,6 +708,9 @@ def member_tokens_list(json: bool):
     table.add_column("Created At")
     table.add_column("Expires")
 
+    if show_disabled:
+        table.add_column("Disabled")
+
     for tok in tokens:
         table.add_row(
             tok.token_id,
@@ -711,6 +718,8 @@ def member_tokens_list(json: bool):
             tok.username,
             timestamp_to_localized_str(tok.created_at.timestamp(), isotz=False),
             timestamp_to_localized_str(tok.expires_at.timestamp(), isotz=False) if tok.expires_at else "-",
+            *(["True" if tok.disabled else ""] if show_disabled else []),
+            style=Style(color="bright_black") if tok.disabled else None,
         )
 
     output_manager.print(table)
@@ -739,3 +748,90 @@ def member_tokens_delete(token_id: str, *, allow_missing: bool, yes: bool):
 
     output_manager = OutputManager.get()
     output_manager.print(f"[green]✓[/green] Deleted Token `{token_id}`.")
+
+
+@member_tokens_cli.command("disable", no_args_is_help=True)
+@click.argument("token_ids", nargs=-1)
+@click.option("--all", is_flag=True, default=False, help="Disable all tokens you have access to.")
+@yes_option
+def member_tokens_disable(token_ids: list[str], all: bool, yes: bool):
+    """Disable member tokens in this Workspace.
+
+    A token which is disabled cannot be used to authenticate with Modal. However, it can be re-enabled
+    at any point using [`modal workspace member-tokens enable`](https://modal.com/docs/cli/latest/workspace#modal-workspace-member-tokens-enable).
+
+    You can pass the `--all` option to disable all of the tokens you have created. If you are a Manager
+    or above, this will disable all the tokens in your Workspace.
+
+    Examples:
+
+    ```bash
+    modal workspace member-tokens disable ak-0123456789abcdefghijkl
+
+    # Disable multiple tokens simultaneously
+    modal workspace member-tokens disable ak-0123456789abcdefghijkl ak-mnopqrstuvwxyz01234567
+
+    # Disable everything you have access to
+    modal workspace member-tokens disable --all
+    ```
+
+    See Also:
+        - [`modal workspace member-tokens enable`](https://modal.com/docs/cli/latest/workspace#modal-workspace-member-tokens-enable)
+        - [`Workspace.member_tokens.disable()`](https://modal.com/docs/sdk/py/latest/Workspace#member_tokensdisable).
+          The SDK equivalent of this command.
+    """
+
+    ws = Workspace.from_context()
+
+    if all:
+        token_ids = [t.token_id for t in ws.member_tokens.list() if not t.disabled]
+
+    token_ids = list(set(token_ids))
+
+    if not yes:
+        if all:
+            confirm_or_suggest_yes("Are you sure you want to disable all your tokens?")
+        else:
+            confirm_or_suggest_yes("Are you sure you want to disable the specified token(s)?")
+
+    ws.member_tokens.disable(*token_ids)
+
+    output_manager = OutputManager.get()
+    output_manager.print(f"[green]✓[/green] Disabled {len(token_ids)} {'token' if len(token_ids) == 1 else 'tokens'}.")
+
+
+@member_tokens_cli.command("enable", no_args_is_help=True)
+@click.argument("token_ids", nargs=-1)
+@yes_option
+def member_tokens_enable(token_ids: list[str], yes: bool):
+    """Enable member tokens in this Workspace.
+
+    This is the opposite operation to disabling a token - given a disabled token, this command will
+    re-enable it, allowing it to authenticate with Modal.
+
+    Examples:
+
+    ```bash
+    modal workspace member-tokens enable ak-0123456789abcdefghijkl
+
+    # Enable multiple tokens simultaneously
+    modal workspace member-tokens enable ak-0123456789abcdefghijkl ak-mnopqrstuvwxyz01234567
+    ```
+
+    See Also:
+        - [`modal workspace member-tokens disable`](https://modal.com/docs/cli/latest/workspace#modal-workspace-member-tokens-disable)
+        - [`Workspace.member_tokens.enable()`](https://modal.com/docs/sdk/py/latest/Workspace#member_tokensenable):
+          The SDK equivalent of this command.
+
+    """
+
+    if not yes:
+        confirm_or_suggest_yes("Are you sure you want to enable the specified token(s)?")
+
+    token_ids = list(set(token_ids))
+
+    ws = Workspace.from_context()
+    ws.member_tokens.enable(*token_ids)
+
+    output_manager = OutputManager.get()
+    output_manager.print(f"[green]✓[/green] Enabled {len(token_ids)} {'token' if len(token_ids) == 1 else 'tokens'}.")

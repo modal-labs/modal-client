@@ -83,7 +83,11 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
     _add_endpoint_lifecycle(servicer)
     if path == ("nfs", "delete"):
         run_cli_command(["nfs", "create", "test-name"])
-    required_options = {("server", "deploy"): ["--image", "docker.io/nginx", "--port", "80"]}.get(path, [])
+    required_options = {
+        ("server", "deploy"): ["--image", "docker.io/nginx", "--port", "80"],
+        ("workspace", "member-tokens", "disable"): ["ak-0000000000000000000000"],
+        ("workspace", "member-tokens", "enable"): ["ak-0000000000000000000000"],
+    }.get(path, [])
     if path == ("server", "deploy"):
         # Deploy once so that deploying again asks to confirm the redeploy.
         run_cli_command([*path, *required_options, "--yes"])
@@ -7481,7 +7485,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     "workspace members": {"Commands": ["list"]},
     "workspace proxy-tokens": {"Commands": ["list", "create", "update", "allow", "revoke", "delete"]},
     "workspace settings": {"Commands": ["list", "set"]},
-    "workspace member-tokens": {"Commands": ["list", "delete"]},
+    "workspace member-tokens": {"Commands": ["list", "delete", "disable", "enable"]},
     "workspace service-users": {"Commands": ["create", "list", "delete", "info", "set-role"]},
     "environment": {
         "Management": ["list", "create", "update", "delete", "roles"],
@@ -9061,6 +9065,7 @@ def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, mon
             "created_at": "2020-01-01 00:00:00+00:00",
             "last_used_at": "2021-01-01 00:00:00+00:00",
             "expires_at": None,
+            "disabled": False,
         },
         {
             "name": "named-token",
@@ -9070,6 +9075,7 @@ def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, mon
             "created_at": "2020-01-01 00:00:00+00:00",
             "last_used_at": None,
             "expires_at": "2021-01-01 00:00:00+00:00",
+            "disabled": False,
         },
     ]
 
@@ -9095,6 +9101,7 @@ def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, mon
             "created_at": "2020-01-01 00:00:00+00:00",
             "last_used_at": None,
             "expires_at": "2021-01-01 00:00:00+00:00",
+            "disabled": False,
         },
     ]
 
@@ -9119,6 +9126,121 @@ def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, mon
         "token-6",
         "token-8",
     }
+
+    for verb in ["disable", "enable"]:
+        run_cli_command(
+            [
+                "workspace",
+                "member-tokens",
+                verb,
+                "-y",
+                "ak-MT1",
+            ],
+            expected_exit_code=1,
+            expected_error="Token not found",
+        )
+
+    run_cli_command(
+        [
+            "workspace",
+            "member-tokens",
+            "disable",
+            "-y",
+            "ak-MT2",
+            "ak-MT3",
+            "ak-MT4",
+            "ak-MT5",
+            "ak-MT6",
+            "ak-MT7",
+        ]
+    )
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+    assert len(json_output) == 11
+    assert set(t["token_id"] for t in json_output if t["disabled"]) == {
+        "ak-MT2",
+        "ak-MT3",
+        "ak-MT4",
+        "ak-MT5",
+        "ak-MT6",
+        "ak-MT7",
+    }
+
+    run_cli_command(
+        [
+            "workspace",
+            "member-tokens",
+            "disable",
+            "-y",
+            "ak-MT5",
+            "ak-MT6",
+            "ak-MT7",
+            "ak-MT8",
+        ]
+    )
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+    assert len(json_output) == 11
+    assert set(t["token_id"] for t in json_output if t["disabled"]) == {
+        "ak-MT2",
+        "ak-MT3",
+        "ak-MT4",
+        "ak-MT5",
+        "ak-MT6",
+        "ak-MT7",
+        "ak-MT8",
+    }
+
+    run_cli_command(["workspace", "member-tokens", "disable", "-y", "--all"])
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+    assert set(t["token_id"] for t in json_output if t["disabled"]) == {*([f"ak-MT{i}" for i in range(2, 13)])}
+
+    run_cli_command(
+        [
+            "workspace",
+            "member-tokens",
+            "enable",
+            "-y",
+            "ak-MT2",
+            "ak-MT4",
+            "ak-MT6",
+            "ak-MT8",
+            "ak-MT10",
+            "ak-MT12",
+        ]
+    )
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+    assert set(t["token_id"] for t in json_output if t["disabled"]) == {
+        "ak-MT3",
+        "ak-MT5",
+        "ak-MT7",
+        "ak-MT9",
+        "ak-MT11",
+    }
+
+    run_cli_command(
+        [
+            "workspace",
+            "member-tokens",
+            "enable",
+            "-y",
+            "ak-MT2",
+            "ak-MT3",
+            "ak-MT4",
+            "ak-MT5",
+            "ak-MT6",
+        ]
+    )
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+    assert set(t["token_id"] for t in json_output if t["disabled"]) == {"ak-MT7", "ak-MT9", "ak-MT11"}
 
 
 _SUGGEST_APP = textwrap.dedent("""\

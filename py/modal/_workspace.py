@@ -793,6 +793,9 @@ class _WorkspaceMemberTokenManager:
         See Also:
             - [`Workspace.member_tokens.enable()`](https://modal.com/docs/sdk/py/latest/Workspace#member_tokensenable):
               A function that re-enables a disabled token, so that it may be used again.
+            - [`modal workspace member-tokens disable`](https://modal.com/docs/cli/latest/workspace#modal-workspace-member-tokens-disable)
+              Command-line equivalent to this function.
+
         """
         if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
@@ -818,6 +821,8 @@ class _WorkspaceMemberTokenManager:
         See Also:
             - [`Workspace.member_tokens.disable()`](https://modal.com/docs/sdk/py/latest/Workspace#member_tokensdisable).
               A function that disables a token, so that it may not be used to authenticate with Modal.
+            - [`modal workspace member-tokens enable`](https://modal.com/docs/cli/latest/workspace#modal-workspace-member-tokens-enable)
+              Command-line equivalent to this function.
         """
         if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
