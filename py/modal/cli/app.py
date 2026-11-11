@@ -42,6 +42,7 @@ from ._stats import (
     problem_style,
     stats_style,
 )
+from ._suggest import exception_with_hint
 from .utils import (
     HEADER_ONLY,
     confirm_or_suggest_yes,
@@ -109,7 +110,7 @@ async def resolve_app_identifier(
         else:
             msg = f"No App with name '{app_identifier}' found in the '{resp.environment_name}' environment."
             hint = await object_suggestion_hint(client, app_identifier, env, "App")
-            raise NotFoundError(f"{msg}\n\n{hint}" if hint else msg)
+            raise exception_with_hint(NotFoundError(msg), hint)
 
 
 @app_cli.command("list", panel="Management")

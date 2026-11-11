@@ -207,7 +207,7 @@ class OutputManager(ABC):
         ...
 
     @abstractmethod
-    def print_error(self, error_text: str) -> None:
+    def print_error(self, error_text: str, hint: str = "") -> None:
         """Print an error message to stderr, ignoring quiet/disabled mode.
 
         This method always prints the error message regardless of quiet mode
@@ -216,6 +216,7 @@ class OutputManager(ABC):
 
         Args:
             error_text: The error message text to display.
+            hint: An optional suggestion (e.g. "Did you mean ...?") shown after the message.
         """
         ...
 
@@ -490,9 +491,9 @@ class DisabledOutputManager(OutputManager):
     ) -> None:
         pass
 
-    def print_error(self, error_text: str) -> None:
+    def print_error(self, error_text: str, hint: str = "") -> None:
         # Print error to stderr without any formatting (Rich is not available)
-        sys.stderr.write(error_text + "\n")
+        sys.stderr.write(f"{error_text}\n\n{hint}\n" if hint else f"{error_text}\n")
 
     def show_warning(
         self,

@@ -30,6 +30,7 @@ from grpclib import GRPCError, Status
 import modal
 from modal._serialization import PICKLE_PROTOCOL, serialize_proto_params
 from modal._utils.grpc_testing import InterceptionContext
+from modal.cli._suggest import get_hint
 from modal.cli.entry_point import entrypoint_cli
 from modal.exception import DeprecationError, InvalidError, NotFoundError, _CliUserExecutionError
 from modal.types import LogEntry
@@ -2982,7 +2983,7 @@ def test_lazily_imported_app(servicer, set_env_client, tmp_path):
     error = f"'app' is imported lazily in '{app_file.as_posix()}'"
 
     result = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
-    assert "has no functions or local entrypoints" in result.stderr
+    assert "file has no entrypoints" in result.stderr
     assert "change it to a regular import:\n  app" in result.stderr
 
     run_cli_command(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_error=error)
@@ -3004,7 +3005,7 @@ def test_run_lazy_imports_note(servicer, set_env_client, tmp_path, functions, ex
         "import modal\nlazy from remote_only_dependency import remote_fn\napp = modal.App()\n" + functions
     )
     result = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
-    assert "Specify a Modal Function or local entrypoint to run" in result.stderr
+    assert ("file has no entrypoints" in result.stderr) == expect_note
     assert ("change it to a regular import:\n  remote_fn" in result.stderr) == expect_note
 
 
@@ -3119,10 +3120,10 @@ def test_deploy(servicer, set_env_client, supports_dir, monkeypatch, args, succe
 def test_run_custom_app(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "custom_app.py"
     res = run_cli_command(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
-    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
+    assert "Could not find 'app'" in res.stderr
     assert "foo / my_app.foo" in res.stderr
     res = run_cli_command(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
-    assert "Specify a Modal Function or local entrypoint" in res.stderr
+    assert "Could not find 'app.foo'" in res.stderr
     assert "foo / my_app.foo" in res.stderr
 
     run_cli_command(["run", app_file.as_posix() + "::foo"])
@@ -3187,7 +3188,7 @@ def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, tes
 def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
-    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
+    assert "has multiple possible entrypoints" in res.stderr
 
     valid_call_args = [
         (
@@ -3236,7 +3237,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
 def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
-    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
+    assert "has multiple possible entrypoints" in res.stderr
 
     # HACK: all the tests use the same arg, i.
     @servicer.function_body
@@ -5506,7 +5507,7 @@ def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatc
     res = run_cli_command(["run", "-m", "multifile_project.main"], expected_exit_code=1)
     print("err", res.stderr)
     # there are no runnables directly in the target module, so references need to go via the app
-    func_listing = res.stderr.split("functions and local entrypoints:")[1]
+    func_listing = res.stderr.split("has the following options:\n")[1].split("\n\n")[0]
 
     listed_runnables = set(re.findall(r"\b[\w.]+\b", func_listing))
 
@@ -9184,8 +9185,8 @@ def test_function_ref_typo_suggests_close_name(set_env_client, mock_dir, service
     with mock_dir({"suggest_app.py": _SUGGEST_APP}):
         run_cli_command(["deploy", "suggest_app.py"])
         result = run_cli_command(["function", "info", "suggest-app/trian"], expected_exit_code=1)
-    assert "Did you mean:" in str(result.exception)
-    assert "suggest-app/train" in str(result.exception)
+    assert "Did you mean:" in get_hint(result.exception)
+    assert "suggest-app/train" in get_hint(result.exception)
 
 
 def test_function_ref_app_typo_suggests_close_app(set_env_client, mock_dir, servicer):
@@ -9195,7 +9196,7 @@ def test_function_ref_app_typo_suggests_close_app(set_env_client, mock_dir, serv
     with mock_dir({"suggest_app.py": _SUGGEST_APP}):
         run_cli_command(["deploy", "suggest_app.py"])
         result = run_cli_command(["function", "info", "suggest-ap/train"], expected_exit_code=1)
-    assert "suggest-app/train" in str(result.exception)
+    assert "suggest-app/train" in get_hint(result.exception)
 
 
 def test_run_object_path_typo_suggests(set_env_client, mock_dir):
@@ -9221,7 +9222,7 @@ def test_run_ambiguous_parent_has_no_typo_hint(set_env_client, mock_dir):
     source = _SUGGEST_APP.replace("app =", "training_app =").replace("@app.function()", "@training_app.function()")
     with mock_dir({"suggest_app.py": source}):
         result = run_cli_command(["run", "suggest_app.py::training_app"], expected_exit_code=1)
-    assert "Specify a Modal Function or local entrypoint" in result.stderr
+    assert "'training_app' matches multiple entrypoints" in result.stderr
     assert "training_app.train" in result.stderr
     assert "training_app.evaluate" in result.stderr
     assert "Could not find" not in result.stderr
@@ -9298,13 +9299,13 @@ def test_server_ref_typo_suggests_only_servers(set_env_client, mock_dir, service
     servicer.app_servers[app_id] = {"train": servicer.app_objects[app_id]["train"]}
 
     result = run_cli_command(["server", "info", "suggest-app/trian"], expected_exit_code=1)
-    assert "Did you mean:" in str(result.exception)
-    assert "suggest-app/train" in str(result.exception)
-    assert "server info suggest-app/train" in str(result.exception)
+    assert "Did you mean:" in get_hint(result.exception)
+    assert "suggest-app/train" in get_hint(result.exception)
+    assert "server info suggest-app/train" in get_hint(result.exception)
 
     # `train` is a Server, so it is not offered for a Function command.
     result = run_cli_command(["function", "info", "suggest-app/trian"], expected_exit_code=1)
-    assert "Did you mean" not in str(result.exception)
+    assert "Did you mean" not in get_hint(result.exception)
 
 
 @pytest.mark.parametrize("method", ["generate", "g", "*"])
@@ -9315,8 +9316,8 @@ def test_function_ref_cls_typo_keeps_method(set_env_client, mock_dir, servicer, 
     with mock_dir({"suggest_cls_app.py": _SUGGEST_CLS_APP}):
         run_cli_command(["deploy", "suggest_cls_app.py"])
         result = run_cli_command(["function", "info", f"suggest-cls-app/Modl.{method}"], expected_exit_code=1)
-    assert "Did you mean:" in str(result.exception)
-    assert f"suggest-cls-app/Model.{method}" in str(result.exception)
+    assert "Did you mean:" in get_hint(result.exception)
+    assert f"suggest-cls-app/Model.{method}" in get_hint(result.exception)
 
 
 @pytest.mark.parametrize("group", ["function", "server"])
@@ -9379,7 +9380,7 @@ def test_suggestion_lookup_failure_preserves_original_error(set_env_client, serv
         assert "my-app/web" in result.stderr
     else:
         assert isinstance(result.exception, NotFoundError)
-        assert "Did you mean" not in str(result.exception)
+        assert "Did you mean" not in get_hint(result.exception)
 
 
 def test_ambiguous_separator_hint_shows_canonical_commands(set_env_client, monkeypatch):
@@ -9408,8 +9409,8 @@ def test_missing_object_hint_lists_corrected_commands(set_env_client, servicer):
             ),
         )
         result = run_cli_command(["function", "info", "my-app/train"], expected_exit_code=1)
-    assert "function info my-app/train1" in str(result.exception)
-    assert "function info my-app/train2" in str(result.exception)
+    assert "function info my-app/train1" in get_hint(result.exception)
+    assert "function info my-app/train2" in get_hint(result.exception)
 
 
 @pytest.mark.parametrize(
@@ -9438,9 +9439,9 @@ def test_app_name_typo_suggests_corrected_command(set_env_client, servicer):
         api_pb2.ObjectSuggestion(object_name="training-app")
     ]
     result = run_cli_command(["app", "logs", "training-ap", "--env", "staging"], expected_exit_code=1)
-    assert "Did you mean:" in str(result.exception)
-    assert "training-app" in str(result.exception)
-    assert "app logs training-app" in str(result.exception)
+    assert "Did you mean:" in get_hint(result.exception)
+    assert "training-app" in get_hint(result.exception)
+    assert "app logs training-app" in get_hint(result.exception)
 
 
 @pytest.mark.parametrize("env_first", [False, True])
@@ -9451,7 +9452,7 @@ def test_object_hint_suggests_names_only_when_reference_is_ambiguous(set_env_cli
     ]
     args = ["--env", "staging", "staging"] if env_first else ["staging", "--env", "staging"]
     result = run_cli_command(["app", "logs", *args], expected_exit_code=1)
-    lines = [line.strip() for line in str(result.exception).splitlines()]
+    lines = [line.strip() for line in get_hint(result.exception).splitlines()]
     assert "Did you mean:" in lines
     for name in suggestions:
         assert name in lines
@@ -9485,7 +9486,7 @@ def test_object_suggestion_preserves_handler_options(set_env_client, servicer, g
     ref = "training-ap" if group == "app" else "training-app/trian"
     corrected_ref = "training-app" if group == "app" else "training-app/train"
     result = run_cli_command([group, *subcommand, ref, "--env", "staging", *options], expected_exit_code=1)
-    message = str(result.exception)
+    message = get_hint(result.exception)
     retry = next(line.strip() for line in message.splitlines() if line.strip().startswith("modal "))
     assert shlex.split(retry) == ["modal", group, *subcommand, corrected_ref, "--env", "staging", *options]
 
@@ -9543,7 +9544,7 @@ def test_app_rollback_suggestion_preserves_requested_version(set_env_client, ser
     ]
     args = ["app", "rollback", "training-ap", "v2", "--env", "staging", "--strategy", "recreate"]
     result = run_cli_command(args, expected_exit_code=1)
-    assert "modal app rollback training-app v2 --env staging --strategy recreate" in str(result.exception)
+    assert "modal app rollback training-app v2 --env staging --strategy recreate" in get_hint(result.exception)
 
 
 @pytest.mark.parametrize(
@@ -9569,13 +9570,15 @@ def test_object_suggestion_preserves_selected_profile(
         profile_args = ["--profile", profile]
         invocation = profile_args + invocation if profile_first else invocation + profile_args
         result = run_cli_command(invocation, expected_exit_code=1)
-        retry = next(line.strip() for line in str(result.exception).splitlines() if line.strip().startswith("modal "))
+        retry = next(
+            line.strip() for line in get_hint(result.exception).splitlines() if line.strip().startswith("modal ")
+        )
         corrected_ref = "train" if group == "app" else "training-app/train"
         assert shlex.split(retry) == ["modal", *(corrected_ref if arg == ref else arg for arg in invocation)]
 
     # A later invocation inherits the active profile, but did not pass --profile.
     result = run_cli_command([group, command, ref, *arguments], expected_exit_code=1)
-    retry = next(line.strip() for line in str(result.exception).splitlines() if line.strip().startswith("modal "))
+    retry = next(line.strip() for line in get_hint(result.exception).splitlines() if line.strip().startswith("modal "))
     assert shlex.split(retry)[:3] == ["modal", group, command]
     assert "--profile" not in shlex.split(retry)
 

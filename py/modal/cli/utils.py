@@ -28,7 +28,7 @@ from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError, NotFoundError
 from ..output import OutputManager
-from ._suggest import corrected_commands, format_hint, slash_ref_candidates
+from ._suggest import corrected_commands, exception_with_hint, format_hint, slash_ref_candidates
 
 HEADER_ONLY = SIMPLE_HEAD
 
@@ -289,9 +289,7 @@ async def _resolve_function_id(
                     f"'{function_identifier}' is a modal.Cls. Use\n modal function {command} '{function_identifier}.*'"
                 ) from None
             hint = await object_suggestion_hint(client, function_identifier, environment_name, object_type)
-            if hint:
-                raise NotFoundError(f"{exc}\n\n{hint}") from None
-            raise
+            raise exception_with_hint(exc, hint)
 
         print_server_warnings(response.server_warnings)
         function_id = response.function_id
@@ -314,12 +312,11 @@ async def _resolve_function_id(
                 f"Invalid {object_type} reference {function_identifier!r}. "
                 f"Use '/' between the App and {object_type} names."
             )
-            hint = format_hint(refs, commands)
-            raise UsageError(f"{message}\n\n{hint}" if hint else message)
+            raise exception_with_hint(UsageError(message), format_hint(refs, commands))
         hint = ""
         if slash_ref_candidates(function_identifier):
             hint = await object_suggestion_hint(client, function_identifier, environment_name, object_type)
-        raise UsageError(f"{usage}\n\n{hint}" if hint else usage)
+        raise exception_with_hint(UsageError(usage), hint)
 
     if function.is_server != (object_type == "Server"):
         actual_type = "Server" if function.is_server else "Function"

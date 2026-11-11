@@ -26,7 +26,7 @@ from ..output import OutputManager
 from ..runner import DEPLOYMENT_STRATEGY_TYPE, deploy_app, run_app
 from ..serving import serve_app
 from ._help import ModalCommand, ModalGroup, _consume_global_options, _global_option_token_length
-from ._suggest import close_matches, corrected_commands, format_hint
+from ._suggest import close_matches, corrected_commands, exception_with_hint, format_hint
 from .import_refs import (
     STDIN_REF,
     CLICommand,
@@ -418,24 +418,69 @@ def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
     usable_command_lines = []
     for cmd in all_usable_commands:
         cmd_names = " / ".join(cmd.names)
-        usable_command_lines.append(cmd_names)
+        usable_command_lines.append(f"- {cmd_names}")
 
     return "\n".join(usable_command_lines)
 
 
 def _object_path_hint(func_ref: str, import_ref: ImportRef, all_usable_commands: list[CLICommand]) -> str:
-    """Suggest the closest runnable when `file.py::name` names something that doesn't exist."""
-    if not import_ref.object_path or filter_cli_commands(all_usable_commands, import_ref.object_path):
-        return ""
+    """Suggest the closest runnables when `file.py::name` names something that doesn't exist."""
     names = [name for cmd in all_usable_commands for name in cmd.names]
-    matches = close_matches(import_ref.object_path, names)
-    if not matches:
-        return ""
-    refs = [f"{import_ref.file_or_module}::{m}" for m in matches]
-    message = f"Could not find '{import_ref.object_path}' in '{import_ref.file_or_module}'."
+    refs = [f"{import_ref.file_or_module}::{m}" for m in close_matches(import_ref.object_path, names)]
     # Arguments after the reference belong to the user's entrypoint and may hold secrets.
     commands = corrected_commands(func_ref, refs, allow_trailing_args=False)
-    return f"{message}\n\n{format_hint(refs, commands)}"
+    return format_hint(refs, commands)
+
+
+def _no_runnable_error(
+    command: str,
+    func_ref: str,
+    import_ref: ImportRef,
+    all_usable_commands: list[CLICommand],
+    lazy_imports: list[str],
+    takes_args: bool = True,
+) -> ClickException:
+    """Build the error for a reference that doesn't resolve to exactly one runnable.
+
+    `command` is the CLI command being invoked (e.g. "modal run"), and `takes_args` says whether
+    the usage example should show trailing arguments for the runnable.
+    """
+    ref = import_ref.file_or_module
+    from_stdin = ref == STDIN_REF
+    if from_stdin:
+        source = "the script on stdin"
+    else:
+        source = f"the '{ref}' {'module' if import_ref.use_module_mode else 'file'}"
+    matching_commands = filter_cli_commands(all_usable_commands, import_ref.object_path)
+
+    if not all_usable_commands:
+        message = f"{source.capitalize()} has no entrypoints."
+        hint = format_lazy_imports_note(lazy_imports)
+    elif not matching_commands:
+        message = f"Could not find '{import_ref.object_path}' in {source}."
+        options = f"{source.capitalize()} has the following options:\n"
+        options += _get_runnable_list(all_usable_commands)
+        did_you_mean = _object_path_hint(func_ref, import_ref, all_usable_commands)
+        hint = f"{options}\n\n{did_you_mean}" if did_you_mean else options
+    elif from_stdin:
+        # A script on stdin can't be given an entrypoint name, so listing the candidates doesn't help.
+        message = "A script on stdin must have one local entrypoint or only one Function."
+        example = f"{command} my_app.py::{matching_commands[0].names[0]}" + (" [..args]" if takes_args else "")
+        hint = (
+            "Define a single `@app.local_entrypoint()`, or save the script to a file and specify the "
+            f"entrypoint, e.g.:\n    {example}"
+        )
+    else:
+        if import_ref.object_path:
+            message = f"'{import_ref.object_path}' matches multiple entrypoints in {source}."
+        else:
+            message = f"{command} invoked without a function reference, but App has multiple possible entrypoints."
+        options = f"{source.capitalize()} has the following options:\n"
+        options += _get_runnable_list(matching_commands)
+        example = f"{command} {ref}::{matching_commands[0].names[0]}" + (" [..args]" if takes_args else "")
+        hint = f"{options}\n\nSpecify the entrypoint, e.g.:\n    {example}"
+
+    return exception_with_hint(ClickException(message), hint)
 
 
 class RunGroup(ModalGroup):
@@ -495,34 +540,8 @@ class RunGroup(ModalGroup):
         runnable, all_usable_commands, lazy_imports = import_and_filter(
             import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False, allow_stdin=True
         )
-        if not runnable and from_stdin:
-            help_header = (
-                "Couldn't determine what to run from the script on stdin. Define a single "
-                "`@app.local_entrypoint()`, or save the script to a file and pass `my_app.py::my_function`."
-            )
-            if all_usable_commands:
-                help_footer = "The script has the following functions and local entrypoints:\n"
-                help_footer += _get_runnable_list(all_usable_commands)
-            else:
-                help_footer = "The script has no functions or local entrypoints."
-            raise ClickException(f"{help_header}\n\n{help_footer}")
         if not runnable:
-            help_header = (
-                "Specify a Modal Function or local entrypoint to run. E.g.\n"
-                f"> modal run {import_ref.file_or_module}::my_function [..args]"
-            )
-
-            if all_usable_commands:
-                help_footer = f"'{import_ref.file_or_module}' has the following functions and local entrypoints:\n"
-                help_footer += _get_runnable_list(all_usable_commands)
-            else:
-                help_footer = f"'{import_ref.file_or_module}' has no functions or local entrypoints."
-
-            help_footer += format_lazy_imports_note(lazy_imports, found_commands=bool(all_usable_commands))
-            if hint := _object_path_hint(func_ref, import_ref, all_usable_commands):
-                help_header = f"{hint}\n\n{help_header}"
-
-            raise ClickException(f"{help_header}\n\n{help_footer}")
+            raise _no_runnable_error("modal run", func_ref, import_ref, all_usable_commands, lazy_imports)
 
         app = _get_runnable_app(runnable)
         if app.description is None:

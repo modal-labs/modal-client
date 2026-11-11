@@ -227,6 +227,19 @@ _ANSI_RESET = "\033[0m"
 QUEUEING_STRAGGLER_GRACE_SECS = 30.0
 
 
+def format_error_message(error_text: str, hint: str = "") -> Text:
+    """Build the styled text for a CLI error message.
+
+    The message and hint are taken literally (no markup is interpreted). The message gets an
+    "Error:" prefix, and the hint, if any, follows after a blank line in a dim style.
+    """
+    message = Text.assemble(("Error:", "bold red"), " ", error_text)
+    if hint:
+        message.append("\n\n")
+        message.append(hint, style="dim")
+    return message
+
+
 class RichOutputManager(OutputManager):
     """Rich-based implementation of OutputManager.
 
@@ -347,13 +360,13 @@ class RichOutputManager(OutputManager):
         else:
             self._console.print(renderable, highlight=highlight, style=style, sep=sep, end=end)
 
-    def print_error(self, error_text: str) -> None:
-        """Print an error message to stderr in a panel, ignoring quiet mode.
+    def print_error(self, error_text: str, hint: str = "") -> None:
+        """Print an error message, and an optional suggestion hint, to stderr, ignoring quiet mode.
 
-        This method always prints the error message regardless of quiet mode.
+        The message is printed as-is after a styled "Error:" prefix, without hard line wrapping,
+        so that a single-line message stays on one line regardless of terminal width.
         """
-        panel = Panel(escape(error_text), title="Error", title_align="left", border_style="red")
-        self._stderr_console.print(panel, highlight=False)
+        self._stderr_console.print(format_error_message(error_text, hint), highlight=False, soft_wrap=True)
 
     def print_json(self, data: str) -> None:
         """Print JSON data with formatting."""

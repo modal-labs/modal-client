@@ -28,11 +28,10 @@ from ..volume import Volume
 from ._help import ModalCommand
 from .import_refs import (
     MethodReference,
-    format_lazy_imports_note,
     import_and_filter,
     parse_import_ref,
 )
-from .run import _get_runnable_list
+from .run import _no_runnable_error
 from .utils import ENV_OPTION_HELP, is_tty
 
 
@@ -171,20 +170,7 @@ def _function_spec_from_ref(ref: str, use_module_mode: bool) -> _FunctionSpec:
         accept_service_functions=True,
     )
     if not runnable:
-        help_header = (
-            "Specify a Modal function to start a shell session for. E.g.\n"
-            f"> modal shell {import_ref.file_or_module}::my_function"
-        )
-
-        if all_usable_commands:
-            help_footer = f"The selected module '{import_ref.file_or_module}' has the following choices:\n\n"
-            help_footer += _get_runnable_list(all_usable_commands)
-        else:
-            help_footer = f"The selected module '{import_ref.file_or_module}' has no Modal functions or classes."
-
-        help_footer += format_lazy_imports_note(lazy_imports, found_commands=bool(all_usable_commands))
-
-        raise ClickException(f"{help_header}\n\n{help_footer}")
+        raise _no_runnable_error("modal shell", ref, import_ref, all_usable_commands, lazy_imports, takes_args=False)
 
     if isinstance(runnable, MethodReference):
         # TODO: let users specify a class instead of a method, since they use the same environment

@@ -17,7 +17,6 @@ import click
 from rich.console import Console, Group, RenderableType
 from rich.markdown import Markdown
 from rich.padding import Padding
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -25,14 +24,13 @@ from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 from modal_version import __version__
 
-from ._suggest import _invocation_args, unknown_command_hint
+from ._suggest import _invocation_args, exception_with_hint, get_hint, unknown_command_hint
 
 _HEADING_STYLE = "bold bright_green"
 _COMMAND_NAME_STYLE = ""
 _COMMAND_DESC_STYLE = "dim"
 _OPTION_FLAG_STYLE = "green"
 _OPTION_METAVAR_STYLE = "dim"
-_ERROR_STYLE = "red"
 
 _MAX_HELP_WIDTH = 80
 _HELP_PADDING = 1
@@ -437,9 +435,7 @@ class ModalGroup(click.Group):
             # so the hint is the same on every supported click version.
             rest = [click.utils.make_str(a) for a in args[1:]]
             hint = _command_suggestion_hint(ctx, name, rest) or unknown_command_hint(self, ctx, name)
-            if hint:
-                message += f"\n\n{hint}"
-            raise click.UsageError(message, ctx) from None
+            raise exception_with_hint(click.UsageError(message, ctx), hint) from None
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         if ctx.parent is None:
@@ -504,30 +500,31 @@ def _render_click_exception(exc: click.ClickException, file: Any) -> None:
             option = ctx.help_option_names[0] if ctx.help_option_names else "--help"
             console.print(f"Try [bold]'{ctx.command_path} {option}'[/bold] for help.")
 
-    console.print(
-        Panel(
-            Text(exc.format_message()),
-            title="Error",
-            title_align="left",
-            border_style=_ERROR_STYLE,
-            expand=True,
-        )
-    )
+    from modal._output.rich import format_error_message
+
+    console.print(format_error_message(exc.format_message(), get_hint(exc)), soft_wrap=True)
 
 
 _orig_click_show = click.ClickException.show
 _orig_usage_show = click.UsageError.show
 
 
+def _echo_hint(exc: click.ClickException, file: Any) -> None:
+    if hint := get_hint(exc):
+        click.echo(f"\n{hint}", file=file, err=True)
+
+
 def _click_show(self: click.ClickException, file: Any = None) -> None:
     if not use_rich_style():
-        return _orig_click_show(self, file)
+        _orig_click_show(self, file)
+        return _echo_hint(self, file)
     _render_click_exception(self, file)
 
 
 def _usage_show(self: click.UsageError, file: Any = None) -> None:
     if not use_rich_style():
-        return _orig_usage_show(self, file)
+        _orig_usage_show(self, file)
+        return _echo_hint(self, file)
     _render_click_exception(self, file)
 
 

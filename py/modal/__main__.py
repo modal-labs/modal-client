@@ -2,6 +2,7 @@
 import sys
 
 from ._traceback import reduce_traceback_to_user_code
+from .cli._suggest import get_hint
 from .cli._traceback import highlight_modal_warnings, setup_rich_traceback
 from .cli.entry_point import entrypoint_cli
 from .cli.import_refs import _CliUserExecutionError
@@ -41,7 +42,7 @@ def main():
             if notes := getattr(exc, "__notes__", []):
                 content = f"{content}\n\nNote: {' '.join(notes)}"
 
-            OutputManager.get().print_error(content)
+            OutputManager.get().print_error(content, hint=get_hint(exc))
             sys.exit(1)
 
 

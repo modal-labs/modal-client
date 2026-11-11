@@ -33,6 +33,7 @@ from modal.output import OutputManager
 
 from .._runtime import execution_context
 from .._utils.async_utils import synchronizer
+from ._suggest import exception_with_hint
 
 
 @dataclasses.dataclass
@@ -55,7 +56,9 @@ def parse_import_ref(object_ref: str, use_module_mode: bool = False, command: st
     if object_ref.find("::") > 1:
         file_or_module, object_path = object_ref.split("::", 1)
     elif object_ref.find(":") > 1:
-        raise InvalidError(f"Invalid object reference: {object_ref}. Did you mean '::' instead of ':'?")
+        raise exception_with_hint(
+            InvalidError(f"Invalid object reference: {object_ref}."), "Did you mean '::' instead of ':'?"
+        )
     else:
         file_or_module, object_path = object_ref, ""
 
@@ -458,14 +461,14 @@ def import_and_filter(
     return None, all_usable_commands, lazy_imports
 
 
-def format_lazy_imports_note(lazy_imports: list[str], found_commands: bool) -> str:
-    if found_commands or not lazy_imports:
+def format_lazy_imports_note(lazy_imports: list[str]) -> str:
+    if not lazy_imports:
         return ""
     details = "\n".join(f"  {name}" for name in lazy_imports[:_MAX_LISTED_LAZY_IMPORTS])
     if len(lazy_imports) > _MAX_LISTED_LAZY_IMPORTS:
         details += f"\n  ... and {len(lazy_imports) - _MAX_LISTED_LAZY_IMPORTS} more"
     return (
-        "\n\nNote: Modal does not look inside lazy imports, and Modal Apps, Functions, and Classes can't be "
+        "Note: Modal does not look inside lazy imports, and Modal Apps, Functions, and Classes can't be "
         f"imported lazily. If one of these is a Modal object, change it to a regular import:\n{details}"
     )
 

@@ -5,6 +5,7 @@ import difflib
 import shlex
 from collections.abc import Iterable, Sequence
 from contextvars import ContextVar
+from typing import TypeVar
 
 import click
 
@@ -16,6 +17,21 @@ MIN_PREFIX_LEN = 3
 # Async handlers run on the synchronizer's thread, where Click's thread-local context isn't
 # visible; this ContextVar reaches them via the context copied by run_coroutine_threadsafe.
 _invocation_args: ContextVar[tuple[str, ...] | None] = ContextVar("modal_cli_invocation_args", default=None)
+
+_HINT_ATTR = "_modal_cli_hint"
+_E = TypeVar("_E", bound=BaseException)
+
+
+def exception_with_hint(exc: _E, hint: str) -> _E:
+    """Attach a suggestion hint to `exc`, kept apart from its message so it can be styled on its own."""
+    if hint:
+        setattr(exc, _HINT_ATTR, hint)
+    return exc
+
+
+def get_hint(exc: BaseException) -> str:
+    """Return the suggestion hint attached to `exc` with `exception_with_hint`, or an empty string."""
+    return getattr(exc, _HINT_ATTR, "")
 
 
 def _normalize(s: str) -> str:
