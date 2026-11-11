@@ -150,25 +150,36 @@ def _agent_environment() -> str | None:
         ("CLINE_ACTIVE", "cline"),
         ("AUGMENT_AGENT", "augment"),
         ("OPENCODE_CLIENT", "opencode"),
+        ("OPENCODE", "opencode"),
+        ("OPENCODE_SESSION_ID", "opencode"),
         ("GOOSE_TERMINAL", "goose"),  # honk
         ("TRAE_AI_SHELL_ID", "trae"),
         ("PI_CODING_AGENT", "pi"),
+        ("PI_SESSION_ID", "pi"),
         ("COPILOT_AGENT_SESSION_ID", "copilot"),
         ("ANTIGRAVITY_AGENT", "antigravity"),
         ("JUNIE_SHIM_PATH", "junie"),
         ("QWEN_CODE", "qwen-code"),
+        ("QWEN_CODE_SESSION_ID", "qwen-code"),
         ("MUSE_SESSION_ID", "muse-code"),
+        ("HERMES_AGENT", "hermes-agent"),
+        ("CRUSH", "crush"),
     ]
     for env_var, agent_name in _TOOL_SPECIFIC_ENV_VARS:
         if os.environ.get(env_var):
             return agent_name
 
+    # OpenClaw sets OPENCLAW_SHELL=tui-local for human-operated terminal commands.
+    if os.environ.get("OPENCLAW_SHELL") == "exec":
+        return "openclaw"
+
     # Emerging standards, checked last because neither value is normalized.
     # `AGENT` may be a bare `1` rather than a name (opencode), and `AI_AGENT`
     # may embed a version or suffix (e.g. `claude-code_2-1-268_agent`).
-    if agent := os.environ.get("AGENT"):
-        return agent
-    if agent := os.environ.get("AI_AGENT"):
+    if agent := os.environ.get("AGENT") or os.environ.get("AI_AGENT"):
+        for prefix in ("claude-code", "devin"):
+            if agent.startswith(prefix):
+                return prefix
         return agent
 
     return None
