@@ -10,6 +10,8 @@ import pytest
 import time
 import typing
 import uuid
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -40,6 +42,7 @@ from modal.sandbox._impl_v1 import SandboxImplV1
 from modal.sandbox._impl_v2 import SandboxImplV2
 from modal.sandbox._task_command_router_client import _is_v2_task_id
 from modal.stream_type import StreamType
+from modal.types import SandboxStats, StatsPercentile, StatsPercentileDistribution
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .supports.skip import skip_windows
@@ -1082,6 +1085,118 @@ def test_sandbox_create_with_tags(app, client, servicer):
 
     assert sb.get_tags() == tags
     sb.terminate()
+
+
+def test_sandbox_stats(app, client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+    # No usage yet is distinguishable from a free Sandbox.
+    empty = sb._experimental_stats()
+    assert empty.cost is None
+    assert empty.cost_by_resource == {}
+    assert empty.duration == timedelta(0)
+    assert empty.percentile_stats == {}
+
+    def distribution(unit: str, *values: float) -> api_pb2.StatsPercentileDistribution:
+        return api_pb2.StatsPercentileDistribution(
+            unit=unit,
+            percentiles=[
+                api_pb2.StatsPercentile(percentile_basis_points=bps, value=value)
+                for bps, value in zip((5000, 9000, 9900, 9990, 10000), values)
+            ],
+        )
+
+    since = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    until = since + timedelta(hours=1)
+    response = api_pb2.SandboxGetStatsResponse(
+        cost="0.12500000",
+        cost_by_resource={"CPU": "0.10000000", "Memory": "0.02500000"},
+        num_datapoints=360,
+        percentile_stats={
+            "CPU Usage (cores)": distribution("cores", 0.5, 1.0, 1.25, 1.5, 1.5),
+            "Memory Usage (GiB)": distribution("GiB", 1.5, 1.75, 2.0, 2.0, 2.0),
+        },
+        duration_hours=0.5,
+        billed_cpu_core_seconds=1800.0,
+        billed_memory_gib_seconds=3600.0,
+    )
+    response.since.FromDatetime(since)
+    response.until.FromDatetime(until)
+    servicer.sandbox_get_stats[sb.object_id] = response
+    with servicer.intercept() as ctx:
+        stats = sb._experimental_stats()
+    request = ctx.pop_request("SandboxGetStats")
+    assert request.sandbox_id == sb.object_id
+    assert not request.HasField("since") and not request.HasField("until")
+    assert stats == SandboxStats(
+        since=since,
+        until=until,
+        duration=timedelta(minutes=30),
+        percentile_stats={
+            "CPU Usage (cores)": StatsPercentileDistribution(
+                unit="cores",
+                percentiles=[
+                    StatsPercentile(percentile=50.0, value=0.5),
+                    StatsPercentile(percentile=90.0, value=1.0),
+                    StatsPercentile(percentile=99.0, value=1.25),
+                    StatsPercentile(percentile=99.9, value=1.5),
+                    StatsPercentile(percentile=100.0, value=1.5),
+                ],
+            ),
+            "Memory Usage (GiB)": StatsPercentileDistribution(
+                unit="GiB",
+                percentiles=[
+                    StatsPercentile(percentile=50.0, value=1.5),
+                    StatsPercentile(percentile=90.0, value=1.75),
+                    StatsPercentile(percentile=99.0, value=2.0),
+                    StatsPercentile(percentile=99.9, value=2.0),
+                    StatsPercentile(percentile=100.0, value=2.0),
+                ],
+            ),
+        },
+        cost=Decimal("0.125"),
+        cost_by_resource={"CPU": Decimal("0.1"), "Memory": Decimal("0.025")},
+        billed_cpu_core_seconds=1800.0,
+        billed_memory_gib_seconds=3600.0,
+    )
+    sb.terminate()
+
+
+def test_sandbox_stats_time_range(app, client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+    since = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 1, 1, 9, tzinfo=timezone(timedelta(hours=-5)))  # 14:00 UTC
+    with servicer.intercept() as ctx:
+        sb._experimental_stats(since=since.astimezone().replace(tzinfo=None), until=until)
+    request = ctx.pop_request("SandboxGetStats")
+    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
+    assert request.until.ToDatetime(tzinfo=timezone.utc) == datetime(2026, 1, 1, 14, tzinfo=timezone.utc)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="`since` must be before `until`"):
+            sb._experimental_stats(since=until, until=since)
+    assert ctx.get_requests("SandboxGetStats") == []
+    sb.terminate()
+
+
+def test_sandbox_stats_after_detach(app, client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+    servicer.sandbox_get_stats[sb.object_id] = api_pb2.SandboxGetStatsResponse(cost="0.25000000")
+    sb.terminate()
+    sb.detach()
+    assert sb._experimental_stats().cost == Decimal("0.25")
+
+
+def test_experimental_sandbox_stats(client, servicer):
+    app = App()
+    with app.run(client=client):
+        sb = Sandbox._experimental_create("bash", "-c", "sleep 10000", app=app)
+        servicer.sandbox_get_stats[sb.object_id] = api_pb2.SandboxGetStatsResponse(
+            cost="0.50000000", cost_by_resource={"H100": "0.50000000"}
+        )
+        stats = sb._experimental_stats()
+        assert stats.cost == Decimal("0.5")
+        assert stats.cost_by_resource == {"H100": Decimal("0.5")}
+        sb.terminate()
 
 
 def test_experimental_sandbox_get_set_tags(client, servicer):
@@ -3431,7 +3546,7 @@ detach_error_funcs = {
     "stdin": lambda sb: sb.stdin,
     "filesystem": lambda sb: sb.filesystem,
 }
-ALLOW_AFTER_DETACH = {"detach", "returncode", "wait", "_experimental_get_exit_snapshot", "logs"}
+ALLOW_AFTER_DETACH = {"detach", "returncode", "wait", "_experimental_get_exit_snapshot", "logs", "_experimental_stats"}
 
 
 def test_func_map_covers_all_public_methods_and_properties():

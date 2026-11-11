@@ -130,6 +130,8 @@ def test_persistent_sandbox_unsupported_operations(app, client):
         sb.unmount_image("/mnt")
     with pytest.raises(NotImplementedError, match="Tags"):
         sb.get_tags()
+    with pytest.raises(NotImplementedError, match="Statistics"):
+        sb._experimental_stats()
     with pytest.raises(NotImplementedError, match="Tags"):
         sb.set_tags({"a": "b"})
     with pytest.raises(NotImplementedError, match="Memory snapshots"):

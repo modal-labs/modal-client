@@ -593,6 +593,33 @@ class SandboxGroupStats:
 
 
 @dataclass(slots=True, frozen=True)
+class SandboxStats:
+    """Statistics for a single Sandbox over a time range."""
+
+    since: datetime
+    until: datetime
+    duration: timedelta
+    percentile_stats: dict[str, StatsPercentileDistribution]
+    cost: Decimal | None
+    cost_by_resource: dict[str, Decimal]
+    billed_cpu_core_seconds: float
+    billed_memory_gib_seconds: float
+
+    @classmethod
+    def _from_proto(cls, pb: "api_pb2.SandboxGetStatsResponse") -> "SandboxStats":
+        return cls(
+            since=pb.since.ToDatetime(tzinfo=timezone.utc),
+            until=pb.until.ToDatetime(tzinfo=timezone.utc),
+            duration=timedelta(hours=pb.duration_hours),
+            percentile_stats={k: StatsPercentileDistribution._from_proto(v) for k, v in pb.percentile_stats.items()},
+            cost=Decimal(pb.cost) if pb.HasField("cost") else None,
+            cost_by_resource={resource: Decimal(cost) for resource, cost in pb.cost_by_resource.items()},
+            billed_cpu_core_seconds=pb.billed_cpu_core_seconds,
+            billed_memory_gib_seconds=pb.billed_memory_gib_seconds,
+        )
+
+
+@dataclass(slots=True, frozen=True)
 class WorkspaceBillingSummary:
     start: datetime
     end: datetime

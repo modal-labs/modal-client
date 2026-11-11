@@ -1126,6 +1126,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_tags: dict[str, dict[str, str]] = {}
         self.sandbox_stats_requests: list[api_pb2.SandboxGetTimeRangeStatsRequest] = []
         self.sandbox_stats_pages = 1
+        self.sandbox_get_stats: dict[str, api_pb2.SandboxGetStatsResponse] = {}
         self.sandbox_stats_throttle_remaining = 0
         self.sandbox_names: dict[str, str] = {}
         self.sandbox_outbound_policies: dict[str, api_pb2.OutboundPolicy] = {}
@@ -3812,6 +3813,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(
             api_pb2.SandboxTagsGetResponse(tags=[api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()])
         )
+
+    async def SandboxGetStats(self, stream):
+        request: api_pb2.SandboxGetStatsRequest = await stream.recv_message()
+        await stream.send_message(self.sandbox_get_stats.get(request.sandbox_id, api_pb2.SandboxGetStatsResponse()))
 
     async def SandboxGetTimeRangeStats(self, stream):
         request: api_pb2.SandboxGetTimeRangeStatsRequest = await stream.recv_message()

@@ -4,6 +4,7 @@ import os
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, overload
 
@@ -31,7 +32,7 @@ from ..network_file_system import _NetworkFileSystem
 from ..proxy import _Proxy
 from ..secret import _Secret
 from ..stream_type import StreamType
-from ..types import SandboxConnectCredentials, SandboxRuntime
+from ..types import SandboxConnectCredentials, SandboxRuntime, SandboxStats
 from ..volume import _Volume
 from ._common import (
     SandboxCreateArgs,
@@ -528,7 +529,7 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         """Raise `ClientClosed` if the Sandbox is detached.
 
         Every public operation calls this on entry, except those that remain available after
-        `detach`: `wait`, `returncode`, `logs` and `_experimental_get_exit_snapshot`.
+        `detach`: `wait`, `returncode`, `logs`, `_experimental_stats` and `_experimental_get_exit_snapshot`.
         """
         if not self._attached:
             raise ClientClosed("Unable to perform operation on a detached sandbox")
@@ -655,6 +656,69 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             obj._impl.result = resp.result
 
         return obj
+
+    async def _experimental_stats(
+        self, *, since: datetime | None = None, until: datetime | None = None
+    ) -> SandboxStats:
+        """Return statistics for this Sandbox over a time range, by default its lifetime so far.
+
+        Usage is sampled every few seconds while the Sandbox runs. Statistics may be delayed by a few
+        minutes, both while the Sandbox is running and shortly after it finishes, so values can change
+        between calls.
+
+        Args:
+            since: The beginning of the time range, inclusive. If omitted, this defaults to when the Sandbox
+                was created. Values without a timezone are interpreted as local time.
+            until: The end of the time range, exclusive. If omitted, this defaults to the current time.
+                Values without a timezone are interpreted as local time.
+
+        Returns:
+            A `SandboxStats` object with the following fields:
+            - `since` and `until`: the time range covered, with the defaults applied.
+            - `duration`: how long the Sandbox ran within the time range.
+            - `percentile_stats`: measured usage as `StatsPercentileDistribution` values keyed by
+              `"CPU Usage (cores)"` and `"Memory Usage (GiB)"`.
+              Each has the p50, p90, p99, and p99.9 across usage samples, and the maximum as p100. A key is
+              missing if no usage has been recorded in the time range.
+            - `cost`: estimated cost in USD at your workspace's current rates, as a `decimal.Decimal`, the sum
+              of `cost_by_resource`. `None` if no usage has been recorded in the time range.
+            - `cost_by_resource`: cost in USD as `decimal.Decimal`s, by billed resource: `CPU`, `Memory`, and
+              GPU types such as `H100`. The resource names are subject to change as Modal's billing model evolves.
+            - `billed_cpu_core_seconds`: CPU usage that pricing is based on, in core-seconds: each sample
+              counts the greater of the measured and requested cores. Multipliers such as region pricing
+              apply to `cost`, not to this value.
+            - `billed_memory_gib_seconds`: memory usage that pricing is based on, in GiB-seconds, counted
+              the same way as CPU.
+
+        Raises:
+            InvalidError: If `since` is not before `until`.
+            NotImplementedError: If this is a persistent Sandbox.
+
+        Examples:
+            ```python notest
+            sb = modal.Sandbox.from_id("sb-...")
+            stats = sb._experimental_stats()
+            print(stats.duration, stats.percentile_stats["Memory Usage (GiB)"])
+            print(stats.cost, stats.cost_by_resource)
+
+            last_hour = sb._experimental_stats(since=datetime.now(timezone.utc) - timedelta(hours=1))
+            ```
+        """
+        if isinstance(self._impl, SandboxImplPersistent):
+            raise NotImplementedError("Statistics aren't supported for persistent Sandboxes yet.")
+        request = api_pb2.SandboxGetStatsRequest(sandbox_id=self.object_id)
+        if since is not None:
+            if since.tzinfo is None:
+                since = since.astimezone()
+            request.since.FromDatetime(since.astimezone(timezone.utc))
+        if until is not None:
+            if until.tzinfo is None:
+                until = until.astimezone()
+            request.until.FromDatetime(until.astimezone(timezone.utc))
+        if since is not None and until is not None and since >= until:
+            raise InvalidError("`since` must be before `until`.")
+        response = await self.client._stub.SandboxGetStats(request)
+        return SandboxStats._from_proto(response)
 
     async def get_tags(self) -> dict[str, str]:
         """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server.
