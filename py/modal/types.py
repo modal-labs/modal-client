@@ -580,15 +580,15 @@ class SandboxGroupStats:
     """Statistics for a group of Sandboxes over a time range."""
 
     tags: dict[str, str | None]
-    cost: float
-    cost_by_resource: dict[str, float]
+    cost: Decimal
+    cost_by_resource: dict[str, Decimal]
 
     @classmethod
     def _from_proto(cls, pb: "api_pb2.SandboxStatsGroup") -> "SandboxGroupStats":
         return cls(
             tags={name: tag.value if tag.HasField("value") else None for name, tag in pb.tags.items()},
-            cost=pb.cost,
-            cost_by_resource=dict(pb.cost_by_resource),
+            cost=Decimal(pb.cost_str),
+            cost_by_resource={resource: Decimal(cost) for resource, cost in pb.cost_by_resource_str.items()},
         )
 
 

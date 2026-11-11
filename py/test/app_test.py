@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from unittest import mock
 
 from grpclib import GRPCError, Status
@@ -826,8 +827,8 @@ def test_app_sandboxes_stats(servicer, client):
     since = datetime(2026, 1, 1, tzinfo=timezone.utc)
     groups = list(app.sandboxes.stats(since=since, group_by_tags=["team"], tags={"env": "prod"}))
     assert [g.tags for g in groups] == [{"team": None}, {"team": "team-1"}, {"team": "team-2"}]
-    assert groups[0].cost == 0.125
-    assert groups[0].cost_by_resource == {"CPU": 0.1, "Memory": 0.025}
+    assert groups[0].cost == Decimal("0.125")
+    assert groups[0].cost_by_resource == {"CPU": Decimal("0.1"), "Memory": Decimal("0.025")}
 
     requests = servicer.sandbox_stats_requests
     assert len(requests) == 4  # one throttled attempt, then three pages

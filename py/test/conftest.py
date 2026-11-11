@@ -3826,8 +3826,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 name: api_pb2.SandboxStatsGroup.TagValue(value=f"{name}-{page}" if page else None)
                 for name in request.group_by_tags
             },
-            cost=0.125,
-            cost_by_resource={"CPU": 0.1, "Memory": 0.025},
+            cost_str="0.12500000",
+            cost_by_resource_str={"CPU": "0.10000000", "Memory": "0.02500000"},
         )
         next_page_token = str(page + 1) if page + 1 < self.sandbox_stats_pages else ""
         await stream.send_message(

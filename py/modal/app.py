@@ -168,9 +168,9 @@ class _AppSandboxesManager:
         Yields:
             `SandboxGroupStats` objects, one per combination of tag values, with the following fields:
             - `tags`: the value of each name in `group_by_tags` for the group's Sandboxes, `None` where not present.
-            - `cost`: total cost in USD, the sum of `cost_by_resource`.
-            - `cost_by_resource`: cost in USD by billed resource: `CPU`, `Memory`, and GPU types such as
-              `H100`. The resource names are subject to change as Modal's billing model evolves.
+            - `cost`: total cost in USD as a `decimal.Decimal`, the sum of `cost_by_resource`.
+            - `cost_by_resource`: cost in USD as `decimal.Decimal`s, by billed resource: `CPU`, `Memory`, and GPU
+              types such as `H100`. The resource names are subject to change as Modal's billing model evolves.
 
         Raises:
             InvalidError: If the time range is invalid or there are more than 10,000 groups.

@@ -4746,8 +4746,10 @@ message SandboxStatsGroup {
     optional string value = 1;
   }
   map<string, TagValue> tags = 1;
-  double cost = 2;
-  map<string, double> cost_by_resource = 3;
+  double cost = 2 [deprecated = true];
+  map<string, double> cost_by_resource = 3 [deprecated = true];
+  string cost_str = 4;  // Supersedes cost
+  map<string, string> cost_by_resource_str = 5;  // Supersedes cost_by_resource
 }
 
 message SandboxStdinWriteRequest {
