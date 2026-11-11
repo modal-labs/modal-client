@@ -265,6 +265,8 @@ const (
 	ModalClient_TaskResult_FullMethodName                             = "/modal.client.ModalClient/TaskResult"
 	ModalClient_TemplateList_FullMethodName                           = "/modal.client.ModalClient/TemplateList"
 	ModalClient_TokenDelete_FullMethodName                            = "/modal.client.ModalClient/TokenDelete"
+	ModalClient_TokenDisable_FullMethodName                           = "/modal.client.ModalClient/TokenDisable"
+	ModalClient_TokenEnable_FullMethodName                            = "/modal.client.ModalClient/TokenEnable"
 	ModalClient_TokenFlowCreate_FullMethodName                        = "/modal.client.ModalClient/TokenFlowCreate"
 	ModalClient_TokenFlowWait_FullMethodName                          = "/modal.client.ModalClient/TokenFlowWait"
 	ModalClient_TokenInfoGet_FullMethodName                           = "/modal.client.ModalClient/TokenInfoGet"
@@ -587,6 +589,8 @@ type ModalClientClient interface {
 	TemplateList(ctx context.Context, in *TemplateListRequest, opts ...grpc.CallOption) (*TemplateListResponse, error)
 	// Tokens (web auth flow)
 	TokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	TokenDisable(ctx context.Context, in *TokenDisableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	TokenEnable(ctx context.Context, in *TokenEnableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	TokenFlowCreate(ctx context.Context, in *TokenFlowCreateRequest, opts ...grpc.CallOption) (*TokenFlowCreateResponse, error)
 	TokenFlowWait(ctx context.Context, in *TokenFlowWaitRequest, opts ...grpc.CallOption) (*TokenFlowWaitResponse, error)
 	TokenInfoGet(ctx context.Context, in *TokenInfoGetRequest, opts ...grpc.CallOption) (*TokenInfoGetResponse, error)
@@ -3107,6 +3111,26 @@ func (c *modalClientClient) TokenDelete(ctx context.Context, in *TokenDeleteRequ
 	return out, nil
 }
 
+func (c *modalClientClient) TokenDisable(ctx context.Context, in *TokenDisableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_TokenDisable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) TokenEnable(ctx context.Context, in *TokenEnableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_TokenEnable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) TokenFlowCreate(ctx context.Context, in *TokenFlowCreateRequest, opts ...grpc.CallOption) (*TokenFlowCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TokenFlowCreateResponse)
@@ -3841,6 +3865,8 @@ type ModalClientServer interface {
 	TemplateList(context.Context, *TemplateListRequest) (*TemplateListResponse, error)
 	// Tokens (web auth flow)
 	TokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error)
+	TokenDisable(context.Context, *TokenDisableRequest) (*emptypb.Empty, error)
+	TokenEnable(context.Context, *TokenEnableRequest) (*emptypb.Empty, error)
 	TokenFlowCreate(context.Context, *TokenFlowCreateRequest) (*TokenFlowCreateResponse, error)
 	TokenFlowWait(context.Context, *TokenFlowWaitRequest) (*TokenFlowWaitResponse, error)
 	TokenInfoGet(context.Context, *TokenInfoGetRequest) (*TokenInfoGetResponse, error)
@@ -4615,6 +4641,12 @@ func (UnimplementedModalClientServer) TemplateList(context.Context, *TemplateLis
 }
 func (UnimplementedModalClientServer) TokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method TokenDelete not implemented")
+}
+func (UnimplementedModalClientServer) TokenDisable(context.Context, *TokenDisableRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method TokenDisable not implemented")
+}
+func (UnimplementedModalClientServer) TokenEnable(context.Context, *TokenEnableRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method TokenEnable not implemented")
 }
 func (UnimplementedModalClientServer) TokenFlowCreate(context.Context, *TokenFlowCreateRequest) (*TokenFlowCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TokenFlowCreate not implemented")
@@ -9012,6 +9044,42 @@ func _ModalClient_TokenDelete_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_TokenDisable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TokenDisableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).TokenDisable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_TokenDisable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).TokenDisable(ctx, req.(*TokenDisableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_TokenEnable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TokenEnableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).TokenEnable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_TokenEnable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).TokenEnable(ctx, req.(*TokenEnableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_TokenFlowCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TokenFlowCreateRequest)
 	if err := dec(in); err != nil {
@@ -10695,6 +10763,14 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TokenDelete",
 			Handler:    _ModalClient_TokenDelete_Handler,
+		},
+		{
+			MethodName: "TokenDisable",
+			Handler:    _ModalClient_TokenDisable_Handler,
+		},
+		{
+			MethodName: "TokenEnable",
+			Handler:    _ModalClient_TokenEnable_Handler,
 		},
 		{
 			MethodName: "TokenFlowCreate",
