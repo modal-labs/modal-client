@@ -864,19 +864,37 @@ class AsyncOrSyncIterable:
             await self._async_iterable.aclose()
 
 
-_shutdown_tasks = []
+_shutdown_tasks: set[asyncio.Task] = set()
 
 
-def on_shutdown(coro):
+def on_shutdown(cleanup: Callable[[], Awaitable[Any]]) -> Callable[[], None]:
     # hook into event loop shutdown when all active tasks get cancelled
+    active = True
+
     async def wrapper():
+        nonlocal active
         try:
             await asyncio.sleep(1e10)  # never awake except for exceptions
         finally:
-            await coro
-            raise
+            if active:
+                active = False
+                await cleanup()
 
-    _shutdown_tasks.append(asyncio.create_task(wrapper()))
+    task = asyncio.create_task(wrapper())
+    _shutdown_tasks.add(task)
+    task.add_done_callback(_shutdown_tasks.discard)
+
+    def unregister():
+        nonlocal active
+        if not active:
+            return
+        active = False
+        _shutdown_tasks.discard(task)
+        loop = task.get_loop()
+        if not loop.is_closed() and not task.done() and task is not asyncio.current_task(loop=loop):
+            task.cancel()
+
+    return unregister
 
 
 def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:

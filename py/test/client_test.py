@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
+import asyncio
 import base64
+import gc
 import hashlib
 import json
 import platform
@@ -8,6 +10,7 @@ import subprocess
 import sys
 import urllib.parse
 import warnings
+import weakref
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -17,10 +20,11 @@ from google.protobuf.empty_pb2 import Empty
 import modal._traceback
 import modal._utils.grpc_utils
 from modal import Client
-from modal._utils.async_utils import synchronizer
-from modal.client import _OAuthCredentials
+from modal._utils.async_utils import _shutdown_tasks, synchronizer
+from modal.client import _Client, _OAuthCredentials
 from modal.exception import (
     AuthError,
+    ClientClosed,
     ConflictError,
     ConnectionError,
     InternalAPIWarning,
@@ -28,11 +32,237 @@ from modal.exception import (
     InvalidError,
     ServerWarning,
 )
+from modal.sandbox._impl_v2 import auth_metadata
 from modal_proto import api_pb2
 
 from .supports.skip import skip_bazel, skip_windows, skip_windows_unix_socket
 
 TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
+
+
+def test_close_releases_loops_and_callers(server_url_env, credentials):
+    class Payload:
+        data = bytes(1024 * 1024)
+
+    async def cycle():
+        payload = Payload()
+        client = await _Client.from_credentials(*credentials)
+        refs = [weakref.ref(obj) for obj in (payload, client, asyncio.get_running_loop())]
+        await client.close()
+        return refs
+
+    count = len(_shutdown_tasks)
+    for _ in range(5):
+        refs = asyncio.run(cycle())
+        gc.collect()
+        assert all(ref() is None for ref in refs)
+        assert len(_shutdown_tasks) == count
+
+
+@pytest.mark.parametrize("oauth", [False, True])
+def test_credentials_context_manager(servicer, server_url_env, credentials, oauth):
+    token_id, token_secret = credentials
+    if oauth:
+        client = Client.from_oauth_credentials(
+            f"{token_id}.{token_secret}", oauth_client_id="oc-client", oauth_client_secret="ov-secret"
+        )
+    else:
+        client = Client.from_credentials(*credentials)
+    with client as entered:
+        assert entered is client
+        client.hello()
+    assert client.is_closed()
+    client.close()
+    with pytest.raises(ClientClosed):
+        client.hello()
+
+
+@pytest.mark.asyncio
+async def test_public_close_async(servicer, server_url_env, credentials):
+    async with await Client.from_credentials.aio(*credentials) as client:
+        await client.hello.aio()
+    await client.close.aio()
+    with pytest.raises(ClientClosed):
+        await client.hello.aio()
+
+
+def test_close_preserves_env_client(servicer, server_url_env, token_env):
+    env_client = Client.from_env()
+    client = Client.from_credentials("ak-other", "as-other")
+    client.close()
+    assert Client.from_env() is env_client
+    env_client.hello()
+
+
+def test_close_releases_public_client(server_url_env, credentials):
+    client = Client.from_credentials(*credentials)
+    ref = weakref.ref(client)
+    client.close()
+    del client
+    gc.collect()
+    assert ref() is None
+
+
+@pytest.mark.asyncio
+async def test_close_releases_input_plane_stubs(servicer, server_url_env, credentials):
+    client = await _Client.from_credentials(*credentials)
+    stub = await client._get_stub(servicer.client_addr)
+    manager = weakref.ref(client._connection_manager)
+    auth = weakref.ref(client._auth_token_manager)
+    await client.close()
+    assert client._cancellation_context_event_loop is None
+    gc.collect()
+    assert manager() is None
+    assert auth() is None
+    with pytest.raises(ClientClosed):
+        await stub.ClientHello(Empty())
+    with pytest.raises(ClientClosed):
+        await client.get_input_plane_metadata("us-east")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("private_close", [False, True])
+async def test_enter_closed_client(server_url_env, credentials, private_close):
+    client = await _Client.from_credentials(*credentials)
+    if private_close:
+        await client.close()
+    else:
+        await client.close()
+    with pytest.raises(ClientClosed):
+        async with client:
+            pytest.fail("Closed clients must not reopen")
+
+
+@pytest.mark.asyncio
+async def test_snapshot_prep_closed_client(server_url_env, credentials):
+    client = await _Client.from_credentials(*credentials)
+    await client.close()
+    with pytest.raises(ClientClosed):
+        await client._prep_for_snapshot()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_prep_preserves_shutdown_hook(server_url_env, credentials):
+    tasks = _shutdown_tasks.copy()
+    count = len(tasks)
+    client = await _Client.from_credentials(*credentials)
+    (task,) = _shutdown_tasks - tasks
+    auth_manager = client._auth_token_manager
+    stub = client._stub
+    await client._prep_for_snapshot()
+    assert not client.is_closed()
+    assert client._auth_token_manager is auth_manager
+    assert task in _shutdown_tasks
+    assert not task.done()
+    await client.close()
+    assert client.is_closed()
+    assert client._auth_token_manager is None
+    assert client._control_plane_stub is None
+    assert client._connection_manager is None
+    await client.close()
+    with pytest.raises(ClientClosed):
+        await client.hello()
+    with pytest.raises(ClientClosed):
+        await stub.ClientHello(Empty())
+    assert task not in _shutdown_tasks
+    assert len(_shutdown_tasks) == count
+
+
+@pytest.mark.asyncio
+async def test_client_reopens_after_pid_change(servicer, server_url_env, credentials):
+    client = await _Client.from_credentials(*credentials)
+    inherited_unregister = getattr(client, "_shutdown_unregister")
+    tasks = _shutdown_tasks.copy()
+    try:
+        client._connection_manager.close()
+        setattr(client, "_owner_pid", -1)
+        await client.hello()
+        assert getattr(client, "_shutdown_unregister") is not inherited_unregister
+        assert tasks <= _shutdown_tasks
+        (task,) = _shutdown_tasks - tasks
+        assert task.get_loop() is asyncio.get_running_loop()
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert client.is_closed()
+        assert task not in _shutdown_tasks
+    finally:
+        assert inherited_unregister is not None
+        inherited_unregister()
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation", ["control_plane_rpc", "input_plane_metadata", "sandbox_auth_metadata", "input_plane_rpc"]
+)
+async def test_client_usable_after_snapshot_prep(servicer, server_url_env, token_env, operation):
+    """A client retained across a memory snapshot remains usable after restore."""
+    _Client._set_env_client(None)
+    client = await _Client.from_env()
+    try:
+        await client.hello()
+        await client._prep_for_snapshot()
+        assert not client.is_closed()
+        assert _Client._client_from_env is None
+        if operation == "control_plane_rpc":
+            assert await client._stub.ClientHello(Empty()) == api_pb2.ClientHelloResponse()
+        elif operation == "input_plane_metadata":
+            metadata = dict(await client.get_input_plane_metadata("us-east"))
+            assert metadata["x-modal-input-plane-region"] == "us-east"
+            assert metadata["x-modal-auth-token"] == servicer.auth_token
+        elif operation == "sandbox_auth_metadata":
+            assert await auth_metadata(client) == [("x-modal-auth-token", servicer.auth_token)]
+        else:
+            stub = await client._get_stub(servicer.client_addr)
+            assert await stub.ClientHello(Empty()) == api_pb2.ClientHelloResponse()
+    finally:
+        env_client = _Client._client_from_env
+        await client.close()
+        if env_client is not None:
+            await env_client.close()
+        _Client._set_env_client(None)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_client_creates_new_stub(servicer, server_url_env, token_env):
+    _Client._set_env_client(None)
+    client = await _Client.from_env()
+    try:
+        await client._prep_for_snapshot()
+        stub = await client._get_stub(servicer.client_addr + "/")
+        assert await stub.ClientHello(Empty()) == api_pb2.ClientHelloResponse()
+    finally:
+        env_client = _Client._client_from_env
+        await client.close()
+        if env_client is not None:
+            await env_client.close()
+        _Client._set_env_client(None)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_client_fetches_fresh_sandbox_auth_token(servicer, server_url_env, token_env):
+    _Client._set_env_client(None)
+    servicer.auth_token_per_request = True
+    client = await _Client.from_env()
+    try:
+        before = await auth_metadata(client)
+        assert await auth_metadata(client) == before
+        assert servicer.auth_tokens_generated == 1
+        assert jwt.decode(before[0][1], options={"verify_signature": False})["exp"] == 4102444800
+
+        await client._prep_for_snapshot()
+        assert servicer.auth_tokens_generated == 1
+        after = await auth_metadata(client)
+        assert servicer.auth_tokens_generated == 2
+        assert after != before
+    finally:
+        env_client = _Client._client_from_env
+        await client.close()
+        if env_client is not None:
+            await env_client.close()
+        _Client._set_env_client(None)
 
 
 def _rsa_private_key_pem(key_size: int = 2048) -> tuple[str, rsa.RSAPrivateKey]:
@@ -361,7 +591,7 @@ def test_client_from_env_failing(servicer, credentials, monkeypatch):
 
 def test_client_from_env_reset(servicer, credentials):
     client_1 = client_from_env(servicer.client_addr, credentials)
-    Client.set_env_client(None)
+    Client._set_env_client(None)
     client_2 = client_from_env(servicer.client_addr, credentials)
     assert client_1 != client_2
 

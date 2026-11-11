@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
@@ -910,6 +911,175 @@ def test_cls_enter_uses_event_loop(servicer, deployed_support_function_definitio
         inputs=_get_inputs(((), {}), method_name="f"),
     )
     assert _unwrap_scalar(ret) == True
+
+
+def _assert_snapshot_auth_tokens(events, rpc_names, post_rpc_names=None):
+    checkpoint = next(i for i, (name, _) in enumerate(events) if name == "ContainerCheckpoint")
+    before, after = events[:checkpoint], events[checkpoint + 1 :]
+    old_tokens = {token for name, token in before if name == "AuthTokenGet"}
+    new_tokens = {token for name, token in after if name == "AuthTokenGet"}
+    assert len(old_tokens) == 1
+    assert new_tokens, "No auth token fetched after checkpoint"
+    assert old_tokens.isdisjoint(new_tokens)
+    before_tokens = [token for name, token in before if name in rpc_names]
+    after_tokens = [token for name, token in after if name in (post_rpc_names or rpc_names)]
+    assert before_tokens and after_tokens
+    assert all(token in old_tokens for token in before_tokens)
+    assert all(token in new_tokens for token in after_tokens), "RPC reused a pre-checkpoint token"
+
+
+@skip_github_non_linux
+@pytest.mark.parametrize("handle_kind", ["name", "id"])
+@pytest.mark.parametrize("call_kind", ["remote", "map"])
+def test_snapshot_input_plane_handle(servicer, credentials, client, tmp_path, handle_kind, call_kind):
+    servicer.auth_token_per_request = True
+    deploy_app_externally(
+        servicer,
+        credentials,
+        "test.supports.functions",
+        "snapshot_input_plane_app",
+        deployment_name="snapshot-input-plane",
+    )
+    definitions = {definition.function_name: (fid, definition) for fid, definition in servicer.app_functions.items()}
+    deployed = definitions, servicer.app_get_layout("ap-1")
+    definitions["SnapshotInputPlaneCls.*"][1].is_checkpointing_function = True
+    restore_state_path = tmp_path / "restore-state.json"
+    restore_state_path.write_text(json.dumps({"task_id": "ta-restored", "function_id": "fu-restored"}))
+    servicer.function_body(lambda x: x * x)
+
+    with servicer.intercept() as ctx:
+        process = _run_container_process_auto(
+            servicer,
+            tmp_path,
+            "SnapshotInputPlaneCls.*",
+            deployed,
+            inputs=[("invoke", (handle_kind, call_kind), {})],
+            env={
+                "MODAL_SERVER_URL": servicer.container_addr,
+                "MODAL_RESTORE_STATE_PATH": str(restore_state_path),
+                "MODAL_ENABLE_SNAP_RESTORE": "1",
+            },
+        )
+        _, stderr = _communicate_or_dump_stacks(process, timeout=15)
+
+    assert process.returncode == 0, stderr.decode()
+    ret = ContainerResult(client, _flatten_outputs(servicer.container_outputs), [], servicer.task_result)
+    assert _unwrap_scalar(ret) == (9 if call_kind == "remote" else [9, 16])
+    calls = [name for name, _ in ctx.calls]
+    checkpoint = calls.index("ContainerCheckpoint")
+    assert calls[:checkpoint].count("AttemptStart") == 2
+    assert ("AttemptStart" if call_kind == "remote" else "MapStartOrContinue") in calls[checkpoint + 1 :]
+    _assert_snapshot_auth_tokens(
+        servicer.snapshot_auth_events,
+        {"AttemptStart"},
+        {"AttemptStart" if call_kind == "remote" else "MapStartOrContinue"},
+    )
+
+
+@skip_github_non_linux
+def test_snapshot_client_refs(servicer, credentials, client, tmp_path):
+    servicer.auth_token_per_request = True
+    deploy_app_externally(
+        servicer,
+        credentials,
+        "test.supports.functions",
+        "snapshot_input_plane_app",
+        deployment_name="snapshot-input-plane",
+    )
+    definitions = {definition.function_name: (fid, definition) for fid, definition in servicer.app_functions.items()}
+    deployed = definitions, servicer.app_get_layout("ap-1")
+    definitions["SnapshotClientRefsCls.*"][1].is_checkpointing_function = True
+    assert not definitions["snapshot_plain_square"][1].routing_region
+    restore_state_path = tmp_path / "restore-state.json"
+    restore_state_path.write_text(json.dumps({"task_id": "ta-restored", "function_id": "fu-restored"}))
+    servicer.function_body(lambda x: x * x)
+
+    with servicer.intercept() as ctx, servicer.task_command_router.intercept() as router_ctx:
+
+        async def capture_checkpoint(servicer, stream):
+            await stream.recv_message()
+            assert [list(req.command_args) for req in router_ctx.get_requests("TaskExecStart")] == [["echo", "before"]]
+            await stream.send_message(Empty())
+
+        ctx.set_responder("ContainerCheckpoint", capture_checkpoint)
+        process = _run_container_process_auto(
+            servicer,
+            tmp_path,
+            "SnapshotClientRefsCls.*",
+            deployed,
+            inputs=[("check", (), {})],
+            env={
+                "MODAL_SERVER_URL": servicer.client_addr,
+                "MODAL_RESTORE_STATE_PATH": str(restore_state_path),
+                "MODAL_ENABLE_SNAP_RESTORE": "1",
+            },
+        )
+        _, stderr = _communicate_or_dump_stacks(process, timeout=15)
+
+    assert process.returncode == 0, stderr.decode()
+    ret = ContainerResult(client, _flatten_outputs(servicer.container_outputs), [], servicer.task_result)
+    if ret.task_result:
+        assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, ret.task_result
+    assert _unwrap_scalar(ret) == "ok"
+    assert [list(req.command_args) for req in router_ctx.get_requests("TaskExecStart")] == [
+        ["echo", "before"],
+        ["echo", "after"],
+        ["echo", "fresh"],
+    ]
+    calls = [name for name, _ in ctx.calls]
+    checkpoint = calls.index("ContainerCheckpoint")
+    before, after = calls[:checkpoint], calls[checkpoint + 1 :]
+    for name in ("FunctionMap", "DictUpdate", "SandboxCreateV2", "SandboxWaitV2", "ClientHello"):
+        assert name in before
+        assert name in after
+    for name in ("FunctionGet", "DictGetOrCreate", "DictGet", "SandboxTerminateV2"):
+        assert name in after
+    assert after.count("FunctionMap") == 2
+    assert after.count("DictGet") == 2
+    assert after.count("ClientHello") >= 2
+    _assert_snapshot_auth_tokens(servicer.snapshot_auth_events, {"SandboxWaitV2", "SandboxCreateV2"})
+
+
+@skip_github_non_linux
+def test_snapshot_sandbox_handle(servicer, credentials, client, tmp_path):
+    servicer.auth_token_per_request = True
+    deploy_app_externally(
+        servicer,
+        credentials,
+        "test.supports.functions",
+        "snapshot_input_plane_app",
+        deployment_name="snapshot-input-plane",
+    )
+    definitions = {definition.function_name: (fid, definition) for fid, definition in servicer.app_functions.items()}
+    deployed = definitions, servicer.app_get_layout("ap-1")
+    definitions["SnapshotSandboxCls.*"][1].is_checkpointing_function = True
+    restore_state_path = tmp_path / "restore-state.json"
+    restore_state_path.write_text(json.dumps({"task_id": "ta-restored", "function_id": "fu-restored"}))
+
+    with servicer.intercept() as ctx:
+        process = _run_container_process_auto(
+            servicer,
+            tmp_path,
+            "SnapshotSandboxCls.*",
+            deployed,
+            inputs=[("poll_sandbox", (), {})],
+            env={
+                "MODAL_SERVER_URL": servicer.container_addr,
+                "MODAL_RESTORE_STATE_PATH": str(restore_state_path),
+                "MODAL_ENABLE_SNAP_RESTORE": "1",
+            },
+        )
+        _, stderr = _communicate_or_dump_stacks(process, timeout=15)
+
+    assert process.returncode == 0, stderr.decode()
+    ret = ContainerResult(client, _flatten_outputs(servicer.container_outputs), [], servicer.task_result)
+    assert _unwrap_scalar(ret) == 0
+    calls = [name for name, _ in ctx.calls]
+    checkpoint = calls.index("ContainerCheckpoint")
+    assert "SandboxCreateV2" in calls[:checkpoint]
+    assert "SandboxWaitV2" in calls[:checkpoint]
+    assert "SandboxWaitV2" in calls[checkpoint + 1 :]
+    _assert_snapshot_auth_tokens(servicer.snapshot_auth_events, {"SandboxWaitV2"})
 
 
 @skip_github_non_linux

@@ -65,7 +65,7 @@ async def test_object_rehydration_new_hydrated(blob_server, container_env):
         await obj.hydrate()  # this shouldn't do anything
         assert obj.client is client
         # simulate snapshot
-        await client._close(prep_for_restore=True)
+        await client._prep_for_snapshot()
         await obj.hydrate()  # This previously raised an error since obj lacks a loader
         assert obj.client is not client  # client should have been replaced
         post_rehydration_client = obj.client
@@ -104,7 +104,7 @@ async def test_object_rehydration_loader(blob_server, container_env):
         assert obj._dummy_metadata == 0  # type: ignore
         assert obj.client is client  # still the load context client
         # simulate snapshot
-        await client._close(prep_for_restore=True)
+        await client._prep_for_snapshot()
         await obj.hydrate()  # This should call the loader again to get fresh metadata
         assert obj._dummy_metadata == 1  # type: ignore
         assert obj.client is not client  # client should have been replaced

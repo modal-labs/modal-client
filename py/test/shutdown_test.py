@@ -17,7 +17,7 @@ from modal_proto import api_pb2
 def close_client_soon(client):
     def cb():
         time.sleep(0.1)
-        client._close()
+        client.close()
 
     threading.Thread(target=cb).start()
 

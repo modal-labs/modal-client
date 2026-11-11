@@ -63,6 +63,54 @@ def token_due_for_refresh():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["empty", "cached", "refreshing", "failed"])
+async def test_reset(client, valid_jwt_token, another_valid_jwt_token, state):
+    started = asyncio.Event()
+    refreshing = False
+    failing = False
+    calls = 0
+
+    async def fetch(retry):
+        nonlocal calls
+        calls += 1
+        if failing:
+            raise RuntimeError("auth server unavailable")
+        if refreshing:
+            started.set()
+            await asyncio.Event().wait()
+        return valid_jwt_token if calls == 1 else another_valid_jwt_token
+
+    manager = _AuthTokenManager(client._stub, fetch=fetch)
+    caller = None
+    if state in {"cached", "refreshing"}:
+        assert await manager.get_token() == valid_jwt_token
+    if state == "refreshing":
+        refreshing = True
+        manager._refresh_at = 0.0
+        caller = asyncio.create_task(manager.get_token())
+        await started.wait()
+    elif state == "failed":
+        failing = True
+        with pytest.raises(RuntimeError, match="auth server unavailable"):
+            await manager.get_token()
+
+    await manager.reset()
+    await manager.reset()
+    if caller is not None:
+        with pytest.raises(asyncio.CancelledError):
+            await caller
+    assert manager._token == ""
+    assert manager._expiry == manager._refresh_at == manager._retry_after == 0.0
+    assert manager._refresh_task is None
+    assert manager._backoff == manager.FAILURE_BACKOFF_BASE
+
+    refreshing = failing = False
+    calls_before = calls
+    assert await manager.get_token() == (valid_jwt_token if calls_before == 0 else another_valid_jwt_token)
+    assert calls == calls_before + 1
+
+
+@pytest.mark.asyncio
 async def test_get_token_initial_fetch(auth_token_manager, valid_jwt_token, client, servicer):
     """Test getting token when no token exists."""
 
@@ -655,6 +703,28 @@ async def test_multiple_refresh_cycles(auth_token_manager, servicer):
 
 def exp_time(token: str):
     return jwt.decode(token, options={"verify_signature": False})["exp"]
+
+
+@pytest.mark.asyncio
+async def test_close_cancels_refresh(client):
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def fetch(retry):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    manager = _AuthTokenManager(client._stub, fetch=fetch)
+    request = asyncio.create_task(manager.get_token())
+    await started.wait()
+    await manager.close()
+    assert cancelled.is_set()
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    await manager.close()
 
 
 @pytest.mark.asyncio

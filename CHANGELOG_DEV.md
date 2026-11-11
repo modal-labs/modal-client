@@ -16,6 +16,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added `modal endpoint library` to discover endpoint-compatible models.
 - Fixed `Image.cmd()`, `Image.entrypoint()`, and `Image.shell()` for arguments that contain double quotes or backslashes. Such arguments are now passed to the container exactly as written; previously a command like `Image.cmd(["sh", "-c", 'echo "hi"'])` failed when the container started.
 - Functions restored from a memory snapshot now see current secret values in os.environ, instead of the secrets from when the snapshot was taken.
+- Added `Client.close()` to release client resources explicitly, and context manager support for clients created with `Client.from_credentials()` and `Client.from_oauth_credentials()`. Fixed a memory leak when creating many short-lived clients.
 - Added `modal token new --delete-existing` and `modal token rotate` CLI commands to enable easy token rotation.
 - Added `App.stats()` and `modal app stats` to report high-level Function, Server, and Sandbox stats for an App.
 - `Function.from_id` will now accept Cls IDs. When called with a Cls ID, only the following APIs can be called: `.logs`, `.metrics`, `.info()`, `.stats()`, `.get_current_stats()`, `.get_web_url()`, `.autoscaler` and `.update_autoscaler()`. Use `modal.Cls.from_name(...)` to invoke all other methods.

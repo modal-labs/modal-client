@@ -1163,6 +1163,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             {"exp": int(time.time()) + 3600}, "your-super-flexible-and-long-shared-secret-key", algorithm="HS256"
         )
         self.auth_tokens_generated = 0
+        self.auth_token_per_request = False
+        self.snapshot_auth_events: list[tuple[str, str | bytes | None]] = []
         self.flash_endpoint_auth_token = "flash-endpoint-auth-token"
         self.cli_get_flash_endpoint_auth_token_requests: list[api_pb2.CurlAuthTokenRequest] = []
         self.function_id_to_app_id: dict[str, str] = {}
@@ -1213,6 +1215,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_abort.set()
 
     async def recv_request(self, event: RecvRequest):
+        method_name = event.method_name.rsplit("/", 1)[-1]
+        if self.auth_token_per_request and method_name in {
+            "ContainerCheckpoint",
+            "AttemptStart",
+            "MapStartOrContinue",
+            "SandboxCreateV2",
+            "SandboxWaitV2",
+        }:
+            self.snapshot_auth_events.append((method_name, event.metadata.get("x-modal-auth-token")))
         # Make sure metadata is correct
         self.last_metadata = event.metadata
         for header in [
@@ -1783,9 +1794,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def AuthTokenGet(self, stream):
-        response = api_pb2.AuthTokenGetResponse(token=self.auth_token)
         await asyncio.sleep(self.auth_token_delay)
         self.auth_tokens_generated += 1
+        token = self.auth_token
+        if self.auth_token_per_request:
+            token = jwt.encode(
+                {"exp": 4102444800, "jti": str(self.auth_tokens_generated)},
+                "your-super-flexible-and-long-shared-secret-key",
+                algorithm="HS256",
+            )
+            self.snapshot_auth_events.append(("AuthTokenGet", token))
+        response = api_pb2.AuthTokenGetResponse(token=token)
         await stream.send_message(response)
 
     async def CurlGetAuthToken(self, stream):
@@ -5491,7 +5510,7 @@ async def container_env(servicer, monkeypatch):
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def reset_default_client():
-    Client.set_env_client(None)
+    Client._set_env_client(None)
 
 
 @pytest.fixture(name="mock_dir", scope="session")
@@ -5602,10 +5621,10 @@ def supports_dir(test_dir):
 @pytest_asyncio.fixture
 async def set_env_client(client):
     try:
-        Client.set_env_client(client)
+        Client._set_env_client(client)
         yield
     finally:
-        Client.set_env_client(None)
+        Client._set_env_client(None)
 
 
 @pytest.fixture

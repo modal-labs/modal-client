@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 # Note: importing aiohttp seems to take about 100ms, and it's not really necessarily,
 # unless we need to work with blobs. So that's why we import it lazily instead.
@@ -54,20 +54,26 @@ def _http_client_with_tls(timeout: float | None) -> "ClientSession":
 class ClientSessionRegistry:
     _client_session: "ClientSession"
     _client_session_active: bool = False
+    _shutdown_unregister: "ClassVar[staticmethod[[], None] | None]" = None
 
     @staticmethod
     def get_session():
         if not ClientSessionRegistry._client_session_active:
             ClientSessionRegistry._client_session = _http_client_with_tls(timeout=None)
             ClientSessionRegistry._client_session_active = True
-            on_shutdown(ClientSessionRegistry.close_session())
+            ClientSessionRegistry._shutdown_unregister = staticmethod(on_shutdown(ClientSessionRegistry.close_session))
         return ClientSessionRegistry._client_session
 
     @staticmethod
     async def close_session():
+        if ClientSessionRegistry._shutdown_unregister is not None:
+            ClientSessionRegistry._shutdown_unregister()
+            ClientSessionRegistry._shutdown_unregister = None
         if ClientSessionRegistry._client_session_active:
-            await ClientSessionRegistry._client_session.close()
+            session = ClientSessionRegistry._client_session
+            del ClientSessionRegistry._client_session
             ClientSessionRegistry._client_session_active = False
+            await session.close()
 
 
 @contextlib.asynccontextmanager

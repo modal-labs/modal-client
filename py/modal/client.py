@@ -5,7 +5,7 @@ import platform
 import sys
 import urllib.parse
 import warnings
-from collections.abc import AsyncGenerator, Collection, Mapping
+from collections.abc import AsyncGenerator, Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Coroutine, TypeVar
 
@@ -112,12 +112,11 @@ ResponseType = TypeVar("ResponseType", bound=Message)
 class _Client:
     _client_from_env: ClassVar["_Client | None"] = None
     _client_from_env_lock: ClassVar[asyncio.Lock | None] = None
-    _cancellation_context: TaskContext
-    _cancellation_context_event_loop: asyncio.AbstractEventLoop | None = None
-    _control_plane_stub: modal_api_grpc.ModalClientModal | None = None
-    _auth_token_manager: _AuthTokenManager | None = None
-    _snapshotted: bool = False
-    _connection_manager: ConnectionManager | None = None
+    _control_plane_stub: modal_api_grpc.ModalClientModal | None
+    _auth_token_manager: _AuthTokenManager | None
+    _snapshotted: bool
+    _connection_manager: ConnectionManager | None
+    _cancellation_context_event_loop: asyncio.AbstractEventLoop | None
     client_type: "api_pb2.ClientType.ValueType"
     server_url: str
 
@@ -138,12 +137,21 @@ class _Client:
         self._credentials = credentials
         self._oauth_credentials = oauth_credentials
         self.version = version
+        # Closed: terminal state after `close()`; resources are released and any use raises ClientClosed.
         self._closed = False
+        # Opened: `_open()` has created stubs, connections and the token manager.
+        self._opened = False
         self._control_plane_stub = None
         self._stubs: dict[str, modal_api_grpc.ModalClientModal] = {}
         self._auth_token_manager = None
+        self._connection_manager: ConnectionManager | None = None
+        self._cancellation_context: TaskContext | None = None
+        self._cancellation_context_event_loop: asyncio.AbstractEventLoop | None = None
+        # Snapshotted: set by `_prep_for_snapshot()` before a memory snapshot. Connections are dropped,
+        # but the client stays usable: RPCs are forwarded to a fresh `from_env()` client after restore.
         self._snapshotted = False
         self._owner_pid = None
+        self._shutdown_unregister: Callable[[], None] | None = None
 
     def is_closed(self) -> bool:
         """Check if the client is closed.
@@ -162,6 +170,8 @@ class _Client:
     @property
     def _stub(self) -> modal_api_grpc.ModalClientModal:
         """Retrieve the cached gRPC stub for the control plane."""
+        if self._closed:
+            raise ClientClosed(id(self))
         assert self._control_plane_stub
         return self._control_plane_stub
 
@@ -170,6 +180,8 @@ class _Client:
 
         Stubs are cached per server URL, since constructing one is O(n) in the number of RPCs in ModalClient.
         """
+        if self._closed:
+            raise ClientClosed(id(self))
         stub = self._stubs.get(server_url)
         if stub is None:
             stub = await modal_api_grpc.ModalClientModal._create(self, server_url)
@@ -200,7 +212,6 @@ class _Client:
         return await self._get_stub(server_url)
 
     async def _open(self):
-        self._closed = False
         assert self._control_plane_stub is None
         metadata = _get_metadata(
             self.client_type,
@@ -227,19 +238,48 @@ class _Client:
         self._control_plane_stub = await self._get_stub(self.server_url)
         self._auth_token_manager = _AuthTokenManager(self._stub)
         self._owner_pid = os.getpid()
+        self._opened = True
+        if self._shutdown_unregister is None:
+            self._shutdown_unregister = async_utils.on_shutdown(self.close)
 
-    async def _close(self, prep_for_restore: bool = False):
-        logger.debug(f"Client ({id(self)}): closing")
-        self._closed = True
-        if hasattr(self, "_cancellation_context"):
-            await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
+    async def _prep_for_snapshot(self):
+        if self._closed:
+            raise ClientClosed(id(self))
+        if self._auth_token_manager:
+            await self._auth_token_manager.reset()
+        await self._release_connections()
+        self._snapshotted = True
+
+    async def _release_connections(self):
+        if self._cancellation_context is not None:
+            await self._cancellation_context.__aexit__(None, None, None)
+            self._cancellation_context = None
         if self._connection_manager:
             self._connection_manager.close()
-        if prep_for_restore:
-            self._snapshotted = True
+        self._connection_manager = None
+        self._cancellation_context_event_loop = None
+        if self._client_from_env is self:
+            self._set_env_client(None)
 
-        # Remove cached client.
-        self.set_env_client(None)
+    async def close(self) -> None:
+        """Close this client and release its connections and background tasks.
+
+        Calling this method more than once is safe. The client cannot be used for requests after closing.
+        Clients can also be used as context managers to close them automatically on exit.
+        """
+        logger.debug(f"Client ({id(self)}): closing")
+        self._closed = True
+        self._snapshotted = False
+        self._opened = False
+        if self._shutdown_unregister is not None:
+            self._shutdown_unregister()
+            self._shutdown_unregister = None
+        if self._auth_token_manager:
+            await self._auth_token_manager.close()
+        await self._release_connections()
+        self._stubs.clear()
+        self._control_plane_stub = None
+        self._auth_token_manager = None
 
     async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures.
@@ -255,11 +295,14 @@ class _Client:
         print_server_warnings(resp.server_warnings)
 
     async def __aenter__(self):
-        await self._open()
+        if self._closed:
+            raise ClientClosed(id(self))
+        if not self._opened:
+            await self._open()
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        await self._close()
+        await self.close()
 
     @classmethod
     @asynccontextmanager
@@ -273,7 +316,7 @@ class _Client:
             await client._open()
             yield client
         finally:
-            await client._close()
+            await client.close()
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
@@ -375,7 +418,6 @@ class _Client:
                 oauth_credentials=oauth_credentials,
             )
             await client._open()
-            async_utils.on_shutdown(client._close())
             cls._client_from_env = client
             return client
 
@@ -408,7 +450,6 @@ class _Client:
         credentials = (token_id, token_secret)
         client = _Client(server_url, client_type, credentials)
         await client._open()
-        async_utils.on_shutdown(client._close())
         return client
 
     @classmethod
@@ -465,7 +506,6 @@ class _Client:
             oauth_credentials=oauth_credentials,
         )
         await client._open()
-        async_utils.on_shutdown(client._close())
         return client
 
     @classmethod
@@ -477,9 +517,8 @@ class _Client:
             await client.hello()  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
 
     @classmethod
-    def set_env_client(cls, client: "_Client | None"):
+    def _set_env_client(cls, client: "_Client | None"):
         """mdmd:hidden"""
-        # Just used from tests.
         cls._client_from_env = client
 
     async def get_input_plane_metadata(self, input_plane_region: str) -> list[tuple[str, str]]:
@@ -491,6 +530,8 @@ class _Client:
         Returns:
             The metadata for the input plane as a list of header/value tuples.
         """
+        if self._closed:
+            raise ClientClosed()
         assert self._auth_token_manager, "Client must have an instance of auth token manager."
         token = await self._auth_token_manager.get_token()
         return [
@@ -511,7 +552,7 @@ class _Client:
             raise ClientClosed(id(self))
 
         current_event_loop = asyncio.get_running_loop()
-        if current_event_loop == self._cancellation_context_event_loop:
+        if self._cancellation_context is not None and current_event_loop == self._cancellation_context_event_loop:
             # make request cancellable if we are in the same event loop as the rpc context
             # this should usually be the case!
             try:
@@ -539,14 +580,20 @@ class _Client:
             self._control_plane_stub = None
             self._stubs = {}
             self._owner_pid = None
+            self._shutdown_unregister = None
 
-            self.set_env_client(None)
+            self._set_env_client(None)
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
 
     async def _get_channel(self, server_url: str) -> grpclib.client.Channel:
         # Get a valid grpclib channel, reusing existing channels if possible.
         # This prevents usage of stale channels across forks of processes.
+        if self._closed:
+            raise ClientClosed(id(self))
+        if self._snapshotted:
+            client = await self.from_env()
+            return await client._get_channel(server_url)
         await self._reset_on_pid_change()
         assert self._connection_manager  # invariant: ._open() should always have been called before this
         return await self._connection_manager.get_or_create_channel(server_url)

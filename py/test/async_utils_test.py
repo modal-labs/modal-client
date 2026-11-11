@@ -329,6 +329,104 @@ async def test_no_warn_if_generator_is_consumed(caplog):
     assert len(caplog.records) == 0
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("started", [False, True])
+async def test_unregister_shutdown(started):
+    called = False
+
+    async def cleanup():
+        nonlocal called
+        called = True
+
+    tasks = async_utils._shutdown_tasks.copy()
+    count = len(tasks)
+    unregister = async_utils.on_shutdown(cleanup)
+    (task,) = async_utils._shutdown_tasks - tasks
+    if started:
+        await asyncio.sleep(0)
+    unregister()
+    unregister()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not called
+    assert len(async_utils._shutdown_tasks) == count
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cleanup_error():
+    async def cleanup():
+        raise ValueError("cleanup failed")
+
+    tasks = async_utils._shutdown_tasks.copy()
+    count = len(tasks)
+    async_utils.on_shutdown(cleanup)
+    (task,) = async_utils._shutdown_tasks - tasks
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(ValueError, match="cleanup failed"):
+        await task
+    await asyncio.sleep(0)
+    assert len(async_utils._shutdown_tasks) == count
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cleanup_unregisters_itself():
+    finished = False
+
+    async def cleanup():
+        nonlocal finished
+        unregister()
+        await asyncio.sleep(0)
+        finished = True
+
+    tasks = async_utils._shutdown_tasks.copy()
+    unregister = async_utils.on_shutdown(cleanup)
+    (task,) = async_utils._shutdown_tasks - tasks
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert finished
+    assert task not in async_utils._shutdown_tasks
+
+
+@pytest.mark.parametrize("closed_loop", [False, True])
+@pytest.mark.parametrize("running_loop", [False, True])
+def test_unregister_shutdown_other_loop(closed_loop, running_loop):
+    async def cleanup():
+        pytest.fail("Unregistered cleanup must not run")
+
+    async def register():
+        return async_utils.on_shutdown(cleanup)
+
+    tasks = async_utils._shutdown_tasks.copy()
+    count = len(tasks)
+    loop = asyncio.new_event_loop()
+    unregister = loop.run_until_complete(register())
+    (task,) = async_utils._shutdown_tasks - tasks
+    if closed_loop:
+        loop.close()
+
+    async def unregister_async():
+        unregister()
+
+    try:
+        if running_loop:
+            asyncio.run(unregister_async())
+        else:
+            unregister()
+        unregister()
+        assert task not in async_utils._shutdown_tasks
+        assert len(async_utils._shutdown_tasks) == count
+    finally:
+        if closed_loop:
+            task.get_coro().close()
+            loop.set_exception_handler(lambda loop, context: None)
+        else:
+            loop.run_until_complete(asyncio.gather(task, return_exceptions=True))
+            loop.close()
+
+
 def test_exit_handler():
     result = None
     sync = Synchronizer()
@@ -338,7 +436,7 @@ def test_exit_handler():
         result = "bye"
 
     async def _setup_code():
-        async_utils.on_shutdown(cleanup())
+        async_utils.on_shutdown(cleanup)
 
     setup_code = sync.create_blocking(_setup_code)
     setup_code()

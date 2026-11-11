@@ -54,6 +54,17 @@ class _AuthTokenManager:
         self._backoff = self.FAILURE_BACKOFF_BASE
         self._refresh_task: asyncio.Task | None = None
 
+    async def reset(self) -> None:
+        if self._refresh_task is not None:
+            self._refresh_task.cancel()
+            await asyncio.gather(self._refresh_task, return_exceptions=True)
+            self._refresh_task = None
+        self._token = ""
+        self._expiry = 0.0
+        self._refresh_at = 0.0
+        self._retry_after = 0.0
+        self._backoff = self.FAILURE_BACKOFF_BASE
+
     async def get_token(self) -> str:
         """
         When called, the AuthTokenManager can be in one of three states:
@@ -79,6 +90,12 @@ class _AuthTokenManager:
                 await self._try_refresh_token()
 
         return self._token
+
+    async def close(self) -> None:
+        task, self._refresh_task = self._refresh_task, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     async def _try_refresh_token(self):
         try:

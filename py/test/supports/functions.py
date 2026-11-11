@@ -627,6 +627,81 @@ def snapshotting_square(x):
     return x * x
 
 
+snapshot_input_plane_app = App("snapshot-input-plane", include_source=False)
+
+
+@snapshot_input_plane_app.function(routing_region="us-east")
+def snapshot_input_plane_square(x):
+    return x * x
+
+
+@snapshot_input_plane_app.cls(enable_memory_snapshot=True)
+class SnapshotInputPlaneCls:
+    @enter(snap=True)
+    def lookup(self):
+        by_name = modal.Function.from_name("snapshot-input-plane", "snapshot_input_plane_square").hydrate()
+        by_id = modal.Function.from_id(by_name.object_id)
+        self.handles = {"name": by_name, "id": by_id}
+        for handle in self.handles.values():
+            assert handle.remote(2) == 4
+
+    @method()
+    def invoke(self, handle_kind, call_kind):
+        handle = self.handles[handle_kind]
+        if call_kind == "remote":
+            return handle.remote(3)
+        return list(handle.map([3, 4]))
+
+
+@snapshot_input_plane_app.cls(enable_memory_snapshot=True)
+class SnapshotClientRefsCls:
+    @enter(snap=True)
+    def capture(self):
+        self.client = modal.Client.from_env()
+        self.function = modal.Function.from_name("snapshot-input-plane", "snapshot_plain_square").hydrate()
+        self.dictionary = modal.Dict.from_name("snapshot-client-refs", create_if_missing=True)
+        self.dictionary.put("key", "before")
+        self.sandbox = Sandbox._experimental_create("sleep", "60", app=snapshot_input_plane_app)
+        assert self.function.remote(2) == 4
+        assert self.sandbox.exec("echo", "before").stdout.read() == "before\n"
+        self.sandbox.poll()
+        self.client.hello()
+
+    @method()
+    def check(self):
+        assert self.function.remote(3) == 9
+        self.dictionary.put("key", "after")
+        assert self.dictionary.get("key") == "after"
+        assert self.sandbox.exec("echo", "after").stdout.read() == "after\n"
+        self.sandbox.poll()
+        self.client.hello()
+        assert modal.Function.from_name("snapshot-input-plane", "snapshot_plain_square").remote(4) == 16
+        assert modal.Dict.from_name("snapshot-client-refs").get("key") == "after"
+        fresh = Sandbox._experimental_create("sleep", "60", app=snapshot_input_plane_app)
+        assert fresh.exec("echo", "fresh").stdout.read() == "fresh\n"
+        fresh.terminate()
+        modal.Client.from_env().hello()
+        self.sandbox.terminate()
+        return "ok"
+
+
+@snapshot_input_plane_app.function()
+def snapshot_plain_square(x):
+    return x * x
+
+
+@snapshot_input_plane_app.cls(enable_memory_snapshot=True)
+class SnapshotSandboxCls:
+    @enter(snap=True)
+    def create_sandbox(self):
+        self.sandbox = Sandbox._experimental_create("echo", "hello", app=snapshot_input_plane_app)
+        self.sandbox.poll()
+
+    @method()
+    def poll_sandbox(self):
+        return self.sandbox.poll()
+
+
 @app.cls()
 class EventLoopCls:
     @enter()
