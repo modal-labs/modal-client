@@ -35,7 +35,14 @@ from ..io_streams import (
 )
 from ..secret import _resolvable_secrets, _Secret, _secret_sources
 from ..stream_type import StreamType
-from ._common import SandboxCreateArgs, SandboxCreateCommon, SandboxImpl, command_router, sandbox_create_context
+from ._common import (
+    SandboxCreateArgs,
+    SandboxCreateCommon,
+    SandboxImpl,
+    command_router,
+    sandbox_create_context,
+    tunnels_from_protos,
+)
 from ._impl_v2 import SandboxImplV2, auth_metadata
 from ._snapshot import _SandboxSnapshot
 from ._task_command_router_client import TaskCommandRouterClient
@@ -290,7 +297,9 @@ class SandboxImplPersistent:
             raise InvalidError(f"Persistent Sandbox {self._persistent_sandbox_id} has been terminated.")
 
     async def tunnels(self, timeout: int) -> dict[int, Tunnel]:
-        return await self._run(lambda d: d.tunnels(timeout))
+        req = api_pb2.PersistentSandboxTunnelsListRequest(persistent_sandbox_id=self._persistent_sandbox_id)
+        resp = await self._client._stub.PersistentSandboxTunnelsList(req, metadata=await auth_metadata(self._client))
+        return tunnels_from_protos(resp.tunnels)
 
     async def get_task_id(
         self, raise_if_task_complete: bool = False, timeout: float | None = None, retry_transient: bool = False

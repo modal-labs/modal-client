@@ -3974,6 +3974,14 @@ message PersistentSandboxTerminateRequest {
 
 message PersistentSandboxTerminateResponse {}
 
+message PersistentSandboxTunnelsListRequest {
+  string persistent_sandbox_id = 1;
+}
+
+message PersistentSandboxTunnelsListResponse {
+  repeated TunnelData tunnels = 1;
+}
+
 message PortSpec {
   uint32 port = 1;
   bool unencrypted = 2;
@@ -6108,6 +6116,7 @@ service ModalClient {
   rpc PersistentSandboxGet(PersistentSandboxGetRequest) returns (PersistentSandboxGetResponse);
   rpc PersistentSandboxResume(PersistentSandboxResumeRequest) returns (PersistentSandboxResumeResponse);
   rpc PersistentSandboxTerminate(PersistentSandboxTerminateRequest) returns (PersistentSandboxTerminateResponse);
+  rpc PersistentSandboxTunnelsList(PersistentSandboxTunnelsListRequest) returns (PersistentSandboxTunnelsListResponse);
 
   // Proxies
   rpc ProxyAddIp(ProxyAddIpRequest) returns (ProxyAddIpResponse);

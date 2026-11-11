@@ -176,6 +176,7 @@ const (
 	ModalClient_PersistentSandboxGet_FullMethodName                   = "/modal.client.ModalClient/PersistentSandboxGet"
 	ModalClient_PersistentSandboxResume_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxResume"
 	ModalClient_PersistentSandboxTerminate_FullMethodName             = "/modal.client.ModalClient/PersistentSandboxTerminate"
+	ModalClient_PersistentSandboxTunnelsList_FullMethodName           = "/modal.client.ModalClient/PersistentSandboxTunnelsList"
 	ModalClient_ProxyAddIp_FullMethodName                             = "/modal.client.ModalClient/ProxyAddIp"
 	ModalClient_ProxyCreate_FullMethodName                            = "/modal.client.ModalClient/ProxyCreate"
 	ModalClient_ProxyDelete_FullMethodName                            = "/modal.client.ModalClient/ProxyDelete"
@@ -489,6 +490,7 @@ type ModalClientClient interface {
 	PersistentSandboxGet(ctx context.Context, in *PersistentSandboxGetRequest, opts ...grpc.CallOption) (*PersistentSandboxGetResponse, error)
 	PersistentSandboxResume(ctx context.Context, in *PersistentSandboxResumeRequest, opts ...grpc.CallOption) (*PersistentSandboxResumeResponse, error)
 	PersistentSandboxTerminate(ctx context.Context, in *PersistentSandboxTerminateRequest, opts ...grpc.CallOption) (*PersistentSandboxTerminateResponse, error)
+	PersistentSandboxTunnelsList(ctx context.Context, in *PersistentSandboxTunnelsListRequest, opts ...grpc.CallOption) (*PersistentSandboxTunnelsListResponse, error)
 	// Proxies
 	ProxyAddIp(ctx context.Context, in *ProxyAddIpRequest, opts ...grpc.CallOption) (*ProxyAddIpResponse, error)
 	ProxyCreate(ctx context.Context, in *ProxyCreateRequest, opts ...grpc.CallOption) (*ProxyCreateResponse, error)
@@ -2203,6 +2205,16 @@ func (c *modalClientClient) PersistentSandboxTerminate(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *modalClientClient) PersistentSandboxTunnelsList(ctx context.Context, in *PersistentSandboxTunnelsListRequest, opts ...grpc.CallOption) (*PersistentSandboxTunnelsListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersistentSandboxTunnelsListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_PersistentSandboxTunnelsList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) ProxyAddIp(ctx context.Context, in *ProxyAddIpRequest, opts ...grpc.CallOption) (*ProxyAddIpResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProxyAddIpResponse)
@@ -3765,6 +3777,7 @@ type ModalClientServer interface {
 	PersistentSandboxGet(context.Context, *PersistentSandboxGetRequest) (*PersistentSandboxGetResponse, error)
 	PersistentSandboxResume(context.Context, *PersistentSandboxResumeRequest) (*PersistentSandboxResumeResponse, error)
 	PersistentSandboxTerminate(context.Context, *PersistentSandboxTerminateRequest) (*PersistentSandboxTerminateResponse, error)
+	PersistentSandboxTunnelsList(context.Context, *PersistentSandboxTunnelsListRequest) (*PersistentSandboxTunnelsListResponse, error)
 	// Proxies
 	ProxyAddIp(context.Context, *ProxyAddIpRequest) (*ProxyAddIpResponse, error)
 	ProxyCreate(context.Context, *ProxyCreateRequest) (*ProxyCreateResponse, error)
@@ -4374,6 +4387,9 @@ func (UnimplementedModalClientServer) PersistentSandboxResume(context.Context, *
 }
 func (UnimplementedModalClientServer) PersistentSandboxTerminate(context.Context, *PersistentSandboxTerminateRequest) (*PersistentSandboxTerminateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxTerminate not implemented")
+}
+func (UnimplementedModalClientServer) PersistentSandboxTunnelsList(context.Context, *PersistentSandboxTunnelsListRequest) (*PersistentSandboxTunnelsListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxTunnelsList not implemented")
 }
 func (UnimplementedModalClientServer) ProxyAddIp(context.Context, *ProxyAddIpRequest) (*ProxyAddIpResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProxyAddIp not implemented")
@@ -7456,6 +7472,24 @@ func _ModalClient_PersistentSandboxTerminate_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_PersistentSandboxTunnelsList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersistentSandboxTunnelsListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).PersistentSandboxTunnelsList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_PersistentSandboxTunnelsList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).PersistentSandboxTunnelsList(ctx, req.(*PersistentSandboxTunnelsListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_ProxyAddIp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProxyAddIpRequest)
 	if err := dec(in); err != nil {
@@ -10415,6 +10449,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PersistentSandboxTerminate",
 			Handler:    _ModalClient_PersistentSandboxTerminate_Handler,
+		},
+		{
+			MethodName: "PersistentSandboxTunnelsList",
+			Handler:    _ModalClient_PersistentSandboxTunnelsList_Handler,
 		},
 		{
 			MethodName: "ProxyAddIp",

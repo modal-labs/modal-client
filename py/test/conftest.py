@@ -3885,6 +3885,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def PersistentSandboxTunnelsList(self, stream):
+        request: api_pb2.PersistentSandboxTunnelsListRequest = await stream.recv_message()
+        index = int(request.persistent_sandbox_id.removeprefix("sp-")) - 1
+        definition = self.persistent_sandbox_create_requests[index].definition
+        tunnels = [
+            api_pb2.TunnelData(
+                host=f"{request.persistent_sandbox_id}-{spec.port}.tunnel.modal.host",
+                port=443,
+                container_port=spec.port,
+            )
+            for spec in definition.open_ports.ports
+            if not spec.unencrypted
+        ]
+        await stream.send_message(api_pb2.PersistentSandboxTunnelsListResponse(tunnels=tunnels))
+
     async def PersistentSandboxResume(self, stream):
         request: api_pb2.PersistentSandboxResumeRequest = await stream.recv_message()
         if request.persistent_sandbox_id in self.persistent_sandbox_terminated:

@@ -155,3 +155,13 @@ def test_persistent_sandbox_terminated_result(app, client):
     sb.terminate()
     sb.wait(raise_on_termination=False)
     assert _impl(sb).result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+
+
+def test_persistent_sandbox_tunnels(app, client, servicer):
+    sb = _create(app, client, encrypted_ports=[8080, 8443])
+
+    tunnels = sb.tunnels()
+    assert {port: tunnel.host for port, tunnel in tunnels.items()} == {
+        8080: "sp-1-8080.tunnel.modal.host",
+        8443: "sp-1-8443.tunnel.modal.host",
+    }
