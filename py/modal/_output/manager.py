@@ -493,7 +493,7 @@ class DisabledOutputManager(OutputManager):
 
     def print_error(self, error_text: str, hint: str = "") -> None:
         # Print error to stderr without any formatting (Rich is not available)
-        sys.stderr.write(f"{error_text}\n\n{hint}\n" if hint else f"{error_text}\n")
+        sys.stderr.write(f"{error_text}\n{hint}\n" if hint else f"{error_text}\n")
 
     def show_warning(
         self,

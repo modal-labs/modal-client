@@ -231,11 +231,11 @@ def format_error_message(error_text: str, hint: str = "") -> Text:
     """Build the styled text for a CLI error message.
 
     The message and hint are taken literally (no markup is interpreted). The message gets an
-    "Error:" prefix, and the hint, if any, follows after a blank line in a dim style.
+    "Error:" prefix, and the hint, if any, follows on the next line in a dim style.
     """
     message = Text.assemble(("Error:", "bold red"), " ", error_text)
     if hint:
-        message.append("\n\n")
+        message.append("\n")
         message.append(hint, style="dim")
     return message
 

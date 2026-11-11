@@ -511,7 +511,7 @@ _orig_usage_show = click.UsageError.show
 
 def _echo_hint(exc: click.ClickException, file: Any) -> None:
     if hint := get_hint(exc):
-        click.echo(f"\n{hint}", file=file, err=True)
+        click.echo(hint, file=file, err=True)
 
 
 def _click_show(self: click.ClickException, file: Any = None) -> None:
