@@ -1843,6 +1843,9 @@ message EndpointCreateRequest {
   bool shared_endpoint_notice_acknowledged = 11;
   // Requires Modal admin access. Dedicated endpoints only; must match model.
   optional string recipe_id = 12;
+  // Dedicated endpoints only. Fields that are set override the model's default autoscaling
+  // configuration. Target concurrency and scaledown rate limits are not supported.
+  optional AutoscalerSettings autoscaler_settings = 13;
 }
 
 message EndpointCreateResponse {
