@@ -141,10 +141,15 @@ async def test_a_plan_that_keeps_stalling_fails_after_three_attempts(servicer, c
 
 
 @pytest.mark.asyncio
-async def test_a_request_that_never_answers_times_out_on_the_client(servicer, client):
+async def test_a_request_that_never_answers_exhausts_deadline_retries(servicer, client):
     config = _config(request_timeout_secs=0.2)
     with servicer.intercept() as ctx:
         _serve_outcomes(ctx, "AuditLogCount", HANG, HANG, HANG, HANG, HANG)
-        with pytest.raises(ModalConnectionError, match="Deadline exceeded"):
+        # Both peers enforce the RPC deadline, so either timeout can win the race.
+        with pytest.raises((ModalConnectionError, ServiceError)) as exc_info:
             await count_audit_logs.aio(client, **RANGE, config=config)
+        if isinstance(exc_info.value, ServiceError):
+            assert exc_info.value._grpc_status == Status.DEADLINE_EXCEEDED
+        else:
+            assert "Deadline exceeded" in str(exc_info.value)
     assert len(ctx.get_requests("AuditLogCount")) == 5
