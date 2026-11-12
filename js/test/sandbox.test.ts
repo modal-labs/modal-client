@@ -4,16 +4,17 @@ import {
   buildOutboundNetworkAccess,
   buildSandboxCreateRequestProto,
   buildSandboxCreateV2RequestProto,
-  buildTaskMountDirectoryRequestProto,
   buildTaskExecStartRequestProto,
+  buildTaskMountDirectoryRequestProto,
   buildTaskSnapshotDirectoryRequestProto,
+  ContainerProcess,
   getSandboxVersion,
-  SandboxVersion,
-  validateExperimentalEncryptionKey,
-  validateExecArgs,
+  newSandboxImpl,
   Probe,
   Sandbox,
-  ContainerProcess,
+  SandboxVersion,
+  validateExecArgs,
+  validateExperimentalEncryptionKey,
 } from "../src/sandbox";
 import { expect, test, onTestFinished, vi } from "vitest";
 import {
@@ -44,6 +45,7 @@ import {
   TaskSnapshotMemoryRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
+  ClientClosedError,
   AlreadyExistsError,
   App,
   CloudBucketMount,
@@ -1210,9 +1212,11 @@ test("createConnectToken routes V2 sandboxes to the V2 RPC", async () => {
     };
   });
 
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
   const creds = await sb.createConnectToken({
     userMetadata: "abc",
     port: 9000,
@@ -2200,9 +2204,11 @@ test("ExperimentalFromName routes to V2 RPCs", async () => {
 
 test("experimentalSetName routes to V2 RPC", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
 
   mock.handleUnary("/SandboxSetName", (req: any) => {
     expect(req.sandboxId).toBe(V2_SANDBOX_ID);
@@ -2217,7 +2223,7 @@ test("experimentalSetName routes to V2 RPC", async () => {
 
 test("experimentalSetName rejects V1 sandboxes", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V1_SANDBOX_ID, {});
+  const sb = new Sandbox(newSandboxImpl(mc, V1_SANDBOX_ID, {}));
 
   await expect(sb.experimentalSetName("my-sandbox")).rejects.toThrow(
     "only supported for V2 sandboxes",
@@ -2226,9 +2232,11 @@ test("experimentalSetName rejects V1 sandboxes", async () => {
 
 test("experimentalSetName rejects invalid names", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
 
   // Validation happens client-side, so no RPC is sent (no handler registered).
   await expect(sb.experimentalSetName("bad name")).rejects.toThrow(
@@ -2244,9 +2252,11 @@ test.each([
   "experimentalSetName maps gRPC status %s to a typed error",
   async (status, errorClass) => {
     const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-    const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-      taskId: "ta-v2-123",
-    });
+    const sb = new Sandbox(
+      newSandboxImpl(mc, V2_SANDBOX_ID, {
+        taskId: "ta-v2-123",
+      }),
+    );
 
     mock.handleUnary("/SandboxSetName", () => {
       throw new ClientError(
@@ -2269,7 +2279,7 @@ test("V2 Sandbox reads stdio of a Sandbox that has already finished", async () =
   // No cached task ID, so the read has to resolve one for a Sandbox that ran
   // and then exited. The response carries both a task ID and a result, and the
   // task ID is what makes the buffered output reachable.
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {});
+  const sb = new Sandbox(newSandboxImpl(mc, V2_SANDBOX_ID, {}));
   mock.handleUnary("/SandboxGetTaskIdV2", () => ({
     taskId: "ta-finished",
     taskResult: {
@@ -2298,7 +2308,9 @@ test("V2 Sandbox reads stdio of a Sandbox that has already finished", async () =
 
 test("V2 Sandbox cancelling stdout ends a pending read", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const sandboxStdioReadV2 = vi.fn((_taskId, _fd, signal?: AbortSignal) =>
     (async function* () {
@@ -2331,7 +2343,7 @@ test("V2 Sandbox cancelling stdout ends a pending read", async () => {
 
 test("V2 Sandbox cancelling stdout aborts a pending task lookup", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {});
+  const sb = new Sandbox(newSandboxImpl(mc, V2_SANDBOX_ID, {}));
 
   for (let i = 0; i < 40; i++) {
     mock.handleUnary("/SandboxGetTaskIdV2", () => ({}));
@@ -2355,7 +2367,9 @@ test("V2 Sandbox cancelling stdout aborts a pending task lookup", async () => {
 
 test("V2 Sandbox streams stdout and stderr through the command router", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const sandboxStdioReadV2 = vi.fn((_taskId: string, fd: FileDescriptor) =>
     (async function* () {
@@ -2391,7 +2405,9 @@ test("V2 Sandbox warns when the worker dropped buffered output", async () => {
   const warn = vi.spyOn(mc.logger, "warn").mockImplementation(() => {});
   onTestFinished(() => warn.mockRestore());
 
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
   mockCommandRouter({
     sandboxStdioReadV2: () =>
       (async function* () {
@@ -2414,7 +2430,9 @@ test("V2 Sandbox warns when the worker dropped buffered output", async () => {
 
 test("V2 Sandbox stdin writes at increasing offsets and closes with EOF", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const sandboxStdinWriteV2 = vi.fn().mockResolvedValue({});
   mockCommandRouter({ sandboxStdinWriteV2 });
@@ -2432,9 +2450,11 @@ test("V2 Sandbox stdin writes at increasing offsets and closes with EOF", async 
 
 test("V2 Sandbox setTags/getTags route to V2 RPCs", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
 
   let setReq: any;
   mock.handleUnary("/SandboxTagsSetV2", (req: any) => {
@@ -2455,9 +2475,11 @@ test("V2 Sandbox setTags/getTags route to V2 RPCs", async () => {
 
 test("V2 Sandbox supports filesystem", () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
   expect(() => sb.filesystem).not.toThrow();
   expect(sb.filesystem).toBeDefined();
 });
@@ -3334,9 +3356,11 @@ test("SandboxDetachForbidsAllOperations", async () => {
 
 test("updateNetworkPolicy sends correct request via mocked command router", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
 
   const setNetworkAccess = vi.fn().mockResolvedValue(undefined);
   // Mock out the task command router so the test doesn't touch real infra.
@@ -3370,7 +3394,9 @@ test("sidecar snapshotFilesystem targets its container", async () => {
     vi.unstubAllEnvs();
   });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   mock.handleUnary("/SandboxContainerCreateV2", () =>
     SandboxContainerCreateV2Response.create({
@@ -3405,9 +3431,11 @@ test("sidecar snapshotFilesystem targets its container", async () => {
 
 test("updateNetworkPolicy rejects when a dimension is missing", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
 
   await expect(
     sb.updateNetworkPolicy({ outboundDomainAllowlist: ["example.com"] }),
@@ -3424,9 +3452,11 @@ test("updateNetworkPolicy rejects when a dimension is missing", async () => {
 
 test("experimentalSnapshot takes a memory snapshot via the command router for V2 sandboxes", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
 
   const snapshotMemory = vi
     .fn()
@@ -3541,6 +3571,20 @@ test("experimentalGetExitSnapshot polls until the snapshot is ready", async () =
   const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
   const image = await sb.experimentalGetExitSnapshot();
   expect(image.imageId).toBe("im-exit-snapshot-123");
+  mock.assertExhausted();
+});
+
+// A detach must fail the stdin write before it waits for the Sandbox's task,
+// or a write to a Sandbox that is not yet scheduled would poll for the task
+// until that wait times out.
+test("stdin write after detach fails without an RPC", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  const writer = sb.stdin.getWriter();
+  sb.detach();
+
+  await expect(writer.write("hello")).rejects.toThrow(ClientClosedError);
   mock.assertExhausted();
 });
 
@@ -3925,9 +3969,11 @@ test("create sends the outbound policy in the definition", async () => {
 
 test("experimentalUpdateOutboundPolicy sends correct request via mocked command router", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
-    taskId: "ta-v2-123",
-  });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, {
+      taskId: "ta-v2-123",
+    }),
+  );
 
   const setOutboundPolicy = vi.fn().mockResolvedValue(undefined);
   const tryInit = vi

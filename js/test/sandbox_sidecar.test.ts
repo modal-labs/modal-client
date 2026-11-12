@@ -12,7 +12,7 @@ import {
 } from "../src/errors";
 import { Image } from "../src/image";
 import { Proxy } from "../src/proxy";
-import { Sandbox } from "../src/sandbox";
+import { newSandboxImpl, Sandbox } from "../src/sandbox";
 import type { CloudBucketMount } from "../src/cloud_bucket_mount";
 import { Secret } from "../src/secret";
 import {
@@ -245,7 +245,9 @@ function useDefaultSidecarCreatePath() {
 test("sidecar create sends SandboxContainerCreateV2 to the control plane", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   let request: SandboxContainerCreateV2Request | undefined;
   mock.handleUnary("/SandboxContainerCreateV2", (req) => {
@@ -324,7 +326,9 @@ test("sidecar create sends SandboxContainerCreateV2 to the control plane", async
 test("sidecar create lets a later fromName Secret override a fromObject Secret", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   let request: SandboxContainerCreateV2Request | undefined;
   mock.handleUnary("/SandboxContainerCreateV2", (req) => {
@@ -357,7 +361,9 @@ test("sidecar create lets a later fromName Secret override a fromObject Secret",
 test("sidecar create forwards volumes and cloud bucket mounts", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   let request: SandboxContainerCreateV2Request | undefined;
   mock.handleUnary("/SandboxContainerCreateV2", (req) => {
@@ -398,7 +404,9 @@ test("sidecar create forwards volumes and cloud bucket mounts", async () => {
 
 test("sidecar create rejects cloud bucket mounts for a V1 sandbox", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" }),
+  );
 
   const bucketMount = mc.cloudBucketMounts.create("my-bucket");
 
@@ -419,7 +427,9 @@ test("sidecar create rejects cloud bucket mounts when opted out", async () => {
     vi.unstubAllEnvs();
   });
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const bucketMount = mc.cloudBucketMounts.create("my-bucket");
 
@@ -437,7 +447,9 @@ test("sidecar create rejects cloud bucket mounts when opted out", async () => {
 test("sidecar create rejects a null cloud bucket mount entry", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const create = sb.experimentalSidecars.create(
     "worker",
@@ -454,7 +466,9 @@ test("sidecar create rejects a null cloud bucket mount entry", async () => {
 test("sidecar create omits ephemeral secrets when no env vars are set", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   let request: SandboxContainerCreateV2Request | undefined;
   mock.handleUnary("/SandboxContainerCreateV2", (req) => {
@@ -481,7 +495,9 @@ test("sidecar create sends volume mounts over the command router", async () => {
     vi.unstubAllEnvs();
   });
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const containerCreate = vi.fn().mockResolvedValue({
     containerId: "sb-test-ctr-SIDECAR123",
@@ -536,7 +552,9 @@ test("sidecar create rejects invalid volume entries", async () => {
     vi.unstubAllEnvs();
   });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
   const tryInit = vi.spyOn(TaskCommandRouterClientImpl, "tryInit");
   onTestFinished(() => tryInit.mockRestore());
 
@@ -571,7 +589,9 @@ test("sidecar create rejects invalid volume entries", async () => {
 test("sidecar create uses the control plane by default", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   mock.handleUnary("/SandboxContainerCreateV2", () =>
     SandboxContainerCreateV2Response.create({
@@ -599,7 +619,9 @@ test("sidecar create uses the command router when opted out", async () => {
     vi.unstubAllEnvs();
   });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   let usedControlPlane = false;
   mock.handleUnary("/SandboxContainerCreateV2", () => {
@@ -619,7 +641,9 @@ test("sidecar create uses the command router when opted out", async () => {
 
 test("sidecar create always uses the command router for a V1 sandbox", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" }),
+  );
 
   let usedControlPlane = false;
   mock.handleUnary("/SandboxContainerCreateV2", () => {
@@ -639,7 +663,9 @@ test("sidecar create always uses the command router for a V1 sandbox", async () 
 
 test("sidecar create rejects a detached sandbox", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   let usedControlPlane = false;
   mock.handleUnary("/SandboxContainerCreateV2", () => {
@@ -663,7 +689,9 @@ test("sidecar create rejects a detached sandbox", async () => {
 test("sidecar create maps control plane errors", async () => {
   useDefaultSidecarCreatePath();
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   mock.handleUnary("/SandboxContainerCreateV2", () => {
     throw new ClientError(
@@ -692,7 +720,9 @@ test("sidecar create maps control plane errors", async () => {
 
 test("sidecar create forwards includeOidcIdentityToken to the control plane", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const requests: SandboxContainerCreateV2Request[] = [];
   for (const containerId of ["sb-test-ctr-WITHTOKEN", "sb-test-ctr-WITHOUT"]) {
@@ -725,7 +755,9 @@ test("sidecar create rejects includeOidcIdentityToken when opted out", async () 
     vi.unstubAllEnvs();
   });
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const create = sb.experimentalSidecars.create(
     "with-token",
@@ -740,7 +772,9 @@ test("sidecar create rejects includeOidcIdentityToken when opted out", async () 
 
 test("sidecar create rejects includeOidcIdentityToken for a V1 sandbox", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" }),
+  );
 
   const create = sb.experimentalSidecars.create(
     "with-token",
@@ -759,7 +793,9 @@ test("sidecar create forwards the proxy to the control plane", async () => {
     vi.unstubAllEnvs();
   });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const requests: SandboxContainerCreateV2Request[] = [];
   for (const containerId of ["sb-test-ctr-PROXIED", "sb-test-ctr-DIRECT"]) {
@@ -789,7 +825,9 @@ test("sidecar create rejects a proxy when opted out of the control plane", async
     vi.unstubAllEnvs();
   });
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V2_SANDBOX_ID, { taskId: "ta-v2-123" }),
+  );
 
   const create = sb.experimentalSidecars.create(
     "proxied",
@@ -804,7 +842,9 @@ test("sidecar create rejects a proxy when opted out of the control plane", async
 
 test("sidecar create rejects a proxy for a V1 sandbox", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" });
+  const sb = new Sandbox(
+    newSandboxImpl(mc, V1_SANDBOX_ID, { taskId: "ta-v1-123" }),
+  );
 
   const create = sb.experimentalSidecars.create(
     "proxied",

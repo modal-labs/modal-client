@@ -1,13 +1,9 @@
-import { ClientError, Status, type CallOptions } from "nice-grpc";
-import { setTimeout } from "timers/promises";
-import { IdleCountdown } from "./idle_countdown";
 import {
   FileDescriptor,
   GenericResult,
   GenericResult_GenericStatus,
   PTYInfo,
   PTYInfo_PTYType,
-  SandboxTagsGetResponse,
   SandboxCreateRequest,
   SandboxCreateV2Request,
   NetworkAccess,
@@ -20,8 +16,6 @@ import {
   PortSpecs,
   Probe as ProbeProto,
   SecretSource,
-  SandboxGetExitSnapshotResponse_ErrorCode,
-  SandboxGetTaskIdRequest,
   SandboxRestoreRequest_SandboxNameOverrideType,
 } from "../proto/modal_proto/api";
 import {
@@ -29,13 +23,7 @@ import {
   TaskExecStdoutConfig,
   TaskExecStderrConfig,
   TaskMountDirectoryRequest,
-  TaskReloadVolumesRequest,
   TaskSnapshotDirectoryRequest,
-  TaskSnapshotFilesystemRequest,
-  TaskSnapshotMemoryRequest,
-  TaskUnmountDirectoryRequest,
-  TaskSetNetworkAccessRequest,
-  TaskSetExperimentalOutboundPolicyRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
   TaskCommandRouterClientImpl,
@@ -43,16 +31,7 @@ import {
   type StdinSource,
 } from "./task_command_router_client";
 import { ExperimentalOutboundPolicy } from "./outbound_policy";
-import { v4 as uuidv4 } from "uuid";
-import {
-  type ModalClient,
-  type RetryOptions,
-  type TimeoutOptions,
-  getServerRetryPolicy,
-  isRetryableGrpc,
-  ModalGrpcClient,
-} from "./client";
-import type { Logger } from "./logger";
+import { type ModalClient } from "./client";
 import { SandboxFilesystem } from "./sandbox_fs";
 import { SidecarService } from "./sandbox_sidecar";
 import {
@@ -63,26 +42,8 @@ import {
   toModalReadStream,
   toModalWriteStream,
 } from "./streams";
-import {
-  type Secret,
-  mergeEnvIntoSecrets,
-  hydrateSecrets,
-  resolvableSecrets,
-  secretSources,
-  validateEnvVarKeys,
-} from "./secret";
-import {
-  ConflictError,
-  ExecutionError,
-  InvalidError,
-  NotFoundError,
-  ResourceExhaustedError,
-  SandboxTimeoutError,
-  SnapshotCreationError,
-  TimeoutError,
-  AlreadyExistsError,
-  ClientClosedError,
-} from "./errors";
+import { type Secret, hydrateSecrets, secretSources } from "./secret";
+import { InvalidError, NotFoundError, ClientClosedError } from "./errors";
 import { Image } from "./image";
 import { SandboxSnapshot } from "./sandbox_snapshot";
 import { checkObjectName } from "./name_utils";
@@ -96,47 +57,17 @@ import type { App } from "./app";
 import { parseGpuConfig } from "./app";
 import { checkForRenamedParams } from "./validation";
 import { SandboxLogsManager } from "./logs";
-
-// Backoff configuration for SandboxGetLogs retry behavior.
-const SB_LOGS_INITIAL_DELAY_MS = 10;
-const SB_LOGS_DELAY_FACTOR = 2;
-const SB_LOGS_MAX_RETRIES = 10;
-const SB_LOGS_TASK_ID_TIMEOUT_SECONDS = 0.5;
+import type { SandboxImpl } from "./sandbox_impl";
+import { SandboxImplV1 } from "./sandbox_impl_v1";
+import { SandboxImplV2 } from "./sandbox_impl_v2";
 
 // How long create() waits for capacity before giving up.
-const SANDBOX_SCHEDULING_TIMEOUT_MS = 21 * 60 * 1000;
-// How long operations that need a running task wait for one.
-const GET_TASK_ID_TIMEOUT_MS = 5 * 60 * 1000;
-
-function isTransientTaskIDLookupError(err: unknown): boolean {
-  if (!(err instanceof ClientError)) {
-    return false;
-  }
-  return (
-    err.code === Status.UNAVAILABLE ||
-    err.code === Status.DEADLINE_EXCEEDED ||
-    err.code === Status.INTERNAL
-  );
-}
+/** @internal @hidden */
+export const SANDBOX_SCHEDULING_TIMEOUT_MS = 21 * 60 * 1000;
 
 const TTL_NO_EXPIRY_SENTINEL = -1;
 const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16;
 const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH = 512;
-
-// Exit snapshot polling holds a server-side long poll for at most EXIT_SNAPSHOT_LONG_POLL_TIMEOUT
-// seconds and then re-polls from the client, so a request is never held open indefinitely however
-// long the caller waits.
-const EXIT_SNAPSHOT_LONG_POLL_TIMEOUT = 10;
-// Margin added to each poll's network deadline over the server-side hold, covering the
-// response's return trip so an answer sent just before the hold expires isn't lost to the
-// client-side deadline.
-const EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN = 5;
-// The fetch loop absorbs transient poll failures and re-polls. It gives up once this many
-// polls fail in a row, so an extended outage still surfaces to the caller.
-const EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES = 3;
-// Pause between failed polls, so failures that reject instantly (e.g. a refused connection)
-// don't burn through the failure budget in milliseconds.
-const EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF = 1;
 
 /**
  * Resolve the caller-facing `ttlMs` field on snapshot params into the
@@ -810,60 +741,9 @@ export class SandboxService {
     image: Image,
     params: SandboxCreateParams = {},
   ): Promise<Sandbox> {
-    // GPUs are not supported on V2, so those calls use the V1 backend
-    // regardless of the setting.
-    if (this.#client.profile.sandboxV2 && !params.gpu) {
-      return await this.experimentalCreate(app, image, params);
-    }
-
-    await image.build(app);
-
-    const mergedSecrets = await mergeEnvIntoSecrets(
-      this.#client,
-      params.env,
-      params.secrets,
-    );
-
-    // The SandboxCreate request only carries secret IDs, so any locally-created
-    // Secrets (and env vars) must be hydrated into server-side Secrets first.
-    await hydrateSandboxSecrets(
-      this.#client,
-      [
-        ...mergedSecrets,
-        ...(params.experimentalOutboundPolicy?._secrets() ?? []),
-      ],
-      params.cloudBucketMounts,
-    );
-
-    const mergedParams = {
-      ...params,
-      secrets: mergedSecrets,
-      env: undefined, // setting env to undefined just to clarify it's not needed anymore
-    };
-
-    const createReq = await buildSandboxCreateRequestProto(
-      app.appId,
-      image.imageId,
-      mergedParams,
-    );
-    let createResp;
-    try {
-      createResp = await this.#client.cpClient.sandboxCreate(createReq);
-    } catch (err) {
-      if (err instanceof ClientError && err.code === Status.ALREADY_EXISTS) {
-        throw new AlreadyExistsError(err.details || err.message);
-      }
-      throw err;
-    }
-
-    this.#client.logger.debug(
-      "Created Sandbox",
-      "sandbox_id",
-      createResp.sandboxId,
-    );
-    const sb = new Sandbox(this.#client, createResp.sandboxId);
-    await sb._waitForScheduling(SANDBOX_SCHEDULING_TIMEOUT_MS);
-    return sb;
+    const implClass = implClassForCreateParams(this.#client, params);
+    const impl = await implClass.create(this.#client, app, image, params);
+    return new Sandbox(impl);
   }
 
   /**
@@ -893,64 +773,8 @@ export class SandboxService {
     image: Image,
     params: SandboxCreateParams = {},
   ): Promise<Sandbox> {
-    await image.build(app);
-
-    // Secrets and params.env are sent as ordered secret sources, so unlike
-    // create() we don't fold env vars into a server-side Secret. Locally-created
-    // Secrets (fromObject) are inlined, avoiding a SecretGetOrCreate round-trip;
-    // only the remaining resolvable Secrets (e.g. from fromName) need hydrating
-    // to secret IDs, which are also recorded on the definition.
-    validateEnvVarKeys(params.env ?? {});
-    const resolvable = resolvableSecrets(params.secrets ?? []);
-
-    await hydrateSandboxSecrets(
-      this.#client,
-      [...resolvable, ...(params.experimentalOutboundPolicy?._secrets() ?? [])],
-      params.cloudBucketMounts,
-    );
-
-    const createReq = await buildSandboxCreateV2RequestProto(
-      app.appId,
-      image.imageId,
-      { ...params, secrets: resolvable },
-      secretSources(params.secrets ?? [], params.env),
-    );
-    let createResp;
-    try {
-      createResp = await this.#client.cpClient.sandboxCreateV2(createReq);
-    } catch (err) {
-      if (err instanceof ClientError && err.code === Status.ALREADY_EXISTS) {
-        throw new AlreadyExistsError(err.details || err.message);
-      }
-      throw err;
-    }
-
-    this.#client.logger.debug(
-      "Created experimental V2 Sandbox",
-      "sandbox_id",
-      createResp.sandboxId,
-    );
-
-    // Unencrypted tunnel endpoints are not known at create time. Only cache a
-    // complete set so tunnels() fetches the rest otherwise.
-    const createRespHasAllTunnels =
-      createResp.tunnels.length > 0 &&
-      createResp.tunnels.length ===
-        (createReq.definition?.openPorts?.ports.length ?? 0);
-    const tunnels = createRespHasAllTunnels
-      ? Object.fromEntries(
-          createResp.tunnels.map((t) => [
-            t.containerPort,
-            new Tunnel(t.host, t.port, t.unencryptedHost, t.unencryptedPort),
-          ]),
-        )
-      : undefined;
-
-    return new Sandbox(this.#client, createResp.sandboxId, {
-      taskId: createResp.taskId,
-      tunnels,
-      initCommandRouterAccess: createResp.commandRouterAccess,
-    });
+    const impl = await SandboxImplV2.create(this.#client, app, image, params);
+    return new Sandbox(impl);
   }
 
   /** Returns a running {@link Sandbox} object from an ID.
@@ -958,7 +782,7 @@ export class SandboxService {
    * @returns Sandbox with ID
    */
   async fromId(sandboxId: string): Promise<Sandbox> {
-    return new Sandbox(this.#client, sandboxId);
+    return new Sandbox(newSandboxImpl(this.#client, sandboxId));
   }
 
   /** Get a running {@link Sandbox} by name from a deployed {@link App}.
@@ -987,20 +811,13 @@ export class SandboxService {
       }
     }
 
-    try {
-      const resp = await this.#client.cpClient.sandboxGetFromName({
-        sandboxName: name,
-        appName,
-        environmentName: this.#client.environmentName(params?.environment),
-      });
-      return new Sandbox(this.#client, resp.sandboxId);
-    } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
-        throw new NotFoundError(
-          `Sandbox with name '${name}' not found in App '${appName}'`,
-        );
-      throw err;
-    }
+    const impl = await SandboxImplV1.fromName(
+      this.#client,
+      appName,
+      name,
+      params,
+    );
+    return new Sandbox(impl);
   }
 
   /**
@@ -1021,25 +838,13 @@ export class SandboxService {
     name: string,
     params?: SandboxExperimentalFromNameParams,
   ): Promise<Sandbox> {
-    try {
-      // SandboxGetFromNameV2 only returns V2 Sandboxes and authenticates via
-      // the auth-token metadata (attached automatically by the client), like
-      // the other V2 Sandbox RPCs.
-      const resp = await this.#client.cpClient.sandboxGetFromNameV2({
-        sandboxName: name,
-        appName,
-        environmentName: this.#client.environmentName(params?.environment),
-        includeTerminated: params?.includeTerminated ?? false,
-      });
-
-      return new Sandbox(this.#client, resp.sandboxId);
-    } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
-        throw new NotFoundError(
-          `Sandbox with name '${name}' not found in App '${appName}'`,
-        );
-      throw err;
-    }
+    const impl = await SandboxImplV2.fromName(
+      this.#client,
+      appName,
+      name,
+      params,
+    );
+    return new Sandbox(impl);
   }
 
   /**
@@ -1072,41 +877,14 @@ export class SandboxService {
       nameOverride = params.name;
     }
 
-    if (useV2) {
-      const restoreResp = await this.#client.cpClient.sandboxRestoreV2({
-        snapshotId: snapshot.snapshotId,
-        sandboxNameOverrideType: overrideType,
-        sandboxNameOverride: nameOverride ?? "",
-      });
-      return new Sandbox(this.#client, restoreResp.sandboxId, {
-        taskId: restoreResp.taskId,
-        initCommandRouterAccess: restoreResp.commandRouterAccess,
-      });
-    }
-
-    const restoreResp = await this.#client.cpClient.sandboxRestore({
-      snapshotId: snapshot.snapshotId,
-      sandboxNameOverrideType: overrideType,
-      sandboxNameOverride: nameOverride ?? "",
-    });
-
-    const sandbox = await this.fromId(restoreResp.sandboxId);
-
-    const resp = await this.#client.cpClient.sandboxGetTaskId({
-      sandboxId: restoreResp.sandboxId,
-      waitUntilReady: true,
-      timeout: 55,
-    });
-    if (
-      resp.taskResult &&
-      resp.taskResult.status !==
-        GenericResult_GenericStatus.GENERIC_STATUS_UNSPECIFIED &&
-      resp.taskResult.status !==
-        GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
-    ) {
-      throw new ExecutionError(resp.taskResult.exception);
-    }
-    return sandbox;
+    const implClass = useV2 ? SandboxImplV2 : SandboxImplV1;
+    const impl = await implClass.fromSnapshot(
+      this.#client,
+      snapshot,
+      overrideType,
+      nameOverride,
+    );
+    return new Sandbox(impl);
   }
 
   /**
@@ -1121,40 +899,8 @@ export class SandboxService {
       return;
     }
 
-    const env = this.#client.environmentName(params.environment);
-    const tagsList = params.tags
-      ? Object.entries(params.tags).map(([tagName, tagValue]) => ({
-          tagName,
-          tagValue,
-        }))
-      : [];
-
-    let beforeTimestamp: number | undefined = undefined;
-    while (true) {
-      try {
-        const resp = await this.#client.cpClient.sandboxList({
-          appId: params.appId,
-          beforeTimestamp,
-          environmentName: env,
-          includeFinished: false,
-          tags: tagsList,
-        });
-        if (!resp.sandboxes || resp.sandboxes.length === 0) {
-          return;
-        }
-        for (const info of resp.sandboxes) {
-          yield new Sandbox(this.#client, info.id);
-        }
-        beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
-      } catch (err) {
-        if (
-          err instanceof ClientError &&
-          err.code === Status.INVALID_ARGUMENT
-        ) {
-          throw new InvalidError(err.details || err.message);
-        }
-        throw err;
-      }
+    for await (const impl of SandboxImplV1.list(this.#client, params)) {
+      yield new Sandbox(impl);
     }
   }
 
@@ -1173,50 +919,65 @@ export class SandboxService {
   async *experimentalList(
     params: SandboxExperimentalListParams = {},
   ): AsyncGenerator<Sandbox, void, unknown> {
-    let environmentName: string | undefined = undefined;
-    if (!params.appId) {
-      this.#client.logger.warn(
-        "experimentalList without an `appId` lists across the whole environment and is deprecated; pass `appId` to scope the query.",
-      );
-      environmentName = this.#client.environmentName(params.environment);
-    }
-
-    const tagsList = params.tags
-      ? Object.entries(params.tags).map(([tagName, tagValue]) => ({
-          tagName,
-          tagValue,
-        }))
-      : [];
-
-    let beforeTimestamp: number | undefined = undefined;
-    while (true) {
-      try {
-        const resp = await this.#client.cpClient.sandboxListV2({
-          appId: params.appId,
-          beforeTimestamp,
-          environmentName,
-          includeFinished: false,
-          tags: tagsList,
-        });
-        if (!resp.sandboxes || resp.sandboxes.length === 0) {
-          return;
-        }
-        for (const info of resp.sandboxes) {
-          yield new Sandbox(this.#client, info.id);
-        }
-        // Fetch the next batch starting from the end of the current one.
-        beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
-      } catch (err) {
-        if (
-          err instanceof ClientError &&
-          err.code === Status.INVALID_ARGUMENT
-        ) {
-          throw new InvalidError(err.details || err.message);
-        }
-        throw err;
-      }
+    for await (const impl of SandboxImplV2.list(this.#client, params)) {
+      yield new Sandbox(impl);
     }
   }
+}
+
+/**
+ * Select the implementation backing the Sandbox with the given ID.
+ *
+ * @internal
+ * @hidden
+ */
+export function implClassForSandboxId(
+  sandboxId: string,
+): typeof SandboxImplV1 | typeof SandboxImplV2 {
+  if (getSandboxVersion(sandboxId) === SandboxVersion.V1) {
+    return SandboxImplV1;
+  }
+  return SandboxImplV2;
+}
+
+/**
+ * Construct the implementation backing the Sandbox with the given ID.
+ *
+ * Server responses can return a Sandbox of either backend regardless of which
+ * RPC was called, so the backend is always deduced from the returned ID.
+ *
+ * @internal
+ * @hidden
+ */
+export function newSandboxImpl(
+  client: ModalClient,
+  sandboxId: string,
+  params: {
+    taskId?: string;
+    tunnels?: Record<number, Tunnel>;
+    initCommandRouterAccess?: CommandRouterAccess;
+  } = {},
+): SandboxImpl {
+  const implClass = implClassForSandboxId(sandboxId);
+  return new implClass(client, sandboxId, params);
+}
+
+/**
+ * Select the implementation that creates the Sandbox described by `params`.
+ *
+ * @internal
+ * @hidden
+ */
+export function implClassForCreateParams(
+  client: ModalClient,
+  params: SandboxCreateParams,
+): typeof SandboxImplV1 | typeof SandboxImplV2 {
+  // GPUs are not supported on V2, so those calls use the V1 backend
+  // regardless of the setting.
+  if (params.gpu) {
+    return SandboxImplV1;
+  }
+  return client.profile.sandboxV2 ? SandboxImplV2 : SandboxImplV1;
 }
 
 /** Optional parameters for {@link SandboxService#list client.sandboxes.list()}. */
@@ -1623,53 +1384,32 @@ export function buildTaskSnapshotDirectoryRequestProto(
 /** Sandboxes are secure, isolated containers in Modal that boot in seconds. */
 export class Sandbox {
   readonly #client: ModalClient;
+  readonly #impl: SandboxImpl;
   readonly sandboxId: string;
 
-  #appId: string | undefined;
   #stdin?: ModalWriteStream<string>;
   #stdout?: ModalReadStream<string>;
   #stderr?: ModalReadStream<string>;
-
-  #taskId: string | undefined;
-  #tunnels: Record<number, Tunnel> | undefined;
-  #isV2: boolean;
-  #commandRouterClient: TaskCommandRouterClientImpl | undefined;
-  #commandRouterClientPromise: Promise<TaskCommandRouterClientImpl> | undefined;
-  #initCommandRouterAccess: CommandRouterAccess | undefined;
   #attached: boolean = true;
   #filesystem?: SandboxFilesystem;
   #sidecars?: SidecarService;
 
   /**
-   * Creates a Sandbox handle for a server-returned ID, deducing the backend
-   * version from the ID shape.
+   * Wraps a backend implementation; use the {@link SandboxService} factory
+   * methods (`client.sandboxes.create()`, `client.sandboxes.fromId()`, ...)
+   * to obtain Sandboxes.
    *
    * @ignore
    */
-  constructor(
-    client: ModalClient,
-    sandboxId: string,
-    params: {
-      taskId?: string;
-      tunnels?: Record<number, Tunnel>;
-      initCommandRouterAccess?: CommandRouterAccess;
-    } = {},
-  ) {
-    this.#client = client;
-    this.sandboxId = sandboxId;
-    this.#isV2 = getSandboxVersion(sandboxId) === SandboxVersion.V2;
-    this.#taskId = params.taskId || undefined;
-    this.#tunnels = params.tunnels;
-    this.#initCommandRouterAccess = params.initCommandRouterAccess;
+  constructor(impl: SandboxImpl) {
+    this.#client = impl.client;
+    this.#impl = impl;
+    this.sandboxId = impl.sandboxId;
   }
 
   get stdin(): ModalWriteStream<string> {
     if (!this.#stdin) {
-      this.#stdin = toModalWriteStream(
-        this.#isV2
-          ? inputStreamSbV2(() => this.#getCommandRouter())
-          : inputStreamSb(this.#client.cpClient, this.sandboxId),
-      );
+      this.#stdin = this.#impl.stdin();
     }
     return this.#stdin;
   }
@@ -1703,42 +1443,14 @@ export class Sandbox {
     return new SandboxLogsManager(
       this.#client,
       this.sandboxId,
-      () => this.#getAppId(),
-      () => this.#resolveTaskIdForLogs(),
+      () => this.#impl.getAppId(),
+      () => this.#impl.resolveTaskIdForLogs(),
     );
   }
 
   #outputStream(fileDescriptor: FileDescriptor): ModalReadStream<string> {
-    if (this.#isV2) {
-      this.#ensureAttached();
-      const v2Abort = new AbortController();
-      return toModalReadStream(
-        streamConsumingIter(
-          decodeTextIter(
-            outputStreamSbV2(
-              () => this.#getCommandRouter(v2Abort.signal),
-              this.sandboxId,
-              fileDescriptor,
-              this.#client.logger,
-              v2Abort.signal,
-            ),
-          ),
-          () => v2Abort.abort(),
-        ),
-      );
-    }
-    const abort = new AbortController();
-    return toModalReadStream(
-      streamConsumingIter(
-        outputStreamSb(
-          this.#client.cpClient,
-          this.sandboxId,
-          fileDescriptor,
-          this.#client.profile.sandboxChannelIdleTimeoutMs,
-          abort.signal,
-        ),
-        () => abort.abort(),
-      ),
+    return this.#impl.outputStream(fileDescriptor, () =>
+      this.#ensureAttached(),
     );
   }
 
@@ -1763,15 +1475,16 @@ export class Sandbox {
     if (!this.#sidecars) {
       this.#sidecars = new SidecarService({
         client: this.#client,
-        sandboxId: this.sandboxId,
         ensureAttached: () => this.#ensureAttached(),
         exec: (command, params, containerId) =>
           this.#execInternal(command, params, containerId),
         commandRouter: () => this.#getCommandRouter(),
         reloadVolumes: (containerId, params) =>
-          this.#reloadVolumes(containerId, params),
+          this.#impl.reloadVolumes(containerId, params),
         snapshotFilesystem: (containerId, params) =>
-          this.#snapshotFilesystem(containerId, params),
+          this.#impl.snapshotFilesystem(containerId, params),
+        validateCreate: (options) => this.#impl.validateSidecarCreate(options),
+        create: (request) => this.#impl.createSidecar(request),
       });
     }
     return this.#sidecars;
@@ -1784,57 +1497,13 @@ export class Sandbox {
    */
   async setTags(tags: Record<string, string>): Promise<void> {
     this.#ensureAttached();
-    const tagsList = Object.entries(tags).map(([tagName, tagValue]) => ({
-      tagName,
-      tagValue,
-    }));
-    try {
-      if (this.#isV2) {
-        await this.#client.cpClient.sandboxTagsSetV2({
-          sandboxId: this.sandboxId,
-          tags: tagsList,
-        });
-      } else {
-        await this.#client.cpClient.sandboxTagsSet({
-          environmentName: this.#client.environmentName(),
-          sandboxId: this.sandboxId,
-          tags: tagsList,
-        });
-      }
-    } catch (err) {
-      if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT) {
-        throw new InvalidError(err.details || err.message);
-      }
-      throw err;
-    }
+    await this.#impl.setTags(tags);
   }
 
   /** Get tags (key-value pairs) currently attached to this Sandbox from the server. */
   async getTags(): Promise<Record<string, string>> {
     this.#ensureAttached();
-    let resp: SandboxTagsGetResponse;
-    try {
-      if (this.#isV2) {
-        resp = await this.#client.cpClient.sandboxTagsGetV2({
-          sandboxId: this.sandboxId,
-        });
-      } else {
-        resp = await this.#client.cpClient.sandboxTagsGet({
-          sandboxId: this.sandboxId,
-        });
-      }
-    } catch (err) {
-      if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT) {
-        throw new InvalidError(err.details || err.message);
-      }
-      throw err;
-    }
-
-    const tags: Record<string, string> = {};
-    for (const tag of resp.tags) {
-      tags[tag.tagName] = tag.tagValue;
-    }
-    return tags;
+    return await this.#impl.getTags();
   }
 
   /**
@@ -1855,27 +1524,7 @@ export class Sandbox {
    */
   async experimentalSetName(name: string): Promise<void> {
     this.#ensureAttached();
-    this.#ensureV2("experimentalSetName");
-    checkObjectName(name, "Sandbox");
-    try {
-      await this.#client.cpClient.sandboxSetName({
-        sandboxId: this.sandboxId,
-        name,
-      });
-    } catch (err) {
-      if (err instanceof ClientError) {
-        const message = err.details || err.message;
-        switch (err.code) {
-          case Status.ALREADY_EXISTS:
-            throw new AlreadyExistsError(message);
-          case Status.INVALID_ARGUMENT:
-            throw new InvalidError(message);
-          case Status.FAILED_PRECONDITION:
-            throw new ConflictError(message);
-        }
-      }
-      throw err;
-    }
+    await this.#impl.setName(name);
   }
 
   async exec(
@@ -1901,166 +1550,20 @@ export class Sandbox {
     containerId?: string,
   ): Promise<ContainerProcess> {
     this.#ensureAttached();
-    validateExecArgs(command);
-
-    // Locally-created Secrets (fromObject) are inlined into the request's
-    // secret sources, so only the remaining Secrets need hydrating. This avoids
-    // a SecretGetOrCreate round-trip for env-dict Secrets.
-    validateEnvVarKeys(params?.env ?? {});
-    await hydrateSecrets(
-      this.#client,
-      resolvableSecrets(params?.secrets ?? []),
-    );
-
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-
-    const execId = uuidv4();
-    const request = buildTaskExecStartRequestProto(
-      taskId,
-      execId,
-      command,
-      params,
-      containerId,
-    );
-
-    await commandRouterClient.execStart(request);
-
-    this.#client.logger.debug(
-      "Created ContainerProcess",
-      "exec_id",
-      execId,
-      "sandbox_id",
-      this.sandboxId,
-      "container_id",
-      containerId ?? "",
-      "command",
-      command,
-    );
-
-    const deadline = params?.timeoutMs ? Date.now() + params.timeoutMs : null;
-
-    return new ContainerProcess(
-      taskId,
-      execId,
-      commandRouterClient,
-      params,
-      deadline,
-    );
+    return await this.#impl.exec(command, params, containerId);
   }
 
   async #getCommandRouter(
     signal?: AbortSignal,
   ): Promise<[string, TaskCommandRouterClientImpl]> {
     this.#ensureAttached();
-    const taskId = await this.#getTaskId(signal);
-    const client = await this.#getOrCreateCommandRouterClient(taskId);
-    return [taskId, client];
+    return await this.#impl.getCommandRouter(signal);
   }
 
   #ensureAttached(): void {
     if (!this.#attached) {
       throw new ClientClosedError();
     }
-  }
-
-  #ensureV2(methodName: string): void {
-    if (!this.#isV2) {
-      throw new InvalidError(
-        `Sandbox.${methodName} is only supported for V2 sandboxes`,
-      );
-    }
-  }
-
-  #sandboxWait(timeout: number) {
-    const req = { sandboxId: this.sandboxId, timeout };
-    if (this.#isV2) {
-      return this.#client.cpClient.sandboxWaitV2(req);
-    }
-    return this.#client.cpClient.sandboxWait(req);
-  }
-
-  #sandboxGetTaskId(timeoutSecs?: number, options?: CallOptions) {
-    const req = SandboxGetTaskIdRequest.create({
-      sandboxId: this.sandboxId,
-      timeout: timeoutSecs,
-    });
-    if (this.#isV2) {
-      return this.#client.cpClient.sandboxGetTaskIdV2(req, options);
-    }
-    return this.#client.cpClient.sandboxGetTaskId(req, options);
-  }
-
-  #sandboxGetTunnels(timeoutMs: number) {
-    const req = { sandboxId: this.sandboxId, timeout: timeoutMs / 1000 };
-    if (this.#isV2) {
-      return this.#client.cpClient.sandboxGetTunnelsV2(req);
-    }
-    return this.#client.cpClient.sandboxGetTunnels(req);
-  }
-
-  #sandboxGetExitSnapshot(
-    timeoutSecs: number,
-    options?: CallOptions & TimeoutOptions & RetryOptions,
-  ) {
-    const req = { sandboxId: this.sandboxId, timeout: timeoutSecs };
-    if (this.#isV2) {
-      return this.#client.cpClient.sandboxGetExitSnapshotV2(req, options);
-    }
-    return this.#client.cpClient.sandboxGetExitSnapshot(req, options);
-  }
-
-  async #sandboxTerminate(): Promise<void> {
-    const req = { sandboxId: this.sandboxId };
-    if (this.#isV2) {
-      await this.#client.cpClient.sandboxTerminateV2(req);
-      return;
-    }
-    await this.#client.cpClient.sandboxTerminate(req);
-  }
-
-  async #getAppId(): Promise<string> {
-    if (this.#appId !== undefined) {
-      return this.#appId;
-    }
-
-    const resp = await this.#sandboxWait(0);
-    const appId = resp.metadata?.appId;
-    if (!appId) {
-      throw new ExecutionError(
-        "Sandbox app ID should have been set during hydration",
-      );
-    }
-    this.#appId = appId;
-    return appId;
-  }
-
-  async #resolveTaskIdForLogs(): Promise<string> {
-    if (this.#taskId !== undefined) {
-      return this.#taskId;
-    }
-
-    let resp;
-    try {
-      resp = await this.#sandboxGetTaskId(SB_LOGS_TASK_ID_TIMEOUT_SECONDS);
-    } catch (error) {
-      if (
-        error instanceof ClientError &&
-        error.code === Status.DEADLINE_EXCEEDED
-      ) {
-        throw new ExecutionError("Sandbox task ID is not available yet.");
-      }
-      throw error;
-    }
-
-    if (!resp.taskId) {
-      throw new ExecutionError("Sandbox task ID is not available.");
-    }
-    this.#taskId = resp.taskId;
-    return this.#taskId;
-  }
-
-  async #getTaskId(signal?: AbortSignal): Promise<string> {
-    return await this.#waitForTaskId(GET_TASK_ID_TIMEOUT_MS, false, signal);
   }
 
   /**
@@ -2072,143 +1575,7 @@ export class Sandbox {
    * @hidden
    */
   async _waitForScheduling(timeoutMs: number): Promise<void> {
-    try {
-      await this.#waitForTaskId(timeoutMs, true);
-    } catch (err) {
-      if (err instanceof ConflictError) {
-        throw err;
-      }
-      try {
-        await this.#sandboxTerminate();
-      } catch (terminateErr) {
-        this.#client.logger.debug(
-          "Failed to terminate unscheduled Sandbox",
-          "sandbox_id",
-          this.sandboxId,
-          "error",
-          terminateErr,
-        );
-      }
-      if (err instanceof TimeoutError) {
-        throw new ResourceExhaustedError(
-          "Insufficient capacity to create sandbox.",
-        );
-      }
-      throw err;
-    }
-  }
-
-  /**
-   * Polls until the Sandbox has been assigned a task. Throws a ConflictError
-   * if the Sandbox finished before that happened and a TimeoutError once
-   * timeoutMs elapses. With retryTransient, lookups that fail with a
-   * transient error keep polling until the deadline instead of failing.
-   */
-  async #waitForTaskId(
-    timeoutMs: number,
-    retryTransient: boolean,
-    signal?: AbortSignal,
-  ): Promise<string> {
-    if (this.#taskId !== undefined) {
-      return this.#taskId;
-    }
-    const deadline = Date.now() + timeoutMs;
-    const timedOut = () =>
-      new TimeoutError(
-        `Timed out waiting for task ID for Sandbox ${this.sandboxId}`,
-      );
-    const pollIntervalMs = 500;
-    const noTimeLeft = () => deadline - Date.now() <= pollIntervalMs;
-    while (true) {
-      let resp;
-      try {
-        resp = await this.#sandboxGetTaskId(undefined, { signal });
-      } catch (err) {
-        if (signal?.aborted || !isTransientTaskIDLookupError(err)) {
-          throw err;
-        }
-        if (!retryTransient && Date.now() < deadline) {
-          throw err;
-        }
-        // A transient failure at the deadline says nothing about scheduling,
-        // so report the wait as timed out rather than the last hiccup. A
-        // server error is not evidence of missing capacity, so surface it.
-        if (noTimeLeft()) {
-          if (err instanceof ClientError && err.code === Status.INTERNAL) {
-            throw err;
-          }
-          throw timedOut();
-        }
-        await setTimeout(pollIntervalMs, undefined, { signal });
-        continue;
-      }
-      if (resp.taskId) {
-        this.#taskId = resp.taskId;
-        return this.#taskId;
-      }
-      if (resp.taskResult) {
-        throw new ConflictError(
-          resp.taskResult.exception ||
-            `Sandbox ${this.sandboxId} has already finished`,
-        );
-      }
-      if (noTimeLeft()) {
-        throw timedOut();
-      }
-      await setTimeout(pollIntervalMs, undefined, { signal });
-    }
-  }
-
-  async #getOrCreateCommandRouterClient(
-    taskId: string,
-  ): Promise<TaskCommandRouterClientImpl> {
-    if (this.#commandRouterClient !== undefined) {
-      return this.#commandRouterClient;
-    }
-
-    if (this.#commandRouterClientPromise !== undefined) {
-      return this.#commandRouterClientPromise;
-    }
-
-    // Consume the seeded access, so if connecting with it fails the retry below
-    // falls back to the authoritative RPC instead of re-trying the same
-    // credentials forever.
-    const access = this.#initCommandRouterAccess;
-    this.#initCommandRouterAccess = undefined;
-
-    const promise = (async () => {
-      const client = await TaskCommandRouterClientImpl.tryInit(
-        this.#client.cpClient,
-        taskId,
-        this.sandboxId,
-        this.#isV2,
-        access,
-        this.#client.logger,
-        this.#client.profile,
-      );
-      if (!client) {
-        throw new Error(
-          "Command router access is not available for this sandbox",
-        );
-      }
-      if (!this.#attached) {
-        client.close();
-        throw new ClientClosedError();
-      }
-      this.#commandRouterClient = client;
-      return client;
-    })();
-    this.#commandRouterClientPromise = promise;
-
-    try {
-      return await promise;
-    } catch (err) {
-      // clear the Promise so subsequent calls can retry
-      if (this.#commandRouterClientPromise === promise) {
-        this.#commandRouterClientPromise = undefined;
-      }
-      throw err;
-    }
+    await this.#impl.waitForScheduling(timeoutMs);
   }
 
   /**
@@ -2224,22 +1591,14 @@ export class Sandbox {
         `createConnectToken() expects \`port\` in [1, 65535], got ${port}`,
       );
     }
-    const req = {
-      sandboxId: this.sandboxId,
-      userMetadata: params?.userMetadata,
-      port,
-    };
-    const resp = this.#isV2
-      ? await this.#client.cpClient.sandboxCreateConnectTokenV2(req)
-      : await this.#client.cpClient.sandboxCreateConnectToken(req);
-    return { url: resp.url, token: resp.token };
+    return await this.#impl.createConnectToken(port, params?.userMetadata);
   }
 
   async terminate(): Promise<void>;
   async terminate(params: { wait: true }): Promise<number>;
   async terminate(params?: SandboxTerminateParams): Promise<number | void> {
     this.#ensureAttached();
-    await this.#sandboxTerminate();
+    await this.#impl.terminate();
 
     let exitCode: number | undefined;
     if (params?.wait) {
@@ -2261,28 +1620,11 @@ export class Sandbox {
    */
   detach(): void {
     this.#attached = false;
-    this.#commandRouterClient?.closeWhenIdle();
-    this.#commandRouterClient = undefined;
-    this.#commandRouterClientPromise = undefined;
+    this.#impl.close();
   }
 
   async wait(): Promise<number> {
-    while (true) {
-      const resp = await this.#sandboxWait(10);
-      if (resp.result) {
-        const returnCode = getReturnCode(resp.result)!;
-        this.#client.logger.debug(
-          "Sandbox wait completed",
-          "sandbox_id",
-          this.sandboxId,
-          "status",
-          resp.result.status,
-          "return_code",
-          returnCode,
-        );
-        return returnCode;
-      }
-    }
+    return await this.#impl.wait();
   }
 
   /**
@@ -2299,10 +1641,7 @@ export class Sandbox {
     if (timeoutMs <= 0) {
       throw new InvalidError(`timeoutMs must be positive, got ${timeoutMs}`);
     }
-
-    // Route to the task command router for both V1 and V2 sandboxes.
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-    await commandRouterClient.sandboxWaitUntilReady(taskId, timeoutMs);
+    await this.#impl.waitUntilReady(timeoutMs);
   }
 
   /** Get {@link Tunnel} metadata for the Sandbox.
@@ -2313,29 +1652,7 @@ export class Sandbox {
    */
   async tunnels(timeoutMs = 50000): Promise<Record<number, Tunnel>> {
     this.#ensureAttached();
-    if (this.#tunnels) {
-      return this.#tunnels;
-    }
-
-    const resp = await this.#sandboxGetTunnels(timeoutMs);
-
-    if (
-      resp.result?.status === GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT
-    ) {
-      throw new SandboxTimeoutError();
-    }
-
-    this.#tunnels = {};
-    for (const t of resp.tunnels) {
-      this.#tunnels[t.containerPort] = new Tunnel(
-        t.host,
-        t.port,
-        t.unencryptedHost,
-        t.unencryptedPort,
-      );
-    }
-
-    return this.#tunnels;
+    return await this.#impl.tunnels(timeoutMs);
   }
 
   /**
@@ -2354,35 +1671,7 @@ export class Sandbox {
     params?: SandboxSnapshotFilesystemParams,
   ): Promise<Image> {
     this.#ensureAttached();
-    return this.#snapshotFilesystem("", params);
-  }
-
-  async #snapshotFilesystem(
-    containerId: string,
-    params?: SandboxSnapshotFilesystemParams,
-  ): Promise<Image> {
-    const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
-    // Treat both undefined and 0 as "use default", matching the Go
-    // `Timeout time.Duration` zero-value convention on SandboxSnapshotFilesystemParams.
-    const timeoutMs = params?.timeoutMs || 55000;
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-
-    const request = TaskSnapshotFilesystemRequest.create({
-      taskId,
-      snapshotId: uuidv4(),
-      ttlSeconds: wireTtlSeconds,
-      containerId,
-    });
-
-    const response = await commandRouterClient.snapshotFilesystem(request, {
-      timeoutMs,
-    });
-
-    if (!response.imageId) {
-      throw new Error("Sandbox snapshot filesystem response missing `imageId`");
-    }
-
-    return new Image(this.#client, response.imageId, "");
+    return await this.#impl.snapshotFilesystem("", params);
   }
 
   /**
@@ -2425,114 +1714,7 @@ export class Sandbox {
   async experimentalGetExitSnapshot(
     params?: SandboxExperimentalGetExitSnapshotParams,
   ): Promise<Image> {
-    const timeoutMs = params?.timeoutMs;
-    if (timeoutMs !== undefined && timeoutMs < 0) {
-      throw new InvalidError(
-        `timeoutMs must be non-negative, got ${timeoutMs}`,
-      );
-    }
-
-    const deadline =
-      timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
-    const timeoutMessage = `timed out waiting for exit snapshot for Sandbox ${this.sandboxId}`;
-    let consecutivePollFailures = 0;
-    while (true) {
-      const requestTimeoutSecs =
-        deadline === undefined
-          ? EXIT_SNAPSHOT_LONG_POLL_TIMEOUT
-          : Math.min(
-              EXIT_SNAPSHOT_LONG_POLL_TIMEOUT,
-              Math.max(0, (deadline - Date.now()) / 1000),
-            );
-
-      let statusDetails: Uint8Array | undefined;
-      let resp;
-      try {
-        resp = await this.#sandboxGetExitSnapshot(requestTimeoutSecs, {
-          timeoutMs:
-            (requestTimeoutSecs + EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN) * 1000,
-          retries: 0,
-          onTrailer: (trailer) => {
-            const raw = trailer.get("grpc-status-details-bin");
-            if (raw != null) statusDetails = raw as Uint8Array;
-          },
-        });
-      } catch (err) {
-        const retryPolicy = getServerRetryPolicy(statusDetails);
-        if (retryPolicy) {
-          if (deadline !== undefined && Date.now() >= deadline) {
-            throw new TimeoutError(timeoutMessage);
-          }
-          consecutivePollFailures = 0;
-          let throttleDelayMs = Math.max(
-            retryPolicy.retryAfterSecs * 1000,
-            100,
-          );
-          if (deadline !== undefined) {
-            throttleDelayMs = Math.min(
-              throttleDelayMs,
-              Math.max(0, deadline - Date.now()),
-            );
-          }
-          await setTimeout(throttleDelayMs);
-          continue;
-        }
-        if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT)
-          throw new InvalidError(err.details);
-        if (err instanceof ClientError && err.code === Status.NOT_FOUND)
-          throw new NotFoundError(err.details);
-        if (isRetryableGrpc(err)) {
-          if (deadline !== undefined && Date.now() >= deadline) {
-            throw new TimeoutError(timeoutMessage);
-          }
-          consecutivePollFailures += 1;
-          if (
-            consecutivePollFailures >=
-            EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES
-          ) {
-            throw err;
-          }
-          let backoffMs = EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF * 1000;
-          if (deadline !== undefined) {
-            backoffMs = Math.min(backoffMs, Math.max(0, deadline - Date.now()));
-          }
-          await setTimeout(backoffMs);
-          continue;
-        }
-        throw err;
-      }
-      consecutivePollFailures = 0;
-
-      if (resp.success) {
-        if (!resp.success.imageId) {
-          throw new ExecutionError("Exit snapshot result is missing image ID");
-        }
-        return new Image(this.#client, resp.success.imageId, "");
-      }
-      if (resp.error) {
-        if (
-          resp.error.errorCode ===
-            SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_TIMEOUT ||
-          resp.error.errorCode ===
-            SandboxGetExitSnapshotResponse_ErrorCode.ERROR_CODE_FILESYSTEM_INCONSISTENT
-        ) {
-          throw new SnapshotCreationError(
-            resp.error.message || "No exit snapshot image will be produced",
-          );
-        }
-        throw new ExecutionError(
-          resp.error.message || "Exit snapshot state is malformed",
-        );
-      }
-      if (!resp.pending) {
-        throw new ExecutionError(
-          "Exit snapshot response is missing an outcome",
-        );
-      }
-      if (deadline !== undefined && Date.now() >= deadline) {
-        throw new TimeoutError(timeoutMessage);
-      }
-    }
+    return await this.#impl.getExitSnapshot(params);
   }
 
   /**
@@ -2547,36 +1729,7 @@ export class Sandbox {
    */
   async experimentalSnapshot(): Promise<SandboxSnapshot> {
     this.#ensureAttached();
-    let snapshotId: string;
-    if (this.#isV2) {
-      const [taskId, commandRouterClient] = await this.#getCommandRouter();
-      const resp = await commandRouterClient.snapshotMemory(
-        TaskSnapshotMemoryRequest.create({ taskId, idempotencyKey: uuidv4() }),
-        { timeoutMs: 300000 },
-      );
-      snapshotId = resp.snapshotId;
-    } else {
-      await this.#getTaskId();
-      const snapResp = await this.#client.cpClient.sandboxSnapshot({
-        sandboxId: this.sandboxId,
-      });
-      snapshotId = snapResp.snapshotId;
-
-      // wait for the snapshot to succeed. this is implemented as a second idempotent rpc
-      // because the snapshot itself may take a while to complete.
-      const waitResp = await this.#client.cpClient.sandboxSnapshotWait({
-        snapshotId,
-        timeout: 55,
-      });
-      if (
-        waitResp.result?.status !==
-        GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
-      ) {
-        throw new ExecutionError(waitResp.result?.exception ?? "");
-      }
-    }
-
-    return new SandboxSnapshot(this.#client, snapshotId, { isV2: this.#isV2 });
+    return await this.#impl.snapshotMemory();
   }
 
   /**
@@ -2592,16 +1745,7 @@ export class Sandbox {
     params?: SandboxMountImageParams,
   ): Promise<void> {
     this.#ensureAttached();
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-
-    const imageId = resolveMountImageId(image);
-    const request = buildTaskMountDirectoryRequestProto(
-      taskId,
-      path,
-      imageId,
-      params,
-    );
-    await commandRouterClient.mountDirectory(request);
+    await this.#impl.mountImage(path, image, params);
   }
 
   /**
@@ -2611,14 +1755,7 @@ export class Sandbox {
    */
   async unmountImage(path: string): Promise<void> {
     this.#ensureAttached();
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-
-    const pathBytes = new TextEncoder().encode(path);
-    const request = TaskUnmountDirectoryRequest.create({
-      taskId,
-      path: pathBytes,
-    });
-    await commandRouterClient.unmountDirectory(request);
+    await this.#impl.unmountImage(path);
   }
 
   /**
@@ -2640,17 +1777,7 @@ export class Sandbox {
         "updateNetworkPolicy currently requires both outboundCidrAllowlist and outboundDomainAllowlist to be set",
       );
     }
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-
-    const request = TaskSetNetworkAccessRequest.create({
-      taskId,
-      networkAccess: NetworkAccess.create({
-        networkAccessType: NetworkAccess_NetworkAccessType.ALLOWLIST,
-        allowedCidrs: params.outboundCidrAllowlist,
-        allowedDomains: params.outboundDomainAllowlist,
-      }),
-    });
-    await commandRouterClient.setNetworkAccess(request);
+    await this.#impl.updateNetworkPolicy(params);
   }
 
   /**
@@ -2670,16 +1797,7 @@ export class Sandbox {
   ): Promise<void> {
     this.#ensureAttached();
     outboundPolicy._validate();
-    const [, [taskId, commandRouterClient]] = await Promise.all([
-      hydrateSecrets(this.#client, outboundPolicy._secrets()),
-      this.#getCommandRouter(),
-    ]);
-
-    const request = TaskSetExperimentalOutboundPolicyRequest.create({
-      taskId,
-      experimentalOutboundPolicy: outboundPolicy._toProto(),
-    });
-    await commandRouterClient.setOutboundPolicy(request);
+    await this.#impl.updateOutboundPolicy(outboundPolicy);
   }
 
   /**
@@ -2692,25 +1810,7 @@ export class Sandbox {
    */
   async reloadVolumes(params?: SandboxReloadVolumesParams): Promise<void> {
     this.#ensureAttached();
-    await this.#reloadVolumes("", params);
-  }
-
-  // Reload one container's Volumes; empty `containerId` targets the main container.
-  async #reloadVolumes(
-    containerId: string,
-    params?: SandboxReloadVolumesParams,
-  ): Promise<void> {
-    if (params?.timeoutMs !== undefined && params.timeoutMs < 0) {
-      throw new InvalidError("`timeoutMs` must not be negative");
-    }
-    // Both undefined and 0 fall back to the default, matching the Go
-    // `Timeout time.Duration` zero-value convention.
-    const timeoutMs = params?.timeoutMs || 55000;
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-    await commandRouterClient.reloadVolumes(
-      TaskReloadVolumesRequest.create({ taskId, containerId }),
-      { timeoutMs },
-    );
+    await this.#impl.reloadVolumes("", params);
   }
 
   /**
@@ -2733,29 +1833,7 @@ export class Sandbox {
     params?: SandboxSnapshotDirectoryParams,
   ): Promise<Image> {
     this.#ensureAttached();
-    const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
-    // Treat both undefined and 0 as "use default", matching the Go
-    // `Timeout time.Duration` zero-value convention on SandboxSnapshotDirectoryParams.
-    const timeoutMs = params?.timeoutMs || 55000;
-    const [taskId, commandRouterClient] = await this.#getCommandRouter();
-
-    // snapshotId guarantees idempotency under retries.
-    const request = buildTaskSnapshotDirectoryRequestProto(
-      taskId,
-      path,
-      uuidv4(),
-      wireTtlSeconds,
-      params,
-    );
-    const response = await commandRouterClient.snapshotDirectory(request, {
-      timeoutMs,
-    });
-
-    if (!response.imageId) {
-      throw new Error("Sandbox snapshot directory response missing `imageId`");
-    }
-
-    return new Image(this.#client, response.imageId, "");
+    return await this.#impl.snapshotDirectory(path, params);
   }
 
   /**
@@ -2765,9 +1843,7 @@ export class Sandbox {
    */
   async poll(): Promise<number | null> {
     this.#ensureAttached();
-    const resp = await this.#sandboxWait(0);
-
-    return getReturnCode(resp.result);
+    return await this.#impl.poll();
   }
 }
 
@@ -2914,196 +1990,6 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
 }
 
 // Like _StreamReader with object_type == "sandbox".
-async function* outputStreamSb(
-  cpClient: ModalGrpcClient,
-  sandboxId: string,
-  fileDescriptor: FileDescriptor,
-  idleTimeoutMs: number,
-  signal?: AbortSignal,
-): AsyncIterable<string> {
-  let lastIndex = "0-0";
-  let completed = false;
-  let retriesRemaining = SB_LOGS_MAX_RETRIES;
-  let delayMs = SB_LOGS_INITIAL_DELAY_MS;
-  while (!completed) {
-    if (signal?.aborted) return;
-    // Given back when nobody has read for the idle timeout. The caller is
-    // suspended at a yield for exactly as long as it is not reading, so that
-    // is where the countdown runs.
-    const idle = new IdleCountdown();
-    const idleAbort = new AbortController();
-    const releaseIfIdle = () => {
-      idle.stop();
-      idleAbort.abort();
-    };
-    const callSignal =
-      signal === undefined
-        ? idleAbort.signal
-        : AbortSignal.any([signal, idleAbort.signal]);
-    try {
-      const outputIterator = cpClient.sandboxGetLogs(
-        {
-          sandboxId,
-          fileDescriptor,
-          timeout: 55,
-          lastEntryId: lastIndex,
-        },
-        { signal: callSignal },
-      );
-      for await (const batch of outputIterator) {
-        // Successful read - reset backoff counters.
-        delayMs = SB_LOGS_INITIAL_DELAY_MS;
-        retriesRemaining = SB_LOGS_MAX_RETRIES;
-        lastIndex = batch.entryId;
-        // Finish the buffered batch before reopening from its entry ID.
-        for (const item of batch.items) {
-          if (!idleAbort.signal.aborted) {
-            idle.arm(idleTimeoutMs, releaseIfIdle);
-          }
-          try {
-            yield item.data;
-          } finally {
-            idle.stop();
-          }
-        }
-        if (batch.eof) {
-          completed = true;
-          break;
-        }
-        if (signal?.aborted) {
-          return;
-        }
-        if (idleAbort.signal.aborted) {
-          break;
-        }
-      }
-      if (idleAbort.signal.aborted) {
-        // Given back while nobody was reading: carry on from lastEntryId,
-        // without spending the retry budget on it.
-        continue;
-      }
-    } catch (err) {
-      // If cancelled, exit cleanly regardless of error type.
-      if (signal?.aborted) {
-        return;
-      }
-      if (idleAbort.signal.aborted) {
-        // Our own abort, surfacing as the call unwinds: leaving an aborted
-        // call raises it rather than ending quietly. Nothing is classified
-        // here - the abort belongs to this reader, so it can only mean the
-        // stream was given back while nobody was reading. Carry on from
-        // lastEntryId, without spending the retry budget on it.
-        continue;
-      }
-      if (isRetryableGrpc(err) && retriesRemaining > 0) {
-        // Short exponential backoff to avoid tight retry loops.
-        try {
-          await setTimeout(delayMs, undefined, { signal });
-        } catch {
-          // Abort during sleep - exit cleanly.
-          return;
-        }
-        delayMs *= SB_LOGS_DELAY_FACTOR;
-        retriesRemaining--;
-        continue;
-      } else {
-        throw err;
-      }
-    } finally {
-      idle.stop();
-    }
-  }
-}
-
-// outputStreamSbV2 reads a V2 Sandbox's stdout or stderr. The first read is
-// what resolves the task and opens the stream.
-async function* outputStreamSbV2(
-  getCommandRouter: () => Promise<[string, TaskCommandRouterClientImpl]>,
-  sandboxId: string,
-  fileDescriptor: FileDescriptor,
-  logger: Logger,
-  signal: AbortSignal,
-): AsyncIterable<Uint8Array> {
-  const [taskId, commandRouterClient] = await getCommandRouter();
-  let firstChunk = true;
-  for await (const item of commandRouterClient.sandboxStdioReadV2(
-    taskId,
-    fileDescriptor,
-    signal,
-  )) {
-    if (item.data.length === 0) {
-      throw new Error(
-        `Received empty message streaming stdio from Sandbox ${sandboxId}`,
-      );
-    }
-    if (firstChunk) {
-      firstChunk = false;
-      if (item.startingOffset > 0) {
-        logger.warn(
-          "V2 Sandbox stdio: dropped bytes. Only the most recent portion of output is retained",
-          "sandbox_id",
-          sandboxId,
-          "dropped_bytes",
-          item.startingOffset,
-        );
-      }
-    }
-    yield item.data;
-  }
-}
-
-function inputStreamSb(
-  cpClient: ModalGrpcClient,
-  sandboxId: string,
-): WritableStream<string> {
-  let index = 1;
-  return new WritableStream<string>({
-    async write(chunk) {
-      await cpClient.sandboxStdinWrite({
-        sandboxId,
-        input: encodeIfString(chunk),
-        index,
-      });
-      index++;
-    },
-    async close() {
-      await cpClient.sandboxStdinWrite({
-        sandboxId,
-        index,
-        eof: true,
-      });
-    },
-  });
-}
-
-function inputStreamSbV2(
-  getCommandRouter: () => Promise<[string, TaskCommandRouterClientImpl]>,
-): WritableStream<string> {
-  let offset = 0;
-  return new WritableStream<string>({
-    async write(chunk) {
-      const [taskId, commandRouterClient] = await getCommandRouter();
-      const data = encodeIfString(chunk);
-      await commandRouterClient.sandboxStdinWriteV2(
-        taskId,
-        offset,
-        data,
-        false, // eof
-      );
-      offset += data.length;
-    },
-    async close() {
-      const [taskId, commandRouterClient] = await getCommandRouter();
-      await commandRouterClient.sandboxStdinWriteV2(
-        taskId,
-        offset,
-        new Uint8Array(0),
-        true, // eof
-      );
-    },
-  });
-}
-
 async function* outputStreamCp(
   commandRouterClient: TaskCommandRouterClientImpl,
   taskId: string,
@@ -3153,6 +2039,7 @@ function inputStreamCp<R extends string | Uint8Array>(
   });
 }
 
-function encodeIfString(chunk: Uint8Array | string): Uint8Array {
+/** @internal @hidden */
+export function encodeIfString(chunk: Uint8Array | string): Uint8Array {
   return typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
 }

@@ -4,13 +4,9 @@ import { v4 as uuidv4 } from "uuid";
 import {
   GenericResult,
   GenericResult_GenericStatus,
-  Resources,
-  Sandbox as SandboxDefinition,
-  SandboxContainerCreateV2Request,
   VolumeMount,
 } from "../proto/modal_proto/api";
 import {
-  TaskContainerCreateRequest,
   TaskContainerGetRequest,
   TaskContainerInfo,
   TaskContainerListRequest,
@@ -25,11 +21,9 @@ import {
   ContainerProcess,
   defaultSandboxPTYInfo,
   getReturnCode,
-  getSandboxVersion,
   hydrateSandboxSecrets,
   resolveMountImageId,
   resolveTtlSeconds,
-  SandboxVersion,
   validateExecArgs,
   validateWorkdir,
   type SandboxExecParams,
@@ -37,6 +31,11 @@ import {
   type SandboxSnapshotDirectoryParams,
 } from "./sandbox";
 import { SandboxFilesystem } from "./sandbox_fs";
+import type {
+  SidecarCreateOptions,
+  SidecarCreateRequest,
+  SidecarCreateResult,
+} from "./sandbox_impl";
 import type { TaskCommandRouterClientImpl } from "./task_command_router_client";
 import {
   AlreadyExistsError,
@@ -50,7 +49,6 @@ import {
   buildCloudBucketMountProtos,
   type CloudBucketMount,
 } from "./cloud_bucket_mount";
-import { parseBooleanFlag } from "./config";
 import {
   collectSecretIds,
   resolvableSecrets,
@@ -70,27 +68,6 @@ const MAIN_CONTAINER_NAME = "main";
  */
 const CONTAINER_WAIT_POLL_TIMEOUT_SECONDS = 10;
 
-/**
- * Opts a client out of sending sidecar create requests to the Modal server:
- * set it to "0" or "false" to create sidecars over the Sandbox connection
- * instead.
- */
-const CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR =
-  "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE";
-
-/**
- * Whether create sends its request to the Modal server, which V2 Sandboxes do
- * unless opted out. V1 Sandboxes always create sidecars over the Sandbox
- * connection.
- */
-function useControlPlaneSidecarCreate(sandboxId: string): boolean {
-  if (getSandboxVersion(sandboxId) !== SandboxVersion.V2) {
-    return false;
-  }
-  const value = process.env[CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR];
-  return value === undefined || parseBooleanFlag(value);
-}
-
 type SandboxSidecarCommandRouter = Pick<
   TaskCommandRouterClientImpl,
   | "containerCreate"
@@ -105,8 +82,9 @@ type SandboxSidecarCommandRouter = Pick<
 
 type SandboxSidecarAccess = {
   client: ModalClient;
-  sandboxId: string;
   ensureAttached(): void;
+  validateCreate(options: SidecarCreateOptions): void;
+  create(request: SidecarCreateRequest): Promise<SidecarCreateResult>;
   exec(
     command: string[],
     params: SandboxExecParams | undefined,
@@ -314,48 +292,12 @@ export class SidecarService {
       );
     }
 
-    const viaControlPlane = useControlPlaneSidecarCreate(
-      this.#access.sandboxId,
-    );
-    const cloudBucketMountEntries = Object.entries(
-      params?.cloudBucketMounts ?? {},
-    );
-    if (cloudBucketMountEntries.length > 0) {
-      if (getSandboxVersion(this.#access.sandboxId) !== SandboxVersion.V2) {
-        throw new InvalidError(
-          "cloudBucketMounts are not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU or MODAL_SANDBOX_V2=0 is set; contact Modal support for more information",
-        );
-      }
-      if (!viaControlPlane) {
-        throw new InvalidError(
-          `cloudBucketMounts are not supported in sidecars when ${CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use them`,
-        );
-      }
-    }
-
-    if (params?.includeOidcIdentityToken) {
-      if (getSandboxVersion(this.#access.sandboxId) !== SandboxVersion.V2) {
-        throw new InvalidError(
-          "includeOidcIdentityToken is not supported for GPU Sandboxes",
-        );
-      }
-      if (!viaControlPlane) {
-        throw new InvalidError(
-          `includeOidcIdentityToken is not supported when ${CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use it`,
-        );
-      }
-    }
-
-    if (params?.proxy) {
-      if (getSandboxVersion(this.#access.sandboxId) !== SandboxVersion.V2) {
-        throw new InvalidError("proxy is not supported for GPU Sandboxes");
-      }
-      if (!viaControlPlane) {
-        throw new InvalidError(
-          `proxy is not supported when ${CONTROL_PLANE_SIDECAR_CREATE_ENV_VAR}=0 is set; unset it to use a proxy`,
-        );
-      }
-    }
+    this.#access.validateCreate({
+      hasCloudBucketMounts:
+        Object.keys(params?.cloudBucketMounts ?? {}).length > 0,
+      hasProxy: params?.proxy !== undefined,
+      includeOidcIdentityToken: params?.includeOidcIdentityToken ?? false,
+    });
 
     // Secrets and params.env are sent as ordered secret sources rather than
     // folded into a server-side Secret. Locally-created Secrets (fromObject)
@@ -386,51 +328,21 @@ export class SidecarService {
 
     let resp;
     try {
-      if (viaControlPlane) {
-        resp = await this.#access.client.cpClient.sandboxContainerCreateV2(
-          SandboxContainerCreateV2Request.create({
-            sandboxId: this.#access.sandboxId,
-            containerName: name,
-            definition: SandboxDefinition.create({
-              imageId: image.imageId,
-              entrypointArgs: command,
-              workdir: params?.workdir ?? undefined,
-              secretIds,
-              volumeMounts,
-              cloudBucketMounts,
-              networkAccess,
-              includeOidcIdentityToken:
-                params?.includeOidcIdentityToken ?? false,
-              proxyId: params?.proxy?.proxyId,
-              ptyInfo,
-              resources:
-                params?.experimentalMemoryReserveConsumeMiB !== undefined
-                  ? Resources.create({
-                      memoryMb: params.experimentalMemoryReserveConsumeMiB,
-                    })
-                  : undefined,
-            }),
-            secretSources: sources,
-          }),
-        );
-      } else {
-        const [taskId, client] = await this.#access.commandRouter();
-        resp = await client.containerCreate(
-          TaskContainerCreateRequest.create({
-            taskId,
-            containerName: name,
-            imageId: image.imageId,
-            args: command,
-            workdir: params?.workdir ?? "",
-            secretSources: sources,
-            volumeMounts,
-            networkAccess,
-            ptyInfo,
-            memoryReserveConsumeMib:
-              params?.experimentalMemoryReserveConsumeMiB,
-          }),
-        );
-      }
+      resp = await this.#access.create({
+        containerName: name,
+        imageId: image.imageId,
+        command,
+        workdir: params?.workdir ?? undefined,
+        secretIds,
+        secretSources: sources,
+        volumeMounts,
+        cloudBucketMounts,
+        networkAccess,
+        includeOidcIdentityToken: params?.includeOidcIdentityToken ?? false,
+        proxyId: params?.proxy?.proxyId,
+        ptyInfo,
+        memoryReserveConsumeMiB: params?.experimentalMemoryReserveConsumeMiB,
+      });
     } catch (err) {
       if (err instanceof ClientError) {
         if (err.code === Status.ALREADY_EXISTS) {
