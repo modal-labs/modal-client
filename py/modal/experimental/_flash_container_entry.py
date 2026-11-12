@@ -55,7 +55,7 @@ class _FlashContainerEntry:
                         h2_enabled=self.http_config.h2_enabled,
                     )
             except Exception as e:
-                logger.warning(f"[Modal Flash] Startup failed: {e}")
+                logger.warning(f"[Modal Server] Startup failed: {e}")
                 raise UserException()
 
     def stop(self):

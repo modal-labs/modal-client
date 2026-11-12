@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from modal._cluster import ClusterContext
+from modal._runtime.task_lifecycle_manager import UserException
 from modal.experimental._flash_container_entry import _FlashContainerEntry
 from modal.experimental.flash import _FlashManager
 from modal.experimental.flash_server import _ServerManager
@@ -548,6 +549,15 @@ class TestFlashClusteredEntry:
     @pytest.fixture
     def http_config(self):
         return api_pb2.HTTPConfig(port=1234, startup_timeout=1, exit_grace_period=0)
+
+    def test_startup_failure_logs_server_label(self, monkeypatch, http_config, caplog):
+        forward = MagicMock(side_effect=RuntimeError("startup error"))
+        monkeypatch.setattr("modal.experimental._flash_container_entry.server_forward", forward)
+
+        with pytest.raises(UserException):
+            _FlashContainerEntry(http_config, is_server=True).enter()
+
+        assert "[Modal Server] Startup failed: startup error" in caplog.text
 
     def test_only_rank_zero_exposes_flash_handle(self, monkeypatch, http_config):
         flash_manager = MagicMock()
