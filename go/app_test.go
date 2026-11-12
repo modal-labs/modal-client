@@ -2,6 +2,7 @@ package modal
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -11,12 +12,84 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type appInfoMockClient struct {
 	pb.ModalClientClient
 	lookup func(context.Context, *pb.AppGetOrCreateRequest) (*pb.AppGetOrCreateResponse, error)
 	info   func(context.Context, *pb.AppGetInfoRequest) (*pb.AppGetInfoResponse, error)
+	stats  func(context.Context, *pb.AppGetTimeRangeStatsRequest) (*pb.AppGetTimeRangeStatsResponse, error)
+}
+
+func (m *appInfoMockClient) AppGetTimeRangeStats(ctx context.Context, req *pb.AppGetTimeRangeStatsRequest, _ ...grpc.CallOption) (*pb.AppGetTimeRangeStatsResponse, error) {
+	return m.stats(ctx, req)
+}
+
+func TestAppStats(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	since := time.Date(2026, 11, 12, 10, 0, 0, 0, time.FixedZone("offset", 3600))
+	until := since.Add(time.Hour)
+	functions := pb.AppFunctionCounts_builder{Calls: pb.AppCallCounts_builder{Total: 10, Succeeded: 7, Failed: 3}.Build(), Containers: pb.AppContainerCounts_builder{ContainerErrors: 2, ContainerActiveCount: 5}.Build()}.Build()
+	servers := pb.AppServerCounts_builder{Requests: pb.AppRequestCounts_builder{Total: 20, Ok: 16, Failed: 4}.Build(), Containers: pb.AppContainerCounts_builder{ContainerErrors: 1, ContainerActiveCount: 6}.Build()}.Build()
+	deploymentCount := uint64(0)
+	response := pb.AppGetTimeRangeStatsResponse_builder{
+		Since: timestamppb.New(since), Until: timestamppb.New(until),
+		Functions:       pb.AppFunctionStatsGroup_builder{Total: functions, ByName: map[string]*pb.AppFunctionStats{"embed": pb.AppFunctionStats_builder{ObjectId: "fu-embed", Counts: functions}.Build()}}.Build(),
+		Servers:         pb.AppServerStatsGroup_builder{Total: servers, ByName: map[string]*pb.AppServerStats{"api": pb.AppServerStats_builder{ObjectId: "fu-api", Counts: servers}.Build()}}.Build(),
+		Sandboxes:       pb.AppSandboxCounts_builder{Total: 9, Finished: 5, Live: 4}.Build(),
+		Lifecycle:       pb.AppLifecycle_builder{AppState: pb.AppState_APP_STATE_STOPPED, CreatedAt: 1700000000, CreatedBy: "creator"}.Build(),
+		DeploymentCount: &deploymentCount,
+	}.Build()
+	mock := &appInfoMockClient{stats: func(_ context.Context, req *pb.AppGetTimeRangeStatsRequest) (*pb.AppGetTimeRangeStatsResponse, error) {
+		g.Expect(req.GetAppId()).To(gomega.Equal("ap-test"))
+		g.Expect(req.GetSince().AsTime()).To(gomega.Equal(since.UTC()))
+		g.Expect(req.GetUntil().AsTime()).To(gomega.Equal(until.UTC()))
+		return response, nil
+	}}
+	app := newApp(newEnvironmentServiceTestClient(t, mock), "ap-test", "", "", nil)
+	stats, err := app.Stats(t.Context(), &AppStatsParams{Since: &since, Until: &until})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	functionCounts := AppStatsFunctionCounts{Calls: AppStatsCallCounts{Total: 10, Succeeded: 7, Failed: 3}, Containers: AppStatsContainerCounts{Errors: 2, Total: 5}}
+	serverCounts := AppStatsServerCounts{Requests: AppStatsRequestCounts{Total: 20, OK: 16, Failed: 4}, Containers: AppStatsContainerCounts{Errors: 1, Total: 6}}
+	g.Expect(stats).To(gomega.Equal(&AppStats{
+		Since: since.UTC(), Until: until.UTC(),
+		Functions: AppStatsFunctionStatsGroup{Total: functionCounts, ByName: map[string]AppStatsFunctionStats{"embed": {ObjectID: "fu-embed", Counts: functionCounts}}},
+		Servers:   AppStatsServerStatsGroup{Total: serverCounts, ByName: map[string]AppStatsServerStats{"api": {ObjectID: "fu-api", Counts: serverCounts}}},
+		Sandboxes: AppStatsSandboxCounts{Total: 9, Finished: 5, Live: 4},
+		Lifecycle: AppLifecycle{State: AppStateStopped, CreatedAt: time.Unix(1700000000, 0).UTC(), CreatedBy: "creator"}, DeploymentCount: &deploymentCount,
+	}))
+}
+
+func TestAppStatsDefaultsAndErrors(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	before := time.Now().UTC()
+	mock := &appInfoMockClient{stats: func(_ context.Context, req *pb.AppGetTimeRangeStatsRequest) (*pb.AppGetTimeRangeStatsResponse, error) {
+		until := req.GetUntil().AsTime()
+		g.Expect(until).To(gomega.BeTemporally(">=", before))
+		g.Expect(until).To(gomega.BeTemporally("<=", time.Now().UTC()))
+		g.Expect(until.Sub(req.GetSince().AsTime())).To(gomega.Equal(time.Hour))
+		return pb.AppGetTimeRangeStatsResponse_builder{Since: req.GetSince(), Until: req.GetUntil()}.Build(), nil
+	}}
+	app := newApp(newEnvironmentServiceTestClient(t, mock), "ap-test", "", "", nil)
+	stats, err := app.Stats(t.Context(), nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(stats.DeploymentCount).To(gomega.BeNil())
+	g.Expect(stats.Functions.ByName).To(gomega.BeEmpty())
+	g.Expect(stats.Servers.ByName).To(gomega.BeEmpty())
+	until := time.Now()
+	for _, since := range []time.Time{until, until.Add(time.Second)} {
+		_, err := app.Stats(t.Context(), &AppStatsParams{Since: &since, Until: &until})
+		g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	}
+	rpcErr := errors.New("stats unavailable")
+	mock.stats = func(context.Context, *pb.AppGetTimeRangeStatsRequest) (*pb.AppGetTimeRangeStatsResponse, error) {
+		return nil, rpcErr
+	}
+	_, err = app.Stats(t.Context(), nil)
+	g.Expect(err).To(gomega.MatchError(rpcErr))
 }
 
 func (m *appInfoMockClient) AppGetOrCreate(ctx context.Context, req *pb.AppGetOrCreateRequest, _ ...grpc.CallOption) (*pb.AppGetOrCreateResponse, error) {

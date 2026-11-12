@@ -12,6 +12,7 @@ import (
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // AppService provides App related operations.
@@ -92,8 +93,7 @@ func appOptionalString(value string) *string {
 	return &value
 }
 
-func appInfoFromProto(metadata *pb.AppHandleMetadata, id string) *AppInfo {
-	lifecycle := metadata.GetLifecycle()
+func appLifecycleFromProto(lifecycle *pb.AppLifecycle) AppLifecycle {
 	state := AppStateUnknown
 	switch lifecycle.GetAppState() {
 	case pb.AppState_APP_STATE_UNSPECIFIED, pb.AppState_APP_STATE_EPHEMERAL:
@@ -111,20 +111,25 @@ func appInfoFromProto(metadata *pb.AppHandleMetadata, id string) *AppInfo {
 	case pb.AppState_APP_STATE_DISABLED:
 		state = AppStateDisabled
 	}
+	result := AppLifecycle{
+		State: state, CreatedAt: unixTime(lifecycle.GetCreatedAt()), CreatedBy: lifecycle.GetCreatedBy(),
+		DeployedAt: appOptionalTime(lifecycle.GetDeployedAt()), DeployedBy: appOptionalString(lifecycle.GetDeployedBy()),
+		StoppedAt: appOptionalTime(lifecycle.GetStoppedAt()), StoppedBy: appOptionalString(lifecycle.GetStoppedBy()),
+	}
+	if version := int(lifecycle.GetVersion()); version != 0 {
+		result.Version = &version
+	}
+	return result
+}
+
+func appInfoFromProto(metadata *pb.AppHandleMetadata, id string) *AppInfo {
 	info := &AppInfo{
 		AppID: id, Description: metadata.GetDescription(),
 		Functions: make(map[string]string), Servers: make(map[string]string),
-		Lifecycle: AppLifecycle{
-			State: state, CreatedAt: unixTime(lifecycle.GetCreatedAt()), CreatedBy: lifecycle.GetCreatedBy(),
-			DeployedAt: appOptionalTime(lifecycle.GetDeployedAt()), DeployedBy: appOptionalString(lifecycle.GetDeployedBy()),
-			StoppedAt: appOptionalTime(lifecycle.GetStoppedAt()), StoppedBy: appOptionalString(lifecycle.GetStoppedBy()),
-		},
+		Lifecycle: appLifecycleFromProto(metadata.GetLifecycle()),
 	}
 	maps.Copy(info.Functions, metadata.GetFunctions())
 	maps.Copy(info.Servers, metadata.GetServers())
-	if version := int(lifecycle.GetVersion()); version != 0 {
-		info.Lifecycle.Version = &version
-	}
 	return info
 }
 
@@ -151,6 +156,183 @@ func (a *App) Info(ctx context.Context, params *AppInfoParams) (*AppInfo, error)
 		a.metadata = resp.GetInfo()
 	}
 	return appInfoFromProto(a.metadata, a.AppID), nil
+}
+
+// AppStatsParams contains options for App.Stats.
+type AppStatsParams struct {
+	// Since is inclusive and defaults to one hour before Until.
+	Since *time.Time
+	// Until is exclusive and defaults to the current time.
+	Until *time.Time
+}
+
+// AppStats contains App-wide statistics over [Since, Until), with current Functions
+// and Servers indexed by name. Lifecycle metadata describes the App when queried,
+// including for historical windows.
+type AppStats struct {
+	Since, Until    time.Time
+	Functions       AppStatsFunctionStatsGroup
+	Servers         AppStatsServerStatsGroup
+	Sandboxes       AppStatsSandboxCounts
+	Lifecycle       AppLifecycle
+	DeploymentCount *uint64
+}
+
+// AppStatsCallCounts counts completed Function inputs; each map item counts separately.
+type AppStatsCallCounts struct {
+	Total, Succeeded, Failed uint64
+}
+
+// AppStatsContainerCounts counts terminal container errors and distinct containers
+// reporting resource activity in the window.
+type AppStatsContainerCounts struct {
+	Errors, Total uint64
+}
+
+// AppStatsFunctionCounts contains Function call and container counts.
+type AppStatsFunctionCounts struct {
+	Calls      AppStatsCallCounts
+	Containers AppStatsContainerCounts
+}
+
+// AppStatsFunctionStats contains the object ID and counts for a Function.
+type AppStatsFunctionStats struct {
+	ObjectID string
+	Counts   AppStatsFunctionCounts
+}
+
+// AppStatsFunctionStatsGroup contains totals across current Functions, with
+// individual Function stats keyed by name.
+type AppStatsFunctionStatsGroup struct {
+	Total  AppStatsFunctionCounts
+	ByName map[string]AppStatsFunctionStats
+}
+
+// AppStatsRequestCounts counts Server requests split into HTTP 1xx/2xx/3xx
+// and all other outcomes, including status zero.
+type AppStatsRequestCounts struct {
+	Total, OK, Failed uint64
+}
+
+// AppStatsServerCounts contains Server request and container counts.
+type AppStatsServerCounts struct {
+	Requests   AppStatsRequestCounts
+	Containers AppStatsContainerCounts
+}
+
+// AppStatsServerStats contains the object ID and counts for a Server.
+type AppStatsServerStats struct {
+	ObjectID string
+	Counts   AppStatsServerCounts
+}
+
+// AppStatsServerStatsGroup contains totals across current Servers, with
+// individual Server stats keyed by name.
+type AppStatsServerStatsGroup struct {
+	Total  AppStatsServerCounts
+	ByName map[string]AppStatsServerStats
+}
+
+// AppStatsSandboxCounts counts Sandboxes that finished in the window and those
+// that are live as of the Until cutoff. Total is Finished + Live.
+type AppStatsSandboxCounts struct {
+	Total, Finished, Live uint64
+}
+
+func appStatsContainerCountsFromProto(counts *pb.AppContainerCounts) AppStatsContainerCounts {
+	return AppStatsContainerCounts{Errors: counts.GetContainerErrors(), Total: counts.GetContainerActiveCount()}
+}
+
+func appStatsFunctionCountsFromProto(counts *pb.AppFunctionCounts) AppStatsFunctionCounts {
+	calls := counts.GetCalls()
+	return AppStatsFunctionCounts{
+		Calls:      AppStatsCallCounts{Total: calls.GetTotal(), Succeeded: calls.GetSucceeded(), Failed: calls.GetFailed()},
+		Containers: appStatsContainerCountsFromProto(counts.GetContainers()),
+	}
+}
+
+func appStatsServerCountsFromProto(counts *pb.AppServerCounts) AppStatsServerCounts {
+	requests := counts.GetRequests()
+	return AppStatsServerCounts{
+		Requests:   AppStatsRequestCounts{Total: requests.GetTotal(), OK: requests.GetOk(), Failed: requests.GetFailed()},
+		Containers: appStatsContainerCountsFromProto(counts.GetContainers()),
+	}
+}
+
+// Stats returns aggregate Function, Server, and Sandbox statistics for this App.
+// The default window is the most recent hour. Windows can span at most seven days,
+// with a start in the past 30 days.
+//
+// App stats show total call counts, request counts, and the count of active and
+// errored containers in the time window. They also count Sandboxes that finished
+// in the interval and those still running as of the end of the window.
+//
+// The available stats and their definitions are subject to change and are provided
+// on a best-effort basis. They may be delayed or incomplete.
+//
+//	app, err := client.Apps.FromName(ctx, "my-app", nil)
+//	if err != nil {
+//		return err
+//	}
+//	stats, err := app.Stats(ctx, nil)
+//	if err != nil {
+//		return err
+//	}
+//	fmt.Println(stats.Functions.Total.Calls.Failed)
+//	fmt.Println(stats.Functions.ByName["embed"].Counts.Containers.Errors)
+func (a *App) Stats(ctx context.Context, params *AppStatsParams) (*AppStats, error) {
+	if a.client == nil {
+		return nil, InvalidError{Exception: "App.Stats() requires a handle retrieved through a Client."}
+	}
+	if params == nil {
+		params = &AppStatsParams{}
+	}
+	until := time.Now().UTC()
+	if params.Until != nil {
+		until = params.Until.UTC()
+	}
+	since := until.Add(-time.Hour)
+	if params.Since != nil {
+		since = params.Since.UTC()
+	}
+	if !since.Before(until) {
+		return nil, InvalidError{Exception: "`since` must be before `until`."}
+	}
+	resp, err := a.client.cpClient.AppGetTimeRangeStats(ctx, pb.AppGetTimeRangeStatsRequest_builder{
+		AppId: a.AppID, Since: timestamppb.New(since), Until: timestamppb.New(until),
+	}.Build())
+	if status.Code(err) == codes.NotFound {
+		return nil, NotFoundError{fmt.Sprintf("App '%s' not found", a.AppID)}
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := &AppStats{
+		Since: resp.GetSince().AsTime(), Until: resp.GetUntil().AsTime(),
+		Functions: AppStatsFunctionStatsGroup{
+			Total:  appStatsFunctionCountsFromProto(resp.GetFunctions().GetTotal()),
+			ByName: make(map[string]AppStatsFunctionStats),
+		},
+		Servers: AppStatsServerStatsGroup{
+			Total:  appStatsServerCountsFromProto(resp.GetServers().GetTotal()),
+			ByName: make(map[string]AppStatsServerStats),
+		},
+		Sandboxes: AppStatsSandboxCounts{
+			Total: resp.GetSandboxes().GetTotal(), Finished: resp.GetSandboxes().GetFinished(), Live: resp.GetSandboxes().GetLive(),
+		},
+		Lifecycle: appLifecycleFromProto(resp.GetLifecycle()),
+	}
+	for name, row := range resp.GetFunctions().GetByName() {
+		result.Functions.ByName[name] = AppStatsFunctionStats{ObjectID: row.GetObjectId(), Counts: appStatsFunctionCountsFromProto(row.GetCounts())}
+	}
+	for name, row := range resp.GetServers().GetByName() {
+		result.Servers.ByName[name] = AppStatsServerStats{ObjectID: row.GetObjectId(), Counts: appStatsServerCountsFromProto(row.GetCounts())}
+	}
+	if resp.HasDeploymentCount() {
+		count := resp.GetDeploymentCount()
+		result.DeploymentCount = &count
+	}
+	return result, nil
 }
 
 // parseGPUConfig parses a GPU configuration string into a GPUConfig object.
