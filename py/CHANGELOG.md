@@ -2,6 +2,32 @@
 
 ## Latest
 
+### 1.6.4 (2026-11-11)
+
+This release introduces new CLI commands for working with external images, including support for no-code deployment:
+- The new [`modal server deploy`](/docs/cli/latest/server#modal-server-deploy) CLI deploys an App with an autoscaling Server directly from an image reference (i.e., a named Modal Image or a third-party registry URI). The only constraint is that the image should start an HTTP server that binds a specified port as part of its entrypoint.
+- The new [`modal image build`](/docs/cli/latest/image#modal-image-build) CLI builds an Image from a local Dockerfile and publishes it as a [named Modal Image](/docs/guide/named-images) for reference by other Modal Apps. Note that Dockerfile builds are subject to [some limitations](/docs/guide/existing-images).
+- The new [`modal image pull`](/docs/cli/latest/image#modal-image-pull) CLI pulls an Image from a third-party registry and publishes it as a named Modal Image.
+- Image names can now be deleted with the [`modal image names delete`](/docs/cli/latest/image#modal-image-names-delete) CLI. This removes the name association but does not delete the underlying Image.
+
+It's now easier to manage API tokens:
+- The new [`Workspace.member_tokens.disable()`](/docs/sdk/py/latest/Workspace#member_tokensdisable) method and [`modal workspace member-tokens disable`](/docs/cli/latest/workspace#modal-workspace-member-tokens-disable) CLI can be used to disable tokens instead of hard-deleting them, including quickly disabling `--all` tokens in the Workspace. There is a corresponding method and CLI command for re-enabling specific tokens.
+- The new [`modal token rotate`](/docs/cli/latest/token#modal-token-rotate) CLI creates a token and deletes the one in the active profile.
+
+This release includes several other new features, enhancements, and fixes:
+- The new [`App.stats()`](/docs/sdk/py/latest/App#stats) method and [`modal app stats`](/docs/cli/latest/app#modal-app-stats) CLI report high-level Function, Server, and Sandbox stats for an App.
+- It's also possible to query Sandbox-specific stats, including costs, via the new [`App.sandboxes.stats()`](/docs/sdk/py/latest/App#sandboxesstats) method. This method supports flexible aggregation based on Sandbox tags.
+- The [`App.lookup()`](/docs/sdk/py/latest/App#lookup) method now accepts an App ID, which makes it possible to get a handle to a running ephemeral App or any stopped App.
+- The [`Function.from_id()`](/docs/sdk/py/latest/Function#from_id) method now accepts a `fu-` ID corresponding to a Modal Cls. The resulting object supports observability and autoscaling APIs; use [`Cls.from_name()`](/docs/sdk/py/latest/Cls#from_name) to invoke methods on the Cls.
+- The [`Image.build()`](/docs/sdk/py/latest/Image#build) method can now be called without providing an App, which creates an ephemeral App for running the build.
+- When working directly with a [`modal.Client`](/docs/sdk/py/latest/Client) instance, you can now call [`Client.close()`](/docs/sdk/py/latest/Client#close) (or use the [`Client.from_credentials()`](/docs/sdk/py/latest/Client#from_credentials) constructor as a context manager) to clean up resources and avoid memory leaks.
+- It's now possible to set custom autoscaling parameters in [`modal endpoint create`](/docs/cli/latest/endpoint#modal-endpoint-create).
+- The new [`modal endpoint library`](/docs/cli/latest/endpoint#modal-endpoint-library) CLI lists the models that can be served with Modal Endpoints.
+- Secret values are now reloaded when a Function restores from a [memory snapshot](/docs/guide/memory-snapshots).
+- We've improved handling in some Image APIs for nested quotes, which could previously produce broken Images.
+- Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS`, and `ORT_INTER_OP_NUM_THREADS` environment variables by default. Inside the Sandbox, the visible CPU count will correspond to the CPU limit.
+- Modal now issues deprecation warnings when specifying an Image with Python 3.10. Python 3.10 is end-of-life, and the Modal SDK will discontinue support as of 1.7.0.
+
 ### 1.6.3 (2026-10-27)
 
 This release includes a new [Image Builder version](/docs/guide/images#image-builder-updates), `2026.10`. After upgrading your SDK, opt into the new Image Builder in your [Workspace](/settings/image-builder-version) or [Environment](/settings/workspace-management/environments/all) settings. We recommend using the latest version for security updates and performance enhancements:
