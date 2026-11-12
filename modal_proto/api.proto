@@ -4564,7 +4564,7 @@ message SandboxGetStatsResponse {
   google.protobuf.Timestamp until = 10;
   // Measured usage keyed like FunctionGetTimeRangeStatsResponse.container_percentile_stats:
   // "CPU Usage (cores)" and "Memory Usage (GiB)". Each has exact, equally weighted sample
-  // percentiles p50, p90, p99, and p99.9, and the maximum as p100. Empty when no usage is available.
+  // percentiles p50, p90, and p99. Empty when no usage is available.
   map<string, StatsPercentileDistribution> percentile_stats = 11;
 }
 

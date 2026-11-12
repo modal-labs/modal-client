@@ -54390,7 +54390,7 @@ type SandboxGetStatsResponse_builder struct {
 	Until *timestamppb.Timestamp
 	// Measured usage keyed like FunctionGetTimeRangeStatsResponse.container_percentile_stats:
 	// "CPU Usage (cores)" and "Memory Usage (GiB)". Each has exact, equally weighted sample
-	// percentiles p50, p90, p99, and p99.9, and the maximum as p100. Empty when no usage is available.
+	// percentiles p50, p90, and p99. Empty when no usage is available.
 	PercentileStats map[string]*StatsPercentileDistribution
 }
 
