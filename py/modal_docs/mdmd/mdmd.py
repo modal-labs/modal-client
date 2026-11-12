@@ -622,7 +622,8 @@ class {name}{bases_str}
         # first bases, then class itself
         for base_cls in cls.__bases__:
             rec_update_attributes(base_cls)
-        entries.update(cls.__dict__)
+        if cls.__module__ == "modal" or cls.__module__.startswith("modal."):
+            entries.update(cls.__dict__)
 
     rec_update_attributes(obj)
 

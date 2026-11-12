@@ -2,13 +2,55 @@
 import dataclasses
 import importlib
 import os
+import pytest
 import re
+import sys
+from collections.abc import Mapping
 from enum import IntEnum
 from types import ModuleType
 from typing import Optional, Union
 
 from modal_docs.mdmd import mdmd
 from modal_docs.mdmd.signatures import parse_params_from_signature, strip_signature
+
+
+@pytest.fixture(autouse=True)
+def modal_module(monkeypatch):
+    module = sys.modules[__name__]
+    monkeypatch.setitem(sys.modules, "modal.test_mdmd", module)
+    monkeypatch.setitem(globals(), "__name__", "modal.test_mdmd")
+
+
+def test_nested_class_omits_inherited_container_methods():
+    class CustomBase:
+        def summary(self):
+            """Summarize the group."""
+
+        def keys(self):
+            """Custom keys."""
+
+    @dataclasses.dataclass
+    class Config:
+        class DictGroup(CustomBase, dict):
+            pass
+
+        class ListGroup(CustomBase, list):
+            pass
+
+        class MappingGroup(CustomBase, Mapping):
+            pass
+
+        dictionary: "DictGroup"
+        sequence: "ListGroup"
+        mapping: "MappingGroup"
+
+    rendered = mdmd.class_str("Config", Config)
+    assert "#### keys\n" in rendered
+    assert "Custom keys." in rendered
+    assert "#### summary\n" in rendered
+    assert "Summarize the group." in rendered
+    for method in ("get", "items", "values", "append", "clear", "count"):
+        assert f"#### {method}\n" not in rendered
 
 
 def test_nested_dataclass_fields_expand_inline():
@@ -274,6 +316,9 @@ def test_module(monkeypatch):
     monkeypatch.chdir(test_data_dir)
     monkeypatch.syspath_prepend(test_data_dir)
     test_module = importlib.import_module("foo")
+    monkeypatch.setattr(test_module, "__name__", "modal.foo")
+    for member in (test_module.Foo, test_module.funky, test_module.hidden):
+        monkeypatch.setattr(member, "__module__", "modal.foo")
     expected_output = open("./foo-expected.md").read()
     assert mdmd.module_str("foo", test_module) == expected_output
 
