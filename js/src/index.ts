@@ -1,5 +1,6 @@
 export {
   App,
+  AppSandboxesManager,
   AppService,
   type AppFromNameParams,
   type AppInfo,
@@ -19,6 +20,8 @@ export {
   type AppStatsServerStatsGroup,
   type AppStatsSandboxCounts,
   type AppStopParams,
+  type SandboxGroupStats,
+  type SandboxStatsParams,
 } from "./app";
 export {
   Environment,

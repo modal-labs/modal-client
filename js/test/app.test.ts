@@ -1,10 +1,13 @@
 import { App, InvalidError } from "modal";
+import { ClientError, Status } from "nice-grpc";
 import { expect, test } from "vitest";
 import {
   AppGetTimeRangeStatsRequest,
   AppGetTimeRangeStatsResponse,
   AppState,
   AppStopSource,
+  SandboxGetTimeRangeStatsRequest,
+  SandboxGetTimeRangeStatsResponse,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 
@@ -36,6 +39,102 @@ test("AppStop without a client", async () => {
   const app = new App("ap-test-123");
   await expect(app.stop()).rejects.toThrow(InvalidError);
 });
+
+test("AppSandboxesStats", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const since = new Date("2026-09-01T00:00:00Z");
+  const until = new Date("2026-09-02T00:00:00Z");
+  const pages: string[] = [];
+  for (const [pageToken, value, nextPageToken] of [
+    ["", undefined, "1"],
+    ["1", "ml", ""],
+  ] as const) {
+    mock.handleUnary("SandboxGetTimeRangeStats", (request) => {
+      pages.push((request as SandboxGetTimeRangeStatsRequest).pageToken);
+      expect(request).toEqual(
+        SandboxGetTimeRangeStatsRequest.create({
+          appId: "ap-stats",
+          since,
+          until,
+          groupByTags: ["team"],
+          tags: { env: "prod" },
+          pageToken,
+        }),
+      );
+      return SandboxGetTimeRangeStatsResponse.create({
+        groups: [
+          {
+            tags: { team: { value } },
+            costStr: "0.12500000",
+            costByResourceStr: { CPU: "0.10000000", Memory: "0.02500000" },
+          },
+        ],
+        nextPageToken,
+      });
+    });
+  }
+  const app = new App("ap-stats", undefined, undefined, mc);
+  const groups = await collect(
+    app.sandboxes.stats({
+      since,
+      until,
+      groupByTags: ["team"],
+      tags: { env: "prod" },
+    }),
+  );
+  expect(pages).toEqual(["", "1"]);
+  expect(groups).toEqual([
+    {
+      tags: { team: null },
+      cost: "0.12500000",
+      costByResource: { CPU: "0.10000000", Memory: "0.02500000" },
+    },
+    {
+      tags: { team: "ml" },
+      cost: "0.12500000",
+      costByResource: { CPU: "0.10000000", Memory: "0.02500000" },
+    },
+  ]);
+  mock.assertExhausted();
+
+  mock.handleUnary("SandboxGetTimeRangeStats", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxGetTimeRangeStats",
+      Status.INVALID_ARGUMENT,
+      "Too many groups",
+    );
+  });
+  await expect(collect(app.sandboxes.stats({ since }))).rejects.toThrow(
+    new InvalidError("Too many groups"),
+  );
+  mock.assertExhausted();
+
+  const future = new Date(Date.now() + 3600_000);
+  await expect(collect(app.sandboxes.stats({ since: future }))).rejects.toThrow(
+    InvalidError,
+  );
+  await expect(
+    collect(app.sandboxes.stats({ since: new Date(NaN) })),
+  ).rejects.toThrow("`since` must be a valid date.");
+  await expect(
+    collect(app.sandboxes.stats({ since: until, until: since })),
+  ).rejects.toThrow(InvalidError);
+  await expect(
+    collect(app.sandboxes.stats({ since, until: new Date(NaN) })),
+  ).rejects.toThrow("`until` must be a valid date.");
+  await expect(
+    collect(new App("", undefined, undefined, mc).sandboxes.stats({ since })),
+  ).rejects.toThrow(InvalidError);
+  await expect(
+    collect(new App("ap-stats").sandboxes.stats({ since })),
+  ).rejects.toThrow(InvalidError);
+});
+
+async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
+  const items: T[] = [];
+  for await (const item of iterable) items.push(item);
+  return items;
+}
 
 test.each([undefined, 0, 4])(
   "AppStats maps response with deploymentCount %s",

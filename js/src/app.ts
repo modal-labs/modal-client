@@ -11,6 +11,7 @@ import {
   AppStopRequest,
   AppStopSource,
   ObjectCreationType,
+  SandboxGetTimeRangeStatsRequest,
 } from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
 import { InvalidError, NotFoundError } from "./errors";
@@ -104,6 +105,34 @@ export interface AppInfo {
   functions: Record<string, string>;
   /** Server names mapped to Function IDs. */
   servers: Record<string, string>;
+}
+
+/** Parameters for {@link AppSandboxesManager#stats app.sandboxes.stats()}. */
+export interface SandboxStatsParams {
+  /** The beginning of the time range, inclusive, on a UTC hour boundary. */
+  since: Date;
+  /** The end of the time range, exclusive, on a UTC hour boundary. If omitted, this defaults to the current time. */
+  until?: Date;
+  /**
+   * Tag names to group by. Sandboxes with the same values for these names form one group; a name not present on a
+   * Sandbox counts as `null`. If omitted, all matching Sandboxes are returned as a single group with `tags: {}`.
+   */
+  groupByTags?: string[];
+  /** Only include Sandboxes that match all of these tag names and values. */
+  tags?: Record<string, string>;
+}
+
+/** Statistics for a group of Sandboxes over a time range. */
+export interface SandboxGroupStats {
+  /** The value of each name in `groupByTags` for the group's Sandboxes, `null` where not present. */
+  tags: Record<string, string | null>;
+  /** Total cost in USD as a decimal string, the sum of `costByResource`. */
+  cost: string;
+  /**
+   * Cost in USD as decimal strings, by billed resource: `CPU`, `Memory`, and GPU types such as `H100`.
+   * The resource names are subject to change as Modal's billing model evolves.
+   */
+  costByResource: Record<string, string>;
 }
 
 /** Optional parameters for {@link App#info}. */
@@ -474,6 +503,105 @@ export class App {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(`App '${this.appId}' not found`);
       throw err;
+    }
+  }
+
+  /** Operations on this App's Sandboxes. */
+  get sandboxes(): AppSandboxesManager {
+    return new AppSandboxesManager(this.appId, this.#client);
+  }
+}
+
+/** Operations on an {@link App}'s Sandboxes, accessed via `app.sandboxes`. */
+export class AppSandboxesManager {
+  readonly #appId: string;
+  readonly #client?: ModalClient;
+
+  /** @ignore */
+  constructor(appId: string, client?: ModalClient) {
+    this.#appId = appId;
+    this.#client = client;
+  }
+
+  /**
+   * Return statistics for this App's Sandboxes over a time range, optionally grouped by tag values.
+   *
+   * The maximum time range is 7 days.
+   *
+   * Yields {@link SandboxGroupStats} objects, one per combination of tag values, with the following fields:
+   * - `tags`: the value of each name in `groupByTags` for the group's Sandboxes, `null` where not present.
+   * - `cost`: total cost in USD as a decimal string, the sum of `costByResource`.
+   * - `costByResource`: cost in USD as decimal strings, by billed resource: `CPU`, `Memory`, and GPU types such as
+   *   `H100`. The resource names are subject to change as Modal's billing model evolves.
+   *
+   * @throws {InvalidError} If the time range is invalid or there are more than 10,000 groups.
+   *
+   * @example
+   * ```ts
+   * const since = new Date(Math.floor(Date.now() / 3600_000) * 3600_000 - 24 * 3600_000);
+   * for await (const group of app.sandboxes.stats({ since, groupByTags: ["team"] })) {
+   *   console.log(group.tags, group.cost, group.costByResource);
+   * }
+   * ```
+   */
+  async *stats(
+    params: SandboxStatsParams,
+  ): AsyncGenerator<SandboxGroupStats, void, unknown> {
+    if (!this.#appId) {
+      throw new InvalidError(
+        "App.sandboxes.stats() cannot be called on an App without an ID.",
+      );
+    }
+    if (!this.#client) {
+      throw new InvalidError(
+        "App.sandboxes.stats() requires a handle retrieved through a ModalClient.",
+      );
+    }
+    const { since, until } = params;
+    if (!Number.isFinite(since.getTime())) {
+      throw new InvalidError("`since` must be a valid date.");
+    }
+    if (since.getTime() >= Date.now()) {
+      throw new InvalidError("`since` must be in the past.");
+    }
+    if (until !== undefined) {
+      if (!Number.isFinite(until.getTime())) {
+        throw new InvalidError("`until` must be a valid date.");
+      }
+      if (since >= until) {
+        throw new InvalidError("`since` must be before `until`.");
+      }
+    }
+    const request = SandboxGetTimeRangeStatsRequest.create({
+      appId: this.#appId,
+      since,
+      until,
+      groupByTags: params.groupByTags ?? [],
+      tags: params.tags ?? {},
+    });
+    for (;;) {
+      let resp;
+      try {
+        resp = await this.#client.cpClient.sandboxGetTimeRangeStats(request);
+      } catch (err) {
+        if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT)
+          throw new InvalidError(err.details || err.message);
+        throw err;
+      }
+      for (const group of resp.groups) {
+        yield {
+          tags: Object.fromEntries(
+            Object.entries(group.tags).map(([name, tag]) => [
+              name,
+              tag.value ?? null,
+            ]),
+          ),
+          cost: group.costStr,
+          costByResource: { ...group.costByResourceStr },
+        };
+      }
+      if (!resp.nextPageToken) return;
+      request.pageToken = resp.nextPageToken;
     }
   }
 }
