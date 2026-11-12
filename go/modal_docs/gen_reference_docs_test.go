@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -62,6 +63,12 @@ type VolumeListFilesParams struct {
 }
 
 // Reload reloads the Volume metadata.
+//
+// Example:
+//
+//	if err := volume.Reload(nil); err != nil {
+//		return err
+//	}
 func (v *Volume) Reload(params *VolumeReloadParams) error { return nil }
 
 // VolumeReloadParams are options for Reload.
@@ -142,6 +149,7 @@ func TestGeneratorMergesServiceAndFoldsParams(t *testing.T) {
 	g.Expect(volume).To(ContainSubstring("func NewVolume() (*Volume, error)"))
 	// An empty params struct is still documented: the type, its doc, and a note.
 	g.Expect(volume).To(ContainSubstring("## Drop"))
+	g.Expect(volume).To(ContainSubstring("Example:\n\n" + "```go\nif err := volume.Reload(nil); err != nil {\n\treturn err\n}\n```\n\n"))
 	g.Expect(volume).To(ContainSubstring("**Parameters** (`VolumeDropParams`)"))
 	g.Expect(volume).To(ContainSubstring("VolumeDropParams are options for Drop."))
 	g.Expect(volume).To(ContainSubstring("_No configurable options._"))
@@ -297,5 +305,37 @@ func TestGodocRefsToCode(t *testing.T) {
 	}
 	for in, want := range cases {
 		g.Expect(godocRefsToCode(in)).To(Equal(want), "input %q", in)
+	}
+}
+
+func TestWriteDocCodeExamples(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		doc  string
+		want string
+	}{
+		"empty": {doc: "\n \n"},
+		"prose": {doc: "See [Volume].\n", want: "See `Volume`.\n\n"},
+		"tabs": {
+			doc:  "Example:\n\n\tvalues := map[string]int{}\n\tvalues[key] = 1\n\n\tif err != nil {\n\t\treturn err\n\t}\n\nSee [Volume].\n",
+			want: "Example:\n\n```go\nvalues := map[string]int{}\nvalues[key] = 1\n\nif err != nil {\n\treturn err\n}\n```\n\nSee `Volume`.\n\n",
+		},
+		"spaces": {
+			doc:  "    return err\n",
+			want: "```go\nreturn err\n```\n\n",
+		},
+		"multiple examples": {
+			doc:  "First:\n\n\tfirst()\n\nSecond:\n\n\tsecond()\n",
+			want: "First:\n\n```go\nfirst()\n```\n\nSecond:\n\n```go\nsecond()\n```\n\n",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			g := NewWithT(t)
+			var out strings.Builder
+			writeDoc(&out, tc.doc)
+			g.Expect(out.String()).To(Equal(tc.want))
+		})
 	}
 }

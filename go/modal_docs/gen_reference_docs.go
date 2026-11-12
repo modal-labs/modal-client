@@ -859,8 +859,34 @@ func godocRefsToCode(s string) string {
 // converting godoc symbol references into code spans. It is a no-op when the
 // comment is empty.
 func writeDoc(b *strings.Builder, doc string) {
-	if doc = strings.TrimSpace(godocRefsToCode(doc)); doc != "" {
-		b.WriteString(doc)
+	var markdown strings.Builder
+	lines := strings.Split(strings.Trim(doc, "\n"), "\n")
+	for i := 0; i < len(lines); {
+		if !strings.HasPrefix(lines[i], "\t") && !strings.HasPrefix(lines[i], "    ") {
+			markdown.WriteString(godocRefsToCode(lines[i]))
+			markdown.WriteByte('\n')
+			i++
+			continue
+		}
+		var code strings.Builder
+		for i < len(lines) {
+			line := lines[i]
+			if strings.HasPrefix(line, "\t") {
+				line = strings.TrimPrefix(line, "\t")
+			} else if strings.HasPrefix(line, "    ") {
+				line = strings.TrimPrefix(line, "    ")
+			} else if strings.TrimSpace(line) != "" {
+				break
+			}
+			code.WriteString(line)
+			code.WriteByte('\n')
+			i++
+		}
+		markdown.WriteString(codeBlock(strings.TrimRight(code.String(), "\n\t ")))
+		markdown.WriteByte('\n')
+	}
+	if rendered := strings.TrimSpace(markdown.String()); rendered != "" {
+		b.WriteString(rendered)
 		b.WriteString("\n\n")
 	}
 }
