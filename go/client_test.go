@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -542,4 +545,168 @@ func TestRetryInterceptorServerDrivenRetryLogsWarning(t *testing.T) {
 	err := interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(buf.String()).To(gomega.ContainSubstring("Server requested retry delay"))
+}
+
+// fakeServer records the requests a server started by startFakeServer receives.
+type fakeServer struct {
+	hits atomic.Int32
+	// hosts holds the x-modal-host values of the most recent request.
+	hosts atomic.Value
+}
+
+// startFakeServer serves gRPC on a local port and records the requests it receives. Every request
+// fails with PermissionDenied, which the client does not retry.
+func startFakeServer(t *testing.T) (string, *fakeServer) {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	gomega.NewWithT(t).Expect(err).ToNot(gomega.HaveOccurred())
+	fake := &fakeServer{}
+	srv := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
+		fake.hits.Add(1)
+		md, _ := metadata.FromIncomingContext(stream.Context())
+		fake.hosts.Store(md.Get("x-modal-host"))
+		return status.Error(codes.PermissionDenied, "fake server")
+	}))
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	return "http://" + lis.Addr().String(), fake
+}
+
+// closedPortURL returns a URL on a local port with no listener, so connections are refused.
+func closedPortURL(t *testing.T) string {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	gomega.NewWithT(t).Expect(err).ToNot(gomega.HaveOccurred())
+	addr := lis.Addr().String()
+	gomega.NewWithT(t).Expect(lis.Close()).To(gomega.Succeed())
+	return "http://" + addr
+}
+
+// blackholeURL returns a URL on a local port that accepts TCP connections but never responds.
+func blackholeURL(t *testing.T) string {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	gomega.NewWithT(t).Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(func() { _ = lis.Close() })
+	go func() {
+		for {
+			conn, err := lis.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+		}
+	}()
+	return "http://" + lis.Addr().String()
+}
+
+// newClientForServerURL creates a client for serverURL and makes one request through it, so the
+// caller can check which fake server received the request.
+func newClientForServerURL(t *testing.T, serverURL string) {
+	t.Helper()
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_SERVER_URL", serverURL)
+	c, err := NewClientWithOptions(&ClientParams{TokenID: "ak-test", TokenSecret: "as-test", Logger: slog.New(slog.DiscardHandler)})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(c.Close)
+	_, err = c.Secrets.FromName(context.Background(), "my-secret", nil)
+	g.Expect(status.Code(errors.Unwrap(err))).To(gomega.Equal(codes.PermissionDenied))
+}
+
+func TestServerURLFallbackWhenPrimaryUnreachable(t *testing.T) {
+	for name, primary := range map[string]func(*testing.T) string{
+		"connection refused": closedPortURL,
+		"dns failure":        func(*testing.T) string { return "http://modal-test-host.invalid:443" },
+		"tls to plaintext": func(t *testing.T) string {
+			url, _ := startFakeServer(t)
+			return "https://" + url[len("http://"):]
+		},
+		"blackholed": blackholeURL,
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := gomega.NewWithT(t)
+			secondary, fake := startFakeServer(t)
+			newClientForServerURL(t, primary(t)+","+secondary)
+			g.Expect(fake.hits.Load()).To(gomega.BeNumerically(">", 0))
+		})
+	}
+}
+
+func TestServerURLFallbackFailsOverWithoutStaggerOnFastFailure(t *testing.T) {
+	g := gomega.NewWithT(t)
+	secondary, fake := startFakeServer(t)
+	start := time.Now()
+	newClientForServerURL(t, closedPortURL(t)+","+secondary)
+	g.Expect(time.Since(start)).To(gomega.BeNumerically("<", fallbackStaggerDelay))
+	g.Expect(fake.hits.Load()).To(gomega.BeNumerically(">", 0))
+}
+
+func TestServerURLFallbackWaitsOutStaggerOnSilentPrimary(t *testing.T) {
+	g := gomega.NewWithT(t)
+	secondary, fake := startFakeServer(t)
+	start := time.Now()
+	newClientForServerURL(t, blackholeURL(t)+","+secondary)
+	g.Expect(time.Since(start)).To(gomega.BeNumerically(">=", fallbackStaggerDelay))
+	g.Expect(fake.hits.Load()).To(gomega.BeNumerically(">", 0))
+}
+
+func TestServerURLFallbackPrefersPrimaryWhenReachable(t *testing.T) {
+	g := gomega.NewWithT(t)
+	primary, primaryFake := startFakeServer(t)
+	secondary, secondaryFake := startFakeServer(t)
+	// Whitespace around the separator is ignored.
+	newClientForServerURL(t, primary+" , "+secondary)
+	g.Expect(primaryFake.hits.Load()).To(gomega.BeNumerically(">", 0))
+	g.Expect(secondaryFake.hits.Load()).To(gomega.BeZero())
+}
+
+// localhostURL returns url, a URL on 127.0.0.1, with its host spelled "localhost". It reaches the
+// same server under a different host name. Tests only use it for a secondary URL: localhost may
+// resolve to ::1 first, and that failed attempt must not let a secondary race a reachable primary.
+func localhostURL(url string) string {
+	return strings.Replace(url, "127.0.0.1", "localhost", 1)
+}
+
+func TestServerURLFallbackSendsPrimaryHostWhenPrimaryReachable(t *testing.T) {
+	g := gomega.NewWithT(t)
+	primary, primaryFake := startFakeServer(t)
+	secondary, _ := startFakeServer(t)
+	newClientForServerURL(t, primary+","+localhostURL(secondary))
+	g.Expect(primaryFake.hosts.Load()).To(gomega.HaveEach("127.0.0.1"))
+}
+
+func TestServerURLFallbackSendsSecondaryHostWhenPrimaryUnreachable(t *testing.T) {
+	g := gomega.NewWithT(t)
+	secondary, secondaryFake := startFakeServer(t)
+	newClientForServerURL(t, closedPortURL(t)+","+localhostURL(secondary))
+	g.Expect(secondaryFake.hosts.Load()).To(gomega.HaveEach("localhost"))
+}
+
+func TestServerURLFallbackUsesThirdURLWhenFirstTwoFail(t *testing.T) {
+	g := gomega.NewWithT(t)
+	third, fake := startFakeServer(t)
+	newClientForServerURL(t, closedPortURL(t)+","+closedPortURL(t)+","+third)
+	g.Expect(fake.hits.Load()).To(gomega.BeNumerically(">", 0))
+}
+
+func TestSingleServerURLConnectsLazily(t *testing.T) {
+	g := gomega.NewWithT(t)
+	t.Setenv("MODAL_SERVER_URL", closedPortURL(t))
+	start := time.Now()
+	c, err := NewClientWithOptions(&ClientParams{TokenID: "ak-test", TokenSecret: "as-test", Logger: slog.New(slog.DiscardHandler)})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	defer c.Close()
+	g.Expect(time.Since(start)).To(gomega.BeNumerically("<", time.Second))
+}
+
+func TestServerURLFallbackErrorsWhenAllURLsUnreachable(t *testing.T) {
+	g := gomega.NewWithT(t)
+	// NewClientWithOptions takes no context, so call the dialer directly to bound the wait.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	c := &Client{logger: slog.New(slog.DiscardHandler)}
+	serverURL := closedPortURL(t) + "," + closedPortURL(t)
+	conn, _, err := dialWithFallbacks(ctx, Profile{ServerURL: serverURL}, c)
+	g.Expect(conn).To(gomega.BeNil())
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring(serverURL)))
 }

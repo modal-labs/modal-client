@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -213,7 +214,7 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 			conn:              params.ControlPlaneConn,
 		}
 	} else {
-		conn, client, err := newClient(ctx, profile, c, c.additionalUnaryInterceptors, c.additionalStreamInterceptors)
+		conn, client, err := dialWithFallbacks(ctx, profile, c)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create control plane client: %w", err)
 		}
@@ -344,6 +345,8 @@ const (
 	defaultRetryMaxDelay       = 1 * time.Second
 	defaultRetryBackoffMul     = 2.0
 	serverRetryWarningInterval = 30 * time.Second
+	fallbackStaggerDelay       = 3 * time.Second  // head start each server URL gets over the next
+	fallbackConnectTimeout     = 60 * time.Second // total time to connect to any server URL
 )
 
 var retryableGrpcStatusCodes = map[codes.Code]struct{}{
@@ -425,6 +428,71 @@ func newClient(ctx context.Context, profile Profile, c *Client, customUnaryInter
 		return nil, nil, err
 	}
 	return conn, pb.NewModalClientClient(conn), nil
+}
+
+// dialWithFallbacks dials profile.ServerURL, which may be a comma-separated list of URLs. The
+// attempts race and the first connection to become ready wins, which lets the client fail over to a
+// secondary endpoint when the primary is unreachable. The URL at index i starts after i*fallbackStaggerDelay, or as
+// soon as the previous one fails, so earlier URLs are preferred when reachable.
+func dialWithFallbacks(ctx context.Context, profile Profile, c *Client) (*grpc.ClientConn, pb.ModalClientClient, error) {
+	urls := strings.Split(profile.ServerURL, ",")
+	if len(urls) == 1 {
+		return newClient(ctx, profile, c, c.additionalUnaryInterceptors, c.additionalStreamInterceptors)
+	}
+	ctx, cancel := context.WithTimeout(ctx, fallbackConnectTimeout)
+	defer cancel()
+	failed := make([]chan struct{}, len(urls))
+	for i := range failed {
+		failed[i] = make(chan struct{})
+	}
+	conns := make(chan *grpc.ClientConn, len(urls))
+	for i, u := range urls {
+		go func() {
+			markFailed := sync.OnceFunc(func() { close(failed[i]) })
+			if i > 0 {
+				select {
+				case <-failed[i-1]:
+				case <-time.After(time.Duration(i) * fallbackStaggerDelay):
+				case <-ctx.Done():
+				}
+			}
+			p := profile
+			p.ServerURL = strings.TrimSpace(u)
+			conn, _, err := newClient(ctx, p, c, c.additionalUnaryInterceptors, c.additionalStreamInterceptors)
+			if err != nil {
+				markFailed()
+				conns <- nil
+				return
+			}
+			conn.Connect()
+			for s := conn.GetState(); s != connectivity.Ready; s = conn.GetState() {
+				if s == connectivity.TransientFailure {
+					markFailed()
+				}
+				if !conn.WaitForStateChange(ctx, s) {
+					markFailed()
+					_ = conn.Close()
+					conns <- nil
+					return
+				}
+			}
+			conns <- conn
+		}()
+	}
+	var winner *grpc.ClientConn
+	for range urls {
+		if conn := <-conns; winner == nil {
+			if winner = conn; winner != nil {
+				cancel()
+			}
+		} else if conn != nil {
+			_ = conn.Close()
+		}
+	}
+	if winner == nil {
+		return nil, nil, fmt.Errorf("could not connect to the Modal server at %s", profile.ServerURL)
+	}
+	return winner, pb.NewModalClientClient(winner), nil
 }
 
 // injectRequiredHeaders adds required headers to the context. `host` is the hostname of the server
