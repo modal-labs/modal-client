@@ -3,6 +3,7 @@ package modal
 import (
 	"context"
 	"fmt"
+	"iter"
 	"maps"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -27,9 +29,13 @@ type App struct {
 	AppID       string
 	Name        string
 	Environment string
-	client      *Client
-	metadataMu  sync.Mutex
-	metadata    *pb.AppHandleMetadata
+
+	// Sandboxes provides operations on this App's Sandboxes.
+	Sandboxes *AppSandboxesManager
+
+	client     *Client
+	metadataMu sync.Mutex
+	metadata   *pb.AppHandleMetadata
 }
 
 // AppState is the lifecycle state of a Modal App.
@@ -75,7 +81,9 @@ type AppInfoParams struct {
 }
 
 func newApp(client *Client, id, name, environment string, metadata *pb.AppHandleMetadata) *App {
-	return &App{AppID: id, Name: name, Environment: environment, client: client, metadata: metadata}
+	app := &App{AppID: id, Name: name, Environment: environment, client: client, metadata: metadata}
+	app.Sandboxes = &AppSandboxesManager{app: app}
+	return app
 }
 
 func appOptionalTime(timestamp float64) *time.Time {
@@ -419,4 +427,115 @@ func (a *App) Stop(ctx context.Context, params *AppStopParams) error {
 		return NotFoundError{fmt.Sprintf("App '%s' not found", a.AppID)}
 	}
 	return err
+}
+
+// SandboxStatsParams contains options for AppSandboxesManager.Stats.
+type SandboxStatsParams struct {
+	// Since is the beginning of the time range, inclusive, on a UTC hour boundary. Required.
+	Since *time.Time
+	// Until is the end of the time range, exclusive, on a UTC hour boundary. If nil, this defaults to the current time.
+	Until *time.Time
+	// GroupByTags lists tag names to group by. Sandboxes with the same values for these names form one group; a
+	// name not present on a Sandbox counts as nil. If empty, all matching Sandboxes are returned as a single group
+	// with empty Tags.
+	GroupByTags []string
+	// Tags only includes Sandboxes that match all of these tag names and values.
+	Tags map[string]string
+}
+
+// SandboxGroupStats contains statistics for a group of Sandboxes over a time range.
+type SandboxGroupStats struct {
+	// Tags holds the value of each name in GroupByTags for the group's Sandboxes, nil where not present.
+	Tags map[string]*string
+	// Cost is the total cost in USD as a decimal string, the sum of CostByResource.
+	Cost string
+	// CostByResource holds cost in USD as decimal strings, by billed resource: "CPU", "Memory", and GPU types such
+	// as "H100". The resource names are subject to change as Modal's billing model evolves.
+	CostByResource map[string]string
+}
+
+// AppSandboxesManager provides operations on an App's Sandboxes, accessed via App.Sandboxes.
+type AppSandboxesManager struct{ app *App }
+
+// Stats returns statistics for the App's Sandboxes over a time range, optionally grouped by tag values.
+//
+// The maximum time range is 7 days.
+//
+// It yields one SandboxGroupStats per combination of tag values. An InvalidError is returned if the parameters
+// are invalid, and yielded during iteration if the server rejects the time range or there are more than 10,000
+// groups. Other RPC errors are also yielded during iteration.
+//
+//	since := time.Now().UTC().Truncate(time.Hour).Add(-24 * time.Hour)
+//	groups, err := app.Sandboxes.Stats(ctx, &modal.SandboxStatsParams{Since: &since, GroupByTags: []string{"team"}})
+//	if err != nil {
+//		return err
+//	}
+//	for group, err := range groups {
+//		if err != nil {
+//			return err
+//		}
+//		fmt.Println(group.Tags, group.Cost, group.CostByResource)
+//	}
+func (m *AppSandboxesManager) Stats(ctx context.Context, params *SandboxStatsParams) (iter.Seq2[SandboxGroupStats, error], error) {
+	if m == nil || m.app == nil {
+		return nil, InvalidError{Exception: "App.Sandboxes.Stats() requires an App retrieved through a Client."}
+	}
+	a := m.app
+	if a.AppID == "" {
+		return nil, InvalidError{Exception: "App.Sandboxes.Stats() cannot be called on an App without an ID."}
+	}
+	if a.client == nil {
+		return nil, InvalidError{Exception: "App.Sandboxes.Stats() requires a handle retrieved through a Client."}
+	}
+	if params == nil || params.Since == nil {
+		return nil, InvalidError{Exception: "`Since` is required."}
+	}
+	since := params.Since.UTC()
+	if !since.Before(time.Now()) {
+		return nil, InvalidError{Exception: "`Since` must be in the past."}
+	}
+	firstReq := pb.SandboxGetTimeRangeStatsRequest_builder{
+		AppId: a.AppID, Since: timestamppb.New(since), GroupByTags: params.GroupByTags, Tags: params.Tags,
+	}.Build()
+	if params.Until != nil {
+		if !since.Before(*params.Until) {
+			return nil, InvalidError{Exception: "`Since` must be before `Until`."}
+		}
+		firstReq.SetUntil(timestamppb.New(params.Until.UTC()))
+	}
+	return func(yield func(SandboxGroupStats, error) bool) {
+		req := proto.CloneOf(firstReq)
+		for {
+			resp, err := a.client.cpClient.SandboxGetTimeRangeStats(ctx, req)
+			if status.Code(err) == codes.InvalidArgument {
+				err = InvalidError{Exception: status.Convert(err).Message()}
+			}
+			if err != nil {
+				yield(SandboxGroupStats{}, err)
+				return
+			}
+			for _, group := range resp.GetGroups() {
+				if !yield(sandboxGroupStatsFromProto(group), nil) {
+					return
+				}
+			}
+			if resp.GetNextPageToken() == "" {
+				return
+			}
+			req.SetPageToken(resp.GetNextPageToken())
+		}
+	}, nil
+}
+
+func sandboxGroupStatsFromProto(group *pb.SandboxStatsGroup) SandboxGroupStats {
+	tags := make(map[string]*string, len(group.GetTags()))
+	for name, tag := range group.GetTags() {
+		if tag.HasValue() {
+			value := tag.GetValue()
+			tags[name] = &value
+		} else {
+			tags[name] = nil
+		}
+	}
+	return SandboxGroupStats{Tags: tags, Cost: group.GetCostStr(), CostByResource: maps.Clone(group.GetCostByResourceStr())}
 }

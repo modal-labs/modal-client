@@ -120,6 +120,7 @@ var typeRegistry = []typeEntry{
 	{name: "Tunnel", typ: reflect.TypeOf((*Tunnel)(nil)), isInterface: false},
 	{name: "SandboxFilesystem", typ: reflect.TypeOf((*SandboxFilesystem)(nil)), isInterface: false},
 	{name: "SidecarContainer", typ: reflect.TypeOf((*SidecarContainer)(nil)), isInterface: false},
+	{name: "AppSandboxesManager", typ: reflect.TypeOf((*AppSandboxesManager)(nil)), isInterface: false},
 	{name: "FunctionMetricsManager", typ: reflect.TypeOf((*FunctionMetricsManager)(nil)), isInterface: false},
 	{name: "FunctionLogsManager", typ: reflect.TypeOf((*FunctionLogsManager)(nil)), isInterface: false},
 	{name: "FunctionCallLogsManager", typ: reflect.TypeOf((*FunctionCallLogsManager)(nil)), isInterface: false},
@@ -141,6 +142,7 @@ var excludedTypes = map[string]string{
 
 	"Environment":                     "resource handle with namespaces, no public methods",
 	"FunctionStats":                   "data type",
+	"SandboxGroupStats":               "data type",
 	"FunctionInfo":                    "data type",
 	"StatsPercentile":                 "data type",
 	"StatsPercentileDistribution":     "data type",

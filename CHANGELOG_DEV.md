@@ -24,3 +24,4 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
 - Added a `Function.Info()` method.
 - `Image.Build()` now returns `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
+- Added `App.Sandboxes.Stats()` to report the cost of an App's Sandboxes over a time range, optionally grouped by tag values. Costs are returned as decimal strings.

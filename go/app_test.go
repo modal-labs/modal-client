@@ -3,6 +3,7 @@ package modal
 import (
 	"context"
 	"errors"
+	"iter"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -301,4 +303,87 @@ func TestParseGPUConfig(t *testing.T) {
 	_, err = parseGPUConfig("T4:-1")
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("invalid GPU count: -1"))
+}
+
+type sandboxStatsMockClient struct {
+	pb.ModalClientClient
+	handler func(context.Context, *pb.SandboxGetTimeRangeStatsRequest) (*pb.SandboxGetTimeRangeStatsResponse, error)
+}
+
+func (m *sandboxStatsMockClient) SandboxGetTimeRangeStats(ctx context.Context, req *pb.SandboxGetTimeRangeStatsRequest, _ ...grpc.CallOption) (*pb.SandboxGetTimeRangeStatsResponse, error) {
+	return m.handler(ctx, req)
+}
+
+func TestAppSandboxesStats(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	since := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	until := since.Add(24 * time.Hour)
+	var pages []string
+	mock := &sandboxStatsMockClient{handler: func(ctx context.Context, req *pb.SandboxGetTimeRangeStatsRequest) (*pb.SandboxGetTimeRangeStatsResponse, error) {
+		g.Expect(req.GetAppId()).To(gomega.Equal("ap-stats"))
+		g.Expect(req.GetSince().AsTime()).To(gomega.Equal(since))
+		g.Expect(req.GetUntil().AsTime()).To(gomega.Equal(until))
+		g.Expect(req.GetGroupByTags()).To(gomega.Equal([]string{"team"}))
+		g.Expect(req.GetTags()).To(gomega.Equal(map[string]string{"env": "prod"}))
+		pages = append(pages, req.GetPageToken())
+		tag := pb.SandboxStatsGroup_TagValue_builder{}.Build()
+		next := "1"
+		if req.GetPageToken() == "1" {
+			tag = pb.SandboxStatsGroup_TagValue_builder{Value: proto.String("ml")}.Build()
+			next = ""
+		}
+		group := pb.SandboxStatsGroup_builder{Tags: map[string]*pb.SandboxStatsGroup_TagValue{"team": tag}, CostStr: "0.12500000", CostByResourceStr: map[string]string{"CPU": "0.10000000", "Memory": "0.02500000"}}.Build()
+		return pb.SandboxGetTimeRangeStatsResponse_builder{Groups: []*pb.SandboxStatsGroup{group}, NextPageToken: next}.Build(), nil
+	}}
+	app := newApp(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, "ap-stats", "", "", nil)
+	groups, err := collectSandboxStats(app.Sandboxes.Stats(t.Context(), &SandboxStatsParams{Since: &since, Until: &until, GroupByTags: []string{"team"}, Tags: map[string]string{"env": "prod"}}))
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(pages).To(gomega.Equal([]string{"", "1"}))
+	ml := "ml"
+	g.Expect(groups).To(gomega.Equal([]SandboxGroupStats{
+		{Tags: map[string]*string{"team": nil}, Cost: "0.12500000", CostByResource: map[string]string{"CPU": "0.10000000", "Memory": "0.02500000"}},
+		{Tags: map[string]*string{"team": &ml}, Cost: "0.12500000", CostByResource: map[string]string{"CPU": "0.10000000", "Memory": "0.02500000"}},
+	}))
+
+	seq, err := app.Sandboxes.Stats(t.Context(), &SandboxStatsParams{Since: &since, Until: &until, GroupByTags: []string{"team"}, Tags: map[string]string{"env": "prod"}})
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	first, err := collectSandboxStats(seq, nil)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	again, err := collectSandboxStats(seq, nil)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(again).To(gomega.Equal(first))
+	g.Expect(pages).To(gomega.Equal([]string{"", "1", "", "1", "", "1"}))
+
+	mock.handler = func(context.Context, *pb.SandboxGetTimeRangeStatsRequest) (*pb.SandboxGetTimeRangeStatsResponse, error) {
+		return nil, status.Error(codes.InvalidArgument, "Too many groups")
+	}
+	_, err = collectSandboxStats(app.Sandboxes.Stats(t.Context(), &SandboxStatsParams{Since: &since}))
+	g.Expect(err).To(gomega.Equal(InvalidError{Exception: "Too many groups"}))
+
+	future := time.Now().Add(time.Hour)
+	for _, params := range []*SandboxStatsParams{nil, {}, {Since: &future}, {Since: &until, Until: &since}} {
+		_, err := app.Sandboxes.Stats(t.Context(), params)
+		g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	}
+	_, err = newApp(nil, "", "", "", nil).Sandboxes.Stats(t.Context(), &SandboxStatsParams{Since: &since})
+	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	for _, m := range []*AppSandboxesManager{nil, {}} {
+		_, err = m.Stats(t.Context(), &SandboxStatsParams{Since: &since})
+		g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
+	}
+}
+
+func collectSandboxStats(seq iter.Seq2[SandboxGroupStats, error], err error) ([]SandboxGroupStats, error) {
+	if err != nil {
+		return nil, err
+	}
+	var groups []SandboxGroupStats
+	for group, err := range seq {
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, group)
+	}
+	return groups, nil
 }
