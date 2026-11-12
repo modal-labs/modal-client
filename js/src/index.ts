@@ -6,6 +6,18 @@ export {
   type AppInfoParams,
   type AppLifecycle,
   type AppState,
+  type AppStats,
+  type AppStatsParams,
+  type AppStatsCallCounts,
+  type AppStatsContainerCounts,
+  type AppStatsFunctionCounts,
+  type AppStatsFunctionStats,
+  type AppStatsFunctionStatsGroup,
+  type AppStatsRequestCounts,
+  type AppStatsServerCounts,
+  type AppStatsServerStats,
+  type AppStatsServerStatsGroup,
+  type AppStatsSandboxCounts,
   type AppStopParams,
 } from "./app";
 export {

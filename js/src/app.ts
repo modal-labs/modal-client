@@ -1,7 +1,12 @@
 import { ClientError, Status } from "nice-grpc";
 import {
   AppGetInfoRequest,
+  AppGetTimeRangeStatsRequest,
   type AppHandleMetadata,
+  type AppLifecycle as AppLifecycleProto,
+  type AppContainerCounts as AppContainerCountsProto,
+  type AppFunctionCounts as AppFunctionCountsProto,
+  type AppServerCounts as AppServerCountsProto,
   AppState as AppStateProto,
   AppStopRequest,
   AppStopSource,
@@ -107,7 +112,132 @@ export type AppInfoParams = {
   refresh?: boolean;
 };
 
-function appInfoFromProto(metadata: AppHandleMetadata, appId: string): AppInfo {
+/** Optional parameters for {@link App#stats}. */
+export interface AppStatsParams {
+  /** The beginning of the time range, inclusive. Defaults to an hour before `until`. */
+  since?: Date;
+  /** The end of the time range, exclusive. Defaults to the current time. */
+  until?: Date;
+}
+
+/** Completed Function inputs; each map item counts separately. */
+export interface AppStatsCallCounts {
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
+/** Terminal container errors and distinct containers reporting resource activity in the window. */
+export interface AppStatsContainerCounts {
+  errors: number;
+  total: number;
+}
+
+/** Function call and container counts. */
+export interface AppStatsFunctionCounts {
+  calls: AppStatsCallCounts;
+  containers: AppStatsContainerCounts;
+}
+
+/** Object ID and counts for a Function. */
+export interface AppStatsFunctionStats {
+  objectId: string;
+  counts: AppStatsFunctionCounts;
+}
+
+/** Totals across current Functions, with individual Function stats keyed by name. */
+export interface AppStatsFunctionStatsGroup {
+  total: AppStatsFunctionCounts;
+  byName: Record<string, AppStatsFunctionStats>;
+}
+
+/** Server requests split into HTTP 1xx/2xx/3xx and all other outcomes, including status zero. */
+export interface AppStatsRequestCounts {
+  total: number;
+  ok: number;
+  failed: number;
+}
+
+/** Server request and container counts. */
+export interface AppStatsServerCounts {
+  requests: AppStatsRequestCounts;
+  containers: AppStatsContainerCounts;
+}
+
+/** Object ID and counts for a Server. */
+export interface AppStatsServerStats {
+  objectId: string;
+  counts: AppStatsServerCounts;
+}
+
+/** Totals across current Servers, with individual Server stats keyed by name. */
+export interface AppStatsServerStatsGroup {
+  total: AppStatsServerCounts;
+  byName: Record<string, AppStatsServerStats>;
+}
+
+/**
+ * Sandboxes that finished in the window and those that are live as of the until cutoff.
+ *
+ * Total is finished + live.
+ */
+export interface AppStatsSandboxCounts {
+  total: number;
+  finished: number;
+  live: number;
+}
+
+/**
+ * App-wide statistics over [since, until), with current Functions and Servers indexed by name.
+ *
+ * Lifecycle metadata describes the App when queried, including for historical windows.
+ */
+export interface AppStats {
+  since: Date;
+  until: Date;
+  functions: AppStatsFunctionStatsGroup;
+  servers: AppStatsServerStatsGroup;
+  sandboxes: AppStatsSandboxCounts;
+  lifecycle: AppLifecycle;
+  deploymentCount?: number;
+}
+
+function appContainerCountsFromProto(
+  counts?: AppContainerCountsProto,
+): AppStatsContainerCounts {
+  return {
+    errors: counts?.containerErrors ?? 0,
+    total: counts?.containerActiveCount ?? 0,
+  };
+}
+
+function appFunctionCountsFromProto(
+  counts?: AppFunctionCountsProto,
+): AppStatsFunctionCounts {
+  return {
+    calls: {
+      total: counts?.calls?.total ?? 0,
+      succeeded: counts?.calls?.succeeded ?? 0,
+      failed: counts?.calls?.failed ?? 0,
+    },
+    containers: appContainerCountsFromProto(counts?.containers),
+  };
+}
+
+function appServerCountsFromProto(
+  counts?: AppServerCountsProto,
+): AppStatsServerCounts {
+  return {
+    requests: {
+      total: counts?.requests?.total ?? 0,
+      ok: counts?.requests?.ok ?? 0,
+      failed: counts?.requests?.failed ?? 0,
+    },
+    containers: appContainerCountsFromProto(counts?.containers),
+  };
+}
+
+function appLifecycleFromProto(lifecycle?: AppLifecycleProto): AppLifecycle {
   const states: Partial<Record<AppStateProto, AppState>> = {
     [AppStateProto.APP_STATE_UNSPECIFIED]: "ephemeral",
     [AppStateProto.APP_STATE_EPHEMERAL]: "ephemeral",
@@ -119,30 +249,33 @@ function appInfoFromProto(metadata: AppHandleMetadata, appId: string): AppInfo {
     [AppStateProto.APP_STATE_INITIALIZING]: "initializing",
     [AppStateProto.APP_STATE_DISABLED]: "disabled",
   };
-  const lifecycle = metadata.lifecycle;
+  return {
+    state:
+      states[lifecycle?.appState ?? AppStateProto.APP_STATE_UNSPECIFIED] ??
+      "unknown",
+    version: lifecycle?.version || undefined,
+    createdAt: new Date((lifecycle?.createdAt ?? 0) * 1000),
+    createdBy: lifecycle?.createdBy ?? "",
+    deployedAt:
+      lifecycle && lifecycle.deployedAt > 0
+        ? new Date(lifecycle.deployedAt * 1000)
+        : undefined,
+    deployedBy: lifecycle?.deployedBy || undefined,
+    stoppedAt:
+      lifecycle && lifecycle.stoppedAt > 0
+        ? new Date(lifecycle.stoppedAt * 1000)
+        : undefined,
+    stoppedBy: lifecycle?.stoppedBy || undefined,
+  };
+}
+
+function appInfoFromProto(metadata: AppHandleMetadata, appId: string): AppInfo {
   return {
     appId,
     description: metadata.description,
     functions: { ...metadata.functions },
     servers: { ...metadata.servers },
-    lifecycle: {
-      state:
-        states[lifecycle?.appState ?? AppStateProto.APP_STATE_UNSPECIFIED] ??
-        "unknown",
-      version: lifecycle?.version || undefined,
-      createdAt: new Date((lifecycle?.createdAt ?? 0) * 1000),
-      createdBy: lifecycle?.createdBy ?? "",
-      deployedAt:
-        lifecycle && lifecycle.deployedAt > 0
-          ? new Date(lifecycle.deployedAt * 1000)
-          : undefined,
-      deployedBy: lifecycle?.deployedBy || undefined,
-      stoppedAt:
-        lifecycle && lifecycle.stoppedAt > 0
-          ? new Date(lifecycle.stoppedAt * 1000)
-          : undefined,
-      stoppedBy: lifecycle?.stoppedBy || undefined,
-    },
+    lifecycle: appLifecycleFromProto(metadata.lifecycle),
   };
 }
 
@@ -231,6 +364,86 @@ export class App {
       }
     }
     return structuredClone(this.#info);
+  }
+
+  /**
+   * Return aggregate Function, Server, and Sandbox statistics for this App.
+   *
+   * The default window is the most recent hour. Windows can span at most seven days,
+   * with a start in the past 30 days.
+   *
+   * App stats show total call counts, request counts, and the count of active and errored containers in
+   * the time window. The count of sandboxes that finished in the interval as well as the count
+   * that were still running as of the end of the window is also returned.
+   *
+   * The available stats and their definitions are subject to change and are provided
+   * on a best-effort basis. They may be delayed or incomplete.
+   *
+   * @param params - The beginning (inclusive) and end (exclusive) of the time range.
+   * `until` defaults to the current time; `since` defaults to an hour before `until`.
+   *
+   * @example
+   * ```ts
+   * const stats = await app.stats();
+   * console.log(stats.functions.total.calls.failed);
+   * console.log(stats.functions.byName["embed"].counts.containers.errors);
+   * ```
+   */
+  async stats(params: AppStatsParams = {}): Promise<AppStats> {
+    if (!this.#client) {
+      throw new InvalidError(
+        "App.stats() requires a handle retrieved through a ModalClient.",
+      );
+    }
+    const until = params.until ?? new Date();
+    const since = params.since ?? new Date(until.getTime() - 60 * 60 * 1000);
+    if (
+      !Number.isFinite(since.getTime()) ||
+      !Number.isFinite(until.getTime())
+    ) {
+      throw new InvalidError("`since` and `until` must be valid dates.");
+    }
+    if (since >= until) {
+      throw new InvalidError("`since` must be before `until`.");
+    }
+    const resp = await this.#client.cpClient.appGetTimeRangeStats(
+      AppGetTimeRangeStatsRequest.create({ appId: this.appId, since, until }),
+    );
+    return {
+      since: resp.since ?? new Date(0),
+      until: resp.until ?? new Date(0),
+      functions: {
+        total: appFunctionCountsFromProto(resp.functions?.total),
+        byName: Object.fromEntries(
+          Object.entries(resp.functions?.byName ?? {}).map(([name, row]) => [
+            name,
+            {
+              objectId: row.objectId,
+              counts: appFunctionCountsFromProto(row.counts),
+            },
+          ]),
+        ),
+      },
+      servers: {
+        total: appServerCountsFromProto(resp.servers?.total),
+        byName: Object.fromEntries(
+          Object.entries(resp.servers?.byName ?? {}).map(([name, row]) => [
+            name,
+            {
+              objectId: row.objectId,
+              counts: appServerCountsFromProto(row.counts),
+            },
+          ]),
+        ),
+      },
+      sandboxes: {
+        total: resp.sandboxes?.total ?? 0,
+        finished: resp.sandboxes?.finished ?? 0,
+        live: resp.sandboxes?.live ?? 0,
+      },
+      lifecycle: appLifecycleFromProto(resp.lifecycle),
+      deploymentCount: resp.deploymentCount,
+    };
   }
 
   /**
