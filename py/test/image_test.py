@@ -2637,6 +2637,20 @@ def test_build_using_lookup_app(client):
     image.build(app=app)
 
 
+def test_build_without_app(servicer, set_env_client):
+    image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
+
+    with servicer.intercept() as ctx:
+        built = image.build()
+
+    assert built.object_id is not None
+    (app_create,) = ctx.get_requests("AppCreate")
+    assert app_create.description == "modal-image-build"
+    assert len(ctx.get_requests("ImageGetOrCreate")) == 2
+    assert all(req.app_id == "ap-1" for req in ctx.get_requests("ImageGetOrCreate"))
+    assert servicer.app_state_history["ap-1"][-1] == api_pb2.APP_STATE_STOPPED
+
+
 def test_image_logs_require_build_attempt():
     image = modal.Image.debian_slim()
 

@@ -172,7 +172,7 @@ def _image_id_for_mount(image: _Image, method_name: str) -> str:
         raise InvalidError(
             f"{method_name}() only supports pre-built images. When using `add_local*` methods, "
             "specify `copy=True` and call `.build()` before passing the image to `mount_image()`:\n\nE.g.\n"
-            'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build(app)\n'
+            'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build()\n'
             f"{method_name}(path, img)"
         )
     if image._is_empty:

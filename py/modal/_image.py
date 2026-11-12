@@ -1127,7 +1127,7 @@ class _Image(_Object, type_prefixes=("im",)):
 
         return typing.cast(typing_extensions.Self, synchronizer._translate_out(obj))
 
-    async def build(self, app: "modal.app._App") -> "_Image":
+    async def build(self, app: "modal.app._App | None" = None) -> "_Image":
         """Eagerly build an image.
 
         If your image was previously built, then this method will not rebuild your image
@@ -1137,7 +1137,8 @@ class _Image(_Object, type_prefixes=("im",)):
         You do not need to build the image explicitly in that case.
 
         Args:
-            app: Initialized app used as the load context for the image build.
+            app: App for running the build. If not provided, the build will run
+                in an ephemeral App.
 
         Returns:
             This image after the build (and resolver load) completes.
@@ -1146,9 +1147,8 @@ class _Image(_Object, type_prefixes=("im",)):
             ```python
             image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
 
-            app = modal.App.lookup("build-image", create_if_missing=True)
             with modal.enable_output():  # To see logs in your local terminal
-                image.build(app)
+                image.build()
 
             # Save the image id
             my_image_id = image.object_id
@@ -1181,23 +1181,34 @@ class _Image(_Object, type_prefixes=("im",)):
                 ...
             ```
         """
-        if app.app_id is None:
-            raise InvalidError("App has not been initialized yet. Use the context manager `app.run()` or `App.lookup`")
 
-        resolver = Resolver()
-        async with TaskContext() as tc:
-            self._build_steps = None
-            self._failed_build_attempt = None
-            load_context = LoadContext(task_context=tc).merged_with(app._root_load_context)
-            try:
-                await resolver.load(self, load_context)
-            except ImageBuildError as e:
-                self._failed_build_attempt = _FailedBuildAttempt(
-                    image_id=e.image_id,
-                    client=load_context.client,
+        if app is None:
+            from .runner import _run_app
+
+            app_context = _run_app(modal.app._App("modal-image-build"), stream_output=False)
+        else:
+            app_context = contextlib.nullcontext(app)
+
+        async with app_context as app:
+            if app.app_id is None:
+                raise InvalidError(
+                    "App has not been initialized yet. Use the context manager `app.run()` or `App.lookup`"
                 )
 
-                raise
+            resolver = Resolver()
+            async with TaskContext() as tc:
+                self._build_steps = None
+                self._failed_build_attempt = None
+                load_context = LoadContext(task_context=tc).merged_with(app._root_load_context)
+                try:
+                    await resolver.load(self, load_context)
+                except ImageBuildError as e:
+                    self._failed_build_attempt = _FailedBuildAttempt(
+                        image_id=e.image_id,
+                        client=load_context.client,
+                    )
+
+                    raise
         return self
 
     @_requires_image_instance
@@ -3239,7 +3250,7 @@ class _Image(_Object, type_prefixes=("im",)):
 
         ```python notest
         image = modal.Image.debian_slim().pip_install("numpy")
-        image.build(app)
+        image.build()
         image.publish("my-image-with-numpy")     # my-image-with-numpy:latest
         image.publish("my-image-with-numpy:v1")
         ```

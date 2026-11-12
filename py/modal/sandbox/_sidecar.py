@@ -415,7 +415,7 @@ class _SidecarManager:
                 "Sandbox._experimental_sidecars.create(image=...) only supports pre-built images. "
                 "When using `add_local*` methods, specify `copy=True` and call `.build()` before passing "
                 "the image to `._experimental_sidecars.create()`:\n\nE.g.\n"
-                'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build(app)\n'
+                'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build()\n'
                 'sandbox._experimental_sidecars.create(name="worker", image=img)'
             )
         if not image._object_id:
