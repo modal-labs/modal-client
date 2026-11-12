@@ -2140,6 +2140,7 @@ message EnvironmentListItem {
   optional bool block_unauthenticated_resources = 17;
   optional EnvironmentRole effective_role = 18;
   optional string image_builder_version = 19;
+  optional bool can_manage = 20;
 }
 
 message EnvironmentListResponse {
