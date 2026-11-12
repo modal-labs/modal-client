@@ -3,7 +3,6 @@ package modal
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -160,25 +159,6 @@ func buildSidecarVolumeMounts(volumes map[string]*Volume) ([]*pb.VolumeMount, er
 	return volumeMounts, nil
 }
 
-// controlPlaneSidecarCreateEnvVar opts a client out of sending sidecar create
-// requests to the Modal server: set it to "0" or "false" to create sidecars
-// over the Sandbox connection instead.
-const controlPlaneSidecarCreateEnvVar = "MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE"
-
-// controlPlaneSidecarCreateEnabled reports whether Create sends its request to
-// the Modal server, which V2 Sandboxes do unless opted out. V1 Sandboxes always
-// create sidecars over the Sandbox connection.
-func controlPlaneSidecarCreateEnabled(isV2 bool) bool {
-	if !isV2 {
-		return false
-	}
-	value, isSet := os.LookupEnv(controlPlaneSidecarCreateEnvVar)
-	if !isSet {
-		return true
-	}
-	return parseBooleanFlag(value)
-}
-
 // sidecarCreateInputs is the definition shared by both create paths.
 type sidecarCreateInputs struct {
 	name              string
@@ -237,42 +217,13 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		memoryReserveConsumeMib = proto.Uint32(uint32(params.ExperimentalMemoryReserveConsumeMiB))
 	}
 
-	viaControlPlane := controlPlaneSidecarCreateEnabled(s.sandbox.isV2)
-	if len(params.CloudBucketMounts) > 0 {
-		if !s.sandbox.isV2 {
-			return nil, InvalidError{Exception: "CloudBucketMounts are not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU or MODAL_SANDBOX_V2=0 is set; contact Modal support for more information"}
-		}
-		if !viaControlPlane {
-			return nil, InvalidError{Exception: fmt.Sprintf(
-				"CloudBucketMounts are not supported in sidecars when %s=0 is set; unset it to use them",
-				controlPlaneSidecarCreateEnvVar,
-			)}
-		}
+	if err := s.sandbox.ensureAttached(); err != nil {
+		return nil, err
+	}
+	if err := s.sandbox.impl.validateSidecarCreate(params); err != nil {
+		return nil, err
 	}
 
-	if params.IncludeOidcIdentityToken {
-		if !s.sandbox.isV2 {
-			return nil, InvalidError{Exception: "IncludeOidcIdentityToken is not supported for GPU Sandboxes"}
-		}
-		if !viaControlPlane {
-			return nil, InvalidError{Exception: fmt.Sprintf(
-				"IncludeOidcIdentityToken is not supported when %s=0 is set; unset it to use it",
-				controlPlaneSidecarCreateEnvVar,
-			)}
-		}
-	}
-
-	if params.Proxy != nil {
-		if !s.sandbox.isV2 {
-			return nil, InvalidError{Exception: "Proxy is not supported for GPU Sandboxes"}
-		}
-		if !viaControlPlane {
-			return nil, InvalidError{Exception: fmt.Sprintf(
-				"Proxy is not supported when %s=0 is set; unset it to use a proxy",
-				controlPlaneSidecarCreateEnvVar,
-			)}
-		}
-	}
 	var proxyID *string
 	if params.Proxy != nil {
 		proxyID = &params.Proxy.ProxyID
@@ -334,12 +285,7 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		memoryReserveConsumeMib: memoryReserveConsumeMib,
 	}
 
-	var result sidecarCreateResult
-	if viaControlPlane {
-		result, err = s.createViaControlPlane(ctx, inputs)
-	} else {
-		result, err = s.createViaCommandRouter(ctx, inputs)
-	}
+	result, err := s.sandbox.impl.createSidecar(ctx, inputs)
 	if err != nil {
 		return nil, err
 	}
@@ -353,73 +299,6 @@ func (s *sidecarServiceImpl) Create(ctx context.Context, name string, image *Ima
 		"container_name", containerName,
 		"sandbox_id", s.sandbox.SandboxID)
 	return newSidecarContainer(s.sandbox, result.containerID, containerName, nil), nil
-}
-
-func (s *sidecarServiceImpl) createViaControlPlane(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
-	if err := s.sandbox.ensureAttached(); err != nil {
-		return sidecarCreateResult{}, err
-	}
-
-	var workdir *string
-	if in.params.Workdir != "" {
-		workdir = &in.params.Workdir
-	}
-
-	var resources *pb.Resources
-	if in.memoryReserveConsumeMib != nil {
-		resources = pb.Resources_builder{MemoryMb: *in.memoryReserveConsumeMib}.Build()
-	}
-
-	req := pb.SandboxContainerCreateV2Request_builder{
-		SandboxId:     s.sandbox.SandboxID,
-		ContainerName: in.name,
-		Definition: pb.Sandbox_builder{
-			ImageId:                  in.image.ImageID,
-			EntrypointArgs:           in.params.Command,
-			Workdir:                  workdir,
-			SecretIds:                in.secretIds,
-			VolumeMounts:             in.volumeMounts,
-			CloudBucketMounts:        in.cloudBucketMounts,
-			NetworkAccess:            in.networkAccess,
-			IncludeOidcIdentityToken: in.params.IncludeOidcIdentityToken,
-			ProxyId:                  in.proxyID,
-			PtyInfo:                  in.ptyInfo,
-			Resources:                resources,
-		}.Build(),
-		SecretSources: in.secretSources,
-	}.Build()
-
-	resp, err := s.sandbox.client.cpClient.SandboxContainerCreateV2(ctx, req)
-	if err != nil {
-		return sidecarCreateResult{}, sidecarCreateError(err)
-	}
-	return sidecarCreateResult{containerID: resp.GetContainerId(), containerName: resp.GetContainerName()}, nil
-}
-
-func (s *sidecarServiceImpl) createViaCommandRouter(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
-	taskID, client, err := s.sandbox.getCommandRouter(ctx)
-	if err != nil {
-		return sidecarCreateResult{}, err
-	}
-
-	req := pb.TaskContainerCreateRequest_builder{
-		TaskId:                  taskID,
-		ContainerName:           in.name,
-		ImageId:                 in.image.ImageID,
-		Args:                    in.params.Command,
-		Workdir:                 in.params.Workdir,
-		SecretSources:           in.secretSources,
-		VolumeMounts:            in.volumeMounts,
-		NetworkAccess:           in.networkAccess,
-		PtyInfo:                 in.ptyInfo,
-		MemoryReserveConsumeMib: in.memoryReserveConsumeMib,
-	}.Build()
-
-	resp, err := client.ContainerCreate(ctx, req)
-	if err != nil {
-		return sidecarCreateResult{}, sidecarCreateError(err)
-	}
-	return sidecarCreateResult{containerID: resp.GetContainerId(), containerName: resp.GetContainerName()}, nil
 }
 
 func (s *sidecarServiceImpl) Get(ctx context.Context, name string, params *SidecarGetParams) (*SidecarContainer, error) {
@@ -641,7 +520,10 @@ func (c *SidecarContainer) SnapshotFilesystem(ctx context.Context, params *Sidec
 			timeout = params.Timeout
 		}
 	}
-	return c.sandbox.snapshotFilesystem(ctx, timeout, ttl, c.ContainerID)
+	if err := c.sandbox.ensureAttached(); err != nil {
+		return nil, err
+	}
+	return c.sandbox.impl.snapshotFilesystem(ctx, timeout, ttl, c.ContainerID)
 }
 
 // ReloadVolumes reloads all Volumes mounted in this sidecar container.
@@ -653,7 +535,10 @@ func (c *SidecarContainer) ReloadVolumes(ctx context.Context, params *SidecarRel
 	if params != nil {
 		timeout = params.Timeout
 	}
-	return c.sandbox.reloadVolumes(ctx, c.ContainerID, timeout)
+	if err := c.sandbox.ensureAttached(); err != nil {
+		return err
+	}
+	return c.sandbox.impl.reloadVolumes(ctx, c.ContainerID, timeout)
 }
 
 // MountImage mounts an Image at a path in this Sidecar container's filesystem.

@@ -8,16 +8,13 @@ import (
 	"io"
 	"iter"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -556,52 +553,28 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 	if params == nil {
 		params = &SandboxCreateParams{}
 	}
+	impl, err := implCreateForParams(s.client, params)(ctx, s.client, app, image, params)
+	if err != nil {
+		return nil, err
+	}
+	return newSandboxFromImpl(impl), nil
+}
 
+// sandboxCreateFunc creates a Sandbox on one backend.
+type sandboxCreateFunc func(ctx context.Context, client *Client, app *App, image *Image, params *SandboxCreateParams) (sandboxImpl, error)
+
+// implCreateForParams selects the backend that creates the Sandbox described
+// by params.
+func implCreateForParams(client *Client, params *SandboxCreateParams) sandboxCreateFunc {
 	// GPUs are not supported on V2, so those calls use the V1 backend
 	// regardless of the setting.
-	if s.client.profile.SandboxV2 && params.GPU == "" {
-		return s.ExperimentalCreate(ctx, app, image, params)
+	if params.GPU != "" {
+		return createSandboxV1
 	}
-
-	image, err := image.Build(ctx, app, nil)
-	if err != nil {
-		return nil, err
+	if client.profile.SandboxV2 {
+		return createSandboxV2
 	}
-
-	mergedSecrets, err := mergeEnvIntoSecrets(ctx, s.client, &params.Env, &params.Secrets)
-	if err != nil {
-		return nil, err
-	}
-
-	// The SandboxCreate request only carries secret IDs, so any locally-created
-	// Secrets (and env vars) must be hydrated into server-side Secrets first.
-	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(mergedSecrets), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
-		return nil, err
-	}
-
-	mergedParams := *params
-	mergedParams.Secrets = mergedSecrets
-	mergedParams.Env = nil // nil'ing Env just to clarify it's not needed anymore
-
-	req, err := buildSandboxCreateRequestProto(app.AppID, image.ImageID, mergedParams)
-	if err != nil {
-		return nil, err
-	}
-
-	createResp, err := s.client.cpClient.SandboxCreate(ctx, req)
-	if err != nil {
-		if status, ok := status.FromError(err); ok && status.Code() == codes.AlreadyExists {
-			return nil, AlreadyExistsError{Exception: status.Message()}
-		}
-		return nil, err
-	}
-
-	s.client.logger.DebugContext(ctx, "Created Sandbox", "sandbox_id", createResp.GetSandboxId())
-	sb := newSandbox(s.client, createResp.GetSandboxId())
-	if err := sb.waitForScheduling(ctx, sandboxSchedulingTimeout); err != nil {
-		return nil, err
-	}
-	return sb, nil
+	return createSandboxV1
 }
 
 // ExperimentalCreate creates a new Sandbox using the experimental V2 backend.
@@ -624,71 +597,11 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 	if params == nil {
 		params = &SandboxCreateParams{}
 	}
-
-	image, err := image.Build(ctx, app, nil)
+	impl, err := createSandboxV2(ctx, s.client, app, image, params)
 	if err != nil {
 		return nil, err
 	}
-
-	// V2 takes Secrets and env vars as ordered secret_sources, so unlike Create
-	// we don't fold env vars into a server-side Secret. Locally-created Secrets
-	// (FromMap) are inlined, avoiding a SecretGetOrCreate round-trip; only the
-	// remaining resolvable Secrets (e.g. from FromName) need hydrating to secret
-	// IDs, which are also recorded on the definition.
-	for k := range params.Env {
-		if err := validateEnvVarName(k); err != nil {
-			return nil, err
-		}
-	}
-	resolvable := resolvableSecrets(params.Secrets)
-	if err := hydrateSandboxSecrets(ctx, s.client, append(slices.Clone(resolvable), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
-		return nil, err
-	}
-	sources, err := secretSources(params.Secrets, params.Env)
-	if err != nil {
-		return nil, err
-	}
-
-	definitionParams := *params
-	definitionParams.Secrets = resolvable
-
-	req, err := buildSandboxCreateV2RequestProto(app.AppID, image.ImageID, definitionParams, sources)
-	if err != nil {
-		return nil, err
-	}
-
-	createResp, err := s.client.cpClient.SandboxCreateV2(ctx, req)
-	if err != nil {
-		if status, ok := status.FromError(err); ok && status.Code() == codes.AlreadyExists {
-			return nil, AlreadyExistsError{Exception: status.Message()}
-		}
-		return nil, err
-	}
-
-	sb := newSandbox(s.client, createResp.GetSandboxId())
-	sb.taskID = createResp.GetTaskId()
-	if access := createResp.GetCommandRouterAccess(); access != nil {
-		sb.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
-	}
-	// Unencrypted tunnel endpoints are not known at create time. Only cache a
-	// complete set so Tunnels() fetches the rest otherwise.
-	numTunnels := len(createResp.GetTunnels())
-	createRespHasAllTunnels := numTunnels > 0 &&
-		numTunnels == len(req.GetDefinition().GetOpenPorts().GetPorts())
-	if createRespHasAllTunnels {
-		sb.tunnels = make(map[int]*Tunnel, numTunnels)
-		for _, t := range createResp.GetTunnels() {
-			sb.tunnels[int(t.GetContainerPort())] = &Tunnel{
-				Host:            t.GetHost(),
-				Port:            int(t.GetPort()),
-				UnencryptedHost: t.GetUnencryptedHost(),
-				UnencryptedPort: int(t.GetUnencryptedPort()),
-			}
-		}
-	}
-
-	s.client.logger.DebugContext(ctx, "Created experimental V2 Sandbox", "sandbox_id", createResp.GetSandboxId())
-	return sb, nil
+	return newSandboxFromImpl(impl), nil
 }
 
 // StdioBehavior defines how the standard input/output/error streams should behave.
@@ -749,16 +662,8 @@ type Sandbox struct {
 	// Logs provides access to entrypoint logs emitted by this Sandbox.
 	Logs *SandboxLogsManager
 
-	taskID   string
-	taskIDMu sync.Mutex
-	tunnels  map[int]*Tunnel
-	isV2     bool
-
+	impl   sandboxImpl
 	client *Client
-
-	commandRouterClient     *taskCommandRouterClient
-	commandRouterClientMu   sync.Mutex
-	initCommandRouterAccess *commandRouterAccess
 
 	attached atomic.Bool
 }
@@ -777,97 +682,22 @@ func defaultSandboxPTYInfo() *pb.PTYInfo {
 
 // newSandbox creates a Sandbox handle for a server-returned ID.
 func newSandbox(client *Client, sandboxID string) *Sandbox {
-	sb := &Sandbox{SandboxID: sandboxID, client: client}
+	return newSandboxFromImpl(newSandboxImpl(client, sandboxID, taskSandboxOptions{}))
+}
+
+// newSandboxFromImpl wraps a backend implementation in a Sandbox handle.
+func newSandboxFromImpl(impl sandboxImpl) *Sandbox {
+	client := impl.modalClient()
+	sb := &Sandbox{SandboxID: impl.sandboxID(), impl: impl, client: client}
 	sb.Filesystem = &SandboxFilesystem{sandbox: sb, logger: client.logger}
 	sb.ExperimentalSidecars = &sidecarServiceImpl{sandbox: sb}
 	sb.attached.Store(true)
-	getAppIDFunc := func(ctx context.Context) (string, error) {
-		resp, err := sb.sandboxWait(ctx, 0)
-		return resp.GetMetadata().GetAppId(), err
-	}
 
-	getTaskIDFunc := func(ctx context.Context) (string, error) {
-		resp, err := sb.sandboxGetTaskID(ctx)
-		return resp.GetTaskId(), err
-	}
-	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
-		sb.isV2 = true
-		sb.Stdin = &sbStdinV2{sb: sb}
-		stdoutCtx, stdoutCancel := context.WithCancel(context.Background())
-		sb.Stdout = &lazyStreamReader{
-			readCheck: sb.ensureAttached,
-			cancel:    stdoutCancel,
-			initFunc: func() io.ReadCloser {
-				return outputStreamSbV2(stdoutCtx, sb, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
-			},
-		}
-		stderrCtx, stderrCancel := context.WithCancel(context.Background())
-		sb.Stderr = &lazyStreamReader{
-			readCheck: sb.ensureAttached,
-			cancel:    stderrCancel,
-			initFunc: func() io.ReadCloser {
-				return outputStreamSbV2(stderrCtx, sb, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
-			},
-		}
-		sb.Logs = &SandboxLogsManager{client: client, sandboxID: sandboxID, getAppIDFunc: getAppIDFunc, getTaskIDFunc: getTaskIDFunc}
-
-		return sb
-	}
-	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
-	sb.Stdout = outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT, client.profile.SandboxChannelIdleTimeout)
-	sb.Stderr = outputStreamSb(client.cpClient, sandboxID, pb.FileDescriptor_FILE_DESCRIPTOR_STDERR, client.profile.SandboxChannelIdleTimeout)
-
-	sb.Logs = &SandboxLogsManager{client: client, sandboxID: sandboxID, getAppIDFunc: getAppIDFunc, getTaskIDFunc: getTaskIDFunc}
+	sb.Stdin = impl.stdin()
+	sb.Stdout = impl.outputStream(pb.FileDescriptor_FILE_DESCRIPTOR_STDOUT)
+	sb.Stderr = impl.outputStream(pb.FileDescriptor_FILE_DESCRIPTOR_STDERR)
+	sb.Logs = &SandboxLogsManager{client: client, sandboxID: sb.SandboxID, getAppIDFunc: impl.getAppID, getTaskIDFunc: impl.resolveTaskIDForLogs}
 	return sb
-}
-
-func (sb *Sandbox) sandboxWait(ctx context.Context, timeout float32) (*pb.SandboxWaitResponse, error) {
-	req := pb.SandboxWaitRequest_builder{
-		SandboxId: sb.SandboxID,
-		Timeout:   timeout,
-	}.Build()
-	if sb.isV2 {
-		return sb.client.cpClient.SandboxWaitV2(ctx, req)
-	}
-	return sb.client.cpClient.SandboxWait(ctx, req)
-}
-
-func (sb *Sandbox) sandboxTerminate(ctx context.Context) (*pb.SandboxTerminateResponse, error) {
-	req := pb.SandboxTerminateRequest_builder{SandboxId: sb.SandboxID}.Build()
-	if sb.isV2 {
-		return sb.client.cpClient.SandboxTerminateV2(ctx, req)
-	}
-	return sb.client.cpClient.SandboxTerminate(ctx, req)
-}
-
-func (sb *Sandbox) sandboxGetTaskID(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error) {
-	req := pb.SandboxGetTaskIdRequest_builder{SandboxId: sb.SandboxID}.Build()
-	if sb.isV2 {
-		return sb.client.cpClient.SandboxGetTaskIdV2(ctx, req)
-	}
-	return sb.client.cpClient.SandboxGetTaskId(ctx, req)
-}
-
-func (sb *Sandbox) sandboxGetTunnels(ctx context.Context, timeout time.Duration) (*pb.SandboxGetTunnelsResponse, error) {
-	req := pb.SandboxGetTunnelsRequest_builder{
-		SandboxId: sb.SandboxID,
-		Timeout:   float32(timeout.Seconds()),
-	}.Build()
-	if sb.isV2 {
-		return sb.client.cpClient.SandboxGetTunnelsV2(ctx, req)
-	}
-	return sb.client.cpClient.SandboxGetTunnels(ctx, req)
-}
-
-func (sb *Sandbox) sandboxGetExitSnapshot(ctx context.Context, timeout float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error) {
-	req := pb.SandboxGetExitSnapshotRequest_builder{
-		SandboxId: sb.SandboxID,
-		Timeout:   timeout,
-	}.Build()
-	if sb.isV2 {
-		return sb.client.cpClient.SandboxGetExitSnapshotV2(ctx, req, opts...)
-	}
-	return sb.client.cpClient.SandboxGetExitSnapshot(ctx, req, opts...)
 }
 
 // FromID returns a running Sandbox object from an ID.
@@ -964,19 +794,11 @@ func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string,
 		}
 	}
 
-	resp, err := s.client.cpClient.SandboxGetFromName(ctx, pb.SandboxGetFromNameRequest_builder{
-		SandboxName:     name,
-		AppName:         appName,
-		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
-	}.Build())
+	impl, err := sandboxFromNameV1(ctx, s.client, appName, name, params)
 	if err != nil {
-		if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
-			return nil, NotFoundError{Exception: fmt.Sprintf("Sandbox with name '%s' not found in App '%s'", name, appName)}
-		}
 		return nil, err
 	}
-
-	return newSandbox(s.client, resp.GetSandboxId()), nil
+	return newSandboxFromImpl(impl), nil
 }
 
 // SandboxExperimentalFromNameParams are options for SandboxService.ExperimentalFromName.
@@ -995,21 +817,11 @@ func (s *sandboxServiceImpl) ExperimentalFromName(ctx context.Context, appName, 
 	if params == nil {
 		params = &SandboxExperimentalFromNameParams{}
 	}
-
-	resp, err := s.client.cpClient.SandboxGetFromNameV2(ctx, pb.SandboxGetFromNameRequest_builder{
-		SandboxName:       name,
-		AppName:           appName,
-		EnvironmentName:   firstNonEmpty(params.Environment, s.client.profile.Environment),
-		IncludeTerminated: params.IncludeTerminated,
-	}.Build())
+	impl, err := sandboxFromNameV2(ctx, s.client, appName, name, params)
 	if err != nil {
-		if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
-			return nil, NotFoundError{Exception: fmt.Sprintf("Sandbox with name '%s' not found in App '%s'", name, appName)}
-		}
 		return nil, err
 	}
-
-	return newSandbox(s.client, resp.GetSandboxId()), nil
+	return newSandboxFromImpl(impl), nil
 }
 
 // SandboxSnapshot is a stored Sandbox memory snapshot created by calling
@@ -1092,49 +904,15 @@ func (s *sandboxServiceImpl) ExperimentalFromSnapshot(ctx context.Context, snaps
 		}
 	}
 
+	fromSnapshot := sandboxFromSnapshotV1
 	if useV2 {
-		resp, err := s.client.cpClient.SandboxRestoreV2(ctx, pb.SandboxRestoreV2Request_builder{
-			SnapshotId:              snapshot.SnapshotID,
-			SandboxNameOverride:     nameOverride,
-			SandboxNameOverrideType: overrideType,
-		}.Build())
-		if err != nil {
-			return nil, err
-		}
-		sb := newSandbox(s.client, resp.GetSandboxId())
-		sb.taskID = resp.GetTaskId()
-		if access := resp.GetCommandRouterAccess(); access != nil {
-			sb.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
-		}
-		return sb, nil
+		fromSnapshot = sandboxFromSnapshotV2
 	}
-
-	resp, err := s.client.cpClient.SandboxRestore(ctx, pb.SandboxRestoreRequest_builder{
-		SnapshotId:              snapshot.SnapshotID,
-		SandboxNameOverride:     nameOverride,
-		SandboxNameOverrideType: overrideType,
-	}.Build())
+	impl, err := fromSnapshot(ctx, s.client, snapshot, overrideType, nameOverride)
 	if err != nil {
 		return nil, err
 	}
-
-	sb := newSandbox(s.client, resp.GetSandboxId())
-
-	timeoutSecs := float32(55)
-	taskResp, err := s.client.cpClient.SandboxGetTaskId(ctx, pb.SandboxGetTaskIdRequest_builder{
-		SandboxId:      resp.GetSandboxId(),
-		WaitUntilReady: true,
-		Timeout:        &timeoutSecs,
-	}.Build())
-	if err != nil {
-		return nil, err
-	}
-	if result := taskResp.GetTaskResult(); result != nil &&
-		result.GetStatus() != pb.GenericResult_GENERIC_STATUS_UNSPECIFIED &&
-		result.GetStatus() != pb.GenericResult_GENERIC_STATUS_SUCCESS {
-		return nil, ExecutionError{Exception: result.GetException()}
-	}
-	return sb, nil
+	return newSandboxFromImpl(impl), nil
 }
 
 // SandboxExecParams defines options for executing commands in a Sandbox.
@@ -1299,55 +1077,10 @@ func (sb *Sandbox) execForFilesystem(ctx context.Context, command []string, para
 // execInternal is the shared implementation behind Sandbox.Exec and
 // SidecarContainer.Exec.
 func (sb *Sandbox) execInternal(ctx context.Context, command []string, params *SandboxExecParams, containerID string) (*ContainerProcess, error) {
-	if params == nil {
-		params = &SandboxExecParams{}
-	}
-
-	if err := validateExecArgs(command); err != nil {
+	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-
-	// Locally-created Secrets (FromMap) are inlined into the request's
-	// secret_sources, so only the remaining Secrets need hydrating. This avoids
-	// a SecretGetOrCreate round-trip for env-dict Secrets.
-	for k := range params.Env {
-		if err := validateEnvVarName(k); err != nil {
-			return nil, err
-		}
-	}
-	if err := hydrateSecrets(ctx, sb.client, resolvableSecrets(params.Secrets)); err != nil {
-		return nil, err
-	}
-
-	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	execID := uuid.New().String()
-	req, err := buildTaskExecStartRequestProto(taskID, execID, command, *params, containerID)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = commandRouterClient.ExecStart(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	sb.client.logger.DebugContext(ctx, "Created ContainerProcess",
-		"exec_id", execID,
-		"sandbox_id", sb.SandboxID,
-		"container_id", containerID,
-		"command", command)
-
-	var deadline *time.Time
-	if params.Timeout > 0 {
-		d := time.Now().Add(params.Timeout)
-		deadline = &d
-	}
-
-	return newContainerProcess(commandRouterClient, sb.client.logger, taskID, execID, *params, deadline), nil
+	return sb.impl.exec(ctx, command, params, containerID)
 }
 
 // SandboxCreateConnectTokenParams are optional parameters for CreateConnectToken.
@@ -1379,191 +1112,26 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 	if params.Port == 0 {
 		params.Port = 8080
 	}
-	port := uint32(params.Port)
-	req := pb.SandboxCreateConnectTokenRequest_builder{
-		SandboxId:    sb.SandboxID,
-		UserMetadata: params.UserMetadata,
-		Port:         &port,
-	}.Build()
-
-	var resp *pb.SandboxCreateConnectTokenResponse
-	var err error
-	if sb.isV2 {
-		resp, err = sb.client.cpClient.SandboxCreateConnectTokenV2(ctx, req)
-	} else {
-		resp, err = sb.client.cpClient.SandboxCreateConnectToken(ctx, req)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &SandboxCreateConnectCredentials{URL: resp.GetUrl(), Token: resp.GetToken()}, nil
-}
-
-// How long Create waits for capacity before giving up.
-const sandboxSchedulingTimeout = 21 * time.Minute
-
-// How long operations that need a running task wait for one.
-const getTaskIDTimeout = 5 * time.Minute
-
-func (sb *Sandbox) ensureTaskID(ctx context.Context) (string, error) {
-	return sb.waitForTaskID(ctx, getTaskIDTimeout, false)
+	return sb.impl.createConnectToken(ctx, uint32(params.Port), params.UserMetadata)
 }
 
 // waitForScheduling blocks until the Sandbox has a task. If the wait fails for
 // any reason other than the Sandbox having already finished, it terminates the
 // Sandbox so a queued one cannot start later with no caller.
 func (sb *Sandbox) waitForScheduling(ctx context.Context, timeout time.Duration) error {
-	_, err := sb.waitForTaskID(ctx, timeout, true)
-	if err == nil {
-		return nil
-	}
-	var conflictErr ConflictError
-	if errors.As(err, &conflictErr) {
-		return err
-	}
-	// The caller's context may already be done, so terminate on a detached one.
-	if _, terminateErr := sb.Terminate(context.WithoutCancel(ctx), nil); terminateErr != nil {
-		sb.client.logger.DebugContext(ctx, "Failed to terminate unscheduled Sandbox", "sandbox_id", sb.SandboxID, "error", terminateErr)
-	}
-	var timeoutErr TimeoutError
-	if errors.As(err, &timeoutErr) {
-		return ResourceExhaustedError{Exception: "Insufficient capacity to create sandbox."}
-	}
-	return err
-}
-
-// waitForTaskID polls until the Sandbox has been assigned a task. It returns a
-// ConflictError if the Sandbox finished before that happened and a TimeoutError
-// once timeout elapses. With retryTransient, lookups that fail with a transient
-// error keep polling until the deadline instead of failing the wait.
-func (sb *Sandbox) waitForTaskID(ctx context.Context, timeout time.Duration, retryTransient bool) (string, error) {
-	sb.taskIDMu.Lock()
-	taskID := sb.taskID
-	sb.taskIDMu.Unlock()
-	if taskID != "" {
-		return taskID, nil
-	}
-	const pollInterval = 500 * time.Millisecond
-	deadline := time.Now().Add(timeout)
-	noTimeLeft := func() bool { return time.Until(deadline) <= pollInterval }
-	timedOut := TimeoutError{Exception: fmt.Sprintf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)}
-	for {
-		resp, err := sb.sandboxGetTaskID(ctx)
-		if err != nil {
-			// A done caller context surfaces from the RPC as a gRPC status error, so check ctx directly.
-			if ctx.Err() != nil {
-				return "", ctx.Err()
-			}
-			if !isTransientTaskIDLookupError(err) || (!retryTransient && time.Now().Before(deadline)) {
-				return "", err
-			}
-			if noTimeLeft() {
-				// A server error is not evidence of missing capacity, so surface it as is.
-				if status.Code(err) == codes.Internal {
-					return "", err
-				}
-				return "", timedOut
-			}
-		} else if resp.GetTaskId() != "" {
-			sb.taskIDMu.Lock()
-			sb.taskID = resp.GetTaskId()
-			sb.taskIDMu.Unlock()
-			return resp.GetTaskId(), nil
-		} else if result := resp.GetTaskResult(); result != nil {
-			msg := result.GetException()
-			if msg == "" {
-				msg = fmt.Sprintf("Sandbox %s has already finished", sb.SandboxID)
-			}
-			return "", ConflictError{Exception: msg}
-		} else if noTimeLeft() {
-			return "", timedOut
-		}
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(pollInterval):
-		}
-	}
-}
-
-func isTransientTaskIDLookupError(err error) bool {
-	switch status.Code(err) {
-	case codes.Unavailable, codes.DeadlineExceeded, codes.Internal:
-		return true
-	}
-	return false
+	return sb.impl.waitForScheduling(ctx, timeout)
 }
 
 func (sb *Sandbox) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return "", nil, err
 	}
-	taskID, err := sb.ensureTaskID(ctx)
-	if err != nil {
-		return "", nil, err
-	}
-	client, err := sb.getOrCreateCommandRouterClient(ctx, taskID)
-	if err != nil {
-		return "", nil, err
-	}
-	return taskID, client, nil
+	return sb.impl.getCommandRouter(ctx)
 }
 
-func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
-	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
-	sb.commandRouterClientMu.Lock()
-	defer func() {
-		if !sb.attached.Load() && sb.commandRouterClient != nil {
-			sb.commandRouterClient.closeWhenIdle()
-			sb.commandRouterClient = nil
-		}
-		sb.commandRouterClientMu.Unlock()
-	}()
-
-	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
-
-	if sb.commandRouterClient == nil {
-		// Consume the seeded access, so if connecting with it fails the retry
-		// falls back to the authoritative RPC instead of re-trying the same
-		// credentials forever. Safe under commandRouterClientMu, held above.
-		access := sb.initCommandRouterAccess
-		sb.initCommandRouterAccess = nil
-
-		client, err := initTaskCommandRouterClient(
-			ctx,
-			sb.client.cpClient,
-			taskID,
-			sb.SandboxID,
-			sb.isV2,
-			access,
-			sb.client.logger,
-			sb.client.serverWarningLogger,
-			sb.client.profile,
-		)
-		if err != nil {
-			return nil, err
-		}
-		sb.commandRouterClient = client
-	}
-	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
-	return sb.commandRouterClient, nil
-}
 func (sb *Sandbox) ensureAttached() error {
 	if !sb.attached.Load() {
 		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
-	}
-	return nil
-}
-
-func (sb *Sandbox) ensureV2(methodName string) error {
-	if !sb.isV2 {
-		return InvalidError{Exception: fmt.Sprintf("Sandbox.%s is only supported for V2 sandboxes", methodName)}
 	}
 	return nil
 }
@@ -1576,16 +1144,7 @@ func (sb *Sandbox) Detach() error {
 	if !sb.attached.Swap(false) {
 		return nil
 	}
-	// Initialization owns cleanup if it is still holding this lock.
-	if !sb.commandRouterClientMu.TryLock() {
-		return nil
-	}
-	defer sb.commandRouterClientMu.Unlock()
-
-	if sb.commandRouterClient != nil {
-		sb.commandRouterClient.closeWhenIdle()
-		sb.commandRouterClient = nil
-	}
+	sb.impl.close()
 	return nil
 }
 
@@ -1604,13 +1163,13 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 		params = &SandboxTerminateParams{}
 	}
 
-	_, err := sb.sandboxTerminate(ctx)
-	if err != nil {
+	if err := sb.impl.terminate(ctx); err != nil {
 		return 0, err
 	}
 	returnCode := 0
 
 	if params.Wait {
+		var err error
 		returnCode, err = sb.Wait(ctx, nil)
 		if err != nil {
 			return returnCode, err
@@ -1624,27 +1183,7 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 
 // Wait blocks until the Sandbox exits, and returns its exit code.
 func (sb *Sandbox) Wait(ctx context.Context, params *SandboxWaitParams) (int, error) {
-	for {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-
-		resp, err := sb.sandboxWait(ctx, 10)
-		if err != nil {
-			return 0, err
-		}
-		if resp.GetResult() != nil {
-			returnCode := getReturnCode(resp.GetResult())
-			sb.client.logger.DebugContext(ctx, "Sandbox wait completed",
-				"sandbox_id", sb.SandboxID,
-				"status", resp.GetResult().GetStatus().String(),
-				"return_code", returnCode)
-			if returnCode != nil {
-				return *returnCode, nil
-			}
-			return 0, nil
-		}
-	}
+	return sb.impl.wait(ctx)
 }
 
 // WaitUntilReady blocks until the Sandbox readiness probe reports ready.
@@ -1655,16 +1194,7 @@ func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration, pa
 	if timeout <= 0 {
 		return InvalidError{Exception: fmt.Sprintf("timeout must be positive, got %v", timeout)}
 	}
-
-	// Route to the task command router for both V1 and V2 sandboxes.
-	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
-		return err
-	}
-	if _, err := commandRouterClient.SandboxWaitUntilReady(ctx, taskID, timeout); err != nil {
-		return err
-	}
-	return nil
+	return sb.impl.waitUntilReady(ctx, timeout)
 }
 
 // Tunnels gets Tunnel metadata for the Sandbox.
@@ -1674,30 +1204,7 @@ func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration, params *S
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-	if sb.tunnels != nil {
-		return sb.tunnels, nil
-	}
-
-	resp, err := sb.sandboxGetTunnels(ctx, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.GetResult() != nil && resp.GetResult().GetStatus() == pb.GenericResult_GENERIC_STATUS_TIMEOUT {
-		return nil, SandboxTimeoutError{Exception: "Sandbox operation timed out"}
-	}
-
-	sb.tunnels = make(map[int]*Tunnel)
-	for _, t := range resp.GetTunnels() {
-		sb.tunnels[int(t.GetContainerPort())] = &Tunnel{
-			Host:            t.GetHost(),
-			Port:            int(t.GetPort()),
-			UnencryptedHost: t.GetUnencryptedHost(),
-			UnencryptedPort: int(t.GetUnencryptedPort()),
-		}
-	}
-
-	return sb.tunnels, nil
+	return sb.impl.tunnels(ctx, timeout)
 }
 
 // NoExpiryTTL is the sentinel [time.Duration] value for
@@ -1829,6 +1336,9 @@ func resolveTTL(ttl time.Duration) (int64, error) {
 // cutoff measured from creation, and the call has a 55-second timeout.
 // See [SandboxSnapshotFilesystemParams] for control over both.
 func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapshotFilesystemParams) (*Image, error) {
+	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
 	var ttl time.Duration
 	timeout := 55 * time.Second
 	if params != nil {
@@ -1837,37 +1347,7 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 			timeout = params.Timeout
 		}
 	}
-	return sb.snapshotFilesystem(ctx, timeout, ttl, "")
-}
-
-func (sb *Sandbox) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {
-	wireTTL, err := resolveTTL(ttl)
-	if err != nil {
-		return nil, err
-	}
-
-	taskID, crClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	request := pb.TaskSnapshotFilesystemRequest_builder{
-		TaskId:      taskID,
-		SnapshotId:  uuid.NewString(),
-		TtlSeconds:  &wireTTL,
-		ContainerId: containerID,
-	}.Build()
-
-	response, err := crClient.SnapshotFilesystem(ctx, request, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	if response.GetImageId() == "" {
-		return nil, ExecutionError{Exception: "Sandbox snapshot filesystem response missing image ID"}
-	}
-
-	return &Image{ImageID: response.GetImageId(), client: sb.client}, nil
+	return sb.impl.snapshotFilesystem(ctx, timeout, ttl, "")
 }
 
 // SandboxExperimentalGetExitSnapshotParams are options for Sandbox.ExperimentalGetExitSnapshot.
@@ -1918,109 +1398,7 @@ const (
 //
 // EXPERIMENTAL: the API is subject to change.
 func (sb *Sandbox) ExperimentalGetExitSnapshot(ctx context.Context, params *SandboxExperimentalGetExitSnapshotParams) (*Image, error) {
-	var timeout *time.Duration
-	if params != nil {
-		timeout = params.Timeout
-	}
-	if timeout != nil && *timeout < 0 {
-		return nil, InvalidError{Exception: fmt.Sprintf("Timeout must be non-negative, got %v", *timeout)}
-	}
-
-	var deadline time.Time
-	if timeout != nil {
-		deadline = time.Now().Add(*timeout)
-	}
-	timeoutErr := TimeoutError{Exception: fmt.Sprintf("timed out waiting for exit snapshot for Sandbox %s", sb.SandboxID)}
-	pollRetries := 0
-	consecutivePollFailures := 0
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-
-		requestTimeout := exitSnapshotLongPollTimeout
-		if timeout != nil {
-			requestTimeout = min(exitSnapshotLongPollTimeout, max(0, time.Until(deadline)))
-		}
-
-		pollCtx, cancel := context.WithTimeout(ctx, requestTimeout+exitSnapshotPollDeadlineMargin)
-		resp, err := sb.sandboxGetExitSnapshot(pollCtx, float32(requestTimeout.Seconds()), retryCallOption{retries: &pollRetries})
-		cancel()
-		if err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
-			}
-			if policy := getServerRetryPolicy(err); policy != nil {
-				if timeout != nil && !time.Now().Before(deadline) {
-					return nil, timeoutErr
-				}
-				consecutivePollFailures = 0
-				throttleDelay := max(time.Duration(float64(policy.GetRetryAfterSecs())*float64(time.Second)), defaultRetryBaseDelay)
-				if timeout != nil {
-					throttleDelay = min(throttleDelay, max(0, time.Until(deadline)))
-				}
-				if sleepErr := sleepCtx(ctx, throttleDelay); sleepErr != nil {
-					return nil, sleepErr
-				}
-				continue
-			}
-			if st, ok := status.FromError(err); ok {
-				switch st.Code() {
-				case codes.InvalidArgument:
-					return nil, InvalidError{Exception: st.Message()}
-				case codes.NotFound:
-					return nil, NotFoundError{Exception: st.Message()}
-				}
-			}
-			if isRetryableGrpc(err) || errors.Is(err, context.DeadlineExceeded) {
-				if timeout != nil && !time.Now().Before(deadline) {
-					return nil, timeoutErr
-				}
-				consecutivePollFailures++
-				if consecutivePollFailures >= exitSnapshotMaxConsecutivePollFailures {
-					return nil, err
-				}
-				backoff := exitSnapshotPollFailureBackoff
-				if timeout != nil {
-					backoff = min(backoff, max(0, time.Until(deadline)))
-				}
-				if sleepErr := sleepCtx(ctx, backoff); sleepErr != nil {
-					return nil, sleepErr
-				}
-				continue
-			}
-			return nil, err
-		}
-		consecutivePollFailures = 0
-
-		switch {
-		case resp.GetSuccess() != nil:
-			if resp.GetSuccess().GetImageId() == "" {
-				return nil, ExecutionError{Exception: "Exit snapshot result is missing image ID"}
-			}
-			return &Image{ImageID: resp.GetSuccess().GetImageId(), client: sb.client}, nil
-		case resp.GetError() != nil:
-			message := resp.GetError().GetMessage()
-			errorCode := resp.GetError().GetErrorCode()
-			if errorCode == pb.SandboxGetExitSnapshotResponse_ERROR_CODE_TIMEOUT ||
-				errorCode == pb.SandboxGetExitSnapshotResponse_ERROR_CODE_FILESYSTEM_INCONSISTENT {
-				if message == "" {
-					message = "No exit snapshot image will be produced"
-				}
-				return nil, SnapshotCreationError{Exception: message}
-			}
-			if message == "" {
-				message = "Exit snapshot state is malformed"
-			}
-			return nil, ExecutionError{Exception: message}
-		case resp.GetPending() == nil:
-			return nil, ExecutionError{Exception: "Exit snapshot response is missing an outcome"}
-		}
-
-		if timeout != nil && !time.Now().Before(deadline) {
-			return nil, timeoutErr
-		}
-	}
+	return sb.impl.getExitSnapshot(ctx, params)
 }
 
 // SandboxExperimentalSnapshotParams are options for Sandbox.ExperimentalSnapshot.
@@ -2037,87 +1415,25 @@ func (sb *Sandbox) ExperimentalSnapshot(ctx context.Context, params *SandboxExpe
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-
-	var snapshotID string
-	if sb.isV2 {
-		taskID, crClient, err := sb.getCommandRouter(ctx)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := crClient.SnapshotMemory(ctx, pb.TaskSnapshotMemoryRequest_builder{
-			TaskId:         taskID,
-			IdempotencyKey: uuid.NewString(),
-		}.Build(), 300*time.Second)
-		if err != nil {
-			return nil, err
-		}
-		snapshotID = resp.GetSnapshotId()
-	} else {
-		if _, err := sb.ensureTaskID(ctx); err != nil {
-			return nil, err
-		}
-		snapResp, err := sb.client.cpClient.SandboxSnapshot(ctx, pb.SandboxSnapshotRequest_builder{
-			SandboxId: sb.SandboxID,
-		}.Build())
-		if err != nil {
-			return nil, err
-		}
-		snapshotID = snapResp.GetSnapshotId()
-
-		// wait for the snapshot to succeed. this is implemented as a second idempotent rpc
-		// because the snapshot itself may take a while to complete.
-		waitResp, err := sb.client.cpClient.SandboxSnapshotWait(ctx, pb.SandboxSnapshotWaitRequest_builder{
-			SnapshotId: snapshotID,
-			Timeout:    55,
-		}.Build())
-		if err != nil {
-			return nil, err
-		}
-		if waitResp.GetResult().GetStatus() != pb.GenericResult_GENERIC_STATUS_SUCCESS {
-			return nil, ExecutionError{Exception: waitResp.GetResult().GetException()}
-		}
-	}
-
-	isV2 := sb.isV2
-	return &SandboxSnapshot{SnapshotID: snapshotID, isV2: &isV2, client: sb.client}, nil
+	return sb.impl.snapshotMemory(ctx)
 }
 
 // MountImage mounts an Image at a path in the Sandbox filesystem.
 //
 // If image is nil, mounts an empty directory.
 func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error {
-	taskID, crClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
+	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
-
-	imageID, err := resolveMountImageID(image)
-	if err != nil {
-		return err
-	}
-
-	request, err := buildTaskMountDirectoryRequestProto(taskID, path, imageID, "", params)
-	if err != nil {
-		return err
-	}
-
-	return crClient.MountDirectory(ctx, request)
+	return sb.impl.mountImage(ctx, path, image, params)
 }
 
 // UnmountImage removes an image mount from a path in the Sandbox filesystem.
 func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *SandboxUnmountImageParams) error {
-	taskID, crClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
+	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
-
-	request := pb.TaskUnmountDirectoryRequest_builder{
-		TaskId:      taskID,
-		Path:        []byte(path),
-		ContainerId: "",
-	}.Build()
-
-	return crClient.UnmountDirectory(ctx, request)
+	return sb.impl.unmountImage(ctx, path)
 }
 
 // ReloadVolumes reloads all Volumes mounted in the Sandbox.
@@ -2125,30 +1441,14 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *Sandbo
 // Blocks until the reload completes, or returns a TimeoutError on timeout (the
 // reload may still complete in the background).
 func (sb *Sandbox) ReloadVolumes(ctx context.Context, params *SandboxReloadVolumesParams) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
 	var timeout time.Duration
 	if params != nil {
 		timeout = params.Timeout
 	}
-	return sb.reloadVolumes(ctx, "", timeout)
-}
-
-// reloadVolumes reloads one container's Volumes; an empty containerID targets
-// the main container. A zero timeout selects the default.
-func (sb *Sandbox) reloadVolumes(ctx context.Context, containerID string, timeout time.Duration) error {
-	if timeout < 0 {
-		return InvalidError{Exception: "Timeout must not be negative"}
-	}
-	if timeout == 0 {
-		timeout = 55 * time.Second
-	}
-	taskID, crClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
-		return err
-	}
-	return crClient.ReloadVolumes(ctx, pb.TaskReloadVolumesRequest_builder{
-		TaskId:      taskID,
-		ContainerId: containerID,
-	}.Build(), timeout)
+	return sb.impl.reloadVolumes(ctx, "", timeout)
 }
 
 func buildUpdateNetworkPolicyProto(taskID string, params SandboxUpdateNetworkPolicyParams) *pb.TaskSetNetworkAccessRequest {
@@ -2166,18 +1466,16 @@ func buildUpdateNetworkPolicyProto(taskID string, params SandboxUpdateNetworkPol
 //
 // Established connections that the new policy no longer permits are terminated.
 func (sb *Sandbox) UpdateNetworkPolicy(ctx context.Context, params *SandboxUpdateNetworkPolicyParams) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
 	if params == nil {
 		params = &SandboxUpdateNetworkPolicyParams{}
 	}
 	if params.OutboundCIDRAllowlist == nil || params.OutboundDomainAllowlist == nil {
 		return InvalidError{Exception: "UpdateNetworkPolicy currently requires both OutboundCIDRAllowlist and OutboundDomainAllowlist to be set"}
 	}
-	taskID, crClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
-		return err
-	}
-	request := buildUpdateNetworkPolicyProto(taskID, *params)
-	return crClient.SetNetworkAccess(ctx, request)
+	return sb.impl.updateNetworkPolicy(ctx, *params)
 }
 
 // ExperimentalUpdateOutboundPolicy replaces the outbound policy of a running Sandbox.
@@ -2189,30 +1487,16 @@ func (sb *Sandbox) UpdateNetworkPolicy(ctx context.Context, params *SandboxUpdat
 //
 // Only Sandboxes created with an ExperimentalOutboundPolicy can be updated this way.
 func (sb *Sandbox) ExperimentalUpdateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
 	if policy == nil {
 		policy = &ExperimentalOutboundPolicy{}
 	}
 	if err := policy.validate(); err != nil {
 		return err
 	}
-	var taskID string
-	var crClient *taskCommandRouterClient
-	g, groupCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return hydrateSecrets(groupCtx, sb.client, policy.secrets())
-	})
-	g.Go(func() error {
-		var err error
-		taskID, crClient, err = sb.getCommandRouter(groupCtx)
-		return err
-	})
-	if err := g.Wait(); err != nil {
-		return err
-	}
-	return crClient.SetOutboundPolicy(ctx, pb.TaskSetExperimentalOutboundPolicyRequest_builder{
-		TaskId:                     taskID,
-		ExperimentalOutboundPolicy: policy.toProto(),
-	}.Build())
+	return sb.impl.updateOutboundPolicy(ctx, policy)
 }
 
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.
@@ -2221,6 +1505,9 @@ func (sb *Sandbox) ExperimentalUpdateOutboundPolicy(ctx context.Context, policy 
 // cutoff measured from creation, and the call has a 55-second timeout.
 // See [SandboxSnapshotDirectoryParams] for control over both.
 func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *SandboxSnapshotDirectoryParams) (*Image, error) {
+	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
 	var ttl time.Duration
 	timeout := 55 * time.Second
 	if params != nil {
@@ -2229,32 +1516,7 @@ func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *S
 			timeout = params.Timeout
 		}
 	}
-	wireTTL, err := resolveTTL(ttl)
-	if err != nil {
-		return nil, err
-	}
-
-	taskID, crClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// SnapshotId guarantees idempotency under retries.
-	request, err := buildTaskSnapshotDirectoryRequestProto(taskID, path, uuid.NewString(), "", wireTTL, params)
-	if err != nil {
-		return nil, err
-	}
-
-	response, err := crClient.SnapshotDirectory(ctx, request, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	if response.GetImageId() == "" {
-		return nil, ExecutionError{Exception: "Sandbox snapshot directory response missing `imageId`"}
-	}
-
-	return &Image{ImageID: response.GetImageId(), client: sb.client}, nil
+	return sb.impl.snapshotDirectory(ctx, path, timeout, ttl, params)
 }
 
 // Poll checks if the Sandbox has finished running.
@@ -2263,12 +1525,7 @@ func (sb *Sandbox) Poll(ctx context.Context, params *SandboxPollParams) (*int, e
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-	resp, err := sb.sandboxWait(ctx, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	return getReturnCode(resp.GetResult()), nil
+	return sb.impl.poll(ctx)
 }
 
 // SetTags sets key-value tags on the Sandbox. Tags can be used to filter results in SandboxList.
@@ -2276,23 +1533,7 @@ func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string, params *
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
-	tagsList := make([]*pb.SandboxTag, 0, len(tags))
-	for k, v := range tags {
-		tagsList = append(tagsList, pb.SandboxTag_builder{TagName: k, TagValue: v}.Build())
-	}
-	if sb.isV2 {
-		_, err := sb.client.cpClient.SandboxTagsSetV2(ctx, pb.SandboxTagsSetRequest_builder{
-			SandboxId: sb.SandboxID,
-			Tags:      tagsList,
-		}.Build())
-		return err
-	}
-	_, err := sb.client.cpClient.SandboxTagsSet(ctx, pb.SandboxTagsSetRequest_builder{
-		EnvironmentName: sb.client.profile.Environment,
-		SandboxId:       sb.SandboxID,
-		Tags:            tagsList,
-	}.Build())
-	return err
+	return sb.impl.setTags(ctx, tags)
 }
 
 // ExperimentalSetName assigns a name to a running V2 Sandbox that was created
@@ -2305,31 +1546,7 @@ func (sb *Sandbox) ExperimentalSetName(ctx context.Context, name string, params 
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
-	if err := sb.ensureV2("ExperimentalSetName"); err != nil {
-		return err
-	}
-	if err := checkObjectName(name, "Sandbox"); err != nil {
-		return err
-	}
-
-	_, err := sb.client.cpClient.SandboxSetName(ctx, pb.SandboxSetNameRequest_builder{
-		SandboxId: sb.SandboxID,
-		Name:      name,
-	}.Build())
-	if err != nil {
-		if st, ok := status.FromError(err); ok {
-			switch st.Code() {
-			case codes.AlreadyExists:
-				return AlreadyExistsError{Exception: st.Message()}
-			case codes.InvalidArgument:
-				return InvalidError{Exception: st.Message()}
-			case codes.FailedPrecondition:
-				return ConflictError{Exception: st.Message()}
-			}
-		}
-		return err
-	}
-	return nil
+	return sb.impl.setName(ctx, name)
 }
 
 // GetTags fetches any tags (key-value pairs) currently attached to this Sandbox from the server.
@@ -2337,26 +1554,7 @@ func (sb *Sandbox) GetTags(ctx context.Context, params *SandboxGetTagsParams) (m
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-	req := pb.SandboxTagsGetRequest_builder{SandboxId: sb.SandboxID}.Build()
-	var resp *pb.SandboxTagsGetResponse
-	var err error
-	if sb.isV2 {
-		resp, err = sb.client.cpClient.SandboxTagsGetV2(ctx, req)
-	} else {
-		resp, err = sb.client.cpClient.SandboxTagsGet(ctx, req)
-	}
-	if err != nil {
-		if status, ok := status.FromError(err); ok && status.Code() == codes.InvalidArgument {
-			return nil, InvalidError{Exception: status.Message()}
-		}
-		return nil, err
-	}
-
-	tags := make(map[string]string, len(resp.GetTags()))
-	for _, tag := range resp.GetTags() {
-		tags[tag.GetTagName()] = tag.GetTagValue()
-	}
-	return tags, nil
+	return sb.impl.getTags(ctx)
 }
 
 // SandboxListParams are options for listing Sandboxes.
@@ -2379,43 +1577,21 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 			Environment: params.Environment,
 		})
 	}
+	return sandboxesFromImpls(listSandboxesV1(ctx, s.client, params)), nil
+}
 
-	tagsList := make([]*pb.SandboxTag, 0, len(params.Tags))
-	for k, v := range params.Tags {
-		tagsList = append(tagsList, pb.SandboxTag_builder{TagName: k, TagValue: v}.Build())
-	}
-
+func sandboxesFromImpls(impls iter.Seq2[sandboxImpl, error]) iter.Seq2[*Sandbox, error] {
 	return func(yield func(*Sandbox, error) bool) {
-		var before float64
-		for {
-			if err := ctx.Err(); err != nil {
-				yield(nil, err)
-				return
-			}
-
-			resp, err := s.client.cpClient.SandboxList(ctx, pb.SandboxListRequest_builder{
-				AppId:           params.AppID,
-				BeforeTimestamp: before,
-				EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
-				IncludeFinished: false,
-				Tags:            tagsList,
-			}.Build())
+		for impl, err := range impls {
 			if err != nil {
 				yield(nil, err)
 				return
 			}
-			sandboxes := resp.GetSandboxes()
-			if len(sandboxes) == 0 {
+			if !yield(newSandboxFromImpl(impl), nil) {
 				return
 			}
-			for _, info := range sandboxes {
-				if !yield(newSandbox(s.client, info.GetId()), nil) {
-					return
-				}
-			}
-			before = sandboxes[len(sandboxes)-1].GetCreatedAt()
 		}
-	}, nil
+	}
 }
 
 // SandboxExperimentalListParams are options for SandboxService.ExperimentalList.
@@ -2435,50 +1611,7 @@ func (s *sandboxServiceImpl) ExperimentalList(ctx context.Context, params *Sandb
 	if params == nil {
 		params = &SandboxExperimentalListParams{}
 	}
-
-	var environmentName string
-	if params.AppID == "" {
-		s.client.logger.WarnContext(ctx,
-			"Sandboxes.ExperimentalList without an AppID lists across the whole environment and is deprecated; pass AppID to scope the query")
-		environmentName = firstNonEmpty(params.Environment, s.client.profile.Environment)
-	}
-
-	tagsList := make([]*pb.SandboxTag, 0, len(params.Tags))
-	for k, v := range params.Tags {
-		tagsList = append(tagsList, pb.SandboxTag_builder{TagName: k, TagValue: v}.Build())
-	}
-
-	return func(yield func(*Sandbox, error) bool) {
-		var before float64
-		for {
-			if err := ctx.Err(); err != nil {
-				yield(nil, err)
-				return
-			}
-
-			resp, err := s.client.cpClient.SandboxListV2(ctx, pb.SandboxListRequest_builder{
-				AppId:           params.AppID,
-				BeforeTimestamp: before,
-				EnvironmentName: environmentName,
-				IncludeFinished: false,
-				Tags:            tagsList,
-			}.Build())
-			if err != nil {
-				yield(nil, err)
-				return
-			}
-			sandboxes := resp.GetSandboxes()
-			if len(sandboxes) == 0 {
-				return
-			}
-			for _, info := range sandboxes {
-				if !yield(newSandbox(s.client, info.GetId()), nil) {
-					return
-				}
-			}
-			before = sandboxes[len(sandboxes)-1].GetCreatedAt()
-		}
-	}, nil
+	return sandboxesFromImpls(listSandboxesV2(ctx, s.client, params)), nil
 }
 
 func getReturnCode(result *pb.GenericResult) *int {
@@ -2616,37 +1749,6 @@ func (sbs *sbStdin) Close() error {
 		return nil
 	}
 	return err
-}
-
-type sbStdinV2 struct {
-	sb *Sandbox
-
-	mu     sync.Mutex
-	offset uint64
-}
-
-func (s *sbStdinV2) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	taskID, client, err := s.sb.getCommandRouter(context.Background())
-	if err != nil {
-		return 0, err
-	}
-	if err := client.SandboxStdinWriteV2(context.Background(), taskID, s.offset, p, false); err != nil {
-		return 0, err
-	}
-	s.offset += uint64(len(p))
-	return len(p), nil
-}
-
-func (s *sbStdinV2) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	taskID, client, err := s.sb.getCommandRouter(context.Background())
-	if err != nil {
-		return err
-	}
-	return client.SandboxStdinWriteV2(context.Background(), taskID, s.offset, nil, true)
 }
 
 func inputStreamCp(commandRouterClient *taskCommandRouterClient, taskID, execID string) io.WriteCloser {
@@ -2955,13 +2057,3 @@ type failedReader struct{ err error }
 
 func (r failedReader) Read([]byte) (int, error) { return 0, r.err }
 func (r failedReader) Close() error             { return nil }
-
-// outputStreamSbV2 reads a V2 Sandbox's stdout or stderr. lazyStreamReader
-// calls this on the first read.
-func outputStreamSbV2(ctx context.Context, sb *Sandbox, fd pb.FileDescriptor) io.ReadCloser {
-	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
-	if err != nil {
-		return failedReader{err: fmt.Errorf("error getting output stream: %w", err)}
-	}
-	return commandRouterClient.SandboxStdioReadV2(ctx, taskID, fd)
-}
