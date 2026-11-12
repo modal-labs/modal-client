@@ -24,6 +24,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 - Added `modal image names delete NAME:TAG` for deleting a named Image.
 - Added `Workspace.member_tokens.disable()` and `Workspace.member_tokens.enable()` to allow users to  disable / re-enable tokens (as an alternative to outright deletion).
 - It's now possible to call `Image.build()` without providing an existing `modal.App`; the build will run in an ephemeral App.
+- [`modal endpoint create`](/docs/cli/latest/endpoint#modal-endpoint-create) now accepts `--min-containers`, `--max-containers`, `--buffer-containers`, `--scaleup-window`, and `--scaledown-window` to configure the Endpoint's autoscaling. Settings that aren't specified retain the Endpoint's default autoscaling configuration.
 
 ## JS
 

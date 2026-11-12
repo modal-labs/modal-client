@@ -319,6 +319,36 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
 @click.option("--custom-hf-token", default=None, help="Hugging Face token for private --custom-hf-repo.")
 @click.option("--custom-volume-name", default=None, help="Modal Volume name containing custom model weights.")
 @click.option("--custom-volume-path", default=None, help="Path within Volume containing model weights.")
+@click.option(
+    "--min-containers",
+    type=click.IntRange(min=0),
+    default=None,
+    help="Minimum number of containers to keep running regardless of demand.",
+)
+@click.option(
+    "--max-containers",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Maximum number of containers that can run concurrently.",
+)
+@click.option(
+    "--buffer-containers",
+    type=click.IntRange(min=0),
+    default=None,
+    help="Extra containers to keep running beyond current demand.",
+)
+@click.option(
+    "--scaleup-window",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Seconds of sustained demand required before scaling up.",
+)
+@click.option(
+    "--scaledown-window",
+    type=click.IntRange(min=2, max=3600),
+    default=None,
+    help="Seconds an idle container waits before scaling down.",
+)
 @synchronizer.create_blocking
 async def create(
     name: Optional[str],
@@ -333,6 +363,11 @@ async def create(
     custom_hf_token: Optional[str] = None,
     custom_volume_name: Optional[str] = None,
     custom_volume_path: Optional[str] = None,
+    min_containers: Optional[int] = None,
+    max_containers: Optional[int] = None,
+    buffer_containers: Optional[int] = None,
+    scaleup_window: Optional[int] = None,
+    scaledown_window: Optional[int] = None,
     env: Optional[str] = None,
 ):
     """Deploy a new Endpoint.
@@ -375,6 +410,12 @@ async def create(
       --custom-volume-name qwen-ft --custom-volume-path /models/qwen
     ```
 
+    Create an Endpoint with custom autoscaling:
+    ```bash
+    modal endpoint create --model Qwen/Qwen3.6-27B-FP8 \\
+      --min-containers 1 --max-containers 10
+    ```
+
     """
     if shared:
         for option, provided in (
@@ -386,6 +427,11 @@ async def create(
             ("--custom-hf-token", custom_hf_token is not None),
             ("--custom-volume-name", custom_volume_name is not None),
             ("--custom-volume-path", custom_volume_path is not None),
+            ("--min-containers", min_containers is not None),
+            ("--max-containers", max_containers is not None),
+            ("--buffer-containers", buffer_containers is not None),
+            ("--scaleup-window", scaleup_window is not None),
+            ("--scaledown-window", scaledown_window is not None),
         ):
             if provided:
                 raise click.UsageError(f"{option} cannot be used with --shared.")
@@ -451,6 +497,15 @@ async def create(
     )
     if name:
         req.name = name
+    autoscaler_settings = api_pb2.AutoscalerSettings(
+        min_containers=min_containers,
+        max_containers=max_containers,
+        buffer_containers=buffer_containers,
+        scaleup_window=scaleup_window,
+        scaledown_window=scaledown_window,
+    )
+    if autoscaler_settings.ListFields():
+        req.autoscaler_settings.CopyFrom(autoscaler_settings)
     resp = await client._stub.EndpointCreate(req)
 
     output = OutputManager.get()

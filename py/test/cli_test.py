@@ -1448,6 +1448,7 @@ def test_endpoint_create_shows_url(servicer, set_env_client, mode_args):
     (request,) = servicer.endpoint_create_requests
     assert list(request.proxy_regions) == ["us-west"]
     assert request.compute_region.WhichOneof("placement") == "auto"
+    assert not request.HasField("autoscaler_settings")
 
 
 @pytest.mark.parametrize("mode_args", [[], ["--shared"]])
@@ -1710,6 +1711,11 @@ def test_endpoint_create_custom_volume_requires_path(servicer, set_env_client):
         "--custom-volume-name=",
         "--custom-volume-path=/models/qwen",
         "--custom-volume-path=",
+        "--min-containers=1",
+        "--max-containers=10",
+        "--buffer-containers=1",
+        "--scaleup-window=30",
+        "--scaledown-window=600",
     ],
 )
 def test_endpoint_create_shared_rejects_incompatible_options(servicer, set_env_client, option):
@@ -1724,6 +1730,58 @@ def test_endpoint_create_shared_rejects_incompatible_options(servicer, set_env_c
     else:
         assert f"{option.split('=')[0]} cannot be used with --shared" in res.stderr
     assert ctx.calls == []
+
+
+def test_endpoint_create_sets_autoscaler_settings(servicer, set_env_client):
+    run_cli_command(
+        [
+            "endpoint",
+            "create",
+            "--name=qwen-chat",
+            "--model=Qwen/Qwen3.6-27B-FP8",
+            "--min-containers=0",
+            "--max-containers=10",
+            "--buffer-containers=1",
+            "--scaleup-window=30",
+            "--scaledown-window=600",
+        ]
+    )
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.autoscaler_settings == api_pb2.AutoscalerSettings(
+        min_containers=0,
+        max_containers=10,
+        buffer_containers=1,
+        scaleup_window=30,
+        scaledown_window=600,
+    )
+
+
+def test_endpoint_create_sets_only_given_autoscaler_settings(servicer, set_env_client):
+    run_cli_command(["endpoint", "create", "--name=qwen-chat", "--model=Qwen/Qwen3.6-27B-FP8", "--max-containers=4"])
+
+    (request,) = servicer.endpoint_create_requests
+    assert request.autoscaler_settings == api_pb2.AutoscalerSettings(max_containers=4)
+
+
+@pytest.mark.parametrize(
+    ("args", "error"),
+    [
+        (["--max-containers=0"], "--max-containers"),
+        (["--min-containers=-1"], "--min-containers"),
+        (["--scaledown-window=0"], "--scaledown-window"),
+        (["--scaledown-window=1"], "--scaledown-window"),
+        (["--scaledown-window=3601"], "--scaledown-window"),
+    ],
+)
+def test_endpoint_create_rejects_invalid_autoscaler_settings(servicer, set_env_client, args, error):
+    res = run_cli_command(
+        ["endpoint", "create", "--name=qwen-chat", "--model=Qwen/Qwen3.6-27B-FP8", *args],
+        expected_exit_code=2,
+    )
+
+    assert error in res.stderr
+    assert servicer.endpoint_create_requests == []
 
 
 _TEST_ENDPOINT_ID = "ep-abcdefghABCDEFGH012345"
