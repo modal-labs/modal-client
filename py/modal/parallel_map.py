@@ -659,7 +659,7 @@ async def _map_invocation_inputplane(
 
     # The input-plane server returns this after the first request.
     map_token = None
-    map_token_received = asyncio.Event()
+    map_token_or_done = asyncio.Event()
 
     input_queue: asyncio.Queue[api_pb2.MapStartOrContinueItem | None] = asyncio.Queue()
     retry_queue: TimestampPriorityQueue[api_pb2.MapStartOrContinueItem] = TimestampPriorityQueue()
@@ -702,6 +702,8 @@ async def _map_invocation_inputplane(
 
         if have_all_inputs and outputs_completed >= inputs_created:
             map_done_event.set()
+            # An empty map finishes without ever sending a request, so no map token arrives.
+            map_token_or_done.set()
 
     async def create_input(argskwargs):
         idx = inputs_created + 1  # 1-indexed map call idx
@@ -766,7 +768,7 @@ async def _map_invocation_inputplane(
         # Set the function call id and actual retry policy with the data from the first response.
         if map_token is None:
             map_token = response.map_token
-            map_token_received.set()
+            map_token_or_done.set()
             max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
             map_items_manager.set_retry_policy(response.retry_policy)
             # Update the retry policy for the first batch of inputs.
@@ -796,7 +798,7 @@ async def _map_invocation_inputplane(
         try:
             while not map_done_event.is_set():
                 if map_token is None:
-                    await map_token_received.wait()
+                    await map_token_or_done.wait()
                     continue
 
                 sleep_task = asyncio.create_task(asyncio.sleep(1))
@@ -839,7 +841,7 @@ async def _map_invocation_inputplane(
 
         while not map_done_event.is_set():
             if map_token is None:
-                await map_token_received.wait()
+                await map_token_or_done.wait()
                 continue
 
             request = api_pb2.MapAwaitRequest(

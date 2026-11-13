@@ -6,6 +6,8 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Fixed a bug where `.map()`, `.starmap()`, and `.for_each()` could hang indefinitely when called with no inputs.
+
 ## JS
 
 - Added `App.stats()` to report high-level Function, Server, and Sandbox stats for an App.

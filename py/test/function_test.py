@@ -730,10 +730,11 @@ _get_synchronicity_event_loop_thread_id_sync = synchronize_api(_get_synchronicit
 
 
 @pytest.mark.timeout(5)
-def test_map_empty_input(client):
+@pytest.mark.parametrize("routing_region", [None, "us-east"])
+def test_map_empty_input(client, routing_region):
     app = App(include_source=False)
 
-    @app.function(serialized=True)
+    @app.function(serialized=True, routing_region=routing_region)
     def f():
         pass
 
