@@ -57,6 +57,7 @@ import {
   execViaTcr,
   mountImageViaTcr,
   pollExitSnapshot,
+  persistentOnlyMessage,
   pollTaskId,
   reloadVolumesViaTcr,
   snapshotDirectoryViaTcr,
@@ -330,6 +331,14 @@ export class SandboxImplV2 implements SandboxImpl {
     await this.client.cpClient.sandboxTerminateV2({
       sandboxId: this.sandboxId,
     });
+  }
+
+  async pause(): Promise<void> {
+    throw new InvalidError(persistentOnlyMessage("experimentalPause()"));
+  }
+
+  async resume(): Promise<void> {
+    throw new InvalidError(persistentOnlyMessage("experimentalResume()"));
   }
 
   close(): void {
@@ -655,7 +664,8 @@ export class SandboxImplV2 implements SandboxImpl {
   }
 }
 
-async function* outputStreamSbV2(
+/** @internal @hidden */
+export async function* outputStreamSbV2(
   getCommandRouter: () => Promise<[string, TaskCommandRouterClientImpl]>,
   sandboxId: string,
   fileDescriptor: FileDescriptor,
@@ -690,7 +700,8 @@ async function* outputStreamSbV2(
   }
 }
 
-function inputStreamSbV2(
+/** @internal @hidden */
+export function inputStreamSbV2(
   getCommandRouter: () => Promise<[string, TaskCommandRouterClientImpl]>,
 ): WritableStream<string> {
   let offset = 0;

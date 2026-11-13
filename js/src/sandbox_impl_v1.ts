@@ -57,6 +57,7 @@ import {
   execViaTcr,
   mountImageViaTcr,
   pollExitSnapshot,
+  persistentOnlyMessage,
   pollTaskId,
   reloadVolumesViaTcr,
   snapshotDirectoryViaTcr,
@@ -300,6 +301,14 @@ export class SandboxImplV1 implements SandboxImpl {
     await this.client.cpClient.sandboxTerminate({
       sandboxId: this.sandboxId,
     });
+  }
+
+  async pause(): Promise<void> {
+    throw new InvalidError(persistentOnlyMessage("experimentalPause()"));
+  }
+
+  async resume(): Promise<void> {
+    throw new InvalidError(persistentOnlyMessage("experimentalResume()"));
   }
 
   close(): void {

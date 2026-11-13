@@ -59,6 +59,7 @@ import { SandboxLogsManager } from "./logs";
 import type { SandboxImpl, SandboxImplParams } from "./sandbox_common";
 import { SandboxImplV1 } from "./sandbox_impl_v1";
 import { SandboxImplV2 } from "./sandbox_impl_v2";
+import { SandboxImplPersistent } from "./sandbox_impl_persistent";
 
 // How long create() waits for capacity before giving up.
 /** @internal @hidden */
@@ -401,6 +402,7 @@ export type SandboxCreateParams = {
 
   /** Enable memory snapshots. */
   experimentalEnableSnapshot?: boolean;
+  experimentalPersistent?: boolean;
 };
 
 /**
@@ -772,7 +774,10 @@ export class SandboxService {
     image: Image,
     params: SandboxCreateParams = {},
   ): Promise<Sandbox> {
-    const impl = await SandboxImplV2.create(this.#client, app, image, params);
+    const implClass = params.experimentalPersistent
+      ? SandboxImplPersistent
+      : SandboxImplV2;
+    const impl = await implClass.create(this.#client, app, image, params);
     return new Sandbox(impl);
   }
 
@@ -966,7 +971,10 @@ export function newSandboxImpl(
 export function implClassForCreateParams(
   client: ModalClient,
   params: SandboxCreateParams,
-): typeof SandboxImplV1 | typeof SandboxImplV2 {
+): typeof SandboxImplV1 | typeof SandboxImplV2 | typeof SandboxImplPersistent {
+  if (params.experimentalPersistent) {
+    return SandboxImplPersistent;
+  }
   // GPUs are not supported on V2, so those calls use the V1 backend
   // regardless of the setting.
   if (params.gpu) {
@@ -1603,6 +1611,31 @@ export class Sandbox {
     // The Sandbox stays attached, in case further interactions like reading
     // stdout/stderr are needed.
     return exitCode;
+  }
+
+  /**
+   * Stop the Sandbox's current container, keeping its state so it can be
+   * resumed.
+   *
+   * Only supported for experimental persistent Sandboxes.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   */
+  async experimentalPause(): Promise<void> {
+    this.#ensureAttached();
+    await this.#impl.pause();
+  }
+
+  /**
+   * Resume a paused Sandbox from its saved state.
+   *
+   * Only supported for experimental persistent Sandboxes.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   */
+  async experimentalResume(): Promise<void> {
+    this.#ensureAttached();
+    await this.#impl.resume();
   }
 
   /**

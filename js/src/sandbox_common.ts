@@ -12,6 +12,7 @@ import {
   SandboxGetExitSnapshotResponse_ErrorCode,
   type SandboxGetTaskIdResponse,
   type SandboxGetTunnelsResponse,
+  type TunnelData,
   type SandboxWaitResponse,
   type SecretSource,
   type VolumeMount,
@@ -105,6 +106,16 @@ const EXIT_SNAPSHOT_MAX_CONSECUTIVE_POLL_FAILURES = 3;
 // don't burn through the failure budget in milliseconds.
 const EXIT_SNAPSHOT_POLL_FAILURE_BACKOFF = 1;
 
+/**
+ * Error message for operations that only persistent Sandboxes support.
+ *
+ * @internal
+ * @hidden
+ */
+export function persistentOnlyMessage(methodName: string): string {
+  return `Sandbox.${methodName} requires a persistent Sandbox, created with \`experimentalPersistent: true\`.`;
+}
+
 function isTransientTaskIDLookupError(err: unknown): boolean {
   if (!(err instanceof ClientError)) {
     return false;
@@ -191,6 +202,10 @@ export interface SandboxImpl {
   ): Promise<SandboxCreateConnectCredentials>;
 
   terminate(): Promise<void>;
+  /** Stop the current session of a persistent Sandbox, keeping its state. */
+  pause(): Promise<void>;
+  /** Resume a paused persistent Sandbox from its saved state. */
+  resume(): Promise<void>;
   /** Release local resources (e.g. connections); the Sandbox keeps running. */
   close(): void;
   wait(): Promise<number>;
@@ -549,9 +564,20 @@ export function tunnelsFromResponse(
   ) {
     throw new SandboxTimeoutError();
   }
+  return tunnelsFromProtos(resp.tunnels);
+}
 
+/**
+ * Convert tunnel protos into Tunnels keyed by container port.
+ *
+ * @internal
+ * @hidden
+ */
+export function tunnelsFromProtos(
+  protos: TunnelData[],
+): Record<number, Tunnel> {
   const tunnels: Record<number, Tunnel> = {};
-  for (const t of resp.tunnels) {
+  for (const t of protos) {
     tunnels[t.containerPort] = new Tunnel(
       t.host,
       t.port,
