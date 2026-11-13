@@ -3958,6 +3958,8 @@ message PersistentSandboxGetRequest {
 message PersistentSandboxGetResponse {
   string persistent_sandbox_id = 1;
   string sandbox_id = 2;
+  // Set once the persistent Sandbox is terminated; unset otherwise.
+  google.protobuf.Timestamp terminated_at = 3;
 }
 
 message PersistentSandboxNameLookup {
