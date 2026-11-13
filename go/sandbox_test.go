@@ -119,9 +119,9 @@ func TestDetachDoesNotWaitForOutputInitialization(t *testing.T) {
 	// Finish initialization after detach; it must dispose of its new client.
 	t.Cleanup(func() {
 		g.Eventually(result).Should(gomega.Receive(gomega.HaveOccurred()))
-		sb.task().commandRouterClientMu.Lock()
-		g.Expect(sb.task().commandRouterClient).To(gomega.BeNil())
-		sb.task().commandRouterClientMu.Unlock()
+		sb.task().commandRouter.mu.Lock()
+		g.Expect(sb.task().commandRouter.client).To(gomega.BeNil())
+		sb.task().commandRouter.mu.Unlock()
 	})
 }
 
@@ -331,10 +331,10 @@ func TestNewSandboxDeducesVersionFromIDShape(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	v1 := newSandbox(&Client{}, testV1SandboxID)
-	g.Expect(v1.task().backend.isV2()).To(gomega.BeFalse())
+	g.Expect(v1.impl).To(gomega.BeAssignableToTypeOf(&sandboxImplV1{}))
 
 	v2 := newSandbox(&Client{}, testV2SandboxID)
-	g.Expect(v2.task().backend.isV2()).To(gomega.BeTrue())
+	g.Expect(v2.impl).To(gomega.BeAssignableToTypeOf(&sandboxImplV2{}))
 }
 
 func TestSandboxV2FilesystemSupported(t *testing.T) {
@@ -377,7 +377,7 @@ func newReadinessSandbox(t *testing.T, version sandboxVersion, stub pb.TaskComma
 	}
 	sb := newSandbox(client, sandboxID)
 	sb.task().taskID = "ta-wait-123"
-	sb.task().commandRouterClient = newStubClient(t, stub)
+	sb.task().commandRouter.client = newStubClient(t, stub)
 	return sb
 }
 
@@ -484,7 +484,7 @@ func TestSandboxV2StdioStreamsViaCommandRouter(t *testing.T) {
 
 	sb := newSandbox(&Client{logger: slog.New(slog.DiscardHandler)}, testV2SandboxID)
 	sb.task().taskID = "ta-v2-stdio"
-	sb.task().commandRouterClient = crClient
+	sb.task().commandRouter.client = crClient
 
 	stdout, err := io.ReadAll(sb.Stdout)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
@@ -572,7 +572,7 @@ func TestEnsureTaskIDReturnsTaskIDForFinishedSandbox(t *testing.T) {
 	}
 	sb := newSandbox(&Client{cpClient: &clientWithConn{ModalClientClient: stub}}, testV2SandboxID)
 
-	gotTaskID, err := sb.task().ensureTaskID(ctx)
+	gotTaskID, err := sb.impl.(taskIDWaiter).ensureTaskID(ctx)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(gotTaskID).To(gomega.Equal("ta-finished"))
 	g.Expect(sb.task().taskID).To(gomega.Equal("ta-finished"))
@@ -599,7 +599,7 @@ func TestSandboxV2StdioConcurrentReadsResolveTaskID(t *testing.T) {
 		logger:   slog.New(slog.DiscardHandler),
 		cpClient: &clientWithConn{ModalClientClient: stub},
 	}, testV2SandboxID)
-	sb.task().commandRouterClient = crClient
+	sb.task().commandRouter.client = crClient
 
 	var wg sync.WaitGroup
 	var stdout, stderr []byte
@@ -1298,7 +1298,7 @@ func TestUpdateNetworkPolicyMockedCommandRouter(t *testing.T) {
 
 	sb := newSandbox(&Client{}, testV2SandboxID)
 	sb.task().taskID = "ta-123"
-	sb.task().commandRouterClient = newSetNetworkAccessClient(t, stub)
+	sb.task().commandRouter.client = newSetNetworkAccessClient(t, stub)
 
 	err := sb.UpdateNetworkPolicy(context.Background(), &SandboxUpdateNetworkPolicyParams{
 		OutboundCIDRAllowlist:   &Allowlist{Entries: []string{"10.0.0.0/8"}},
@@ -2180,7 +2180,7 @@ func TestEnsureTaskIDDoesNotRetryTransientErrors(t *testing.T) {
 	}
 	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
 
-	_, err := sb.task().ensureTaskID(t.Context())
+	_, err := sb.impl.(taskIDWaiter).ensureTaskID(t.Context())
 	g.Expect(status.Code(err)).To(gomega.Equal(codes.Unavailable))
 	g.Expect(lookups.Load()).To(gomega.Equal(int32(1)))
 }
@@ -2241,7 +2241,7 @@ func TestWaitForTaskIDRespectsCallerCancellation(t *testing.T) {
 	}
 	sb := newSandbox(newSandboxV1CreateService(stub).client, testV1SandboxID)
 
-	_, err := sb.task().waitForTaskID(ctx, time.Minute, true)
+	_, err := sb.impl.(taskIDWaiter).waitForTaskID(ctx, time.Minute, true)
 	g.Expect(err).To(gomega.MatchError(context.Canceled))
 	g.Expect(stub.terminates.Load()).To(gomega.Equal(int32(0)))
 }
@@ -2962,4 +2962,10 @@ func TestSidecarCreateRejectsProxyOnV1Sandbox(t *testing.T) {
 	g.Expect(err).To(gomega.BeAssignableToTypeOf(InvalidError{}))
 	g.Expect(err.Error()).To(gomega.ContainSubstring("GPU Sandboxes"))
 	g.Expect(mock.gotReq).To(gomega.BeNil())
+}
+
+// taskIDWaiter is the task ID lookup of a task-based backend.
+type taskIDWaiter interface {
+	ensureTaskID(ctx context.Context) (string, error)
+	waitForTaskID(ctx context.Context, timeout time.Duration, retryTransient bool) (string, error)
 }

@@ -17,14 +17,28 @@ import (
 // sandboxImplV1 is the Sandbox backend whose control plane RPCs are the
 // original (V1) Sandbox RPCs.
 type sandboxImplV1 struct {
-	taskSandbox
+	client *Client
+	id     string
+	taskState
 }
 
-func newSandboxImplV1(client *Client, sandboxID string, opts taskSandboxOptions) *sandboxImplV1 {
-	s := &sandboxImplV1{}
-	s.init(client, sandboxID, s, opts)
+func newSandboxImplV1(client *Client, sandboxID string, params sandboxImplParams) *sandboxImplV1 {
+	s := &sandboxImplV1{
+		client: client,
+		id:     sandboxID,
+		taskState: taskState{
+			taskID:                  params.taskID,
+			tunnels:                 params.tunnels,
+			initCommandRouterAccess: params.initCommandRouterAccess,
+		},
+	}
+	s.commandRouter = newLazyCommandRouterClient(s.connectCommandRouter)
 	return s
 }
+
+func (s *sandboxImplV1) sandboxID() string    { return s.id }
+func (s *sandboxImplV1) modalClient() *Client { return s.client }
+func (s *sandboxImplV1) task() *taskState     { return &s.taskState }
 
 // createSandboxV1 creates a V1 Sandbox and waits for it to be scheduled.
 func createSandboxV1(ctx context.Context, client *Client, app *App, image *Image, params *SandboxCreateParams) (sandboxImpl, error) {
@@ -62,7 +76,7 @@ func createSandboxV1(ctx context.Context, client *Client, app *App, image *Image
 	}
 
 	client.logger.DebugContext(ctx, "Created Sandbox", "sandbox_id", createResp.GetSandboxId())
-	impl := newSandboxImpl(client, createResp.GetSandboxId(), taskSandboxOptions{})
+	impl := newSandboxImpl(client, createResp.GetSandboxId(), sandboxImplParams{})
 	if err := impl.waitForScheduling(ctx, sandboxSchedulingTimeout); err != nil {
 		return nil, err
 	}
@@ -82,7 +96,7 @@ func sandboxFromNameV1(ctx context.Context, client *Client, appName, name string
 		}
 		return nil, err
 	}
-	return newSandboxImpl(client, resp.GetSandboxId(), taskSandboxOptions{}), nil
+	return newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{}), nil
 }
 
 // listSandboxesV1 lists running Sandboxes through the V1 list RPC.
@@ -116,7 +130,7 @@ func listSandboxesV1(ctx context.Context, client *Client, params *SandboxListPar
 				return
 			}
 			for _, info := range sandboxes {
-				if !yield(newSandboxImpl(client, info.GetId(), taskSandboxOptions{}), nil) {
+				if !yield(newSandboxImpl(client, info.GetId(), sandboxImplParams{}), nil) {
 					return
 				}
 			}
@@ -137,7 +151,7 @@ func sandboxFromSnapshotV1(ctx context.Context, client *Client, snapshot *Sandbo
 		return nil, err
 	}
 
-	impl := newSandboxImpl(client, resp.GetSandboxId(), taskSandboxOptions{})
+	impl := newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{})
 
 	timeoutSecs := float32(55)
 	taskResp, err := client.cpClient.SandboxGetTaskId(ctx, pb.SandboxGetTaskIdRequest_builder{
@@ -156,33 +170,160 @@ func sandboxFromSnapshotV1(ctx context.Context, client *Client, snapshot *Sandbo
 	return impl, nil
 }
 
-func (s *sandboxImplV1) isV2() bool { return false }
+func (s *sandboxImplV1) terminate(ctx context.Context) error {
+	_, err := s.client.cpClient.SandboxTerminate(ctx, pb.SandboxTerminateRequest_builder{SandboxId: s.id}.Build())
+	return err
+}
+
+func (s *sandboxImplV1) close() {
+	s.commandRouter.close()
+}
 
 func (s *sandboxImplV1) rpcWait(ctx context.Context, timeoutSecs float32) (*pb.SandboxWaitResponse, error) {
 	return s.client.cpClient.SandboxWait(ctx, pb.SandboxWaitRequest_builder{SandboxId: s.id, Timeout: timeoutSecs}.Build())
 }
 
-func (s *sandboxImplV1) rpcTerminate(ctx context.Context) error {
-	_, err := s.client.cpClient.SandboxTerminate(ctx, pb.SandboxTerminateRequest_builder{SandboxId: s.id}.Build())
-	return err
+func (s *sandboxImplV1) wait(ctx context.Context) (int, error) {
+	return waitForReturnCode(ctx, s, s.rpcWait)
+}
+
+func (s *sandboxImplV1) poll(ctx context.Context) (*int, error) {
+	resp, err := s.rpcWait(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	return getReturnCode(resp.GetResult()), nil
+}
+
+func (s *sandboxImplV1) waitForScheduling(ctx context.Context, timeout time.Duration) error {
+	return waitForScheduling(ctx, s, func(ctx context.Context, timeout time.Duration) (string, error) {
+		return s.waitForTaskID(ctx, timeout, true)
+	}, timeout)
+}
+
+func (s *sandboxImplV1) tunnels(ctx context.Context, timeout time.Duration) (map[int]*Tunnel, error) {
+	if s.taskState.tunnels != nil {
+		return s.taskState.tunnels, nil
+	}
+	resp, err := s.client.cpClient.SandboxGetTunnels(ctx, pb.SandboxGetTunnelsRequest_builder{
+		SandboxId: s.id,
+		Timeout:   float32(timeout.Seconds()),
+	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	tunnels, err := tunnelsFromResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+	s.taskState.tunnels = tunnels
+	return tunnels, nil
+}
+
+func (s *sandboxImplV1) getAppID(ctx context.Context) (string, error) {
+	resp, err := s.rpcWait(ctx, 0)
+	return resp.GetMetadata().GetAppId(), err
 }
 
 func (s *sandboxImplV1) rpcGetTaskID(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error) {
 	return s.client.cpClient.SandboxGetTaskId(ctx, pb.SandboxGetTaskIdRequest_builder{SandboxId: s.id}.Build())
 }
 
-func (s *sandboxImplV1) rpcGetTunnels(ctx context.Context, timeout time.Duration) (*pb.SandboxGetTunnelsResponse, error) {
-	return s.client.cpClient.SandboxGetTunnels(ctx, pb.SandboxGetTunnelsRequest_builder{
-		SandboxId: s.id,
-		Timeout:   float32(timeout.Seconds()),
-	}.Build())
+func (s *sandboxImplV1) resolveTaskIDForLogs(ctx context.Context) (string, error) {
+	resp, err := s.rpcGetTaskID(ctx)
+	return resp.GetTaskId(), err
 }
 
-func (s *sandboxImplV1) rpcGetExitSnapshot(ctx context.Context, timeoutSecs float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error) {
-	return s.client.cpClient.SandboxGetExitSnapshot(ctx, pb.SandboxGetExitSnapshotRequest_builder{
-		SandboxId: s.id,
-		Timeout:   timeoutSecs,
-	}.Build(), opts...)
+func (s *sandboxImplV1) ensureTaskID(ctx context.Context) (string, error) {
+	return s.waitForTaskID(ctx, getTaskIDTimeout, false)
+}
+
+// waitForTaskID returns the Sandbox's task ID, polling for it until timeout
+// if it is not known yet.
+func (s *sandboxImplV1) waitForTaskID(ctx context.Context, timeout time.Duration, retryTransient bool) (string, error) {
+	s.taskIDMu.Lock()
+	taskID := s.taskID
+	s.taskIDMu.Unlock()
+	if taskID != "" {
+		return taskID, nil
+	}
+	taskID, err := pollTaskID(ctx, s.id, s.rpcGetTaskID, timeout, retryTransient)
+	if err != nil {
+		return "", err
+	}
+	s.taskIDMu.Lock()
+	s.taskID = taskID
+	s.taskIDMu.Unlock()
+	return taskID, nil
+}
+
+func (s *sandboxImplV1) getExitSnapshot(ctx context.Context, params *SandboxExperimentalGetExitSnapshotParams) (*Image, error) {
+	return pollExitSnapshot(ctx, s, params, func(ctx context.Context, timeoutSecs float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error) {
+		return s.client.cpClient.SandboxGetExitSnapshot(ctx, pb.SandboxGetExitSnapshotRequest_builder{
+			SandboxId: s.id,
+			Timeout:   timeoutSecs,
+		}.Build(), opts...)
+	})
+}
+
+func (s *sandboxImplV1) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {
+	if err := s.commandRouter.ensureOpen(); err != nil {
+		return "", nil, err
+	}
+	taskID, err := s.ensureTaskID(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	client, err := s.commandRouter.get(ctx, taskID)
+	if err != nil {
+		return "", nil, err
+	}
+	return taskID, client, nil
+}
+
+func (s *sandboxImplV1) connectCommandRouter(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
+	// Consume the seeded access, so if connecting with it fails the retry
+	// falls back to the authoritative RPC instead of re-trying the same
+	// credentials forever. Safe under the lazy client's lock, held by get.
+	access := s.initCommandRouterAccess
+	s.initCommandRouterAccess = nil
+	return connectCommandRouter(ctx, s.client, taskID, s.id, false, access)
+}
+
+func (s *sandboxImplV1) waitUntilReady(ctx context.Context, timeout time.Duration) error {
+	return waitUntilReadyViaTcr(ctx, s, timeout)
+}
+
+func (s *sandboxImplV1) updateNetworkPolicy(ctx context.Context, params SandboxUpdateNetworkPolicyParams) error {
+	return updateNetworkPolicyViaTcr(ctx, s, params)
+}
+
+func (s *sandboxImplV1) updateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
+	return updateOutboundPolicyViaTcr(ctx, s, policy)
+}
+
+func (s *sandboxImplV1) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {
+	return snapshotFilesystemViaTcr(ctx, s, timeout, ttl, containerID)
+}
+
+func (s *sandboxImplV1) snapshotDirectory(ctx context.Context, path string, timeout, ttl time.Duration, params *SandboxSnapshotDirectoryParams) (*Image, error) {
+	return snapshotDirectoryViaTcr(ctx, s, path, timeout, ttl, params)
+}
+
+func (s *sandboxImplV1) mountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error {
+	return mountImageViaTcr(ctx, s, path, image, params)
+}
+
+func (s *sandboxImplV1) unmountImage(ctx context.Context, path string) error {
+	return unmountImageViaTcr(ctx, s, path)
+}
+
+func (s *sandboxImplV1) reloadVolumes(ctx context.Context, containerID string, timeout time.Duration) error {
+	return reloadVolumesViaTcr(ctx, s, containerID, timeout)
+}
+
+func (s *sandboxImplV1) exec(ctx context.Context, command []string, params *SandboxExecParams, containerID string) (*ContainerProcess, error) {
+	return execViaTcr(ctx, s, command, params, containerID)
 }
 
 func (s *sandboxImplV1) stdin() io.WriteCloser {
@@ -266,5 +407,5 @@ func (s *sandboxImplV1) validateSidecarCreate(params *SidecarCreateParams) error
 }
 
 func (s *sandboxImplV1) createSidecar(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
-	return s.createSidecarViaCommandRouter(ctx, in)
+	return createSidecarViaTcr(ctx, s, in)
 }

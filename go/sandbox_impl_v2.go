@@ -35,14 +35,28 @@ func controlPlaneSidecarCreateEnabled() bool {
 // sandboxImplV2 is the Sandbox backend whose control plane RPCs are the V2
 // Sandbox RPCs and whose stdio goes through the task command router.
 type sandboxImplV2 struct {
-	taskSandbox
+	client *Client
+	id     string
+	taskState
 }
 
-func newSandboxImplV2(client *Client, sandboxID string, opts taskSandboxOptions) *sandboxImplV2 {
-	s := &sandboxImplV2{}
-	s.init(client, sandboxID, s, opts)
+func newSandboxImplV2(client *Client, sandboxID string, params sandboxImplParams) *sandboxImplV2 {
+	s := &sandboxImplV2{
+		client: client,
+		id:     sandboxID,
+		taskState: taskState{
+			taskID:                  params.taskID,
+			tunnels:                 params.tunnels,
+			initCommandRouterAccess: params.initCommandRouterAccess,
+		},
+	}
+	s.commandRouter = newLazyCommandRouterClient(s.connectCommandRouter)
 	return s
 }
+
+func (s *sandboxImplV2) sandboxID() string    { return s.id }
+func (s *sandboxImplV2) modalClient() *Client { return s.client }
+func (s *sandboxImplV2) task() *taskState     { return &s.taskState }
 
 // createSandboxV2 creates a V2 Sandbox.
 func createSandboxV2(ctx context.Context, client *Client, app *App, image *Image, params *SandboxCreateParams) (sandboxImpl, error) {
@@ -86,7 +100,7 @@ func createSandboxV2(ctx context.Context, client *Client, app *App, image *Image
 		return nil, err
 	}
 
-	opts := taskSandboxOptions{taskID: createResp.GetTaskId()}
+	opts := sandboxImplParams{taskID: createResp.GetTaskId()}
 	if access := createResp.GetCommandRouterAccess(); access != nil {
 		opts.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
 	}
@@ -125,7 +139,7 @@ func sandboxFromNameV2(ctx context.Context, client *Client, appName, name string
 		}
 		return nil, err
 	}
-	return newSandboxImpl(client, resp.GetSandboxId(), taskSandboxOptions{}), nil
+	return newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{}), nil
 }
 
 // listSandboxesV2 lists running Sandboxes through the V2 list RPC.
@@ -166,7 +180,7 @@ func listSandboxesV2(ctx context.Context, client *Client, params *SandboxExperim
 				return
 			}
 			for _, info := range sandboxes {
-				if !yield(newSandboxImpl(client, info.GetId(), taskSandboxOptions{}), nil) {
+				if !yield(newSandboxImpl(client, info.GetId(), sandboxImplParams{}), nil) {
 					return
 				}
 			}
@@ -185,40 +199,167 @@ func sandboxFromSnapshotV2(ctx context.Context, client *Client, snapshot *Sandbo
 	if err != nil {
 		return nil, err
 	}
-	opts := taskSandboxOptions{taskID: resp.GetTaskId()}
+	opts := sandboxImplParams{taskID: resp.GetTaskId()}
 	if access := resp.GetCommandRouterAccess(); access != nil {
 		opts.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
 	}
 	return newSandboxImpl(client, resp.GetSandboxId(), opts), nil
 }
 
-func (s *sandboxImplV2) isV2() bool { return true }
+func (s *sandboxImplV2) terminate(ctx context.Context) error {
+	_, err := s.client.cpClient.SandboxTerminateV2(ctx, pb.SandboxTerminateRequest_builder{SandboxId: s.id}.Build())
+	return err
+}
+
+func (s *sandboxImplV2) close() {
+	s.commandRouter.close()
+}
 
 func (s *sandboxImplV2) rpcWait(ctx context.Context, timeoutSecs float32) (*pb.SandboxWaitResponse, error) {
 	return s.client.cpClient.SandboxWaitV2(ctx, pb.SandboxWaitRequest_builder{SandboxId: s.id, Timeout: timeoutSecs}.Build())
 }
 
-func (s *sandboxImplV2) rpcTerminate(ctx context.Context) error {
-	_, err := s.client.cpClient.SandboxTerminateV2(ctx, pb.SandboxTerminateRequest_builder{SandboxId: s.id}.Build())
-	return err
+func (s *sandboxImplV2) wait(ctx context.Context) (int, error) {
+	return waitForReturnCode(ctx, s, s.rpcWait)
+}
+
+func (s *sandboxImplV2) poll(ctx context.Context) (*int, error) {
+	resp, err := s.rpcWait(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	return getReturnCode(resp.GetResult()), nil
+}
+
+func (s *sandboxImplV2) waitForScheduling(ctx context.Context, timeout time.Duration) error {
+	return waitForScheduling(ctx, s, func(ctx context.Context, timeout time.Duration) (string, error) {
+		return s.waitForTaskID(ctx, timeout, true)
+	}, timeout)
+}
+
+func (s *sandboxImplV2) tunnels(ctx context.Context, timeout time.Duration) (map[int]*Tunnel, error) {
+	if s.taskState.tunnels != nil {
+		return s.taskState.tunnels, nil
+	}
+	resp, err := s.client.cpClient.SandboxGetTunnelsV2(ctx, pb.SandboxGetTunnelsRequest_builder{
+		SandboxId: s.id,
+		Timeout:   float32(timeout.Seconds()),
+	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	tunnels, err := tunnelsFromResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+	s.taskState.tunnels = tunnels
+	return tunnels, nil
+}
+
+func (s *sandboxImplV2) getAppID(ctx context.Context) (string, error) {
+	resp, err := s.rpcWait(ctx, 0)
+	return resp.GetMetadata().GetAppId(), err
 }
 
 func (s *sandboxImplV2) rpcGetTaskID(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error) {
 	return s.client.cpClient.SandboxGetTaskIdV2(ctx, pb.SandboxGetTaskIdRequest_builder{SandboxId: s.id}.Build())
 }
 
-func (s *sandboxImplV2) rpcGetTunnels(ctx context.Context, timeout time.Duration) (*pb.SandboxGetTunnelsResponse, error) {
-	return s.client.cpClient.SandboxGetTunnelsV2(ctx, pb.SandboxGetTunnelsRequest_builder{
-		SandboxId: s.id,
-		Timeout:   float32(timeout.Seconds()),
-	}.Build())
+func (s *sandboxImplV2) resolveTaskIDForLogs(ctx context.Context) (string, error) {
+	resp, err := s.rpcGetTaskID(ctx)
+	return resp.GetTaskId(), err
 }
 
-func (s *sandboxImplV2) rpcGetExitSnapshot(ctx context.Context, timeoutSecs float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error) {
-	return s.client.cpClient.SandboxGetExitSnapshotV2(ctx, pb.SandboxGetExitSnapshotRequest_builder{
-		SandboxId: s.id,
-		Timeout:   timeoutSecs,
-	}.Build(), opts...)
+func (s *sandboxImplV2) ensureTaskID(ctx context.Context) (string, error) {
+	return s.waitForTaskID(ctx, getTaskIDTimeout, false)
+}
+
+// waitForTaskID returns the Sandbox's task ID, polling for it until timeout
+// if it is not known yet.
+func (s *sandboxImplV2) waitForTaskID(ctx context.Context, timeout time.Duration, retryTransient bool) (string, error) {
+	s.taskIDMu.Lock()
+	taskID := s.taskID
+	s.taskIDMu.Unlock()
+	if taskID != "" {
+		return taskID, nil
+	}
+	taskID, err := pollTaskID(ctx, s.id, s.rpcGetTaskID, timeout, retryTransient)
+	if err != nil {
+		return "", err
+	}
+	s.taskIDMu.Lock()
+	s.taskID = taskID
+	s.taskIDMu.Unlock()
+	return taskID, nil
+}
+
+func (s *sandboxImplV2) getExitSnapshot(ctx context.Context, params *SandboxExperimentalGetExitSnapshotParams) (*Image, error) {
+	return pollExitSnapshot(ctx, s, params, func(ctx context.Context, timeoutSecs float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error) {
+		return s.client.cpClient.SandboxGetExitSnapshotV2(ctx, pb.SandboxGetExitSnapshotRequest_builder{
+			SandboxId: s.id,
+			Timeout:   timeoutSecs,
+		}.Build(), opts...)
+	})
+}
+
+func (s *sandboxImplV2) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {
+	if err := s.commandRouter.ensureOpen(); err != nil {
+		return "", nil, err
+	}
+	taskID, err := s.ensureTaskID(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	client, err := s.commandRouter.get(ctx, taskID)
+	if err != nil {
+		return "", nil, err
+	}
+	return taskID, client, nil
+}
+
+func (s *sandboxImplV2) connectCommandRouter(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
+	// Consume the seeded access, so if connecting with it fails the retry
+	// falls back to the authoritative RPC instead of re-trying the same
+	// credentials forever. Safe under the lazy client's lock, held by get.
+	access := s.initCommandRouterAccess
+	s.initCommandRouterAccess = nil
+	return connectCommandRouter(ctx, s.client, taskID, s.id, true, access)
+}
+
+func (s *sandboxImplV2) waitUntilReady(ctx context.Context, timeout time.Duration) error {
+	return waitUntilReadyViaTcr(ctx, s, timeout)
+}
+
+func (s *sandboxImplV2) updateNetworkPolicy(ctx context.Context, params SandboxUpdateNetworkPolicyParams) error {
+	return updateNetworkPolicyViaTcr(ctx, s, params)
+}
+
+func (s *sandboxImplV2) updateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
+	return updateOutboundPolicyViaTcr(ctx, s, policy)
+}
+
+func (s *sandboxImplV2) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {
+	return snapshotFilesystemViaTcr(ctx, s, timeout, ttl, containerID)
+}
+
+func (s *sandboxImplV2) snapshotDirectory(ctx context.Context, path string, timeout, ttl time.Duration, params *SandboxSnapshotDirectoryParams) (*Image, error) {
+	return snapshotDirectoryViaTcr(ctx, s, path, timeout, ttl, params)
+}
+
+func (s *sandboxImplV2) mountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error {
+	return mountImageViaTcr(ctx, s, path, image, params)
+}
+
+func (s *sandboxImplV2) unmountImage(ctx context.Context, path string) error {
+	return unmountImageViaTcr(ctx, s, path)
+}
+
+func (s *sandboxImplV2) reloadVolumes(ctx context.Context, containerID string, timeout time.Duration) error {
+	return reloadVolumesViaTcr(ctx, s, containerID, timeout)
+}
+
+func (s *sandboxImplV2) exec(ctx context.Context, command []string, params *SandboxExecParams, containerID string) (*ContainerProcess, error) {
+	return execViaTcr(ctx, s, command, params, containerID)
 }
 
 func (s *sandboxImplV2) stdin() io.WriteCloser {
@@ -231,7 +372,7 @@ func (s *sandboxImplV2) stdin() io.WriteCloser {
 func (s *sandboxImplV2) outputStream(fd pb.FileDescriptor) io.ReadCloser {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &lazyStreamReader{
-		readCheck: s.ensureOpen,
+		readCheck: s.commandRouter.ensureOpen,
 		cancel:    cancel,
 		initFunc: func() io.ReadCloser {
 			return outputStreamSbV2(ctx, s.getCommandRouter, fd)
@@ -332,7 +473,7 @@ func (s *sandboxImplV2) validateSidecarCreate(params *SidecarCreateParams) error
 
 func (s *sandboxImplV2) createSidecar(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
 	if !controlPlaneSidecarCreateEnabled() {
-		return s.createSidecarViaCommandRouter(ctx, in)
+		return createSidecarViaTcr(ctx, s, in)
 	}
 
 	var workdir *string

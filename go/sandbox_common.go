@@ -77,100 +77,128 @@ type sandboxImpl interface {
 	createSidecar(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error)
 }
 
-// taskBackend is the part of a task-based Sandbox backend that differs between
-// V1 and V2: which control plane RPCs address the Sandbox.
-type taskBackend interface {
-	isV2() bool
-	rpcWait(ctx context.Context, timeoutSecs float32) (*pb.SandboxWaitResponse, error)
-	rpcTerminate(ctx context.Context) error
-	rpcGetTaskID(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error)
-	rpcGetTunnels(ctx context.Context, timeout time.Duration) (*pb.SandboxGetTunnelsResponse, error)
-	rpcGetExitSnapshot(ctx context.Context, timeoutSecs float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error)
+// sandboxImplParams seeds state a backend already knows at construction time.
+type sandboxImplParams struct {
+	taskID  string
+	tunnels map[int]*Tunnel
+	// Only good for the first command router connection; later ones fetch fresh access.
+	initCommandRouterAccess *commandRouterAccess
 }
 
-// taskSandbox is the machinery shared by backends whose Sandbox is a single
-// task reached through the task command router: task ID lookup, the command
-// router connection, and the operations that only differ between V1 and V2 in
-// which control plane RPC they call (dispatched through backend).
-type taskSandbox struct {
-	client  *Client
-	id      string
-	backend taskBackend
-
-	taskID        string
-	taskIDMu      sync.Mutex
-	cachedTunnels map[int]*Tunnel
-
-	commandRouterClient     *taskCommandRouterClient
-	commandRouterClientMu   sync.Mutex
+// taskState is the state a backend keeps about the task running its Sandbox.
+type taskState struct {
+	taskID   string
+	taskIDMu sync.Mutex
+	tunnels  map[int]*Tunnel
+	// Access returned at create or restore is only good for the first connection.
 	initCommandRouterAccess *commandRouterAccess
+	commandRouter           *lazyCommandRouterClient
+}
 
-	// open is cleared by close(); a command router connection finishing
-	// initialization afterwards is released instead of kept.
+// lazyCommandRouterClient connects to the task command router on first use and
+// shares that connection until close.
+type lazyCommandRouterClient struct {
+	connect func(ctx context.Context, taskID string) (*taskCommandRouterClient, error)
+
+	mu     sync.Mutex
+	client *taskCommandRouterClient
+	// open is cleared by close(); a connection finishing initialization
+	// afterwards is released instead of kept.
 	open atomic.Bool
 }
 
-// taskSandboxOptions seeds state a backend already knows at construction time.
-type taskSandboxOptions struct {
-	taskID                  string
-	tunnels                 map[int]*Tunnel
-	initCommandRouterAccess *commandRouterAccess
+func newLazyCommandRouterClient(connect func(ctx context.Context, taskID string) (*taskCommandRouterClient, error)) *lazyCommandRouterClient {
+	l := &lazyCommandRouterClient{connect: connect}
+	l.open.Store(true)
+	return l
 }
 
-func (t *taskSandbox) init(client *Client, sandboxID string, backend taskBackend, opts taskSandboxOptions) {
-	t.client = client
-	t.id = sandboxID
-	t.backend = backend
-	t.taskID = opts.taskID
-	t.cachedTunnels = opts.tunnels
-	t.initCommandRouterAccess = opts.initCommandRouterAccess
-	t.open.Store(true)
-}
-
-func (t *taskSandbox) sandboxID() string    { return t.id }
-func (t *taskSandbox) modalClient() *Client { return t.client }
-
-func (t *taskSandbox) terminate(ctx context.Context) error {
-	return t.backend.rpcTerminate(ctx)
-}
-
-func (t *taskSandbox) close() {
-	if !t.open.Swap(false) {
-		return
-	}
-	// Initialization owns cleanup if it is still holding this lock.
-	if !t.commandRouterClientMu.TryLock() {
-		return
-	}
-	defer t.commandRouterClientMu.Unlock()
-
-	if t.commandRouterClient != nil {
-		t.commandRouterClient.closeWhenIdle()
-		t.commandRouterClient = nil
-	}
-}
-
-func (t *taskSandbox) ensureOpen() error {
-	if !t.open.Load() {
+func (l *lazyCommandRouterClient) ensureOpen() error {
+	if !l.open.Load() {
 		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
 	}
 	return nil
 }
 
-func (t *taskSandbox) wait(ctx context.Context) (int, error) {
+// get returns the shared connection, connecting to task taskID first if needed.
+func (l *lazyCommandRouterClient) get(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
+	if err := l.ensureOpen(); err != nil {
+		return nil, err
+	}
+	l.mu.Lock()
+	defer func() {
+		if !l.open.Load() && l.client != nil {
+			l.client.closeWhenIdle()
+			l.client = nil
+		}
+		l.mu.Unlock()
+	}()
+
+	if err := l.ensureOpen(); err != nil {
+		return nil, err
+	}
+
+	if l.client == nil {
+		client, err := l.connect(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		l.client = client
+	}
+	if err := l.ensureOpen(); err != nil {
+		return nil, err
+	}
+	return l.client, nil
+}
+
+// close releases the connection, if any, and fails every later get.
+func (l *lazyCommandRouterClient) close() {
+	if !l.open.Swap(false) {
+		return
+	}
+	// Initialization owns cleanup if it is still holding this lock.
+	if !l.mu.TryLock() {
+		return
+	}
+	defer l.mu.Unlock()
+	if l.client != nil {
+		l.client.closeWhenIdle()
+		l.client = nil
+	}
+}
+
+// connectCommandRouter opens a command router connection to task taskID of
+// Sandbox sandboxID, using access if given and fetching access otherwise.
+func connectCommandRouter(ctx context.Context, client *Client, taskID, sandboxID string, isV2 bool, access *commandRouterAccess) (*taskCommandRouterClient, error) {
+	return initTaskCommandRouterClient(
+		ctx,
+		client.cpClient,
+		taskID,
+		sandboxID,
+		isV2,
+		access,
+		client.logger,
+		client.serverWarningLogger,
+		client.profile,
+	)
+}
+
+// waitForReturnCode long-polls rpcWait until the Sandbox finishes and returns
+// its exit code.
+func waitForReturnCode(ctx context.Context, impl sandboxImpl, rpcWait func(ctx context.Context, timeoutSecs float32) (*pb.SandboxWaitResponse, error)) (int, error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
 
-		resp, err := t.backend.rpcWait(ctx, 10)
+		resp, err := rpcWait(ctx, 10)
 		if err != nil {
 			return 0, err
 		}
 		if resp.GetResult() != nil {
 			returnCode := getReturnCode(resp.GetResult())
-			t.client.logger.DebugContext(ctx, "Sandbox wait completed",
-				"sandbox_id", t.id,
+			impl.modalClient().logger.DebugContext(ctx, "Sandbox wait completed",
+				"sandbox_id", impl.sandboxID(),
 				"status", resp.GetResult().GetStatus().String(),
 				"return_code", returnCode)
 			if returnCode != nil {
@@ -181,16 +209,11 @@ func (t *taskSandbox) wait(ctx context.Context) (int, error) {
 	}
 }
 
-func (t *taskSandbox) poll(ctx context.Context) (*int, error) {
-	resp, err := t.backend.rpcWait(ctx, 0)
-	if err != nil {
-		return nil, err
-	}
-	return getReturnCode(resp.GetResult()), nil
-}
-
-func (t *taskSandbox) waitForScheduling(ctx context.Context, timeout time.Duration) error {
-	_, err := t.waitForTaskID(ctx, timeout, true)
+// waitForScheduling blocks until waitForTaskID returns a task. If the wait
+// fails for any reason other than the Sandbox having already finished, it
+// terminates the Sandbox so a queued one cannot start later with no caller.
+func waitForScheduling(ctx context.Context, impl sandboxImpl, waitForTaskID func(ctx context.Context, timeout time.Duration) (string, error), timeout time.Duration) error {
+	_, err := waitForTaskID(ctx, timeout)
 	if err == nil {
 		return nil
 	}
@@ -199,8 +222,8 @@ func (t *taskSandbox) waitForScheduling(ctx context.Context, timeout time.Durati
 		return err
 	}
 	// The caller's context may already be done, so terminate on a detached one.
-	if terminateErr := t.backend.rpcTerminate(context.WithoutCancel(ctx)); terminateErr != nil {
-		t.client.logger.DebugContext(ctx, "Failed to terminate unscheduled Sandbox", "sandbox_id", t.id, "error", terminateErr)
+	if terminateErr := impl.terminate(context.WithoutCancel(ctx)); terminateErr != nil {
+		impl.modalClient().logger.DebugContext(ctx, "Failed to terminate unscheduled Sandbox", "sandbox_id", impl.sandboxID(), "error", terminateErr)
 	}
 	var timeoutErr TimeoutError
 	if errors.As(err, &timeoutErr) {
@@ -209,16 +232,8 @@ func (t *taskSandbox) waitForScheduling(ctx context.Context, timeout time.Durati
 	return err
 }
 
-func (t *taskSandbox) tunnels(ctx context.Context, timeout time.Duration) (map[int]*Tunnel, error) {
-	if t.cachedTunnels != nil {
-		return t.cachedTunnels, nil
-	}
-
-	resp, err := t.backend.rpcGetTunnels(ctx, timeout)
-	if err != nil {
-		return nil, err
-	}
-
+// tunnelsFromResponse converts a tunnels response into Tunnels by container port.
+func tunnelsFromResponse(resp *pb.SandboxGetTunnelsResponse) (map[int]*Tunnel, error) {
 	if resp.GetResult() != nil && resp.GetResult().GetStatus() == pb.GenericResult_GENERIC_STATUS_TIMEOUT {
 		return nil, SandboxTimeoutError{Exception: "Sandbox operation timed out"}
 	}
@@ -232,41 +247,21 @@ func (t *taskSandbox) tunnels(ctx context.Context, timeout time.Duration) (map[i
 			UnencryptedPort: int(tun.GetUnencryptedPort()),
 		}
 	}
-	t.cachedTunnels = tunnels
 	return tunnels, nil
 }
 
-func (t *taskSandbox) getAppID(ctx context.Context) (string, error) {
-	resp, err := t.backend.rpcWait(ctx, 0)
-	return resp.GetMetadata().GetAppId(), err
-}
-
-func (t *taskSandbox) resolveTaskIDForLogs(ctx context.Context) (string, error) {
-	resp, err := t.backend.rpcGetTaskID(ctx)
-	return resp.GetTaskId(), err
-}
-
-func (t *taskSandbox) ensureTaskID(ctx context.Context) (string, error) {
-	return t.waitForTaskID(ctx, getTaskIDTimeout, false)
-}
-
-// waitForTaskID polls until the Sandbox has been assigned a task. It returns a
-// ConflictError if the Sandbox finished before that happened and a TimeoutError
-// once timeout elapses. With retryTransient, lookups that fail with a transient
-// error keep polling until the deadline instead of failing the wait.
-func (t *taskSandbox) waitForTaskID(ctx context.Context, timeout time.Duration, retryTransient bool) (string, error) {
-	t.taskIDMu.Lock()
-	taskID := t.taskID
-	t.taskIDMu.Unlock()
-	if taskID != "" {
-		return taskID, nil
-	}
+// pollTaskID polls rpcGetTaskID until Sandbox sandboxID has been assigned a
+// task. It returns a ConflictError if the Sandbox finished before that happened
+// and a TimeoutError once timeout elapses. With retryTransient, lookups that
+// fail with a transient error keep polling until the deadline instead of
+// failing the wait.
+func pollTaskID(ctx context.Context, sandboxID string, rpcGetTaskID func(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error), timeout time.Duration, retryTransient bool) (string, error) {
 	const pollInterval = 500 * time.Millisecond
 	deadline := time.Now().Add(timeout)
 	noTimeLeft := func() bool { return time.Until(deadline) <= pollInterval }
-	timedOut := TimeoutError{Exception: fmt.Sprintf("timed out waiting for task ID for Sandbox %s", t.id)}
+	timedOut := TimeoutError{Exception: fmt.Sprintf("timed out waiting for task ID for Sandbox %s", sandboxID)}
 	for {
-		resp, err := t.backend.rpcGetTaskID(ctx)
+		resp, err := rpcGetTaskID(ctx)
 		if err != nil {
 			// A done caller context surfaces from the RPC as a gRPC status error, so check ctx directly.
 			if ctx.Err() != nil {
@@ -283,14 +278,11 @@ func (t *taskSandbox) waitForTaskID(ctx context.Context, timeout time.Duration, 
 				return "", timedOut
 			}
 		} else if resp.GetTaskId() != "" {
-			t.taskIDMu.Lock()
-			t.taskID = resp.GetTaskId()
-			t.taskIDMu.Unlock()
 			return resp.GetTaskId(), nil
 		} else if result := resp.GetTaskResult(); result != nil {
 			msg := result.GetException()
 			if msg == "" {
-				msg = fmt.Sprintf("Sandbox %s has already finished", t.id)
+				msg = fmt.Sprintf("Sandbox %s has already finished", sandboxID)
 			}
 			return "", ConflictError{Exception: msg}
 		} else if noTimeLeft() {
@@ -312,73 +304,9 @@ func isTransientTaskIDLookupError(err error) bool {
 	return false
 }
 
-func (t *taskSandbox) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {
-	if err := t.ensureOpen(); err != nil {
-		return "", nil, err
-	}
-	taskID, err := t.ensureTaskID(ctx)
-	if err != nil {
-		return "", nil, err
-	}
-	client, err := t.getOrCreateCommandRouterClient(ctx, taskID)
-	if err != nil {
-		return "", nil, err
-	}
-	return taskID, client, nil
-}
-
-func (t *taskSandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
-	if err := t.ensureOpen(); err != nil {
-		return nil, err
-	}
-	t.commandRouterClientMu.Lock()
-	defer func() {
-		if !t.open.Load() && t.commandRouterClient != nil {
-			t.commandRouterClient.closeWhenIdle()
-			t.commandRouterClient = nil
-		}
-		t.commandRouterClientMu.Unlock()
-	}()
-
-	if err := t.ensureOpen(); err != nil {
-		return nil, err
-	}
-
-	if t.commandRouterClient == nil {
-		// Consume the seeded access, so if connecting with it fails the retry
-		// falls back to the authoritative RPC instead of re-trying the same
-		// credentials forever. Safe under commandRouterClientMu, held above.
-		access := t.initCommandRouterAccess
-		t.initCommandRouterAccess = nil
-
-		client, err := initTaskCommandRouterClient(
-			ctx,
-			t.client.cpClient,
-			taskID,
-			t.id,
-			t.backend.isV2(),
-			access,
-			t.client.logger,
-			t.client.serverWarningLogger,
-			t.client.profile,
-		)
-		if err != nil {
-			return nil, err
-		}
-		t.commandRouterClient = client
-	}
-	if err := t.ensureOpen(); err != nil {
-		return nil, err
-	}
-	return t.commandRouterClient, nil
-}
-
-func (t *taskSandbox) getExitSnapshot(ctx context.Context, params *SandboxExperimentalGetExitSnapshotParams) (*Image, error) {
-	return getExitSnapshotVia(ctx, t.client, t.id, t.backend.rpcGetExitSnapshot, params)
-}
-
-func (t *taskSandbox) waitUntilReady(ctx context.Context, timeout time.Duration) error {
-	taskID, commandRouterClient, err := t.getCommandRouter(ctx)
+// waitUntilReadyViaTcr blocks until the Sandbox reports ready over the command router.
+func waitUntilReadyViaTcr(ctx context.Context, impl sandboxImpl, timeout time.Duration) error {
+	taskID, commandRouterClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
@@ -386,24 +314,26 @@ func (t *taskSandbox) waitUntilReady(ctx context.Context, timeout time.Duration)
 	return err
 }
 
-func (t *taskSandbox) updateNetworkPolicy(ctx context.Context, params SandboxUpdateNetworkPolicyParams) error {
-	taskID, crClient, err := t.getCommandRouter(ctx)
+// updateNetworkPolicyViaTcr replaces the network policy of a Sandbox over the command router.
+func updateNetworkPolicyViaTcr(ctx context.Context, impl sandboxImpl, params SandboxUpdateNetworkPolicyParams) error {
+	taskID, crClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
 	return crClient.SetNetworkAccess(ctx, buildUpdateNetworkPolicyProto(taskID, params))
 }
 
-func (t *taskSandbox) updateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
+// updateOutboundPolicyViaTcr replaces the outbound policy of a Sandbox over the command router.
+func updateOutboundPolicyViaTcr(ctx context.Context, impl sandboxImpl, policy *ExperimentalOutboundPolicy) error {
 	var taskID string
 	var crClient *taskCommandRouterClient
 	g, groupCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return hydrateSecrets(groupCtx, t.client, policy.secrets())
+		return hydrateSecrets(groupCtx, impl.modalClient(), policy.secrets())
 	})
 	g.Go(func() error {
 		var err error
-		taskID, crClient, err = t.getCommandRouter(groupCtx)
+		taskID, crClient, err = impl.getCommandRouter(groupCtx)
 		return err
 	})
 	if err := g.Wait(); err != nil {
@@ -415,13 +345,14 @@ func (t *taskSandbox) updateOutboundPolicy(ctx context.Context, policy *Experime
 	}.Build())
 }
 
-func (t *taskSandbox) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {
+// snapshotFilesystemViaTcr snapshots one container's filesystem over the command router.
+func snapshotFilesystemViaTcr(ctx context.Context, impl sandboxImpl, timeout, ttl time.Duration, containerID string) (*Image, error) {
 	wireTTL, err := resolveTTL(ttl)
 	if err != nil {
 		return nil, err
 	}
 
-	taskID, crClient, err := t.getCommandRouter(ctx)
+	taskID, crClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -442,16 +373,17 @@ func (t *taskSandbox) snapshotFilesystem(ctx context.Context, timeout, ttl time.
 		return nil, ExecutionError{Exception: "Sandbox snapshot filesystem response missing image ID"}
 	}
 
-	return &Image{ImageID: response.GetImageId(), client: t.client}, nil
+	return &Image{ImageID: response.GetImageId(), client: impl.modalClient()}, nil
 }
 
-func (t *taskSandbox) snapshotDirectory(ctx context.Context, path string, timeout, ttl time.Duration, params *SandboxSnapshotDirectoryParams) (*Image, error) {
+// snapshotDirectoryViaTcr snapshots one directory over the command router.
+func snapshotDirectoryViaTcr(ctx context.Context, impl sandboxImpl, path string, timeout, ttl time.Duration, params *SandboxSnapshotDirectoryParams) (*Image, error) {
 	wireTTL, err := resolveTTL(ttl)
 	if err != nil {
 		return nil, err
 	}
 
-	taskID, crClient, err := t.getCommandRouter(ctx)
+	taskID, crClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -471,11 +403,12 @@ func (t *taskSandbox) snapshotDirectory(ctx context.Context, path string, timeou
 		return nil, ExecutionError{Exception: "Sandbox snapshot directory response missing `imageId`"}
 	}
 
-	return &Image{ImageID: response.GetImageId(), client: t.client}, nil
+	return &Image{ImageID: response.GetImageId(), client: impl.modalClient()}, nil
 }
 
-func (t *taskSandbox) mountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error {
-	taskID, crClient, err := t.getCommandRouter(ctx)
+// mountImageViaTcr mounts an Image at path over the command router.
+func mountImageViaTcr(ctx context.Context, impl sandboxImpl, path string, image *Image, params *SandboxMountImageParams) error {
+	taskID, crClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
@@ -493,8 +426,9 @@ func (t *taskSandbox) mountImage(ctx context.Context, path string, image *Image,
 	return crClient.MountDirectory(ctx, request)
 }
 
-func (t *taskSandbox) unmountImage(ctx context.Context, path string) error {
-	taskID, crClient, err := t.getCommandRouter(ctx)
+// unmountImageViaTcr unmounts the Image at path over the command router.
+func unmountImageViaTcr(ctx context.Context, impl sandboxImpl, path string) error {
+	taskID, crClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
@@ -508,14 +442,15 @@ func (t *taskSandbox) unmountImage(ctx context.Context, path string) error {
 	return crClient.UnmountDirectory(ctx, request)
 }
 
-func (t *taskSandbox) reloadVolumes(ctx context.Context, containerID string, timeout time.Duration) error {
+// reloadVolumesViaTcr reloads one container's Volumes over the command router.
+func reloadVolumesViaTcr(ctx context.Context, impl sandboxImpl, containerID string, timeout time.Duration) error {
 	if timeout < 0 {
 		return InvalidError{Exception: "Timeout must not be negative"}
 	}
 	if timeout == 0 {
 		timeout = 55 * time.Second
 	}
-	taskID, crClient, err := t.getCommandRouter(ctx)
+	taskID, crClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
@@ -525,7 +460,8 @@ func (t *taskSandbox) reloadVolumes(ctx context.Context, containerID string, tim
 	}.Build(), timeout)
 }
 
-func (t *taskSandbox) exec(ctx context.Context, command []string, params *SandboxExecParams, containerID string) (*ContainerProcess, error) {
+// execViaTcr starts a command in the Sandbox over the command router.
+func execViaTcr(ctx context.Context, impl sandboxImpl, command []string, params *SandboxExecParams, containerID string) (*ContainerProcess, error) {
 	if params == nil {
 		params = &SandboxExecParams{}
 	}
@@ -542,11 +478,11 @@ func (t *taskSandbox) exec(ctx context.Context, command []string, params *Sandbo
 			return nil, err
 		}
 	}
-	if err := hydrateSecrets(ctx, t.client, resolvableSecrets(params.Secrets)); err != nil {
+	if err := hydrateSecrets(ctx, impl.modalClient(), resolvableSecrets(params.Secrets)); err != nil {
 		return nil, err
 	}
 
-	taskID, commandRouterClient, err := t.getCommandRouter(ctx)
+	taskID, commandRouterClient, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -562,9 +498,9 @@ func (t *taskSandbox) exec(ctx context.Context, command []string, params *Sandbo
 		return nil, err
 	}
 
-	t.client.logger.DebugContext(ctx, "Created ContainerProcess",
+	impl.modalClient().logger.DebugContext(ctx, "Created ContainerProcess",
 		"exec_id", execID,
-		"sandbox_id", t.id,
+		"sandbox_id", impl.sandboxID(),
 		"container_id", containerID,
 		"command", command)
 
@@ -574,13 +510,13 @@ func (t *taskSandbox) exec(ctx context.Context, command []string, params *Sandbo
 		deadline = &d
 	}
 
-	return newContainerProcess(commandRouterClient, t.client.logger, taskID, execID, *params, deadline), nil
+	return newContainerProcess(commandRouterClient, impl.modalClient().logger, taskID, execID, *params, deadline), nil
 }
 
-// createSidecarViaCommandRouter creates a sidecar container over the Sandbox's
-// task command router connection.
-func (t *taskSandbox) createSidecarViaCommandRouter(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
-	taskID, client, err := t.getCommandRouter(ctx)
+// createSidecarViaTcr creates a sidecar container over the Sandbox's task
+// command router connection.
+func createSidecarViaTcr(ctx context.Context, impl sandboxImpl, in sidecarCreateInputs) (sidecarCreateResult, error) {
+	taskID, client, err := impl.getCommandRouter(ctx)
 	if err != nil {
 		return sidecarCreateResult{}, err
 	}
@@ -605,9 +541,10 @@ func (t *taskSandbox) createSidecarViaCommandRouter(ctx context.Context, in side
 	return sidecarCreateResult{containerID: resp.GetContainerId(), containerName: resp.GetContainerName()}, nil
 }
 
-// getExitSnapshotVia polls rpc until the exit snapshot of Sandbox sandboxID
-// reaches a terminal state, within the budget of params.
-func getExitSnapshotVia(ctx context.Context, client *Client, sandboxID string, rpc func(ctx context.Context, timeoutSecs float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error), params *SandboxExperimentalGetExitSnapshotParams) (*Image, error) {
+// pollExitSnapshot polls rpcGetExitSnapshot until the exit snapshot of impl's
+// Sandbox reaches a terminal state, within the budget of params.
+func pollExitSnapshot(ctx context.Context, impl sandboxImpl, params *SandboxExperimentalGetExitSnapshotParams, rpcGetExitSnapshot func(ctx context.Context, timeoutSecs float32, opts ...grpc.CallOption) (*pb.SandboxGetExitSnapshotResponse, error)) (*Image, error) {
+	sandboxID := impl.sandboxID()
 	var timeout *time.Duration
 	if params != nil {
 		timeout = params.Timeout
@@ -634,7 +571,7 @@ func getExitSnapshotVia(ctx context.Context, client *Client, sandboxID string, r
 		}
 
 		pollCtx, cancel := context.WithTimeout(ctx, requestTimeout+exitSnapshotPollDeadlineMargin)
-		resp, err := rpc(pollCtx, float32(requestTimeout.Seconds()), retryCallOption{retries: &pollRetries})
+		resp, err := rpcGetExitSnapshot(pollCtx, float32(requestTimeout.Seconds()), retryCallOption{retries: &pollRetries})
 		cancel()
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -688,7 +625,7 @@ func getExitSnapshotVia(ctx context.Context, client *Client, sandboxID string, r
 			if resp.GetSuccess().GetImageId() == "" {
 				return nil, ExecutionError{Exception: "Exit snapshot result is missing image ID"}
 			}
-			return &Image{ImageID: resp.GetSuccess().GetImageId(), client: client}, nil
+			return &Image{ImageID: resp.GetSuccess().GetImageId(), client: impl.modalClient()}, nil
 		case resp.GetError() != nil:
 			message := resp.GetError().GetMessage()
 			errorCode := resp.GetError().GetErrorCode()
@@ -716,11 +653,11 @@ func getExitSnapshotVia(ctx context.Context, client *Client, sandboxID string, r
 // newSandboxImpl constructs the implementation backing the Sandbox with the
 // given ID. Server responses can return a Sandbox of either backend regardless
 // of which RPC was called, so the backend is always deduced from the ID.
-func newSandboxImpl(client *Client, sandboxID string, opts taskSandboxOptions) sandboxImpl {
+func newSandboxImpl(client *Client, sandboxID string, params sandboxImplParams) sandboxImpl {
 	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
-		return newSandboxImplV2(client, sandboxID, opts)
+		return newSandboxImplV2(client, sandboxID, params)
 	}
-	return newSandboxImplV1(client, sandboxID, opts)
+	return newSandboxImplV1(client, sandboxID, params)
 }
 
 func sandboxTagsToProto(tags map[string]string) []*pb.SandboxTag {
@@ -745,11 +682,8 @@ func sandboxTagsFromResponse(resp *pb.SandboxTagsGetResponse, err error) (map[st
 	return tags, nil
 }
 
-// task returns the shared task machinery of a task-based backend.
-func (t *taskSandbox) task() *taskSandbox { return t }
-
-// task exposes the task machinery behind a Sandbox on a task-based backend.
-// Used by tests to seed and inspect task state.
-func (sb *Sandbox) task() *taskSandbox {
-	return sb.impl.(interface{ task() *taskSandbox }).task()
+// task exposes the task state behind a Sandbox on a task-based backend. Used
+// by tests to seed and inspect task state.
+func (sb *Sandbox) task() *taskState {
+	return sb.impl.(interface{ task() *taskState }).task()
 }

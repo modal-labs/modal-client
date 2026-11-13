@@ -682,7 +682,7 @@ func defaultSandboxPTYInfo() *pb.PTYInfo {
 
 // newSandbox creates a Sandbox handle for a server-returned ID.
 func newSandbox(client *Client, sandboxID string) *Sandbox {
-	return newSandboxFromImpl(newSandboxImpl(client, sandboxID, taskSandboxOptions{}))
+	return newSandboxFromImpl(newSandboxImpl(client, sandboxID, sandboxImplParams{}))
 }
 
 // newSandboxFromImpl wraps a backend implementation in a Sandbox handle.

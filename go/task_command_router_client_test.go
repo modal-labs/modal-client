@@ -84,7 +84,7 @@ func TestSandboxDetachDrainsConcurrentOperations(t *testing.T) {
 	}}
 	client := newStubClient(t, stub)
 	sb := newSandbox(&Client{}, testV2SandboxID)
-	sb.task().commandRouterClient = client
+	sb.task().commandRouter.client = client
 	results := make(chan error, 2)
 	for range 2 {
 		go func() { _, err := client.ExecStart(t.Context(), &pb.TaskExecStartRequest{}); results <- err }()
