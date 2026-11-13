@@ -175,6 +175,14 @@ func (s *sandboxImplV1) terminate(ctx context.Context) error {
 	return err
 }
 
+func (s *sandboxImplV1) pause(ctx context.Context) error {
+	return InvalidError{Exception: persistentOnlyMessage("ExperimentalPause")}
+}
+
+func (s *sandboxImplV1) resume(ctx context.Context) error {
+	return InvalidError{Exception: persistentOnlyMessage("ExperimentalResume")}
+}
+
 func (s *sandboxImplV1) close() {
 	s.commandRouter.close()
 }

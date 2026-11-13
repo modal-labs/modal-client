@@ -240,7 +240,8 @@ type SandboxCreateParams struct {
 	CustomDomain               string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
 	IncludeOidcIdentityToken   bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
 	ExperimentalEnableSnapshot bool                         // Enable memory snapshots.
-	ExperimentalOutboundPolicy *ExperimentalOutboundPolicy  // EXPERIMENTAL: the API is subject to change. Configuration for replacing headers in outbound HTTPS requests from the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never visible to the workload.
+	ExperimentalPersistent     bool
+	ExperimentalOutboundPolicy *ExperimentalOutboundPolicy // EXPERIMENTAL: the API is subject to change. Configuration for replacing headers in outbound HTTPS requests from the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never visible to the workload.
 }
 
 // buildOutboundNetworkAccess builds the outbound network policy for the given
@@ -566,6 +567,9 @@ type sandboxCreateFunc func(ctx context.Context, client *Client, app *App, image
 // implCreateForParams selects the backend that creates the Sandbox described
 // by params.
 func implCreateForParams(client *Client, params *SandboxCreateParams) sandboxCreateFunc {
+	if params.ExperimentalPersistent {
+		return createSandboxPersistent
+	}
 	// GPUs are not supported on V2, so those calls use the V1 backend
 	// regardless of the setting.
 	if params.GPU != "" {
@@ -597,7 +601,11 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 	if params == nil {
 		params = &SandboxCreateParams{}
 	}
-	impl, err := createSandboxV2(ctx, s.client, app, image, params)
+	create := createSandboxV2
+	if params.ExperimentalPersistent {
+		create = createSandboxPersistent
+	}
+	impl, err := create(ctx, s.client, app, image, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1134,6 +1142,37 @@ func (sb *Sandbox) ensureAttached() error {
 		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
 	}
 	return nil
+}
+
+// SandboxExperimentalPauseParams are options for Sandbox.ExperimentalPause.
+type SandboxExperimentalPauseParams struct{}
+
+// SandboxExperimentalResumeParams are options for Sandbox.ExperimentalResume.
+type SandboxExperimentalResumeParams struct{}
+
+// ExperimentalPause stops the Sandbox's current container, keeping its state so
+// it can be resumed.
+//
+// Only supported for experimental persistent Sandboxes.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (sb *Sandbox) ExperimentalPause(ctx context.Context, params *SandboxExperimentalPauseParams) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	return sb.impl.pause(ctx)
+}
+
+// ExperimentalResume resumes a paused Sandbox from its saved state.
+//
+// Only supported for experimental persistent Sandboxes.
+//
+// EXPERIMENTAL: the API is subject to change.
+func (sb *Sandbox) ExperimentalResume(ctx context.Context, params *SandboxExperimentalResumeParams) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	return sb.impl.resume(ctx)
 }
 
 // Detach disconnects from the running Sandbox

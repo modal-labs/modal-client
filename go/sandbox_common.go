@@ -43,6 +43,10 @@ type sandboxImpl interface {
 	createConnectToken(ctx context.Context, port uint32, userMetadata string) (*SandboxCreateConnectCredentials, error)
 
 	terminate(ctx context.Context) error
+	// pause stops the current session of a persistent Sandbox, keeping its state.
+	pause(ctx context.Context) error
+	// resume resumes a paused persistent Sandbox from its saved state.
+	resume(ctx context.Context) error
 	// close releases local resources (e.g. connections); the Sandbox keeps running.
 	close()
 	wait(ctx context.Context) (int, error)
@@ -237,9 +241,13 @@ func tunnelsFromResponse(resp *pb.SandboxGetTunnelsResponse) (map[int]*Tunnel, e
 	if resp.GetResult() != nil && resp.GetResult().GetStatus() == pb.GenericResult_GENERIC_STATUS_TIMEOUT {
 		return nil, SandboxTimeoutError{Exception: "Sandbox operation timed out"}
 	}
+	return tunnelsFromProtos(resp.GetTunnels()), nil
+}
 
-	tunnels := make(map[int]*Tunnel)
-	for _, tun := range resp.GetTunnels() {
+// tunnelsFromProtos converts tunnel protos into Tunnels by container port.
+func tunnelsFromProtos(protos []*pb.TunnelData) map[int]*Tunnel {
+	tunnels := make(map[int]*Tunnel, len(protos))
+	for _, tun := range protos {
 		tunnels[int(tun.GetContainerPort())] = &Tunnel{
 			Host:            tun.GetHost(),
 			Port:            int(tun.GetPort()),
@@ -247,7 +255,7 @@ func tunnelsFromResponse(resp *pb.SandboxGetTunnelsResponse) (map[int]*Tunnel, e
 			UnencryptedPort: int(tun.GetUnencryptedPort()),
 		}
 	}
-	return tunnels, nil
+	return tunnels
 }
 
 // pollTaskID polls rpcGetTaskID until Sandbox sandboxID has been assigned a
@@ -294,6 +302,12 @@ func pollTaskID(ctx context.Context, sandboxID string, rpcGetTaskID func(ctx con
 		case <-time.After(pollInterval):
 		}
 	}
+}
+
+// persistentOnlyMessage is the error for operations that only persistent
+// Sandboxes support.
+func persistentOnlyMessage(methodName string) string {
+	return fmt.Sprintf("Sandbox.%s requires a persistent Sandbox, created with ExperimentalPersistent: true", methodName)
 }
 
 func isTransientTaskIDLookupError(err error) bool {
