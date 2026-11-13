@@ -25519,6 +25519,8 @@ type EnvironmentListItem struct {
 	xxx_hidden_EffectiveRole                 EnvironmentRole        `protobuf:"varint,18,opt,name=effective_role,json=effectiveRole,proto3,enum=modal.client.EnvironmentRole,oneof"`
 	xxx_hidden_ImageBuilderVersion           *string                `protobuf:"bytes,19,opt,name=image_builder_version,json=imageBuilderVersion,proto3,oneof"`
 	xxx_hidden_CanManage                     bool                   `protobuf:"varint,20,opt,name=can_manage,json=canManage,proto3,oneof"`
+	xxx_hidden_CreatedBy                     *string                `protobuf:"bytes,21,opt,name=created_by,json=createdBy,proto3,oneof"`
+	xxx_hidden_CreatedByAvatarUrl            *string                `protobuf:"bytes,22,opt,name=created_by_avatar_url,json=createdByAvatarUrl,proto3,oneof"`
 	XXX_raceDetectHookData                   protoimpl.RaceDetectHookData
 	XXX_presence                             [1]uint32
 	unknownFields                            protoimpl.UnknownFields
@@ -25697,6 +25699,26 @@ func (x *EnvironmentListItem) GetCanManage() bool {
 	return false
 }
 
+func (x *EnvironmentListItem) GetCreatedBy() string {
+	if x != nil {
+		if x.xxx_hidden_CreatedBy != nil {
+			return *x.xxx_hidden_CreatedBy
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *EnvironmentListItem) GetCreatedByAvatarUrl() string {
+	if x != nil {
+		if x.xxx_hidden_CreatedByAvatarUrl != nil {
+			return *x.xxx_hidden_CreatedByAvatarUrl
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *EnvironmentListItem) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -25723,12 +25745,12 @@ func (x *EnvironmentListItem) SetEnvironmentId(v string) {
 
 func (x *EnvironmentListItem) SetMaxConcurrentTasks(v int32) {
 	x.xxx_hidden_MaxConcurrentTasks = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 22)
 }
 
 func (x *EnvironmentListItem) SetMaxConcurrentGpus(v int32) {
 	x.xxx_hidden_MaxConcurrentGpus = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 22)
 }
 
 func (x *EnvironmentListItem) SetCurrentConcurrentTasks(v int32) {
@@ -25741,7 +25763,7 @@ func (x *EnvironmentListItem) SetCurrentConcurrentGpus(v int32) {
 
 func (x *EnvironmentListItem) SetCycleBudgetDollars(v float64) {
 	x.xxx_hidden_CycleBudgetDollars = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 22)
 }
 
 func (x *EnvironmentListItem) SetEffectiveCycleSpendLimit(v float64) {
@@ -25762,27 +25784,37 @@ func (x *EnvironmentListItem) SetEnvironmentType(v EnvironmentType) {
 
 func (x *EnvironmentListItem) SetDefaultMemberRole(v EnvironmentRole) {
 	x.xxx_hidden_DefaultMemberRole = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 15, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 15, 22)
 }
 
 func (x *EnvironmentListItem) SetBlockUnauthenticatedResources(v bool) {
 	x.xxx_hidden_BlockUnauthenticatedResources = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 16, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 16, 22)
 }
 
 func (x *EnvironmentListItem) SetEffectiveRole(v EnvironmentRole) {
 	x.xxx_hidden_EffectiveRole = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 22)
 }
 
 func (x *EnvironmentListItem) SetImageBuilderVersion(v string) {
 	x.xxx_hidden_ImageBuilderVersion = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 18, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 18, 22)
 }
 
 func (x *EnvironmentListItem) SetCanManage(v bool) {
 	x.xxx_hidden_CanManage = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 20)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 22)
+}
+
+func (x *EnvironmentListItem) SetCreatedBy(v string) {
+	x.xxx_hidden_CreatedBy = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 20, 22)
+}
+
+func (x *EnvironmentListItem) SetCreatedByAvatarUrl(v string) {
+	x.xxx_hidden_CreatedByAvatarUrl = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 21, 22)
 }
 
 func (x *EnvironmentListItem) HasMaxConcurrentTasks() bool {
@@ -25841,6 +25873,20 @@ func (x *EnvironmentListItem) HasCanManage() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 19)
 }
 
+func (x *EnvironmentListItem) HasCreatedBy() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 20)
+}
+
+func (x *EnvironmentListItem) HasCreatedByAvatarUrl() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 21)
+}
+
 func (x *EnvironmentListItem) ClearMaxConcurrentTasks() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
 	x.xxx_hidden_MaxConcurrentTasks = 0
@@ -25881,6 +25927,16 @@ func (x *EnvironmentListItem) ClearCanManage() {
 	x.xxx_hidden_CanManage = false
 }
 
+func (x *EnvironmentListItem) ClearCreatedBy() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 20)
+	x.xxx_hidden_CreatedBy = nil
+}
+
+func (x *EnvironmentListItem) ClearCreatedByAvatarUrl() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 21)
+	x.xxx_hidden_CreatedByAvatarUrl = nil
+}
+
 type EnvironmentListItem_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -25904,6 +25960,8 @@ type EnvironmentListItem_builder struct {
 	EffectiveRole                 *EnvironmentRole
 	ImageBuilderVersion           *string
 	CanManage                     *bool
+	CreatedBy                     *string
+	CreatedByAvatarUrl            *string
 }
 
 func (b0 EnvironmentListItem_builder) Build() *EnvironmentListItem {
@@ -25917,17 +25975,17 @@ func (b0 EnvironmentListItem_builder) Build() *EnvironmentListItem {
 	x.xxx_hidden_IsManaged = b.IsManaged
 	x.xxx_hidden_EnvironmentId = b.EnvironmentId
 	if b.MaxConcurrentTasks != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 22)
 		x.xxx_hidden_MaxConcurrentTasks = *b.MaxConcurrentTasks
 	}
 	if b.MaxConcurrentGpus != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 22)
 		x.xxx_hidden_MaxConcurrentGpus = *b.MaxConcurrentGpus
 	}
 	x.xxx_hidden_CurrentConcurrentTasks = b.CurrentConcurrentTasks
 	x.xxx_hidden_CurrentConcurrentGpus = b.CurrentConcurrentGpus
 	if b.CycleBudgetDollars != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 22)
 		x.xxx_hidden_CycleBudgetDollars = *b.CycleBudgetDollars
 	}
 	x.xxx_hidden_EffectiveCycleSpendLimit = b.EffectiveCycleSpendLimit
@@ -25935,24 +25993,32 @@ func (b0 EnvironmentListItem_builder) Build() *EnvironmentListItem {
 	x.xxx_hidden_SpendLimitReached = b.SpendLimitReached
 	x.xxx_hidden_EnvironmentType = b.EnvironmentType
 	if b.DefaultMemberRole != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 15, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 15, 22)
 		x.xxx_hidden_DefaultMemberRole = *b.DefaultMemberRole
 	}
 	if b.BlockUnauthenticatedResources != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 16, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 16, 22)
 		x.xxx_hidden_BlockUnauthenticatedResources = *b.BlockUnauthenticatedResources
 	}
 	if b.EffectiveRole != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 22)
 		x.xxx_hidden_EffectiveRole = *b.EffectiveRole
 	}
 	if b.ImageBuilderVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 18, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 18, 22)
 		x.xxx_hidden_ImageBuilderVersion = b.ImageBuilderVersion
 	}
 	if b.CanManage != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 20)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 22)
 		x.xxx_hidden_CanManage = *b.CanManage
+	}
+	if b.CreatedBy != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 20, 22)
+		x.xxx_hidden_CreatedBy = b.CreatedBy
+	}
+	if b.CreatedByAvatarUrl != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 21, 22)
+		x.xxx_hidden_CreatedByAvatarUrl = b.CreatedByAvatarUrl
 	}
 	return m0
 }
@@ -80590,7 +80656,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13has_role_assignment\x18\f \x01(\bH\x01R\x11hasRoleAssignment\x88\x01\x01B\x1f\n" +
 	"\x1d_inherits_default_member_roleB\x16\n" +
 	"\x14_has_role_assignmentB\x16\n" +
-	"\x14_default_member_role\"\xd8\t\n" +
+	"\x14_default_member_role\"\xdd\n" +
+	"\n" +
 	"\x13EnvironmentListItem\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12%\n" +
 	"\x0ewebhook_suffix\x18\x02 \x01(\tR\rwebhookSuffix\x12\x1d\n" +
@@ -80615,7 +80682,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0eeffective_role\x18\x12 \x01(\x0e2\x1d.modal.client.EnvironmentRoleH\x05R\reffectiveRole\x88\x01\x01\x127\n" +
 	"\x15image_builder_version\x18\x13 \x01(\tH\x06R\x13imageBuilderVersion\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"can_manage\x18\x14 \x01(\bH\aR\tcanManage\x88\x01\x01B\x17\n" +
+	"can_manage\x18\x14 \x01(\bH\aR\tcanManage\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"created_by\x18\x15 \x01(\tH\bR\tcreatedBy\x88\x01\x01\x126\n" +
+	"\x15created_by_avatar_url\x18\x16 \x01(\tH\tR\x12createdByAvatarUrl\x88\x01\x01B\x17\n" +
 	"\x15_max_concurrent_tasksB\x16\n" +
 	"\x14_max_concurrent_gpusB\x17\n" +
 	"\x15_cycle_budget_dollarsB\x16\n" +
@@ -80623,7 +80693,9 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	" _block_unauthenticated_resourcesB\x11\n" +
 	"\x0f_effective_roleB\x18\n" +
 	"\x16_image_builder_versionB\r\n" +
-	"\v_can_manage\"R\n" +
+	"\v_can_manageB\r\n" +
+	"\v_created_byB\x18\n" +
+	"\x16_created_by_avatar_url\"R\n" +
 	"\x17EnvironmentListResponse\x127\n" +
 	"\x05items\x18\x02 \x03(\v2!.modal.client.EnvironmentListItemR\x05items\"\xb2\x01\n" +
 	"\x13EnvironmentMetadata\x12\x12\n" +
