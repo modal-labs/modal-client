@@ -27,7 +27,6 @@ import {
 } from "../proto/modal_proto/task_command_router";
 import {
   TaskCommandRouterClientImpl,
-  type CommandRouterAccess,
   type StdinSource,
 } from "./task_command_router_client";
 import { ExperimentalOutboundPolicy } from "./outbound_policy";
@@ -57,7 +56,7 @@ import type { App } from "./app";
 import { parseGpuConfig } from "./app";
 import { checkForRenamedParams } from "./validation";
 import { SandboxLogsManager } from "./logs";
-import type { SandboxImpl } from "./sandbox_impl";
+import type { SandboxImpl, SandboxImplParams } from "./sandbox_common";
 import { SandboxImplV1 } from "./sandbox_impl_v1";
 import { SandboxImplV2 } from "./sandbox_impl_v2";
 
@@ -952,11 +951,7 @@ export function implClassForSandboxId(
 export function newSandboxImpl(
   client: ModalClient,
   sandboxId: string,
-  params: {
-    taskId?: string;
-    tunnels?: Record<number, Tunnel>;
-    initCommandRouterAccess?: CommandRouterAccess;
-  } = {},
+  params: SandboxImplParams = {},
 ): SandboxImpl {
   const implClass = implClassForSandboxId(sandboxId);
   return new implClass(client, sandboxId, params);

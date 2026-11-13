@@ -35,7 +35,7 @@ import type {
   SidecarCreateOptions,
   SidecarCreateRequest,
   SidecarCreateResult,
-} from "./sandbox_impl";
+} from "./sandbox_common";
 import type { TaskCommandRouterClientImpl } from "./task_command_router_client";
 import {
   AlreadyExistsError,
