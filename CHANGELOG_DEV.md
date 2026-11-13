@@ -10,6 +10,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## JS
 
+- The client now fails over to `api.modal2.com` when `api.modal.com` is unreachable. `MODAL_SERVER_URL` and the profile's `server_url` accept a comma-separated list of fallback URLs.
 - Added `App.stats()` to report high-level Function, Server, and Sandbox stats for an App.
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.stop()` method.

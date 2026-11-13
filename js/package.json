@@ -36,6 +36,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.5",
     "cbor-x": "^1.6.0",
     "long": "^5.3.1",
     "nice-grpc": "^2.1.12",

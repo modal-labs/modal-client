@@ -1,6 +1,10 @@
+import { once } from "node:events";
+import { promisify } from "node:util";
 import { v4 as uuidv4 } from "uuid";
+import { connectivityState } from "@grpc/grpc-js";
 import {
   CallOptions,
+  Channel,
   Client,
   ClientError,
   ClientMiddleware,
@@ -172,7 +176,7 @@ export class ModalClient {
 
     this.customMiddleware = params?.grpcMiddleware ?? [];
     this.ipClients = new Map();
-    this.cpClient = params?.cpClient ?? this.createClient(this.profile);
+    this.cpClient = params?.cpClient ?? this.createControlPlaneClient();
 
     this.logger.debug("Modal client initialized successfully");
 
@@ -259,8 +263,7 @@ export class ModalClient {
     }
 
     this.logger.debug("Creating input plane client", "server_url", serverUrl);
-    const profile = { ...this.profile, serverUrl };
-    const newClient = this.createClient(profile);
+    const newClient = this.createClient(serverUrl);
     this.ipClients.set(serverUrl, newClient);
     return newClient;
   }
@@ -275,17 +278,54 @@ export class ModalClient {
     return getSDKVersion();
   }
 
-  private createClient(profile: Profile): ModalGrpcClient {
-    // Channels don't do anything until you send a request on them.
-    // Ref: https://github.com/modal-labs/modal-client/blob/main/modal/_utils/grpc_utils.py
-    const channel = createChannel(profile.serverUrl, undefined, {
-      "grpc.max_receive_message_length": 100 * 1024 * 1024,
-      "grpc.max_send_message_length": 100 * 1024 * 1024,
-      "grpc-node.flow_control_window": 64 * 1024 * 1024,
-      "grpc.keepalive_time_ms": 30000,
-      "grpc.keepalive_timeout_ms": 10000,
-      "grpc.keepalive_permit_without_calls": 1,
-    });
+  /**
+   * Creates the control plane client. `profile.serverUrl` may be a comma-separated list of URLs:
+   * the first request then races connections to them (see {@link connectFirst}) and every request
+   * goes to the winner. A request's `timeoutMs` and `signal` also bound its wait for the race. A
+   * failed race fails its requests with UNAVAILABLE, as an unreachable server does, and is retried
+   * on the next request.
+   */
+  private createControlPlaneClient(): ModalGrpcClient {
+    const urls = this.profile.serverUrl.split(",").map((url) => url.trim());
+    if (urls.length === 1) return this.createClient(urls[0]);
+    let connected: ModalGrpcClient | undefined;
+    const connect = async () => {
+      const channels = urls.map(newChannel);
+      const i = await connectFirst(channels);
+      this.logger.debug("Connected to Modal server", "server_url", urls[i]);
+      return (connected = this.createClient(urls[i], channels[i]));
+    };
+    let winner: Promise<ModalGrpcClient> | undefined;
+    const pick = (path: string, opts: CallOpts) => {
+      winner ??= connect().catch((err) => {
+        winner = undefined;
+        throw err;
+      });
+      const race = winner.catch((cause) => {
+        const msg = `Could not connect to ${urls.join(" or ")}`;
+        const err = new ClientError(path, Status.UNAVAILABLE, msg);
+        throw Object.assign(err, { cause });
+      });
+      return untilCallEnds(race, path, opts);
+    };
+    const client: Record<string, unknown> = {};
+    for (const [name, m] of Object.entries(ModalClientDefinition.methods)) {
+      const path = `/modal.client.ModalClient/${m.name}`;
+      const call = async (req: unknown, opts: CallOpts = {}) => {
+        const chosen = connected ?? (await pick(path, opts));
+        return (chosen as any)[name](req, opts);
+      };
+      client[name] = m.responseStream
+        ? async function* (req: unknown, opts?: CallOpts) {
+            yield* await call(req, opts);
+          }
+        : call;
+    }
+    return client as ModalGrpcClient;
+  }
+
+  private createClient(serverUrl: string, channel = newChannel(serverUrl)) {
+    const profile = { ...this.profile, serverUrl };
     let factory = createClientFactory()
       .use(this.authMiddleware(profile))
       .use(this.retryMiddleware())
@@ -582,6 +622,81 @@ export class ModalClient {
       options.signal?.throwIfAborted();
       return yield* call.next(call.request, options);
     };
+  }
+}
+
+/** Creates a channel to `serverUrl`. Channels don't connect until something uses them. */
+function newChannel(serverUrl: string): Channel {
+  return createChannel(serverUrl, undefined, {
+    "grpc.max_receive_message_length": 100 * 1024 * 1024,
+    "grpc.max_send_message_length": 100 * 1024 * 1024,
+    "grpc-node.flow_control_window": 64 * 1024 * 1024,
+    "grpc.keepalive_time_ms": 30000,
+    "grpc.keepalive_timeout_ms": 10000,
+    "grpc.keepalive_permit_without_calls": 1,
+  });
+}
+
+type CallOpts = CallOptions & TimeoutOptions;
+
+/**
+ * Waits for `promise`, unless the call waiting for it is aborted first, which rejects with the
+ * signal's reason, or runs out its `timeoutMs`, which rejects with DEADLINE_EXCEEDED.
+ */
+function untilCallEnds<T>(promise: Promise<T>, path: string, opts: CallOpts) {
+  const { signal, timeoutMs } = opts;
+  const timeout = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+  const signals = [signal, timeout].filter((s) => s !== undefined);
+  const ended = AbortSignal.any(signals);
+  const done = new AbortController();
+  const onEnd = ended.aborted
+    ? Promise.resolve()
+    : once(ended, "abort", { signal: done.signal });
+  const aborted = onEnd.then(() => {
+    if (!timeout?.aborted) throw signal?.reason;
+    const msg = `Timed out after ${timeoutMs}ms`;
+    throw new ClientError(path, Status.DEADLINE_EXCEEDED, msg);
+  });
+  return Promise.race([promise, aborted]).finally(() => done.abort());
+}
+
+const { READY, TRANSIENT_FAILURE } = connectivityState;
+
+/** Head start each server URL gets over the next one. */
+const FALLBACK_STAGGER_MS = 3_000;
+
+/**
+ * Connects `channels` in parallel and resolves to the index of the first one to become ready,
+ * closing the others. Channel `i` starts connecting after `i * FALLBACK_STAGGER_MS`, or as soon as
+ * channel `i - 1` fails, so earlier channels are preferred when reachable. Rejects, closing every
+ * channel, if none is ready within `timeoutMs`.
+ *
+ * @internal
+ * @hidden
+ */
+export async function connectFirst(channels: Channel[], timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  const done = new AbortController();
+  const failed = channels.map(() => new AbortController());
+  const connect = async (channel: Channel, i: number) => {
+    if (i > 0) {
+      const wake = AbortSignal.any([done.signal, failed[i - 1].signal]);
+      await sleep(i * FALLBACK_STAGGER_MS, wake).catch(() => {});
+    }
+    const stateChange = promisify(channel.watchConnectivityState.bind(channel));
+    for (let state; (state = channel.getConnectivityState(true)) !== READY; ) {
+      done.signal.throwIfAborted();
+      if (state === TRANSIENT_FAILURE) failed[i].abort();
+      await stateChange(state, deadline);
+    }
+    return i;
+  };
+  let winner: number | undefined;
+  try {
+    return (winner = await Promise.any(channels.map(connect)));
+  } finally {
+    done.abort();
+    channels.forEach((channel, i) => i !== winner && channel.close());
   }
 }
 

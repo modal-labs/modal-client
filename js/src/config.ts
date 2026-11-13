@@ -63,7 +63,8 @@ export const DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 export function isLocalhost(profile: Profile): boolean {
-  const url = new URL(profile.serverUrl);
+  // serverUrl may be a comma-separated list of fallbacks; the first is the primary.
+  const url = new URL(profile.serverUrl.split(",")[0].trim());
   const hostname = url.hostname;
   return (
     hostname === "localhost" ||
@@ -140,7 +141,8 @@ export function getProfile(profileName?: string): Profile {
     serverUrl:
       process.env["MODAL_SERVER_URL"] ||
       profileData.server_url ||
-      "https://api.modal.com:443",
+      // Fall back to api.modal2.com when api.modal.com is unreachable.
+      "https://api.modal.com:443,https://api.modal2.com:443",
     tokenId: process.env["MODAL_TOKEN_ID"] || profileData.token_id,
     tokenSecret: process.env["MODAL_TOKEN_SECRET"] || profileData.token_secret,
     oauthRefreshToken:

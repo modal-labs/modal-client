@@ -2,15 +2,27 @@ import {
   ClientMiddlewareCall,
   CallOptions,
   ClientError,
+  createChannel,
+  createServer,
   Metadata,
+  ServerError,
   Status,
+  type CallContext,
 } from "nice-grpc";
 import { ModalClient, type Logger } from "modal";
-import { RPCRetryPolicy, RPCStatus } from "../proto/modal_proto/api";
+import {
+  ModalClientDefinition,
+  RPCRetryPolicy,
+  RPCStatus,
+} from "../proto/modal_proto/api";
 import { Any } from "../proto/google/protobuf/any";
+import { connectivityState } from "@grpc/grpc-js";
+import { connectFirst } from "../src/client";
 import { generateKeyPairSync } from "node:crypto";
+import { once } from "node:events";
+import net from "node:net";
 import jwt from "jsonwebtoken";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 // --- helpers for RPCRetryPolicy tests ---
 
@@ -38,7 +50,11 @@ test("authMiddleware sends OAuth credentials without token credentials", async (
     logger: noopLogger,
     cpClient: {} as any,
   });
-  const middleware = (client as any).authMiddleware(client.profile);
+  // authMiddleware takes the profile of a single server, not a list of fallbacks.
+  const middleware = (client as any).authMiddleware({
+    ...client.profile,
+    serverUrl: "https://api.modal.com:443",
+  });
   let metadata: Metadata | undefined;
   const call = makeMockCall(async function* (
     _request: unknown,
@@ -68,7 +84,11 @@ test("authMiddleware sends a client assertion instead of a client secret", async
     logger: noopLogger,
     cpClient: {} as any,
   });
-  const middleware = (client as any).authMiddleware(client.profile);
+  // authMiddleware takes the profile of a single server, not a list of fallbacks.
+  const middleware = (client as any).authMiddleware({
+    ...client.profile,
+    serverUrl: "https://api.modal.com:443",
+  });
   let metadata: Metadata | undefined;
   const call = makeMockCall(async function* (
     _request: unknown,
@@ -597,4 +617,163 @@ test("authMiddleware: injects the endpoint hostname as x-modal-host", async () =
   client.close();
 
   expect(metadata!.get("x-modal-host")).toBe("api.modal.com");
+});
+
+// --- server URL fallback tests ---
+
+/** Head start each server URL gets over the next one, as the client sets it. */
+const FALLBACK_STAGGER_MS = 3_000;
+
+/** A URL that refuses connections: nothing listens on port 1. */
+const REFUSED_URL = "http://127.0.0.1:1";
+
+/**
+ * Serves the Modal API on a local port and records the x-modal-host header of every call. Calls
+ * other than AuthTokenGet fail with PERMISSION_DENIED, which the client does not retry.
+ */
+async function startFakeServer() {
+  const hosts: string[] = [];
+  const deny = async (_: unknown, { metadata }: CallContext) => {
+    hosts.push(metadata.get("x-modal-host") ?? "");
+    throw new ServerError(Status.PERMISSION_DENIED, "fake server");
+  };
+  async function* denyStream(req: unknown, ctx: CallContext) {
+    yield await deny(req, ctx);
+  }
+  const impl: Record<string, unknown> = {
+    authTokenGet: async () => ({ token: "token" }),
+  };
+  for (const [name, m] of Object.entries(ModalClientDefinition.methods)) {
+    impl[name] ??= m.responseStream ? denyStream : deny;
+  }
+  const server = createServer();
+  server.add(ModalClientDefinition, impl as any);
+  const port = await server.listen("127.0.0.1:0");
+  onTestFinished(() => server.forceShutdown());
+  return { url: `http://127.0.0.1:${port}`, hosts };
+}
+
+/** Returns a URL on a local port that accepts TCP connections but never responds. */
+async function blackholeUrl() {
+  const sockets: net.Socket[] = [];
+  const server = net.createServer((socket) => sockets.push(socket));
+  await once(server.listen(0, "127.0.0.1"), "listening");
+  onTestFinished(() => {
+    sockets.forEach((socket) => socket.destroy());
+    server.close();
+  });
+  return `http://127.0.0.1:${(server.address() as net.AddressInfo).port}`;
+}
+
+/** `url`, on 127.0.0.1, under the host name "localhost" instead. */
+const localhostUrl = (url: string) => url.replace("127.0.0.1", "localhost");
+
+/** Creates a client for the given server URLs. */
+function clientFor(...urls: string[]) {
+  vi.stubEnv("MODAL_SERVER_URL", urls.join(","));
+  const creds = { tokenId: "ak-test", tokenSecret: "as-test" };
+  return new ModalClient({ ...creds, logger: noopLogger });
+}
+
+/** Makes a request through `client` that a fake server rejects. */
+const request = (client: ModalClient) =>
+  expect(client.secrets.fromName("x")).rejects.toThrow("fake server");
+
+const drain = async (stream: AsyncIterable<unknown>) => {
+  for await (const _ of stream);
+};
+
+const unreachablePrimaries = {
+  "connection refused": async () => REFUSED_URL,
+  "DNS failure": async () => "http://modal-test-host.invalid:443",
+  "TLS to a plaintext server": async () =>
+    (await startFakeServer()).url.replace("http:", "https:"),
+  blackholed: blackholeUrl,
+};
+
+for (const [name, primary] of Object.entries(unreachablePrimaries)) {
+  test(`server URL fallback: fails over when primary has ${name}`, async () => {
+    const secondary = await startFakeServer();
+    const start = Date.now();
+    await request(clientFor(await primary(), localhostUrl(secondary.url)));
+    // Only a silent primary makes the secondary wait out its stagger.
+    const waited = Date.now() - start >= FALLBACK_STAGGER_MS;
+    expect(waited).toBe(name === "blackholed");
+    expect(new Set(secondary.hosts)).toEqual(new Set(["localhost"]));
+  });
+}
+
+test("server URL fallback: prefers primary when reachable", async () => {
+  const primary = await startFakeServer();
+  const secondary = await startFakeServer();
+  // Whitespace around the separator is ignored.
+  await request(clientFor(primary.url, ` ${localhostUrl(secondary.url)}`));
+  expect(new Set(primary.hosts)).toEqual(new Set(["127.0.0.1"]));
+  expect(secondary.hosts).toEqual([]);
+});
+
+test("server URL fallback: uses the third URL when the first two fail", async () => {
+  const third = await startFakeServer();
+  await request(clientFor(REFUSED_URL, REFUSED_URL, third.url));
+  expect(third.hosts).not.toEqual([]);
+});
+
+test("server URL fallback: reuses the winning connection for later requests", async () => {
+  const secondary = await startFakeServer();
+  const client = clientFor(REFUSED_URL, secondary.url);
+  await request(client);
+  const start = Date.now();
+  await request(client);
+  expect(Date.now() - start).toBeLessThan(FALLBACK_STAGGER_MS);
+  expect(secondary.hosts).toHaveLength(2);
+});
+
+test("server URL fallback: streaming calls go to the winner", async () => {
+  const secondary = await startFakeServer();
+  const client = clientFor(REFUSED_URL, secondary.url);
+  const logs = client.cpClient.appGetLogs({ appId: "ap-test" });
+  await expect(drain(logs)).rejects.toThrow("fake server");
+  expect(secondary.hosts).toHaveLength(1);
+});
+
+test("server URL fallback: timeoutMs bounds the wait for a connection", async () => {
+  const blackhole = await blackholeUrl();
+  const client = clientFor(blackhole, blackhole);
+  const call = client.cpClient.appGetOrCreate({}, { timeoutMs: 200 });
+  await expect(call).rejects.toMatchObject({
+    code: Status.DEADLINE_EXCEEDED,
+    path: "/modal.client.ModalClient/AppGetOrCreate",
+    details: "Timed out after 200ms",
+  });
+});
+
+test("server URL fallback: an aborted signal ends the wait for a connection", async () => {
+  const blackhole = await blackholeUrl();
+  const client = clientFor(blackhole, blackhole);
+  const signal = AbortSignal.timeout(200);
+  const call = client.cpClient.appGetOrCreate({}, { signal });
+  expect(await call.catch((err) => err)).toBe(signal.reason);
+  // A signal that is already aborted ends a streaming call's wait right away.
+  const logs = client.cpClient.appGetLogs({}, { signal });
+  expect(await drain(logs).catch((err) => err)).toBe(signal.reason);
+});
+
+test("server URL fallback: a timed-out call leaves the race running for later calls", async () => {
+  const secondary = await startFakeServer();
+  const client = clientFor(await blackholeUrl(), secondary.url);
+  const call = client.cpClient.appGetOrCreate({}, { timeoutMs: 200 });
+  await expect(call).rejects.toThrow("Timed out after 200ms");
+  // The second call waits out the rest of the race the first one started.
+  await request(client);
+  expect(secondary.hosts).toHaveLength(1);
+});
+
+test("connectFirst: rejects and closes every channel when none becomes ready", async () => {
+  const channels = [createChannel(REFUSED_URL), createChannel(REFUSED_URL)];
+  await expect(connectFirst(channels, 500)).rejects.toThrow(AggregateError);
+  const states = channels.map((c) => c.getConnectivityState(false));
+  expect(states).toEqual([
+    connectivityState.SHUTDOWN,
+    connectivityState.SHUTDOWN,
+  ]);
 });

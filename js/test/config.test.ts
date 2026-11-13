@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { configFilePath, getProfile } from "../src/config";
+import { configFilePath, getProfile, isLocalhost } from "../src/config";
 import { DEFAULT_SANDBOX_CHANNEL_IDLE_TIMEOUT_MS } from "../src/config";
 
 const maxThrottleWaitCases = [
@@ -304,4 +304,20 @@ test("GetProfile_IdleTimeoutKeepsAShortTimeoutPositive", () => {
   const profile = getProfile();
   expect(profile.sandboxChannelIdleTimeoutMs).toBeGreaterThan(0);
   vi.unstubAllEnvs();
+});
+
+test("isLocalhost checks the primary of a comma-separated server URL list", () => {
+  const profile = getProfile();
+  expect(
+    isLocalhost({
+      ...profile,
+      serverUrl: "http://localhost:8889, https://api.modal2.com:443",
+    }),
+  ).toBe(true);
+  expect(
+    isLocalhost({
+      ...profile,
+      serverUrl: "https://api.modal.com:443,https://api.modal2.com:443",
+    }),
+  ).toBe(false);
 });
