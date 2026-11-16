@@ -1,8 +1,12 @@
 # Copyright Modal Labs 2022
 import argparse
+import concurrent.futures
+import multiprocessing
 import shutil
+import sys
 import tarfile
 import tempfile
+import traceback
 import urllib.request
 
 import zstandard as zstd
@@ -79,17 +83,40 @@ def publish_python_standalone_mount(client, version: str, builder_version: str) 
             print(f"✅ Deployed mount {mount_name} to global namespace.")
 
 
-def main(client=None, builder_versions: list[str] | None = None):
+def main(builder_versions: list[str] | None = None, parallel: bool = False):
     if builder_versions is None:
         builder_versions = list(PYTHON_STANDALONE_VERSIONS)
 
     published = set()
+    mounts_to_publish = []
     for builder_version in builder_versions:
         for version in PYTHON_STANDALONE_VERSIONS[builder_version]:
             mount_name = python_standalone_mount_name(version, builder_version)
             if mount_name not in published:
-                publish_python_standalone_mount(client, version, builder_version)
                 published.add(mount_name)
+                mounts_to_publish.append((version, builder_version))
+
+    if not parallel:
+        for version, builder_version in mounts_to_publish:
+            publish_python_standalone_mount(None, version, builder_version)
+        return
+
+    failed = []
+    with concurrent.futures.ProcessPoolExecutor(mp_context=multiprocessing.get_context("spawn")) as executor:
+        futures = {}
+        for version, builder_version in mounts_to_publish:
+            future = executor.submit(publish_python_standalone_mount, None, version, builder_version)
+            futures[future] = python_standalone_mount_name(version, builder_version)
+        for future, mount_name in futures.items():
+            try:
+                future.result()
+            except Exception as exc:
+                print(f"❌ Failed to publish mount {mount_name}", file=sys.stderr)
+                traceback.print_exception(exc)
+                failed.append(mount_name)
+
+    if failed:
+        sys.exit(f"Failed to publish mounts: {', '.join(failed)}")
 
 
 if __name__ == "__main__":
@@ -101,5 +128,6 @@ if __name__ == "__main__":
         dest="builder_versions",
         help="Image builder version to publish mounts for; repeatable. Defaults to all builder versions.",
     )
+    parser.add_argument("--parallel", action="store_true", help="Publish each mount in its own process")
     args = parser.parse_args()
-    main(builder_versions=args.builder_versions)
+    main(builder_versions=args.builder_versions, parallel=args.parallel)

@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 
 from invoke import call, task
+from invoke.exceptions import Exit, UnexpectedExit
 
 # Set working directory to the root of the client repository.
 original_cwd = Path.cwd()
@@ -250,12 +251,35 @@ def publish_base_mounts(ctx, no_confirm: bool = False):
     from modal._image import LATEST_IMAGE_BUILDER_VERSION
 
     _check_prod(no_confirm)
+    promises = []
     for mount, args in [
         ("modal_client_package", ""),
-        ("python_standalone", f" --builder-version {LATEST_IMAGE_BUILDER_VERSION}"),
+        ("python_standalone", f" --builder-version {LATEST_IMAGE_BUILDER_VERSION} --parallel"),
         ("modal_client_dependencies", ""),
     ]:
-        ctx.run(f"{sys.executable} {project_root}/modal_global_objects/mounts/{mount}.py{args}", pty=True)
+        cmd = f"{sys.executable} {project_root}/modal_global_objects/mounts/{mount}.py{args}"
+        promises.append(
+            (
+                mount,
+                ctx.run(
+                    cmd,
+                    asynchronous=True,
+                    env={"PYTHONUNBUFFERED": "1"},
+                    out_stream=sys.stdout,
+                    err_stream=sys.stderr,
+                ),
+            )
+        )
+
+    failed = []
+    for mount, promise in promises:
+        try:
+            promise.join()
+        except UnexpectedExit:
+            failed.append(mount)
+
+    if failed:
+        raise Exit(f"Failed to publish: {', '.join(failed)}", code=1)
 
 
 @task(
