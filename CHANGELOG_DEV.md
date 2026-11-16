@@ -12,23 +12,4 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## JS
 
-- `Sandbox.waitUntilReady()` now works without a readiness probe, resolving when the Sandbox has started.
-- The client now fails over to `api.modal2.com` when `api.modal.com` is unreachable. `MODAL_SERVER_URL` and the profile's `server_url` accept a comma-separated list of fallback URLs.
-- Added `App.stats()` to report high-level Function, Server, and Sandbox stats for an App.
-- Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
-- Added an `App.stop()` method.
-- Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
-- Added the `_Function.info()` method.
-- `Image.build()` now throws `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
-- Added `app.sandboxes.stats()` to report the cost of an App's Sandboxes over a time range, optionally grouped by tag values. Costs are returned as decimal strings.
-
 ## Go
-
-- `Sandbox.WaitUntilReady()` now works without a readiness probe, returning when the Sandbox has started.
-- Added an `App.Stats()` method to report high-level Function, Server, and Sandbox stats for an App.
-- Added `client.Environments.FromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
-- Added an `App.Stop()` method.
-- Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS` and `ORT_INTER_OP_NUM_THREADS` environment variables by default.
-- Added a `Function.Info()` method.
-- `Image.Build()` now returns `NotFoundError` instead of a raw gRPC error when built on top of an Image that doesn't exist.
-- Added `App.Sandboxes.Stats()` to report the cost of an App's Sandboxes over a time range, optionally grouped by tag values. Costs are returned as decimal strings.

@@ -2,6 +2,17 @@
 
 ## Latest
 
+### 0.11.2 (2026-11-16)
+
+- The new [`App.Stats()`](/docs/sdk/go/latest/App#stats) method reports high-level Function, Server, and Sandbox stats for an App.
+- It's also possible to query Sandbox-specific stats, including costs, via the new [`App.Sandboxes.Stats()`](/docs/sdk/go/latest/App#appsandboxes) method. This method supports flexible aggregation based on Sandbox tags.
+- Apps can now be programmatically stopped using the new [`App.Stop()`](/docs/sdk/go/latest/App#stop) method.
+- The new [`Function.Info()`](/docs/sdk/go/latest/Function#info) method reports basic information about a Function.
+- The new [`client.Environments.FromContext()`](/docs/sdk/go/latest/Environment#fromcontext) method looks up the Environment defined by the local configuration, or the server's default Environment.
+- The [`Sandbox.WaitUntilReady()`](/docs/sdk/go/latest/Sandbox#waituntilready) method now works without a readiness probe, returning when the Sandbox has started.
+- The [`Image.Build()`](/docs/sdk/go/latest/Image#build) method now returns a [`NotFoundError`](/docs/sdk/go/latest/Errors#notfounderror) instead of a raw gRPC error when building on top of an Image that doesn't exist.
+- Sandboxes no longer set the `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `BLIS_NUM_THREADS`, `ORT_INTRA_OP_NUM_THREADS`, and `ORT_INTER_OP_NUM_THREADS` environment variables by default. Inside the Sandbox, the visible CPU count will correspond to the CPU limit.
+
 ### 0.11.1 (2026-10-15)
 
 This release introduces a number of tools for programmatic observability.

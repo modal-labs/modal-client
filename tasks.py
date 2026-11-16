@@ -81,13 +81,27 @@ def update_version_go_js(
     current_version = get_current_js_version(package_json)
 
     with ctx.cd(modal_js_root):
+        # `npm version` writes package.json before running its `version`
+        # lifecycle script (`npm run check`), so a failing check would leave
+        # package.json bumped but the JS/Go version literals stale. Run the
+        # check up front instead, before any file is modified, and skip the
+        # lifecycle script during the bump itself.
+        result = ctx.run("npm run check", echo=True, warn=True)
+        if not result.ok:
+            sys.exit(
+                "`npm run check` failed; no versions were changed. If the errors mention missing "
+                "`../proto/...` modules, generate the protos with `npm run prepare` in client/js "
+                "(run `npm rebuild grpc-tools` first if protoc is missing)."
+            )
+
+        npm_version_flags = "--no-git-tag-version --ignore-scripts"
         if dev:
             if "-dev." in current_version:
-                ctx.run("npm version prerelease --no-git-tag-version", echo=True)
+                ctx.run(f"npm version prerelease {npm_version_flags}", echo=True)
             else:
-                ctx.run(f"npm version pre{update} --preid=dev --no-git-tag-version", echo=True)
+                ctx.run(f"npm version pre{update} --preid=dev {npm_version_flags}", echo=True)
         else:
-            ctx.run(f"npm version {update} --no-git-tag-version", echo=True)
+            ctx.run(f"npm version {update} {npm_version_flags}", echo=True)
 
         new_version = get_current_js_version(package_json)
 
