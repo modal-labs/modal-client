@@ -1061,6 +1061,7 @@ message AuditLogEntry {
   string event_at = 6;       // ISO 8601 timestamp
   string status = 7;         // "success" or "error"
   string metadata_json = 8;  // JSON-encoded string
+  google.protobuf.Timestamp event_at_timestamp = 9;
 }
 
 // Entries are read newest to oldest. The newest bound is exclusive and the oldest bound is inclusive, for time and cursors.
