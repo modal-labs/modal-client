@@ -293,6 +293,49 @@ func statusWithDetails(s *status.Status, details ...proto.Message) (*status.Stat
 	return status.FromProto(p), nil
 }
 
+func TestClientSendsEachHeaderOnce(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	// The fake server answers AuthTokenGet with a token and fails every other request, recording
+	// the metadata of each request it receives.
+	var mu sync.Mutex
+	received := map[string]metadata.MD{}
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	srv := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
+		method, _ := grpc.MethodFromServerStream(stream)
+		md, _ := metadata.FromIncomingContext(stream.Context())
+		mu.Lock()
+		received[method] = md
+		mu.Unlock()
+		if method == "/modal.client.ModalClient/AuthTokenGet" {
+			return stream.SendMsg(pb.AuthTokenGetResponse_builder{Token: mockJWT(time.Now().Add(time.Hour).Unix())}.Build())
+		}
+		return status.Error(codes.PermissionDenied, "fake server")
+	}))
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	t.Setenv("MODAL_SERVER_URL", "http://"+lis.Addr().String())
+	c, err := NewClientWithOptions(&ClientParams{TokenID: "ak-test", TokenSecret: "as-test", Logger: slog.New(slog.DiscardHandler)})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	t.Cleanup(c.Close)
+
+	// The first request fetches an auth token from inside the request's own interceptor chain.
+	_, err = c.Secrets.FromName(context.Background(), "my-secret", nil)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.PermissionDenied))
+
+	mu.Lock()
+	defer mu.Unlock()
+	g.Expect(received).To(gomega.HaveLen(2))
+	for method, md := range received {
+		g.Expect(md.Get("x-modal-host")).ToNot(gomega.BeEmpty(), method)
+		for key, values := range md {
+			g.Expect(values).To(gomega.HaveLen(1), "%s: header %s", method, key)
+		}
+	}
+}
+
 func TestGetServerRetryPolicy(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

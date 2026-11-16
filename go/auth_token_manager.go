@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -210,7 +211,10 @@ func (m *authTokenManager) startSharedRefresh(ctx context.Context) <-chan single
 		if data := m.tokenAndExpiry.Load(); data.token != "" && !isExpired(*data) && !m.shouldRefresh(*data) {
 			return data.token, nil
 		}
-		rpcCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authTokenRefreshTimeout)
+		// The refresh is a request of its own, shared by every waiting caller: it gets its headers from the
+		// interceptor chain, not from whichever caller started it, which may already carry that chain's headers.
+		detached := metadata.NewOutgoingContext(context.WithoutCancel(ctx), nil)
+		rpcCtx, cancel := context.WithTimeout(detached, authTokenRefreshTimeout)
 		defer cancel()
 		return m.FetchToken(rpcCtx)
 	})
