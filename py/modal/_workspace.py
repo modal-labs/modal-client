@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2025
 import builtins
 import warnings
-from collections.abc import Mapping
-from datetime import datetime, timezone
+from collections.abc import AsyncGenerator, Mapping
+from contextlib import aclosing
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -12,12 +13,16 @@ from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.types import MemberTokenInfo, ServiceUserInfo
 from modal_proto import api_pb2
 
+from ._audit_logs import _rpcs
+from ._audit_logs.count import count_audit_logs
+from ._audit_logs.list import fetch_audit_logs, fetch_newest_audit_logs
 from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
-from ._utils.time_utils import is_utc_month_aligned, parse_billing_cycle, timestamp_to_localized_dt
+from ._utils.time_utils import is_utc_month_aligned, locale_tz, parse_billing_cycle, timestamp_to_localized_dt
 from .client import _Client
 from .types import (
+    AuditEvent,
     BillingReportItem,
     ProxyTokenInfo,
     TokenData,
@@ -25,6 +30,9 @@ from .types import (
     WorkspaceMemberInfo,
     WorkspaceSettings,
 )
+
+_AUDIT_LOG_DEFAULT_LIMIT = 100
+_AUDIT_LOG_DEFAULT_WINDOW = timedelta(days=7)
 
 
 def _member_role_from_proto(proto_value: int) -> str:
@@ -87,6 +95,11 @@ class _Workspace(_Object, type_prefixes=("ac",)):
         """Namespace with methods for managing the membership of a Workspace."""
         return _WorkspaceMembersManager(self)
 
+    @property
+    def audit_logs(self) -> "_WorkspaceAuditLogsManager":
+        """Namespace for reading [Workspace audit logs](https://modal.com/docs/guide/audit-logs)."""
+        return _WorkspaceAuditLogsManager(self)
+
     @staticmethod
     def from_context(*, client: Optional[_Client] = None) -> "_Workspace":
         """Look up the Workspace associated with the current context.
@@ -143,6 +156,157 @@ class _Workspace(_Object, type_prefixes=("ac",)):
     def member_tokens(self) -> "_WorkspaceMemberTokenManager":
         """Namespace for managing Member API Tokens in a Workspace."""
         return _WorkspaceMemberTokenManager(self)
+
+
+class _WorkspaceAuditLogsManager:
+    """mdmd:namespace"""
+
+    def __init__(self, workspace: _Workspace):
+        """mdmd:hidden"""
+        self._workspace = workspace
+
+    @staticmethod
+    def _range(since: datetime | None, until: datetime | None) -> tuple[int, int]:
+        until = until or datetime.now(timezone.utc)
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=locale_tz())
+        until = until.astimezone(timezone.utc)
+        if since is None:
+            since = until - _AUDIT_LOG_DEFAULT_WINDOW
+        elif since.tzinfo is None:
+            since = since.replace(tzinfo=locale_tz())
+        since = since.astimezone(timezone.utc)
+        return int(since.timestamp() * 1000), int(until.timestamp() * 1000)
+
+    async def fetch(
+        self,
+        query: str = "",
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int | None = None,
+    ) -> AsyncGenerator[AuditEvent, None]:
+        """Fetch the Workspace's audit events, oldest-first.
+
+        Audit events record the sensitive actions that change a Workspace's state: who did
+        what, when, to which resource, and from where. Reading them requires the Enterprise
+        plan and either a Workspace Owner or Manager role, or a role that grants audit log
+        read access. See [the guide](https://modal.com/docs/guide/audit-logs) for more
+        information.
+
+        With no arguments, return the latest 100 events in the past seven days,
+        ordered oldest-first. Workspaces with fewer than 100 events in that window
+        return only those events.
+
+        A `since` or `until` datetime without a timezone is treated as local time. The range
+        between them is limited by the server, currently to seven days.
+
+        Args:
+            query: Query selecting which events to return, e.g.
+                `action:environment.create -status:failure`. Defaults to an empty string,
+                which matches all events.
+                See the query guide [here](https://modal.com/docs/guide/audit-logs#filtering).
+            since: Inclusive start time. Defaults to seven days before `until`.
+            until: Exclusive end time. Defaults to now.
+            limit: Return the newest `limit` matching events in the interval; must be
+                positive if provided. Defaults to 100 when `since` is omitted, or no
+                limit (every event in the interval) when `since` is provided.
+
+        Examples:
+            ```python notest
+            from datetime import datetime, timezone
+
+            ws = modal.Workspace.from_context()
+            latest_events = list(ws.audit_logs.fetch())  # defaults to latest 100 from past week
+            latest_500_events = list(ws.audit_logs.fetch(limit=500))  # latest 500 from past week
+
+            # latest 100 environment creations from past week, excluding failed attempts
+            environment_creation_events = list(ws.audit_logs.fetch("action:environment.create -status:failure"))
+
+            # latest 100 environment creations or deletions from past week
+            environment_change_events = list(ws.audit_logs.fetch("action:(environment.create OR environment.delete)"))
+
+            # return every event in range
+            start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+            end = datetime(2026, 10, 8, tzinfo=timezone.utc)
+            first_week_of_october_events = list(ws.audit_logs.fetch(since=start, until=end))
+            ```
+        """
+        oldest_ms, newest_ms = self._range(since, until)
+        if limit is not None and limit < 1:
+            raise InvalidError("limit must be positive.")
+        await self._workspace.hydrate()
+        client = self._workspace.client
+        config = await _rpcs.get_settings(client)
+        if since is None or limit is not None:
+            entries = await fetch_newest_audit_logs(
+                query, oldest_ms, newest_ms, limit or _AUDIT_LOG_DEFAULT_LIMIT, client=client, config=config
+            )
+            for entry in entries:
+                yield AuditEvent._from_proto(entry)
+            return
+        stream = fetch_audit_logs(
+            query,
+            oldest_ms,
+            newest_ms,
+            client=client,
+            config=config,
+        )
+        async with aclosing(stream):
+            async for entry in stream:
+                yield AuditEvent._from_proto(entry)
+
+    async def count(
+        self,
+        query: str = "",
+        *,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> int:
+        """Count the Workspace's audit events.
+
+        Audit events record the sensitive actions that change a Workspace's state: who did
+        what, when, to which resource, and from where. Reading them requires the Enterprise
+        plan and either a Workspace Owner or Manager role, or a role that grants audit log
+        read access. See [the guide](https://modal.com/docs/guide/audit-logs) for more
+        information.
+
+        An explicit `since` is required to select the start of the time range.
+
+        A `since` or `until` datetime without a timezone is treated as local time. The range
+        between them is limited by the server, currently to seven days.
+
+        Args:
+            query: Query selecting which events to return, e.g.
+                `action:environment.create -status:failure`. Defaults to an empty string,
+                which matches all events.
+                See the query guide [here](https://modal.com/docs/guide/audit-logs#filtering).
+            since: Inclusive start time (required).
+            until: Exclusive end time. Defaults to now.
+
+        Examples:
+            ```python notest
+            from datetime import datetime, timedelta, timezone
+
+            ws = modal.Workspace.from_context()
+            start = datetime.now(timezone.utc) - timedelta(days=7)
+            past_week_count = ws.audit_logs.count(since=start)
+
+            # environments created or deleted in the past week
+            environment_change_count = ws.audit_logs.count(
+                "action:(environment.create OR environment.delete)", since=start
+            )
+
+            start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+            end = datetime(2026, 10, 8, tzinfo=timezone.utc)
+            first_week_of_october_count = ws.audit_logs.count(since=start, until=end)
+            ```
+        """
+        oldest_ms, newest_ms = self._range(since, until)
+        await self._workspace.hydrate()
+        client = self._workspace.client
+        config = await _rpcs.get_settings(client)
+        return await count_audit_logs(client, query, oldest_ms, newest_ms, config)
 
 
 class _WorkspaceProxyTokenManager:

@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Added `Workspace.audit_logs.fetch()` and `Workspace.audit_logs.count()` to read and count workspace audit events from the SDK. Counting requires an explicit `since` datetime.
 - `Sandbox.wait_until_ready()` now works without a readiness probe, returning when the Sandbox has started.
 - Fixed a bug where `.map()`, `.starmap()`, and `.for_each()` could hang indefinitely when called with no inputs.
 

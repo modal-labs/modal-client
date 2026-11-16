@@ -992,6 +992,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.webhook_token_environments: dict[str, set[str]] = {}
         self.workspace_image_builder_version: str = "2024.10"
         self.workspace_default_environment_name: str = "main"
+        self.audit_log_entries: list[api_pb2.AuditLogEntry] = []
         self.workspace_members: list[api_pb2.WorkspaceMembersListItem] = [
             api_pb2.WorkspaceMembersListItem(
                 user_id="us-1",
@@ -4470,6 +4471,38 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def WorkspaceMembersList(self, stream):
         await stream.recv_message()
         await stream.send_message(api_pb2.WorkspaceMembersListResponse(members=self.workspace_members))
+
+    async def AuditLogSettingsGet(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.AuditLogSettingsGetResponse(
+                bucket_size=5000,
+                page_size=5000,
+                max_concurrent_requests=5,
+                max_buffered_buckets=10,
+                request_timeout_secs=30.0,
+                plan_timeout_secs=60.0,
+            )
+        )
+
+    async def AuditLogList(self, stream):
+        request = await stream.recv_message()
+        start = 0
+        if request.HasField("newest_cursor"):
+            start = [entry.id for entry in self.audit_log_entries].index(request.newest_cursor.id) + 1
+        items = self.audit_log_entries[start : start + request.limit]
+        response = api_pb2.AuditLogListResponse(items=items)
+        if items and len(items) == request.limit:
+            response.next_cursor.CopyFrom(api_pb2.AuditLogCursor(id=items[-1].id))
+        await stream.send_message(response)
+
+    async def AuditLogPlan(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.AuditLogPlanResponse())
+
+    async def AuditLogCount(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.AuditLogCountResponse(count=len(self.audit_log_entries)))
 
     async def WorkspaceSettings(self, stream):
         await stream.recv_message()

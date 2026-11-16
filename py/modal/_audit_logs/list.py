@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2026
 from __future__ import annotations
 
+import math
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 
@@ -50,6 +51,34 @@ async def _fetch_bucket(
     return entries
 
 
+async def fetch_newest_audit_logs(
+    q: str,
+    oldest_ms: int,
+    newest_ms: int,
+    count: int,
+    *,
+    client: _Client | None = None,
+    config: api_pb2.AuditLogSettingsGetResponse,
+) -> list[api_pb2.AuditLogEntry]:
+    """Read the newest `count` entries in the range, oldest to newest.
+
+    A count larger than one page fetches only the newest buckets that cover it, concurrently.
+    """
+    if client is None:
+        client = await _Client.from_env()
+    if count <= config.page_size:
+        resp = await _rpcs.list_page(client, q, oldest_ms, newest_ms, count, config)
+        return list(reversed(resp.items))
+    buckets = await get_bucket_cursors(client, q, oldest_ms, newest_ms, config)
+    # Buckets are cut from the newest entry, so all but the oldest hold exactly `bucket_size` entries.
+    newest_buckets = buckets[-math.ceil(count / config.bucket_size) :]
+    entries: list[api_pb2.AuditLogEntry] = []
+    async with aclosing(_stream_buckets(client, q, oldest_ms, newest_ms, config, newest_buckets)) as stream:
+        async for entry in stream:
+            entries.append(entry)
+    return entries[-count:]
+
+
 async def fetch_audit_logs(
     q: str,
     oldest_ms: int,
@@ -68,7 +97,19 @@ async def fetch_audit_logs(
     if client is None:
         client = await _Client.from_env()
     buckets = await get_bucket_cursors(client, q, oldest_ms, newest_ms, config)
+    async with aclosing(_stream_buckets(client, q, oldest_ms, newest_ms, config, buckets)) as stream:
+        async for entry in stream:
+            yield entry
 
+
+async def _stream_buckets(
+    client: _Client,
+    q: str,
+    oldest_ms: int,
+    newest_ms: int,
+    config: api_pb2.AuditLogSettingsGetResponse,
+    buckets: list[Bucket],
+) -> AsyncGenerator[api_pb2.AuditLogEntry]:
     async def bucket_stream() -> AsyncGenerator[Bucket]:
         for bucket in buckets:
             yield bucket

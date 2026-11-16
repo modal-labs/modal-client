@@ -2,6 +2,8 @@
 """Public data types returned by Modal APIs."""
 
 import enum
+import ipaddress
+import json
 from collections.abc import Iterator, Mapping
 from dataclasses import FrozenInstanceError, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -9,6 +11,74 @@ from decimal import Decimal
 from typing import Any, Iterable, Literal, Optional, TypedDict
 
 from modal_proto import api_pb2
+
+
+@dataclass(frozen=True)
+class AuditEvent:
+    """An audit event. Metadata is the decoded JSON object, or the original text if it cannot be decoded."""
+
+    @dataclass(frozen=True)
+    class Actor:
+        """The actor responsible for an audit log event."""
+
+        type: str
+        id: str
+        name: str
+        email: str
+
+    @dataclass(frozen=True)
+    class Target:
+        """An object affected by an audit log event."""
+
+        type: str
+        id: str
+
+    @dataclass(frozen=True)
+    class Context:
+        """The workspace and request context of an audit log event."""
+
+        workspace_id: str
+        environment_id: str
+        source: str
+        ip_address: ipaddress.IPv4Address | ipaddress.IPv6Address | None
+        """The caller's IP address, or `None` if it was not recorded or could not be parsed."""
+        environment_name: str
+
+    id: str
+    timestamp: datetime
+    action: str
+    status: str
+    actor: Actor
+    targets: list[Target]
+    context: Context
+    metadata: dict[str, Any] | str
+
+    @classmethod
+    def _from_proto(cls, entry: api_pb2.AuditLogEntry) -> "AuditEvent":
+        try:
+            metadata = json.loads(entry.metadata_json) if entry.metadata_json else {}
+        except ValueError:
+            metadata = entry.metadata_json
+        try:
+            ip_address = ipaddress.ip_address(entry.context.ip_address)
+        except ValueError:
+            ip_address = None
+        return cls(
+            id=entry.id,
+            timestamp=entry.event_at_timestamp.ToDatetime(tzinfo=timezone.utc),
+            action=entry.action,
+            status=entry.status,
+            actor=cls.Actor(type=entry.actor.type, id=entry.actor.id, name=entry.actor.name, email=entry.actor.email),
+            targets=[cls.Target(type=t.type, id=t.id) for t in entry.targets],
+            context=cls.Context(
+                workspace_id=entry.context.workspace_id,
+                environment_id=entry.context.environment_id,
+                environment_name=entry.context.environment_name,
+                source=entry.context.source,
+                ip_address=ip_address,
+            ),
+            metadata=metadata,
+        )
 
 
 @dataclass(frozen=True)

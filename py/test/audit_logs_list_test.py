@@ -5,7 +5,11 @@ from typing import Any
 
 from grpclib import GRPCError, Status
 
-from modal._audit_logs.list import fetch_audit_logs as _fetch_audit_logs, get_bucket_cursors as _get_bucket_cursors
+from modal._audit_logs.list import (
+    fetch_audit_logs as _fetch_audit_logs,
+    fetch_newest_audit_logs as _fetch_newest_audit_logs,
+    get_bucket_cursors as _get_bucket_cursors,
+)
 from modal._utils.async_utils import synchronize_api
 from modal.exception import InvalidError
 from modal_proto import api_pb2
@@ -14,6 +18,7 @@ from .audit_logs_test_helpers import RANGE, RATE_LIMIT_ERROR, make_settings, no_
 
 fetch_audit_logs = synchronize_api(_fetch_audit_logs)
 get_bucket_cursors = synchronize_api(_get_bucket_cursors)
+fetch_newest_audit_logs = synchronize_api(_fetch_newest_audit_logs)
 
 
 def _serve(ctx: Any, **handlers: Any) -> None:
@@ -316,3 +321,19 @@ async def test_a_failed_bucket_cancels_the_rest_and_raises(servicer, client):
             all_cancelled.wait(), timeout=10
         )  # the server sees the cancels after the client gives up
     assert sorted(c or "" for c in cancelled) == ["", "e7"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count, expected", [(2, ["e8", "e9"]), (3, ["e7", "e8", "e9"])])
+async def test_newest_audit_logs_returns_the_newest_entries_oldest_first(servicer, client, count, expected):
+    limits = []
+
+    async def AuditLogList(req):
+        limits.append(req.limit)
+        return _page(*["e9", "e8", "e7"][: req.limit])
+
+    with servicer.intercept() as ctx:
+        _serve(ctx, AuditLogList=AuditLogList)
+        entries = await fetch_newest_audit_logs.aio(**RANGE, count=count, client=client, config=make_settings())
+    assert _ids(entries) == expected
+    assert limits == [count]
