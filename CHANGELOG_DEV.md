@@ -6,10 +6,12 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- `Sandbox.wait_until_ready()` now works without a readiness probe, returning when the Sandbox has started.
 - Fixed a bug where `.map()`, `.starmap()`, and `.for_each()` could hang indefinitely when called with no inputs.
 
 ## JS
 
+- `Sandbox.waitUntilReady()` now works without a readiness probe, resolving when the Sandbox has started.
 - The client now fails over to `api.modal2.com` when `api.modal.com` is unreachable. `MODAL_SERVER_URL` and the profile's `server_url` accept a comma-separated list of fallback URLs.
 - Added `App.stats()` to report high-level Function, Server, and Sandbox stats for an App.
 - Added `client.environments.fromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
@@ -21,6 +23,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Go
 
+- `Sandbox.WaitUntilReady()` now works without a readiness probe, returning when the Sandbox has started.
 - Added an `App.Stats()` method to report high-level Function, Server, and Sandbox stats for an App.
 - Added `client.Environments.FromContext()` to look up the Environment defined by the local configuration, or the server's default Environment.
 - Added an `App.Stop()` method.

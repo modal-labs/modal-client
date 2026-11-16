@@ -272,7 +272,9 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             proxy: Reference to a Modal Proxy to use in front of this Sandbox.
             include_oidc_identity_token:
                 If True, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth.
-            readiness_probe: Probe used to determine when the sandbox has become ready.
+            readiness_probe:
+                Probe used to determine when the Sandbox is ready.
+                If not configured, the Sandbox is ready when it starts.
             verbose: Enable verbose logging for sandbox operations.
             experimental_options: Experimental options to pass to the sandbox.
             _experimental_enable_snapshot: Enable memory snapshots.
@@ -971,9 +973,10 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         await self._impl.wait(raise_on_termination)
 
     async def wait_until_ready(self, *, timeout: int = 300) -> None:
-        """Wait for the Sandbox readiness probe to report that the Sandbox is ready.
+        """Wait until the Sandbox is ready.
 
-        The Sandbox must be configured with a `readiness_probe` in order to use this method.
+        A Sandbox with a readiness probe is ready once the probe passes;
+        a Sandbox without one is ready once it starts.
 
         Args:
             timeout: Maximum time in seconds to wait for readiness.

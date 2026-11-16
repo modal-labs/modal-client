@@ -233,7 +233,7 @@ type SandboxCreateParams struct {
 	Regions                    []string                     // Region(s) to run the Sandbox on.
 	Verbose                    bool                         // Enable verbose logging.
 	Proxy                      *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
-	ReadinessProbe             *Probe                       // Probe used to determine when the Sandbox is ready.
+	ReadinessProbe             *Probe                       // Probe used to determine when the Sandbox is ready. If not configured, the Sandbox is ready when it starts.
 	Name                       string                       // Optional name for the Sandbox. Unique within an App.
 	Tags                       map[string]string            // Tags to attach to the Sandbox. Filterable via SandboxList.
 	ExperimentalOptions        map[string]any               // Experimental options. Values must be bool or string. Set "enable_exit_snapshot" to true to capture a filesystem snapshot when the Sandbox exits, retrievable with Sandbox.ExperimentalGetExitSnapshot.
@@ -1225,7 +1225,9 @@ func (sb *Sandbox) Wait(ctx context.Context, params *SandboxWaitParams) (int, er
 	return sb.impl.wait(ctx)
 }
 
-// WaitUntilReady blocks until the Sandbox readiness probe reports ready.
+// WaitUntilReady blocks until the Sandbox is ready.
+// A Sandbox with a readiness probe is ready once the probe passes;
+// a Sandbox without one is ready once it starts.
 func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration, params *SandboxWaitUntilReadyParams) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err

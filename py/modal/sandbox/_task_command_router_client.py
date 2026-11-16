@@ -812,7 +812,10 @@ class TaskCommandRouterClient:
             )
 
     async def sandbox_wait_until_ready(self, task_id: str, timeout: float) -> sr_pb2.SandboxWaitUntilReadyTcrResponse:
-        """Wait until the sandbox's readiness probe reports ready.
+        """Wait until the Sandbox is ready.
+
+        A Sandbox with a readiness probe is ready once the probe passes;
+        a Sandbox without one is ready once it starts.
 
         Args:
             task_id: The task ID hosting the sandbox.

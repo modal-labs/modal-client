@@ -378,7 +378,7 @@ export type SandboxCreateParams = {
   /** Reference to a Modal {@link Proxy} to use in front of this Sandbox. */
   proxy?: Proxy;
 
-  /** Probe used to determine when the Sandbox has become ready. */
+  /** Probe used to determine when the Sandbox is ready. If not configured, the Sandbox is ready when it starts. */
   readinessProbe?: Probe;
 
   /** Optional name for the Sandbox. Unique within an App. */
@@ -1656,9 +1656,10 @@ export class Sandbox {
   }
 
   /**
-   * Wait until the Sandbox readiness probe reports the Sandbox is ready.
+   * Wait until the Sandbox is ready.
    *
-   * This method only works for Sandboxes configured with a readiness probe.
+   * A Sandbox with a readiness probe is ready once the probe passes;
+   * a Sandbox without one is ready once it starts.
    *
    * @param timeoutMs - Maximum total time to wait, in milliseconds.
    * @returns A promise that resolves once the Sandbox is ready.
