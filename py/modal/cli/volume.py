@@ -24,8 +24,6 @@ volume_cli = ModalGroup(
     name="volume",
     help="""
     Read and edit `modal.Volume` volumes.
-
-    Note: users of `modal.NetworkFileSystem` should use the `modal nfs` command instead.
     """,
 )
 
