@@ -41721,6 +41721,8 @@ type ImageMetadata struct {
 	xxx_hidden_Workdir             *string                `protobuf:"bytes,3,opt,name=workdir,proto3,oneof"`
 	xxx_hidden_LibcVersionInfo     *string                `protobuf:"bytes,4,opt,name=libc_version_info,json=libcVersionInfo,proto3,oneof"`
 	xxx_hidden_ImageBuilderVersion *string                `protobuf:"bytes,5,opt,name=image_builder_version,json=imageBuilderVersion,proto3,oneof"`
+	xxx_hidden_Entrypoint          []string               `protobuf:"bytes,6,rep,name=entrypoint,proto3"`
+	xxx_hidden_Cmd                 []string               `protobuf:"bytes,7,rep,name=cmd,proto3"`
 	XXX_raceDetectHookData         protoimpl.RaceDetectHookData
 	XXX_presence                   [1]uint32
 	unknownFields                  protoimpl.UnknownFields
@@ -41799,9 +41801,23 @@ func (x *ImageMetadata) GetImageBuilderVersion() string {
 	return ""
 }
 
+func (x *ImageMetadata) GetEntrypoint() []string {
+	if x != nil {
+		return x.xxx_hidden_Entrypoint
+	}
+	return nil
+}
+
+func (x *ImageMetadata) GetCmd() []string {
+	if x != nil {
+		return x.xxx_hidden_Cmd
+	}
+	return nil
+}
+
 func (x *ImageMetadata) SetPythonVersionInfo(v string) {
 	x.xxx_hidden_PythonVersionInfo = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 7)
 }
 
 func (x *ImageMetadata) SetPythonPackages(v map[string]string) {
@@ -41810,17 +41826,25 @@ func (x *ImageMetadata) SetPythonPackages(v map[string]string) {
 
 func (x *ImageMetadata) SetWorkdir(v string) {
 	x.xxx_hidden_Workdir = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 7)
 }
 
 func (x *ImageMetadata) SetLibcVersionInfo(v string) {
 	x.xxx_hidden_LibcVersionInfo = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 7)
 }
 
 func (x *ImageMetadata) SetImageBuilderVersion(v string) {
 	x.xxx_hidden_ImageBuilderVersion = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 7)
+}
+
+func (x *ImageMetadata) SetEntrypoint(v []string) {
+	x.xxx_hidden_Entrypoint = v
+}
+
+func (x *ImageMetadata) SetCmd(v []string) {
+	x.xxx_hidden_Cmd = v
 }
 
 func (x *ImageMetadata) HasPythonVersionInfo() bool {
@@ -41889,6 +41913,11 @@ type ImageMetadata_builder struct {
 	LibcVersionInfo *string
 	// The builder version for/with which the image was created.
 	ImageBuilderVersion *string
+	// The image's ENTRYPOINT, including one inherited from a base image. Empty if unset.
+	Entrypoint []string
+	// The image's CMD: the default arguments to the entrypoint when a container is
+	// started without any, including a CMD inherited from a base image. Empty if unset.
+	Cmd []string
 }
 
 func (b0 ImageMetadata_builder) Build() *ImageMetadata {
@@ -41896,22 +41925,24 @@ func (b0 ImageMetadata_builder) Build() *ImageMetadata {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.PythonVersionInfo != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 7)
 		x.xxx_hidden_PythonVersionInfo = b.PythonVersionInfo
 	}
 	x.xxx_hidden_PythonPackages = b.PythonPackages
 	if b.Workdir != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 7)
 		x.xxx_hidden_Workdir = b.Workdir
 	}
 	if b.LibcVersionInfo != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 7)
 		x.xxx_hidden_LibcVersionInfo = b.LibcVersionInfo
 	}
 	if b.ImageBuilderVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 7)
 		x.xxx_hidden_ImageBuilderVersion = b.ImageBuilderVersion
 	}
+	x.xxx_hidden_Entrypoint = b.Entrypoint
+	x.xxx_hidden_Cmd = b.Cmd
 	return m0
 }
 
@@ -81670,13 +81701,17 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x15ImageListTagsResponse\x125\n" +
 	"\x05items\x18\x01 \x03(\v2\x1f.modal.client.ImageListTagsItemR\x05items\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12)\n" +
-	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentName\"\xbe\x03\n" +
+	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentName\"\xf0\x03\n" +
 	"\rImageMetadata\x123\n" +
 	"\x13python_version_info\x18\x01 \x01(\tH\x00R\x11pythonVersionInfo\x88\x01\x01\x12X\n" +
 	"\x0fpython_packages\x18\x02 \x03(\v2/.modal.client.ImageMetadata.PythonPackagesEntryR\x0epythonPackages\x12\x1d\n" +
 	"\aworkdir\x18\x03 \x01(\tH\x01R\aworkdir\x88\x01\x01\x12/\n" +
 	"\x11libc_version_info\x18\x04 \x01(\tH\x02R\x0flibcVersionInfo\x88\x01\x01\x127\n" +
-	"\x15image_builder_version\x18\x05 \x01(\tH\x03R\x13imageBuilderVersion\x88\x01\x01\x1aA\n" +
+	"\x15image_builder_version\x18\x05 \x01(\tH\x03R\x13imageBuilderVersion\x88\x01\x01\x12\x1e\n" +
+	"\n" +
+	"entrypoint\x18\x06 \x03(\tR\n" +
+	"entrypoint\x12\x10\n" +
+	"\x03cmd\x18\a \x03(\tR\x03cmd\x1aA\n" +
 	"\x13PythonPackagesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x16\n" +

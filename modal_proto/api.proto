@@ -3454,6 +3454,13 @@ message ImageMetadata {
 
   // The builder version for/with which the image was created.
   optional string image_builder_version = 5;
+
+  // The image's ENTRYPOINT, including one inherited from a base image. Empty if unset.
+  repeated string entrypoint = 6;
+
+  // The image's CMD: the default arguments to the entrypoint when a container is
+  // started without any, including a CMD inherited from a base image. Empty if unset.
+  repeated string cmd = 7;
 }
 
 message ImageNameDeleteRequest {
