@@ -2654,7 +2654,8 @@ def test_cbor_incompatible_output(servicer, deployed_support_function_definition
     assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert item.data_format == api_pb2.DATA_FORMAT_CBOR  # expect cbor output
     assert "SerializationError" in item.result.exception
-    assert "Can not serialize type" in item.result.exception
+    assert "CBOR payload serialization failed: cannot encode type" in item.result.exception
+    assert "modal.queue.Queue" in item.result.exception
     assert item.result.data == b""
 
 

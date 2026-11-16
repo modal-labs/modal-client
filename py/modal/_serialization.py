@@ -378,16 +378,12 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
             raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
         try:
             return cbor2.dumps(obj)
-        except cbor2.CBOREncodeError:
-            try:
-                typename = f"{type(obj).__module__}.{type(obj).__name__}"
-            except Exception:
-                typename = str(type(obj))
+        except cbor2.CBOREncodeError as exc:
             raise SerializationError(
                 # TODO (elias): add documentation link for more information on this
-                f"Can not serialize type {typename} as cbor. If you need to use a custom data type, "
+                f"CBOR payload serialization failed: {exc}. If you need to use a custom data type, "
                 "try to serialize it yourself e.g. by using pickle.dumps(my_data)"
-            )
+            ) from exc
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 

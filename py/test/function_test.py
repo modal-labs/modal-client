@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import dataclasses
 import inspect
 import logging
 import os
@@ -32,6 +33,7 @@ from modal.exception import (
     InvalidError,
     NotFoundError,
     RemoteError,
+    SerializationError,
 )
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
@@ -2496,6 +2498,23 @@ def test_cbor_input_only_function_uses_cbor_input(client, servicer):
             {},
         ]  # (args, kwargs) tuple
         assert decoded_args == expected_args
+
+
+@dataclasses.dataclass
+class _CustomCborArg:
+    x: int
+
+
+def test_cbor_input_serialization_error_names_offending_type(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_PAYLOAD_FORMAT", "cbor")
+    app = App()
+
+    @app.function(serialized=True)
+    def f(arg): ...
+
+    with app.run(client=client):
+        with pytest.raises(SerializationError, match="CBOR payload serialization failed: .*_CustomCborArg"):
+            f.remote(_CustomCborArg(1))
 
 
 def test_class_schema_recording(client, servicer):
