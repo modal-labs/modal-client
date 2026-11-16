@@ -245,31 +245,32 @@ def _check_prod(no_confirm: bool):
     return server_url
 
 
-@task
-def publish_base_mounts(ctx, no_confirm: bool = False):
-    """Publish the client mount and other mounts."""
+def _run_mount_publish_script(ctx, mount: str, args: str = ""):
+    cmd = f"{sys.executable} {project_root}/modal_global_objects/mounts/{mount}.py{args}"
+    return ctx.run(
+        cmd,
+        asynchronous=True,
+        env={"PYTHONUNBUFFERED": "1"},
+        out_stream=sys.stdout,
+        err_stream=sys.stderr,
+    )
+
+
+def _python_standalone_args():
     from modal._image import LATEST_IMAGE_BUILDER_VERSION
 
+    return f" --builder-version {LATEST_IMAGE_BUILDER_VERSION} --parallel"
+
+
+@task(help={"python_standalone": "Also publish Python standalone mounts."})
+def publish_base_mounts(ctx, no_confirm: bool = False, python_standalone: bool = True):
+    """Publish the client mount and other mounts."""
     _check_prod(no_confirm)
-    promises = []
-    for mount, args in [
-        ("modal_client_package", ""),
-        ("python_standalone", f" --builder-version {LATEST_IMAGE_BUILDER_VERSION} --parallel"),
-        ("modal_client_dependencies", ""),
-    ]:
-        cmd = f"{sys.executable} {project_root}/modal_global_objects/mounts/{mount}.py{args}"
-        promises.append(
-            (
-                mount,
-                ctx.run(
-                    cmd,
-                    asynchronous=True,
-                    env={"PYTHONUNBUFFERED": "1"},
-                    out_stream=sys.stdout,
-                    err_stream=sys.stderr,
-                ),
-            )
-        )
+    mount_scripts = [("modal_client_package", "")]
+    if python_standalone:
+        mount_scripts.append(("python_standalone", _python_standalone_args()))
+    mount_scripts.append(("modal_client_dependencies", ""))
+    promises = [(mount, _run_mount_publish_script(ctx, mount, args)) for mount, args in mount_scripts]
 
     failed = []
     for mount, promise in promises:
@@ -280,6 +281,13 @@ def publish_base_mounts(ctx, no_confirm: bool = False):
 
     if failed:
         raise Exit(f"Failed to publish: {', '.join(failed)}", code=1)
+
+
+@task
+def publish_python_standalone_mounts(ctx, no_confirm: bool = False):
+    """Publish the Python standalone mounts."""
+    _check_prod(no_confirm)
+    _run_mount_publish_script(ctx, "python_standalone", _python_standalone_args()).join()
 
 
 @task(
