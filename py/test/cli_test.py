@@ -627,7 +627,6 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
         tag: str,
         image_ids: list[str],
         created_at: list[float],
-        next_page_token: str = "",
         published_by: list[str] | None = None,
     ) -> api_pb2.ImageTagRevisionsResponse:
         return api_pb2.ImageTagRevisionsResponse(
@@ -640,7 +639,6 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
                 )
                 for index, image_id in enumerate(image_ids)
             ],
-            next_page_token=next_page_token,
             tag=tag,
             environment_name="main",
         )
@@ -672,40 +670,6 @@ def test_image_cli_history(servicer, set_env_client, monkeypatch):
         ctx.add_response("ImageTagRevisions", empty_history)
         result = run_cli_command(["image", "names", "history", "missing-image"], expected_exit_code=1)
     assert "No publishing history found for named image 'missing-image:latest'." in result.stderr
-
-    history_pages = [
-        history_response("many-history:latest", ["im-named-a"] * 100, [now + index for index in range(100)], "100"),
-        history_response(
-            "many-history:latest", ["im-named-a"] * 100, [now + index for index in range(100, 200)], "200"
-        ),
-        history_response("many-history:latest", ["im-named-a"], [now + 200]),
-    ]
-    sleep_calls.clear()
-
-    with servicer.intercept() as ctx:
-        for response in history_pages:
-            ctx.add_response("ImageTagRevisions", response)
-        paginated_history_json = json.loads(
-            run_cli_command(["image", "names", "history", "many-history", "--json"]).stdout
-        )
-        history_requests = ctx.get_requests("ImageTagRevisions")
-    assert len(paginated_history_json) == 201
-    assert paginated_history_json[0]["image_id"] == "im-named-a"
-    assert [request.max_objects for request in history_requests] == [100, 100, 100]
-    assert [request.page_token for request in history_requests] == ["", "100", "200"]
-    assert sleep_calls == [1.0, 1.0]
-
-    sleep_calls.clear()
-
-    with servicer.intercept() as ctx:
-        for response in history_pages:
-            ctx.add_response("ImageTagRevisions", response)
-        paginated_history_table = run_cli_command(["image", "names", "history", "many-history"]).stdout
-        history_requests = ctx.get_requests("ImageTagRevisions")
-    assert "Showing 201 results" in paginated_history_table
-    assert [request.max_objects for request in history_requests] == [100, 100, 100]
-    assert [request.page_token for request in history_requests] == ["", "100", "200"]
-    assert sleep_calls == [1.0, 1.0]
 
 
 def _built_image_id(result) -> str:

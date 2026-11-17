@@ -371,29 +371,13 @@ async def _iter_tag_pages(
 async def _fetch_history_page(
     client: _Client,
     name_tag: str,
-    page_token: str,
 ) -> api_pb2.ImageTagRevisionsResponse:
     return await client._stub.ImageTagRevisions(
         api_pb2.ImageTagRevisionsRequest(
             tag=name_tag,
             max_objects=IMAGE_NAMES_HISTORY_PAGE_SIZE,
-            page_token=page_token,
         )
     )
-
-
-async def _iter_history_pages(
-    client: _Client, name_tag: str, first_page: api_pb2.ImageTagRevisionsResponse
-) -> AsyncIterator[api_pb2.ImageTagRevisionsResponse]:
-    response = first_page
-
-    while True:
-        yield response
-
-        if not response.next_page_token:
-            return
-        await asyncio.sleep(IMAGE_NAMES_HISTORY_PAGE_DELAY_SECONDS)
-        response = await _fetch_history_page(client, name_tag, response.next_page_token)
 
 
 image_names_cli = ModalGroup(name="names", help="Manage Modal Image names.")
@@ -453,34 +437,32 @@ async def history(
     )
     client = await _Client.from_env()
 
-    first_page = await _fetch_history_page(client, upgraded_image_name, "")
-    if not first_page.items:
-        raise click.ClickException(f"No publishing history found for named image {first_page.tag!r}.")
+    response = await _fetch_history_page(client, upgraded_image_name)
+    if not response.items:
+        raise click.ClickException(f"No publishing history found for named image {response.tag!r}.")
 
     if json:
         click.echo("[", nl=False)
         count = 0
-        async for response in _iter_history_pages(client, upgraded_image_name, first_page):
-            for item in response.items:
-                if count:
-                    click.echo(",", nl=False)
-                click.echo(json_module.dumps(_history_item_json(item)), nl=False)
-                count += 1
+        for item in response.items:
+            if count:
+                click.echo(",", nl=False)
+            click.echo(json_module.dumps(_history_item_json(item)), nl=False)
+            count += 1
         click.echo("]")
         return
 
     count = 0
     show_title = True
-    async for response in _iter_history_pages(client, upgraded_image_name, first_page):
-        if response.items:
-            title = f"History for {response.tag}" if show_title else ""
-            display_table(
-                ["Image ID", "Published at", "Published by"],
-                [_history_item_row(item) for item in response.items],
-                title=title,
-            )
-            show_title = False
-        count += len(response.items)
+    if response.items:
+        title = f"History for {response.tag}" if show_title else ""
+        display_table(
+            ["Image ID", "Published at", "Published by"],
+            [_history_item_row(item) for item in response.items],
+            title=title,
+        )
+        show_title = False
+    count += len(response.items)
 
     _print_result_summary(count)
 
