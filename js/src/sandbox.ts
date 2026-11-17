@@ -285,13 +285,21 @@ export class Probe {
 
 /** Optional parameters for {@link SandboxService#create client.sandboxes.create()}. */
 export type SandboxCreateParams = {
-  /** Reservation of physical CPU cores for the Sandbox, can be fractional. */
+  /**
+   * Reservation of physical CPU cores for the Sandbox, can be fractional.
+   * Modal Sandboxes support bursting above the CPU request, so most users don't
+   * need to specify a request.
+   */
   cpu?: number;
 
   /** Hard limit of physical CPU cores for the Sandbox, can be fractional. */
   cpuLimit?: number;
 
-  /** Reservation of memory in MiB. */
+  /**
+   * Reservation of memory in MiB.
+   * Modal Sandboxes support bursting above the memory request, so most users don't
+   * need to specify a request.
+   */
   memoryMiB?: number;
 
   /** Hard limit of memory in MiB. */

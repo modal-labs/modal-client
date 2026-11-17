@@ -206,9 +206,9 @@ func (r SandboxRuntime) toProto() (*string, error) {
 
 // SandboxCreateParams are options for creating a Modal Sandbox.
 type SandboxCreateParams struct {
-	CPU                        float64                      // CPU request in fractional, physical cores.
+	CPU                        float64                      // CPU request in fractional, physical cores. Modal Sandboxes support bursting above the CPU request, so most users don't need to specify a request.
 	CPULimit                   float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
-	MemoryMiB                  int                          // Memory request in MiB.
+	MemoryMiB                  int                          // Memory request in MiB. Modal Sandboxes support bursting above the memory request, so most users don't need to specify a request.
 	MemoryLimitMiB             int                          // Hard memory limit in MiB. Zero means no limit.
 	Runtime                    SandboxRuntime               // Runtime under which the Sandbox executes, or unset to let Modal pick.
 	GPU                        string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").

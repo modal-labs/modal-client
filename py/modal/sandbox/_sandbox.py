@@ -242,10 +242,12 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             cpu:
                 Specify, in fractional CPU cores, how many CPU cores to request. Or, pass (request, limit) to
                 additionally specify a hard limit in fractional CPU cores. CPU throttling will prevent a container
-                from exceeding its specified limit.
+                from exceeding its specified limit. Modal Sandboxes support bursting above the CPU request, so most
+                users don't need to specify a request.
             memory:
                 Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to
-                additionally specify a hard limit in MiB.
+                additionally specify a hard limit in MiB. Modal Sandboxes support bursting above the memory request,
+                so most users don't need to specify a request.
             runtime:
                 Runtime under which the Sandbox executes, or None to let Modal pick.
             block_network: Whether to block network access.

@@ -293,8 +293,18 @@ def _start_shell_from_image(
     multiple=True,
     help="Name of a modal.Secret to mount inside the shell (if not using REF). Can be used multiple times.",
 )
-@click.option("--cpu", default=None, type=int, help="Number of CPUs to allocate to the shell (if not using REF).")
-@click.option("--memory", default=None, type=int, help="Memory to allocate for the shell, in MiB (if not using REF).")
+@click.option(
+    "--cpu",
+    default=None,
+    type=int,
+    help="Number of CPU cores to request for the shell (if not using REF). The shell can burst above this request.",
+)
+@click.option(
+    "--memory",
+    default=None,
+    type=int,
+    help="Memory to request for the shell, in MiB (if not using REF). The shell can burst above this request.",
+)
 @click.option(
     "--gpu",
     default=None,
