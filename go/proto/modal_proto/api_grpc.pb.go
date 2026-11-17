@@ -590,7 +590,7 @@ type ModalClientClient interface {
 	// Templates
 	TemplateList(ctx context.Context, in *TemplateListRequest, opts ...grpc.CallOption) (*TemplateListResponse, error)
 	// Tokens (web auth flow)
-	TokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	TokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*TokenDeleteResponse, error)
 	TokenDisable(ctx context.Context, in *TokenDisableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	TokenEnable(ctx context.Context, in *TokenEnableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	TokenFlowCreate(ctx context.Context, in *TokenFlowCreateRequest, opts ...grpc.CallOption) (*TokenFlowCreateResponse, error)
@@ -3113,9 +3113,9 @@ func (c *modalClientClient) TemplateList(ctx context.Context, in *TemplateListRe
 	return out, nil
 }
 
-func (c *modalClientClient) TokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *modalClientClient) TokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*TokenDeleteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(TokenDeleteResponse)
 	err := c.cc.Invoke(ctx, ModalClient_TokenDelete_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -3877,7 +3877,7 @@ type ModalClientServer interface {
 	// Templates
 	TemplateList(context.Context, *TemplateListRequest) (*TemplateListResponse, error)
 	// Tokens (web auth flow)
-	TokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error)
+	TokenDelete(context.Context, *TokenDeleteRequest) (*TokenDeleteResponse, error)
 	TokenDisable(context.Context, *TokenDisableRequest) (*emptypb.Empty, error)
 	TokenEnable(context.Context, *TokenEnableRequest) (*emptypb.Empty, error)
 	TokenFlowCreate(context.Context, *TokenFlowCreateRequest) (*TokenFlowCreateResponse, error)
@@ -4655,7 +4655,7 @@ func (UnimplementedModalClientServer) TaskResult(context.Context, *TaskResultReq
 func (UnimplementedModalClientServer) TemplateList(context.Context, *TemplateListRequest) (*TemplateListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TemplateList not implemented")
 }
-func (UnimplementedModalClientServer) TokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error) {
+func (UnimplementedModalClientServer) TokenDelete(context.Context, *TokenDeleteRequest) (*TokenDeleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TokenDelete not implemented")
 }
 func (UnimplementedModalClientServer) TokenDisable(context.Context, *TokenDisableRequest) (*emptypb.Empty, error) {

@@ -4594,7 +4594,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.workspace_member_tokens[msg.token_id] = None
 
-        await stream.send_message(Empty())
+        await stream.send_message(api_pb2.TokenDeleteResponse(deleted_token_ids=[msg.token_id]))
 
     ### Proxy auth (webhook) tokens
 

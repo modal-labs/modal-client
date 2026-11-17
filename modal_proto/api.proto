@@ -5376,6 +5376,12 @@ message TokenCreateResponse {
 
 message TokenDeleteRequest {
   string token_id = 2;
+  repeated string token_ids = 3;
+  bool allow_missing = 4;
+}
+
+message TokenDeleteResponse {
+  repeated string deleted_token_ids = 1;
 }
 
 message TokenDisableRequest {
@@ -6258,7 +6264,7 @@ service ModalClient {
   rpc TemplateList(TemplateListRequest) returns (TemplateListResponse);
 
   // Tokens (web auth flow)
-  rpc TokenDelete(TokenDeleteRequest) returns (google.protobuf.Empty);
+  rpc TokenDelete(TokenDeleteRequest) returns (TokenDeleteResponse);
   rpc TokenDisable(TokenDisableRequest) returns (google.protobuf.Empty);
   rpc TokenEnable(TokenEnableRequest) returns (google.protobuf.Empty);
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
