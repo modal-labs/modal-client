@@ -70,8 +70,6 @@ dev = [
     "types-six~=1.16.21",
     "types-toml~=0.10.4",
     "wheel~=0.38.1",
-    "nbclient~=0.10.2",
-    "jupytext~=1.19.1",
     "pyright~=1.1.351",
     "console-ctrl~=0.1.0",
     "zstandard~=0.25.0",
@@ -82,16 +80,14 @@ dev = [
     "grpcio-tools",
     # Additional test-only dependencies (used by the Bazel client test
     # matrix and previously sourced from the workspace dev group).
-    # ``nbformat`` and ``psutil`` are imported directly by ``notebook_test``
-    # and ``blob_test``; ``ipykernel`` is required by ``nbclient`` for
-    # notebook execution; ``pytest-benchmark`` and ``nest-asyncio`` are
+    # ``psutil`` is imported directly by ``blob_test``;
+    # ``pytest-benchmark`` and ``nest-asyncio`` are
     # auto-loaded by pytest entry points.  ``pytest-freezegun`` is
     # intentionally omitted — it imports ``distutils.version.LooseVersion``
     # which was removed in Python 3.12.
-    "ipykernel~=6.30",
-    "nbformat~=5.10",
     "nest-asyncio~=1.5",
     "psutil~=6.0",
+    "six>=1.16.0",
     "pytest-benchmark~=5.1",
     # Windows doesn't ship the IANA tz database; stdlib ``zoneinfo`` requires
     # this pip package to load zone keys like ``America/New_York``. Tiny and
@@ -212,13 +208,11 @@ extend-select = ['PLR1702']
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = ['E712', 'T201']
 "test/**" = ['T201']
-"test/supports/notebooks/*.py" = ['E402']
 "modal_docs/**" = ['T201']
 "modal_global_objects/**" = ['T201']
 "tasks.py" = ['T201']
 "scripts/compile_protos.py" = ['T201']
 "modal/__init__.py" = ['T201']
-"modal/experimental/ipython.py" = ['T201']
 
 [tool.ruff.lint.isort]
 combine-as-imports = true

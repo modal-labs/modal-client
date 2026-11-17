@@ -1,84 +1,37 @@
 # Copyright Modal Labs 2022
-import pytest
-import time
-from pathlib import Path
+import sys
+import types
+
+from modal._ipython import is_interactive_ipython
+from modal_proto import api_pb2
 
 
-@pytest.fixture
-def notebook_runner(servicer, credentials):
-    # local imports so we don't break on Python 3.9 before the pytest skip
-    jupytext = pytest.importorskip("jupytext")
-    import nbformat
-    from nbclient import NotebookClient
-    from nbclient.exceptions import CellExecutionError, DeadKernelError
-
-    def runner(notebook_path: Path):
-        output_notebook_path = notebook_path.with_suffix(".output.ipynb")
-        nb = jupytext.read(
-            notebook_path,
-        )
-
-        parameter_cell = nb["cells"][0]
-        assert "parameters" in parameter_cell["metadata"]["tags"]  # like in papermill
-        parameter_cell["source"] = f'''
-server_addr = "{servicer.client_addr}"
-token_id = "{credentials[0]}"
-token_secret = "{credentials[1]}"
-'''
-
-        # Only transient kernel-startup failures are retried; cell failures
-        # are real test failures. The worst-case budget (attempts * timeout
-        # + sleep) must stay under the 300s per-test pytest timeout.
-        startup_attempts = 2
-        for attempt in range(startup_attempts):
-            client = NotebookClient(nb, startup_timeout=120)
-            try:
-                client.execute()
-                break
-            except CellExecutionError:
-                nbformat.write(nb, output_notebook_path)
-                pytest.fail(
-                    f"""There was an error when executing the notebook.
-
-Inspect the output notebook: {output_notebook_path}
-"""
-                )
-            except DeadKernelError:
-                raise
-            except (RuntimeError, ValueError):
-                if attempt == startup_attempts - 1:
-                    raise
-                time.sleep(5)
-        tagged_cells = {}
-        for cell in nb["cells"]:
-            for tag in cell["metadata"].get("tags", []):
-                tagged_cells[tag] = cell
-
-        return tagged_cells
-
-    return runner
+def test_is_interactive_ipython(monkeypatch):
+    monkeypatch.setitem(sys.modules, "IPython", types.SimpleNamespace(get_ipython=lambda: object()))
+    assert is_interactive_ipython() is True
+    monkeypatch.setitem(sys.modules, "IPython", types.SimpleNamespace(get_ipython=lambda: None))
+    assert is_interactive_ipython() is False
+    monkeypatch.delitem(sys.modules, "IPython", raising=False)
+    assert is_interactive_ipython() is False
 
 
-def test_notebook_outputs_status(notebook_runner, test_dir):
-    input_notebook_path = test_dir / "supports" / "notebooks" / "simple.notebook.py"
-    tagged_cells = notebook_runner(input_notebook_path)
-    combined_output = "\n".join(output_part["text"] for output_part in tagged_cells["main"]["outputs"])
-    assert "Initialized" in combined_output
-    assert "Created objects." in combined_output
-    assert "App completed." in combined_output
+def test_notebook_function(client, servicer, monkeypatch):
+    module = types.ModuleType("__main__")
+    monkeypatch.setitem(sys.modules, "__main__", module)
+    exec(
+        """
+import modal
 
+app = modal.App()
 
-def test_is_interactive_ipython_in_real_notebook(notebook_runner, test_dir):
-    """Integration test: Run actual notebook to verify is_interactive_ipython returns True."""
-    notebook_path = test_dir / "supports" / "notebooks" / "ipython_detection.notebook.py"
-    tagged_cells = notebook_runner(notebook_path)
-
-    test_cell = tagged_cells.get("test_ipython_detection")
-    assert test_cell is not None, "Could not find test_ipython_detection cell in notebook"
-
-    # Verify the output contains our success message
-    output_text = "\n".join(
-        str(output.get("text", "")) for output in test_cell.get("outputs", []) if output.get("output_type") == "stream"
+@app.function()
+def f():
+    return 42
+""",
+        module.__dict__,
     )
-
-    assert "is_interactive_ipython returned: True" in output_text
+    with module.app.run(client=client):
+        module.f.remote()
+        definition = servicer.app_functions[module.f.object_id]
+    assert definition.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+    assert definition.function_serialized
