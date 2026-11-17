@@ -912,31 +912,6 @@ class _WorkspaceMemberTokenManager:
     def __init__(self, workspace: _Workspace):
         self._workspace = workspace
 
-    async def list(self) -> list[MemberTokenInfo]:
-        """List Member Tokens in the specified Workspace.
-
-        If you are a Manager or an Owner of this Workspace, this method will return a list of all the
-        Member Tokens in the Workspace. Otherwise, this method will only return the Tokens you have
-        created.
-
-        Returns:
-            A list of `MemberTokenInfo` dataclasses.
-
-        Examples:
-
-        ```python notest
-        ws = modal.Workspace.from_context()
-        for member_token in ws.member_tokens.list():
-            print(member_token)
-        ```
-        """
-        if not self._workspace._is_hydrated:
-            await self._workspace.hydrate()
-
-        resp = await self._workspace.client._stub.TokensList(Empty())
-
-        return [MemberTokenInfo._from_proto(token) for token in resp.tokens]
-
     async def disable(self, *token_ids: str) -> None:
         """Disable member tokens in the specified Workspace.
 
@@ -993,29 +968,61 @@ class _WorkspaceMemberTokenManager:
 
         await self._workspace.client._stub.TokenEnable(api_pb2.TokenEnableRequest(token_ids=list(set(token_ids))))
 
-    async def delete(self, token_id: str, *, allow_missing: bool = False) -> None:
-        """Delete a Member Token in the specified Workspace.
+    async def delete(self, *token_ids: str, allow_missing: bool = False) -> "list[str]":
+        """Delete member tokens in the specified Workspace.
 
-        If you are a Workspace Manager or Owner, you can use this method to delete any Token in the
-        Workspace. Otherwise, you can only delete Member Tokens that you have created.
+        If you are a Workspace Manager or Owner, you can use this method to delete any token in the
+        Workspace. Otherwise, you can only delete member tokens that you have created.
 
         Args:
-            token_id: The ID of the Member Token you would like to delete.
-            allow_missing: If `True`, do not throw an exception if the Member Token does not exist.
+            *token_ids: The ID(s) of the token(s) you would like to delete.
+            allow_missing: If `True`, do not throw an exception if some of the tokens do not exist.
+
+        Returns:
+            A list of the tokens that were successfully deleted.
 
         Examples:
 
         ```python notest
         ws = modal.Workspace.from_context()
-        ws.member_tokens.delete(token_id="ak-0123456789abcdefghijkl")
+        ws.member_tokens.delete("ak-0123456789abcdefghijkl", "ak-mnopqrstuvwxyz01234567")
         ```
         """
 
         if not self._workspace._is_hydrated:
             await self._workspace.hydrate()
 
-        try:
-            await self._workspace.client._stub.TokenDelete(req=api_pb2.TokenDeleteRequest(token_id=token_id))
-        except NotFoundError:
-            if not allow_missing:
-                raise
+        resp = await self._workspace.client._stub.TokenDelete(
+            req=api_pb2.TokenDeleteRequest(
+                token_ids=token_ids,
+                allow_missing=allow_missing,
+            )
+        )
+
+        return list(resp.deleted_token_ids)
+
+    # .list() must be defined last, as otherwise it masks the builtin `list` type in annotations
+    async def list(self) -> "list[MemberTokenInfo]":
+        """List Member Tokens in the specified Workspace.
+
+        If you are a Manager or an Owner of this Workspace, this method will return a list of all the
+        Member Tokens in the Workspace. Otherwise, this method will only return the Tokens you have
+        created.
+
+        Returns:
+            A list of `MemberTokenInfo` dataclasses.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+        for member_token in ws.member_tokens.list():
+            print(member_token)
+        ```
+        """
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        resp = await self._workspace.client._stub.TokensList(Empty())
+
+        return [MemberTokenInfo._from_proto(token) for token in resp.tokens]

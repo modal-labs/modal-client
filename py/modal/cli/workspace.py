@@ -726,28 +726,35 @@ def member_tokens_list(json: bool):
 
 
 @member_tokens_cli.command("delete", no_args_is_help=True)
-@click.argument("token_id")
-@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Token doesn't exist.")
+@click.argument("token_ids", nargs=-1)
+@click.option(
+    "--allow-missing", is_flag=True, default=False, help="Don't error if any of the specified tokens don't exist."
+)
 @yes_option
-def member_tokens_delete(token_id: str, *, allow_missing: bool, yes: bool):
-    """Delete a Member Token in this Workspace.
+def member_tokens_delete(token_ids: list[str], *, allow_missing: bool, yes: bool):
+    """Delete member tokens in this Workspace.
 
-    Note that this action is irreversible. This will immediately invalidate the target token and will
-    render it unable to authenticate with Modal.
+    Note that this action is irreversible. This will immediately invalidate the target tokens and will
+    render them unable to authenticate with Modal.
 
     ```bash
-    # Delete the Token with ID `ak-0123456789abcdefghijkl`
+    # Delete the token with ID `ak-0123456789abcdefghijkl`
     modal workspace member-tokens delete ak-0123456789abcdefghijkl
+
+    # Delete multiple tokens
+    modal workspace member-tokens delete ak-0123456789abcdefghijkl ak-mnopqrstuvwxyz01234567
     ```
     """
     if not yes:
-        confirm_or_suggest_yes(f"Are you sure you want to irrevocably delete the Token '{token_id}'?")
+        confirm_or_suggest_yes(f"Are you sure you want to irrevocably delete {len(token_ids)} token(s)?")
 
     ws = Workspace.from_context()
-    ws.member_tokens.delete(token_id, allow_missing=allow_missing)
+    deleted_token_ids = ws.member_tokens.delete(*token_ids, allow_missing=allow_missing)
 
     output_manager = OutputManager.get()
-    output_manager.print(f"[green]✓[/green] Deleted Token `{token_id}`.")
+    output_manager.print(
+        f"[green]✓[/green] Deleted {len(deleted_token_ids)} {'token' if len(deleted_token_ids) == 1 else 'tokens'}."
+    )
 
 
 @member_tokens_cli.command("disable", no_args_is_help=True)

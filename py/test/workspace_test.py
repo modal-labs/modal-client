@@ -309,8 +309,10 @@ def test_workspace_member_tokens(client, servicer: MockClientServicer):
         else:
             assert token.expires_at is None
 
-    for i in range(1, 6):
-        ws.member_tokens.delete(token_id=f"ak-MT{2 * i + 1}")
+    deleted = ws.member_tokens.delete(*[f"ak-MT{2 * i + 1}" for i in range(1, 3)])
+    assert len(deleted) == 2
+    deleted = ws.member_tokens.delete(*[f"ak-MT{2 * i + 1}" for i in range(1, 6)], allow_missing=True)
+    assert len(deleted) == 3
 
     tokens = ws.member_tokens.list()
     assert len(tokens) == 7
@@ -325,9 +327,10 @@ def test_workspace_member_tokens(client, servicer: MockClientServicer):
     }
 
     with pytest.raises(NotFoundError, match="Token not found"):
-        ws.member_tokens.delete(token_id="ak-MT3")
+        ws.member_tokens.delete("ak-MT3")
 
-    ws.member_tokens.delete(token_id="ak-MT3", allow_missing=True)
+    deleted = ws.member_tokens.delete("ak-MT3", allow_missing=True)
+    assert len(deleted) == 0
 
     assert set(token.token_id for token in tokens if token.disabled) == set()
     ws.member_tokens.disable("ak-MT1", "ak-MT2", "ak-MT4")

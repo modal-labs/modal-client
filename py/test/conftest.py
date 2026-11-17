@@ -4588,13 +4588,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def TokenDelete(self, stream):
         msg: api_pb2.TokenDeleteRequest = await stream.recv_message()
 
-        token = self.workspace_member_tokens.get(msg.token_id)
-        if token is None:
-            raise GRPCError(Status.NOT_FOUND, "Token not found")
+        token_ids = list(msg.token_ids)
+        if msg.token_id:
+            token_ids.append(msg.token_id)
 
-        self.workspace_member_tokens[msg.token_id] = None
+        deleted_token_ids: list[str] = []
+        for token_id in token_ids:
+            token = self.workspace_member_tokens.get(token_id)
+            if token is None:
+                if msg.allow_missing:
+                    continue
 
-        await stream.send_message(api_pb2.TokenDeleteResponse(deleted_token_ids=[msg.token_id]))
+                raise GRPCError(Status.NOT_FOUND, "Token not found")
+
+            self.workspace_member_tokens[token_id] = None
+            deleted_token_ids.append(token_id)
+
+        await stream.send_message(api_pb2.TokenDeleteResponse(deleted_token_ids=deleted_token_ids))
 
     ### Proxy auth (webhook) tokens
 

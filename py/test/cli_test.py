@@ -87,6 +87,7 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
         ("server", "deploy"): ["--image", "docker.io/nginx", "--port", "80"],
         ("workspace", "member-tokens", "disable"): ["ak-0000000000000000000000"],
         ("workspace", "member-tokens", "enable"): ["ak-0000000000000000000000"],
+        ("workspace", "member-tokens", "delete"): ["ak-0000000000000000000000"],
     }.get(path, [])
     if path == ("server", "deploy"):
         # Deploy once so that deploying again asks to confirm the redeploy.
@@ -9127,12 +9128,28 @@ def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, mon
         },
     ]
 
-    for i in range(10):
+    for i in range(15):
         expiration: int | None = None
         if i % 2 == 0:
             expiration = (i + 1) * 86_400
 
         servicer._create_token(f"token-{i}", expiration=expiration)
+
+    json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
+    json_output = json.loads(json_output_str.stdout)
+
+    assert len(json_output) == 16
+    token_ids = []
+    for t in json_output:
+        if t["name"] not in {"token-10", "token-11", "token-12", "token-13", "token-14"}:
+            continue
+
+        token_ids.append(t["token_id"])
+
+    res = run_cli_command(["workspace", "member-tokens", "delete", "-y", *token_ids[:3]])
+    assert "Deleted 3 tokens" in res.stdout
+    res = run_cli_command(["workspace", "member-tokens", "delete", "-y", *token_ids, "--allow-missing"])
+    assert "Deleted 2 tokens" in res.stdout
 
     json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
     json_output = json.loads(json_output_str.stdout)
