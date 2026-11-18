@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2026
 import contextlib
+import csv
+import io
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import datetime, timezone
 
 import click
@@ -13,12 +15,57 @@ from modal.types import AuditEvent
 
 from ._logs import _parse_fetch_range
 
+_CSV_COLUMNS = (
+    "id",
+    "timestamp",
+    "action",
+    "status",
+    "actor_type",
+    "actor_id",
+    "actor_name",
+    "actor_email",
+    "target_type",
+    "target_id",
+    "workspace_id",
+    "environment_id",
+    "environment_name",
+    "source",
+    "ip_address",
+    "metadata",
+)
+
+
+def _timestamp(entry: AuditEvent) -> str:
+    return entry.timestamp.astimezone(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def _csv_row(entry: AuditEvent) -> list[str | None]:
+    target = entry.targets[0] if entry.targets else None
+    return [
+        entry.id,
+        _timestamp(entry),
+        entry.action,
+        entry.status,
+        entry.actor.type,
+        entry.actor.id,
+        entry.actor.name,
+        entry.actor.email,
+        target.type if target else None,
+        target.id if target else None,
+        entry.context.workspace_id,
+        entry.context.environment_id,
+        entry.context.environment_name,
+        entry.context.source,
+        str(entry.context.ip_address) if entry.context.ip_address else None,
+        json.dumps(entry.metadata),
+    ]
+
 
 def _format_json(entry: AuditEvent) -> str:
     return json.dumps(
         {
             "id": entry.id,
-            "timestamp": entry.timestamp.astimezone(timezone.utc).isoformat(timespec="milliseconds"),
+            "timestamp": _timestamp(entry),
             "action": entry.action,
             "status": entry.status,
             "actor": {
@@ -40,6 +87,12 @@ def _format_json(entry: AuditEvent) -> str:
     )
 
 
+def _print_csv_row(row: Iterable[str | None]) -> None:
+    buffer = io.StringIO(newline="")
+    csv.writer(buffer, lineterminator="\n").writerow(row)
+    click.echo(buffer.getvalue(), nl=False)
+
+
 async def _print_events(
     manager: _WorkspaceAuditLogsManager,
     *,
@@ -47,11 +100,17 @@ async def _print_events(
     since: datetime | None,
     until: datetime,
     limit: int | None,
+    as_csv: bool,
 ) -> None:
+    if as_csv:
+        _print_csv_row(_CSV_COLUMNS)
     stream = manager.fetch(query, since=since, until=until, limit=limit)
     try:
         async for entry in stream:
-            click.echo(_format_json(entry))
+            if as_csv:
+                _print_csv_row(_csv_row(entry))
+            else:
+                click.echo(_format_json(entry))
     finally:
         await stream.aclose()
 
@@ -81,7 +140,10 @@ async def run_audit_logs_command(
     until: str | None,
     limit: int | None,
     count_only: bool,
+    as_csv: bool,
 ) -> None:
+    if count_only and as_csv:
+        raise click.UsageError("--csv can't be used with --count.")
     if count_only and since is None:
         raise click.UsageError("--since is required with --count.")
     since_dt, until_dt = _parse_fetch_range(since, until, _AUDIT_LOG_DEFAULT_WINDOW)
@@ -97,4 +159,5 @@ async def run_audit_logs_command(
             since=since_dt if since is not None else None,
             until=until_dt,
             limit=limit,
+            as_csv=as_csv,
         )

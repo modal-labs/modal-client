@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022-2023
 import asyncio
+import csv
+import io
 import json
 import logging
 import os
@@ -9314,8 +9316,8 @@ def test_workspace_audit_logs_prints_the_newest_events_oldest_first(workspace_au
     assert _audit_log_targets(res.stdout) == ["ap-7", "ap-8", "ap-9"]
 
 
-@pytest.mark.parametrize("count_only", [False, True])
-def test_workspace_audit_logs_retry_warning_filter(workspace_audit_log_entries, set_env_client, count_only):
+@pytest.mark.parametrize("count_only,as_csv", [(False, False), (False, True), (True, False)])
+def test_workspace_audit_logs_retry_warning_filter(workspace_audit_log_entries, set_env_client, count_only, as_csv):
     messages = []
     attempts = 0
 
@@ -9343,11 +9345,15 @@ def test_workspace_audit_logs_retry_warning_filter(workspace_audit_log_entries, 
         with workspace_audit_log_entries.intercept() as ctx:
             ctx.set_responder("AuditLogCount" if count_only else "AuditLogPlan", rate_limited)
             args = ["workspace", "audit-logs", "--since", "1d"]
+            if as_csv:
+                args.append("--csv")
             if count_only:
                 args.append("--count")
             result = run_cli_command(args)
         if count_only:
             assert result.stdout.strip() == "9"
+        elif as_csv:
+            assert len(list(csv.DictReader(io.StringIO(result.stdout)))) == 9
         else:
             assert len(_audit_log_targets(result.stdout)) == 9
         assert attempts == 2
@@ -9396,6 +9402,15 @@ def test_workspace_audit_logs_count_requires_since(set_env_client, extra):
     )
 
 
+@pytest.mark.parametrize("extra", [[], ["--since", "1d"]])
+def test_workspace_audit_logs_count_rejects_csv(set_env_client, extra):
+    run_cli_command(
+        ["workspace", "audit-logs", "--count", "--csv", *extra],
+        expected_exit_code=2,
+        expected_stderr="--csv can't be used with --count.",
+    )
+
+
 def test_workspace_audit_logs_count_empty(workspace_audit_log_entries, set_env_client):
     workspace_audit_log_entries.audit_log_entries.clear()
     result = run_cli_command(["workspace", "audit-logs", "--count", "--since", "1d"])
@@ -9404,6 +9419,96 @@ def test_workspace_audit_logs_count_empty(workspace_audit_log_entries, set_env_c
 
 def test_workspace_audit_logs_rejects_a_range_longer_than_7_days(workspace_audit_log_entries, set_env_client):
     run_cli_command(["workspace", "audit-logs", "--since", "8d"], expected_exit_code=2)
+
+
+@pytest.mark.parametrize(
+    "args, expected_ids", [([], range(1, 10)), (["-n", "2"], [8, 9]), (["--since", "1d"], range(1, 10))]
+)
+def test_workspace_audit_logs_csv(workspace_audit_log_entries, set_env_client, args, expected_ids):
+    result = run_cli_command(["workspace", "audit-logs", "--csv", *args])
+    reader = csv.DictReader(io.StringIO(result.stdout))
+    rows = list(reader)
+    assert reader.fieldnames == [
+        "id",
+        "timestamp",
+        "action",
+        "status",
+        "actor_type",
+        "actor_id",
+        "actor_name",
+        "actor_email",
+        "target_type",
+        "target_id",
+        "workspace_id",
+        "environment_id",
+        "environment_name",
+        "source",
+        "ip_address",
+        "metadata",
+    ]
+    assert rows == [
+        {
+            "id": f"al-{n}",
+            "timestamp": f"2026-10-11T14:0{n}:00.000+00:00",
+            "action": "app.deploy",
+            "status": "success",
+            "actor_type": "user",
+            "actor_id": "us-1",
+            "actor_name": "",
+            "actor_email": "",
+            "target_type": "app",
+            "target_id": f"ap-{n}",
+            "workspace_id": "",
+            "environment_id": "en-1",
+            "environment_name": "",
+            "source": "sdk",
+            "ip_address": "203.0.113.7",
+            "metadata": json.dumps({"app_name": "demo"}),
+        }
+        for n in expected_ids
+    ]
+
+
+def test_workspace_audit_logs_csv_escapes_values(workspace_audit_log_entries, set_env_client):
+    entry = workspace_audit_log_entries.audit_log_entries[0]
+    entry.actor.name = 'Alice, "A"\nSmith'
+    entry.metadata_json = json.dumps({"name": 'hello, "world"'})
+    entry.context.ip_address = ""
+    result = run_cli_command(["workspace", "audit-logs", "--csv", "-n", "1"])
+    (row,) = csv.DictReader(io.StringIO(result.stdout))
+    assert row["actor_name"] == entry.actor.name
+    assert json.loads(row["metadata"]) == {"name": 'hello, "world"'}
+    assert row["ip_address"] == ""
+
+
+def test_workspace_audit_logs_csv_without_targets(workspace_audit_log_entries, set_env_client):
+    workspace_audit_log_entries.audit_log_entries[0].ClearField("targets")
+    result = run_cli_command(["workspace", "audit-logs", "--csv", "-n", "1"])
+    (row,) = csv.DictReader(io.StringIO(result.stdout))
+    assert row["target_type"] == ""
+    assert row["target_id"] == ""
+
+
+def test_workspace_audit_logs_csv_ascii_stdout(workspace_audit_log_entries, set_env_client, monkeypatch):
+    entry = workspace_audit_log_entries.audit_log_entries[0]
+    entry.actor.name = "Zoë 李"
+    entry.context.environment_name = "développement"
+    output = io.BytesIO()
+    stdout = io.TextIOWrapper(output, encoding="ascii")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    entrypoint_cli.main(["workspace", "audit-logs", "--csv", "-n", "1"], standalone_mode=False)
+    stdout.flush()
+    (row,) = csv.DictReader(io.StringIO(output.getvalue().decode("utf-8")))
+    assert row["actor_name"] == entry.actor.name
+    assert row["environment_name"] == entry.context.environment_name
+
+
+def test_workspace_audit_logs_csv_empty(workspace_audit_log_entries, set_env_client):
+    workspace_audit_log_entries.audit_log_entries.clear()
+    result = run_cli_command(["workspace", "audit-logs", "--csv"])
+    reader = csv.DictReader(io.StringIO(result.stdout))
+    assert list(reader) == []
+    assert reader.fieldnames[0] == "id"
 
 
 def test_workspace_audit_logs_json_prints_each_full_event_on_one_line_without_a_header(

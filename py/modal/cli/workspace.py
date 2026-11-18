@@ -56,7 +56,7 @@ def members_list(json: bool = False):
     display_table(["Name", "Email", "Role", "User ID", "Joined", "Last active"], rows, json=json)
 
 
-@workspace_cli.command("audit-logs", short_help="Show Workspace audit logs as newline-delimited JSON.")
+@workspace_cli.command("audit-logs", short_help="Show Workspace audit logs as JSON (default) or CSV.")
 @click.option(
     "-q",
     "--query",
@@ -79,6 +79,7 @@ def members_list(json: bool = False):
 @click.option(
     "--count", "count_only", is_flag=True, default=False, help="Print the number of matching events; requires --since."
 )
+@click.option("--csv", "as_csv", is_flag=True, default=False, help="Output CSV instead of newline-delimited JSON.")
 @synchronizer.create_blocking
 async def audit_logs(
     query: str = "",
@@ -86,8 +87,9 @@ async def audit_logs(
     until: str | None = None,
     limit: int | None = None,
     count_only: bool = False,
+    as_csv: bool = False,
 ):
-    """Show the audit logs of the current Workspace as newline-delimited JSON.
+    """Show the audit logs of the current Workspace as newline-delimited JSON (default) or CSV.
 
     By default, this command prints the newest 100 events from the last 7 days. With ``--since``, it
     prints every event in the range, oldest first. The range cannot exceed 7 days.
@@ -108,6 +110,9 @@ async def audit_logs(
     # Every field of each event, one JSON object per line
     modal workspace audit-logs --since 1d
 
+    # Export every event in the last day as CSV
+    modal workspace audit-logs --since 1d --csv > audit.csv
+
     # How many secrets were created in the last 7 days
     modal workspace audit-logs -q 'action:secret.create' --since 7d --count
     ```
@@ -117,7 +122,7 @@ async def audit_logs(
     ws = _Workspace.from_context()
     await ws.hydrate()
     await run_audit_logs_command(
-        ws.audit_logs, query=query, since=since, until=until, limit=limit, count_only=count_only
+        ws.audit_logs, query=query, since=since, until=until, limit=limit, count_only=count_only, as_csv=as_csv
     )
 
 
