@@ -5159,6 +5159,8 @@ message ServiceUserCreateRequest {
   string name = 1;
   bool scoped = 2;
   uint32 expires_in_seconds = 3;
+  // Create the service user with no standing API token.
+  bool skip_token = 4;
 }
 
 message ServiceUserCreateResponse {

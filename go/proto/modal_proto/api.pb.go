@@ -61806,6 +61806,7 @@ type ServiceUserCreateRequest struct {
 	xxx_hidden_Name             string                 `protobuf:"bytes,1,opt,name=name,proto3"`
 	xxx_hidden_Scoped           bool                   `protobuf:"varint,2,opt,name=scoped,proto3"`
 	xxx_hidden_ExpiresInSeconds uint32                 `protobuf:"varint,3,opt,name=expires_in_seconds,json=expiresInSeconds,proto3"`
+	xxx_hidden_SkipToken        bool                   `protobuf:"varint,4,opt,name=skip_token,json=skipToken,proto3"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -61856,6 +61857,13 @@ func (x *ServiceUserCreateRequest) GetExpiresInSeconds() uint32 {
 	return 0
 }
 
+func (x *ServiceUserCreateRequest) GetSkipToken() bool {
+	if x != nil {
+		return x.xxx_hidden_SkipToken
+	}
+	return false
+}
+
 func (x *ServiceUserCreateRequest) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -61868,12 +61876,18 @@ func (x *ServiceUserCreateRequest) SetExpiresInSeconds(v uint32) {
 	x.xxx_hidden_ExpiresInSeconds = v
 }
 
+func (x *ServiceUserCreateRequest) SetSkipToken(v bool) {
+	x.xxx_hidden_SkipToken = v
+}
+
 type ServiceUserCreateRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Name             string
 	Scoped           bool
 	ExpiresInSeconds uint32
+	// Create the service user with no standing API token.
+	SkipToken bool
 }
 
 func (b0 ServiceUserCreateRequest_builder) Build() *ServiceUserCreateRequest {
@@ -61883,6 +61897,7 @@ func (b0 ServiceUserCreateRequest_builder) Build() *ServiceUserCreateRequest {
 	x.xxx_hidden_Name = b.Name
 	x.xxx_hidden_Scoped = b.Scoped
 	x.xxx_hidden_ExpiresInSeconds = b.ExpiresInSeconds
+	x.xxx_hidden_SkipToken = b.SkipToken
 	return m0
 }
 
@@ -83622,11 +83637,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10environment_name\x18\x03 \x01(\tR\x0fenvironmentName\x12\x19\n" +
 	"\brole_str\x18\x04 \x01(\tR\aroleStr\x12g\n" +
 	"\x1benvironment_role_definition\x18\x06 \x01(\v2'.modal.client.EnvironmentRoleDefinitionR\x19environmentRoleDefinitionJ\x04\b\x05\x10\x06B\r\n" +
-	"\v_expires_at\"t\n" +
+	"\v_expires_at\"\x93\x01\n" +
 	"\x18ServiceUserCreateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06scoped\x18\x02 \x01(\bR\x06scoped\x12,\n" +
-	"\x12expires_in_seconds\x18\x03 \x01(\rR\x10expiresInSeconds\"\xbc\x01\n" +
+	"\x12expires_in_seconds\x18\x03 \x01(\rR\x10expiresInSeconds\x12\x1d\n" +
+	"\n" +
+	"skip_token\x18\x04 \x01(\bR\tskipToken\"\xbc\x01\n" +
 	"\x19ServiceUserCreateResponse\x12\x19\n" +
 	"\btoken_id\x18\x01 \x01(\tR\atokenId\x12!\n" +
 	"\ftoken_secret\x18\x02 \x01(\tR\vtokenSecret\x12&\n" +
