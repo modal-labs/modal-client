@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022-2023
 import asyncio
 import json
+import logging
 import os
 import platform
 import pytest
@@ -25,11 +26,14 @@ import click
 import pytest_asyncio
 import toml
 from google.protobuf.empty_pb2 import Empty
+from google.protobuf.timestamp_pb2 import Timestamp
 from grpclib import GRPCError, Status
 
 import modal
 from modal._serialization import PICKLE_PROTOCOL, serialize_proto_params
 from modal._utils.grpc_testing import InterceptionContext
+from modal._utils.logger import logger
+from modal.cli import _audit_logs
 from modal.cli._suggest import get_hint
 from modal.cli.entry_point import entrypoint_cli
 from modal.exception import DeprecationError, InvalidError, NotFoundError, _CliUserExecutionError
@@ -98,6 +102,7 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
         "container_id": "ta-123",
         "name": "test-name:latest" if path == ("image", "names", "delete") else "test-name",
     }
+
     args = list(path)
     for param in command.params:
         if isinstance(param, click.Argument) and param.required:
@@ -7504,7 +7509,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
         "Management": ["list", "create", "rename", "dashboard", "delete"],
         "File operations": ["ls", "get", "put", "cp", "rm"],
     },
-    "workspace": {"Commands": ["members", "proxy-tokens", "settings", "service-users", "member-tokens"]},
+    "workspace": {"Commands": ["members", "audit-logs", "proxy-tokens", "settings", "service-users", "member-tokens"]},
     "workspace members": {"Commands": ["list"]},
     "workspace proxy-tokens": {"Commands": ["list", "create", "update", "allow", "revoke", "delete"]},
     "workspace settings": {"Commands": ["list", "set"]},
@@ -9280,6 +9285,215 @@ def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, mon
     json_output_str = run_cli_command(["workspace", "member-tokens", "list", "--json"])
     json_output = json.loads(json_output_str.stdout)
     assert set(t["token_id"] for t in json_output if t["disabled"]) == {"ak-MT7", "ak-MT9", "ak-MT11"}
+
+
+@pytest.fixture
+def workspace_audit_log_entries(servicer):
+    servicer.audit_log_entries = [
+        api_pb2.AuditLogEntry(
+            id=f"al-{n}",
+            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, n, tzinfo=timezone.utc).timestamp())),
+            action="app.deploy",
+            status="success",
+            actor=api_pb2.AuditLogActor(type="user", id="us-1"),
+            targets=[api_pb2.AuditLogTarget(type="app", id=f"ap-{n}")],
+            context=api_pb2.AuditLogContext(environment_id="en-1", source="sdk", ip_address="203.0.113.7"),
+            metadata_json='{"app_name": "demo"}',
+        )
+        for n in range(9, 0, -1)
+    ]
+    return servicer
+
+
+def _audit_log_targets(stdout: str) -> list[str]:
+    return [",".join(target["id"] for target in json.loads(line)["targets"]) for line in stdout.splitlines()]
+
+
+def test_workspace_audit_logs_prints_the_newest_events_oldest_first(workspace_audit_log_entries, set_env_client):
+    res = run_cli_command(["workspace", "audit-logs", "-n", "3"])
+    assert _audit_log_targets(res.stdout) == ["ap-7", "ap-8", "ap-9"]
+
+
+@pytest.mark.parametrize("count_only", [False, True])
+def test_workspace_audit_logs_retry_warning_filter(workspace_audit_log_entries, set_env_client, count_only):
+    messages = []
+    attempts = 0
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            messages.append(record.getMessage())
+
+    async def rate_limited(servicer, stream):
+        nonlocal attempts
+        await stream.recv_message()
+        attempts += 1
+        if attempts > 1:
+            response = api_pb2.AuditLogCountResponse(count=9) if count_only else api_pb2.AuditLogPlanResponse()
+            await stream.send_message(response)
+            return
+        raise GRPCError(
+            Status.RESOURCE_EXHAUSTED,
+            "AuditLog rate limit exceeded",
+            [api_pb2.RPCRetryPolicy(retry_after_secs=0.001)],
+        )
+
+    handler = Collect()
+    logger.addHandler(handler)
+    try:
+        with workspace_audit_log_entries.intercept() as ctx:
+            ctx.set_responder("AuditLogCount" if count_only else "AuditLogPlan", rate_limited)
+            args = ["workspace", "audit-logs", "--since", "1d"]
+            if count_only:
+                args.append("--count")
+            result = run_cli_command(args)
+        if count_only:
+            assert result.stdout.strip() == "9"
+        else:
+            assert len(_audit_log_targets(result.stdout)) == 9
+        assert attempts == 2
+        assert not [message for message in messages if "RESOURCE_EXHAUSTED" in message]
+        assert not any(isinstance(f, _audit_logs._DropRateLimitWarnings) for f in logger.filters)
+    finally:
+        logger.removeHandler(handler)
+
+
+def test_workspace_audit_logs_defaults_to_the_newest_100_events(workspace_audit_log_entries, set_env_client):
+    res = run_cli_command(["workspace", "audit-logs"])
+    assert _audit_log_targets(res.stdout) == [f"ap-{n}" for n in range(1, 10)]
+
+
+def test_workspace_audit_logs_with_since_streams_the_range_oldest_first(workspace_audit_log_entries, set_env_client):
+    res = run_cli_command(["workspace", "audit-logs", "--since", "1d", "-q", "status:success"])
+    assert _audit_log_targets(res.stdout) == [f"ap-{n}" for n in range(1, 10)]
+
+
+def test_workspace_audit_logs_with_since_and_limit_prints_the_newest_n(workspace_audit_log_entries, set_env_client):
+    res = run_cli_command(["workspace", "audit-logs", "--since", "1d", "-n", "2"])
+    assert _audit_log_targets(res.stdout) == ["ap-8", "ap-9"]
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_workspace_audit_logs_rejects_nonpositive_limit(set_env_client, limit):
+    result = run_cli_command(
+        ["workspace", "audit-logs", "-n", str(limit)],
+        expected_exit_code=2,
+        expected_stderr="Invalid value for '--limit': must be at least 1",
+    )
+    assert result.stdout == ""
+
+
+def test_workspace_audit_logs_count_prints_the_number_of_events(workspace_audit_log_entries, set_env_client):
+    res = run_cli_command(["workspace", "audit-logs", "--count", "--since", "1d"])
+    assert res.stdout.strip() == "9"
+
+
+@pytest.mark.parametrize("extra", [[], ["--until", "1h"]])
+def test_workspace_audit_logs_count_requires_since(set_env_client, extra):
+    run_cli_command(
+        ["workspace", "audit-logs", "--count", *extra],
+        expected_exit_code=2,
+        expected_stderr="--since is required with --count.",
+    )
+
+
+def test_workspace_audit_logs_count_empty(workspace_audit_log_entries, set_env_client):
+    workspace_audit_log_entries.audit_log_entries.clear()
+    result = run_cli_command(["workspace", "audit-logs", "--count", "--since", "1d"])
+    assert result.stdout.strip() == "0"
+
+
+def test_workspace_audit_logs_rejects_a_range_longer_than_7_days(workspace_audit_log_entries, set_env_client):
+    run_cli_command(["workspace", "audit-logs", "--since", "8d"], expected_exit_code=2)
+
+
+def test_workspace_audit_logs_json_prints_each_full_event_on_one_line_without_a_header(
+    workspace_audit_log_entries, set_env_client, monkeypatch
+):
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+    res = run_cli_command(["workspace", "audit-logs", "-n", "2"])
+    events = [json.loads(line) for line in res.stdout.splitlines()]
+    assert events == [
+        {
+            "id": f"al-{n}",
+            "timestamp": f"2026-10-11T14:0{n}:00.000+00:00",
+            "action": "app.deploy",
+            "status": "success",
+            "actor": {"type": "user", "id": "us-1", "name": "", "email": ""},
+            "targets": [{"type": "app", "id": f"ap-{n}"}],
+            "context": {
+                "workspace_id": "",
+                "environment_id": "en-1",
+                "environment_name": "",
+                "source": "sdk",
+                "ip_address": "203.0.113.7",
+            },
+            "metadata": {"app_name": "demo"},
+        }
+        for n in (8, 9)
+    ]
+
+
+@pytest.mark.parametrize(
+    "name,email,environment_name",
+    [
+        ("Alice", "alice@example.com", "production"),
+        ("Alice", "", ""),
+        ("", "", ""),
+    ],
+)
+def test_workspace_audit_logs_resolved_names(
+    workspace_audit_log_entries, set_env_client, name, email, environment_name
+):
+    entry = workspace_audit_log_entries.audit_log_entries[0]
+    entry.actor.name = name
+    entry.actor.email = email
+    entry.context.environment_name = environment_name
+    result = run_cli_command(["workspace", "audit-logs", "-n", "1"])
+    event = json.loads(result.stdout)
+    assert event["actor"] == {"type": "user", "id": "us-1", "name": name, "email": email}
+    assert event["context"]["environment_name"] == environment_name
+    assert event["context"]["environment_id"] == "en-1"
+
+
+def test_workspace_audit_logs_json_with_since_and_limit_prints_the_newest_n(
+    workspace_audit_log_entries, set_env_client
+):
+    res = run_cli_command(["workspace", "audit-logs", "--since", "1d", "-n", "2"])
+    assert [json.loads(line)["id"] for line in res.stdout.splitlines()] == ["al-8", "al-9"]
+
+
+def test_workspace_audit_logs_json_keeps_unparseable_metadata_as_text(
+    workspace_audit_log_entries, set_env_client, monkeypatch
+):
+    workspace_audit_log_entries.audit_log_entries[0].metadata_json = "not json"
+    res = run_cli_command(["workspace", "audit-logs", "-n", "1"])
+    assert json.loads(res.stdout)["metadata"] == "not json"
+
+
+def test_workspace_audit_logs_rejects_json_flag(set_env_client):
+    run_cli_command(["workspace", "audit-logs", "--json"], expected_exit_code=2, expected_stderr="No such option")
+
+
+def test_workspace_audit_logs_empty(workspace_audit_log_entries, set_env_client):
+    workspace_audit_log_entries.audit_log_entries.clear()
+    result = run_cli_command(["workspace", "audit-logs", "--since", "1d"])
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize("event_at", ["2026-10-11T14:09:00.123456Z", "2026-10-11T16:09:00.123456+02:00"])
+def test_workspace_audit_logs_utc_timestamp_and_json_bytes(
+    workspace_audit_log_entries, set_env_client, monkeypatch, event_at
+):
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone(timedelta(hours=-4)))
+    workspace_audit_log_entries.audit_log_entries[0].event_at_timestamp.FromJsonString(event_at)
+    result = run_cli_command(["workspace", "audit-logs", "-n", "1"])
+    assert result.stdout == (
+        '{"id": "al-9", "timestamp": "2026-10-11T14:09:00.123+00:00", "action": "app.deploy", '
+        '"status": "success", "actor": {"type": "user", "id": "us-1", "name": "", "email": ""}, '
+        '"targets": [{"type": "app", "id": "ap-9"}], "context": {"workspace_id": "", '
+        '"environment_id": "en-1", "environment_name": "", "source": "sdk", "ip_address": "203.0.113.7"}, '
+        '"metadata": {"app_name": "demo"}}\n'
+    )
 
 
 _SUGGEST_APP = textwrap.dedent("""\

@@ -53,7 +53,9 @@ def _validate_logs_args(*, follow: bool, since: str | None, until: str | None, t
         raise UsageError(f"--tail value must not exceed {_FETCH_LIMIT}.")
 
 
-def _parse_fetch_range(since: str | None, until: str | None) -> tuple[datetime, datetime]:
+def _parse_fetch_range(
+    since: str | None, until: str | None, default_window: timedelta = timedelta(hours=1)
+) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
     def parse_bound(value: str | None, default: datetime, flag: str) -> datetime:
@@ -70,7 +72,7 @@ def _parse_fetch_range(since: str | None, until: str | None) -> tuple[datetime, 
         return result
 
     until_dt = parse_bound(until, now, "--until")
-    since_dt = parse_bound(since, until_dt - timedelta(hours=1), "--since")
+    since_dt = parse_bound(since, until_dt - default_window, "--since")
     if since_dt >= until_dt:
         raise UsageError("--since must be before --until.")
     if since_dt.timestamp() < 0:

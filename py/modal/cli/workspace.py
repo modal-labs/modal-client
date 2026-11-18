@@ -20,6 +20,7 @@ from modal.output import OutputManager
 from modal.workspace import Workspace
 from modal_proto import api_pb2
 
+from ._audit_logs import run_audit_logs_command
 from ._help import _MAX_HELP_WIDTH, ModalGroup
 
 WORKSPACE_HELP_TEXT = """Interact with the current Modal Workspace.
@@ -53,6 +54,71 @@ def members_list(json: bool = False):
         for member in members
     ]
     display_table(["Name", "Email", "Role", "User ID", "Joined", "Last active"], rows, json=json)
+
+
+@workspace_cli.command("audit-logs", short_help="Show Workspace audit logs as newline-delimited JSON.")
+@click.option(
+    "-q",
+    "--query",
+    default="",
+    help="Filter events with the audit log search syntax. See https://modal.com/docs/guide/log-search-syntax",
+)
+@click.option(
+    "--since",
+    default=None,
+    help="Start of time range. Accepts ISO 8601 datetime or relative time, e.g. '1d' (1 day ago), '2h', '30m'.",
+)
+@click.option("--until", default=None, help="End of time range; accepts same argument types as --since.")
+@click.option(
+    "-n",
+    "--limit",
+    type=int,
+    default=None,
+    help="Show the newest N events in the range.",
+)
+@click.option(
+    "--count", "count_only", is_flag=True, default=False, help="Print the number of matching events; requires --since."
+)
+@synchronizer.create_blocking
+async def audit_logs(
+    query: str = "",
+    since: str | None = None,
+    until: str | None = None,
+    limit: int | None = None,
+    count_only: bool = False,
+):
+    """Show the audit logs of the current Workspace as newline-delimited JSON.
+
+    By default, this command prints the newest 100 events from the last 7 days. With ``--since``, it
+    prints every event in the range, oldest first. The range cannot exceed 7 days.
+
+    Each line contains a full event, including metadata, with a UTC timestamp at millisecond precision.
+
+    Counting with ``--count`` requires ``--since`` to specify the start of the time range.
+
+    Examples:
+
+    ```bash
+    # Newest 100 events
+    modal workspace audit-logs
+
+    # Every deploy or stop in the last 2 days
+    modal workspace audit-logs -q 'action:(app.deploy OR app.stop)' --since 2d
+
+    # Every field of each event, one JSON object per line
+    modal workspace audit-logs --since 1d
+
+    # How many secrets were created in the last 7 days
+    modal workspace audit-logs -q 'action:secret.create' --since 7d --count
+    ```
+    """
+    if limit is not None and limit < 1:
+        raise click.BadParameter("must be at least 1", param_hint="'--limit'")
+    ws = _Workspace.from_context()
+    await ws.hydrate()
+    await run_audit_logs_command(
+        ws.audit_logs, query=query, since=since, until=until, limit=limit, count_only=count_only
+    )
 
 
 PROXY_TOKENS_HELP_TEXT = """Manage the proxy tokens of the current Workspace.
