@@ -409,6 +409,8 @@ enum TaskTerminationReason {
   // The worker lost contact with the control plane for too long.
   TASK_TERMINATION_REASON_WORKER_HEARTBEAT_TIMEOUT = 17;
   TASK_TERMINATION_REASON_FUNCTION_NOT_FOUND = 18;
+  // A sandbox was not scheduled onto a worker before its deadline.
+  TASK_TERMINATION_REASON_SCHEDULING_TIMEOUT = 19;
 
   // Worker initiated.
   TASK_TERMINATION_REASON_TIMEOUT = 20;
@@ -4581,6 +4583,14 @@ message SandboxGetStatsResponse {
   map<string, StatsPercentileDistribution> percentile_stats = 11;
 }
 
+message SandboxGetStatusRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetStatusResponse {
+  SandboxStatus status = 1;
+}
+
 message SandboxGetTaskIdRequest {
   string sandbox_id = 1;
   optional float timeout = 2; // Legacy clients do not provide a timeout. New clients must always provide a timeout.
@@ -4638,6 +4648,7 @@ message SandboxInfo {
   optional Probe readiness_probe = 14;
   repeated TunnelData tunnels = 15;
   SandboxHandleMetadata metadata = 16;
+  SandboxStatus status = 17;
 }
 
 
@@ -4766,6 +4777,57 @@ message SandboxStatsGroup {
   map<string, double> cost_by_resource = 3 [deprecated = true];
   string cost_str = 4;  // Supersedes cost
   map<string, string> cost_by_resource_str = 5;  // Supersedes cost_by_resource
+}
+
+// The public-facing Sandbox Status taxonomy. Computed server-side from the
+// task's lifecycle timestamps and its TaskTerminationReason; clients should never
+// reconstruct it themselves. New states/reasons carry their older classification
+// in the *_fallbacks lists so older clients keep working.
+message SandboxStatus {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_CREATED = 1;
+    STATE_SCHEDULED = 2;
+    STATE_STARTING = 3;
+    STATE_READY = 4;
+    STATE_TERMINATING = 5;
+    STATE_TERMINATED = 6;
+  }
+
+  enum TerminationReason {
+    TERMINATION_REASON_UNSPECIFIED = 0;
+    TERMINATION_REASON_EXITED = 1;
+    TERMINATION_REASON_FAILED = 2;
+    TERMINATION_REASON_START_FAILED = 3;
+    TERMINATION_REASON_USER_TERMINATED = 4;
+    TERMINATION_REASON_PREEMPTED = 5;
+    TERMINATION_REASON_MEMORY_CONTENTION = 6;
+    TERMINATION_REASON_MEMORY_THRASHING = 7;
+    TERMINATION_REASON_MEMORY_LIMIT = 8;
+    TERMINATION_REASON_TIMEOUT = 9;
+    TERMINATION_REASON_IDLE_TIMEOUT = 10;
+    TERMINATION_REASON_PLATFORM_ERROR = 11;
+    TERMINATION_REASON_SECURITY_POLICY = 12;
+    TERMINATION_REASON_SPEND_LIMIT = 13;
+    TERMINATION_REASON_APP_STOPPED = 14;
+    TERMINATION_REASON_SCHEDULING_TIMEOUT = 15;
+  }
+
+  State state = 1;
+  string state_str = 2; // the state as a string, for clients that predate the enum value
+  repeated State state_fallbacks = 3; // states older servers would have reported instead, most specific first
+
+  TerminationReason termination_reason = 4; // only set for TERMINATING / TERMINATED
+  string termination_reason_str = 5; // see state_str
+  repeated TerminationReason termination_reason_fallbacks = 6; // see state_fallbacks
+
+  optional int32 exit_code = 7; // the exit status returned from the process; unset if no exit status was returned; 137 if sigkilled
+  optional string message = 8; // user-facing explanation, when there is one
+  google.protobuf.Timestamp since = 9; // when the Sandbox entered its current state
+  optional google.protobuf.Timestamp deadline = 10; // for TERMINATING, when the Sandbox will be SIGKILLed
+  bool is_terminal = 11;
+  bool is_running = 12;
+  optional bool terminated_with_error = 13;
 }
 
 message SandboxStdinWriteRequest {
@@ -6193,6 +6255,7 @@ service ModalClient {
   // Statistics over available usage samples; ingestion can lag execution.
   rpc SandboxGetStats(SandboxGetStatsRequest) returns (SandboxGetStatsResponse);
   rpc SandboxGetStatsV2(SandboxGetStatsRequest) returns (SandboxGetStatsResponse);
+  rpc SandboxGetStatus(SandboxGetStatusRequest) returns (SandboxGetStatusResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTaskIdV2(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse);
   rpc SandboxGetTimeRangeStats(SandboxGetTimeRangeStatsRequest) returns (SandboxGetTimeRangeStatsResponse);

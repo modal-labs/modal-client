@@ -208,6 +208,7 @@ const (
 	ModalClient_SandboxGetResourceUsage_FullMethodName                = "/modal.client.ModalClient/SandboxGetResourceUsage"
 	ModalClient_SandboxGetStats_FullMethodName                        = "/modal.client.ModalClient/SandboxGetStats"
 	ModalClient_SandboxGetStatsV2_FullMethodName                      = "/modal.client.ModalClient/SandboxGetStatsV2"
+	ModalClient_SandboxGetStatus_FullMethodName                       = "/modal.client.ModalClient/SandboxGetStatus"
 	ModalClient_SandboxGetTaskId_FullMethodName                       = "/modal.client.ModalClient/SandboxGetTaskId"
 	ModalClient_SandboxGetTaskIdV2_FullMethodName                     = "/modal.client.ModalClient/SandboxGetTaskIdV2"
 	ModalClient_SandboxGetTimeRangeStats_FullMethodName               = "/modal.client.ModalClient/SandboxGetTimeRangeStats"
@@ -526,6 +527,7 @@ type ModalClientClient interface {
 	// Statistics over available usage samples; ingestion can lag execution.
 	SandboxGetStats(ctx context.Context, in *SandboxGetStatsRequest, opts ...grpc.CallOption) (*SandboxGetStatsResponse, error)
 	SandboxGetStatsV2(ctx context.Context, in *SandboxGetStatsRequest, opts ...grpc.CallOption) (*SandboxGetStatsResponse, error)
+	SandboxGetStatus(ctx context.Context, in *SandboxGetStatusRequest, opts ...grpc.CallOption) (*SandboxGetStatusResponse, error)
 	SandboxGetTaskId(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTaskIdV2(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTimeRangeStats(ctx context.Context, in *SandboxGetTimeRangeStatsRequest, opts ...grpc.CallOption) (*SandboxGetTimeRangeStatsResponse, error)
@@ -2534,6 +2536,16 @@ func (c *modalClientClient) SandboxGetStatsV2(ctx context.Context, in *SandboxGe
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxGetStatus(ctx context.Context, in *SandboxGetStatusRequest, opts ...grpc.CallOption) (*SandboxGetStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxGetStatusResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxGetStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxGetTaskId(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxGetTaskIdResponse)
@@ -3813,6 +3825,7 @@ type ModalClientServer interface {
 	// Statistics over available usage samples; ingestion can lag execution.
 	SandboxGetStats(context.Context, *SandboxGetStatsRequest) (*SandboxGetStatsResponse, error)
 	SandboxGetStatsV2(context.Context, *SandboxGetStatsRequest) (*SandboxGetStatsResponse, error)
+	SandboxGetStatus(context.Context, *SandboxGetStatusRequest) (*SandboxGetStatusResponse, error)
 	SandboxGetTaskId(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTaskIdV2(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTimeRangeStats(context.Context, *SandboxGetTimeRangeStatsRequest) (*SandboxGetTimeRangeStatsResponse, error)
@@ -4483,6 +4496,9 @@ func (UnimplementedModalClientServer) SandboxGetStats(context.Context, *SandboxG
 }
 func (UnimplementedModalClientServer) SandboxGetStatsV2(context.Context, *SandboxGetStatsRequest) (*SandboxGetStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetStatsV2 not implemented")
+}
+func (UnimplementedModalClientServer) SandboxGetStatus(context.Context, *SandboxGetStatusRequest) (*SandboxGetStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxGetStatus not implemented")
 }
 func (UnimplementedModalClientServer) SandboxGetTaskId(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetTaskId not implemented")
@@ -8041,6 +8057,24 @@ func _ModalClient_SandboxGetStatsV2_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxGetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxGetStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxGetStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxGetStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxGetStatus(ctx, req.(*SandboxGetStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxGetTaskId_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxGetTaskIdRequest)
 	if err := dec(in); err != nil {
@@ -10573,6 +10607,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SandboxGetStatsV2",
 			Handler:    _ModalClient_SandboxGetStatsV2_Handler,
+		},
+		{
+			MethodName: "SandboxGetStatus",
+			Handler:    _ModalClient_SandboxGetStatus_Handler,
 		},
 		{
 			MethodName: "SandboxGetTaskId",
