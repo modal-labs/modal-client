@@ -86,11 +86,7 @@ type OAuthCredentialsParams struct {
 	RefreshToken string
 	// ClientID is a Modal-issued OAuth client ID, with an "oc-" prefix.
 	ClientID string
-	// ClientSecret is a Modal-issued OAuth client secret, with an "ov-" prefix.
-	// Provide exactly one of ClientSecret or JWTKey.
-	ClientSecret string
 	// JWTKey is an unencrypted RSA private key encoded as PEM, with literal or escaped newlines.
-	// Provide exactly one of ClientSecret or JWTKey.
 	JWTKey string
 }
 
@@ -99,7 +95,7 @@ type ClientParams struct {
 	TokenID     string
 	TokenSecret string
 	// OAuthCredentials overrides profile credentials when non-nil. It must contain
-	// a refresh token, client ID, and exactly one of client secret or JWT key.
+	// a refresh token, client ID, and JWT key.
 	OAuthCredentials *OAuthCredentialsParams
 	Environment      string
 	Config           *config
@@ -154,14 +150,12 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 		}
 		profile.OAuthRefreshToken = ""
 		profile.OAuthClientID = ""
-		profile.OAuthClientSecret = ""
 		profile.OAuthJWTKey = ""
 	} else if hasOAuthParams {
 		profile.TokenID = ""
 		profile.TokenSecret = ""
 		profile.OAuthRefreshToken = params.OAuthCredentials.RefreshToken
 		profile.OAuthClientID = params.OAuthCredentials.ClientID
-		profile.OAuthClientSecret = params.OAuthCredentials.ClientSecret
 		profile.OAuthJWTKey = params.OAuthCredentials.JWTKey
 	}
 	if err := validateProfileCredentials(profile, hasOAuthParams); err != nil {
@@ -245,12 +239,12 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 
 func validateProfileCredentials(profile Profile, hasExplicitOAuthCredentials bool) error {
 	hasTokenCredentials := profile.TokenID != "" || profile.TokenSecret != ""
-	hasOAuthCredentials := hasExplicitOAuthCredentials || profile.OAuthRefreshToken != "" || profile.OAuthClientID != "" || profile.OAuthClientSecret != "" || profile.OAuthJWTKey != ""
+	hasOAuthCredentials := hasExplicitOAuthCredentials || profile.OAuthRefreshToken != "" || profile.OAuthClientID != "" || profile.OAuthJWTKey != ""
 	if hasTokenCredentials && hasOAuthCredentials {
 		return InvalidError{Exception: "Modal token credentials and OAuth credentials cannot both be configured"}
 	}
-	if hasOAuthCredentials && (profile.OAuthRefreshToken == "" || profile.OAuthClientID == "" || (profile.OAuthClientSecret == "") == (profile.OAuthJWTKey == "")) {
-		return InvalidError{Exception: "OAuth refresh token, client ID, and exactly one of client secret or JWT key must be configured"}
+	if hasOAuthCredentials && (profile.OAuthRefreshToken == "" || profile.OAuthClientID == "" || profile.OAuthJWTKey == "") {
+		return InvalidError{Exception: "OAuth refresh token, client ID, and JWT key must be configured"}
 	}
 	return nil
 }
@@ -511,15 +505,14 @@ func injectRequiredHeaders(ctx context.Context, c *Client, host string) (context
 			"x-modal-refresh-token", c.profile.OAuthRefreshToken,
 			"x-modal-oauth-client-id", c.profile.OAuthClientID,
 		)
-		if c.oauthJWTKey != nil {
-			assertion, err := mintOAuthClientAssertion(c.profile.OAuthClientID, c.oauthJWTKey)
-			if err != nil {
-				return nil, err
-			}
-			headerPairs = append(headerPairs, "x-modal-oauth-client-assertion", assertion)
-		} else {
-			headerPairs = append(headerPairs, "x-modal-oauth-client-secret", c.profile.OAuthClientSecret)
+		if c.oauthJWTKey == nil {
+			return nil, fmt.Errorf("OAuth JWT key must be configured")
 		}
+		assertion, err := mintOAuthClientAssertion(c.profile.OAuthClientID, c.oauthJWTKey)
+		if err != nil {
+			return nil, err
+		}
+		headerPairs = append(headerPairs, "x-modal-oauth-client-assertion", assertion)
 	} else if c.profile.TokenID != "" && c.profile.TokenSecret != "" {
 		headerPairs = append(headerPairs,
 			"x-modal-token-id", c.profile.TokenID,

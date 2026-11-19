@@ -24,7 +24,6 @@ type Profile struct {
 	TokenSecret         string
 	OAuthRefreshToken   string
 	OAuthClientID       string
-	OAuthClientSecret   string
 	OAuthJWTKey         string
 	Environment         string
 	ImageBuilderVersion string
@@ -87,7 +86,6 @@ type rawProfile struct {
 	TokenSecret         string `toml:"token_secret"`
 	OAuthRefreshToken   string `toml:"oauth_refresh_token"`
 	OAuthClientID       string `toml:"oauth_client_id"`
-	OAuthClientSecret   string `toml:"oauth_client_secret"`
 	OAuthJWTKey         string `toml:"oauth_jwt_key"`
 	Environment         string `toml:"environment"`
 	ImageBuilderVersion string `toml:"image_builder_version"`
@@ -157,12 +155,7 @@ func getProfile(name string, cfg config) Profile {
 	tokenSecret := firstNonEmpty(os.Getenv("MODAL_TOKEN_SECRET"), raw.TokenSecret)
 	oauthRefreshToken := firstNonEmpty(os.Getenv("MODAL_OAUTH_REFRESH_TOKEN"), raw.OAuthRefreshToken)
 	oauthClientID := firstNonEmpty(os.Getenv("MODAL_OAUTH_CLIENT_ID"), raw.OAuthClientID)
-	oauthClientSecret, oauthJWTKey := resolveOAuthClientAuth(
-		os.Getenv("MODAL_OAUTH_CLIENT_SECRET"),
-		os.Getenv("MODAL_OAUTH_JWT_KEY"),
-		raw.OAuthClientSecret,
-		raw.OAuthJWTKey,
-	)
+	oauthJWTKey := firstNonEmpty(os.Getenv("MODAL_OAUTH_JWT_KEY"), raw.OAuthJWTKey)
 	environment := firstNonEmpty(os.Getenv("MODAL_ENVIRONMENT"), raw.Environment)
 	imageBuilderVersion := firstNonEmpty(os.Getenv("MODAL_IMAGE_BUILDER_VERSION"), raw.ImageBuilderVersion)
 	logLevel := firstNonEmpty(os.Getenv("MODAL_LOGLEVEL"), raw.LogLevel)
@@ -196,7 +189,6 @@ func getProfile(name string, cfg config) Profile {
 		TokenSecret:         tokenSecret,
 		OAuthRefreshToken:   oauthRefreshToken,
 		OAuthClientID:       oauthClientID,
-		OAuthClientSecret:   oauthClientSecret,
 		OAuthJWTKey:         oauthJWTKey,
 		Environment:         environment,
 		ImageBuilderVersion: imageBuilderVersion,
@@ -224,14 +216,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-// resolveOAuthClientAuth picks client secret vs JWT key. If either method is set
-// in the environment, file values for the other method are ignored so a JWT env
-// override of a secret-based profile (or the reverse) stays valid.
-func resolveOAuthClientAuth(secretEnv, jwtEnv, secretFile, jwtFile string) (secret, jwt string) {
-	if secretEnv != "" || jwtEnv != "" {
-		return secretEnv, jwtEnv
-	}
-	return secretFile, jwtFile
 }

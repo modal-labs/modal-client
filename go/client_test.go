@@ -55,20 +55,12 @@ func TestInjectRequiredHeadersWithOAuthCredentials(t *testing.T) {
 		profile: Profile{
 			OAuthRefreshToken: "refresh-token",
 			OAuthClientID:     "oc-client-id",
-			OAuthClientSecret: "ov-client-secret",
 		},
 		sdkVersion: "test-version",
 	}
 
-	ctx, err := injectRequiredHeaders(context.Background(), c, "api.modal.com")
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	md, ok := metadata.FromOutgoingContext(ctx)
-	g.Expect(ok).To(gomega.BeTrue())
-	g.Expect(md.Get("x-modal-refresh-token")).To(gomega.Equal([]string{"refresh-token"}))
-	g.Expect(md.Get("x-modal-oauth-client-id")).To(gomega.Equal([]string{"oc-client-id"}))
-	g.Expect(md.Get("x-modal-oauth-client-secret")).To(gomega.Equal([]string{"ov-client-secret"}))
-	g.Expect(md.Get("x-modal-token-id")).To(gomega.BeEmpty())
-	g.Expect(md.Get("x-modal-token-secret")).To(gomega.BeEmpty())
+	_, err := injectRequiredHeaders(context.Background(), c, "api.modal.com")
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("JWT key must be configured")))
 }
 
 func TestValidateProfileCredentials(t *testing.T) {
@@ -81,17 +73,9 @@ func TestValidateProfileCredentials(t *testing.T) {
 		message                     string
 	}{
 		{
-			name: "complete OAuth credentials",
-			profile: Profile{
-				OAuthRefreshToken: "refresh-token",
-				OAuthClientID:     "oc-client-id",
-				OAuthClientSecret: "ov-client-secret",
-			},
-		},
-		{
 			name:    "incomplete OAuth credentials",
 			profile: Profile{OAuthRefreshToken: "refresh-token"},
-			message: "exactly one of client secret or JWT key",
+			message: "JWT key must be configured",
 		},
 		{
 			name: "complete OAuth JWT credentials",
@@ -102,22 +86,12 @@ func TestValidateProfileCredentials(t *testing.T) {
 			},
 		},
 		{
-			name: "OAuth secret and JWT key together",
-			profile: Profile{
-				OAuthRefreshToken: "refresh-token",
-				OAuthClientID:     "oc-client-id",
-				OAuthClientSecret: "ov-client-secret",
-				OAuthJWTKey:       "private-key",
-			},
-			message: "exactly one of client secret or JWT key",
-		},
-		{
 			name: "empty OAuth refresh token",
 			profile: Profile{
-				OAuthClientID:     "oc-client-id",
-				OAuthClientSecret: "ov-client-secret",
+				OAuthClientID: "oc-client-id",
+				OAuthJWTKey:   "private-key",
 			},
-			message: "exactly one of client secret or JWT key",
+			message: "JWT key must be configured",
 		},
 		{
 			name: "mixed credentials",
@@ -126,7 +100,7 @@ func TestValidateProfileCredentials(t *testing.T) {
 				TokenSecret:       "as-token-secret",
 				OAuthRefreshToken: "refresh-token",
 				OAuthClientID:     "oc-client-id",
-				OAuthClientSecret: "ov-client-secret",
+				OAuthJWTKey:       "private-key",
 			},
 			message: "cannot both be configured",
 		},
@@ -142,7 +116,7 @@ func TestValidateProfileCredentials(t *testing.T) {
 		{
 			name:                        "explicit empty OAuth credentials",
 			hasExplicitOAuthCredentials: true,
-			message:                     "exactly one of client secret or JWT key",
+			message:                     "JWT key must be configured",
 		},
 	}
 
@@ -163,7 +137,7 @@ func TestValidateProfileCredentials(t *testing.T) {
 func TestExplicitOAuthCredentialsDoNotBackfillFromProfile(t *testing.T) {
 	t.Setenv("MODAL_OAUTH_REFRESH_TOKEN", "profile-refresh-token")
 	t.Setenv("MODAL_OAUTH_CLIENT_ID", "profile-client-id")
-	t.Setenv("MODAL_OAUTH_CLIENT_SECRET", "profile-client-secret")
+	t.Setenv("MODAL_OAUTH_JWT_KEY", "profile-jwt-key")
 
 	for _, test := range []struct {
 		name        string
@@ -175,7 +149,7 @@ func TestExplicitOAuthCredentialsDoNotBackfillFromProfile(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			g := gomega.NewWithT(t)
 			_, err := NewClientWithOptions(&ClientParams{OAuthCredentials: test.credentials})
-			g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("exactly one of client secret or JWT key")))
+			g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("JWT key must be configured")))
 		})
 	}
 }

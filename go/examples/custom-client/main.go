@@ -20,15 +20,13 @@ func main() {
 		if clientID == "" {
 			log.Fatal("CUSTOM_MODAL_OAUTH_CLIENT_ID environment variable not set")
 		}
-		clientSecret := os.Getenv("CUSTOM_MODAL_OAUTH_CLIENT_SECRET")
 		jwtKey := os.Getenv("CUSTOM_MODAL_OAUTH_JWT_KEY")
-		if clientSecret == "" && jwtKey == "" {
-			log.Fatal("set CUSTOM_MODAL_OAUTH_CLIENT_SECRET or CUSTOM_MODAL_OAUTH_JWT_KEY")
+		if jwtKey == "" {
+			log.Fatal("CUSTOM_MODAL_OAUTH_JWT_KEY environment variable not set")
 		}
 		params.OAuthCredentials = &modal.OAuthCredentialsParams{
 			RefreshToken: refreshToken,
 			ClientID:     clientID,
-			ClientSecret: clientSecret,
 			JWTKey:       jwtKey,
 		}
 	} else {

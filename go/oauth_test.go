@@ -142,7 +142,6 @@ func TestInjectRequiredHeadersWithOAuthJWTKey(t *testing.T) {
 	g.Expect(md.Get("x-modal-refresh-token")).To(gomega.Equal([]string{"refresh-token"}))
 	g.Expect(md.Get("x-modal-oauth-client-id")).To(gomega.Equal([]string{"oc-client-id"}))
 	g.Expect(md.Get("x-modal-oauth-client-assertion")).NotTo(gomega.BeEmpty())
-	g.Expect(md.Get("x-modal-oauth-client-secret")).To(gomega.BeEmpty())
 }
 
 func TestNewClientWithOptionsRejectsInvalidOAuthJWTKey(t *testing.T) {
