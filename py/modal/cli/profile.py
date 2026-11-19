@@ -39,7 +39,7 @@ async def list_(json: bool = False):
             token_secret=config.get("token_secret", profile=profile, use_env=False),
             oauth_refresh_token=config.get("oauth_refresh_token", profile=profile, use_env=False),
             oauth_client_id=config.get("oauth_client_id", profile=profile, use_env=False),
-            oauth_client_secret=config.get("oauth_client_secret", profile=profile, use_env=False),
+            oauth_jwt_key=config.get("oauth_jwt_key", profile=profile, use_env=False),
         )
         for profile in profiles
     ]
@@ -51,7 +51,6 @@ async def list_(json: bool = False):
         "MODAL_TOKEN_SECRET",
         "MODAL_OAUTH_REFRESH_TOKEN",
         "MODAL_OAUTH_CLIENT_ID",
-        "MODAL_OAUTH_CLIENT_SECRET",
         "MODAL_OAUTH_JWT_KEY",
     )
     if any(env_var in os.environ for env_var in credential_env_vars):
@@ -62,7 +61,7 @@ async def list_(json: bool = False):
                 token_secret=config.get("token_secret", profile=config_module._profile),
                 oauth_refresh_token=config.get("oauth_refresh_token", profile=config_module._profile),
                 oauth_client_id=config.get("oauth_client_id", profile=config_module._profile),
-                oauth_client_secret=config.get("oauth_client_secret", profile=config_module._profile),
+                oauth_jwt_key=config.get("oauth_jwt_key", profile=config_module._profile),
             )
             env_based_workspace = env_based_resp.username
         except AuthError:

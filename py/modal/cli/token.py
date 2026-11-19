@@ -35,7 +35,6 @@ async def info():
         "MODAL_TOKEN_SECRET",
         "MODAL_OAUTH_REFRESH_TOKEN",
         "MODAL_OAUTH_CLIENT_ID",
-        "MODAL_OAUTH_CLIENT_SECRET",
         "MODAL_OAUTH_JWT_KEY",
     ):
         if os.environ.get(env_var):

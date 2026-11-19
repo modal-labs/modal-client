@@ -2528,12 +2528,12 @@ def test_token_identity_from_oauth_env(servicer, set_env_client, monkeypatch):
     monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
     monkeypatch.setenv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token")
     monkeypatch.setenv("MODAL_OAUTH_CLIENT_ID", "oc-client-id")
-    monkeypatch.setenv("MODAL_OAUTH_CLIENT_SECRET", "ov-client-secret")
+    monkeypatch.setenv("MODAL_OAUTH_JWT_KEY", "private-key")
 
     res = run_cli_command(["token", "info"])
     normalized_output = " ".join(res.stdout.split())
     assert (
-        "Using MODAL_OAUTH_REFRESH_TOKEN and MODAL_OAUTH_CLIENT_ID and MODAL_OAUTH_CLIENT_SECRET environment variables"
+        "Using MODAL_OAUTH_REFRESH_TOKEN and MODAL_OAUTH_CLIENT_ID and MODAL_OAUTH_JWT_KEY environment variables"
         in normalized_output
     )
 
@@ -4145,7 +4145,6 @@ def test_profile_list_does_not_send_profile_tokens_to_env_server_url(
         "MODAL_TOKEN_SECRET",
         "MODAL_OAUTH_REFRESH_TOKEN",
         "MODAL_OAUTH_CLIENT_ID",
-        "MODAL_OAUTH_CLIENT_SECRET",
     ):
         monkeypatch.delenv(env_var, raising=False)
     monkeypatch.setenv("MODAL_SERVER_URL", decoy_servicer.client_addr)
@@ -4176,13 +4175,25 @@ def test_profile_list_does_not_send_profile_tokens_to_env_server_url(
     ]
 
 
+def _oauth_jwt_key_pem() -> str:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+
+
 def test_profile_list_uses_oauth_env(servicer, server_url_env, modal_config, monkeypatch, credentials):
     token_id, token_secret = credentials
     monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
     monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
     monkeypatch.setenv("MODAL_OAUTH_REFRESH_TOKEN", f"{token_id}.{token_secret}")
     monkeypatch.setenv("MODAL_OAUTH_CLIENT_ID", "oc-client-id")
-    monkeypatch.setenv("MODAL_OAUTH_CLIENT_SECRET", "ov-client-secret")
+    monkeypatch.setenv("MODAL_OAUTH_JWT_KEY", _oauth_jwt_key_pem())
 
     with modal_config(""):
         servicer.required_creds = {token_id: token_secret}
@@ -4199,7 +4210,6 @@ def test_profile_list_uses_oauth_profile(servicer, server_url_env, modal_config,
         "MODAL_TOKEN_SECRET",
         "MODAL_OAUTH_REFRESH_TOKEN",
         "MODAL_OAUTH_CLIENT_ID",
-        "MODAL_OAUTH_CLIENT_SECRET",
         "MODAL_OAUTH_JWT_KEY",
     ):
         monkeypatch.delenv(env_var, raising=False)
@@ -4208,7 +4218,7 @@ def test_profile_list_uses_oauth_profile(servicer, server_url_env, modal_config,
     [oauth-profile]
     oauth_refresh_token = "{token_id}.{token_secret}"
     oauth_client_id = "oc-client-id"
-    oauth_client_secret = "ov-client-secret"
+    oauth_jwt_key = '''{_oauth_jwt_key_pem()}'''
     active = true
     server_url = "{servicer.client_addr}"
     """
@@ -4228,7 +4238,6 @@ def test_profile_list_uses_oauth_profile(servicer, server_url_env, modal_config,
             "MODAL_TOKEN_SECRET": "as-secret",
             "MODAL_OAUTH_REFRESH_TOKEN": "refresh-token",
             "MODAL_OAUTH_CLIENT_ID": "oc-client-id",
-            "MODAL_OAUTH_CLIENT_SECRET": "ov-client-secret",
         },
     ],
 )
@@ -4238,7 +4247,6 @@ def test_profile_list_handles_invalid_oauth_env(servicer, server_url_env, modal_
         "MODAL_TOKEN_SECRET",
         "MODAL_OAUTH_REFRESH_TOKEN",
         "MODAL_OAUTH_CLIENT_ID",
-        "MODAL_OAUTH_CLIENT_SECRET",
         "MODAL_OAUTH_JWT_KEY",
     ):
         monkeypatch.delenv(env_var, raising=False)
@@ -4341,7 +4349,6 @@ def test_config_show_redacts_oauth_secrets(servicer, server_url_env, modal_confi
     [test-profile]
     oauth_refresh_token = "ak-oauth.as-oauth"
     oauth_client_id = "oc-client"
-    oauth_client_secret = "ov-secret"
     oauth_jwt_key = "private-key"
     active = true
     """
@@ -4349,7 +4356,6 @@ def test_config_show_redacts_oauth_secrets(servicer, server_url_env, modal_confi
         res = run_cli_command(["config", "show"])
         assert '"oauth_refresh_token": "***"' in res.stdout
         assert '"oauth_client_id": "oc-client"' in res.stdout
-        assert '"oauth_client_secret": "***"' in res.stdout
         assert '"oauth_jwt_key": "***"' in res.stdout
 
 

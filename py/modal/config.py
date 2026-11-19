@@ -9,8 +9,8 @@ Client processes can authenticate in two ways:
 1. Modal API tokens use `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. The
    `modal token set` command stores these values in `.modal.toml`.
 2. Third-party OAuth integrations typically inject `MODAL_OAUTH_REFRESH_TOKEN`,
-   `MODAL_OAUTH_CLIENT_ID`, and either `MODAL_OAUTH_CLIENT_SECRET` or
-   `MODAL_OAUTH_JWT_KEY` into the process.
+   `MODAL_OAUTH_CLIENT_ID`, and `MODAL_OAUTH_JWT_KEY` (an unencrypted RSA private
+   key in PEM) into the process.
 
 The two authentication methods cannot be combined, and all values for the
 selected method must be provided.
@@ -217,12 +217,12 @@ async def _lookup_workspace(
     *,
     oauth_refresh_token: str | None = None,
     oauth_client_id: str | None = None,
-    oauth_client_secret: str | None = None,
+    oauth_jwt_key: str | None = None,
 ) -> api_pb2.WorkspaceNameLookupResponse:
     from .client import _Client, _OAuthCredentials
 
     has_token_config = bool(token_id or token_secret)
-    has_oauth_config = bool(oauth_refresh_token or oauth_client_id or oauth_client_secret)
+    has_oauth_config = bool(oauth_refresh_token or oauth_client_id or oauth_jwt_key)
     if has_token_config and has_oauth_config:
         raise InvalidError("Modal token credentials and OAuth credentials cannot both be configured.")
     if has_oauth_config:
@@ -231,18 +231,18 @@ async def _lookup_workspace(
             for name, value in (
                 ("refresh token", oauth_refresh_token),
                 ("client ID", oauth_client_id),
-                ("client secret", oauth_client_secret),
+                ("JWT key", oauth_jwt_key),
             )
             if not value
         ]
         if missing_oauth_credentials:
             raise InvalidError(f"OAuth credentials are incomplete; missing {', '.join(missing_oauth_credentials)}.")
-        assert oauth_refresh_token and oauth_client_id and oauth_client_secret
+        assert oauth_refresh_token and oauth_client_id and oauth_jwt_key
         credentials = None
         oauth_credentials = _OAuthCredentials(
             refresh_token=oauth_refresh_token,
             client_id=oauth_client_id,
-            client_secret=oauth_client_secret,
+            jwt_key=oauth_jwt_key,
         )
     else:
         if not token_id or not token_secret:
@@ -382,7 +382,6 @@ _SETTINGS = {
     "token_secret": _Setting(),
     "oauth_refresh_token": _Setting(),
     "oauth_client_id": _Setting(),
-    "oauth_client_secret": _Setting(),
     "oauth_jwt_key": _Setting(),
     # --- Logging ----------------------------------------------------------------
     "loglevel": _Setting("WARNING", lambda s: s.upper()),

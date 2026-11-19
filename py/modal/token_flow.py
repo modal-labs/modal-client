@@ -204,7 +204,6 @@ async def _set_token(
         "MODAL_TOKEN_SECRET",
         "MODAL_OAUTH_REFRESH_TOKEN",
         "MODAL_OAUTH_CLIENT_ID",
-        "MODAL_OAUTH_CLIENT_SECRET",
         "MODAL_OAUTH_JWT_KEY",
     ]
     env_vars = [var if os.environ.get(var) else None for var in credential_env_vars]

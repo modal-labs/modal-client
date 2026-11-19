@@ -35,8 +35,7 @@ HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
 class _OAuthCredentials:
     refresh_token: str = field(repr=False)
     client_id: str
-    client_secret: str | None = field(default=None, repr=False)
-    jwt_key: str | None = field(default=None, repr=False)
+    jwt_key: str = field(repr=False)
 
 
 def _get_metadata(
@@ -78,8 +77,6 @@ def _get_metadata(
                 "x-modal-oauth-client-id": oauth_credentials.client_id,
             }
         )
-        if oauth_credentials.client_secret:
-            metadata["x-modal-oauth-client-secret"] = oauth_credentials.client_secret
     if agent_env := _agent_environment():
         metadata["x-modal-agent-harness"] = urllib.parse.quote(agent_env)
 
@@ -223,7 +220,7 @@ class _Client:
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
         metadata_provider = None
-        if self._oauth_credentials and self._oauth_credentials.jwt_key:
+        if self._oauth_credentials:
             from ._utils.oauth import OAuthAssertionProvider
 
             metadata_provider = OAuthAssertionProvider(
@@ -345,7 +342,6 @@ class _Client:
             token_secret = c["token_secret"]
             oauth_refresh_token = c.get("oauth_refresh_token")
             oauth_client_id = c.get("oauth_client_id")
-            oauth_client_secret = c.get("oauth_client_secret")
             oauth_jwt_key = c.get("oauth_jwt_key")
             if _is_remote():
                 ignored_credential_settings = [
@@ -355,7 +351,6 @@ class _Client:
                         ("MODAL_TOKEN_SECRET", token_secret),
                         ("MODAL_OAUTH_REFRESH_TOKEN", oauth_refresh_token),
                         ("MODAL_OAUTH_CLIENT_ID", oauth_client_id),
-                        ("MODAL_OAUTH_CLIENT_SECRET", oauth_client_secret),
                         ("MODAL_OAUTH_JWT_KEY", oauth_jwt_key),
                     )
                     if value
@@ -370,25 +365,17 @@ class _Client:
                 oauth_credentials = None
             else:
                 has_token_config = bool(token_id or token_secret)
-                has_oauth_config = bool(oauth_refresh_token or oauth_client_id or oauth_client_secret or oauth_jwt_key)
+                has_oauth_config = bool(oauth_refresh_token or oauth_client_id or oauth_jwt_key)
                 if has_token_config and has_oauth_config:
                     raise InvalidError("Modal token credentials and OAuth credentials cannot both be configured.")
                 if has_oauth_config:
-                    if (
-                        not oauth_refresh_token
-                        or not oauth_client_id
-                        or bool(oauth_client_secret) == bool(oauth_jwt_key)
-                    ):
-                        raise InvalidError(
-                            "OAuth refresh token, client ID, and exactly one of client secret or JWT key "
-                            "must be configured."
-                        )
+                    if not oauth_refresh_token or not oauth_client_id or not oauth_jwt_key:
+                        raise InvalidError("OAuth refresh token, client ID, and JWT key must be configured.")
                     client_type = api_pb2.CLIENT_TYPE_CLIENT
                     credentials = None
                     oauth_credentials = _OAuthCredentials(
                         refresh_token=oauth_refresh_token,
                         client_id=oauth_client_id,
-                        client_secret=oauth_client_secret,
                         jwt_key=oauth_jwt_key,
                     )
                 elif token_id and token_secret:
@@ -458,8 +445,7 @@ class _Client:
         refresh_token: str,
         *,
         oauth_client_id: str,
-        oauth_client_secret: str | None = None,
-        oauth_jwt_key: str | None = None,
+        oauth_jwt_key: str,
     ) -> "_Client":
         """
         Constructor based on OAuth credentials; useful for managing Modal on behalf of third-party users.
@@ -467,7 +453,6 @@ class _Client:
         Args:
             refresh_token: OAuth refresh token returned by Modal's token endpoint.
             oauth_client_id: Modal-issued OAuth client ID, with an `oc-` prefix.
-            oauth_client_secret: Modal-issued OAuth client secret, with an `ov-` prefix.
             oauth_jwt_key: Unencrypted RSA private key encoded as PEM, with literal or escaped newlines.
                 Requires `modal[oauth]`.
 
@@ -479,24 +464,21 @@ class _Client:
             client = modal.Client.from_oauth_credentials(
                 refresh_token,
                 oauth_client_id=oauth_client_id,
-                oauth_client_secret=oauth_client_secret,
+                oauth_jwt_key=oauth_jwt_key,
             )
 
             modal.Sandbox.create("echo", "hi", client=client, app=app)
             ```
         """
         _check_config()
-        if not refresh_token or not oauth_client_id or bool(oauth_client_secret) == bool(oauth_jwt_key):
-            raise AuthError(
-                "OAuth refresh token, client ID, and exactly one of client secret or JWT key must be provided."
-            )
+        if not refresh_token or not oauth_client_id or not oauth_jwt_key:
+            raise AuthError("OAuth refresh token, client ID, and JWT key must be provided.")
 
         server_url = config["server_url"]
         client_type = api_pb2.CLIENT_TYPE_CLIENT
         oauth_credentials = _OAuthCredentials(
             refresh_token=refresh_token,
             client_id=oauth_client_id,
-            client_secret=oauth_client_secret,
             jwt_key=oauth_jwt_key,
         )
         client = _Client(

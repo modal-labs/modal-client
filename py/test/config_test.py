@@ -179,33 +179,42 @@ async def test_workspace_lookup(servicer, server_url_env):
 
 @pytest.mark.asyncio
 async def test_workspace_lookup_oauth(servicer, credentials):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
     token_id, token_secret = credentials
     servicer.required_creds = {token_id: token_secret}
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
     resp = await synchronize_api(_lookup_workspace).aio(
         servicer.client_addr,
         oauth_refresh_token=f"{token_id}.{token_secret}",
         oauth_client_id="oc-client-id",
-        oauth_client_secret="ov-client-secret",
+        oauth_jwt_key=private_key_pem,
     )
     assert resp.username == "test-username"
     assert servicer.last_metadata["x-modal-refresh-token"] == f"{token_id}.{token_secret}"
     assert "x-modal-token-id" not in servicer.last_metadata
     assert "x-modal-token-secret" not in servicer.last_metadata
     assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
-    assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
+    assert servicer.last_metadata["x-modal-oauth-client-assertion"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("oauth_credentials", "missing_credentials"),
     [
-        ({"oauth_refresh_token": "refresh-token"}, "client ID, client secret"),
+        ({"oauth_refresh_token": "refresh-token"}, "client ID, JWT key"),
         (
-            {"oauth_client_id": "oc-client-id", "oauth_client_secret": "ov-client-secret"},
+            {"oauth_client_id": "oc-client-id", "oauth_jwt_key": "private-key"},
             "refresh token",
         ),
         (
-            {"oauth_refresh_token": "refresh-token", "oauth_client_secret": "ov-client-secret"},
+            {"oauth_refresh_token": "refresh-token", "oauth_jwt_key": "private-key"},
             "client ID",
         ),
     ],

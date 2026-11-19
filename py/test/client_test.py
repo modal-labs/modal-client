@@ -63,8 +63,9 @@ def test_close_releases_loops_and_callers(server_url_env, credentials):
 def test_credentials_context_manager(servicer, server_url_env, credentials, oauth):
     token_id, token_secret = credentials
     if oauth:
+        private_key_pem, _ = _rsa_private_key_pem()
         client = Client.from_oauth_credentials(
-            f"{token_id}.{token_secret}", oauth_client_id="oc-client", oauth_client_secret="ov-secret"
+            f"{token_id}.{token_secret}", oauth_client_id="oc-client", oauth_jwt_key=private_key_pem
         )
     else:
         client = Client.from_credentials(*credentials)
@@ -492,28 +493,6 @@ def test_client_from_env_client(servicer, credentials):
     assert client_1 == client_2
 
 
-def test_client_from_env_oauth_refresh_token(servicer, credentials):
-    token_id, token_secret = credentials
-    servicer.required_creds = {token_id: token_secret}
-    override_config = {
-        "server_url": servicer.client_addr,
-        "token_id": None,
-        "token_secret": None,
-        "oauth_refresh_token": f"{token_id}.{token_secret}",
-        "oauth_client_id": "oc-client-id",
-        "oauth_client_secret": "ov-client-secret",
-    }
-
-    client = Client.from_env(_override_config=override_config)
-    client.hello()
-
-    assert servicer.last_metadata["x-modal-refresh-token"] == f"{token_id}.{token_secret}"
-    assert "x-modal-token-id" not in servicer.last_metadata
-    assert "x-modal-token-secret" not in servicer.last_metadata
-    assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
-    assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
-
-
 def test_client_from_env_oauth_jwt_key(servicer, credentials):
     token_id, token_secret = credentials
     servicer.required_creds = {token_id: token_secret}
@@ -524,7 +503,6 @@ def test_client_from_env_oauth_jwt_key(servicer, credentials):
         "token_secret": None,
         "oauth_refresh_token": f"{token_id}.{token_secret}",
         "oauth_client_id": "oc-client-id",
-        "oauth_client_secret": None,
         "oauth_jwt_key": private_key_pem.replace("\n", "\\n"),
     }
 
@@ -532,7 +510,6 @@ def test_client_from_env_oauth_jwt_key(servicer, credentials):
     client.hello()
 
     assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
-    assert "x-modal-oauth-client-secret" not in servicer.last_metadata
     assert servicer.last_metadata["x-modal-oauth-client-assertion"]
 
 
@@ -542,17 +519,16 @@ def test_client_from_env_oauth_jwt_key(servicer, credentials):
         {
             "oauth_refresh_token": "ak-token.as-secret",
             "oauth_client_id": "oc-client-id",
-            "oauth_client_secret": None,
         },
         {
             "oauth_refresh_token": "ak-token.as-secret",
             "oauth_client_id": None,
-            "oauth_client_secret": "ov-client-secret",
+            "oauth_jwt_key": "private-key",
         },
         {
             "oauth_refresh_token": None,
             "oauth_client_id": "oc-client-id",
-            "oauth_client_secret": "ov-client-secret",
+            "oauth_jwt_key": "private-key",
         },
     ],
 )
@@ -576,7 +552,7 @@ def test_client_from_env_rejects_mixed_token_and_oauth_credentials(servicer, cre
         "token_secret": token_secret,
         "oauth_refresh_token": f"{token_id}.{token_secret}",
         "oauth_client_id": "oc-client-id",
-        "oauth_client_secret": "ov-client-secret",
+        "oauth_jwt_key": "private-key",
     }
 
     with pytest.raises(InvalidError, match="cannot both be configured"):
@@ -676,7 +652,7 @@ def test_from_env_container_with_tokens(servicer, container_env, token_env):
 
 @pytest.mark.parametrize(
     "env_var",
-    ["MODAL_OAUTH_REFRESH_TOKEN", "MODAL_OAUTH_CLIENT_ID", "MODAL_OAUTH_CLIENT_SECRET", "MODAL_OAUTH_JWT_KEY"],
+    ["MODAL_OAUTH_REFRESH_TOKEN", "MODAL_OAUTH_CLIENT_ID", "MODAL_OAUTH_JWT_KEY"],
 )
 def test_from_env_container_with_partial_oauth_credentials(servicer, container_env, monkeypatch, env_var):
     monkeypatch.setenv(env_var, "oauth-value")
@@ -706,23 +682,6 @@ def test_from_credentials_container(servicer, container_env):
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
-def test_from_oauth_credentials(servicer, server_url_env, credentials):
-    token_id, token_secret = credentials
-    servicer.required_creds = {token_id: token_secret}
-    client = Client.from_oauth_credentials(
-        f"{token_id}.{token_secret}",
-        oauth_client_id="oc-client-id",
-        oauth_client_secret="ov-client-secret",
-    )
-    client.hello()
-
-    assert servicer.last_metadata["x-modal-refresh-token"] == f"{token_id}.{token_secret}"
-    assert "x-modal-token-id" not in servicer.last_metadata
-    assert "x-modal-token-secret" not in servicer.last_metadata
-    assert servicer.last_metadata["x-modal-oauth-client-id"] == "oc-client-id"
-    assert servicer.last_metadata["x-modal-oauth-client-secret"] == "ov-client-secret"
-
-
 def test_from_oauth_credentials_with_jwt_key(servicer, server_url_env, credentials):
     token_id, token_secret = credentials
     servicer.required_creds = {token_id: token_secret}
@@ -738,8 +697,10 @@ def test_from_oauth_credentials_with_jwt_key(servicer, server_url_env, credentia
     client.hello()
     second_assertion = servicer.last_metadata["x-modal-oauth-client-assertion"]
 
+    assert servicer.last_metadata["x-modal-refresh-token"] == f"{token_id}.{token_secret}"
+    assert "x-modal-token-id" not in servicer.last_metadata
+    assert "x-modal-token-secret" not in servicer.last_metadata
     assert first_assertion != second_assertion
-    assert "x-modal-oauth-client-secret" not in servicer.last_metadata
     for assertion in (first_assertion, second_assertion):
         claims = jwt.decode(
             assertion,
@@ -763,48 +724,27 @@ def test_oauth_credentials_repr_redacts_secrets():
     credentials = _OAuthCredentials(
         refresh_token="refresh-token",
         client_id="client-id",
-        client_secret="client-secret",
-    )
-
-    jwt_credentials = _OAuthCredentials(
-        refresh_token="refresh-token",
-        client_id="client-id",
         jwt_key="private-key",
     )
 
     assert repr(credentials) == "_OAuthCredentials(client_id='client-id')"
-    assert repr(jwt_credentials) == "_OAuthCredentials(client_id='client-id')"
 
 
 @pytest.mark.parametrize(
-    ("refresh_token", "oauth_client_id", "oauth_client_secret"),
+    ("refresh_token", "oauth_client_id", "oauth_jwt_key"),
     [
-        ("", "oc-client-id", "ov-client-secret"),
-        ("refresh-token", "", "ov-client-secret"),
+        ("", "oc-client-id", "private-key"),
+        ("refresh-token", "", "private-key"),
         ("refresh-token", "oc-client-id", ""),
     ],
 )
-def test_from_oauth_credentials_rejects_missing_credentials(
-    monkeypatch, refresh_token, oauth_client_id, oauth_client_secret
-):
+def test_from_oauth_credentials_rejects_missing_credentials(monkeypatch, refresh_token, oauth_client_id, oauth_jwt_key):
     monkeypatch.setenv("MODAL_SERVER_URL", "http://localhost:1234")
     with pytest.raises(AuthError, match="must be provided"):
         Client.from_oauth_credentials(
             refresh_token,
             oauth_client_id=oauth_client_id,
-            oauth_client_secret=oauth_client_secret,
-        )
-
-
-def test_from_oauth_credentials_rejects_multiple_client_authentication_methods(monkeypatch):
-    monkeypatch.setenv("MODAL_SERVER_URL", "http://localhost:1234")
-    private_key_pem, _ = _rsa_private_key_pem()
-    with pytest.raises(AuthError, match="exactly one"):
-        Client.from_oauth_credentials(
-            "refresh-token",
-            oauth_client_id="oc-client-id",
-            oauth_client_secret="ov-client-secret",
-            oauth_jwt_key=private_key_pem,
+            oauth_jwt_key=oauth_jwt_key,
         )
 
 
