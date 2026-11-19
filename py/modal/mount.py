@@ -902,6 +902,7 @@ async def _create_single_client_dependency_mount(
             "--strict",
             "--no-deps",
             "--no-cache",
+            "--no-build",
             "-r",
             requirements,
             "--compile-bytecode",
@@ -978,13 +979,17 @@ async def _create_client_dependency_mounts(
     builder_versions: list[str] | None = None,  # Pass "PREVIEW" during testing
     check_if_exists=True,
     dry_run=False,
+    archs: Sequence[str] = ("x86_64", "aarch64"),
 ):
     from ._image import LATEST_IMAGE_BUILDER_VERSION, SUPPORTED_PYTHON_SERIES
 
-    arch = "x86_64"
     platform_tags = [
-        ("manylinux_2_17", f"{arch}-manylinux_2_17"),  # glibc >= 2.17
-        ("musllinux_1_2", f"{arch}-unknown-linux-musl"),  # musl >= 1.2
+        (arch, platform, uv_python_platform)
+        for arch in archs
+        for platform, uv_python_platform in [
+            ("manylinux_2_17", f"{arch}-manylinux_2_17"),  # glibc >= 2.17
+            ("musllinux_1_2", f"{arch}-unknown-linux-musl"),  # musl >= 1.2
+        ]
     ]
     coros = []
     for builder_version in builder_versions or [LATEST_IMAGE_BUILDER_VERSION]:
@@ -993,7 +998,7 @@ async def _create_client_dependency_mounts(
         else:
             builder_python_versions = python_versions
         for python_version in builder_python_versions:
-            for platform, uv_python_platform in platform_tags:
+            for arch, platform, uv_python_platform in platform_tags:
                 coros.append(
                     _create_single_client_dependency_mount(
                         client,

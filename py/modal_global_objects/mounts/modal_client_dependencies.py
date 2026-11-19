@@ -2,7 +2,7 @@
 import argparse
 import asyncio
 
-from modal._image import LATEST_IMAGE_BUILDER_VERSION
+from modal._image import SUPPORTED_PYTHON_SERIES
 from modal.mount import _create_client_dependency_mounts
 
 
@@ -16,7 +16,8 @@ def main():
     )
     args = parser.parse_args()
 
-    builder_versions: list[str] = [LATEST_IMAGE_BUILDER_VERSION]
+    # Builder versions up to 2024.10 install the client's dependencies into the image instead.
+    builder_versions: list[str] = [v for v in SUPPORTED_PYTHON_SERIES if v != "PREVIEW" and v > "2024.10"]
     if args.preview:
         builder_versions.append("PREVIEW")
     loop = asyncio.get_event_loop()
