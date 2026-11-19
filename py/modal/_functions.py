@@ -965,6 +965,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 is_web_endpoint, is_generator, restrict_output
             )
 
+        class_parameter_info = info.class_parameter_info()
+
         async def _preload(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
@@ -1103,7 +1105,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts)[0],
                     scheduler_placement=scheduler_placement,
                     is_class=info.is_service_class(),
-                    class_parameter_info=info.class_parameter_info(),
+                    class_parameter_info=class_parameter_info,
                     i6pn_enabled=i6pn_enabled,
                     schedule=schedule.proto_message if schedule is not None else None,
                     snapshot_debug=config.get("snapshot_debug"),
@@ -1234,6 +1236,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
         obj._webhook_config = webhook_config  # only set locally
+        # Set locally so Cls instances created before the App is running bind their
+        # parameters the same way as instances created afterwards
+        obj._class_parameter_info = class_parameter_info
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: list[str] = gpu if isinstance(gpu, list) else [gpu] if gpu else []

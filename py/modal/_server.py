@@ -28,7 +28,7 @@ from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import normalize_fractional_target_concurrency, validate_target_concurrency
 from ._utils.http_utils import ClientSessionRegistry
 from .client import _Client
-from .cls import is_parameter
+from .cls import _get_parameters
 from .config import logger
 from .exception import ExecutionError, InvalidError, ServiceError
 from .types import ServerAutoscalerSettings, ServerContainerInfo, ServerInfo, ServerSessionCredentials, ServerStats
@@ -402,7 +402,7 @@ class _Server:
             raise TypeError("The @app.server() decorator must be used on a class.")
 
         # Check for modal.parameter() - not allowed on server classes
-        params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
+        params = _get_parameters(user_cls)
         if params:
             raise InvalidError(
                 f"Server class {user_cls.__name__} cannot use modal.parameter(). "

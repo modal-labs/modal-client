@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import copy
 import inspect
+import sys
 import typing
 from collections.abc import Callable, Collection, Sequence
 from pathlib import PurePosixPath
@@ -43,8 +44,34 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
+def _get_annotations(user_cls: type) -> dict[str, Any]:
+    """Annotations of `user_cls` and its bases, without failing on unresolvable forward references."""
+    annotations: dict[str, Any] = {}
+    for klass in reversed(user_cls.__mro__):
+        if sys.version_info >= (3, 14):
+            import annotationlib
+
+            # Evaluates resolvable annotations and returns ForwardRefs for the rest
+            annotations.update(inspect.get_annotations(klass, format=annotationlib.Format.FORWARDREF))
+        else:
+            # Leaves string annotations unevaluated
+            annotations.update(inspect.get_annotations(klass))
+    return annotations
+
+
+def _get_parameters(user_cls: type) -> dict[str, "_Parameter"]:
+    """Effective modal.parameter() declarations of `user_cls` and its bases."""
+    # Merge all attributes before filtering so a subclass attribute that is not a
+    # parameter shadows a parameter of the same name on a base class
+    attributes: dict[str, Any] = {}
+    for klass in reversed(user_cls.__mro__):
+        attributes.update(vars(klass))
+
+    return {name: value for name, value in attributes.items() if is_parameter(value)}
+
+
 def _use_annotation_parameters(user_cls: type) -> bool:
-    has_parameters = any(is_parameter(cls_member) for cls_member in user_cls.__dict__.values())
+    has_parameters = bool(_get_parameters(user_cls))
     has_explicit_constructor = user_cls.__init__ != object.__init__
     return has_parameters and not has_explicit_constructor
 
@@ -54,7 +81,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.signature(user_cls)
     else:
         constructor_parameters = []
-        for name, annotation_value in typing.get_type_hints(user_cls).items():
+        for name, annotation_value in _get_annotations(user_cls).items():
             if hasattr(user_cls, name):
                 parameter_spec = getattr(user_cls, name)
                 if is_parameter(parameter_spec):
@@ -580,7 +607,7 @@ class _Cls(_Object, type_prefixes=("cs",)):
     @staticmethod
     def _validate_construction_mechanism(user_cls):
         """mdmd:hidden"""
-        params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
+        params = _get_parameters(user_cls)
         # This also rejects constructors inherited from a base class
         if user_cls.__init__ != object.__init__:
             raise InvalidError(
@@ -596,7 +623,7 @@ class {user_cls.__name__}:
 More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
 """
             )
-        annotations = inspect.get_annotations(user_cls)
+        annotations = _get_annotations(user_cls)
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
             raise InvalidError("All modal.parameter() specifications need to be type-annotated")

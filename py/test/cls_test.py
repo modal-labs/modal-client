@@ -4,9 +4,10 @@ import inspect
 import pytest
 import subprocess
 import sys
+import textwrap
 import threading
 import typing
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import assert_type
 
@@ -1874,3 +1875,216 @@ def test_function_info_cls_method_defs():
 
     assert info.method_details["wsgi_app"].method is None
     assert not info.method_details["wsgi_app"].unauthenticated
+
+
+def test_cls_params_bound_before_app_run(client, servicer):
+    app = App("cls-params-before-app-run", include_source=False)
+
+    @app.cls(serialized=True)
+    class C:
+        p: int = modal.parameter()
+        q: str = modal.parameter(default="q")
+
+        @method()
+        def f(self, x):
+            return x
+
+    # Bound before the App is running
+    early_method = C(p=3).f  # type: ignore[call-arg]
+    early_with_options = C.with_options(cpu=2)(p=4)  # type: ignore[call-arg]
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            early_method.remote(1)
+            early_with_options.f.remote(1)
+
+    # Parameters are proto-encoded with defaults applied, as for instances created after the App starts
+    early_bind, options_bind = ctx.get_requests("FunctionBindParams")
+    assert deserialize_proto_params(early_bind.serialized_params) == {"p": 3, "q": "q"}
+    assert deserialize_proto_params(options_bind.serialized_params) == {"p": 4, "q": "q"}
+
+
+def test_cls_with_default_params_bound_before_app_run(client, servicer):
+    app = App("cls-default-params-before-app-run", include_source=False)
+
+    @app.cls(serialized=True)
+    class C:
+        p: int = modal.parameter(default=1)
+
+        @method()
+        def f(self, x):
+            return x
+
+    early_method = C().f
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            early_method.remote(1)
+
+    # Like an instance created after the App starts, it binds the default parameter values
+    (bind_params,) = ctx.get_requests("FunctionBindParams")
+    assert deserialize_proto_params(bind_params.serialized_params) == {"p": 1}
+
+
+def test_cls_positional_args_rejected_before_app_run():
+    app = App("cls-positional-before-app-run", include_source=False)
+
+    @app.cls(serialized=True)
+    class C:
+        p: int = modal.parameter()
+
+        @method()
+        def f(self, x):
+            return x
+
+    with pytest.raises(InvalidError, match="Can't use positional arguments"):
+        C(3).f  # type: ignore
+
+
+def test_cls_with_unresolvable_non_parameter_annotations(client, servicer):
+    app = App("cls-unresolvable-annotations", include_source=False)
+
+    class Base:
+        model: "NotImportedLocally"  # type: ignore  # noqa: F821
+
+    @app.cls(serialized=True)
+    class C(Base):
+        p: int = modal.parameter()
+        helper: "DefinedLater"
+
+        @method()
+        def f(self, x):
+            return x
+
+    class DefinedLater:
+        pass
+
+    early_method = C(p=3).f  # type: ignore[call-arg]
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            early_method.remote(1)
+            C(p=4).f.remote(1)  # type: ignore[call-arg]
+
+    early_bind, late_bind = ctx.get_requests("FunctionBindParams")
+    assert deserialize_proto_params(early_bind.serialized_params) == {"p": 3}
+    assert deserialize_proto_params(late_bind.serialized_params) == {"p": 4}
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="unquoted forward references require deferred annotations")
+def test_cls_with_unquoted_forward_ref_annotations(client, servicer):
+    app = App("cls-unquoted-forward-refs", include_source=False)
+    namespace: dict[str, Any] = {"app": app, "modal": modal}
+    # Compiled at runtime: unquoted forward references are a NameError before Python 3.14
+    exec(
+        textwrap.dedent(
+            """
+            class Base:
+                model: NotImportedLocally
+
+            @app.cls(serialized=True)
+            class C(Base):
+                p: int = modal.parameter()
+                helper: DefinedLater
+
+                @modal.method()
+                def f(self, x):
+                    return x
+
+            class DefinedLater:
+                pass
+            """
+        ),
+        namespace,
+    )
+    C = namespace["C"]
+
+    early_method = C(p=3).f
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            early_method.remote(1)
+
+    (bind_params,) = ctx.get_requests("FunctionBindParams")
+    assert deserialize_proto_params(bind_params.serialized_params) == {"p": 3}
+
+
+def test_cls_with_only_inherited_parameters(client, servicer):
+    app = App("cls-only-inherited-params", include_source=False)
+
+    class Base:
+        a: int = modal.parameter()
+        b: str = modal.parameter(default="b")
+
+    @app.cls(serialized=True)
+    class C(Base):
+        @method()
+        def f(self):
+            return self.a, self.b
+
+    assert C(a=1).f.local() == (1, "b")  # type: ignore[call-arg]
+
+    early_method = C(a=2).f  # type: ignore[call-arg]
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            early_method.remote()
+            C(a=3, b="x").f.remote()  # type: ignore[call-arg]
+
+    early_bind, late_bind = ctx.get_requests("FunctionBindParams")
+    assert deserialize_proto_params(early_bind.serialized_params) == {"a": 2, "b": "b"}
+    assert deserialize_proto_params(late_bind.serialized_params) == {"a": 3, "b": "x"}
+
+
+def test_inherited_parameters_are_validated():
+    app = App("cls-inherited-param-validation", include_source=False)
+
+    class UnsupportedBase:
+        a: float = modal.parameter()
+
+    with pytest.raises(InvalidError, match=r"float is not a supported modal.parameter\(\) type"):
+
+        @app.cls(serialized=True)
+        class C(UnsupportedBase):
+            @method()
+            def f(self): ...
+
+    class UnannotatedBase:
+        a = modal.parameter()
+
+    with pytest.raises(InvalidError, match="annotated"):
+
+        @app.cls(serialized=True)
+        class D(UnannotatedBase):
+            @method()
+            def f(self): ...
+
+
+def test_subclass_attribute_shadows_inherited_parameter(client, servicer):
+    app = App("cls-shadowed-params", include_source=False)
+
+    class Base:
+        a: float = modal.parameter()  # unsupported type, but shadowed below so never validated
+        b: str = modal.parameter()
+        c: int = modal.parameter()
+
+    @app.cls(serialized=True)
+    class C(Base):
+        a = 5.0  # type: ignore  # plain attribute is not a parameter
+        b: str = modal.parameter(init=False)
+
+        @method()
+        def f(self):
+            return self.a, self.c
+
+    with pytest.raises(TypeError, match="unexpected keyword argument 'a'"):
+        C(a=1, c=2).f.local()  # type: ignore[call-arg]
+
+    assert C(c=2).f.local() == (5.0, 2)  # type: ignore[call-arg]
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            C(c=3).f.remote()  # type: ignore[call-arg]
+
+    (bind_params,) = ctx.get_requests("FunctionBindParams")
+    assert deserialize_proto_params(bind_params.serialized_params) == {"c": 3}

@@ -1418,7 +1418,7 @@ def test_unassociated_function(servicer):
 
 @skip_github_non_linux
 def test_param_cls_function_calling_local(servicer):
-    serialized_params = pickle.dumps(([111], {"y": "foo"}))
+    serialized_params = pickle.dumps(((), {"x": 111, "y": "foo"}))
     ret = _run_container(
         servicer,
         "test.supports.sibling_hydration_app",

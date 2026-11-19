@@ -611,6 +611,20 @@ def test_server_rejects_parametrization_with_default():
                 pass
 
 
+def test_server_rejects_inherited_parametrization():
+    class Base:
+        model_name: str = modal.parameter()
+
+    app = modal.App("server-inherited-param-test", include_source=False)
+    with pytest.raises(InvalidError, match="cannot use modal.parameter"):
+
+        @app.server(port=8000, routing_region="us-east", serialized=True)
+        class InheritedParameterServer(Base):
+            @modal.enter()
+            def start(self):
+                pass
+
+
 def test_server_rejects_parametrized_invocation():
     """Test that a server cannot be parametrized like a Cls (e.g. `MyServer(x=1)`).
 
@@ -1835,3 +1849,18 @@ def test_server_stats_rejects_invalid_time_range(client, servicer):
             server.stats(since=now, until=now)
 
     assert ctx.get_requests("ServerGetTimeRangeStats") == []
+
+
+def test_server_allows_shadowed_inherited_parameter():
+    class Base:
+        model_name: str = modal.parameter()
+
+    app = modal.App("server-shadowed-param-test", include_source=False)
+
+    @app.server(port=8000, routing_region="us-east", serialized=True)
+    class ShadowingServer(Base):
+        model_name = "gpt-4"  # type: ignore  # plain attribute is not a parameter
+
+        @modal.enter()
+        def start(self):
+            pass
