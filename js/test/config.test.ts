@@ -135,59 +135,14 @@ sandbox_v2 = true
   }
 });
 
-test("GetProfile_OAuthCredentials", () => {
-  vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token");
-  vi.stubEnv("MODAL_OAUTH_CLIENT_ID", "oc-client-id");
-  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", "ov-client-secret");
-
-  const profile = getProfile();
-  expect(profile.oauthRefreshToken).toBe("refresh-token");
-  expect(profile.oauthClientId).toBe("oc-client-id");
-  expect(profile.oauthClientSecret).toBe("ov-client-secret");
-  vi.unstubAllEnvs();
-});
-
 test("GetProfile_OAuthJwtKey", () => {
   vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", "refresh-token");
   vi.stubEnv("MODAL_OAUTH_CLIENT_ID", "oc-client-id");
-  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", undefined);
   vi.stubEnv("MODAL_OAUTH_JWT_KEY", "-----BEGIN PRIVATE KEY-----\\nkey\\n");
 
   const profile = getProfile();
   expect(profile.oauthJwtKey).toBe("-----BEGIN PRIVATE KEY-----\\nkey\\n");
-  expect(profile.oauthClientSecret).toBeUndefined();
   vi.unstubAllEnvs();
-});
-
-test("GetProfile_OAuthJwtKeyEnvOverridesConfigClientSecret", async () => {
-  const configDir = mkdtempSync(path.join(tmpdir(), "modal-js-config-"));
-  const configPath = path.join(configDir, ".modal.toml");
-  writeFileSync(
-    configPath,
-    `
-[oauth-profile]
-oauth_refresh_token = "refresh-token"
-oauth_client_id = "oc-client-id"
-oauth_client_secret = "ov-client-secret"
-`,
-  );
-  vi.stubEnv("MODAL_CONFIG_PATH", configPath);
-  vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", undefined);
-  vi.stubEnv("MODAL_OAUTH_CLIENT_ID", undefined);
-  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", undefined);
-  vi.stubEnv("MODAL_OAUTH_JWT_KEY", "pem-key");
-  vi.resetModules();
-
-  try {
-    const { getProfile: getProfileFromConfig } = await import("../src/config");
-    const profile = getProfileFromConfig("oauth-profile");
-    expect(profile.oauthJwtKey).toBe("pem-key");
-    expect(profile.oauthClientSecret).toBeUndefined();
-  } finally {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-    rmSync(configDir, { recursive: true });
-  }
 });
 
 test("GetProfile_OAuthJwtKeyFromConfig", async () => {
@@ -205,7 +160,6 @@ oauth_jwt_key = "pem-key"
   vi.stubEnv("MODAL_CONFIG_PATH", configPath);
   vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", undefined);
   vi.stubEnv("MODAL_OAUTH_CLIENT_ID", undefined);
-  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", undefined);
   vi.stubEnv("MODAL_OAUTH_JWT_KEY", undefined);
   vi.resetModules();
 
@@ -213,7 +167,6 @@ oauth_jwt_key = "pem-key"
     const { getProfile: getProfileFromConfig } = await import("../src/config");
     const profile = getProfileFromConfig("oauth-profile");
     expect(profile.oauthJwtKey).toBe("pem-key");
-    expect(profile.oauthClientSecret).toBeUndefined();
   } finally {
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -230,13 +183,11 @@ test("GetProfile_OAuthCredentialsFromConfig", async () => {
 [oauth-profile]
 oauth_refresh_token = "refresh-token"
 oauth_client_id = "oc-client-id"
-oauth_client_secret = "ov-client-secret"
 `,
   );
   vi.stubEnv("MODAL_CONFIG_PATH", configPath);
   vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", undefined);
   vi.stubEnv("MODAL_OAUTH_CLIENT_ID", undefined);
-  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", undefined);
   vi.resetModules();
 
   try {
@@ -244,7 +195,7 @@ oauth_client_secret = "ov-client-secret"
     const profile = getProfileFromConfig("oauth-profile");
     expect(profile.oauthRefreshToken).toBe("refresh-token");
     expect(profile.oauthClientId).toBe("oc-client-id");
-    expect(profile.oauthClientSecret).toBe("ov-client-secret");
+    expect(profile.oauthJwtKey).toBeUndefined();
   } finally {
     vi.unstubAllEnvs();
     vi.resetModules();

@@ -46,7 +46,7 @@ test("authMiddleware sends OAuth credentials without token credentials", async (
   const client = new ModalClient({
     oauthRefreshToken: "refresh-token",
     oauthClientId: "oc-client-id",
-    oauthClientSecret: "ov-client-secret",
+    oauthJwtKey: testJwtKeyPem,
     logger: noopLogger,
     cpClient: {} as any,
   });
@@ -71,12 +71,12 @@ test("authMiddleware sends OAuth credentials without token credentials", async (
 
   expect(metadata?.get("x-modal-refresh-token")).toBe("refresh-token");
   expect(metadata?.get("x-modal-oauth-client-id")).toBe("oc-client-id");
-  expect(metadata?.get("x-modal-oauth-client-secret")).toBe("ov-client-secret");
+  expect(metadata?.get("x-modal-oauth-client-assertion")).toBeDefined();
   expect(metadata?.get("x-modal-token-id")).toBeUndefined();
   expect(metadata?.get("x-modal-token-secret")).toBeUndefined();
 });
 
-test("authMiddleware sends a client assertion instead of a client secret", async () => {
+test("authMiddleware sends a client assertion", async () => {
   const client = new ModalClient({
     oauthRefreshToken: "refresh-token",
     oauthClientId: "oc-client-id",
@@ -105,7 +105,6 @@ test("authMiddleware sends a client assertion instead of a client secret", async
 
   expect(metadata?.get("x-modal-refresh-token")).toBe("refresh-token");
   expect(metadata?.get("x-modal-oauth-client-id")).toBe("oc-client-id");
-  expect(metadata?.get("x-modal-oauth-client-secret")).toBeUndefined();
   const assertion = metadata?.get("x-modal-oauth-client-assertion");
   expect(assertion).toBeDefined();
   expect(
@@ -134,18 +133,9 @@ test.each([
   [{ oauthRefreshToken: "refresh-token" }, "must all be configured"],
   [
     {
-      oauthRefreshToken: "refresh-token",
-      oauthClientId: "oc-client-id",
-      oauthClientSecret: "ov-client-secret",
-      oauthJwtKey: testJwtKeyPem,
-    },
-    "exactly one of client secret or JWT key",
-  ],
-  [
-    {
       oauthRefreshToken: "",
       oauthClientId: "oc-client-id",
-      oauthClientSecret: "ov-client-secret",
+      oauthJwtKey: testJwtKeyPem,
     },
     "must all be configured",
   ],
@@ -155,7 +145,7 @@ test.each([
       tokenSecret: "as-token-secret",
       oauthRefreshToken: "refresh-token",
       oauthClientId: "oc-client-id",
-      oauthClientSecret: "ov-client-secret",
+      oauthJwtKey: testJwtKeyPem,
     },
     "cannot both be configured",
   ],
@@ -172,7 +162,7 @@ test.each([
 test("explicit OAuth credentials do not backfill from the profile", () => {
   vi.stubEnv("MODAL_OAUTH_REFRESH_TOKEN", "profile-refresh-token");
   vi.stubEnv("MODAL_OAUTH_CLIENT_ID", "profile-client-id");
-  vi.stubEnv("MODAL_OAUTH_CLIENT_SECRET", "profile-client-secret");
+  vi.stubEnv("MODAL_OAUTH_JWT_KEY", testJwtKeyPem);
 
   try {
     expect(
