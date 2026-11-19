@@ -61,7 +61,7 @@ def members_list(json: bool = False):
     "-q",
     "--query",
     default="",
-    help="Filter events with the audit log search syntax. See https://modal.com/docs/guide/log-search-syntax",
+    help="Filter events with the audit log search syntax. See https://modal.com/docs/guide/audit-logs#filtering",
 )
 @click.option(
     "--since",
