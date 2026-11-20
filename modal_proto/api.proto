@@ -2487,6 +2487,10 @@ message Function {
   optional NetworkAccess network_access = 96;
 
   optional LocalizedConfig localized_config = 97;
+
+  // Whether the Function's containers may pickle or unpickle data, e.g. for modal.Dict and
+  // modal.Queue values or when calling other Functions. Unset means pickle is allowed.
+  optional bool allow_pickle = 98;
 }
 
 message FunctionAsyncInvokeRequest {

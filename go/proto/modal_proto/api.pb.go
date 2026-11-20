@@ -28072,6 +28072,7 @@ type Function struct {
 	xxx_hidden_IsSessioned                          bool                         `protobuf:"varint,95,opt,name=is_sessioned,json=isSessioned,proto3"`
 	xxx_hidden_NetworkAccess                        *NetworkAccess               `protobuf:"bytes,96,opt,name=network_access,json=networkAccess,proto3,oneof"`
 	xxx_hidden_LocalizedConfig                      *LocalizedConfig             `protobuf:"bytes,97,opt,name=localized_config,json=localizedConfig,proto3,oneof"`
+	xxx_hidden_AllowPickle                          bool                         `protobuf:"varint,98,opt,name=allow_pickle,json=allowPickle,proto3,oneof"`
 	XXX_raceDetectHookData                          protoimpl.RaceDetectHookData
 	XXX_presence                                    [3]uint32
 	unknownFields                                   protoimpl.UnknownFields
@@ -28689,6 +28690,13 @@ func (x *Function) GetLocalizedConfig() *LocalizedConfig {
 	return nil
 }
 
+func (x *Function) GetAllowPickle() bool {
+	if x != nil {
+		return x.xxx_hidden_AllowPickle
+	}
+	return false
+}
+
 func (x *Function) SetModuleName(v string) {
 	x.xxx_hidden_ModuleName = v
 }
@@ -28742,7 +28750,7 @@ func (x *Function) SetSharedVolumeMounts(v []*SharedVolumeMount) {
 
 func (x *Function) SetProxyId(v string) {
 	x.xxx_hidden_ProxyId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 81)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 12, 82)
 }
 
 func (x *Function) SetRetryPolicy(v *FunctionRetryPolicy) {
@@ -28774,7 +28782,7 @@ func (x *Function) SetTaskIdleTimeoutSecs(v uint32) {
 
 func (x *Function) SetCloudProvider(v CloudProvider) {
 	x.xxx_hidden_CloudProvider = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 81)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 19, 82)
 }
 
 func (x *Function) SetWarmPoolSize(v uint32) {
@@ -29021,6 +29029,11 @@ func (x *Function) SetLocalizedConfig(v *LocalizedConfig) {
 	x.xxx_hidden_LocalizedConfig = v
 }
 
+func (x *Function) SetAllowPickle(v bool) {
+	x.xxx_hidden_AllowPickle = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[2]), 81, 82)
+}
+
 func (x *Function) HasResources() bool {
 	if x == nil {
 		return false
@@ -29140,6 +29153,13 @@ func (x *Function) HasLocalizedConfig() bool {
 	return x.xxx_hidden_LocalizedConfig != nil
 }
 
+func (x *Function) HasAllowPickle() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[2]), 81)
+}
+
 func (x *Function) ClearResources() {
 	x.xxx_hidden_Resources = nil
 }
@@ -29208,6 +29228,11 @@ func (x *Function) ClearNetworkAccess() {
 
 func (x *Function) ClearLocalizedConfig() {
 	x.xxx_hidden_LocalizedConfig = nil
+}
+
+func (x *Function) ClearAllowPickle() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[2]), 81)
+	x.xxx_hidden_AllowPickle = false
 }
 
 type Function_builder struct {
@@ -29314,6 +29339,9 @@ type Function_builder struct {
 	// Outbound network access of the Function's containers. Takes precedence over block_network.
 	NetworkAccess   *NetworkAccess
 	LocalizedConfig *LocalizedConfig
+	// Whether the Function's containers may pickle or unpickle data, e.g. for modal.Dict and
+	// modal.Queue values or when calling other Functions. Unset means pickle is allowed.
+	AllowPickle *bool
 }
 
 func (b0 Function_builder) Build() *Function {
@@ -29333,7 +29361,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_WebhookConfig = b.WebhookConfig
 	x.xxx_hidden_SharedVolumeMounts = &b.SharedVolumeMounts
 	if b.ProxyId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 81)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 12, 82)
 		x.xxx_hidden_ProxyId = b.ProxyId
 	}
 	x.xxx_hidden_RetryPolicy = b.RetryPolicy
@@ -29343,7 +29371,7 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_ClassSerialized = b.ClassSerialized
 	x.xxx_hidden_TaskIdleTimeoutSecs = b.TaskIdleTimeoutSecs
 	if b.CloudProvider != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 81)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 19, 82)
 		x.xxx_hidden_CloudProvider = *b.CloudProvider
 	}
 	x.xxx_hidden_WarmPoolSize = b.WarmPoolSize
@@ -29407,6 +29435,10 @@ func (b0 Function_builder) Build() *Function {
 	x.xxx_hidden_IsSessioned = b.IsSessioned
 	x.xxx_hidden_NetworkAccess = b.NetworkAccess
 	x.xxx_hidden_LocalizedConfig = b.LocalizedConfig
+	if b.AllowPickle != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[2]), 81, 82)
+		x.xxx_hidden_AllowPickle = *b.AllowPickle
+	}
 	return m0
 }
 
@@ -81635,7 +81667,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12!\n" +
 	"\ftarget_slots\x18\x02 \x01(\rR\vtargetSlots\"$\n" +
-	"\"FlashSetTargetSlotsMetricsResponse\"\x8e'\n" +
+	"\"FlashSetTargetSlotsMetricsResponse\"\xc7'\n" +
 	"\bFunction\x12\x1f\n" +
 	"\vmodule_name\x18\x01 \x01(\tR\n" +
 	"moduleName\x12#\n" +
@@ -81726,7 +81758,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x0erouting_region\x18] \x01(\tR\rroutingRegion\x12!\n" +
 	"\fis_sessioned\x18_ \x01(\bR\visSessioned\x12G\n" +
 	"\x0enetwork_access\x18` \x01(\v2\x1b.modal.client.NetworkAccessH\x04R\rnetworkAccess\x88\x01\x01\x12M\n" +
-	"\x10localized_config\x18a \x01(\v2\x1d.modal.client.LocalizedConfigH\x05R\x0flocalizedConfig\x88\x01\x01\x1ad\n" +
+	"\x10localized_config\x18a \x01(\v2\x1d.modal.client.LocalizedConfigH\x05R\x0flocalizedConfig\x88\x01\x01\x12&\n" +
+	"\fallow_pickle\x18b \x01(\bH\x06R\vallowPickle\x88\x01\x01\x1ad\n" +
 	"\x16MethodDefinitionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x124\n" +
 	"\x05value\x18\x02 \x01(\v2\x1e.modal.client.MethodDefinitionR\x05value:\x028\x01\x1aF\n" +
@@ -81746,7 +81779,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x14_scheduler_placementB\x0e\n" +
 	"\f_http_configB\x11\n" +
 	"\x0f_network_accessB\x13\n" +
-	"\x11_localized_configJ\x04\b\x14\x10\x15J\x04\b0\x101J\x04\b1\x102J\x04\b4\x105J\x04\b6\x107J\x04\b7\x108J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<\"\x98\x01\n" +
+	"\x11_localized_configB\x0f\n" +
+	"\r_allow_pickleJ\x04\b\x14\x10\x15J\x04\b0\x101J\x04\b1\x102J\x04\b4\x105J\x04\b6\x107J\x04\b7\x108J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<\"\x98\x01\n" +
 	"\x1aFunctionAsyncInvokeRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
 	"functionId\x12&\n" +
