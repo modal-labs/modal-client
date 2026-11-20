@@ -1839,6 +1839,14 @@ def test_image_gpu(builder_version, servicer, client):
     assert layers[0].gpu_config.count == 1
 
 
+def test_image_from_registry_arch(builder_version, servicer, client):
+    for arch in [api_pb2.ARCH_UNSPECIFIED, api_pb2.ARCH_X86_64, api_pb2.ARCH_AARCH64]:
+        image = Image.from_registry("ubuntu:22.04", _arch=arch).env({"A": "1"})
+        build_image(image, client)
+        layers = get_image_layers(image.object_id, servicer)
+        assert layers[-1].arch == arch
+
+
 def test_image_force_build(builder_version, servicer, client):
     image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
     build_image(image, client)

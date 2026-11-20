@@ -708,6 +708,7 @@ class _Image(_Object, type_prefixes=("im",)):
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
+        _arch: "api_pb2.Arch.ValueType" = api_pb2.ARCH_UNSPECIFIED,
     ):
         if base_images is None:
             base_images = {}
@@ -831,6 +832,7 @@ class _Image(_Object, type_prefixes=("im",)):
                 build_function=_build_function,
                 build_args=build_args,
                 volume_mounts=volume_mounts,
+                arch=_arch,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -2366,6 +2368,8 @@ class _Image(_Object, type_prefixes=("im",)):
             ```
         """
 
+        arch = kwargs.get("_arch", api_pb2.ARCH_UNSPECIFIED)
+
         def context_mount_function(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
@@ -2400,6 +2404,7 @@ class _Image(_Object, type_prefixes=("im",)):
             dockerfile_function=lambda version: DockerfileSpec(commands=[f"FROM {tag}"], context_files={}),
             image_registry_config=kwargs.get("image_registry_config"),
             force_build=force_build,
+            _arch=arch,
         )
 
         def build_python_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
