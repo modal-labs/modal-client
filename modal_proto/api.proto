@@ -4080,8 +4080,9 @@ message ProxyGetResponse {
 message ProxyInfo {
   string elastic_ip = 1;
   string proxy_key = 2;
-  bool use_oidc = 6;
+  reserved 6; // removed use_oidc
   string vprox_node_id = 7;
+  string oidc_token = 8;
 }
 
 message ProxyIp {

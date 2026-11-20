@@ -48882,8 +48882,8 @@ type ProxyInfo struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_ElasticIp   string                 `protobuf:"bytes,1,opt,name=elastic_ip,json=elasticIp,proto3"`
 	xxx_hidden_ProxyKey    string                 `protobuf:"bytes,2,opt,name=proxy_key,json=proxyKey,proto3"`
-	xxx_hidden_UseOidc     bool                   `protobuf:"varint,6,opt,name=use_oidc,json=useOidc,proto3"`
 	xxx_hidden_VproxNodeId string                 `protobuf:"bytes,7,opt,name=vprox_node_id,json=vproxNodeId,proto3"`
+	xxx_hidden_OidcToken   string                 `protobuf:"bytes,8,opt,name=oidc_token,json=oidcToken,proto3"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -48927,16 +48927,16 @@ func (x *ProxyInfo) GetProxyKey() string {
 	return ""
 }
 
-func (x *ProxyInfo) GetUseOidc() bool {
-	if x != nil {
-		return x.xxx_hidden_UseOidc
-	}
-	return false
-}
-
 func (x *ProxyInfo) GetVproxNodeId() string {
 	if x != nil {
 		return x.xxx_hidden_VproxNodeId
+	}
+	return ""
+}
+
+func (x *ProxyInfo) GetOidcToken() string {
+	if x != nil {
+		return x.xxx_hidden_OidcToken
 	}
 	return ""
 }
@@ -48949,12 +48949,12 @@ func (x *ProxyInfo) SetProxyKey(v string) {
 	x.xxx_hidden_ProxyKey = v
 }
 
-func (x *ProxyInfo) SetUseOidc(v bool) {
-	x.xxx_hidden_UseOidc = v
-}
-
 func (x *ProxyInfo) SetVproxNodeId(v string) {
 	x.xxx_hidden_VproxNodeId = v
+}
+
+func (x *ProxyInfo) SetOidcToken(v string) {
+	x.xxx_hidden_OidcToken = v
 }
 
 type ProxyInfo_builder struct {
@@ -48962,8 +48962,8 @@ type ProxyInfo_builder struct {
 
 	ElasticIp   string
 	ProxyKey    string
-	UseOidc     bool
 	VproxNodeId string
+	OidcToken   string
 }
 
 func (b0 ProxyInfo_builder) Build() *ProxyInfo {
@@ -48972,8 +48972,8 @@ func (b0 ProxyInfo_builder) Build() *ProxyInfo {
 	_, _ = b, x
 	x.xxx_hidden_ElasticIp = b.ElasticIp
 	x.xxx_hidden_ProxyKey = b.ProxyKey
-	x.xxx_hidden_UseOidc = b.UseOidc
 	x.xxx_hidden_VproxNodeId = b.VproxNodeId
+	x.xxx_hidden_OidcToken = b.OidcToken
 	return m0
 }
 
@@ -82923,13 +82923,14 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12)\n" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\"=\n" +
 	"\x10ProxyGetResponse\x12)\n" +
-	"\x05proxy\x18\x01 \x01(\v2\x13.modal.client.ProxyR\x05proxy\"\x86\x01\n" +
+	"\x05proxy\x18\x01 \x01(\v2\x13.modal.client.ProxyR\x05proxy\"\x90\x01\n" +
 	"\tProxyInfo\x12\x1d\n" +
 	"\n" +
 	"elastic_ip\x18\x01 \x01(\tR\telasticIp\x12\x1b\n" +
-	"\tproxy_key\x18\x02 \x01(\tR\bproxyKey\x12\x19\n" +
-	"\buse_oidc\x18\x06 \x01(\bR\auseOidc\x12\"\n" +
-	"\rvprox_node_id\x18\a \x01(\tR\vvproxNodeId\"\xa3\x01\n" +
+	"\tproxy_key\x18\x02 \x01(\tR\bproxyKey\x12\"\n" +
+	"\rvprox_node_id\x18\a \x01(\tR\vvproxNodeId\x12\x1d\n" +
+	"\n" +
+	"oidc_token\x18\b \x01(\tR\toidcTokenJ\x04\b\x06\x10\a\"\xa3\x01\n" +
 	"\aProxyIp\x12\x19\n" +
 	"\bproxy_ip\x18\x01 \x01(\tR\aproxyIp\x123\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x1b.modal.client.ProxyIpStatusR\x06status\x12\x1d\n" +
