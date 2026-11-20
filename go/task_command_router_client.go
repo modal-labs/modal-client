@@ -674,8 +674,8 @@ func (c *taskCommandRouterClient) SetNetworkAccess(ctx context.Context, request 
 	return err
 }
 
-// SetOutboundPolicy replaces the task's outbound policy.
-func (c *taskCommandRouterClient) SetOutboundPolicy(ctx context.Context, request *pb.TaskSetExperimentalOutboundPolicyRequest) error {
+// SetExperimentalOutboundPolicy replaces the task's experimental outbound policy.
+func (c *taskCommandRouterClient) SetExperimentalOutboundPolicy(ctx context.Context, request *pb.TaskSetExperimentalOutboundPolicyRequest) error {
 	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskSetExperimentalOutboundPolicyResponse, error) {
 		return c.stubValue.TaskSetOutboundPolicy(authCtx, request)
 	})

@@ -11,6 +11,7 @@ from modal_version import __version__
 
 try:
     from . import billing, experimental, types
+    from ._outbound_policy import OutboundPolicy, OutboundRoute
     from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
     from .app import App
@@ -86,6 +87,8 @@ __all__ = [
     "FunctionCall",
     "Image",
     "NetworkFileSystem",
+    "OutboundPolicy",
+    "OutboundRoute",
     "Period",
     "Probe",
     "Proxy",

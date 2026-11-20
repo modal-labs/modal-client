@@ -1,251 +1,167 @@
 package modal
 
 import (
-	"fmt"
+	"context"
 	"testing"
 
+	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
 )
 
-func TestTemplateReferencesKey(t *testing.T) {
+func TestSandboxCreateRequestProto_OutboundPolicy(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
+
+	secret := &Secret{SecretID: "st-123"}
+	policy := &OutboundPolicy{
+		AllowTLSDecryption: true,
+		Routes: []OutboundRoute{
+			OutboundRouteHTTPS{
+				Domains: []string{"*.mydomain.com", "mydomain.org"},
+				HeaderReplacements: []OutboundHeaderReplacement{
+					{Secret: secret, Headers: map[string]string{"Authorization": "Bearer $API_TOKEN"}},
+				},
+			},
+			&OutboundRouteHTTPS{Domains: []string{"api.partner.com"}},
+			OutboundRouteTLS{Domains: []string{"*.example.com"}},
+			OutboundRouteIP{CIDRs: []string{"203.0.113.0/24"}},
+			OutboundRouteAny{Redirect: &OutboundBlock{}},
+		},
+	}
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{OutboundPolicy: policy, Proxy: &Proxy{ProxyID: "pr-123"}})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	definition := req.GetDefinition()
+	g.Expect(definition.HasExperimentalOutboundPolicy()).To(gomega.BeFalse())
+	g.Expect(definition.GetNetworkAccess().GetNetworkAccessType()).To(gomega.Equal(pb.NetworkAccess_OPEN))
+	got := definition.GetOutboundPolicy()
+	g.Expect(got.GetTlsDecryption().GetAllowed()).To(gomega.BeTrue())
+	routes := got.GetRoutes()
+	g.Expect(routes).To(gomega.HaveLen(5))
+
+	https := routes[0].GetHttps()
+	g.Expect(https.GetDomains()).To(gomega.Equal([]string{"*.mydomain.com", "mydomain.org"}))
+	g.Expect(https.GetHeaderReplacements()).To(gomega.HaveLen(1))
+	g.Expect(https.GetHeaderReplacements()[0].GetSecretId()).To(gomega.Equal("st-123"))
+	g.Expect(https.GetHeaderReplacements()[0].GetHeaders()).To(gomega.Equal(map[string]string{"Authorization": "Bearer $API_TOKEN"}))
+	g.Expect(https.HasRedirect()).To(gomega.BeFalse())
+
+	g.Expect(routes[1].GetHttps().GetDomains()).To(gomega.Equal([]string{"api.partner.com"}))
+	g.Expect(routes[2].GetTls().GetDomains()).To(gomega.Equal([]string{"*.example.com"}))
+	g.Expect(routes[3].GetIp().GetCidrs()).To(gomega.Equal([]string{"203.0.113.0/24"}))
+	g.Expect(routes[3].GetIp().GetPorts()).To(gomega.BeEmpty())
+	g.Expect(routes[3].GetIp().GetTransport()).To(gomega.Equal(pb.OutboundPolicy_TRANSPORT_UNSPECIFIED))
+	g.Expect(routes[4].GetAny().GetRedirect().HasBlock()).To(gomega.BeTrue())
+
+	g.Expect(policy.secrets()).To(gomega.Equal([]*Secret{secret}))
+}
+
+func TestSandboxCreateRequestProto_OutboundPolicyAllowAny(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	policy := &OutboundPolicy{Routes: []OutboundRoute{OutboundRouteAny{}}}
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{OutboundPolicy: policy})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	got := req.GetDefinition().GetOutboundPolicy()
+	g.Expect(got.GetTlsDecryption().GetAllowed()).To(gomega.BeFalse())
+	g.Expect(got.GetRoutes()).To(gomega.HaveLen(1))
+	g.Expect(got.GetRoutes()[0].HasAny()).To(gomega.BeTrue())
+	g.Expect(got.GetRoutes()[0].GetAny().HasRedirect()).To(gomega.BeFalse())
+}
+
+func TestSandboxCreateRequestProto_NoOutboundPolicy(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().HasOutboundPolicy()).To(gomega.BeFalse())
+}
+
+func TestSandboxCreateRequestProto_OutboundPolicyInvalid(t *testing.T) {
+	t.Parallel()
+
+	blockAny := OutboundRouteAny{Redirect: OutboundBlock{}}
+	withRoutes := func(allowTLSDecryption bool, routes ...OutboundRoute) *OutboundPolicy {
+		return &OutboundPolicy{AllowTLSDecryption: allowTLSDecryption, Routes: append(routes, blockAny)}
+	}
+	https := func(headers map[string]string) OutboundRouteHTTPS {
+		return OutboundRouteHTTPS{
+			Domains:            []string{"api.example.com"},
+			HeaderReplacements: []OutboundHeaderReplacement{{Headers: headers}},
+		}
+	}
 
 	cases := []struct {
-		template string
-		want     bool
+		name    string
+		params  SandboxCreateParams
+		message string
 	}{
-		{"Bearer $API_KEY", true},
-		{"$_PRIVATE", true},
-		{"x$y", true},
-		{"plain", false},
-		{"ca$$h", false},
-		{"$$API_KEY", false},
-		{"$5", false},
-		{"$", false},
-		{"ends with $", false},
-		{"ca$$h $KEY", true},
+		{"no routes", SandboxCreateParams{OutboundPolicy: &OutboundPolicy{}}, "must end with an OutboundRouteAny"},
+		{"no any route", SandboxCreateParams{OutboundPolicy: &OutboundPolicy{Routes: []OutboundRoute{
+			OutboundRouteTLS{Domains: []string{"example.com"}},
+		}}}, "must end with an OutboundRouteAny"},
+		{"any route not last", SandboxCreateParams{OutboundPolicy: &OutboundPolicy{Routes: []OutboundRoute{
+			blockAny, OutboundRouteTLS{Domains: []string{"example.com"}},
+		}}}, "must be the last route"},
+		{"two any routes", SandboxCreateParams{OutboundPolicy: &OutboundPolicy{Routes: []OutboundRoute{
+			OutboundRouteAny{}, blockAny,
+		}}}, "must be the last route"},
+		{"nil route", SandboxCreateParams{OutboundPolicy: withRoutes(false, nil)}, "route is nil"},
+		{"nil route pointer", SandboxCreateParams{OutboundPolicy: withRoutes(false, (*OutboundRouteTLS)(nil))}, "route is nil"},
+		{"TLS route without domains", SandboxCreateParams{OutboundPolicy: withRoutes(false, OutboundRouteTLS{})}, "at least one domain"},
+		{"invalid domain", SandboxCreateParams{OutboundPolicy: withRoutes(false, OutboundRouteTLS{Domains: []string{"not a domain"}})}, "invalid domain"},
+		{"IP route without CIDRs", SandboxCreateParams{OutboundPolicy: withRoutes(false, OutboundRouteIP{})}, "at least one CIDR"},
+		{"HTTPS route without TLS decryption", SandboxCreateParams{OutboundPolicy: withRoutes(false, OutboundRouteHTTPS{Domains: []string{"example.com"}})}, "require OutboundPolicy.AllowTLSDecryption"},
+		{"no headers", SandboxCreateParams{OutboundPolicy: withRoutes(true, https(nil))}, "at least one header"},
+		{"header set twice ignoring case", SandboxCreateParams{OutboundPolicy: withRoutes(true, https(map[string]string{"Authorization": "a", "authorization": "b"}))}, `header "authorization" is set more than once`},
+		{"header set twice across replacements", SandboxCreateParams{OutboundPolicy: withRoutes(true, OutboundRouteHTTPS{
+			Domains: []string{"example.com"},
+			HeaderReplacements: []OutboundHeaderReplacement{
+				{Headers: map[string]string{"X-Api-Key": "a"}},
+				{Headers: map[string]string{"X-Api-Key": "b"}},
+			},
+		})}, `header "X-Api-Key" is set more than once`},
+		{"template without secret", SandboxCreateParams{OutboundPolicy: withRoutes(true, https(map[string]string{"X-A": "$KEY"}))}, "no Secret was passed"},
+		{"with BlockNetwork", SandboxCreateParams{OutboundPolicy: withRoutes(false), BlockNetwork: true}, "end Routes with OutboundRouteAny{Redirect: OutboundBlock{}}"},
+		{"with CIDR allowlist", SandboxCreateParams{OutboundPolicy: withRoutes(false), OutboundCIDRAllowlist: &Allowlist{}}, "use an OutboundRouteIP"},
+		{"with domain allowlist", SandboxCreateParams{OutboundPolicy: withRoutes(false), OutboundDomainAllowlist: &Allowlist{}}, "use an OutboundRouteTLS"},
+		{"with experimental policy", SandboxCreateParams{OutboundPolicy: withRoutes(false), ExperimentalOutboundPolicy: &ExperimentalOutboundPolicy{}}, "use OutboundRouteHTTPS routes with HeaderReplacements"},
 	}
 	for _, c := range cases {
-		g.Expect(templateReferencesKey(c.template)).To(gomega.Equal(c.want), "template %q", c.template)
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			_, err := buildSandboxCreateRequestProto("app-123", "img-456", c.params)
+			g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring(c.message)))
+		})
 	}
 }
 
-func TestWithHeaderReplacementBuildsImmutablePolicy(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-
-	var policy ExperimentalOutboundPolicy
-	updated := policy.WithHeaderReplacement(ExperimentalOutboundPolicyHeaderReplacement{
-		Domain:  "api.example.com",
-		Headers: map[string]string{"X-Static": "plain"},
-	})
-	g.Expect(policy.replacements).To(gomega.BeEmpty())
-	g.Expect(updated.replacements).To(gomega.HaveLen(1))
-	g.Expect(updated.replacements[0].Domain).To(gomega.Equal("api.example.com"))
-	g.Expect(updated.replacements[0].Headers).To(gomega.Equal(map[string]string{"X-Static": "plain"}))
-	g.Expect(updated.replacements[0].Secret).To(gomega.BeNil())
+// failingModalClient implements no RPCs, so any control plane call panics.
+type failingModalClient struct {
+	pb.ModalClientClient
 }
 
-func TestNewExperimentalOutboundPolicyMatchesChainedWith(t *testing.T) {
+func TestSandboxCreateRejectsConflictingOutboundOptionsBeforeCallingModal(t *testing.T) {
 	t.Parallel()
-	g := gomega.NewWithT(t)
 
-	replacements := []ExperimentalOutboundPolicyHeaderReplacement{
-		{Domain: "api.example.com", Headers: map[string]string{"Authorization": "Bearer $API_KEY"}},
-		{Domain: "*.example.com", Headers: map[string]string{"X-Static": "plain"}},
+	for _, sandboxV2 := range []bool{false, true} {
+		g := gomega.NewWithT(t)
+		svc := &sandboxServiceImpl{client: &Client{
+			cpClient: &clientWithConn{ModalClientClient: failingModalClient{}},
+			profile:  Profile{SandboxV2: sandboxV2},
+		}}
+
+		// Getting past validation would build the image and turn the env vars
+		// into a Secret. This client can do neither.
+		_, err := svc.Create(context.Background(), &App{AppID: "ap-123"}, &Image{}, &SandboxCreateParams{
+			Env:            map[string]string{"KEY": "value"},
+			BlockNetwork:   true,
+			OutboundPolicy: &OutboundPolicy{Routes: []OutboundRoute{OutboundRouteAny{}}},
+		})
+		g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("OutboundPolicy cannot be used when BlockNetwork is enabled")))
 	}
-	declarative := NewExperimentalOutboundPolicy(replacements...)
-	imperative := new(ExperimentalOutboundPolicy).
-		WithHeaderReplacement(replacements[0]).
-		WithHeaderReplacement(replacements[1])
-	g.Expect(declarative.replacements).To(gomega.Equal(imperative.replacements))
-}
-
-func TestExperimentalOutboundPolicyToProtoFansOutReplacements(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-
-	secret := &Secret{SecretID: "st-1"}
-	policy := NewExperimentalOutboundPolicy(
-		ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "api.example.com",
-			Secret:  secret,
-			Headers: map[string]string{"Authorization": "Bearer $API_KEY", "X-Key-Raw": "$API_KEY"},
-		},
-		ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "*.example.com",
-			Headers: map[string]string{"X-Static": "plain"},
-		},
-	)
-
-	replacements := policy.toProto().GetHeaderReplacements()
-	g.Expect(replacements).To(gomega.HaveLen(2))
-	g.Expect(replacements[0].GetDomain()).To(gomega.Equal("api.example.com"))
-	g.Expect(replacements[0].GetSecretId()).To(gomega.Equal("st-1"))
-	g.Expect(replacements[0].GetHeaders()).To(gomega.Equal(map[string]string{
-		"Authorization": "Bearer $API_KEY",
-		"X-Key-Raw":     "$API_KEY",
-	}))
-	g.Expect(replacements[1].GetDomain()).To(gomega.Equal("*.example.com"))
-	g.Expect(replacements[1].GetSecretId()).To(gomega.Equal(""))
-	g.Expect(replacements[1].GetHeaders()).To(gomega.Equal(map[string]string{"X-Static": "plain"}))
-}
-
-// Builders perform no validation; invalid replacements are rejected by
-// validate(), called when the policy is used.
-func TestExperimentalOutboundPolicyValidate(t *testing.T) {
-	t.Parallel()
-
-	validate := func(r ExperimentalOutboundPolicyHeaderReplacement) error {
-		p := NewExperimentalOutboundPolicy(r)
-		return p.validate()
-	}
-
-	t.Run("invalid domain", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		for _, domain := range []string{"not a domain", "example.com\n"} {
-			err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-				Domain:  domain,
-				Headers: map[string]string{"a": "b"},
-			})
-			g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("Invalid domain")), "domain %q", domain)
-		}
-	})
-
-	t.Run("wildcards accepted", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		policy := NewExperimentalOutboundPolicy(
-			ExperimentalOutboundPolicyHeaderReplacement{Domain: "*.example.com", Headers: map[string]string{"a": "b"}},
-			ExperimentalOutboundPolicyHeaderReplacement{Domain: "*", Headers: map[string]string{"a": "b"}},
-		)
-		g.Expect(policy.validate()).ToNot(gomega.HaveOccurred())
-	})
-
-	t.Run("empty headers", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "example.com",
-			Headers: map[string]string{},
-		})
-		g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("at least one header")))
-	})
-
-	t.Run("invalid header name", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		for _, name := range []string{"bad header", "X-Foo\n"} {
-			err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-				Domain:  "example.com",
-				Headers: map[string]string{name: "x"},
-			})
-			g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("Invalid header name")), "name %q", name)
-		}
-	})
-
-	t.Run("control characters in header value", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		for _, value := range []string{"x\r\ninjected", "x\x00y", "x\x7fy"} {
-			err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-				Domain:  "example.com",
-				Headers: map[string]string{"a": value},
-			})
-			g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("control characters")), "value %q", value)
-		}
-	})
-
-	t.Run("tab in header value", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "example.com",
-			Headers: map[string]string{"a": "x\ty"},
-		})
-		g.Expect(err).ToNot(gomega.HaveOccurred())
-	})
-
-	t.Run("template without secret", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "example.com",
-			Headers: map[string]string{"Authorization": "Bearer $API_KEY"},
-		})
-		g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("no Secret was passed")))
-	})
-
-	t.Run("escaped dollar without secret", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "example.com",
-			Headers: map[string]string{"a": "ca$$h", "b": "$5", "c": "$"},
-		})
-		g.Expect(err).ToNot(gomega.HaveOccurred())
-	})
-
-	t.Run("ephemeral secret", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		ephemeral := &Secret{hydrator: &secretFromMapHydrator{envDict: map[string]string{"API_KEY": "k"}}}
-		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "example.com",
-			Secret:  ephemeral,
-			Headers: map[string]string{"Authorization": "Bearer $API_KEY"},
-		})
-		g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("only support named secrets")))
-	})
-
-	t.Run("too many headers", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		headers := map[string]string{}
-		for i := range maxOutboundPolicyHeaderReplacements + 1 {
-			headers[string(rune('a'+i))] = "x"
-		}
-		err := validate(ExperimentalOutboundPolicyHeaderReplacement{
-			Domain:  "example.com",
-			Headers: headers,
-		})
-		g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("more than 25 header replacements")))
-
-		// The limit counts headers across replacements.
-		full := map[string]string{}
-		for i := range maxOutboundPolicyHeaderReplacements {
-			full[fmt.Sprintf("X-Header-%d", i)] = "x"
-		}
-		policy := NewExperimentalOutboundPolicy(
-			ExperimentalOutboundPolicyHeaderReplacement{Domain: "example.com", Headers: map[string]string{"a": "b"}},
-			ExperimentalOutboundPolicyHeaderReplacement{Domain: "other.com", Headers: full},
-		)
-		err = policy.validate()
-		g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("more than 25 header replacements")))
-	})
-
-	t.Run("nil policy is valid", func(t *testing.T) {
-		t.Parallel()
-		g := gomega.NewWithT(t)
-		var empty *ExperimentalOutboundPolicy
-		g.Expect(empty.validate()).ToNot(gomega.HaveOccurred())
-	})
-}
-
-func TestExperimentalOutboundPolicySecretsDeduplicates(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-
-	secret := &Secret{SecretID: "st-1"}
-	policy := NewExperimentalOutboundPolicy(
-		ExperimentalOutboundPolicyHeaderReplacement{Domain: "a.example.com", Secret: secret, Headers: map[string]string{"a": "$K"}},
-		ExperimentalOutboundPolicyHeaderReplacement{Domain: "b.example.com", Secret: secret, Headers: map[string]string{"b": "$K"}},
-	)
-	g.Expect(policy.secrets()).To(gomega.Equal([]*Secret{secret}))
-
-	var empty *ExperimentalOutboundPolicy
-	g.Expect(empty.secrets()).To(gomega.BeEmpty())
-	g.Expect(empty.toProto()).To(gomega.BeNil())
 }

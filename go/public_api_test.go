@@ -45,6 +45,9 @@ var skipMethods = map[string]string{
 	// The ExperimentalOutboundPolicy argument is itself the configuration object.
 	"Sandbox.ExperimentalUpdateOutboundPolicy": "takes the policy value object directly, no wrapper params needed",
 
+	// The OutboundPolicy argument is itself the configuration object.
+	"Sandbox.SetOutboundPolicy": "takes the policy value object directly, no wrapper params needed",
+
 	// The ExperimentalOutboundPolicyHeaderReplacement argument is itself the configuration object.
 	"ExperimentalOutboundPolicy.WithHeaderReplacement": "value-object builder, the replacement is the configuration",
 
@@ -175,6 +178,15 @@ var excludedTypes = map[string]string{
 	"StdioBehavior":                   "string enum type",
 	"InternalFailure":                 "error type (name does not end in Error)",
 	"Allowlist":                       "configuration value type, no public methods",
+	"OutboundPolicy":                  "configuration value type, no public methods",
+	"OutboundRoute":                   "marker interface for OutboundPolicy routes, no public methods",
+	"OutboundRouteTLS":                "configuration value type, no public methods",
+	"OutboundRouteHTTPS":              "configuration value type, no public methods",
+	"OutboundRouteIP":                 "configuration value type, no public methods",
+	"OutboundRouteAny":                "configuration value type, no public methods",
+	"OutboundHeaderReplacement":       "configuration value type, no public methods",
+	"OutboundRouteAnyRedirect":        "marker interface for redirects, no public methods",
+	"OutboundBlock":                   "configuration value type, no public methods",
 	"ExperimentalOutboundPolicyHeaderReplacement": "configuration value type, no public methods",
 	"FileType":                 "string enum, no public methods",
 	"FileInfo":                 "data type, no public methods",

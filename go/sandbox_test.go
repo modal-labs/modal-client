@@ -1296,7 +1296,7 @@ func TestUpdateNetworkPolicyMockedCommandRouter(t *testing.T) {
 		},
 	}
 
-	sb := newSandbox(&Client{}, testV2SandboxID)
+	sb := newSandbox(&Client{logger: slog.New(slog.DiscardHandler)}, testV2SandboxID)
 	sb.task().taskID = "ta-123"
 	sb.task().commandRouter.client = newSetNetworkAccessClient(t, stub)
 
@@ -1309,6 +1309,149 @@ func TestUpdateNetworkPolicyMockedCommandRouter(t *testing.T) {
 	g.Expect(stub.gotRequest.GetTaskId()).To(gomega.Equal("ta-123"))
 	g.Expect(stub.gotRequest.GetNetworkAccess().GetAllowedCidrs()).To(gomega.Equal([]string{"10.0.0.0/8"}))
 	g.Expect(stub.gotRequest.GetNetworkAccess().GetAllowedDomains()).To(gomega.Equal([]string{"example.com"}))
+}
+
+type mockSetOutboundPolicyClient struct {
+	pb.ModalClientClient
+	gotRPC     string
+	gotRequest *pb.SandboxSetOutboundPolicyRequest
+	// errs are returned by the calls in turn, before the calls succeed.
+	errs  []error
+	calls int
+}
+
+func (m *mockSetOutboundPolicyClient) SandboxSetOutboundPolicy(
+	_ context.Context,
+	in *pb.SandboxSetOutboundPolicyRequest,
+	_ ...grpc.CallOption,
+) (*pb.SandboxSetOutboundPolicyResponse, error) {
+	m.gotRPC, m.gotRequest = "SandboxSetOutboundPolicy", in
+	return &pb.SandboxSetOutboundPolicyResponse{}, nil
+}
+
+func (m *mockSetOutboundPolicyClient) SandboxSetOutboundPolicyV2(
+	_ context.Context,
+	in *pb.SandboxSetOutboundPolicyRequest,
+	_ ...grpc.CallOption,
+) (*pb.SandboxSetOutboundPolicyResponse, error) {
+	m.gotRPC, m.gotRequest = "SandboxSetOutboundPolicyV2", in
+	m.calls++
+	if len(m.errs) > 0 {
+		err := m.errs[0]
+		m.errs = m.errs[1:]
+		return nil, err
+	}
+	return &pb.SandboxSetOutboundPolicyResponse{}, nil
+}
+
+func newSetOutboundPolicySandbox(mock *mockSetOutboundPolicyClient, isV2 bool) *Sandbox {
+	sandboxID := testV1SandboxID
+	if isV2 {
+		sandboxID = testV2SandboxID
+	}
+	return newSandbox(&Client{cpClient: &clientWithConn{ModalClientClient: mock}}, sandboxID)
+}
+
+func TestSetOutboundPolicyWaitsForAStartingSandbox(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	mock := &mockSetOutboundPolicyClient{
+		errs: []error{status.Error(codes.Unavailable, "the Sandbox is still starting")},
+	}
+	sb := newSetOutboundPolicySandbox(mock, true)
+	err := sb.SetOutboundPolicy(context.Background(), &OutboundPolicy{
+		Routes: []OutboundRoute{OutboundRouteAny{Redirect: OutboundBlock{}}},
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(mock.calls).To(gomega.Equal(2))
+}
+
+func TestSetOutboundPolicySurfacesAFailureOnARunningSandbox(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []codes.Code{codes.Internal, codes.Unknown, codes.DeadlineExceeded} {
+		t.Run(code.String(), func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			mock := &mockSetOutboundPolicyClient{errs: []error{status.Error(code, "failed")}}
+			sb := newSetOutboundPolicySandbox(mock, true)
+			err := sb.SetOutboundPolicy(context.Background(), &OutboundPolicy{
+				Routes: []OutboundRoute{OutboundRouteAny{}},
+			})
+			g.Expect(status.Code(err)).To(gomega.Equal(code))
+			g.Expect(mock.calls).To(gomega.Equal(1))
+		})
+	}
+}
+
+func TestSetOutboundPolicy(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		isV2 bool
+		rpc  string
+	}{
+		{isV2: false, rpc: "SandboxSetOutboundPolicy"},
+		{isV2: true, rpc: "SandboxSetOutboundPolicyV2"},
+	} {
+		t.Run(tc.rpc, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			mock := &mockSetOutboundPolicyClient{}
+			sb := newSetOutboundPolicySandbox(mock, tc.isV2)
+			err := sb.SetOutboundPolicy(context.Background(), &OutboundPolicy{
+				AllowTLSDecryption: true,
+				Routes: []OutboundRoute{
+					OutboundRouteHTTPS{
+						Domains: []string{"api.example.com"},
+						HeaderReplacements: []OutboundHeaderReplacement{
+							{Secret: &Secret{SecretID: "st-1"}, Headers: map[string]string{"Authorization": "Bearer $API_KEY"}},
+						},
+					},
+					OutboundRouteIP{CIDRs: []string{"203.0.113.0/24"}},
+					OutboundRouteAny{Redirect: &OutboundBlock{}},
+				},
+			})
+			g.Expect(err).ToNot(gomega.HaveOccurred())
+			g.Expect(mock.gotRPC).To(gomega.Equal(tc.rpc))
+			g.Expect(mock.gotRequest.GetSandboxId()).To(gomega.Equal(sb.SandboxID))
+			policy := mock.gotRequest.GetOutboundPolicy()
+			g.Expect(policy.GetTlsDecryption().GetAllowed()).To(gomega.BeTrue())
+			routes := policy.GetRoutes()
+			g.Expect(routes).To(gomega.HaveLen(3))
+			g.Expect(routes[0].GetHttps().GetDomains()).To(gomega.Equal([]string{"api.example.com"}))
+			replacements := routes[0].GetHttps().GetHeaderReplacements()
+			g.Expect(replacements).To(gomega.HaveLen(1))
+			g.Expect(replacements[0].GetSecretId()).To(gomega.Equal("st-1"))
+			g.Expect(replacements[0].GetHeaders()).To(gomega.Equal(map[string]string{"Authorization": "Bearer $API_KEY"}))
+			g.Expect(routes[1].GetIp().GetCidrs()).To(gomega.Equal([]string{"203.0.113.0/24"}))
+			g.Expect(routes[2].GetAny().GetRedirect().HasBlock()).To(gomega.BeTrue())
+		})
+	}
+}
+
+func TestSetOutboundPolicyValidation(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	mock := &mockSetOutboundPolicyClient{}
+	sb := newSetOutboundPolicySandbox(mock, true)
+
+	err := sb.SetOutboundPolicy(context.Background(), nil)
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("requires an OutboundPolicy")))
+
+	err = sb.SetOutboundPolicy(context.Background(), &OutboundPolicy{
+		Routes: []OutboundRoute{
+			OutboundRouteHTTPS{Domains: []string{"example.com"}},
+			OutboundRouteAny{},
+		},
+	})
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("AllowTLSDecryption"))
+	g.Expect(mock.gotRequest).To(gomega.BeNil())
 }
 
 func TestUpdateNetworkPolicyValidation(t *testing.T) {
@@ -2968,4 +3111,23 @@ func TestSidecarCreateRejectsProxyOnV1Sandbox(t *testing.T) {
 type taskIDWaiter interface {
 	ensureTaskID(ctx context.Context) (string, error)
 	waitForTaskID(ctx context.Context, timeout time.Duration, retryTransient bool) (string, error)
+}
+
+// Not parallel: which deprecations have been warned about is process-wide.
+func TestWarnDeprecatedNetworkParamsWarnsOncePerParameter(t *testing.T) {
+	g := gomega.NewWithT(t)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	params := &SandboxCreateParams{
+		OutboundCIDRAllowlist:      &Allowlist{},
+		OutboundDomainAllowlist:    &Allowlist{},
+		ExperimentalOutboundPolicy: &ExperimentalOutboundPolicy{},
+	}
+
+	warnDeprecatedNetworkParams(t.Context(), logger, params)
+	warnDeprecatedNetworkParams(t.Context(), logger, params)
+
+	g.Expect(strings.Count(logs.String(), "OutboundCIDRAllowlist is deprecated and will be removed in a future release")).To(gomega.Equal(1))
+	g.Expect(strings.Count(logs.String(), "OutboundDomainAllowlist is deprecated and will be removed in a future release")).To(gomega.Equal(1))
+	g.Expect(strings.Count(logs.String(), "ExperimentalOutboundPolicy is deprecated and will be removed in version 0.12.0")).To(gomega.Equal(1))
 }

@@ -12,6 +12,7 @@ import {
   SandboxGetExitSnapshotResponse_ErrorCode,
   type SandboxGetTaskIdResponse,
   type SandboxGetTunnelsResponse,
+  type SandboxSetOutboundPolicyRequest,
   type TunnelData,
   type SandboxWaitResponse,
   type SecretSource,
@@ -44,7 +45,7 @@ import {
   TimeoutError,
 } from "./errors";
 import { Image } from "./image";
-import type { ExperimentalOutboundPolicy } from "./outbound_policy";
+import type { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
 import {
   ContainerProcess,
   type SandboxCreateConnectCredentials,
@@ -232,6 +233,10 @@ export interface SandboxImpl {
   updateNetworkPolicy(params: SandboxUpdateNetworkPolicyParams): Promise<void>;
   updateOutboundPolicy(
     outboundPolicy: ExperimentalOutboundPolicy,
+  ): Promise<void>;
+  setOutboundPolicy(
+    request: SandboxSetOutboundPolicyRequest,
+    options?: RetryOptions,
   ): Promise<void>;
   snapshotFilesystem(
     containerId: string,
@@ -745,7 +750,7 @@ export async function updateOutboundPolicyViaTcr(
     taskId,
     experimentalOutboundPolicy: outboundPolicy._toProto(),
   });
-  await commandRouterClient.setOutboundPolicy(request);
+  await commandRouterClient.setExperimentalOutboundPolicy(request);
 }
 
 /** @internal @hidden */

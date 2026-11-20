@@ -1147,7 +1147,8 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.TaskSetNetworkAccess, request)
             )
 
-    async def set_outbound_policy(self, request: sr_pb2.TaskSetExperimentalOutboundPolicyRequest):
+    async def set_experimental_outbound_policy(self, request: sr_pb2.TaskSetExperimentalOutboundPolicyRequest):
+        """Replace the task's experimental outbound policy."""
         with grpc_error_converter():
             return await call_with_retries_on_transient_errors(
                 lambda: self._call_with_auth_retry(self._stub.TaskSetOutboundPolicy, request)

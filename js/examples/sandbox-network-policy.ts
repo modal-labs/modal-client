@@ -1,4 +1,4 @@
-import { ModalClient } from "modal";
+import { ModalClient, OutboundPolicy, OutboundRoute } from "modal";
 
 const modal = new ModalClient();
 
@@ -7,11 +7,15 @@ const app = await modal.apps.fromName("libmodal-example", {
 });
 const image = modal.images.fromRegistry("alpine:3.21");
 
-// Create a sandbox with only modal.com allowed (empty CIDR list blocks raw IP traffic).
+// Create a Sandbox that can reach modal.com over TLS and nothing else.
 const sb = await modal.sandboxes.create(app, image, {
   command: ["sleep", "infinity"],
-  outboundDomainAllowlist: ["modal.com"],
-  outboundCidrAllowlist: [],
+  outboundPolicy: new OutboundPolicy({
+    routes: [
+      OutboundRoute.tls({ domains: ["modal.com"] }),
+      OutboundRoute.any().block(),
+    ],
+  }),
 });
 console.log("Created Sandbox:", sb.sandboxId);
 
@@ -26,12 +30,11 @@ const p1 = await sb.exec([
 ]);
 console.log("wget example.com (blocked): exit=", await p1.wait());
 
-// Unblock: widen the policy to allow all domains.
-await sb.updateNetworkPolicy({
-  outboundDomainAllowlist: ["*"],
-  outboundCidrAllowlist: ["0.0.0.0/0"],
-});
-console.log("Widened policy to allow all domains.");
+// Unblock: replace the policy with one that allows all outbound traffic.
+await sb.setOutboundPolicy(
+  new OutboundPolicy({ routes: [OutboundRoute.any()] }),
+);
+console.log("Replaced the policy to allow all outbound traffic.");
 
 // Try again — should succeed now.
 const p2 = await sb.exec([

@@ -1131,7 +1131,8 @@ export class TaskCommandRouterClientImpl {
     await this.callUnary(() => this.stub.taskSetNetworkAccess(request));
   }
 
-  async setOutboundPolicy(
+  /** Replace the task's experimental outbound policy. */
+  async setExperimentalOutboundPolicy(
     request: TaskSetExperimentalOutboundPolicyRequest,
   ): Promise<void> {
     await this.callUnary(() => this.stub.taskSetOutboundPolicy(request));

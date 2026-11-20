@@ -4,6 +4,8 @@ import {
   ExperimentalOutboundPolicy,
   Image,
   InvalidError,
+  OutboundPolicy,
+  OutboundRoute,
   Sandbox,
   type SandboxCreateParams,
 } from "modal";
@@ -297,14 +299,19 @@ test("operations that only apply to a session are rejected", async () => {
   );
   await expect(sb.experimentalSnapshot()).rejects.toThrow(/Memory snapshots/);
   await expect(
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
     sb.updateNetworkPolicy({
       outboundCidrAllowlist: ["10.0.0.0/8"],
       outboundDomainAllowlist: [],
     }),
   ).rejects.toThrow(/network access/);
   await expect(
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
     sb.experimentalUpdateOutboundPolicy(new ExperimentalOutboundPolicy()),
   ).rejects.toThrow(/outbound policy/);
+  await expect(
+    sb.setOutboundPolicy(new OutboundPolicy({ routes: [OutboundRoute.any()] })),
+  ).rejects.toThrow(/Setting the outbound policy/);
   await expect(sb.mountImage("/mnt")).rejects.toThrow(/Mounting images/);
   await expect(sb.unmountImage("/mnt")).rejects.toThrow(/Mounting images/);
   mock.assertExhausted();

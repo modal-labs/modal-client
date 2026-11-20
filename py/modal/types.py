@@ -8,9 +8,14 @@ from collections.abc import Iterator, Mapping
 from dataclasses import FrozenInstanceError, dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Iterable, Literal, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Iterable, Literal, Optional, TypedDict
+
+import typing_extensions
 
 from modal_proto import api_pb2
+
+if TYPE_CHECKING:
+    from .secret import Secret
 
 
 @dataclass(frozen=True)
@@ -243,6 +248,20 @@ class VolumeCreateOptions(TypedDict, total=False):
     """Options used when creating a Volume."""
 
     experimental_options: dict[str, Any]
+
+
+class OutboundHeaderReplacement(typing_extensions.TypedDict):
+    """Headers to set on requests matched by an HTTPS route of an `OutboundPolicy`.
+
+    Header values support templating with keys in `secret`: a `$`-prefixed key
+    name in the secret is replaced with the secret value. Literal `$`
+    characters are written `$$`.
+    """
+
+    headers: dict[str, str]
+    """Header name -> header value template."""
+    secret: typing_extensions.NotRequired["Secret"]
+    """Named Secret (e.g. from `Secret.from_name`) whose keys the header values may reference."""
 
 
 @dataclass

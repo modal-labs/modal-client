@@ -14,7 +14,7 @@ import type { App } from "./app";
 import type { ModalClient } from "./client";
 import { ClientClosedError, InvalidError } from "./errors";
 import type { Image } from "./image";
-import type { ExperimentalOutboundPolicy } from "./outbound_policy";
+import type { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
 import {
   type ContainerProcess,
   type SandboxCreateConnectCredentials,
@@ -30,6 +30,7 @@ import {
   buildSandboxCreateV2RequestProto,
   getReturnCode,
   hydrateSandboxSecrets,
+  warnDeprecatedNetworkParams,
 } from "./sandbox";
 import {
   type SandboxImpl,
@@ -159,7 +160,12 @@ export class SandboxImplPersistent implements SandboxImpl {
     const resolvable = resolvableSecrets(secrets);
     await hydrateSandboxSecrets(
       client,
-      [...resolvable, ...(params.experimentalOutboundPolicy?._secrets() ?? [])],
+      [
+        ...resolvable,
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- implements the deprecated parameter
+        ...(params.experimentalOutboundPolicy?._secrets() ?? []),
+        ...(params.outboundPolicy?._secrets() ?? []),
+      ],
       params.cloudBucketMounts,
     );
     // Every session is created from the same definition, so credentials must
@@ -182,6 +188,7 @@ export class SandboxImplPersistent implements SandboxImpl {
       },
       sources,
     );
+    warnDeprecatedNetworkParams(client.logger, params);
     const resp = await client.cpClient.persistentSandboxCreate(
       PersistentSandboxCreateRequest.create({
         appId: v2Req.appId,
@@ -464,6 +471,12 @@ export class SandboxImplPersistent implements SandboxImpl {
   ): Promise<void> {
     throw new InvalidError(
       "Updating the outbound policy isn't supported for persistent Sandboxes yet.",
+    );
+  }
+
+  async setOutboundPolicy(): Promise<void> {
+    throw new InvalidError(
+      "Setting the outbound policy isn't supported for persistent Sandboxes yet.",
     );
   }
 

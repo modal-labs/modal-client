@@ -18,6 +18,7 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
+from .._experimental_outbound_policy import _OutboundPolicy as _ExperimentalOutboundPolicy
 from .._image import _Image
 from .._outbound_policy import _OutboundPolicy
 from .._resolver import Resolver
@@ -352,7 +353,10 @@ class SandboxImplPersistent:
     async def set_network_access(self, network_access: api_pb2.NetworkAccess) -> None:
         raise NotImplementedError("Updating network access isn't supported for persistent Sandboxes yet.")
 
-    async def update_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
+    async def set_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
+        raise NotImplementedError("Setting the outbound policy isn't supported for persistent Sandboxes yet.")
+
+    async def update_experimental_outbound_policy(self, outbound_policy: _ExperimentalOutboundPolicy) -> None:
         raise NotImplementedError("Updating the outbound policy isn't supported for persistent Sandboxes yet.")
 
     async def snapshot_filesystem(self, timeout: int, *, ttl: int | None, container_id: str = "") -> _Image:

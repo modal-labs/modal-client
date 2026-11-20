@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal
 
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
+from .._experimental_outbound_policy import _OutboundPolicy as _ExperimentalOutboundPolicy
 from .._image import _Image
 from .._outbound_policy import _OutboundPolicy
 from .._resolver import Resolver
@@ -50,8 +51,10 @@ from ._common import (
     raise_for_wait_result,
     raise_unless_retryable_task_id_error,
     reload_volumes_via_tcr,
+    retry_while_starting,
     sandbox_create_context,
     set_network_access_via_tcr,
+    set_outbound_policy_request,
     snapshot_directory_via_tcr,
     snapshot_filesystem_via_tcr,
     tag_protos,
@@ -63,7 +66,7 @@ from ._common import (
     tunnels_from_protos,
     tunnels_from_response,
     unmount_image_via_tcr,
-    update_outbound_policy_via_tcr,
+    update_experimental_outbound_policy_via_tcr,
     wait_poll_request,
     wait_sidecar_via_tcr,
     wait_until_ready_via_tcr,
@@ -543,8 +546,13 @@ class SandboxImplV2:
     async def set_network_access(self, network_access: api_pb2.NetworkAccess) -> None:
         await set_network_access_via_tcr(self, network_access)
 
-    async def update_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
-        await update_outbound_policy_via_tcr(self, self.client, outbound_policy)
+    async def set_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
+        req = await set_outbound_policy_request(self.client, self.sandbox_id, outbound_policy)
+        metadata = await self._metadata()
+        await retry_while_starting(lambda: self.client._stub.SandboxSetOutboundPolicyV2(req, metadata=metadata))
+
+    async def update_experimental_outbound_policy(self, outbound_policy: _ExperimentalOutboundPolicy) -> None:
+        await update_experimental_outbound_policy_via_tcr(self, self.client, outbound_policy)
 
     async def snapshot_filesystem(self, timeout: int, *, ttl: int | None, container_id: str = "") -> _Image:
         return await snapshot_filesystem_via_tcr(self, self.client, timeout, ttl=ttl, container_id=container_id)

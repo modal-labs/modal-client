@@ -17,15 +17,20 @@ from grpclib import Status
 
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
+from .._experimental_outbound_policy import (
+    _OutboundPolicy as _ExperimentalOutboundPolicy,
+    _validate_compatible_network_access,
+)
 from .._image import _Image
 from .._load_context import LoadContext
 from .._object import _Object
-from .._outbound_policy import _OutboundPolicy, _validate_compatible_network_access
+from .._outbound_policy import _OutboundPolicy, _validate_outbound_policy_compatibility
 from .._output.pty import get_pty_info
 from .._resolver import Resolver
 from .._resources import convert_fn_config_to_resources_config
 from .._tunnel import Tunnel
 from .._utils.async_utils import TaskContext
+from .._utils.deprecation import deprecation_warning
 from .._utils.grpc_utils import Retry
 from .._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
 from .._utils.name_utils import check_object_name
@@ -124,6 +129,29 @@ def _validate_sandbox_env(env: dict[str, str]) -> None:
                 f"Secret key name {key!r} is invalid for environment variables. "
                 "Only letters, numbers, and underscores are allowed."
             )
+
+
+def _warn_deprecated_network_params(a: "SandboxCreateArgs") -> None:
+    """Warn about the outbound network parameters that `outbound_policy` replaces."""
+    if a.outbound_cidr_allowlist is not None:
+        deprecation_warning(
+            (2026, 11, 16),
+            "`outbound_cidr_allowlist` is deprecated and will be removed in a future release. "
+            "Use `outbound_policy` instead, with a `modal.OutboundRoute.ip(cidrs=...)` route.",
+        )
+    if a.outbound_domain_allowlist is not None:
+        deprecation_warning(
+            (2026, 11, 16),
+            "`outbound_domain_allowlist` is deprecated and will be removed in a future release. "
+            "Use `outbound_policy` instead, with a `modal.OutboundRoute.tls(domains=...)` route, or a "
+            "`modal.OutboundRoute.https(domains=...)` route for HTTPS-specific features.",
+        )
+    if a.experimental_outbound_policy is not None:
+        deprecation_warning(
+            (2026, 11, 16),
+            "`_experimental_outbound_policy` is deprecated and will be removed in modal 1.7.0. "
+            "Use `outbound_policy` instead, with `modal.OutboundRoute.https(..., header_replacements=...)` routes.",
+        )
 
 
 def _validate_sandbox_runtime(runtime: SandboxRuntime | None) -> None:
@@ -326,6 +354,12 @@ _EXIT_SNAPSHOT_POLL_DEADLINE_MARGIN = 5.0
 # How long to wait between task ID lookups.
 _TASK_ID_POLL_INTERVAL: float = 0.5
 
+# How long `Sandbox.set_outbound_policy` keeps trying while the Sandbox is still starting, which the server and
+# the worker report as UNAVAILABLE, and how long it waits between tries. Other errors get the client's usual few
+# retries, so a failure on a running Sandbox surfaces within seconds.
+_SET_OUTBOUND_POLICY_STARTING_TIMEOUT: float = 60.0
+_SET_OUTBOUND_POLICY_STARTING_INTERVAL: float = 1.0
+
 
 def absolute_path_bytes(path: PurePosixPath | str, what: str) -> bytes:
     posix_path = PurePosixPath(path)
@@ -399,6 +433,7 @@ class SandboxCreateArgs:
     block_network: bool = False
     outbound_cidr_allowlist: Sequence[str] | None = None
     outbound_domain_allowlist: Sequence[str] | None = None
+    experimental_outbound_policy: _ExperimentalOutboundPolicy | None = None
     outbound_policy: _OutboundPolicy | None = None
     inbound_cidr_allowlist: Sequence[str] | None = None
     i6pn: bool = False
@@ -445,14 +480,34 @@ class SandboxCreateCommon:
 
         if a.block_network and (a.encrypted_ports or a.h2_ports or a.unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
+        if a.experimental_outbound_policy is not None:
+            check_experimental_outbound_policy_type(
+                a.experimental_outbound_policy,
+                "_experimental_outbound_policy",
+                use_instead="pass it as `outbound_policy` instead",
+            )
+        if a.outbound_policy is not None:
+            check_outbound_policy_type(a.outbound_policy)
+        if a.experimental_outbound_policy is not None:
+            a.experimental_outbound_policy._validate()
+        _validate_compatible_network_access(
+            a.experimental_outbound_policy, a.block_network, a.outbound_domain_allowlist
+        )
         if a.outbound_policy is not None:
             a.outbound_policy._validate()
-        _validate_compatible_network_access(a.outbound_policy, a.block_network, a.outbound_domain_allowlist)
+        _validate_outbound_policy_compatibility(
+            a.outbound_policy,
+            block_network=a.block_network,
+            outbound_cidr_allowlist=a.outbound_cidr_allowlist,
+            outbound_domain_allowlist=a.outbound_domain_allowlist,
+            experimental_outbound_policy=a.experimental_outbound_policy,
+        )
         network_access = _build_outbound_network_access(
             a.block_network, a.outbound_cidr_allowlist, a.outbound_domain_allowlist
         )
         if a.block_network and a.inbound_cidr_allowlist is not None:
             raise InvalidError("`inbound_cidr_allowlist` cannot be used when `block_network` is enabled")
+        _warn_deprecated_network_params(a)
 
         self.create_args = a
         self.timeout = a.timeout
@@ -480,6 +535,8 @@ class SandboxCreateCommon:
             deps.append(self.image)
         deps.extend(a.mounts)
         deps.extend(self.secrets)
+        if a.experimental_outbound_policy:
+            deps.extend(a.experimental_outbound_policy._secrets())
         if a.outbound_policy:
             deps.extend(a.outbound_policy._secrets())
         deps.extend(nfs for _, nfs in self.network_file_systems)
@@ -518,7 +575,10 @@ class SandboxCreateCommon:
             worker_id=config.get("worker_id"),
             open_ports=api_pb2.PortSpecs(ports=self.open_ports),
             network_access=self.network_access,
-            experimental_outbound_policy=a.outbound_policy._to_proto() if a.outbound_policy else None,
+            experimental_outbound_policy=(
+                a.experimental_outbound_policy._to_proto() if a.experimental_outbound_policy else None
+            ),
+            outbound_policy=a.outbound_policy._to_proto() if a.outbound_policy else None,
             proxy_id=(a.proxy.object_id if a.proxy else None),
             readiness_probe=(a.readiness_probe._to_proto() if a.readiness_probe else None),
             enable_snapshot=a.enable_snapshot,
@@ -724,7 +784,9 @@ class SandboxImpl(Protocol):
 
     async def set_network_access(self, network_access: api_pb2.NetworkAccess) -> None: ...
 
-    async def update_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None: ...
+    async def set_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None: ...
+
+    async def update_experimental_outbound_policy(self, outbound_policy: _ExperimentalOutboundPolicy) -> None: ...
 
     async def snapshot_filesystem(self, timeout: int, *, ttl: int | None, container_id: str = "") -> _Image: ...
 
@@ -900,7 +962,9 @@ async def set_network_access_via_tcr(impl: SandboxImpl, network_access: api_pb2.
     await command_router_client.set_network_access(req)
 
 
-async def update_outbound_policy_via_tcr(impl: SandboxImpl, client: _Client, outbound_policy: _OutboundPolicy) -> None:
+async def update_experimental_outbound_policy_via_tcr(
+    impl: SandboxImpl, client: _Client, outbound_policy: _ExperimentalOutboundPolicy
+) -> None:
     async def hydrate_policy_secrets() -> None:
         await TaskContext.gather(*(secret.hydrate(client=client) for secret in outbound_policy._secrets()))
 
@@ -908,7 +972,54 @@ async def update_outbound_policy_via_tcr(impl: SandboxImpl, client: _Client, out
     req = sr_pb2.TaskSetExperimentalOutboundPolicyRequest(
         task_id=task_id, experimental_outbound_policy=outbound_policy._to_proto()
     )
-    await command_router_client.set_outbound_policy(req)
+    await command_router_client.set_experimental_outbound_policy(req)
+
+
+# Both policy classes are named `OutboundPolicy`, so passing one where the other belongs is an easy mistake. These
+# checks name it.
+
+
+def check_outbound_policy_type(outbound_policy: object) -> None:
+    """Raise unless `outbound_policy` is a `modal.OutboundPolicy`."""
+    if isinstance(outbound_policy, _ExperimentalOutboundPolicy):
+        raise InvalidError(
+            "`outbound_policy` got a `modal.experimental.OutboundPolicy`, which is deprecated; build a "
+            "`modal.OutboundPolicy` with `modal.OutboundRoute.https` routes that set `header_replacements` instead"
+        )
+    if not isinstance(outbound_policy, _OutboundPolicy):
+        raise InvalidError(f"`outbound_policy` must be a `modal.OutboundPolicy`, got {type(outbound_policy).__name__}")
+
+
+def check_experimental_outbound_policy_type(outbound_policy: object, arg_name: str, *, use_instead: str) -> None:
+    """Raise unless `outbound_policy` is a `modal.experimental.OutboundPolicy`. `use_instead` says what to do with a
+    `modal.OutboundPolicy`."""
+    if isinstance(outbound_policy, _OutboundPolicy):
+        raise InvalidError(f"`{arg_name}` got a `modal.OutboundPolicy`; {use_instead}")
+    if not isinstance(outbound_policy, _ExperimentalOutboundPolicy):
+        raise InvalidError(
+            f"`{arg_name}` must be a `modal.experimental.OutboundPolicy`, got {type(outbound_policy).__name__}"
+        )
+
+
+async def retry_while_starting(set_policy: Callable[[], Awaitable[object]]) -> None:
+    """Call `set_policy` again while it fails because the Sandbox is still starting, for up to a minute."""
+    deadline = time.monotonic() + _SET_OUTBOUND_POLICY_STARTING_TIMEOUT
+    while True:
+        try:
+            await set_policy()
+            return
+        except ServiceError as exc:
+            if exc._grpc_status != Status.UNAVAILABLE or time.monotonic() >= deadline:
+                raise
+        await asyncio.sleep(_SET_OUTBOUND_POLICY_STARTING_INTERVAL)
+
+
+async def set_outbound_policy_request(
+    client: _Client, sandbox_id: str, outbound_policy: _OutboundPolicy
+) -> api_pb2.SandboxSetOutboundPolicyRequest:
+    """Build the request that replaces a Sandbox's outbound policy, once the policy's Secrets are loaded."""
+    await TaskContext.gather(*(secret.hydrate(client=client) for secret in outbound_policy._secrets()))
+    return api_pb2.SandboxSetOutboundPolicyRequest(sandbox_id=sandbox_id, outbound_policy=outbound_policy._to_proto())
 
 
 async def snapshot_filesystem_via_tcr(

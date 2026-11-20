@@ -23,11 +23,13 @@ func main() {
 
 	image := mc.Images.FromRegistry("alpine:3.21", nil)
 
-	// Create a sandbox with only modal.com allowed (empty CIDR list blocks raw IP traffic).
+	// Create a Sandbox that can reach modal.com over TLS and nothing else.
 	sb, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
-		Command:                 []string{"sleep", "infinity"},
-		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"modal.com"}},
-		OutboundCIDRAllowlist:   &modal.Allowlist{},
+		Command: []string{"sleep", "infinity"},
+		OutboundPolicy: &modal.OutboundPolicy{Routes: []modal.OutboundRoute{
+			modal.OutboundRouteTLS{Domains: []string{"modal.com"}},
+			modal.OutboundRouteAny{Redirect: modal.OutboundBlock{}},
+		}},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create Sandbox: %v", err)
@@ -54,15 +56,12 @@ func main() {
 	}
 	fmt.Printf("wget example.com (blocked): exit=%d stderr=%s\n", rc, string(errOut))
 
-	// Unblock: widen the policy to allow all domains.
-	err = sb.UpdateNetworkPolicy(ctx, &modal.SandboxUpdateNetworkPolicyParams{
-		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"*"}},
-		OutboundCIDRAllowlist:   &modal.Allowlist{Entries: []string{"0.0.0.0/0"}},
-	})
+	// Unblock: replace the policy with one that allows all outbound traffic.
+	err = sb.SetOutboundPolicy(ctx, &modal.OutboundPolicy{Routes: []modal.OutboundRoute{modal.OutboundRouteAny{}}})
 	if err != nil {
-		log.Fatalf("Failed to update network policy: %v", err)
+		log.Fatalf("Failed to set outbound policy: %v", err)
 	}
-	fmt.Println("Widened policy to allow all domains.")
+	fmt.Println("Replaced the policy to allow all outbound traffic.")
 
 	// Try again — should succeed now.
 	p, err = sb.Exec(ctx, []string{"wget", "-q", "-O", "-", "--timeout=5", "http://example.com"}, nil)

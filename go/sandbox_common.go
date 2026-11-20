@@ -23,6 +23,15 @@ const sandboxSchedulingTimeout = 21 * time.Minute
 // How long operations that need a running task wait for one.
 const getTaskIDTimeout = 5 * time.Minute
 
+// How long Sandbox.SetOutboundPolicy keeps trying while the Sandbox is still
+// starting, which the server and the worker report as Unavailable, and how
+// long it waits between tries. Other errors get the client's usual few
+// retries, so a failure on a running Sandbox surfaces within seconds.
+const (
+	setOutboundPolicyStartingTimeout  = time.Minute
+	setOutboundPolicyStartingInterval = time.Second
+)
+
 // sandboxImpl is the backend-specific implementation behind a Sandbox.
 //
 // A Sandbox is a thin facade that owns object identity and attachment state;
@@ -66,6 +75,7 @@ type sandboxImpl interface {
 	waitUntilReady(ctx context.Context, timeout time.Duration) error
 	updateNetworkPolicy(ctx context.Context, params SandboxUpdateNetworkPolicyParams) error
 	updateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error
+	setOutboundPolicy(ctx context.Context, req *pb.SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) error
 	snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error)
 	snapshotDirectory(ctx context.Context, path string, timeout, ttl time.Duration, params *SandboxSnapshotDirectoryParams) (*Image, error)
 	mountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error
@@ -353,7 +363,7 @@ func updateOutboundPolicyViaTcr(ctx context.Context, impl sandboxImpl, policy *E
 	if err := g.Wait(); err != nil {
 		return err
 	}
-	return crClient.SetOutboundPolicy(ctx, pb.TaskSetExperimentalOutboundPolicyRequest_builder{
+	return crClient.SetExperimentalOutboundPolicy(ctx, pb.TaskSetExperimentalOutboundPolicyRequest_builder{
 		TaskId:                     taskID,
 		ExperimentalOutboundPolicy: policy.toProto(),
 	}.Build())

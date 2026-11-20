@@ -565,7 +565,7 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:               []string{"echo", "hello, network access"},
 		BlockNetwork:          false,
-		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"10.0.0.0/8", "192.168.0.0/16"}},
+		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"10.0.0.0/8", "192.168.0.0/16"}}, //nolint:staticcheck // tests the deprecated field
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb)
@@ -579,14 +579,14 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		BlockNetwork:          false,
-		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"not-an-ip/8"}},
+		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"not-an-ip/8"}}, //nolint:staticcheck // tests the deprecated field
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("Invalid CIDR (outbound IPv4): not-an-ip/8"))
 
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		BlockNetwork:          true,
-		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"10.0.0.0/8"}},
+		OutboundCIDRAllowlist: &modal.Allowlist{Entries: []string{"10.0.0.0/8"}}, //nolint:staticcheck // tests the deprecated field
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled"))
@@ -609,7 +609,7 @@ func TestCreateSandboxWithDomainAllowlist(t *testing.T) {
 	// Domain-only allowlist.
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:                 []string{"echo", "hello, domain allowlist"},
-		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"example.com", "*.github.com"}},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"example.com", "*.github.com"}}, //nolint:staticcheck // tests the deprecated field
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb)
@@ -624,8 +624,8 @@ func TestCreateSandboxWithDomainAllowlist(t *testing.T) {
 	// Domain + CIDR combined.
 	sb2, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:                 []string{"echo", "hello, domain+cidr"},
-		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"api.example.com"}},
-		OutboundCIDRAllowlist:   &modal.Allowlist{Entries: []string{"10.0.0.0/8"}},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"api.example.com"}}, //nolint:staticcheck // tests the deprecated field
+		OutboundCIDRAllowlist:   &modal.Allowlist{Entries: []string{"10.0.0.0/8"}},      //nolint:staticcheck // tests the deprecated field
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb2)
@@ -637,14 +637,14 @@ func TestCreateSandboxWithDomainAllowlist(t *testing.T) {
 	// Cannot combine with BlockNetwork.
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		BlockNetwork:            true,
-		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"example.com"}},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"example.com"}}, //nolint:staticcheck // tests the deprecated field
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled"))
 
 	// Invalid domain triggers server-side validation error.
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
-		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"not a valid domain!"}},
+		OutboundDomainAllowlist: &modal.Allowlist{Entries: []string{"not a valid domain!"}}, //nolint:staticcheck // tests the deprecated field
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 }
@@ -2304,6 +2304,10 @@ func TestSandboxDetachForbidsAllOperations(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 
 	_, err = sb.SnapshotDirectory(ctx, "/abc", nil)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
+
+	err = sb.SetOutboundPolicy(ctx, &modal.OutboundPolicy{Routes: []modal.OutboundRoute{modal.OutboundRouteAny{}}})
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 

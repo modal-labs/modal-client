@@ -7,6 +7,7 @@ import inspect
 import json
 import os
 import pytest
+import re
 import time
 import typing
 import uuid
@@ -46,6 +47,13 @@ from modal.types import SandboxStats, StatsPercentile, StatsPercentileDistributi
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .supports.skip import skip_windows
+
+# Covers the outbound network APIs that `outbound_policy` and `Sandbox.set_outbound_policy` replace.
+ignore_deprecated_network_apis = pytest.mark.filterwarnings(
+    "ignore:.*(`outbound_(cidr|domain)_allowlist`|`_experimental_outbound_policy`"
+    "|`Sandbox._experimental_(set_outbound_network_policy|update_outbound_policy)`) is deprecated"
+    ":modal.exception.DeprecationError"
+)
 
 skip_non_subprocess = skip_windows("Needs subprocess support")
 
@@ -1213,6 +1221,24 @@ def test_experimental_sandbox_get_set_tags(client, servicer):
         assert sb.get_tags() == {}
 
 
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"outbound_cidr_allowlist": ["10.0.0.0/8"]}, "`outbound_cidr_allowlist` is deprecated .* future release"),
+        ({"outbound_domain_allowlist": ["example.com"]}, "`outbound_domain_allowlist` is deprecated .* future release"),
+        (
+            {"_experimental_outbound_policy": modal.experimental.OutboundPolicy()},
+            "`_experimental_outbound_policy` is deprecated .* modal 1.7.0",
+        ),
+    ],
+)
+def test_sandbox_create_warns_about_network_parameters_outbound_policy_replaces(app, servicer, kwargs, message):
+    with pytest.warns(DeprecationError, match=message):
+        sb = Sandbox.create("echo", "test", app=app, **kwargs)
+    sb.terminate()
+
+
+@ignore_deprecated_network_apis
 def test_sandbox_network_access(app, servicer):
     with pytest.raises(InvalidError):
         Sandbox.create("echo", "test", block_network=True, outbound_cidr_allowlist=["10.0.0.0/8"], app=app)
@@ -1254,6 +1280,7 @@ def test_sandbox_network_access(app, servicer):
         Sandbox.create("echo", "test", cidr_allowlist=["10.0.0.0/8"], outbound_cidr_allowlist=["10.0.0.0/8"], app=app)
 
 
+@ignore_deprecated_network_apis
 def test_sandbox_outbound_domain_allowlist(app, servicer):
     # Cannot combine with block_network
     with pytest.raises(InvalidError, match="`outbound_domain_allowlist` cannot be used when `block_network`"):
@@ -1278,11 +1305,15 @@ def test_sandbox_outbound_domain_allowlist(app, servicer):
     sb.terminate()
 
 
+@ignore_deprecated_network_apis
 def test_sandbox__experimental_set_outbound_network_policy(app, servicer):
     sb = Sandbox.create("echo", "test", outbound_domain_allowlist=[], app=app)
 
     # Allowlist mode
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with (
+        servicer.task_command_router.intercept() as tcr_ctx,
+        pytest.warns(DeprecationError, match="`Sandbox._experimental_set_outbound_network_policy` is deprecated"),
+    ):
         sb._experimental_set_outbound_network_policy(
             outbound_domain_allowlist=["example.com"], outbound_cidr_allowlist=["8.8.8.8/32"]
         )
@@ -1302,6 +1333,7 @@ def test_sandbox__experimental_set_outbound_network_policy(app, servicer):
     sb.terminate()
 
 
+@ignore_deprecated_network_apis
 def test_sandbox__experimental_set_outbound_network_policy_v2(app, servicer):
     sb = Sandbox._experimental_create("sleep", "infinity", app=app)
 
@@ -2981,6 +3013,7 @@ def test_experimental_sandbox_create_env_rejects_empty_key(app, servicer):
         Sandbox._experimental_create("echo", "hi", app=app, env={"": "value"})
 
 
+@ignore_deprecated_network_apis
 def test_experimental_sandbox_create_outbound_domain_allowlist(app, servicer):
     # Cannot combine with block_network.
     with pytest.raises(InvalidError, match="`outbound_domain_allowlist` cannot be used when `block_network`"):
@@ -3542,6 +3575,7 @@ detach_error_funcs = {
     "_experimental_update_outbound_policy": lambda sb: sb._experimental_update_outbound_policy(
         modal.experimental.OutboundPolicy()
     ),
+    "set_outbound_policy": lambda sb: sb.set_outbound_policy(modal.OutboundPolicy(routes=[modal.OutboundRoute.any()])),
     "wait_until_ready": lambda sb: sb.wait_until_ready(),
     "poll": lambda sb: sb.poll(),
     "_experimental_pause": None,  # Only supported for persistent Sandboxes.
@@ -4600,6 +4634,7 @@ def test_experimental_sandbox_create_logs_per_dependency_timing(app, servicer, c
     sb.terminate()
 
 
+@ignore_deprecated_network_apis
 def test_sandbox_create_outbound_policy_v1(app, servicer, client):
     Secret.objects.create("my-secret", {"API_KEY": "k"}, client=client)
     policy = (
@@ -4646,12 +4681,14 @@ def test_sandbox_create_outbound_policy_rejects_domain_allowlist(app, monkeypatc
         )
 
 
+@ignore_deprecated_network_apis
 def test_sandbox_create_outbound_policy_allows_cidr_only_allowlist(app, servicer):
     policy = modal.experimental.OutboundPolicy().with_header_replacement(domain="example.com", headers={"a": "b"})
     Sandbox.create("echo", "hi", app=app, outbound_cidr_allowlist=["10.0.0.0/8"], _experimental_outbound_policy=policy)
     assert servicer.sandbox_defs[0].HasField("experimental_outbound_policy")
 
 
+@ignore_deprecated_network_apis
 def test_sandbox_create_outbound_policy_v2(app, servicer, client, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     Secret.objects.create("my-secret", {"API_KEY": "k"}, client=client)
@@ -4674,8 +4711,319 @@ def test_sandbox_create_outbound_policy_v2(app, servicer, client, monkeypatch):
 def test_sandbox_create_no_outbound_policy_unset(app, servicer):
     Sandbox.create("echo", "hi", app=app)
     assert not servicer.sandbox_defs[0].HasField("experimental_outbound_policy")
+    assert not servicer.sandbox_defs[0].HasField("outbound_policy")
 
 
+def _routed_outbound_policy(secret: Secret) -> modal.OutboundPolicy:
+    return modal.OutboundPolicy(
+        allow_tls_decryption=True,
+        routes=[
+            modal.OutboundRoute.https(
+                domains=["*.mydomain.com", "mydomain.org"],
+                header_replacements=[{"secret": secret, "headers": {"Authorization": "Bearer $API_TOKEN"}}],
+            ),
+            modal.OutboundRoute.tls(domains=["*.github.com"]),
+            modal.OutboundRoute.ip(cidrs=["203.0.113.0/24"]),
+            modal.OutboundRoute.any().block(),
+        ],
+    )
+
+
+def _assert_routed_outbound_policy(definition: api_pb2.Sandbox, secret: Secret) -> None:
+    P = api_pb2.OutboundPolicy
+    assert not definition.HasField("experimental_outbound_policy")
+    assert definition.network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+    assert definition.outbound_policy == P(
+        tls_decryption=P.TLSDecryption(allowed=True),
+        routes=[
+            P.Route(
+                https=P.HTTPSRoute(
+                    domains=["*.mydomain.com", "mydomain.org"],
+                    header_replacements=[
+                        P.HeaderReplacement(secret_id=secret.object_id, headers={"Authorization": "Bearer $API_TOKEN"})
+                    ],
+                )
+            ),
+            P.Route(tls=P.TLSRoute(domains=["*.github.com"])),
+            P.Route(ip=P.IPRoute(cidrs=["203.0.113.0/24"])),
+            P.Route(any=P.AnyRoute(redirect=P.Redirect(block=P.Redirect.Block()))),
+        ],
+    )
+
+
+def test_sandbox_create_routed_outbound_policy_v1(app, servicer, client):
+    Secret.objects.create("my-secret", {"API_TOKEN": "t"}, client=client)
+    secret = Secret.from_name("my-secret")
+
+    Sandbox.create("echo", "hi", app=app, outbound_policy=_routed_outbound_policy(secret))
+
+    # The policy's secret is resolved as part of creating the Sandbox.
+    assert secret.object_id.startswith("st-")
+    _assert_routed_outbound_policy(servicer.sandbox_defs[0], secret)
+
+
+def test_sandbox_create_routed_outbound_policy_v2(app, servicer, client, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    Secret.objects.create("my-secret", {"API_TOKEN": "t"}, client=client)
+    secret = Secret.from_name("my-secret")
+
+    with servicer.intercept() as ctx:
+        Sandbox.create("echo", "hi", app=app, outbound_policy=_routed_outbound_policy(secret))
+        (req,) = ctx.get_requests("SandboxCreateV2")
+
+    assert secret.object_id.startswith("st-")
+    _assert_routed_outbound_policy(req.definition, secret)
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True])
+def test_sandbox_create_routed_outbound_policy_allows_proxy(app, servicer, monkeypatch, sandbox_v2):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    policy = modal.OutboundPolicy(routes=[modal.OutboundRoute.any()])
+    Sandbox.create("echo", "hi", app=app, proxy=Proxy.from_name("my-proxy"), outbound_policy=policy)
+    definition = servicer.sandbox_defs[0]
+    assert definition.proxy_id == "pr-123"
+    assert definition.HasField("outbound_policy")
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True])
+@pytest.mark.parametrize(
+    "kwargs,error",
+    [
+        (
+            {"block_network": True},
+            "`outbound_policy` cannot be used when `block_network` is enabled; "
+            "end the policy's routes with `OutboundRoute.any().block()` instead",
+        ),
+        (
+            {"outbound_cidr_allowlist": ["10.0.0.0/8"]},
+            "cannot be used with `outbound_cidr_allowlist`; use an `OutboundRoute.ip(cidrs=[...])` route",
+        ),
+        ({"outbound_cidr_allowlist": []}, "cannot be used with `outbound_cidr_allowlist`"),
+        (
+            {"outbound_domain_allowlist": ["example.com"]},
+            "`outbound_policy` cannot be used with `outbound_domain_allowlist`; "
+            "use an `OutboundRoute.tls(domains=[...])` route",
+        ),
+        (
+            {
+                "_experimental_outbound_policy": modal.experimental.OutboundPolicy().with_header_replacement(
+                    domain="example.com", headers={"a": "b"}
+                )
+            },
+            "`outbound_policy` cannot be used with `_experimental_outbound_policy`; "
+            "use `OutboundRoute.https(domains=[...], header_replacements=[...])` routes",
+        ),
+    ],
+)
+def test_sandbox_create_routed_outbound_policy_rejects_conflicting_options(
+    app, servicer, monkeypatch, sandbox_v2, kwargs, error
+):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    policy = modal.OutboundPolicy(routes=[modal.OutboundRoute.any()])
+    with pytest.raises(InvalidError, match=re.escape(error)):
+        Sandbox.create("echo", "hi", app=app, outbound_policy=policy, **kwargs)
+    assert not servicer.sandbox_defs
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True])
+def test_sandbox_create_routed_outbound_policy_validates(app, servicer, monkeypatch, sandbox_v2):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    policy = modal.OutboundPolicy(
+        routes=[modal.OutboundRoute.https(domains=["example.com"]), modal.OutboundRoute.any()]
+    )
+    with pytest.raises(InvalidError, match="HTTPS routes require `allow_tls_decryption=True`"):
+        Sandbox.create("echo", "hi", app=app, outbound_policy=policy)
+    assert not servicer.sandbox_defs
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True])
+def test_sandbox_create_rejects_swapped_outbound_policy_classes(app, servicer, monkeypatch, sandbox_v2):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    with pytest.raises(
+        InvalidError,
+        match=re.escape("`outbound_policy` got a `modal.experimental.OutboundPolicy`, which is deprecated"),
+    ):
+        Sandbox.create("echo", "hi", app=app, outbound_policy=modal.experimental.OutboundPolicy())  # type: ignore[arg-type]
+    with pytest.raises(
+        InvalidError,
+        match=re.escape("`_experimental_outbound_policy` got a `modal.OutboundPolicy`; pass it as `outbound_policy`"),
+    ):
+        Sandbox.create(
+            "echo",
+            "hi",
+            app=app,
+            _experimental_outbound_policy=modal.OutboundPolicy(routes=[modal.OutboundRoute.any()]),  # type: ignore[arg-type]
+        )
+    assert not servicer.sandbox_defs
+
+
+@pytest.mark.parametrize("sandbox_v2", [False, True])
+def test_sandbox_set_outbound_policy(app, servicer, client, monkeypatch, sandbox_v2):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_v2 else "0")
+    Secret.objects.create("my-secret", {"API_KEY": "k"}, client=client)
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    secret = Secret.from_name("my-secret")
+    policy = modal.OutboundPolicy(
+        allow_tls_decryption=True,
+        routes=[
+            modal.OutboundRoute.https(
+                domains=["api.example.com"],
+                header_replacements=[{"secret": secret, "headers": {"Authorization": "Bearer $API_KEY"}}],
+            ),
+            modal.OutboundRoute.ip(cidrs=["203.0.113.0/24"]),
+            modal.OutboundRoute.any().block(),
+        ],
+    )
+
+    with servicer.intercept() as ctx:
+        sb.set_outbound_policy(policy)
+
+    rpc = "SandboxSetOutboundPolicyV2" if sandbox_v2 else "SandboxSetOutboundPolicy"
+    assert len(ctx.get_requests(rpc)) == 1
+    sent = servicer.sandbox_outbound_policies[sb.object_id]
+    assert sent.tls_decryption.allowed
+    https, ip, any_route = sent.routes
+    assert list(https.https.domains) == ["api.example.com"]
+    (replacement,) = https.https.header_replacements
+    assert replacement.secret_id == secret.object_id
+    assert dict(replacement.headers) == {"Authorization": "Bearer $API_KEY"}
+    assert list(ip.ip.cidrs) == ["203.0.113.0/24"]
+    assert any_route.any.redirect.HasField("block")
+
+
+@pytest.mark.parametrize(
+    "policy, error",
+    [
+        (
+            modal.OutboundPolicy(
+                routes=[modal.OutboundRoute.https(domains=["example.com"]), modal.OutboundRoute.any()],
+            ),
+            "HTTPS routes require `allow_tls_decryption=True`",
+        ),
+        (
+            modal.experimental.OutboundPolicy(),
+            "`outbound_policy` got a `modal.experimental.OutboundPolicy`, which is deprecated",
+        ),
+        ({"routes": []}, "`outbound_policy` must be a `modal.OutboundPolicy`, got dict"),
+    ],
+)
+def test_sandbox_set_outbound_policy_validates(app, servicer, policy, error):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match=re.escape(error)):
+            sb.set_outbound_policy(policy)
+
+    assert not ctx.get_requests("SandboxSetOutboundPolicy")
+    assert not ctx.get_requests("SandboxSetOutboundPolicyV2")
+    assert sb.object_id not in servicer.sandbox_outbound_policies
+
+
+def _set_outbound_policy_responder(servicer, failures: list[Status]):
+    """A `SandboxSetOutboundPolicyV2` responder that fails with each of `failures` in turn, then succeeds."""
+    remaining = list(failures)
+
+    async def respond(servicer, stream):
+        request = await stream.recv_message()
+        if remaining:
+            raise GRPCError(remaining.pop(0), "failed")
+        servicer.sandbox_outbound_policies[request.sandbox_id] = request.outbound_policy
+        await stream.send_message(api_pb2.SandboxSetOutboundPolicyResponse())
+
+    return respond
+
+
+def test_sandbox_set_outbound_policy_waits_for_a_starting_sandbox(app, servicer, monkeypatch):
+    monkeypatch.setattr(modal.sandbox._common, "_SET_OUTBOUND_POLICY_STARTING_INTERVAL", 0.0)
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    # More UNAVAILABLE replies than the client's usual retries absorb.
+    with servicer.intercept() as ctx:
+        ctx.set_responder(
+            "SandboxSetOutboundPolicyV2", _set_outbound_policy_responder(servicer, [Status.UNAVAILABLE] * 6)
+        )
+        sb.set_outbound_policy(modal.OutboundPolicy(routes=[modal.OutboundRoute.any().block()]))
+
+    assert len(ctx.get_requests("SandboxSetOutboundPolicyV2")) == 7
+    assert servicer.sandbox_outbound_policies[sb.object_id].routes[0].any.redirect.HasField("block")
+
+
+def test_sandbox_set_outbound_policy_stops_waiting_for_a_starting_sandbox(app, servicer, monkeypatch):
+    monkeypatch.setattr(modal.sandbox._common, "_SET_OUTBOUND_POLICY_STARTING_TIMEOUT", 0.0)
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder(
+            "SandboxSetOutboundPolicyV2", _set_outbound_policy_responder(servicer, [Status.UNAVAILABLE] * 6)
+        )
+        with pytest.raises(modal.exception.ServiceError, match="failed"):
+            sb.set_outbound_policy(modal.OutboundPolicy(routes=[modal.OutboundRoute.any()]))
+
+    # The client's usual retries, and no more.
+    assert len(ctx.get_requests("SandboxSetOutboundPolicyV2")) == 4
+
+
+@pytest.mark.parametrize(
+    "status, exception",
+    [
+        (Status.INTERNAL, modal.exception.InternalError),
+        (Status.UNKNOWN, modal.exception.ServiceError),
+        (Status.DEADLINE_EXCEEDED, modal.exception.ServiceError),
+    ],
+)
+def test_sandbox_set_outbound_policy_surfaces_a_failure_on_a_running_sandbox(
+    app, servicer, monkeypatch, status, exception
+):
+    monkeypatch.setattr(modal.sandbox._common, "_SET_OUTBOUND_POLICY_STARTING_INTERVAL", 0.0)
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxSetOutboundPolicyV2", _set_outbound_policy_responder(servicer, [status] * 10))
+        with pytest.raises(exception, match="failed"):
+            sb.set_outbound_policy(modal.OutboundPolicy(routes=[modal.OutboundRoute.any()]))
+
+    # Only the client's usual retries: a failure on a running Sandbox isn't waited out.
+    assert len(ctx.get_requests("SandboxSetOutboundPolicyV2")) == 4
+
+
+@pytest.mark.parametrize(
+    "status, exception",
+    [
+        (Status.INVALID_ARGUMENT, InvalidError),
+        (Status.FAILED_PRECONDITION, modal.exception.ConflictError),
+        (Status.RESOURCE_EXHAUSTED, modal.exception.ResourceExhaustedError),
+        (Status.NOT_FOUND, modal.exception.NotFoundError),
+    ],
+)
+def test_sandbox_set_outbound_policy_surfaces_rejections(app, servicer, status, exception):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    async def rejected(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(status, "rejected")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxSetOutboundPolicyV2", rejected)
+        with pytest.raises(exception, match="rejected"):
+            sb.set_outbound_policy(modal.OutboundPolicy(routes=[modal.OutboundRoute.any()]))
+
+    assert len(ctx.get_requests("SandboxSetOutboundPolicyV2")) == 1
+
+
+@ignore_deprecated_network_apis
+def test_sandbox_update_outbound_policy_rejects_the_route_based_policy(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    with pytest.raises(
+        InvalidError,
+        match=re.escape("got a `modal.OutboundPolicy`; use `Sandbox.set_outbound_policy` instead"),
+    ):
+        sb._experimental_update_outbound_policy(
+            modal.OutboundPolicy(routes=[modal.OutboundRoute.any()])  # type: ignore[arg-type]
+        )
+
+
+@ignore_deprecated_network_apis
 def test_sandbox_update_outbound_policy(app, servicer, client):
     Secret.objects.create("my-secret", {"API_KEY": "k"}, client=client)
     sb = Sandbox.create("sleep", "infinity", app=app)
@@ -4686,7 +5034,10 @@ def test_sandbox_update_outbound_policy(app, servicer, client):
         headers={"Authorization": "Bearer $API_KEY"},
     )
 
-    with servicer.task_command_router.intercept() as tcr_ctx:
+    with (
+        servicer.task_command_router.intercept() as tcr_ctx,
+        pytest.warns(DeprecationError, match="`Sandbox._experimental_update_outbound_policy` .* modal 1.7.0"),
+    ):
         sb._experimental_update_outbound_policy(policy)
 
     (req,) = tcr_ctx.get_requests("TaskSetOutboundPolicy")

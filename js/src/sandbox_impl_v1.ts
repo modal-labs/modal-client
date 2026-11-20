@@ -6,11 +6,13 @@ import {
   SandboxGetTaskIdRequest,
   SandboxRestoreRequest_SandboxNameOverrideType,
   type SandboxTagsGetResponse,
+  type SandboxSetOutboundPolicyRequest,
 } from "../proto/modal_proto/api";
 import type { App } from "./app";
 import {
   type ModalClient,
   type ModalGrpcClient,
+  type RetryOptions,
   isRetryableGrpc,
 } from "./client";
 import {
@@ -41,6 +43,8 @@ import {
   getReturnCode,
   hydrateSandboxSecrets,
   newSandboxImpl,
+  validateOutboundPolicyParams,
+  warnDeprecatedNetworkParams,
 } from "./sandbox";
 import {
   GET_TASK_ID_TIMEOUT_MS,
@@ -71,7 +75,7 @@ import {
   waitForScheduling,
   waitUntilReadyViaTcr,
 } from "./sandbox_common";
-import type { ExperimentalOutboundPolicy } from "./outbound_policy";
+import type { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
 import { SandboxSnapshot } from "./sandbox_snapshot";
 import { mergeEnvIntoSecrets } from "./secret";
 import {
@@ -130,6 +134,7 @@ export class SandboxImplV1 implements SandboxImpl {
     image: Image,
     params: SandboxCreateParams,
   ): Promise<SandboxImpl> {
+    validateOutboundPolicyParams(params);
     await image.build(app);
 
     const mergedSecrets = await mergeEnvIntoSecrets(
@@ -144,7 +149,9 @@ export class SandboxImplV1 implements SandboxImpl {
       client,
       [
         ...mergedSecrets,
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- implements the deprecated parameter
         ...(params.experimentalOutboundPolicy?._secrets() ?? []),
+        ...(params.outboundPolicy?._secrets() ?? []),
       ],
       params.cloudBucketMounts,
     );
@@ -160,6 +167,7 @@ export class SandboxImplV1 implements SandboxImpl {
       image.imageId,
       mergedParams,
     );
+    warnDeprecatedNetworkParams(client.logger, params);
     let createResp;
     try {
       createResp = await client.cpClient.sandboxCreate(createReq);
@@ -455,6 +463,13 @@ export class SandboxImplV1 implements SandboxImpl {
     outboundPolicy: ExperimentalOutboundPolicy,
   ): Promise<void> {
     await updateOutboundPolicyViaTcr(this, outboundPolicy);
+  }
+
+  async setOutboundPolicy(
+    request: SandboxSetOutboundPolicyRequest,
+    options?: RetryOptions,
+  ): Promise<void> {
+    await this.client.cpClient.sandboxSetOutboundPolicy(request, options);
   }
 
   async snapshotFilesystem(

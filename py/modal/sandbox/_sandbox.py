@@ -16,6 +16,7 @@ from modal._tunnel import Tunnel
 from modal.mount import _Mount
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
+from .._experimental_outbound_policy import _OutboundPolicy as _ExperimentalOutboundPolicy
 from .._image import _Image
 from .._object import _get_environment_name, _Object
 from .._outbound_policy import _OutboundPolicy
@@ -44,6 +45,8 @@ from ._common import (
     _image_id_for_mount,
     _is_v1_sandbox_id as _is_v1_sandbox_id,
     _result_returncode,
+    check_experimental_outbound_policy_type,
+    check_outbound_policy_type,
     default_pty_info,
 )
 from ._filesystem import _SandboxFilesystem
@@ -199,7 +202,8 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
-        _experimental_outbound_policy: _OutboundPolicy | None = None,
+        outbound_policy: _OutboundPolicy | None = None,
+        _experimental_outbound_policy: _ExperimentalOutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -251,17 +255,23 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             runtime:
                 Runtime under which the Sandbox executes, or None to let Modal pick.
             block_network: Whether to block network access.
-            outbound_cidr_allowlist: List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
-            outbound_domain_allowlist: List of domain names the sandbox is allowed to access. Supports
-                wildcard prefixes (``*.``); a bare ``"*"`` allows all domains. The outbound policy
-                can be replaced later via `Sandbox._experimental_set_outbound_network_policy`.
+            outbound_cidr_allowlist: Deprecated: use `outbound_policy` with a `modal.OutboundRoute.ip` route.
+                List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+            outbound_domain_allowlist: Deprecated: use `outbound_policy` with a `modal.OutboundRoute.tls` route, or a
+                `modal.OutboundRoute.https` route for HTTPS-specific features.
+                List of domain names the sandbox is allowed to access. Supports wildcard prefixes (``*.``); a
+                bare ``"*"`` allows all domains.
+            outbound_policy: Routes that control which outbound network traffic from the Sandbox is allowed.
+                HTTPS routes can also set headers on matching requests, with values from named Secrets that are
+                never visible inside the Sandbox. See `modal.OutboundPolicy`. Cannot be combined with `block_network`,
+                `outbound_cidr_allowlist`, `outbound_domain_allowlist` or `_experimental_outbound_policy`.
+                Can be replaced later with `Sandbox.set_outbound_policy`.
             inbound_cidr_allowlist:
                 List of CIDRs allowed to connect inbound to the sandbox (encrypted tunnels and connection tokens).
                 If None, all CIDRs are allowed.
-            _experimental_outbound_policy: Configuration for replacing headers in outbound HTTPS requests from
-                the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never
-                visible to the workload. See `modal.experimental.OutboundPolicy`. This API is experimental and
-                may change in the future.
+            _experimental_outbound_policy: Deprecated, and removed in modal 1.7.0: use `outbound_policy` with
+                `modal.OutboundRoute.https(..., header_replacements=...)` routes. Configuration for replacing
+                headers in outbound HTTPS requests from the Sandbox. See `modal.experimental.OutboundPolicy`.
             volumes: Mount points for Modal Volumes and CloudBucketMounts.
             pty:
                 Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the
@@ -341,7 +351,8 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
-            outbound_policy=_experimental_outbound_policy,
+            experimental_outbound_policy=_experimental_outbound_policy,
+            outbound_policy=outbound_policy,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,
@@ -384,7 +395,8 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
         outbound_domain_allowlist: Sequence[str] | None = None,
-        _experimental_outbound_policy: _OutboundPolicy | None = None,
+        outbound_policy: _OutboundPolicy | None = None,
+        _experimental_outbound_policy: _ExperimentalOutboundPolicy | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         i6pn: bool = False,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
@@ -448,7 +460,8 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
-            outbound_policy=_experimental_outbound_policy,
+            experimental_outbound_policy=_experimental_outbound_policy,
+            outbound_policy=outbound_policy,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             i6pn=i6pn,
             volumes=volumes,
@@ -771,6 +784,33 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         self._ensure_attached()
         await self._impl.set_name(name)
 
+    async def set_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
+        """Replace the outbound policy of a running Sandbox.
+
+        The new policy replaces the Sandbox's whole outbound network configuration: the `outbound_policy`
+        it was created or last set with, its `outbound_cidr_allowlist` and `outbound_domain_allowlist`, and
+        its `_experimental_outbound_policy`. The `inbound_cidr_allowlist` is unchanged. Established
+        connections that the new policy doesn't allow are terminated.
+
+        `allow_tls_decryption` is fixed when the Sandbox is created, so the new policy must keep it:
+        `True` if the Sandbox was created with an `outbound_policy` that allows TLS decryption or with an
+        `_experimental_outbound_policy`, `False` otherwise.
+
+        Fails for Sandboxes created with `block_network=True`. Once a Sandbox's outbound policy is set this
+        way, its outbound allowlists and experimental outbound policy can no longer be updated, and it can no
+        longer be memory-snapshotted.
+
+        If the Sandbox is still starting, this waits up to about a minute for it. A Sandbox that has finished
+        can't be updated. Updates are rate limited per Sandbox.
+
+        Args:
+            outbound_policy: The new policy to apply.
+        """
+        self._ensure_attached()
+        check_outbound_policy_type(outbound_policy)
+        outbound_policy._validate()
+        await self._impl.set_outbound_policy(outbound_policy)
+
     async def _experimental_set_outbound_network_policy(
         self,
         *,
@@ -779,6 +819,9 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
     ) -> None:
         """Replace the outbound network policy of a running Sandbox.
 
+        Deprecated: use `Sandbox.set_outbound_policy` instead. This method will be
+        removed in a future release.
+
         Established connections that the new policy no longer permits are
         terminated.
 
@@ -786,8 +829,15 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             outbound_cidr_allowlist: List of CIDRs the Sandbox is allowed to access. If None, all CIDRs are allowed.
             outbound_domain_allowlist: List of domain names the Sandbox is allowed to access. Supports
                 wildcard prefixes (``*.``); a bare ``"*"`` allows all domains.
+
+        Fails once the Sandbox's outbound policy has been set with `Sandbox.set_outbound_policy`.
         """
         self._ensure_attached()
+        deprecation_warning(
+            (2026, 11, 16),
+            "`Sandbox._experimental_set_outbound_network_policy` is deprecated and will be removed in a future "
+            "release. Use `Sandbox.set_outbound_policy` instead.",
+        )
         if outbound_cidr_allowlist is not None or outbound_domain_allowlist is not None:
             network_access = api_pb2.NetworkAccess(
                 network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
@@ -800,10 +850,11 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             )
         await self._impl.set_network_access(network_access)
 
-    async def _experimental_update_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
+    async def _experimental_update_outbound_policy(self, outbound_policy: _ExperimentalOutboundPolicy) -> None:
         """Replace the outbound policy of a running Sandbox.
 
-        This API is experimental and may change in the future.
+        Deprecated: use `Sandbox.set_outbound_policy` instead. This method will be
+        removed in modal 1.7.0.
 
         The new policy replaces all existing policy configuration on the
         Sandbox; build a policy including any existing rules you want to keep.
@@ -811,13 +862,23 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         Only Sandboxes created with an `_experimental_outbound_policy` can be
         updated this way; for Sandboxes created without one this fails, since
         header replacement is only set up at creation time.
+        It also fails once the Sandbox's outbound policy has been set with
+        `Sandbox.set_outbound_policy`.
 
         Args:
             outbound_policy: The new policy to apply.
         """
         self._ensure_attached()
+        deprecation_warning(
+            (2026, 11, 16),
+            "`Sandbox._experimental_update_outbound_policy` is deprecated and will be removed in modal 1.7.0. "
+            "Use `Sandbox.set_outbound_policy` instead.",
+        )
+        check_experimental_outbound_policy_type(
+            outbound_policy, "outbound_policy", use_instead="use `Sandbox.set_outbound_policy` instead"
+        )
         outbound_policy._validate()
-        await self._impl.update_outbound_policy(outbound_policy)
+        await self._impl.update_experimental_outbound_policy(outbound_policy)
 
     async def _experimental_get_exit_snapshot(self, timeout: float | None = None) -> _Image:
         """Get the exit filesystem snapshot image.

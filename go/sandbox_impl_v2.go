@@ -76,7 +76,8 @@ func createSandboxV2(ctx context.Context, client *Client, app *App, image *Image
 		}
 	}
 	resolvable := resolvableSecrets(params.Secrets)
-	if err := hydrateSandboxSecrets(ctx, client, append(slices.Clone(resolvable), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
+	policySecrets := append(params.ExperimentalOutboundPolicy.secrets(), params.OutboundPolicy.secrets()...)
+	if err := hydrateSandboxSecrets(ctx, client, append(slices.Clone(resolvable), policySecrets...), params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 	sources, err := secretSources(params.Secrets, params.Env)
@@ -91,6 +92,7 @@ func createSandboxV2(ctx context.Context, client *Client, app *App, image *Image
 	if err != nil {
 		return nil, err
 	}
+	warnDeprecatedNetworkParams(ctx, client.logger, params)
 
 	createResp, err := client.cpClient.SandboxCreateV2(ctx, req)
 	if err != nil {
@@ -344,6 +346,11 @@ func (s *sandboxImplV2) updateNetworkPolicy(ctx context.Context, params SandboxU
 
 func (s *sandboxImplV2) updateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
 	return updateOutboundPolicyViaTcr(ctx, s, policy)
+}
+
+func (s *sandboxImplV2) setOutboundPolicy(ctx context.Context, req *pb.SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) error {
+	_, err := s.client.cpClient.SandboxSetOutboundPolicyV2(ctx, req, opts...)
+	return err
 }
 
 func (s *sandboxImplV2) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {

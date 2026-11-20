@@ -54,7 +54,8 @@ func createSandboxV1(ctx context.Context, client *Client, app *App, image *Image
 
 	// The SandboxCreate request only carries secret IDs, so any locally-created
 	// Secrets (and env vars) must be hydrated into server-side Secrets first.
-	if err := hydrateSandboxSecrets(ctx, client, append(slices.Clone(mergedSecrets), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
+	policySecrets := append(params.ExperimentalOutboundPolicy.secrets(), params.OutboundPolicy.secrets()...)
+	if err := hydrateSandboxSecrets(ctx, client, append(slices.Clone(mergedSecrets), policySecrets...), params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 
@@ -66,6 +67,7 @@ func createSandboxV1(ctx context.Context, client *Client, app *App, image *Image
 	if err != nil {
 		return nil, err
 	}
+	warnDeprecatedNetworkParams(ctx, client.logger, params)
 
 	createResp, err := client.cpClient.SandboxCreate(ctx, req)
 	if err != nil {
@@ -308,6 +310,11 @@ func (s *sandboxImplV1) updateNetworkPolicy(ctx context.Context, params SandboxU
 
 func (s *sandboxImplV1) updateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
 	return updateOutboundPolicyViaTcr(ctx, s, policy)
+}
+
+func (s *sandboxImplV1) setOutboundPolicy(ctx context.Context, req *pb.SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) error {
+	_, err := s.client.cpClient.SandboxSetOutboundPolicy(ctx, req, opts...)
+	return err
 }
 
 func (s *sandboxImplV1) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {

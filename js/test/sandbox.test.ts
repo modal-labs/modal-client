@@ -30,6 +30,7 @@ import {
   SandboxCreateV2Response,
   SandboxGetExitSnapshotResponse_ErrorCode,
   SandboxRestoreV2Response,
+  SandboxSetOutboundPolicyRequest,
   SandboxSnapshotGetResponse,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
@@ -55,6 +56,8 @@ import {
   InvalidError,
   NotFoundError,
   ExperimentalOutboundPolicy,
+  OutboundPolicy,
+  OutboundRoute,
   ResourceExhaustedError,
   Secret,
   SnapshotCreationError,
@@ -1954,6 +1957,7 @@ test("ExperimentalCreate uses command router access from the create response", a
   const image = mc.images.fromRegistry("alpine:3.21");
   const sb = await mc.sandboxes.experimentalCreate(app, image);
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
   await sb.updateNetworkPolicy({
     outboundCidrAllowlist: ["10.0.0.0/8"],
     outboundDomainAllowlist: [],
@@ -2004,6 +2008,7 @@ test("experimentalFromSnapshot uses command router access from the restore respo
   });
   const sb = await mc.sandboxes.experimentalFromSnapshot(snapshot);
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
   await sb.updateNetworkPolicy({
     outboundCidrAllowlist: ["10.0.0.0/8"],
     outboundDomainAllowlist: [],
@@ -3342,10 +3347,14 @@ test("SandboxDetachForbidsAllOperations", async () => {
   await expect(sb.snapshotFilesystem()).rejects.toThrow(errorMsg);
   await expect(sb.mountImage("/abc")).rejects.toThrow(errorMsg);
   await expect(
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
     sb.updateNetworkPolicy({
       outboundCidrAllowlist: [],
       outboundDomainAllowlist: [],
     }),
+  ).rejects.toThrow(errorMsg);
+  await expect(
+    sb.setOutboundPolicy(new OutboundPolicy({ routes: [OutboundRoute.any()] })),
   ).rejects.toThrow(errorMsg);
   await expect(sb.snapshotDirectory("/abc")).rejects.toThrow(errorMsg);
   await expect(sb.poll()).rejects.toThrow(errorMsg);
@@ -3372,6 +3381,7 @@ test("updateNetworkPolicy sends correct request via mocked command router", asyn
     } as unknown as TaskCommandRouterClientImpl);
   onTestFinished(() => tryInit.mockRestore());
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
   await sb.updateNetworkPolicy({
     outboundCidrAllowlist: ["10.0.0.0/8"],
     outboundDomainAllowlist: ["example.com"],
@@ -3438,13 +3448,16 @@ test("updateNetworkPolicy rejects when a dimension is missing", async () => {
   );
 
   await expect(
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
     sb.updateNetworkPolicy({ outboundDomainAllowlist: ["example.com"] }),
   ).rejects.toThrow("both outboundCidrAllowlist and outboundDomainAllowlist");
 
   await expect(
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
     sb.updateNetworkPolicy({ outboundCidrAllowlist: ["10.0.0.0/8"] }),
   ).rejects.toThrow("both outboundCidrAllowlist and outboundDomainAllowlist");
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
   await expect(sb.updateNetworkPolicy({})).rejects.toThrow(
     "both outboundCidrAllowlist and outboundDomainAllowlist",
   );
@@ -3967,6 +3980,112 @@ test("create sends the outbound policy in the definition", async () => {
   mock.assertExhausted();
 });
 
+test.each([
+  [V1_SANDBOX_ID, "/SandboxSetOutboundPolicy"],
+  [V2_SANDBOX_ID, "/SandboxSetOutboundPolicyV2"],
+])(
+  "setOutboundPolicy on %s sends %s",
+  async (sandboxId: string, rpc: string) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    let request: SandboxSetOutboundPolicyRequest | undefined;
+    mock.handleUnary(rpc, (req: any) => {
+      request = req;
+      return {};
+    });
+
+    const sb = await mc.sandboxes.fromId(sandboxId);
+    await sb.setOutboundPolicy(
+      new OutboundPolicy({
+        allowTlsDecryption: true,
+        routes: [
+          OutboundRoute.https({
+            domains: ["api.example.com"],
+            headerReplacements: [
+              {
+                secret: new Secret("st-1", "my-secret"),
+                headers: { Authorization: "Bearer $API_KEY" },
+              },
+            ],
+          }),
+          OutboundRoute.ip({ cidrs: ["203.0.113.0/24"] }),
+          OutboundRoute.any().block(),
+        ],
+      }),
+    );
+
+    mock.assertExhausted();
+    expect(request?.sandboxId).toBe(sandboxId);
+    expect(request?.outboundPolicy?.tlsDecryption?.allowed).toBe(true);
+    const [https, ip, any] = request?.outboundPolicy?.routes ?? [];
+    expect(https.https?.domains).toEqual(["api.example.com"]);
+    const replacements = https.https?.headerReplacements ?? [];
+    expect(replacements).toHaveLength(1);
+    expect(replacements[0].secretId).toBe("st-1");
+    expect(replacements[0].headers).toEqual({
+      Authorization: "Bearer $API_KEY",
+    });
+    expect(ip.ip?.cidrs).toEqual(["203.0.113.0/24"]);
+    expect(any.any?.redirect?.block).toBeDefined();
+  },
+);
+
+test("setOutboundPolicy waits for a Sandbox that is still starting", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mock.handleUnary("/SandboxSetOutboundPolicyV2", () => {
+    throw new ClientError(
+      "/modal.client.ModalClient/SandboxSetOutboundPolicyV2",
+      Status.UNAVAILABLE,
+      "the Sandbox is still starting",
+    );
+  });
+  mock.handleUnary("/SandboxSetOutboundPolicyV2", () => ({}));
+
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+  await sb.setOutboundPolicy(
+    new OutboundPolicy({ routes: [OutboundRoute.any().block()] }),
+  );
+  mock.assertExhausted();
+});
+
+test.each([Status.INTERNAL, Status.UNKNOWN, Status.DEADLINE_EXCEEDED])(
+  "setOutboundPolicy surfaces %s on a running Sandbox without waiting",
+  async (code: Status) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    mock.handleUnary("/SandboxSetOutboundPolicyV2", () => {
+      throw new ClientError(
+        "/modal.client.ModalClient/SandboxSetOutboundPolicyV2",
+        code,
+        "failed",
+      );
+    });
+
+    const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+    const err = await sb
+      .setOutboundPolicy(new OutboundPolicy({ routes: [OutboundRoute.any()] }))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ClientError);
+    expect((err as ClientError).code).toBe(code);
+    mock.assertExhausted();
+  },
+);
+
+test("setOutboundPolicy rejects an invalid policy without calling Modal", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sb = await mc.sandboxes.fromId(V2_SANDBOX_ID);
+
+  await expect(
+    sb.setOutboundPolicy(
+      new OutboundPolicy({
+        routes: [
+          OutboundRoute.https({ domains: ["example.com"] }),
+          OutboundRoute.any(),
+        ],
+      }),
+    ),
+  ).rejects.toThrow(InvalidError);
+  mock.assertExhausted();
+});
+
 test("experimentalUpdateOutboundPolicy sends correct request via mocked command router", async () => {
   const { mockClient: mc } = createMockModalClients();
   const sb = new Sandbox(
@@ -3975,15 +4094,16 @@ test("experimentalUpdateOutboundPolicy sends correct request via mocked command 
     }),
   );
 
-  const setOutboundPolicy = vi.fn().mockResolvedValue(undefined);
+  const setExperimentalOutboundPolicy = vi.fn().mockResolvedValue(undefined);
   const tryInit = vi
     .spyOn(TaskCommandRouterClientImpl, "tryInit")
     .mockResolvedValue({
-      setOutboundPolicy,
+      setExperimentalOutboundPolicy,
       close: vi.fn(),
     } as unknown as TaskCommandRouterClientImpl);
   onTestFinished(() => tryInit.mockRestore());
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
   await sb.experimentalUpdateOutboundPolicy(
     new ExperimentalOutboundPolicy().withHeaderReplacement({
       domain: "api.example.com",
@@ -3992,8 +4112,8 @@ test("experimentalUpdateOutboundPolicy sends correct request via mocked command 
     }),
   );
 
-  expect(setOutboundPolicy).toHaveBeenCalledTimes(1);
-  const request = setOutboundPolicy.mock
+  expect(setExperimentalOutboundPolicy).toHaveBeenCalledTimes(1);
+  const request = setExperimentalOutboundPolicy.mock
     .calls[0][0] as TaskSetExperimentalOutboundPolicyRequest;
   expect(request.taskId).toBe("ta-v2-123");
   const replacements =

@@ -206,42 +206,52 @@ func (r SandboxRuntime) toProto() (*string, error) {
 
 // SandboxCreateParams are options for creating a Modal Sandbox.
 type SandboxCreateParams struct {
-	CPU                        float64                      // CPU request in fractional, physical cores. Modal Sandboxes support bursting above the CPU request, so most users don't need to specify a request.
-	CPULimit                   float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
-	MemoryMiB                  int                          // Memory request in MiB. Modal Sandboxes support bursting above the memory request, so most users don't need to specify a request.
-	MemoryLimitMiB             int                          // Hard memory limit in MiB. Zero means no limit.
-	Runtime                    SandboxRuntime               // Runtime under which the Sandbox executes, or unset to let Modal pick.
-	GPU                        string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").
-	Timeout                    time.Duration                // Maximum lifetime of the Sandbox. Defaults to 5 minutes. If you pass zero you get the default 5 minutes.
-	IdleTimeout                time.Duration                // The amount of time that a Sandbox can be idle before being terminated.
-	Workdir                    string                       // Working directory of the Sandbox.
-	Command                    []string                     // Command to run in the Sandbox on startup.
-	Env                        map[string]string            // Environment variables to set in the Sandbox.
-	Secrets                    []*Secret                    // Secrets to inject into the Sandbox as environment variables.
-	Volumes                    map[string]*Volume           // Mount points for Volumes.
-	CloudBucketMounts          map[string]*CloudBucketMount // Mount points for cloud buckets.
-	PTY                        bool                         // Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the process) is multiplexed into stdout, and the stderr stream is effectively empty.
-	EncryptedPorts             []int                        // List of encrypted ports to tunnel into the Sandbox, with TLS encryption.
-	H2Ports                    []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
-	UnencryptedPorts           []int                        // List of ports to tunnel into the Sandbox without encryption.
-	BlockNetwork               bool                         // Whether to block all network access from the Sandbox.
-	OutboundCIDRAllowlist      *Allowlist                   // CIDRs the Sandbox is allowed to access. Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
-	OutboundDomainAllowlist    *Allowlist                   // Domain names the Sandbox is allowed to access (supports wildcard prefixes like *.example.com). Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
-	InboundCIDRAllowlist       []string                     // List of CIDRs allowed to connect inbound to the Sandbox (encrypted tunnels and connection tokens). If empty, all IPs are allowed.
-	I6PN                       bool                         // Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can reach each other at their i6pn.modal.local address. Pin every Sandbox in the group to the same specific region. Cannot be used with BlockNetwork.
-	Cloud                      string                       // Cloud provider to run the Sandbox on.
-	Regions                    []string                     // Region(s) to run the Sandbox on.
-	Verbose                    bool                         // Enable verbose logging.
-	Proxy                      *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
-	ReadinessProbe             *Probe                       // Probe used to determine when the Sandbox is ready. If not configured, the Sandbox is ready when it starts.
-	Name                       string                       // Optional name for the Sandbox. Unique within an App.
-	Tags                       map[string]string            // Tags to attach to the Sandbox. Filterable via SandboxList.
-	ExperimentalOptions        map[string]any               // Experimental options. Values must be bool or string. Set "enable_exit_snapshot" to true to capture a filesystem snapshot when the Sandbox exits, retrievable with Sandbox.ExperimentalGetExitSnapshot.
-	CustomDomain               string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
-	IncludeOidcIdentityToken   bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
-	ExperimentalEnableSnapshot bool                         // Enable memory snapshots.
+	CPU               float64                      // CPU request in fractional, physical cores. Modal Sandboxes support bursting above the CPU request, so most users don't need to specify a request.
+	CPULimit          float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
+	MemoryMiB         int                          // Memory request in MiB. Modal Sandboxes support bursting above the memory request, so most users don't need to specify a request.
+	MemoryLimitMiB    int                          // Hard memory limit in MiB. Zero means no limit.
+	Runtime           SandboxRuntime               // Runtime under which the Sandbox executes, or unset to let Modal pick.
+	GPU               string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").
+	Timeout           time.Duration                // Maximum lifetime of the Sandbox. Defaults to 5 minutes. If you pass zero you get the default 5 minutes.
+	IdleTimeout       time.Duration                // The amount of time that a Sandbox can be idle before being terminated.
+	Workdir           string                       // Working directory of the Sandbox.
+	Command           []string                     // Command to run in the Sandbox on startup.
+	Env               map[string]string            // Environment variables to set in the Sandbox.
+	Secrets           []*Secret                    // Secrets to inject into the Sandbox as environment variables.
+	Volumes           map[string]*Volume           // Mount points for Volumes.
+	CloudBucketMounts map[string]*CloudBucketMount // Mount points for cloud buckets.
+	PTY               bool                         // Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the process) is multiplexed into stdout, and the stderr stream is effectively empty.
+	EncryptedPorts    []int                        // List of encrypted ports to tunnel into the Sandbox, with TLS encryption.
+	H2Ports           []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
+	UnencryptedPorts  []int                        // List of ports to tunnel into the Sandbox without encryption.
+	BlockNetwork      bool                         // Whether to block all network access from the Sandbox.
+	// CIDRs the Sandbox is allowed to access. Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
+	//
+	// Deprecated: Use OutboundPolicy with an OutboundRouteIP instead. OutboundCIDRAllowlist will be removed in a future release.
+	OutboundCIDRAllowlist *Allowlist
+	// Domain names the Sandbox is allowed to access (supports wildcard prefixes like *.example.com). Non-nil enables allowlist mode; nil means open access. Cannot be used with BlockNetwork.
+	//
+	// Deprecated: Use OutboundPolicy with an OutboundRouteTLS instead, or an OutboundRouteHTTPS for HTTPS-specific features. OutboundDomainAllowlist will be removed in a future release.
+	OutboundDomainAllowlist    *Allowlist
+	InboundCIDRAllowlist       []string          // List of CIDRs allowed to connect inbound to the Sandbox (encrypted tunnels and connection tokens). If empty, all IPs are allowed.
+	I6PN                       bool              // Enable private IPv6 networking (i6pn) so Sandboxes in the same workspace can reach each other at their i6pn.modal.local address. Pin every Sandbox in the group to the same specific region. Cannot be used with BlockNetwork.
+	Cloud                      string            // Cloud provider to run the Sandbox on.
+	Regions                    []string          // Region(s) to run the Sandbox on.
+	Verbose                    bool              // Enable verbose logging.
+	Proxy                      *Proxy            // Reference to a Modal Proxy to use in front of this Sandbox.
+	ReadinessProbe             *Probe            // Probe used to determine when the Sandbox is ready. If not configured, the Sandbox is ready when it starts.
+	Name                       string            // Optional name for the Sandbox. Unique within an App.
+	Tags                       map[string]string // Tags to attach to the Sandbox. Filterable via SandboxList.
+	ExperimentalOptions        map[string]any    // Experimental options. Values must be bool or string. Set "enable_exit_snapshot" to true to capture a filesystem snapshot when the Sandbox exits, retrievable with Sandbox.ExperimentalGetExitSnapshot.
+	CustomDomain               string            // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
+	IncludeOidcIdentityToken   bool              // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
+	ExperimentalEnableSnapshot bool              // Enable memory snapshots.
 	ExperimentalPersistent     bool
-	ExperimentalOutboundPolicy *ExperimentalOutboundPolicy // EXPERIMENTAL: the API is subject to change. Configuration for replacing headers in outbound HTTPS requests from the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never visible to the workload.
+	// Configuration for replacing headers in outbound HTTPS requests from the Sandbox. Secrets referenced by the policy are resolved outside the Sandbox and are never visible to the workload.
+	//
+	// Deprecated: Use OutboundPolicy with OutboundRouteHTTPS routes that set HeaderReplacements instead. ExperimentalOutboundPolicy will be removed in version 0.12.0.
+	ExperimentalOutboundPolicy *ExperimentalOutboundPolicy
+	OutboundPolicy             *OutboundPolicy // Route-based outbound network policy. Nil keeps all outbound traffic allowed. Cannot be used with BlockNetwork, OutboundCIDRAllowlist, OutboundDomainAllowlist or ExperimentalOutboundPolicy. Can be replaced later with Sandbox.SetOutboundPolicy.
 }
 
 // buildOutboundNetworkAccess builds the outbound network policy for the given
@@ -285,6 +295,75 @@ func buildOutboundNetworkAccess(blockNetwork bool, outboundCIDRAllowlist, outbou
 }
 
 // buildSandboxCreateRequestProto builds a SandboxCreateRequest proto from options.
+// validateOutboundPolicies checks the outbound policies in params and the
+// options they can't be combined with. Create calls it before any server call,
+// since hydrating Secrets can create Secrets on the server.
+func validateOutboundPolicies(params *SandboxCreateParams) error {
+	if params.ExperimentalOutboundPolicy != nil {
+		if err := params.ExperimentalOutboundPolicy.validate(); err != nil {
+			return err
+		}
+		if params.BlockNetwork {
+			return fmt.Errorf("ExperimentalOutboundPolicy cannot be used when BlockNetwork is enabled")
+		}
+		if allowlist := params.OutboundDomainAllowlist; allowlist != nil && len(allowlist.Entries) > 0 {
+			return fmt.Errorf("ExperimentalOutboundPolicy cannot be used with OutboundDomainAllowlist")
+		}
+	}
+	if params.OutboundPolicy != nil {
+		if err := params.OutboundPolicy.validate(); err != nil {
+			return err
+		}
+		switch {
+		case params.BlockNetwork:
+			return fmt.Errorf("OutboundPolicy cannot be used when BlockNetwork is enabled; " +
+				"end Routes with OutboundRouteAny{Redirect: OutboundBlock{}} instead")
+		case params.OutboundCIDRAllowlist != nil:
+			return fmt.Errorf("OutboundPolicy cannot be used with OutboundCIDRAllowlist; " +
+				"use an OutboundRouteIP, followed by OutboundRouteAny{Redirect: OutboundBlock{}}, instead")
+		case params.OutboundDomainAllowlist != nil:
+			return fmt.Errorf("OutboundPolicy cannot be used with OutboundDomainAllowlist; " +
+				"use an OutboundRouteTLS, followed by OutboundRouteAny{Redirect: OutboundBlock{}}, instead")
+		case params.ExperimentalOutboundPolicy != nil:
+			return fmt.Errorf("OutboundPolicy cannot be used with ExperimentalOutboundPolicy; " +
+				"use OutboundRouteHTTPS routes with HeaderReplacements in a policy with AllowTLSDecryption instead")
+		}
+	}
+	return nil
+}
+
+// warnedDeprecations holds the deprecated names already warned about in this process.
+var warnedDeprecations sync.Map
+
+// warnDeprecated logs message the first time the deprecated name is used in this process.
+func warnDeprecated(ctx context.Context, logger *slog.Logger, name, message string) {
+	if logger == nil {
+		return
+	}
+	if _, warned := warnedDeprecations.LoadOrStore(name, struct{}{}); !warned {
+		logger.WarnContext(ctx, message)
+	}
+}
+
+// warnDeprecatedNetworkParams warns about the outbound network parameters that OutboundPolicy replaces.
+func warnDeprecatedNetworkParams(ctx context.Context, logger *slog.Logger, params *SandboxCreateParams) {
+	if params == nil {
+		return
+	}
+	if params.OutboundCIDRAllowlist != nil {
+		warnDeprecated(ctx, logger, "OutboundCIDRAllowlist",
+			"OutboundCIDRAllowlist is deprecated and will be removed in a future release; use OutboundPolicy with an OutboundRouteIP instead")
+	}
+	if params.OutboundDomainAllowlist != nil {
+		warnDeprecated(ctx, logger, "OutboundDomainAllowlist",
+			"OutboundDomainAllowlist is deprecated and will be removed in a future release; use OutboundPolicy with an OutboundRouteTLS instead, or an OutboundRouteHTTPS for HTTPS-specific features")
+	}
+	if params.ExperimentalOutboundPolicy != nil {
+		warnDeprecated(ctx, logger, "ExperimentalOutboundPolicy",
+			"ExperimentalOutboundPolicy is deprecated and will be removed in version 0.12.0; use OutboundPolicy with OutboundRouteHTTPS routes that set HeaderReplacements instead")
+	}
+}
+
 func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateParams) (*pb.SandboxCreateRequest, error) {
 	gpuConfig, err := parseGPUConfig(params.GPU)
 	if err != nil {
@@ -362,16 +441,8 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
 	}
-	if params.ExperimentalOutboundPolicy != nil {
-		if err := params.ExperimentalOutboundPolicy.validate(); err != nil {
-			return nil, err
-		}
-		if params.BlockNetwork {
-			return nil, fmt.Errorf("ExperimentalOutboundPolicy cannot be used when BlockNetwork is enabled")
-		}
-		if allowlist := params.OutboundDomainAllowlist; allowlist != nil && len(allowlist.Entries) > 0 {
-			return nil, fmt.Errorf("ExperimentalOutboundPolicy cannot be used with OutboundDomainAllowlist")
-		}
+	if err := validateOutboundPolicies(&params); err != nil {
+		return nil, err
 	}
 	networkAccess, err := buildOutboundNetworkAccess(params.BlockNetwork, params.OutboundCIDRAllowlist, params.OutboundDomainAllowlist)
 	if err != nil {
@@ -509,6 +580,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			Workdir:                    workdir,
 			NetworkAccess:              networkAccess,
 			ExperimentalOutboundPolicy: params.ExperimentalOutboundPolicy.toProto(),
+			OutboundPolicy:             params.OutboundPolicy.toProto(),
 			Resources:                  resourcesBuilder.Build(),
 			VolumeMounts:               volumeMounts,
 			CloudBucketMounts:          cloudBucketMounts,
@@ -553,6 +625,9 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
 	if params == nil {
 		params = &SandboxCreateParams{}
+	}
+	if err := validateOutboundPolicies(params); err != nil {
+		return nil, err
 	}
 	impl, err := implCreateForParams(s.client, params)(ctx, s.client, app, image, params)
 	if err != nil {
@@ -600,6 +675,9 @@ func implCreateForParams(client *Client, params *SandboxCreateParams) sandboxCre
 func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
 	if params == nil {
 		params = &SandboxCreateParams{}
+	}
+	if err := validateOutboundPolicies(params); err != nil {
+		return nil, err
 	}
 	create := createSandboxV2
 	if params.ExperimentalPersistent {
@@ -1506,6 +1584,10 @@ func buildUpdateNetworkPolicyProto(taskID string, params SandboxUpdateNetworkPol
 // UpdateNetworkPolicy updates the outbound network policy of a running Sandbox.
 //
 // Established connections that the new policy no longer permits are terminated.
+// Fails once the Sandbox's outbound policy has been set with
+// Sandbox.SetOutboundPolicy.
+//
+// Deprecated: Use Sandbox.SetOutboundPolicy instead. UpdateNetworkPolicy will be removed in a future release.
 func (sb *Sandbox) UpdateNetworkPolicy(ctx context.Context, params *SandboxUpdateNetworkPolicyParams) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err
@@ -1516,17 +1598,74 @@ func (sb *Sandbox) UpdateNetworkPolicy(ctx context.Context, params *SandboxUpdat
 	if params.OutboundCIDRAllowlist == nil || params.OutboundDomainAllowlist == nil {
 		return InvalidError{Exception: "UpdateNetworkPolicy currently requires both OutboundCIDRAllowlist and OutboundDomainAllowlist to be set"}
 	}
+	warnDeprecated(ctx, sb.client.logger, "UpdateNetworkPolicy",
+		"Sandbox.UpdateNetworkPolicy is deprecated and will be removed in a future release; use Sandbox.SetOutboundPolicy instead")
 	return sb.impl.updateNetworkPolicy(ctx, *params)
 }
 
-// ExperimentalUpdateOutboundPolicy replaces the outbound policy of a running Sandbox.
+// SetOutboundPolicy replaces the outbound policy of a running Sandbox.
 //
-// EXPERIMENTAL: the API is subject to change.
+// The new policy replaces the Sandbox's whole outbound network configuration:
+// the OutboundPolicy it was created or last set with, its OutboundCIDRAllowlist
+// and OutboundDomainAllowlist, and its ExperimentalOutboundPolicy. The
+// InboundCIDRAllowlist is unchanged. Established connections that the new
+// policy doesn't allow are terminated.
+//
+// AllowTLSDecryption is fixed when the Sandbox is created, so the new policy
+// must keep it: true if the Sandbox was created with an OutboundPolicy that
+// allows TLS decryption or with an ExperimentalOutboundPolicy, false
+// otherwise.
+//
+// Fails for Sandboxes created with BlockNetwork. Once a Sandbox's outbound
+// policy is set this way, its outbound allowlists and experimental outbound
+// policy can no longer be updated, and it can no longer be memory-snapshotted.
+//
+// If the Sandbox is still starting, this waits up to about a minute for it. A
+// Sandbox that has finished can't be updated. Updates are rate limited per
+// Sandbox.
+func (sb *Sandbox) SetOutboundPolicy(ctx context.Context, policy *OutboundPolicy) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if policy == nil {
+		return InvalidError{Exception: "SetOutboundPolicy requires an OutboundPolicy"}
+	}
+	if err := policy.validate(); err != nil {
+		return err
+	}
+	if err := hydrateSecrets(ctx, sb.client, policy.secrets()); err != nil {
+		return err
+	}
+	req := pb.SandboxSetOutboundPolicyRequest_builder{
+		SandboxId:      sb.SandboxID,
+		OutboundPolicy: policy.toProto(),
+	}.Build()
+	deadline := time.Now().Add(setOutboundPolicyStartingTimeout)
+	for {
+		err := sb.impl.setOutboundPolicy(ctx, req)
+		// A Sandbox that is still starting is unavailable until it can apply
+		// the policy.
+		if status.Code(err) != codes.Unavailable || time.Now().After(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(setOutboundPolicyStartingInterval):
+		}
+	}
+}
+
+// ExperimentalUpdateOutboundPolicy replaces the outbound policy of a running Sandbox.
 //
 // The new policy replaces all existing policy configuration on the Sandbox;
 // build a policy including any existing rules you want to keep.
 //
 // Only Sandboxes created with an ExperimentalOutboundPolicy can be updated this way.
+// It also fails once the Sandbox's outbound policy has been set with
+// Sandbox.SetOutboundPolicy.
+//
+// Deprecated: Use Sandbox.SetOutboundPolicy instead. ExperimentalUpdateOutboundPolicy will be removed in version 0.12.0.
 func (sb *Sandbox) ExperimentalUpdateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err
@@ -1537,6 +1676,8 @@ func (sb *Sandbox) ExperimentalUpdateOutboundPolicy(ctx context.Context, policy 
 	if err := policy.validate(); err != nil {
 		return err
 	}
+	warnDeprecated(ctx, sb.client.logger, "ExperimentalUpdateOutboundPolicy",
+		"Sandbox.ExperimentalUpdateOutboundPolicy is deprecated and will be removed in version 0.12.0; use Sandbox.SetOutboundPolicy instead")
 	return sb.impl.updateOutboundPolicy(ctx, policy)
 }
 

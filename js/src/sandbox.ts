@@ -17,6 +17,7 @@ import {
   Probe as ProbeProto,
   SecretSource,
   SandboxRestoreRequest_SandboxNameOverrideType,
+  SandboxSetOutboundPolicyRequest,
 } from "../proto/modal_proto/api";
 import {
   TaskExecStartRequest,
@@ -29,8 +30,12 @@ import {
   TaskCommandRouterClientImpl,
   type StdinSource,
 } from "./task_command_router_client";
-import { ExperimentalOutboundPolicy } from "./outbound_policy";
+import { ClientError, Status } from "nice-grpc";
+import { setTimeout } from "timers/promises";
+import { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
+import type { OutboundPolicy } from "./outbound_policy";
 import { type ModalClient } from "./client";
+import type { Logger } from "./logger";
 import { SandboxFilesystem } from "./sandbox_fs";
 import { SidecarService } from "./sandbox_sidecar";
 import {
@@ -64,6 +69,13 @@ import { SandboxImplPersistent } from "./sandbox_impl_persistent";
 // How long create() waits for capacity before giving up.
 /** @internal @hidden */
 export const SANDBOX_SCHEDULING_TIMEOUT_MS = 21 * 60 * 1000;
+
+// How long `Sandbox.setOutboundPolicy()` keeps trying while the Sandbox is
+// still starting, which the server and the worker report as UNAVAILABLE, and
+// how long it waits between tries. Other errors get the client's usual few
+// retries, so a failure on a running Sandbox surfaces within seconds.
+const SET_OUTBOUND_POLICY_STARTING_TIMEOUT_MS = 60 * 1000;
+const SET_OUTBOUND_POLICY_STARTING_INTERVAL_MS = 1000;
 
 const TTL_NO_EXPIRY_SENTINEL = -1;
 const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16;
@@ -354,17 +366,27 @@ export type SandboxCreateParams = {
   /** Whether to block all network access from the Sandbox. */
   blockNetwork?: boolean;
 
-  /** List of CIDRs the Sandbox is allowed to access. If not set, all CIDRs are allowed. Cannot be used with blockNetwork. */
+  /** List of CIDRs the Sandbox is allowed to access. If not set, all CIDRs are allowed. Cannot be used with blockNetwork.
+   * @deprecated Use `outboundPolicy` with an `OutboundRoute.ip({ cidrs: [...] })` route instead. Will be removed in a future release. */
   outboundCidrAllowlist?: string[];
 
-  /** List of domain names the Sandbox is allowed to access. Supports wildcard prefixes (`*.example.com`). Cannot be used with blockNetwork. */
+  /** List of domain names the Sandbox is allowed to access. Supports wildcard prefixes (`*.example.com`). Cannot be used with blockNetwork.
+   * @deprecated Use `outboundPolicy` with an `OutboundRoute.tls({ domains: [...] })` route instead, or an
+   * `OutboundRoute.https({ domains: [...] })` route for HTTPS-specific features. Will be removed in a future release. */
   outboundDomainAllowlist?: string[];
 
   /** Configuration for replacing headers in outbound HTTPS requests from the Sandbox.
    * Secrets referenced by the policy are resolved outside the Sandbox and are never
    * visible to the workload. See {@link ExperimentalOutboundPolicy}.
-   * EXPERIMENTAL: the API is subject to change. */
+   * @deprecated Use `outboundPolicy` with `OutboundRoute.https({ domains: [...], headerReplacements: [...] })`
+   * routes instead. Will be removed in version 0.12.0. */
   experimentalOutboundPolicy?: ExperimentalOutboundPolicy;
+
+  /** Ordered routing rules for the Sandbox's outbound traffic. See {@link OutboundPolicy}.
+   * Cannot be used with blockNetwork, outboundCidrAllowlist, outboundDomainAllowlist or
+   * experimentalOutboundPolicy. Can be replaced later with
+   * {@link Sandbox#setOutboundPolicy Sandbox.setOutboundPolicy()}. */
+  outboundPolicy?: OutboundPolicy;
 
   /** List of CIDRs allowed to connect inbound to the Sandbox (encrypted tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
   inboundCidrAllowlist?: string[];
@@ -454,6 +476,94 @@ export function buildOutboundNetworkAccess(
     allowedCidrs: [],
     allowedDomains: [],
   });
+}
+
+/**
+ * Check that `params.outboundPolicy` is valid and isn't combined with
+ * conflicting network options. Throws `InvalidError` otherwise.
+ * @internal
+ * @hidden
+ */
+export function validateOutboundPolicyParams(
+  params: SandboxCreateParams,
+): void {
+  if (params.outboundPolicy === undefined) {
+    return;
+  }
+  /* eslint-disable @typescript-eslint/no-deprecated -- rejects the deprecated parameters alongside outboundPolicy */
+  const conflicting: [string, boolean, string][] = [
+    [
+      "blockNetwork",
+      !!params.blockNetwork,
+      "end the policy's routes with `OutboundRoute.any().block()` instead",
+    ],
+    [
+      "outboundCidrAllowlist",
+      params.outboundCidrAllowlist !== undefined,
+      "use an `OutboundRoute.ip({ cidrs: [...] })` route, followed by `OutboundRoute.any().block()`, instead",
+    ],
+    [
+      "outboundDomainAllowlist",
+      params.outboundDomainAllowlist !== undefined,
+      "use an `OutboundRoute.tls({ domains: [...] })` route, followed by `OutboundRoute.any().block()`, instead",
+    ],
+    [
+      "experimentalOutboundPolicy",
+      params.experimentalOutboundPolicy !== undefined,
+      "use `OutboundRoute.https({ domains: [...], headerReplacements: [...] })` routes " +
+        "in a policy with `allowTlsDecryption: true` instead",
+    ],
+  ];
+  /* eslint-enable @typescript-eslint/no-deprecated */
+  for (const [name, isSet, suggestion] of conflicting) {
+    if (isSet) {
+      throw new InvalidError(
+        `outboundPolicy cannot be used with ${name}; ${suggestion}`,
+      );
+    }
+  }
+  params.outboundPolicy._validate();
+}
+
+const warnedDeprecations = new Set<string>();
+
+/** Logs `message` the first time the deprecated `name` is used in this process. */
+function warnDeprecated(logger: Logger, name: string, message: string): void {
+  if (warnedDeprecations.has(name)) {
+    return;
+  }
+  warnedDeprecations.add(name);
+  logger.warn(message);
+}
+
+/** Warns about the outbound network parameters that `outboundPolicy` replaces. */
+export function warnDeprecatedNetworkParams(
+  logger: Logger,
+  params: SandboxCreateParams,
+): void {
+  /* eslint-disable @typescript-eslint/no-deprecated -- checks for the deprecated parameters */
+  if (params.outboundCidrAllowlist !== undefined) {
+    warnDeprecated(
+      logger,
+      "outboundCidrAllowlist",
+      "outboundCidrAllowlist is deprecated and will be removed in a future release; use outboundPolicy with an OutboundRoute.ip({ cidrs: [...] }) route instead.",
+    );
+  }
+  if (params.outboundDomainAllowlist !== undefined) {
+    warnDeprecated(
+      logger,
+      "outboundDomainAllowlist",
+      "outboundDomainAllowlist is deprecated and will be removed in a future release; use outboundPolicy with an OutboundRoute.tls({ domains: [...] }) route instead, or an OutboundRoute.https({ domains: [...] }) route for HTTPS-specific features.",
+    );
+  }
+  if (params.experimentalOutboundPolicy !== undefined) {
+    warnDeprecated(
+      logger,
+      "experimentalOutboundPolicy",
+      "experimentalOutboundPolicy is deprecated and will be removed in version 0.12.0; use outboundPolicy with OutboundRoute.https({ domains: [...], headerReplacements: [...] }) routes instead.",
+    );
+  }
+  /* eslint-enable @typescript-eslint/no-deprecated */
 }
 
 export async function buildSandboxCreateRequestProto(
@@ -559,6 +669,8 @@ export async function buildSandboxCreateRequestProto(
       );
     }
   }
+  validateOutboundPolicyParams(params);
+  /* eslint-disable @typescript-eslint/no-deprecated -- implements the deprecated parameters */
   if (params.experimentalOutboundPolicy !== undefined) {
     params.experimentalOutboundPolicy._validate();
     if (params.blockNetwork) {
@@ -580,6 +692,7 @@ export async function buildSandboxCreateRequestProto(
     params.outboundCidrAllowlist,
     params.outboundDomainAllowlist,
   );
+  /* eslint-enable @typescript-eslint/no-deprecated */
 
   const schedulerPlacement: SchedulerPlacement | undefined = params.regions
     ?.length
@@ -677,7 +790,9 @@ export async function buildSandboxCreateRequestProto(
           : undefined,
       workdir: params.workdir ?? undefined,
       networkAccess,
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- implements the deprecated parameter
       experimentalOutboundPolicy: params.experimentalOutboundPolicy?._toProto(),
+      outboundPolicy: params.outboundPolicy?._toProto(),
       resources: Resources.create({
         milliCpu,
         milliCpuMax,
@@ -1799,13 +1914,22 @@ export class Sandbox {
    * Updates the outbound network policy of a running Sandbox.
    *
    * Established connections that the new policy no longer permits are terminated.
+   * Fails once the Sandbox's outbound policy has been set with
+   * {@link Sandbox#setOutboundPolicy Sandbox.setOutboundPolicy()}.
    *
    * @param params - Both `outboundCidrAllowlist` and `outboundDomainAllowlist` must be provided.
+   * @deprecated Use {@link Sandbox#setOutboundPolicy Sandbox.setOutboundPolicy()} instead. Will be removed in a
+   * future release.
    */
   async updateNetworkPolicy(
     params: SandboxUpdateNetworkPolicyParams,
   ): Promise<void> {
     this.#ensureAttached();
+    warnDeprecated(
+      this.#client.logger,
+      "updateNetworkPolicy",
+      "Sandbox.updateNetworkPolicy() is deprecated and will be removed in a future release; use Sandbox.setOutboundPolicy() instead.",
+    );
     if (
       params.outboundCidrAllowlist === undefined ||
       params.outboundDomainAllowlist === undefined
@@ -1820,7 +1944,59 @@ export class Sandbox {
   /**
    * Replace the outbound policy of a running Sandbox.
    *
-   * EXPERIMENTAL: the API is subject to change.
+   * The new policy replaces the Sandbox's whole outbound network
+   * configuration: the `outboundPolicy` it was created or last set with, its
+   * `outboundCidrAllowlist` and `outboundDomainAllowlist`, and its
+   * `experimentalOutboundPolicy`. The `inboundCidrAllowlist` is unchanged.
+   * Established connections that the new policy doesn't allow are
+   * terminated.
+   *
+   * `allowTlsDecryption` is fixed when the Sandbox is created, so the new
+   * policy must keep it: `true` if the Sandbox was created with an
+   * `outboundPolicy` that allows TLS decryption or with an
+   * `experimentalOutboundPolicy`, `false` otherwise.
+   *
+   * Fails for Sandboxes created with `blockNetwork: true`. Once a Sandbox's
+   * outbound policy is set this way, its outbound allowlists and
+   * experimental outbound policy can no longer be updated, and it can no
+   * longer be memory-snapshotted.
+   *
+   * If the Sandbox is still starting, this waits up to about a minute for it.
+   * A Sandbox that has finished can't be updated. Updates are rate limited
+   * per Sandbox.
+   */
+  async setOutboundPolicy(outboundPolicy: OutboundPolicy): Promise<void> {
+    this.#ensureAttached();
+    outboundPolicy._validate();
+    await hydrateSecrets(this.#impl.client, outboundPolicy._secrets());
+
+    const req = SandboxSetOutboundPolicyRequest.create({
+      sandboxId: this.sandboxId,
+      outboundPolicy: outboundPolicy._toProto(),
+    });
+    const deadline = Date.now() + SET_OUTBOUND_POLICY_STARTING_TIMEOUT_MS;
+    for (;;) {
+      try {
+        await this.#impl.setOutboundPolicy(req);
+        return;
+      } catch (err) {
+        // A Sandbox that is still starting is unavailable until it can apply
+        // the policy.
+        const starting =
+          err instanceof ClientError && err.code === Status.UNAVAILABLE;
+        if (!starting || Date.now() >= deadline) {
+          throw err;
+        }
+      }
+      await setTimeout(SET_OUTBOUND_POLICY_STARTING_INTERVAL_MS);
+    }
+  }
+
+  /**
+   * Replace the outbound policy of a running Sandbox.
+   *
+   * @deprecated Use {@link Sandbox#setOutboundPolicy Sandbox.setOutboundPolicy()} instead. Will be removed in
+   * version 0.12.0.
    *
    * The new policy replaces all existing policy configuration on the
    * Sandbox; build a policy including any existing rules you want to keep.
@@ -1828,11 +2004,18 @@ export class Sandbox {
    * Only Sandboxes created with an `experimentalOutboundPolicy` can be updated this
    * way; for Sandboxes created without one this fails, since header
    * replacement is only set up at creation time.
+   * It also fails once the Sandbox's outbound policy has been set with
+   * {@link Sandbox#setOutboundPolicy Sandbox.setOutboundPolicy()}.
    */
   async experimentalUpdateOutboundPolicy(
     outboundPolicy: ExperimentalOutboundPolicy,
   ): Promise<void> {
     this.#ensureAttached();
+    warnDeprecated(
+      this.#client.logger,
+      "experimentalUpdateOutboundPolicy",
+      "Sandbox.experimentalUpdateOutboundPolicy() is deprecated and will be removed in version 0.12.0; use Sandbox.setOutboundPolicy() instead.",
+    );
     outboundPolicy._validate();
     await this.#impl.updateOutboundPolicy(outboundPolicy);
   }

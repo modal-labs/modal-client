@@ -8,10 +8,11 @@ import {
   SandboxGetTaskIdRequest,
   SandboxRestoreRequest_SandboxNameOverrideType,
   type SandboxTagsGetResponse,
+  type SandboxSetOutboundPolicyRequest,
 } from "../proto/modal_proto/api";
 import { TaskSnapshotMemoryRequest } from "../proto/modal_proto/task_command_router";
 import type { App } from "./app";
-import { type ModalClient } from "./client";
+import { type ModalClient, type RetryOptions } from "./client";
 import { parseBooleanFlag } from "./config";
 import {
   AlreadyExistsError,
@@ -41,6 +42,8 @@ import {
   getReturnCode,
   hydrateSandboxSecrets,
   newSandboxImpl,
+  validateOutboundPolicyParams,
+  warnDeprecatedNetworkParams,
 } from "./sandbox";
 import {
   GET_TASK_ID_TIMEOUT_MS,
@@ -71,7 +74,7 @@ import {
   waitForScheduling,
   waitUntilReadyViaTcr,
 } from "./sandbox_common";
-import type { ExperimentalOutboundPolicy } from "./outbound_policy";
+import type { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
 import { SandboxSnapshot } from "./sandbox_snapshot";
 import { resolvableSecrets, secretSources, validateEnvVarKeys } from "./secret";
 import {
@@ -144,6 +147,7 @@ export class SandboxImplV2 implements SandboxImpl {
     image: Image,
     params: SandboxCreateParams,
   ): Promise<SandboxImpl> {
+    validateOutboundPolicyParams(params);
     await image.build(app);
 
     // Secrets and params.env are sent as ordered secret sources, so unlike
@@ -157,7 +161,12 @@ export class SandboxImplV2 implements SandboxImpl {
 
     await hydrateSandboxSecrets(
       client,
-      [...resolvable, ...(params.experimentalOutboundPolicy?._secrets() ?? [])],
+      [
+        ...resolvable,
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- implements the deprecated parameter
+        ...(params.experimentalOutboundPolicy?._secrets() ?? []),
+        ...(params.outboundPolicy?._secrets() ?? []),
+      ],
       params.cloudBucketMounts,
     );
 
@@ -167,6 +176,7 @@ export class SandboxImplV2 implements SandboxImpl {
       { ...params, secrets: resolvable },
       secretSources(params.secrets ?? [], params.env),
     );
+    warnDeprecatedNetworkParams(client.logger, params);
     let createResp;
     try {
       createResp = await client.cpClient.sandboxCreateV2(createReq);
@@ -485,6 +495,13 @@ export class SandboxImplV2 implements SandboxImpl {
     outboundPolicy: ExperimentalOutboundPolicy,
   ): Promise<void> {
     await updateOutboundPolicyViaTcr(this, outboundPolicy);
+  }
+
+  async setOutboundPolicy(
+    request: SandboxSetOutboundPolicyRequest,
+    options?: RetryOptions,
+  ): Promise<void> {
+    await this.client.cpClient.sandboxSetOutboundPolicyV2(request, options);
   }
 
   async snapshotFilesystem(

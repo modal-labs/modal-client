@@ -17,8 +17,6 @@ var (
 	outboundPolicyHeaderNameRe = regexp.MustCompile(`^[A-Za-z0-9!#$%&'*+.^_` + "`" + `|~-]+$`)
 )
 
-const maxOutboundPolicyHeaderReplacements = 25
-
 func hasInvalidHeaderValueChar(value string) bool {
 	return strings.ContainsFunc(value, func(r rune) bool {
 		return (r < 0x20 && r != '\t') || r == 0x7F
@@ -46,135 +44,315 @@ func templateReferencesKey(template string) bool {
 	return false
 }
 
-// ExperimentalOutboundPolicyHeaderReplacement is a single domain-scoped group of header
-// replacements.
-type ExperimentalOutboundPolicyHeaderReplacement struct {
-	// Domain the replacements are scoped to. Supports "*." wildcard prefixes
-	// (matching the apex domain and subdomains) and a bare "*".
-	Domain string
-	// Headers maps header names to values. Values support `$KEY` templates
-	// referencing keys in the replacement's Secret. Literal `$` characters are
-	// written `$$`.
+// OutboundPolicy is a Sandbox's route-based outbound network policy.
+//
+// Routes are evaluated in order, and the first route that matches decides
+// what happens to the traffic: it goes to its original destination. The last
+// route must be the policy's only OutboundRouteAny, which matches all traffic
+// no other route matched and either lets it through or blocks it.
+//
+//	policy := modal.OutboundPolicy{
+//		AllowTLSDecryption: true,
+//		Routes: []modal.OutboundRoute{
+//			modal.OutboundRouteHTTPS{
+//				Domains: []string{"api.example.com"},
+//				HeaderReplacements: []modal.OutboundHeaderReplacement{
+//					{Secret: secret, Headers: map[string]string{"Authorization": "Bearer $API_TOKEN"}},
+//				},
+//			},
+//			modal.OutboundRouteTLS{Domains: []string{"github.com", "*.github.com"}},
+//			modal.OutboundRouteIP{CIDRs: []string{"203.0.113.0/24"}},
+//			modal.OutboundRouteAny{Redirect: modal.OutboundBlock{}},
+//		},
+//	}
+type OutboundPolicy struct {
+	// AllowTLSDecryption allows Modal to decrypt the Sandbox's TLS traffic on
+	// routes that need it, by generating a certificate authority for the
+	// Sandbox and attempting to make the Sandbox trust it. It decrypts nothing
+	// on its own. OutboundRouteHTTPS requires it. It is fixed when the Sandbox
+	// is created. Sandboxes that allow TLS decryption don't support memory
+	// snapshots.
+	AllowTLSDecryption bool
+	Routes             []OutboundRoute
+}
+
+// OutboundRoute is a route in an OutboundPolicy: an OutboundRouteTLS,
+// OutboundRouteHTTPS, OutboundRouteIP or OutboundRouteAny.
+type OutboundRoute interface{ isOutboundRoute() }
+
+// OutboundRouteTLS matches connections that carry TLS from the first byte,
+// by the domain the client requests (SNI), on tcp/443. The connection is
+// never decrypted. Traffic to these domains on other ports or transports
+// isn't matched by this route.
+type OutboundRouteTLS struct {
+	// Domains supports "*." prefixes, which match subdomains at any depth
+	// but not the domain itself: "*.example.com" matches "a.example.com" and
+	// "a.b.example.com", not "example.com". A bare "*" matches all domains.
+	Domains []string
+}
+
+// OutboundRouteHTTPS matches HTTPS connections by the domain the client
+// requests, on tcp/443. The connection is always decrypted, which requires
+// OutboundPolicy.AllowTLSDecryption, and requests whose Host doesn't match
+// the requested domain are refused. Traffic to these domains on other ports
+// or transports isn't matched by this route.
+type OutboundRouteHTTPS struct {
+	// Domains supports "*." prefixes, which match subdomains at any depth
+	// but not the domain itself: "*.example.com" matches "a.example.com" and
+	// "a.b.example.com", not "example.com". A bare "*" matches all domains.
+	Domains []string
+	// HeaderReplacements are in public beta.
+	HeaderReplacements []OutboundHeaderReplacement
+}
+
+// OutboundRouteIP matches all traffic to a set of destination CIDRs, on any
+// transport and port.
+type OutboundRouteIP struct {
+	CIDRs []string
+}
+
+// OutboundRouteAny matches all traffic that earlier routes didn't. It must
+// be the last route of an OutboundPolicy.
+type OutboundRouteAny struct {
+	// Redirect is nil to let the traffic through to its original
+	// destination; OutboundBlock blocks it.
+	Redirect OutboundRouteAnyRedirect
+}
+
+func (OutboundRouteTLS) isOutboundRoute()   {}
+func (OutboundRouteHTTPS) isOutboundRoute() {}
+func (OutboundRouteIP) isOutboundRoute()    {}
+func (OutboundRouteAny) isOutboundRoute()   {}
+
+// OutboundHeaderReplacement replaces headers in HTTP requests on an
+// OutboundRouteHTTPS.
+//
+// Each header is set on every matching request, so the request has exactly
+// one header with that name and the given value. Copies the request already
+// has are removed, whatever their case, and the header is added if the
+// request has none. A route can set each header name only once, ignoring
+// case.
+//
+// Header values support templating with keys in Secret: a "$"-prefixed key
+// name is replaced with the secret value. Literal "$" characters are written
+// "$$". Secret values never enter the Sandbox.
+type OutboundHeaderReplacement struct {
+	// Secret is a named Secret (e.g. from Client.Secrets.FromName), or nil
+	// for static values.
+	Secret  *Secret
 	Headers map[string]string
-	// Secret is a named Secret (e.g. from Client.Secrets.FromName) whose keys
-	// may be referenced in the header value templates. Static replacements pass nil.
-	Secret *Secret
 }
 
-// ExperimentalOutboundPolicy is an immutable configuration for replacing headers in
-// outbound HTTPS requests from a Sandbox.
-//
-// EXPERIMENTAL: the API is subject to change.
-//
-// Secret values never enter the Sandbox: they are resolved and injected into
-// matching requests outside the container.
-//
-//	secret, _ := client.Secrets.FromName(ctx, "api-token", nil)
-//	outboundPolicy := modal.NewExperimentalOutboundPolicy(
-//		modal.ExperimentalOutboundPolicyHeaderReplacement{
-//			Domain:  "example.com",
-//			Secret:  secret,
-//			Headers: map[string]string{"Authorization": "Bearer $API_TOKEN"},
-//		},
-//		modal.ExperimentalOutboundPolicyHeaderReplacement{
-//			Domain:  "modal.com",
-//			Headers: map[string]string{"X-Trace-Token": "trace_abcd"},
-//		},
-//	)
-type ExperimentalOutboundPolicy struct {
-	replacements []ExperimentalOutboundPolicyHeaderReplacement
-}
+// OutboundRouteAnyRedirect is a redirect an OutboundRouteAny accepts.
+type OutboundRouteAnyRedirect interface{ isOutboundRouteAnyRedirect() }
 
-// NewExperimentalOutboundPolicy returns an ExperimentalOutboundPolicy with the given header replacements.
-func NewExperimentalOutboundPolicy(replacements ...ExperimentalOutboundPolicyHeaderReplacement) ExperimentalOutboundPolicy {
-	p := ExperimentalOutboundPolicy{}
-	for _, r := range replacements {
-		p = p.WithHeaderReplacement(r)
-	}
-	return p
-}
+// OutboundBlock blocks the traffic.
+type OutboundBlock struct{}
 
-// WithHeaderReplacement returns a new ExperimentalOutboundPolicy with an added header replacement.
-func (p ExperimentalOutboundPolicy) WithHeaderReplacement(replacement ExperimentalOutboundPolicyHeaderReplacement) ExperimentalOutboundPolicy {
-	headers := make(map[string]string, len(replacement.Headers))
-	maps.Copy(headers, replacement.Headers)
-	replacement.Headers = headers
-	return ExperimentalOutboundPolicy{replacements: append(slices.Clone(p.replacements), replacement)}
-}
+func (OutboundBlock) isOutboundRouteAnyRedirect() {}
 
-// validate checks all replacements, returning the first violation found.
-func (p *ExperimentalOutboundPolicy) validate() error {
-	if p == nil {
-		return nil
-	}
-	total := 0
-	for _, r := range p.replacements {
-		if r.Domain != "*" && !outboundPolicyDomainRe.MatchString(r.Domain) {
-			return InvalidError{Exception: fmt.Sprintf("Invalid domain: %q", r.Domain)}
+// derefRoute returns route with any pointer removed, or nil for a nil route.
+func derefRoute(route OutboundRoute) OutboundRoute {
+	switch r := route.(type) {
+	case *OutboundRouteTLS:
+		if r != nil {
+			return *r
 		}
-		if len(r.Headers) == 0 {
-			return InvalidError{Exception: "Headers must contain at least one header"}
+	case *OutboundRouteHTTPS:
+		if r != nil {
+			return *r
 		}
-		// Sort the names for deterministic error messages and proto conversion.
-		for _, name := range slices.Sorted(maps.Keys(r.Headers)) {
-			value := r.Headers[name]
-			if !outboundPolicyHeaderNameRe.MatchString(name) {
-				return InvalidError{Exception: fmt.Sprintf("Invalid header name: %q", name)}
-			}
-			if hasInvalidHeaderValueChar(value) {
-				return InvalidError{Exception: fmt.Sprintf("Header value for %q must not contain control characters (except tab)", name)}
-			}
-			if r.Secret == nil && templateReferencesKey(value) {
-				return InvalidError{Exception: fmt.Sprintf(
-					"Header value for %q references a secret key, but no Secret was passed", name)}
-			}
+	case *OutboundRouteIP:
+		if r != nil {
+			return *r
 		}
-		if r.Secret != nil {
-			if _, isEnvDict := secretEnvDictHydrator(r.Secret); isEnvDict {
-				return InvalidError{Exception: "Outbound policies only support named secrets" +
-					" (e.g. Client.Secrets.FromName); ephemeral secrets (e.g. Client.Secrets.FromMap)" +
-					" are not yet supported"}
-			}
+	case *OutboundRouteAny:
+		if r != nil {
+			return *r
 		}
-		total += len(r.Headers)
-	}
-	if total > maxOutboundPolicyHeaderReplacements {
-		return InvalidError{Exception: fmt.Sprintf(
-			"Outbound policy cannot have more than %d header replacements", maxOutboundPolicyHeaderReplacements)}
+	default:
+		return route
 	}
 	return nil
 }
 
-// secrets returns the deduplicated Secrets referenced by the policy's replacements.
-func (p *ExperimentalOutboundPolicy) secrets() []*Secret {
+// blocks reports whether redirect, which may be a pointer, is OutboundBlock.
+func blocks(redirect OutboundRouteAnyRedirect) bool {
+	switch r := redirect.(type) {
+	case OutboundBlock:
+		return true
+	case *OutboundBlock:
+		return r != nil
+	}
+	return false
+}
+
+// validate checks the policy, returning the first violation found.
+func (p *OutboundPolicy) validate() error {
+	if p == nil {
+		return nil
+	}
+	if len(p.Routes) == 0 {
+		return InvalidError{Exception: "OutboundPolicy.Routes must end with an OutboundRouteAny"}
+	}
+	for i, route := range p.Routes {
+		invalid := func(format string, args ...any) error {
+			return InvalidError{Exception: fmt.Sprintf("OutboundPolicy.Routes[%d]: ", i) + fmt.Sprintf(format, args...)}
+		}
+		last := i == len(p.Routes)-1
+		switch r := derefRoute(route).(type) {
+		case OutboundRouteTLS:
+			if err := validateOutboundDomains(r.Domains); err != nil {
+				return invalid("%s", err)
+			}
+		case OutboundRouteHTTPS:
+			if err := validateOutboundDomains(r.Domains); err != nil {
+				return invalid("%s", err)
+			}
+			if !p.AllowTLSDecryption {
+				return invalid("HTTPS routes require OutboundPolicy.AllowTLSDecryption")
+			}
+			names := map[string]bool{}
+			for _, h := range r.HeaderReplacements {
+				if err := validateHeaderReplacement(h.Headers, h.Secret); err != nil {
+					return invalid("%s", err.(InvalidError).Exception)
+				}
+				for _, name := range slices.Sorted(maps.Keys(h.Headers)) {
+					if names[strings.ToLower(name)] {
+						return invalid("header %q is set more than once in the route", name)
+					}
+					names[strings.ToLower(name)] = true
+				}
+			}
+		case OutboundRouteIP:
+			if len(r.CIDRs) == 0 {
+				return invalid("an IP route needs at least one CIDR")
+			}
+		case OutboundRouteAny:
+			if !last {
+				return invalid("an OutboundRouteAny must be the last route")
+			}
+			if r.Redirect != nil && !blocks(r.Redirect) {
+				return invalid("unsupported redirect %T", r.Redirect)
+			}
+		case nil:
+			return invalid("route is nil")
+		}
+		if last {
+			if _, ok := derefRoute(route).(OutboundRouteAny); !ok {
+				return InvalidError{Exception: "OutboundPolicy.Routes must end with an OutboundRouteAny"}
+			}
+		}
+	}
+	return nil
+}
+
+func validateOutboundDomains(domains []string) error {
+	if len(domains) == 0 {
+		return fmt.Errorf("a route needs at least one domain")
+	}
+	for _, domain := range domains {
+		if domain != "*" && !outboundPolicyDomainRe.MatchString(domain) {
+			return fmt.Errorf("invalid domain: %q", domain)
+		}
+	}
+	return nil
+}
+
+// validateHeaderReplacement checks one header replacement's headers and
+// Secret, returning the first violation found.
+func validateHeaderReplacement(headers map[string]string, secret *Secret) error {
+	if len(headers) == 0 {
+		return InvalidError{Exception: "Headers must contain at least one header"}
+	}
+	// Sort the names for deterministic error messages.
+	for _, name := range slices.Sorted(maps.Keys(headers)) {
+		value := headers[name]
+		if !outboundPolicyHeaderNameRe.MatchString(name) {
+			return InvalidError{Exception: fmt.Sprintf("Invalid header name: %q", name)}
+		}
+		if hasInvalidHeaderValueChar(value) {
+			return InvalidError{Exception: fmt.Sprintf("Header value for %q must not contain control characters (except tab)", name)}
+		}
+		if secret == nil && templateReferencesKey(value) {
+			return InvalidError{Exception: fmt.Sprintf(
+				"Header value for %q references a secret key, but no Secret was passed", name)}
+		}
+	}
+	if secret != nil {
+		if _, isEnvDict := secretEnvDictHydrator(secret); isEnvDict {
+			return InvalidError{Exception: "Outbound policies only support named secrets" +
+				" (e.g. Client.Secrets.FromName); ephemeral secrets (e.g. Client.Secrets.FromMap)" +
+				" are not yet supported"}
+		}
+	}
+	return nil
+}
+
+// secrets returns the deduplicated Secrets the policy's header replacements
+// reference.
+func (p *OutboundPolicy) secrets() []*Secret {
 	if p == nil {
 		return nil
 	}
 	var out []*Secret
-	for _, replacement := range p.replacements {
-		if replacement.Secret != nil && !slices.Contains(out, replacement.Secret) {
-			out = append(out, replacement.Secret)
+	for _, route := range p.Routes {
+		r, ok := derefRoute(route).(OutboundRouteHTTPS)
+		if !ok {
+			continue
+		}
+		for _, h := range r.HeaderReplacements {
+			if h.Secret != nil && !slices.Contains(out, h.Secret) {
+				out = append(out, h.Secret)
+			}
 		}
 	}
 	return out
 }
 
-// toProto converts to the wire format. Referenced secrets must be hydrated first.
-func (p *ExperimentalOutboundPolicy) toProto() *pb.ExperimentalOutboundPolicy {
+// toProto converts a validated policy to the wire format, or returns nil for a
+// nil policy. Referenced Secrets must be hydrated first.
+func (p *OutboundPolicy) toProto() *pb.OutboundPolicy {
 	if p == nil {
 		return nil
 	}
-	replacements := make([]*pb.ExperimentalOutboundPolicy_HeaderReplacement, 0, len(p.replacements))
-	for _, replacement := range p.replacements {
-		secretID := ""
-		if replacement.Secret != nil {
-			secretID = replacement.Secret.SecretID
+	routes := make([]*pb.OutboundPolicy_Route, 0, len(p.Routes))
+	for _, route := range p.Routes {
+		var b pb.OutboundPolicy_Route_builder
+		switch r := derefRoute(route).(type) {
+		case OutboundRouteTLS:
+			b.Tls = pb.OutboundPolicy_TLSRoute_builder{Domains: r.Domains}.Build()
+		case OutboundRouteHTTPS:
+			replacements := make([]*pb.OutboundPolicy_HeaderReplacement, 0, len(r.HeaderReplacements))
+			for _, h := range r.HeaderReplacements {
+				secretID := ""
+				if h.Secret != nil {
+					secretID = h.Secret.SecretID
+				}
+				replacements = append(replacements, pb.OutboundPolicy_HeaderReplacement_builder{
+					SecretId: secretID,
+					Headers:  maps.Clone(h.Headers),
+				}.Build())
+			}
+			b.Https = pb.OutboundPolicy_HTTPSRoute_builder{
+				Domains:            r.Domains,
+				HeaderReplacements: replacements,
+			}.Build()
+		case OutboundRouteIP:
+			b.Ip = pb.OutboundPolicy_IPRoute_builder{Cidrs: r.CIDRs}.Build()
+		case OutboundRouteAny:
+			var redirect *pb.OutboundPolicy_Redirect
+			if blocks(r.Redirect) {
+				redirect = pb.OutboundPolicy_Redirect_builder{
+					Block: pb.OutboundPolicy_Redirect_Block_builder{}.Build(),
+				}.Build()
+			}
+			b.Any = pb.OutboundPolicy_AnyRoute_builder{Redirect: redirect}.Build()
 		}
-		replacements = append(replacements, pb.ExperimentalOutboundPolicy_HeaderReplacement_builder{
-			Domain:   replacement.Domain,
-			SecretId: secretID,
-			Headers:  replacement.Headers,
-		}.Build())
+		routes = append(routes, b.Build())
 	}
-	return pb.ExperimentalOutboundPolicy_builder{HeaderReplacements: replacements}.Build()
+	return pb.OutboundPolicy_builder{
+		TlsDecryption: pb.OutboundPolicy_TLSDecryption_builder{Allowed: p.AllowTLSDecryption}.Build(),
+		Routes:        routes,
+	}.Build()
 }

@@ -310,9 +310,12 @@ func TestPersistentSandboxUnsupportedOperationsMock(t *testing.T) {
 	g.Expect(errors.As(err, &invalid)).To(gomega.BeTrue())
 	g.Expect(errors.As(sb.MountImage(ctx, "/mnt", nil, nil), &invalid)).To(gomega.BeTrue())
 	g.Expect(errors.As(sb.UnmountImage(ctx, "/mnt", nil), &invalid)).To(gomega.BeTrue())
-	g.Expect(errors.As(sb.UpdateNetworkPolicy(ctx, &modal.SandboxUpdateNetworkPolicyParams{
+	g.Expect(errors.As(sb.UpdateNetworkPolicy(ctx, &modal.SandboxUpdateNetworkPolicyParams{ //nolint:staticcheck // tests the deprecated method
 		OutboundCIDRAllowlist:   &modal.Allowlist{},
 		OutboundDomainAllowlist: &modal.Allowlist{},
+	}), &invalid)).To(gomega.BeTrue())
+	g.Expect(errors.As(sb.SetOutboundPolicy(ctx, &modal.OutboundPolicy{
+		Routes: []modal.OutboundRoute{modal.OutboundRouteAny{}},
 	}), &invalid)).To(gomega.BeTrue())
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }

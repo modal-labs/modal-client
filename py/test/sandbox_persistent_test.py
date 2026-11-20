@@ -3,6 +3,7 @@ import pytest
 
 from grpclib import GRPCError, Status
 
+import modal
 from modal import App, Image, Sandbox
 from modal._utils.async_utils import synchronizer
 from modal.exception import ClientClosed, InvalidError
@@ -14,6 +15,13 @@ from modal.sandbox._impl_persistent import (
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
+
+# Covers the outbound network APIs that `outbound_policy` and `Sandbox.set_outbound_policy` replace.
+ignore_deprecated_network_apis = pytest.mark.filterwarnings(
+    "ignore:.*(`outbound_(cidr|domain)_allowlist`|`_experimental_outbound_policy`"
+    "|`Sandbox._experimental_(set_outbound_network_policy|update_outbound_policy)`) is deprecated"
+    ":modal.exception.DeprecationError"
+)
 
 
 @pytest.fixture
@@ -138,10 +146,13 @@ def test_persistent_sandbox_terminate(app, client, servicer):
         sb._experimental_resume()
 
 
+@ignore_deprecated_network_apis
 def test_persistent_sandbox_unsupported_operations(app, client):
     sb = _create(app, client)
     with pytest.raises(NotImplementedError):
         sb._experimental_update_outbound_policy(OutboundPolicy())
+    with pytest.raises(NotImplementedError, match="Setting the outbound policy"):
+        sb.set_outbound_policy(modal.OutboundPolicy(routes=[modal.OutboundRoute.any()]))
     with pytest.raises(NotImplementedError):
         sb.mount_image("/mnt", Image.from_id("im-123", client=client))
     with pytest.raises(NotImplementedError):

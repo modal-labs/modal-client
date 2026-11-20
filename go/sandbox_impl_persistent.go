@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -95,7 +96,7 @@ func createSandboxPersistent(ctx context.Context, client *Client, app *App, imag
 	}
 
 	resolvable := resolvableSecrets(params.Secrets)
-	if err := hydrateSandboxSecrets(ctx, client, append(append([]*Secret{}, resolvable...), params.ExperimentalOutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
+	if err := hydrateSandboxSecrets(ctx, client, append(append(append([]*Secret{}, resolvable...), params.ExperimentalOutboundPolicy.secrets()...), params.OutboundPolicy.secrets()...), params.CloudBucketMounts); err != nil {
 		return nil, err
 	}
 	// Every session is created from the same definition, so credentials must
@@ -118,6 +119,7 @@ func createSandboxPersistent(ctx context.Context, client *Client, app *App, imag
 	if err != nil {
 		return nil, err
 	}
+	warnDeprecatedNetworkParams(ctx, client.logger, params)
 
 	resp, err := client.cpClient.PersistentSandboxCreate(ctx, pb.PersistentSandboxCreateRequest_builder{
 		AppId:      v2Req.GetAppId(),
@@ -413,6 +415,10 @@ func (p *sandboxImplPersistent) updateNetworkPolicy(ctx context.Context, params 
 
 func (p *sandboxImplPersistent) updateOutboundPolicy(ctx context.Context, policy *ExperimentalOutboundPolicy) error {
 	return InvalidError{Exception: "Updating the outbound policy isn't supported for persistent Sandboxes yet."}
+}
+
+func (p *sandboxImplPersistent) setOutboundPolicy(ctx context.Context, req *pb.SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) error {
+	return InvalidError{Exception: "Setting the outbound policy isn't supported for persistent Sandboxes yet."}
 }
 
 func (p *sandboxImplPersistent) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {

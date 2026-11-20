@@ -9,6 +9,7 @@ from .._cluster import (
     ClusterContext as ClusterInfo,
     get_current_cluster_context as _get_current_cluster_context,
 )
+from .._experimental_outbound_policy import OutboundPolicy as OutboundPolicy
 from .._functions import _Function
 from .._image import (
     DockerfileSpec as DockerfileSpec,
@@ -17,7 +18,6 @@ from .._image import (
     _ImageRegistryConfig as _ImageRegistryConfig,
 )
 from .._object import _get_environment_name
-from .._outbound_policy import OutboundPolicy as OutboundPolicy
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronizer
 from .._utils.deprecation import deprecation_warning

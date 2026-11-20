@@ -108,7 +108,12 @@ export {
   type ImagePublishParams,
 } from "./image";
 export { Retries } from "./retries";
-export { ExperimentalOutboundPolicy } from "./outbound_policy";
+export { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
+export {
+  OutboundPolicy,
+  OutboundRoute,
+  type OutboundHeaderReplacement,
+} from "./outbound_policy";
 export type {
   ProbeParams,
   SandboxExecParams,
