@@ -2485,6 +2485,8 @@ message Function {
 
   // Outbound network access of the Function's containers. Takes precedence over block_network.
   optional NetworkAccess network_access = 96;
+
+  optional LocalizedConfig localized_config = 97;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -2751,6 +2753,8 @@ message FunctionData {
 
   // True when the function is a Sessioned Server. Only valid together with is_server.
   bool is_sessioned = 44;
+
+  optional LocalizedConfig localized_config = 45;
 }
 
 message FunctionExtended {
@@ -3547,6 +3551,12 @@ message LiftAndShiftConfig {}
 message ListPagination {
   int32 max_objects = 1;
   double created_before = 2;
+}
+
+message LocalizedConfig {
+  optional string target_location = 1;
+  optional string preferred_distance = 2;
+  optional string max_distance = 3;
 }
 
 message MapAwaitRequest {
