@@ -2110,6 +2110,20 @@ def test_sandbox_experimental_get_exit_snapshot_success_v2(client, servicer):
     sb.terminate()
 
 
+@pytest.mark.timeout(5)
+def test_sandbox_stdout_held_across_detach_fails_without_waiting_for_task_v2(client, servicer):
+    """A stream taken before `detach` fails on use, even while the Sandbox has no task yet."""
+    servicer.sandbox_task_ids[_EXIT_SNAPSHOT_V2_SANDBOX_ID] = ""
+    sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
+    stdout = sb.stdout
+    sb.detach()
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(modal.exception.ClientClosed):
+            stdout.read()
+    assert ctx.get_requests("SandboxGetTaskIdV2") == []
+
+
 def test_sandbox_experimental_get_exit_snapshot_allowed_after_detached_v2(client, servicer):
     sb = Sandbox.from_id(_EXIT_SNAPSHOT_V2_SANDBOX_ID, client=client)
     sb.terminate()

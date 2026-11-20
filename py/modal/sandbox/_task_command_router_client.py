@@ -1231,26 +1231,26 @@ class LazyCommandRouterClient:
         self._lock: asyncio.Lock | None = None
         self._closed = False
 
-    def _ensure_open(self) -> None:
+    def ensure_open(self) -> None:
         if self._closed:
             raise ClientClosed("Unable to perform operation on a detached sandbox")
 
     async def get(self, task_id: str) -> TaskCommandRouterClient:
-        self._ensure_open()
+        self.ensure_open()
         if self._client is not None:
             return self._client
         # Create the lock lazily, on the event loop that first uses the connection.
         if self._lock is None:
             self._lock = asyncio.Lock()
         async with self._lock:
-            self._ensure_open()
+            self.ensure_open()
             if self._client is not None:
                 return self._client
             client = await self._open(task_id)
             # Opening yields control, so `close` may have been called in the meantime.
             if self._closed:
                 await client.close()
-                self._ensure_open()
+                self.ensure_open()
             self._client = client
             return client
 

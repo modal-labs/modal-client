@@ -5,7 +5,7 @@ from grpclib import GRPCError, Status
 
 from modal import App, Image, Sandbox
 from modal._utils.async_utils import synchronizer
-from modal.exception import InvalidError
+from modal.exception import ClientClosed, InvalidError
 from modal.experimental import OutboundPolicy
 from modal.sandbox._impl_persistent import (
     PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT,
@@ -106,6 +106,24 @@ def test_persistent_sandbox_resumes_on_failed_operation(app, client, servicer):
         assert len(ctx.get_requests("PersistentSandboxResume")) == 1
         assert len(tcr_ctx.get_requests("TaskExecStart")) == 2
     assert servicer.persistent_sandbox_resumes == 1
+
+
+@pytest.mark.timeout(5)
+def test_persistent_sandbox_detached_does_not_resume(app, client, servicer):
+    sb = _create(app, client)
+    stdout = sb.stdout
+    sb._experimental_pause()
+    # Forget the session's task ID, so using the stream would have to look the task up again.
+    _impl(sb)._delegate._task_id = None
+    sb.detach()
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(ClientClosed):
+            stdout.read()
+    assert ctx.get_requests("SandboxGetTaskIdV2") == []
+    assert ctx.get_requests("PersistentSandboxGet") == []
+    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert servicer.persistent_sandbox_resumes == 0
 
 
 def test_persistent_sandbox_terminate(app, client, servicer):

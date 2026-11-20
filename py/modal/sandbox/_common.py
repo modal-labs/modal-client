@@ -690,6 +690,10 @@ class SandboxImpl(Protocol):
         """Release connections held for the Sandbox once in-flight operations complete."""
         ...
 
+    def ensure_attached(self) -> None:
+        """Raise `ClientClosed` once `close` has been called."""
+        ...
+
     async def wait(self, raise_on_termination: bool) -> None:
         # Use the unchecked client to allow `wait` to work with a detached sandbox
         ...
@@ -871,6 +875,9 @@ def new_snapshot_handle(
 
 
 async def command_router(impl: SandboxImpl) -> tuple[str, TaskCommandRouterClient]:
+    # Checked before waiting for the task ID, so a closed Sandbox fails fast instead of polling
+    # for a task that may not be scheduled yet.
+    impl.ensure_attached()
     task_id = await impl.get_task_id()
     return task_id, await impl.get_command_router_client(task_id)
 

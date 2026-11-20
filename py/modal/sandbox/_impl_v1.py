@@ -337,6 +337,9 @@ class SandboxImplV1:
     async def close(self) -> None:
         await self._command_router.close()
 
+    def ensure_attached(self) -> None:
+        self._command_router.ensure_open()
+
     async def wait(self, raise_on_termination: bool) -> None:
         client = self.client
         req, poll_retry = wait_poll_request(self.sandbox_id)

@@ -253,6 +253,9 @@ class SandboxImplPersistent:
     async def close(self) -> None:
         await self._session.close()
 
+    def ensure_attached(self) -> None:
+        self._delegate.ensure_attached()
+
     def _set_terminated_result(self) -> None:
         self.result = _TERMINATED_RESULT
 
