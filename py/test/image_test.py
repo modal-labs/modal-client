@@ -1846,6 +1846,12 @@ def test_image_from_registry_arch(builder_version, servicer, client):
         layers = get_image_layers(image.object_id, servicer)
         assert layers[-1].arch == arch
 
+        image = Image.from_registry("ubuntu:22.04", add_python="3.12", _arch=arch)
+        build_image(image, client)
+        layers = get_image_layers(image.object_id, servicer)
+        assert layers[0].context_mount_id == ("mo-py312-aarch64" if arch == api_pb2.ARCH_AARCH64 else "mo-py312")
+        assert layers[-1].arch == arch
+
 
 def test_image_force_build(builder_version, servicer, client):
     image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")

@@ -20,12 +20,15 @@ from modal.mount import (
 )
 from modal_proto import api_pb2
 
+# Modal arch -> python-build-standalone target arch.
+STANDALONE_ARCHS = {"x86_64": "x86_64_v3", "aarch64": "aarch64"}
 
-def publish_python_standalone_mount(client, version: str, builder_version: str) -> None:
+
+def publish_python_standalone_mount(client, version: str, builder_version: str, arch: str) -> None:
     release, full_version = PYTHON_STANDALONE_VERSIONS[builder_version][version]
 
     libc = "gnu"
-    arch = "x86_64_v3"
+    standalone_arch = STANDALONE_ARCHS[arch]
 
     root_url = "https://github.com/astral-sh/python-build-standalone/releases/download"
     if full_version.endswith("t"):
@@ -33,19 +36,22 @@ def publish_python_standalone_mount(client, version: str, builder_version: str) 
         # https://github.com/astral-sh/python-build-standalone/issues/536
         # and only uses .tar.zst for compression.
         url = (
-            f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-{arch}-"
+            f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-{standalone_arch}-"
             "unknown-linux-gnu-freethreaded+pgo+lto-full.tar.zst"
         )
     else:
-        url = f"{root_url}/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-gnu-install_only.tar.gz"
+        url = (
+            f"{root_url}/{release}/cpython-{full_version}+{release}-{standalone_arch}-"
+            "unknown-linux-gnu-install_only.tar.gz"
+        )
 
     profile_environment = config.get("environment") or ""
-    mount_name = python_standalone_mount_name(f"{version}-{libc}", builder_version)
+    mount_name = python_standalone_mount_name(f"{version}-{libc}", builder_version, arch)
     try:
         Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate(client)
         print(f"➖ Found existing mount {mount_name} in global namespace.")
     except NotFoundError:
-        print(f"📦 Unpacking python-build-standalone for {version}-{libc}.")
+        print(f"📦 Unpacking python-build-standalone for {version}-{libc} ({arch}).")
         with tempfile.TemporaryDirectory() as d:
             if url.endswith("tar.zst"):
                 # The free-threaded standalone build does not have an install_only artifact. Here we
@@ -91,22 +97,23 @@ def main(builder_versions: list[str] | None = None, parallel: bool = False):
     mounts_to_publish = []
     for builder_version in builder_versions:
         for version in PYTHON_STANDALONE_VERSIONS[builder_version]:
-            mount_name = python_standalone_mount_name(version, builder_version)
-            if mount_name not in published:
-                published.add(mount_name)
-                mounts_to_publish.append((version, builder_version))
+            for arch in STANDALONE_ARCHS:
+                mount_name = python_standalone_mount_name(version, builder_version, arch)
+                if mount_name not in published:
+                    published.add(mount_name)
+                    mounts_to_publish.append((version, builder_version, arch))
 
     if not parallel:
-        for version, builder_version in mounts_to_publish:
-            publish_python_standalone_mount(None, version, builder_version)
+        for version, builder_version, arch in mounts_to_publish:
+            publish_python_standalone_mount(None, version, builder_version, arch)
         return
 
     failed = []
     with concurrent.futures.ProcessPoolExecutor(mp_context=multiprocessing.get_context("spawn")) as executor:
         futures = {}
-        for version, builder_version in mounts_to_publish:
-            future = executor.submit(publish_python_standalone_mount, None, version, builder_version)
-            futures[future] = python_standalone_mount_name(version, builder_version)
+        for version, builder_version, arch in mounts_to_publish:
+            future = executor.submit(publish_python_standalone_mount, None, version, builder_version, arch)
+            futures[future] = python_standalone_mount_name(version, builder_version, arch)
         for future, mount_name in futures.items():
             try:
                 future.result()

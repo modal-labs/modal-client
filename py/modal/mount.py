@@ -96,7 +96,7 @@ def client_mount_name() -> str:
     return f"modal-client-mount-{version}"
 
 
-def python_standalone_mount_name(version: str, builder_version: str) -> str:
+def python_standalone_mount_name(version: str, builder_version: str, arch: str = "x86_64") -> str:
     """Get the deployed name of the python-build-standalone mount."""
     if "-" in version:  # default to glibc
         version, libc = version.split("-")
@@ -110,7 +110,9 @@ def python_standalone_mount_name(version: str, builder_version: str) -> str:
     if libc != "gnu":
         raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
     release, full_version = standalone_versions[version]
-    return f"python-build-standalone.{release}.{full_version}-{libc}"
+    # x86_64 names have no arch suffix, so that x86_64 images keep resolving to the same mount objects.
+    arch_suffix = "" if arch == "x86_64" else f"-{arch}"
+    return f"python-build-standalone.{release}.{full_version}-{libc}{arch_suffix}"
 
 
 class _MountEntry(metaclass=abc.ABCMeta):

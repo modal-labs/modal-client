@@ -2373,7 +2373,9 @@ class _Image(_Object, type_prefixes=("im",)):
         def context_mount_function(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
-                    python_standalone_mount_name(add_python, builder_version),
+                    python_standalone_mount_name(
+                        add_python, builder_version, "aarch64" if arch == api_pb2.ARCH_AARCH64 else "x86_64"
+                    ),
                     namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 )
                 if add_python
