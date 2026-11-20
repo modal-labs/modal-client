@@ -4054,17 +4054,6 @@ message ProxyDeleteRequest {
   string proxy_id = 1;
 }
 
-message ProxyGetOrCreateRequest {
-  string deployment_name = 1;
-  reserved 2; // namespace
-  string environment_name = 3;
-  ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
-}
-
-message ProxyGetOrCreateResponse {
-  string proxy_id = 1;
-}
-
 message ProxyGetRequest {
   string name = 1;
   string environment_name = 2;
@@ -6225,7 +6214,6 @@ service ModalClient {
   rpc ProxyCreate(ProxyCreateRequest) returns (ProxyCreateResponse);
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
-  rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
   rpc ProxyList(google.protobuf.Empty) returns (ProxyListResponse);
   rpc ProxyRemoveIp(ProxyRemoveIpRequest) returns (google.protobuf.Empty);
 

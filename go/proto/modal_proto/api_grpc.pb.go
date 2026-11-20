@@ -181,7 +181,6 @@ const (
 	ModalClient_ProxyCreate_FullMethodName                            = "/modal.client.ModalClient/ProxyCreate"
 	ModalClient_ProxyDelete_FullMethodName                            = "/modal.client.ModalClient/ProxyDelete"
 	ModalClient_ProxyGet_FullMethodName                               = "/modal.client.ModalClient/ProxyGet"
-	ModalClient_ProxyGetOrCreate_FullMethodName                       = "/modal.client.ModalClient/ProxyGetOrCreate"
 	ModalClient_ProxyList_FullMethodName                              = "/modal.client.ModalClient/ProxyList"
 	ModalClient_ProxyRemoveIp_FullMethodName                          = "/modal.client.ModalClient/ProxyRemoveIp"
 	ModalClient_QueueClear_FullMethodName                             = "/modal.client.ModalClient/QueueClear"
@@ -497,7 +496,6 @@ type ModalClientClient interface {
 	ProxyCreate(ctx context.Context, in *ProxyCreateRequest, opts ...grpc.CallOption) (*ProxyCreateResponse, error)
 	ProxyDelete(ctx context.Context, in *ProxyDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ProxyGet(ctx context.Context, in *ProxyGetRequest, opts ...grpc.CallOption) (*ProxyGetResponse, error)
-	ProxyGetOrCreate(ctx context.Context, in *ProxyGetOrCreateRequest, opts ...grpc.CallOption) (*ProxyGetOrCreateResponse, error)
 	ProxyList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ProxyListResponse, error)
 	ProxyRemoveIp(ctx context.Context, in *ProxyRemoveIpRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Queues
@@ -2257,16 +2255,6 @@ func (c *modalClientClient) ProxyGet(ctx context.Context, in *ProxyGetRequest, o
 	return out, nil
 }
 
-func (c *modalClientClient) ProxyGetOrCreate(ctx context.Context, in *ProxyGetOrCreateRequest, opts ...grpc.CallOption) (*ProxyGetOrCreateResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ProxyGetOrCreateResponse)
-	err := c.cc.Invoke(ctx, ModalClient_ProxyGetOrCreate_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *modalClientClient) ProxyList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ProxyListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProxyListResponse)
@@ -3795,7 +3783,6 @@ type ModalClientServer interface {
 	ProxyCreate(context.Context, *ProxyCreateRequest) (*ProxyCreateResponse, error)
 	ProxyDelete(context.Context, *ProxyDeleteRequest) (*emptypb.Empty, error)
 	ProxyGet(context.Context, *ProxyGetRequest) (*ProxyGetResponse, error)
-	ProxyGetOrCreate(context.Context, *ProxyGetOrCreateRequest) (*ProxyGetOrCreateResponse, error)
 	ProxyList(context.Context, *emptypb.Empty) (*ProxyListResponse, error)
 	ProxyRemoveIp(context.Context, *ProxyRemoveIpRequest) (*emptypb.Empty, error)
 	// Queues
@@ -4415,9 +4402,6 @@ func (UnimplementedModalClientServer) ProxyDelete(context.Context, *ProxyDeleteR
 }
 func (UnimplementedModalClientServer) ProxyGet(context.Context, *ProxyGetRequest) (*ProxyGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProxyGet not implemented")
-}
-func (UnimplementedModalClientServer) ProxyGetOrCreate(context.Context, *ProxyGetOrCreateRequest) (*ProxyGetOrCreateResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ProxyGetOrCreate not implemented")
 }
 func (UnimplementedModalClientServer) ProxyList(context.Context, *emptypb.Empty) (*ProxyListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProxyList not implemented")
@@ -7578,24 +7562,6 @@ func _ModalClient_ProxyGet_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ModalClient_ProxyGetOrCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ProxyGetOrCreateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ModalClientServer).ProxyGetOrCreate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ModalClient_ProxyGetOrCreate_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ModalClientServer).ProxyGetOrCreate(ctx, req.(*ProxyGetOrCreateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ModalClient_ProxyList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -10503,10 +10469,6 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProxyGet",
 			Handler:    _ModalClient_ProxyGet_Handler,
-		},
-		{
-			MethodName: "ProxyGetOrCreate",
-			Handler:    _ModalClient_ProxyGetOrCreate_Handler,
 		},
 		{
 			MethodName: "ProxyList",
