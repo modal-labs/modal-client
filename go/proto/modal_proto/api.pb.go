@@ -29291,7 +29291,7 @@ type Function_builder struct {
 	I6PnEnabled                          bool
 	XExperimentalConcurrentCancellations bool
 	TargetConcurrentInputs               uint32
-	// TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
+	// TODO(colin, was irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
 	XExperimentalTaskTemplatesEnabled bool
 	XExperimentalTaskTemplates        []*TaskTemplate
 	// When the function is a "grouped" one, this records the # of tasks we want
@@ -65638,7 +65638,7 @@ type TaskTemplate_builder struct {
 	Resources              *Resources
 	TargetConcurrentInputs uint32
 	MaxConcurrentInputs    uint32
-	// TODO(irfansharif): Just move this into a column in the task table instead?
+	// TODO(colin, was irfansharif): Just move this into a column in the task table instead?
 	// Deprecate all above fields and get rid of this message altogether
 	Index uint32
 }

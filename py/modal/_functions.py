@@ -587,7 +587,7 @@ class _FunctionSpec:
     secrets: Collection[_Secret]
     network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem]
     volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount]
-    # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    # TODO(colin, was irfansharif): Somehow assert that it's the first kind, in sandboxes
     gpus: str | list[str] | None
     cloud: str | None
     cpu: float | tuple[float, float] | None
