@@ -2767,6 +2767,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 supported_input_formats=function.supported_input_formats,
                 supported_output_formats=function.supported_output_formats,
                 http_config=function.http_config,
+                localized_config=function.localized_config if function.HasField("localized_config") else None,
                 implementation_name=function.implementation_name,
                 is_server=function.is_server,
                 routing_region=function.routing_region,
@@ -2836,6 +2837,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 supported_input_formats=function_proto.supported_input_formats,
                 supported_output_formats=function_proto.supported_output_formats,
                 http_config=function_proto.http_config,
+                localized_config=(
+                    function_proto.localized_config if function_proto.HasField("localized_config") else None
+                ),
                 implementation_name=function_proto.implementation_name,
                 is_server=function_proto.is_server,
                 routing_region=function_proto.routing_region,
@@ -2896,6 +2900,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 supported_input_formats=function.supported_input_formats,
                 supported_output_formats=function.supported_output_formats,
                 http_config=function.http_config,
+                localized_config=function.localized_config if function.HasField("localized_config") else None,
                 implementation_name=function.implementation_name,
                 is_server=function.is_server,
                 routing_region=function.routing_region,

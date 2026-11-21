@@ -45,6 +45,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     CLUSTERED = 256  # Experimental: Clustered functions
     HTTP_WEB_INTERFACE = 512  # Experimental: HTTP server
     SESSIONED = 1024
+    LOCALIZED = 2048
 
     @staticmethod
     def all() -> int:
@@ -77,6 +78,7 @@ class _PartialFunctionParams:
     rdma: bool | None = None
     fabric_size: int | None = None
     http_config: api_pb2.HTTPConfig | None = None
+    localized: api_pb2.LocalizedConfig | None = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
@@ -159,6 +161,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
         if has_web_interface and has_callable_interface:
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
+
+        if self.flags & _PartialFunctionFlags.LOCALIZED and self.flags & _PartialFunctionFlags.CLUSTERED:
+            raise InvalidError("`@modal.experimental.localized()` is not supported for clustered Functions or Servers.")
 
     def validate_obj_compatibility(
         self, decorator_name: str, require_sync: bool = False, require_nullary: bool = False
@@ -789,13 +794,13 @@ def _sessioned() -> Callable[
     return wrapper
 
 
-_ClusteredClass = typing.TypeVar("_ClusteredClass", bound=type[Any])
+_DecoratedClass = typing.TypeVar("_DecoratedClass", bound=type[Any])
 
 
-class _ClusteredDecorator:
+class _ServiceDecorator:
     # Classes are callable too; preserve their type through the app.cls() decorator stack.
     @typing.overload
-    def __call__(self, obj: _ClusteredClass) -> _ClusteredClass: ...  # type: ignore[overload-overlap]
+    def __call__(self, obj: _DecoratedClass) -> _DecoratedClass: ...  # type: ignore[overload-overlap]
 
     @typing.overload
     def __call__(
@@ -805,7 +810,7 @@ class _ClusteredDecorator:
     def __call__(self, obj): ...
 
 
-def _clustered(*, size: int, rdma: bool = False) -> _ClusteredDecorator:
+def _clustered(*, size: int, rdma: bool = False) -> _ServiceDecorator:
     """Run a Function or Server on a cluster of colocated, networked containers.
 
     Apply below `@app.function()`, `@app.cls()`, or `@app.server()`. Each container
@@ -857,4 +862,77 @@ def _clustered(*, size: int, rdma: bool = False) -> _ClusteredDecorator:
         pf.validate_obj_compatibility("clustered")
         return pf
 
-    return typing.cast(_ClusteredDecorator, wrapper)
+    return typing.cast(_ServiceDecorator, wrapper)
+
+
+def _localized(
+    *,
+    target_location: str | None = None,
+    preferred_distance: str | None = None,
+    max_distance: str | None = None,
+) -> _ServiceDecorator:
+    """Localized placement lets you specify where you would prefer your containers to run.
+
+    Modal will attempt to schedule your containers as close to that location as possible,
+    at an additional cost. If Modal places a container outside your preferred area,
+    the container is billed at a lower rate.
+
+    This controls compute placement; request routing is unchanged.
+
+    Apply below `@app.function()`, `@app.cls()`, or `@app.server()`.
+    Distance categories are `short`, `medium`, `long`, and `none` (anywhere).
+    This interface is experimental and cannot be combined with `@modal.clustered()`.
+
+    Args:
+        target_location: The location you want containers to run near. When omitted, it uses
+            the location of your routing region (`us-east` when unset).
+        preferred_distance: The maximum pricing multiplier. Defaults to `medium`, or `max_distance` if narrower.
+        max_distance: The furthest distance category in which containers may run.
+            Defaults to `"none"` (anywhere).
+            Set only for strict latency requirements: restricting placement can delay startups.
+
+    Examples:
+        ```python
+        @app.function(gpu="H100")
+        @modal.experimental.localized(
+            target_location="san-jose",
+            preferred_distance="medium",
+            max_distance="long",
+        )
+        ```
+
+        Omit `target_location` to prefer containers near your routing region:
+
+        ```python
+        @app.server(port=8000, routing_region="us-west")
+        @modal.experimental.localized(
+            preferred_distance="medium",
+            max_distance="long",
+        )
+        ```
+    """
+    # TODO(clairec): Add the localized placement guide link once available.
+    localized = {
+        "target_location": target_location,
+        "preferred_distance": preferred_distance,
+        "max_distance": max_distance,
+    }
+    for name, value in localized.items():
+        if value is not None and not isinstance(value, str):
+            raise InvalidError(f"`{name}` must be a string or None.")
+
+    def wrapper(
+        obj: _PartialFunction[P, ReturnType, ReturnType] | Callable[P, ReturnType],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        flags = _PartialFunctionFlags.LOCALIZED
+        params = _PartialFunctionParams(localized=api_pb2.LocalizedConfig(**localized))
+        if isinstance(obj, _PartialFunction):
+            if obj.flags & flags:
+                raise InvalidError("`@modal.experimental.localized()` can only be applied once.")
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_obj_compatibility("experimental.localized")
+        return pf
+
+    return typing.cast(_ServiceDecorator, wrapper)

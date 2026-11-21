@@ -25,7 +25,7 @@ from ..app import _App
 from ..client import _Client
 from ..cls import _Cls
 from ..exception import InvalidError as InvalidError
-from ..partial_function import clustered as _public_clustered
+from ..partial_function import clustered as _public_clustered, localized as localized
 from ..secret import _Secret as _Secret
 from .flash import (  # noqa: F401
     flash_forward,

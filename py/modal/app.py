@@ -1040,6 +1040,7 @@ class _App:
                 cluster_size = f.params.cluster_size  # Experimental: Clustered functions
                 rdma = f.params.rdma
                 fabric_size = f.params.fabric_size
+                localized = f.params.localized
 
                 info = FunctionSourceInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -1095,6 +1096,7 @@ class _App:
                 cluster_size = None  # Experimental: Clustered functions
                 rdma = None
                 fabric_size = None
+                localized = None
                 i6pn_enabled = i6pn
 
             if is_generator is None:
@@ -1140,6 +1142,7 @@ class _App:
                 fabric_size=fabric_size,  # Experimental: Clustered functions
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                localized=localized,
                 restrict_output=_experimental_restrict_output,
             )
 
@@ -1256,6 +1259,7 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.SESSIONED:
                     raise InvalidError("`@modal.sessioned()` can only be used with `@app.server()`.")
                 user_cls = wrapped_cls.user_cls
+                localized = wrapped_cls.params.localized
                 if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                     http_config = wrapped_cls.params.http_config
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
@@ -1280,6 +1284,7 @@ class _App:
                     fabric_size = None
             else:
                 user_cls = wrapped_cls
+                localized = None
                 max_concurrent_inputs = None
                 target_concurrent_inputs = None
                 cluster_size = None
@@ -1373,6 +1378,7 @@ class _App:
                 fabric_size=fabric_size,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                localized=localized,
                 restrict_output=_experimental_restrict_output,
             )
 
@@ -1551,11 +1557,13 @@ class _App:
             cluster_size = None
             rdma = None
             fabric_size = None
+            localized = None
             is_sessioned = False
             user_cls = wrapped_user_cls
 
             if isinstance(wrapped_user_cls, _PartialFunction):
                 user_cls = wrapped_user_cls.user_cls
+                localized = wrapped_user_cls.params.localized
                 is_sessioned = bool(wrapped_user_cls.flags & _PartialFunctionFlags.SESSIONED)
                 if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_user_cls.params.cluster_size
@@ -1606,6 +1614,7 @@ class _App:
                 fabric_size=fabric_size,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                localized=localized,
                 restrict_output=False,
                 include_client_mounts=not direct,
             )

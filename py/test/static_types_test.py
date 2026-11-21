@@ -141,28 +141,30 @@ def test_negative_assertions(type_check_root):
 
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
-def test_clustered_decorator_types(type_check_root):
-    source = type_check_root / "clustered_types.py"
+@pytest.mark.parametrize("decorator", ["modal.clustered(size=2)", "modal.experimental.localized()"])
+def test_service_decorator_types(type_check_root, decorator):
+    source = type_check_root / "service_decorator_types.py"
     source.write_text(
-        """import modal
+        f"""import modal
+import modal.experimental
 from typing_extensions import assert_type
 
 app = modal.App()
 
 @app.function()
-@modal.clustered(size=2)
+@{decorator}
 def fn(x: int) -> int:
     return x
 
 @app.cls()
-@modal.clustered(size=2)
+@{decorator}
 class Service:
     @modal.method()
     def run(self, x: int) -> int:
         return x
 
 @app.server(port=8000)
-@modal.clustered(size=2)
+@{decorator}
 class Server:
     @modal.enter()
     def start(self) -> None:

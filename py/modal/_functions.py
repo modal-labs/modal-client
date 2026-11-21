@@ -743,6 +743,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: int | None = None,
         include_source: bool = True,
         experimental_options: dict[str, str] | None = None,
+        localized: api_pb2.LocalizedConfig | None = None,
         restrict_output: bool = False,
         http_config: api_pb2.HTTPConfig | None = None,
         include_client_mounts: bool = True,
@@ -755,6 +756,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
         experimental_options = dict(experimental_options or {})
+        if localized is not None and experimental_options.get("target_location"):
+            raise InvalidError(
+                "`@modal.experimental.localized()` cannot be combined with the `target_location` experimental option."
+            )
+        if info.user_cls and _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.LOCALIZED):
+            raise InvalidError("Apply `@modal.experimental.localized()` to the class, not an individual method.")
         if "fabric_size" in experimental_options:
             if fabric_size is not None:
                 raise InvalidError(
@@ -1125,6 +1132,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     supported_input_formats=supported_input_formats,
                     supported_output_formats=supported_output_formats,
                     http_config=http_config,
+                    localized_config=localized,
                     is_server=is_server,
                     is_sessioned=is_sessioned,
                     routing_region=routing_region or "",
@@ -1165,6 +1173,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         supported_input_formats=supported_input_formats,
                         supported_output_formats=supported_output_formats,
                         http_config=http_config,
+                        localized_config=localized,
                         is_server=function_definition.is_server,
                         routing_region=function_definition.routing_region,
                         is_sessioned=function_definition.is_sessioned,
