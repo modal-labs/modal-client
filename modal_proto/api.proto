@@ -3341,6 +3341,10 @@ message Image {
 
   // OS_UNSPECIFIED means Linux.
   Os os = 25;
+
+  // OCI platform "<os>/<arch>", e.g. "linux/arm64". The server parses it into
+  // os and arch and clears it.
+  string platform = 26;
 }
 
 message ImageBuildChainGetRequest {

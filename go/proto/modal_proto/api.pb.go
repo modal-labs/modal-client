@@ -40202,6 +40202,7 @@ type Image struct {
 	xxx_hidden_VolumeMounts         *[]*VolumeMount        `protobuf:"bytes,23,rep,name=volume_mounts,json=volumeMounts,proto3"`
 	xxx_hidden_Arch                 Arch                   `protobuf:"varint,24,opt,name=arch,proto3,enum=modal.client.Arch"`
 	xxx_hidden_Os                   Os                     `protobuf:"varint,25,opt,name=os,proto3,enum=modal.client.Os"`
+	xxx_hidden_Platform             string                 `protobuf:"bytes,26,opt,name=platform,proto3"`
 	unknownFields                   protoimpl.UnknownFields
 	sizeCache                       protoimpl.SizeCache
 }
@@ -40356,6 +40357,13 @@ func (x *Image) GetOs() Os {
 	return Os_OS_UNSPECIFIED
 }
 
+func (x *Image) GetPlatform() string {
+	if x != nil {
+		return x.xxx_hidden_Platform
+	}
+	return ""
+}
+
 func (x *Image) SetBaseImages(v []*BaseImage) {
 	x.xxx_hidden_BaseImages = &v
 }
@@ -40427,6 +40435,10 @@ func (x *Image) SetOs(v Os) {
 	x.xxx_hidden_Os = v
 }
 
+func (x *Image) SetPlatform(v string) {
+	x.xxx_hidden_Platform = v
+}
+
 func (x *Image) HasGpuConfig() bool {
 	if x == nil {
 		return false
@@ -40489,6 +40501,9 @@ type Image_builder struct {
 	Arch Arch
 	// OS_UNSPECIFIED means Linux.
 	Os Os
+	// OCI platform "<os>/<arch>", e.g. "linux/arm64". The server parses it into
+	// os and arch and clears it.
+	Platform string
 }
 
 func (b0 Image_builder) Build() *Image {
@@ -40512,6 +40527,7 @@ func (b0 Image_builder) Build() *Image {
 	x.xxx_hidden_VolumeMounts = &b.VolumeMounts
 	x.xxx_hidden_Arch = b.Arch
 	x.xxx_hidden_Os = b.Os
+	x.xxx_hidden_Platform = b.Platform
 	return m0
 }
 
@@ -82475,7 +82491,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12target_concurrency\x18\x06 \x01(\rR\x11targetConcurrency\x12(\n" +
 	"\x0funauthenticated\x18\a \x01(\bR\x0funauthenticated\x12X\n" +
 	"\x15lift_and_shift_config\x18\b \x01(\v2 .modal.client.LiftAndShiftConfigH\x00R\x12liftAndShiftConfig\x88\x01\x01B\x18\n" +
-	"\x16_lift_and_shift_config\"\x9b\a\n" +
+	"\x16_lift_and_shift_config\"\xb7\a\n" +
 	"\x05Image\x128\n" +
 	"\vbase_images\x18\x05 \x03(\v2\x17.modal.client.BaseImageR\n" +
 	"baseImages\x12/\n" +
@@ -82497,7 +82513,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"build_args\x18\x16 \x03(\v2\".modal.client.Image.BuildArgsEntryR\tbuildArgs\x12>\n" +
 	"\rvolume_mounts\x18\x17 \x03(\v2\x19.modal.client.VolumeMountR\fvolumeMounts\x12&\n" +
 	"\x04arch\x18\x18 \x01(\x0e2\x12.modal.client.ArchR\x04arch\x12 \n" +
-	"\x02os\x18\x19 \x01(\x0e2\x10.modal.client.OsR\x02os\x1a<\n" +
+	"\x02os\x18\x19 \x01(\x0e2\x10.modal.client.OsR\x02os\x12\x1a\n" +
+	"\bplatform\x18\x1a \x01(\tR\bplatform\x1a<\n" +
 	"\x0eBuildArgsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"6\n" +
