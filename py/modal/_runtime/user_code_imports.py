@@ -367,7 +367,7 @@ class _LifecycleManager:
         task_lifecycle_manager: "modal._runtime.task_lifecycle_manager.TaskLifecycleManager",
     ):
         # Identify the "enter" methods to run after resuming from a snapshot.
-        flash_entry = _FlashContainerEntry(self.function_def.http_config, is_server=self.function_def.is_server)
+        flash_entry = _FlashContainerEntry(self.function_def.http_config)
         if not self.function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
@@ -378,7 +378,6 @@ class _LifecycleManager:
             yield
         finally:
             if not self.function_def.is_auto_snapshot:
-                flash_entry.stop()
                 exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
                 call_lifecycle_functions(event_loop, task_lifecycle_manager, list(exit_methods.values()))
                 flash_entry.close()

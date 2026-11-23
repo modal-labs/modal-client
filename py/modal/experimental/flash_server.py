@@ -20,9 +20,6 @@ class _ServerManager:
         await self.client._stub.ContainerServerLifecycleReady(api_pb2.ContainerServerLifecycleReadyRequest())
         logger.warning(f"[Modal Server] Ready for task {self.task_id}.")
 
-    async def stop(self):
-        pass
-
     async def close(self):
         logger.warning(f"[Modal Server] Drained for task {self.task_id}.")
 

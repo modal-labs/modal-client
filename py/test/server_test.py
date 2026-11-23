@@ -661,19 +661,6 @@ def test_server_rejects_concurrent_decorator():
                 pass
 
 
-def test_server_rejects_http_server_decorator():
-    """Test that @modal.experimental.http_server() cannot be used on server classes."""
-    with pytest.raises(InvalidError, match=r"cannot have @modal\.experimental\.http_server\(\)"):
-        app = modal.App("server-http-server-test", include_source=False)
-
-        @app.server(port=8000, routing_region="us-east", serialized=True)
-        @modal.experimental.http_server(port=9000, proxy_regions=["us-east"])  # type: ignore
-        class HttpServerDecoratorServer:
-            @modal.enter()
-            def start(self):
-                pass
-
-
 def test_server_rejects_batched_decorator():
     """Test that @modal.batched() cannot be stacked on server classes."""
     with pytest.raises(

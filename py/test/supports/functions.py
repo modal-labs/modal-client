@@ -934,35 +934,6 @@ class FullLifecycleCls:
         full_lifecycle_events.append("modal_exit")
 
 
-flash_cls_lifecycle_events: list[str] = []
-
-
-@app.cls(
-    enable_memory_snapshot=True,
-    min_containers=1,
-)
-@modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
-class FlashClsWithEnter:
-    @modal.enter(snap=True)
-    def enter(self):
-        # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
-        # for the subprocess's inherited file descriptors to close. This fails on Github Actions
-        # if we don't pipe the subprocess stdout/stderr to DEVNULL.
-        self.process = subprocess.Popen(
-            ["python3", "-m", "http.server", "8001"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        flash_cls_lifecycle_events.append("enter_pre_snapshot")
-
-    @modal.enter(snap=False)
-    def enter_post_snapshot(self):
-        flash_cls_lifecycle_events.append("enter_post_snapshot")
-        # Print lifecycle events after all enter methods have run
-        # This will be captured by the test before the container exits
-        print(f"[flash_lifecycle_events:{','.join(flash_cls_lifecycle_events)}]")
-
-
 server_lifecycle_events: list[str] = []
 server_signal_events: list[str] = []
 
