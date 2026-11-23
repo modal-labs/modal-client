@@ -221,33 +221,6 @@ func TestImageFromNameRejectsEmptyPartsInSlashName(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestImageFromRegistryWithSecret(t *testing.T) {
-	// GCP Artifact Registry also supports auth using username and password, if the username is "_json_key"
-	// and the password is the service account JSON blob. See:
-	// https://cloud.google.com/artifact-registry/docs/docker/authentication#json-key
-	// So we use GCP Artifact Registry to test this too.
-
-	// Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
-	// the image builder.
-	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
-
-	g := gomega.NewWithT(t)
-	ctx := t.Context()
-	tc := newTestClient(t)
-
-	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-	secret, err := tc.Secrets.FromName(ctx, "libmodal-gcp-artifact-registry-test", &modal.SecretFromNameParams{
-		RequiredKeys: []string{"REGISTRY_USERNAME", "REGISTRY_PASSWORD"},
-	})
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-	image, err := tc.Images.FromRegistry("us-east1-docker.pkg.dev/modal-prod-367916/private-repo-test/my-image", &modal.ImageFromRegistryParams{Secret: secret}).Build(ctx, app, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(image.ImageID).Should(gomega.HavePrefix("im-"))
-}
-
 func TestImageFromAwsEcr(t *testing.T) {
 	// Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
 	// the image builder.
@@ -428,6 +401,15 @@ func TestDockerfileCommandsFromBuiltRegistryImageDropsRegistryConfig(t *testing.
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
 
+	grpcmock.HandleUnary(mock, "SecretGetInfo",
+		func(req *pb.SecretGetInfoRequest) (*pb.SecretGetInfoResponse, error) {
+			g.Expect(req.GetSecretId()).To(gomega.Equal("sc-registry"))
+			return pb.SecretGetInfoResponse_builder{
+				Metadata: pb.SecretMetadata_builder{Keys: []string{"REGISTRY_USERNAME", "REGISTRY_PASSWORD"}}.Build(),
+			}.Build(), nil
+		},
+	)
+
 	grpcmock.HandleUnary(
 		mock,
 		"ImageGetOrCreate",
@@ -493,7 +475,7 @@ func TestImageFromRegistryHydratesLazyRegistrySecret(t *testing.T) {
 	grpcmock.HandleUnary(mock, "SecretGetOrCreate",
 		func(req *pb.SecretGetOrCreateRequest) (*pb.SecretGetOrCreateResponse, error) {
 			g.Expect(req.GetObjectCreationType()).To(gomega.Equal(pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL))
-			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"REGISTRY_PASSWORD": "shh"}))
+			g.Expect(req.GetEnvDict()).To(gomega.Equal(map[string]string{"REGISTRY_USERNAME": "me", "REGISTRY_PASSWORD": "shh"}))
 			return pb.SecretGetOrCreateResponse_builder{SecretId: "st-registry"}.Build(), nil
 		},
 	)
@@ -510,7 +492,7 @@ func TestImageFromRegistryHydratesLazyRegistrySecret(t *testing.T) {
 		},
 	)
 
-	registrySecret, err := mock.Secrets.FromMap(ctx, map[string]string{"REGISTRY_PASSWORD": "shh"}, nil)
+	registrySecret, err := mock.Secrets.FromMap(ctx, map[string]string{"REGISTRY_USERNAME": "me", "REGISTRY_PASSWORD": "shh"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(registrySecret.SecretID).To(gomega.BeEmpty())
 

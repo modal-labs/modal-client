@@ -19,12 +19,14 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## JS
 
+- `client.images.fromRegistry()` now selects the registry auth type (AWS ECR, GCP Artifact Registry, or username and password) from the keys of its Secret, as `Image.from_registry()` does in Python. A Secret with the keys for none or more than one of these makes the build fail with `InvalidError`.
 - Added `OutboundPolicy` and `OutboundRoute`, set with the `outboundPolicy` option of `client.sandboxes.create()` and replaced on a running Sandbox with `Sandbox.setOutboundPolicy()`. An outbound policy is an ordered list of routes that decides, by IP range or domain, which outbound traffic from a Sandbox is allowed or blocked. HTTPS routes can also set headers on matching requests from a Secret's values without the Secret entering the Sandbox; header replacements are in public beta.
 - Deprecated the `outboundCidrAllowlist` and `outboundDomainAllowlist` options of `client.sandboxes.create()` and `Sandbox.updateNetworkPolicy()` in favor of `outboundPolicy` and `Sandbox.setOutboundPolicy()`. They log a warning and will be removed in a future release.
 - Deprecated `ExperimentalOutboundPolicy`: the `experimentalOutboundPolicy` option of `client.sandboxes.create()` and `Sandbox.experimentalUpdateOutboundPolicy()` log a warning and will be removed in version 0.12.0. Use `outboundPolicy` with `OutboundRoute.https({ domains, headerReplacements })` routes instead.
 
 ## Go
 
+- `Images.FromRegistry()` now selects the registry auth type (AWS ECR, GCP Artifact Registry, or username and password) from the keys of `ImageFromRegistryParams.Secret`, as `Image.from_registry()` does in Python. A Secret with the keys for none or more than one of these makes `Build` fail with `InvalidError`.
 - Added `OutboundPolicy` and its route types, set with the `OutboundPolicy` field of `SandboxCreateParams` and replaced on a running Sandbox with `Sandbox.SetOutboundPolicy()`. An outbound policy is an ordered list of routes that decides, by IP range or domain, which outbound traffic from a Sandbox is allowed or blocked. HTTPS routes can also set headers on matching requests from a Secret's values without the Secret entering the Sandbox; header replacements are in public beta.
 - Deprecated the `OutboundCIDRAllowlist` and `OutboundDomainAllowlist` fields of `SandboxCreateParams` and `Sandbox.UpdateNetworkPolicy()` in favor of `OutboundPolicy` and `Sandbox.SetOutboundPolicy()`. They log a warning and will be removed in a future release.
 - Deprecated `ExperimentalOutboundPolicy`: the `ExperimentalOutboundPolicy` field of `SandboxCreateParams` and `Sandbox.ExperimentalUpdateOutboundPolicy()` log a warning and will be removed in version 0.12.0. Use `OutboundPolicy` with `OutboundRouteHTTPS` routes that set `HeaderReplacements` instead.

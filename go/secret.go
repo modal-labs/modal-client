@@ -56,6 +56,7 @@ type Secret struct {
 	// if multiple goroutines hydrate the same Secret concurrently. A failed
 	// attempt is not cached, so callers may retry after a transient error.
 	hydrateMu sync.Mutex
+	keys      []string // nil when not known
 }
 
 // hydrate lazily resolves the server-side SecretID via the Secret's hydrator. It
@@ -78,6 +79,31 @@ func (s *Secret) hydrate(ctx context.Context, client *Client) error {
 
 	s.SecretID = id
 	return nil
+}
+
+func (s *Secret) getKeys(ctx context.Context, client *Client) ([]string, error) {
+	if err := s.hydrate(ctx, client); err != nil {
+		return nil, err
+	}
+	s.hydrateMu.Lock()
+	defer s.hydrateMu.Unlock()
+	if s.keys == nil {
+		resp, err := client.cpClient.SecretGetInfo(ctx, pb.SecretGetInfoRequest_builder{SecretId: s.SecretID}.Build())
+		if err != nil {
+			return nil, err
+		}
+		s.keys = keysFromMetadata(resp.GetMetadata())
+	}
+	return s.keys, nil
+}
+
+// keysFromMetadata is nil only when there is no metadata, so that a Secret with
+// no keys is not looked up again.
+func keysFromMetadata(m *pb.SecretMetadata) []string {
+	if m == nil {
+		return nil
+	}
+	return append([]string{}, m.GetKeys()...)
 }
 
 // secretFromMapHydrator creates an ephemeral server-side Secret from a locally
@@ -139,7 +165,7 @@ func (s *secretServiceImpl) FromName(ctx context.Context, name string, params *S
 	}
 
 	s.client.logger.DebugContext(ctx, "Retrieved Secret", "secret_id", resp.GetSecretId(), "secret_name", name)
-	return &Secret{SecretID: resp.GetSecretId(), Name: name}, nil
+	return &Secret{SecretID: resp.GetSecretId(), Name: name, keys: keysFromMetadata(resp.GetMetadata())}, nil
 }
 
 // SecretFromMapParams are options for creating a Secret from a key/value map.
@@ -160,18 +186,20 @@ func (s *secretServiceImpl) FromMap(ctx context.Context, keyValuePairs map[strin
 	}
 
 	envDict := make(map[string]string, len(keyValuePairs))
+	keys := make([]string, 0, len(keyValuePairs))
 	for k, v := range keyValuePairs {
 		if err := validateEnvVarName(k); err != nil {
 			return nil, err
 		}
 		envDict[k] = v
+		keys = append(keys, k)
 	}
 	environment := firstNonEmpty(params.Environment, s.client.profile.Environment)
 
 	// The Secret is lazy: hydrate creates the ephemeral server-side Secret from
 	// envDict the first time the SecretID is needed, at most once even under
 	// concurrent callers.
-	return &Secret{hydrator: &secretFromMapHydrator{envDict: envDict, environment: environment}}, nil
+	return &Secret{hydrator: &secretFromMapHydrator{envDict: envDict, environment: environment}, keys: keys}, nil
 }
 
 // hydrateSecrets hydrates each Secret in the slice so that its SecretID is

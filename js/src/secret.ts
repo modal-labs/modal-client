@@ -79,7 +79,7 @@ export class SecretService {
         "secret_name",
         name,
       );
-      return new Secret(resp.secretId, name);
+      return new Secret(resp.secretId, name, undefined, resp.metadata?.keys);
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(err.details);
@@ -132,6 +132,7 @@ export class SecretService {
       "",
       undefined,
       new SecretFromObjectHydrator(envDict, environment),
+      Object.keys(envDict),
     );
   }
 
@@ -236,11 +237,31 @@ export class Secret {
   // doesn't permanently break the Secret; subsequent calls can retry.
   #hydratePromise?: Promise<void>;
 
+  #keys?: string[];
+
   /** @ignore */
-  constructor(secretId: string, name?: string, hydrator?: SecretHydrator) {
+  constructor(
+    secretId: string,
+    name?: string,
+    hydrator?: SecretHydrator,
+    keys?: string[],
+  ) {
     this.#secretId = secretId;
     this.name = name;
     this.#hydrator = hydrator;
+    this.#keys = keys;
+  }
+
+  /** @internal @hidden */
+  async _getKeys(client: ModalClient): Promise<string[]> {
+    await this._hydrate(client);
+    if (this.#keys === undefined) {
+      const resp = await client.cpClient.secretGetInfo({
+        secretId: this.#secretId,
+      });
+      this.#keys = resp.metadata?.keys ?? [];
+    }
+    return this.#keys;
   }
 
   /** The ID of the server-side Secret, or an empty string if not yet hydrated. */

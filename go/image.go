@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
@@ -119,6 +120,8 @@ type Image struct {
 
 // ImageFromRegistryParams are options for creating an Image from a registry.
 type ImageFromRegistryParams struct {
+	// Secret holds registry credentials. Its keys select the auth type: AWS_* for
+	// AWS ECR, SERVICE_ACCOUNT_JSON for GCP, or REGISTRY_USERNAME and REGISTRY_PASSWORD.
 	Secret *Secret
 }
 
@@ -144,20 +147,80 @@ type ImagePublishParams struct {
 	Environment string
 }
 
+var registryAuthKeys = []struct {
+	authType pb.RegistryAuthType
+	name     string
+	keySets  [][]string
+}{
+	{pb.RegistryAuthType_REGISTRY_AUTH_TYPE_AWS, "AWS", [][]string{
+		{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"},
+		{"AWS_ROLE_ARN", "AWS_REGION"},
+	}},
+	{pb.RegistryAuthType_REGISTRY_AUTH_TYPE_GCP, "GCP", [][]string{{"SERVICE_ACCOUNT_JSON"}}},
+	{pb.RegistryAuthType_REGISTRY_AUTH_TYPE_STATIC_CREDS, "username and password", [][]string{{"REGISTRY_USERNAME", "REGISTRY_PASSWORD"}}},
+}
+
+const registrySecretKeysHelp = "Registry Secret must include exactly one of: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION " +
+	"(or AWS_ROLE_ARN and AWS_REGION) for AWS ECR; SERVICE_ACCOUNT_JSON for GCP Artifact Registry; " +
+	"or REGISTRY_USERNAME and REGISTRY_PASSWORD for other registries."
+
+func inferRegistryAuthType(keys []string) (pb.RegistryAuthType, error) {
+	hasAll := func(required []string) bool {
+		for _, key := range required {
+			if !slices.Contains(keys, key) {
+				return false
+			}
+		}
+		return true
+	}
+	authType := pb.RegistryAuthType_REGISTRY_AUTH_TYPE_UNSPECIFIED
+	var names []string
+	for _, auth := range registryAuthKeys {
+		if slices.ContainsFunc(auth.keySets, hasAll) {
+			authType = auth.authType
+			names = append(names, auth.name)
+		}
+	}
+	switch len(names) {
+	case 0:
+		found := "none"
+		if len(keys) > 0 {
+			found = strings.Join(slices.Sorted(slices.Values(keys)), ", ")
+		}
+		return authType, InvalidError{fmt.Sprintf("%s Found keys: %s.", registrySecretKeysHelp, found)}
+	case 1:
+		return authType, nil
+	default:
+		return pb.RegistryAuthType_REGISTRY_AUTH_TYPE_UNSPECIFIED, InvalidError{fmt.Sprintf(
+			"Registry Secret has keys for more than one kind of authentication (%s). %s", strings.Join(names, ", "), registrySecretKeysHelp,
+		)}
+	}
+}
+
 // registryConfigBuilder returns a closure that hydrates the registry-auth Secret
 // (if any) and builds the ImageRegistryConfig. It runs at Build time so that lazy
 // Secrets (created via FromMap) are resolved against the build's client.
 func registryConfigBuilder(authType pb.RegistryAuthType, secret *Secret) func(ctx context.Context, client *Client) (*pb.ImageRegistryConfig, error) {
 	return func(ctx context.Context, client *Client) (*pb.ImageRegistryConfig, error) {
 		secretID := ""
+		registryAuthType := authType
 		if secret != nil {
 			if err := hydrateSecrets(ctx, client, []*Secret{secret}); err != nil {
 				return nil, err
 			}
 			secretID = secret.SecretID
+			if authType == pb.RegistryAuthType_REGISTRY_AUTH_TYPE_UNSPECIFIED {
+				keys, err := secret.getKeys(ctx, client)
+				if err != nil {
+					return nil, err
+				}
+				if registryAuthType, err = inferRegistryAuthType(keys); err != nil {
+					return nil, err
+				}
+			}
 		}
 		return pb.ImageRegistryConfig_builder{
-			RegistryAuthType: authType,
+			RegistryAuthType: registryAuthType,
 			SecretId:         secretID,
 		}.Build(), nil
 	}
@@ -172,7 +235,7 @@ func (s *imageServiceImpl) FromRegistry(tag string, params *ImageFromRegistryPar
 		client:  s.client,
 	}
 	if params != nil && params.Secret != nil {
-		image.buildRegistryConfig = registryConfigBuilder(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_STATIC_CREDS, params.Secret)
+		image.buildRegistryConfig = registryConfigBuilder(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_UNSPECIFIED, params.Secret)
 	}
 	return image
 }

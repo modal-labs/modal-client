@@ -91,6 +91,48 @@ type BuildRegistryConfig = (
   client: ModalClient,
 ) => Promise<ImageRegistryConfig>;
 
+const REGISTRY_AUTH_KEY_SETS: [RegistryAuthType, string, string[][]][] = [
+  [
+    RegistryAuthType.REGISTRY_AUTH_TYPE_AWS,
+    "AWS",
+    [
+      ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+      ["AWS_ROLE_ARN", "AWS_REGION"],
+    ],
+  ],
+  [RegistryAuthType.REGISTRY_AUTH_TYPE_GCP, "GCP", [["SERVICE_ACCOUNT_JSON"]]],
+  [
+    RegistryAuthType.REGISTRY_AUTH_TYPE_STATIC_CREDS,
+    "username and password",
+    [["REGISTRY_USERNAME", "REGISTRY_PASSWORD"]],
+  ],
+];
+
+const REGISTRY_SECRET_KEYS_HELP =
+  "Registry Secret must include exactly one of: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION " +
+  "(or AWS_ROLE_ARN and AWS_REGION) for AWS ECR; SERVICE_ACCOUNT_JSON for GCP Artifact Registry; " +
+  "or REGISTRY_USERNAME and REGISTRY_PASSWORD for other registries.";
+
+function inferRegistryAuthType(keys: string[]): RegistryAuthType {
+  const keySet = new Set(keys);
+  const matches = REGISTRY_AUTH_KEY_SETS.filter(([, , keySets]) =>
+    keySets.some((required) => required.every((key) => keySet.has(key))),
+  );
+  if (matches.length === 0) {
+    const found = [...keySet].sort().join(", ") || "none";
+    throw new InvalidError(
+      `${REGISTRY_SECRET_KEYS_HELP} Found keys: ${found}.`,
+    );
+  }
+  if (matches.length > 1) {
+    const names = matches.map(([, name]) => name).join(", ");
+    throw new InvalidError(
+      `Registry Secret has keys for more than one kind of authentication (${names}). ${REGISTRY_SECRET_KEYS_HELP}`,
+    );
+  }
+  return matches[0][0];
+}
+
 /**
  * Returns a closure that hydrates the registry-auth Secret (if any) and builds
  * the ImageRegistryConfig. It runs at build time so that lazy Secrets (created
@@ -102,14 +144,15 @@ function registryConfigBuilder(
 ): BuildRegistryConfig {
   return async (client: ModalClient) => {
     let secretId = "";
+    let registryAuthType = authType;
     if (secret) {
       await hydrateSecrets(client, [secret]);
       secretId = secret.secretId;
+      if (authType === RegistryAuthType.REGISTRY_AUTH_TYPE_UNSPECIFIED) {
+        registryAuthType = inferRegistryAuthType(await secret._getKeys(client));
+      }
     }
-    return ImageRegistryConfig.create({
-      registryAuthType: authType,
-      secretId,
-    });
+    return ImageRegistryConfig.create({ registryAuthType, secretId });
   };
 }
 
@@ -191,6 +234,9 @@ export class ImageService {
   /**
    * Creates an {@link Image} from a raw registry tag, optionally using a {@link Secret} for authentication.
    *
+   * The keys of the Secret select the auth type: `AWS_*` for AWS ECR, `SERVICE_ACCOUNT_JSON`
+   * for GCP, or `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`.
+   *
    * @param tag - The registry tag for the Image.
    * @param secret - Optional. A Secret containing credentials for registry authentication.
    */
@@ -203,7 +249,7 @@ export class ImageService {
         );
       }
       buildRegistryConfig = registryConfigBuilder(
-        RegistryAuthType.REGISTRY_AUTH_TYPE_STATIC_CREDS,
+        RegistryAuthType.REGISTRY_AUTH_TYPE_UNSPECIFIED,
         secret,
       );
     }

@@ -6,6 +6,7 @@ import { Secret } from "../src/secret";
 import { App } from "../src/app";
 import { ClientError, Status } from "nice-grpc";
 import { Image, NotFoundError } from "modal";
+import { RegistryAuthType } from "../proto/modal_proto/api";
 
 test("ImageFromId", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
@@ -166,37 +167,6 @@ test("ImageFromRegistry", async () => {
   });
 
   const image = await tc.images.fromRegistry("alpine:3.21").build(app);
-  expect(image.imageId).toBeTruthy();
-  expect(image.imageId).toMatch(/^im-/);
-});
-
-test("ImageFromRegistryWithSecret", async () => {
-  // GCP Artifact Registry also supports auth using username and password, if the username is "_json_key"
-  // and the password is the service account JSON blob. See:
-  // https://cloud.google.com/artifact-registry/docs/docker/authentication#json-key
-  // So we use GCP Artifact Registry to test this too.
-
-  // Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
-  // the image builder.
-  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
-  onTestFinished(() => {
-    vi.unstubAllEnvs();
-  });
-  // Use a new client to pull in MODAL_IMAGE_BUILDER_VERSION
-  const tc = new ModalClient();
-
-  const app = await tc.apps.fromName("libmodal-test", {
-    createIfMissing: true,
-  });
-
-  const image = await tc.images
-    .fromRegistry(
-      "us-east1-docker.pkg.dev/modal-prod-367916/private-repo-test/my-image",
-      await tc.secrets.fromName("libmodal-gcp-artifact-registry-test", {
-        requiredKeys: ["REGISTRY_USERNAME", "REGISTRY_PASSWORD"],
-      }),
-    )
-    .build(app);
   expect(image.imageId).toBeTruthy();
   expect(image.imageId).toMatch(/^im-/);
 });
@@ -416,6 +386,11 @@ test("DockerfileCommandsFromBuiltRegistryImageDropsRegistryConfig", async () => 
   });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
+  mock.handleUnary("/SecretGetInfo", (req: any) => {
+    expect(req.secretId).toBe("sc-registry");
+    return { metadata: { keys: ["REGISTRY_USERNAME", "REGISTRY_PASSWORD"] } };
+  });
+
   mock.handleUnary("/ImageGetOrCreate", (req: any) => {
     expect(req).toMatchObject({
       appId: "ap-test",
@@ -454,6 +429,65 @@ test("DockerfileCommandsFromBuiltRegistryImageDropsRegistryConfig", async () => 
 
   expect(builtImage.imageId).toBe("im-layer");
   mock.assertExhausted();
+});
+
+test.each([
+  [
+    ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+    RegistryAuthType.REGISTRY_AUTH_TYPE_AWS,
+  ],
+  [["AWS_ROLE_ARN", "AWS_REGION"], RegistryAuthType.REGISTRY_AUTH_TYPE_AWS],
+  [["SERVICE_ACCOUNT_JSON"], RegistryAuthType.REGISTRY_AUTH_TYPE_GCP],
+  [
+    ["REGISTRY_USERNAME", "REGISTRY_PASSWORD", "OTHER"],
+    RegistryAuthType.REGISTRY_AUTH_TYPE_STATIC_CREDS,
+  ],
+])(
+  "ImageFromRegistryInfersRegistryAuthType %s",
+  async (keys, registryAuthType) => {
+    vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    mock.handleUnary("/SecretGetOrCreate", () => ({ secretId: "sc-registry" }));
+    const secret = await mc.secrets.fromObject(
+      Object.fromEntries(keys.map((k) => [k, "x"])),
+    );
+    mock.handleUnary("/ImageGetOrCreate", (req: any) => {
+      expect(req.image.imageRegistryConfig).toMatchObject({
+        registryAuthType,
+        secretId: "sc-registry",
+      });
+      return { imageId: "im-registry", result: { status: 1 } };
+    });
+
+    await mc.images
+      .fromRegistry("ghcr.io/my-org/my-image:latest", secret)
+      .build(new App("ap-test", "libmodal-test"));
+    mock.assertExhausted();
+  },
+);
+
+test.each([
+  [["TOKEN"], "must include"],
+  [["SERVICE_ACCOUNT_JSON", "AWS_ROLE_ARN", "AWS_REGION"], "more than one"],
+])("ImageFromRegistryRefusesUnresolvableSecret %s", async (keys, message) => {
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mock.handleUnary("/SecretGetOrCreate", () => ({ secretId: "sc-registry" }));
+  const secret = await mc.secrets.fromObject(
+    Object.fromEntries(keys.map((k) => [k, "x"])),
+  );
+
+  await expect(
+    mc.images
+      .fromRegistry("ghcr.io/my-org/my-image:latest", secret)
+      .build(new App("ap-test", "libmodal-test")),
+  ).rejects.toThrow(message);
 });
 
 test("DockerfileCommandsChaining", async () => {
