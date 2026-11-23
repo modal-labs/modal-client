@@ -308,6 +308,14 @@ enum ObjectCreationType {
   OBJECT_CREATION_TYPE_EPHEMERAL = 5;
 }
 
+// OS that an image is built for and runs on.
+enum Os {
+  OS_UNSPECIFIED = 0;
+  OS_LINUX = 1;
+  OS_WINDOWS_SERVER = 2;
+  OS_DARWIN = 3;
+}
+
 enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
@@ -3330,6 +3338,9 @@ message Image {
   // CPU architecture the image is built for. Images with an unspecified
   // arch predate this field and are treated as x86_64.
   Arch arch = 24;
+
+  // OS_UNSPECIFIED means Linux.
+  Os os = 25;
 }
 
 message ImageBuildChainGetRequest {
