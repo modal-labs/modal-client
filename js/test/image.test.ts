@@ -639,3 +639,23 @@ test("DockerfileCommandsWithOptions", async () => {
 
   mock.assertExhausted();
 });
+
+test("ImageBuildSetsPlatformOnRootLayerOnly", async () => {
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  for (const platform of ["linux/arm64", ""]) {
+    mock.handleUnary("/ImageGetOrCreate", (req: any) => {
+      expect(req.image.platform).toBe(platform);
+      return { imageId: "im-layer", result: { status: 1 } };
+    });
+  }
+
+  await mc.images
+    .fromRegistry("alpine:3.21", { platform: "linux/arm64" })
+    .dockerfileCommands(["RUN echo layer"])
+    .build(new App("ap-test", "libmodal-test"));
+  mock.assertExhausted();
+});

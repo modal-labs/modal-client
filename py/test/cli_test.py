@@ -442,6 +442,12 @@ def test_image_cli_build_name_forms(servicer, set_env_client, image_build_contex
     assert list(servicer.image_tags) == ["my-image:latest"]
 
 
+def test_image_cli_build_platform(servicer, set_env_client, image_build_context):
+    run_cli_command(["image", "build", "-t", "my-image", "--platform", "linux/arm64", image_build_context])
+    root_layers = [image for image in servicer.images.values() if not image.base_images]
+    assert [image.platform for image in root_layers] == ["linux/arm64"]
+
+
 def test_image_cli_build_dot_context_dir(servicer, set_env_client, image_build_context, monkeypatch):
     monkeypatch.chdir(image_build_context)
     run_cli_command(["image", "build", "-t", "my-image", "."])
@@ -766,6 +772,12 @@ def test_image_cli_pull(servicer, set_env_client):
     [app_id] = servicer.app_environments
     assert servicer.app_state_history[app_id][-1] == api_pb2.APP_STATE_STOPPED
     assert servicer.image_tags["my-python:latest"] == _built_image_id(result)
+
+
+def test_image_cli_pull_platform(servicer, set_env_client):
+    result = run_cli_command(["image", "pull", "docker.io/python:3.13-slim", "--platform", "linux/arm64"])
+    image = _built_image(servicer, result)
+    assert image.platform == "linux/arm64"
 
 
 @pytest.mark.parametrize(("args", "force_built"), [([], False), (["--force-build"], True)])

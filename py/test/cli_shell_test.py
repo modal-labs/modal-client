@@ -77,6 +77,18 @@ def test_shell_preserve_token(servicer, set_env_client, mock_shell_pty, monkeypa
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
+@skip_windows("modal shell is not supported on Windows.")
+@pytest.mark.parametrize("image_args", [[], ["--image", "alpine"]])
+def test_shell_platform(servicer, set_env_client, mock_shell_pty, image_args):
+    fake_stdin, _ = mock_shell_pty
+    fake_stdin.clear()
+    fake_stdin.extend([b"exit\n"])
+    run_cli_command(["shell", "--platform", "linux/arm64", *image_args])
+
+    root_layers = [image for image in servicer.images.values() if not image.base_images]
+    assert [image.platform for image in root_layers] == ["linux/arm64"]
+
+
 def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_shell_pty):
     expected_exit_code = 1 if platform.system() == "Windows" else 0
     res = run_cli_command(["shell"], expected_exit_code=expected_exit_code)
@@ -249,6 +261,7 @@ def test_shell_forbids_config_args_with_function_ref(
     [
         (["--image", "debian:latest"]),
         (["--add-python", "3.11"]),
+        (["--platform", "linux/arm64"]),
     ],
 )
 def test_shell_forbids_image_args_with_image_id(servicer, set_env_client, forbidden_args):

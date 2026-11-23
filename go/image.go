@@ -111,6 +111,7 @@ type Image struct {
 	// may be lazy (created via FromMap). nil when not pulling from a private registry.
 	buildRegistryConfig func(ctx context.Context, client *Client) (*pb.ImageRegistryConfig, error)
 	tag                 string
+	platform            string
 	// baseImageID is the image ID of the parent image layer to use as FROM base.
 	baseImageID string
 	layers      []layer
@@ -123,6 +124,9 @@ type ImageFromRegistryParams struct {
 	// Secret holds registry credentials. Its keys select the auth type: AWS_* for
 	// AWS ECR, SERVICE_ACCOUNT_JSON for GCP, or REGISTRY_USERNAME and REGISTRY_PASSWORD.
 	Secret *Secret
+
+	// Platform of the Image as "linux/<arch>", e.g. "linux/arm64".
+	Platform string
 }
 
 // ImageFromAwsEcrParams are options for ImageService.FromAwsEcr.
@@ -234,8 +238,11 @@ func (s *imageServiceImpl) FromRegistry(tag string, params *ImageFromRegistryPar
 		layers:  []layer{{}},
 		client:  s.client,
 	}
-	if params != nil && params.Secret != nil {
-		image.buildRegistryConfig = registryConfigBuilder(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_UNSPECIFIED, params.Secret)
+	if params != nil {
+		image.platform = params.Platform
+		if params.Secret != nil {
+			image.buildRegistryConfig = registryConfigBuilder(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_UNSPECIFIED, params.Secret)
+		}
 	}
 	return image
 }
@@ -355,6 +362,7 @@ func (image *Image) DockerfileCommands(commands []string, params *ImageDockerfil
 	return &Image{
 		ImageID:             "",
 		tag:                 image.tag,
+		platform:            image.platform,
 		baseImageID:         baseImageID,
 		buildRegistryConfig: image.buildRegistryConfig,
 		layers:              newLayers,
@@ -489,6 +497,11 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 			}
 		}
 
+		layerPlatform := ""
+		if i == 0 && currentImageID == "" {
+			layerPlatform = image.platform
+		}
+
 		resp, err := image.client.cpClient.ImageGetOrCreate(
 			ctx,
 			pb.ImageGetOrCreateRequest_builder{
@@ -500,6 +513,7 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 					GpuConfig:           gpuConfig,
 					ContextFiles:        []*pb.ImageContextFile{},
 					BaseImages:          baseImages,
+					Platform:            layerPlatform,
 				}.Build(),
 				BuilderVersion: imageBuilderVersion,
 				ForceBuild:     currentLayer.forceBuild,

@@ -1853,6 +1853,38 @@ def test_image_from_registry_arch(builder_version, servicer, client):
         assert layers[-1].arch == arch
 
 
+@pytest.mark.parametrize("platform", [None, "linux/arm64"])
+def test_image_platform(builder_version, servicer, client, tmp_path, platform):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM ubuntu:22.04\nRUN echo hi\n")
+    for image in [
+        Image.from_registry("ubuntu:22.04", platform=platform),
+        Image.from_dockerfile(dockerfile, platform=platform),
+        Image.debian_slim(platform=platform),
+        Image.micromamba(platform=platform),
+    ]:
+        image = image.env({"A": "1"})
+        build_image(image, client)
+        *upper_layers, root_layer = get_image_layers(image.object_id, servicer)
+        assert root_layer.platform == (platform or "")
+        assert [layer.platform for layer in upper_layers] == [""] * len(upper_layers)
+
+    image = Image.from_scratch(platform=platform)
+    build_image(image, client)
+    [layer] = get_image_layers(image.object_id, servicer)
+    assert layer.platform == (platform or "")
+
+
+def test_image_from_dockerfile_add_python_arch(builder_version, servicer, client, tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM ubuntu:22.04\n")
+    image = Image.from_dockerfile(dockerfile, add_python="3.12", platform="linux/arm64")
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert layers[0].context_mount_id == "mo-py312-aarch64"
+    assert layers[-1].platform == "linux/arm64"
+
+
 def test_image_force_build(builder_version, servicer, client):
     image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
     build_image(image, client)

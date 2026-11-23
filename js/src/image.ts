@@ -75,6 +75,14 @@ function parseNamedImageRef(value: string): [string, string] {
   return [prefix, `${fullName}:${tag}`];
 }
 
+/** Optional parameters for {@link ImageService#fromRegistry client.images.fromRegistry()}. */
+export type ImageFromRegistryParams = {
+  /** A {@link Secret} with credentials for registry authentication. */
+  secret?: Secret;
+  /** Platform of the Image as `linux/<arch>`, e.g. `"linux/arm64"`. */
+  platform?: string;
+};
+
 /** Optional parameters for {@link ImageService#fromName client.images.fromName()}. */
 export type ImageFromNameParams = {
   /** Modal Environment to resolve the named Image in. */
@@ -238,9 +246,14 @@ export class ImageService {
    * for GCP, or `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`.
    *
    * @param tag - The registry tag for the Image.
-   * @param secret - Optional. A Secret containing credentials for registry authentication.
+   * @param params - Optional. A Secret containing credentials for registry
+   * authentication, or {@link ImageFromRegistryParams}.
    */
-  fromRegistry(tag: string, secret?: Secret): Image {
+  fromRegistry(tag: string, params?: Secret | ImageFromRegistryParams): Image {
+    const { secret, platform } =
+      params instanceof Secret
+        ? { secret: params, platform: undefined }
+        : (params ?? {});
     let buildRegistryConfig;
     if (secret) {
       if (!(secret instanceof Secret)) {
@@ -253,7 +266,15 @@ export class ImageService {
         secret,
       );
     }
-    return new Image(this.#client, "", tag, buildRegistryConfig);
+    return new Image(
+      this.#client,
+      "",
+      tag,
+      buildRegistryConfig,
+      undefined,
+      undefined,
+      platform,
+    );
   }
 
   /**
@@ -366,6 +387,7 @@ export class Image {
   // Secret may be lazy. Undefined when not pulling from a private registry.
   #buildRegistryConfig?: BuildRegistryConfig;
   #layers: Layer[];
+  #platform?: string;
 
   /** @ignore */
   constructor(
@@ -375,8 +397,10 @@ export class Image {
     buildRegistryConfig?: BuildRegistryConfig,
     layers?: Layer[],
     baseImageId?: string,
+    platform?: string,
   ) {
     this.#client = client;
+    this.#platform = platform;
     this.#imageId = imageId;
     this.#tag = tag;
     this.#baseImageId = baseImageId || "";
@@ -444,6 +468,7 @@ export class Image {
       this.#buildRegistryConfig,
       [...layers, newLayer],
       baseImageId,
+      this.#platform,
     );
   }
 
@@ -496,6 +521,7 @@ export class Image {
         i === 0 && !baseImageId && this.#buildRegistryConfig
           ? await this.#buildRegistryConfig(this.#client)
           : undefined;
+      const platform = i === 0 && !baseImageId ? this.#platform : undefined;
 
       let resp: ImageGetOrCreateResponse;
       try {
@@ -508,6 +534,7 @@ export class Image {
             gpuConfig,
             contextFiles: [],
             baseImages,
+            platform,
           }),
           builderVersion: imageBuilderVersion,
           forceBuild: layer.forceBuild || false,

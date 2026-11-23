@@ -122,6 +122,13 @@ def _check_registry_host(image_ref: str) -> None:
     ),
 )
 @click.option("--force-build", is_flag=True, help="Rebuild every layer of the Image, ignoring cached builds.")
+@click.option(
+    "--platform",
+    "image_platform",
+    default=None,
+    metavar="OS/ARCH",
+    help="Platform of the Image, e.g. `linux/arm64`.",
+)
 @env_option
 @synchronizer.create_blocking
 async def build(
@@ -131,6 +138,7 @@ async def build(
     registry_secret_name: Optional[str],
     registry_secret_vars: Optional[str],
     force_build: bool,
+    image_platform: Optional[str],
     env: Optional[str],
 ) -> None:
     """Build an Image from a Dockerfile and publish it as NAME.
@@ -145,6 +153,7 @@ async def build(
 
     ```
     modal image build -t my-image .
+    modal image build -t my-image --platform linux/arm64 .
     modal image build --name my-image:v2 -f docker/Dockerfile .
     modal image build -t my-env/my-image .
     modal image build -t my-image --registry-secret my-registry-creds .
@@ -170,7 +179,9 @@ async def build(
             _infer_registry_auth_type(keys)
         except InvalidError as exc:
             raise click.UsageError(str(exc)) from exc
-    image = _Image.from_dockerfile(dockerfile, context_dir=context_dir, registry_secret=secret, force_build=force_build)
+    image = _Image.from_dockerfile(
+        dockerfile, context_dir=context_dir, registry_secret=secret, force_build=force_build, platform=image_platform
+    )
     app = _App("modal-image-build")
     # Only show the Image build output, which includes its logs
     async with _run_app(app, environment_name=env, stream_output=False):
@@ -213,6 +224,13 @@ async def build(
     is_flag=True,
     help="Pull the image from the registry again, replacing a cached Image.",
 )
+@click.option(
+    "--platform",
+    "image_platform",
+    default=None,
+    metavar="OS/ARCH",
+    help="Platform of the Image, e.g. `linux/arm64`.",
+)
 @env_option
 @synchronizer.create_blocking
 async def pull(
@@ -222,6 +240,7 @@ async def pull(
     registry_secret_name: Optional[str] = None,
     registry_secret_vars: Optional[str] = None,
     force_build: bool = False,
+    image_platform: Optional[str] = None,
     env: Optional[str] = None,
 ) -> None:
     """Pull an Image from a container registry into Modal.
@@ -236,6 +255,7 @@ async def pull(
 
     ```bash
     modal image pull docker.io/node:20
+    modal image pull docker.io/node:20 --platform linux/arm64
     modal image pull nvcr.io/nvidia/pytorch:25.01-py3 --name pytorch:25
     modal image pull docker.io/node:20 --name prod/node:20
     ```
@@ -270,7 +290,7 @@ async def pull(
             _infer_registry_auth_type(keys)
         except InvalidError as exc:
             raise click.UsageError(str(exc)) from exc
-    image = _Image.from_registry(image_ref, secret, force_build=force_build)
+    image = _Image.from_registry(image_ref, secret, force_build=force_build, platform=image_platform)
 
     app = _App("modal-image-pull")
     async with _run_app(app, environment_name=env, stream_output=False):

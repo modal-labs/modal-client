@@ -277,6 +277,13 @@ def _start_shell_from_image(
 @click.option("--image", default=None, help="Container image tag for inside the shell (if not using REF).")
 @click.option("--add-python", default=None, help="Add Python to the image (if not using REF).")
 @click.option(
+    "--platform",
+    "image_platform",
+    default=None,
+    metavar="OS/ARCH",
+    help="Platform of the image, e.g. `linux/arm64` (if not using REF).",
+)
+@click.option(
     "--volume",
     multiple=True,
     help="Name of a modal.Volume to mount inside the shell at /mnt/{name} (if not using REF). "
@@ -357,6 +364,7 @@ def shell(
     env: str | None = None,
     image: str | None = None,
     add_python: str | None = None,
+    image_platform: str | None = None,
     volume: tuple[str, ...] = (),
     add_local: tuple[str, ...] = (),
     secret: tuple[str, ...] = (),
@@ -405,6 +413,12 @@ def shell(
 
     ```
     modal shell hello_world.py -c 'uv pip list' > env.txt
+    ```
+
+    Start a shell inside an arm64 image:
+
+    ```
+    modal shell --platform linux/arm64
     ```
 
     Start a shell inside a virtual machine:
@@ -472,7 +486,7 @@ def shell(
     if ref is not None and _is_valid_modal_id(ref, "im-"):
         ctx = click.get_current_context()
         if passed_forbidden := _passed_forbidden_args(
-            shell.params, ctx, locals(), allowed=lambda p: p not in {"add_python", "image"}
+            shell.params, ctx, locals(), allowed=lambda p: p not in {"add_python", "image", "image_platform"}
         ):
             raise ClickException(
                 f"Cannot specify {', '.join(passed_forbidden)} argument(s) "
@@ -480,7 +494,12 @@ def shell(
             )
         modal_image = Image.from_id(ref)
     else:
-        modal_image = Image.from_registry(image, add_python=add_python) if image else None
+        if image:
+            modal_image = Image.from_registry(image, add_python=add_python, platform=image_platform)
+        elif image_platform:
+            modal_image = Image.debian_slim(platform=image_platform)
+        else:
+            modal_image = None
 
     _start_shell_from_image(
         app,

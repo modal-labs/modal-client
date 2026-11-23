@@ -105,6 +105,7 @@ export {
   type ImageDeleteParams,
   type ImageDockerfileCommandsParams,
   type ImageFromNameParams,
+  type ImageFromRegistryParams,
   type ImagePublishParams,
 } from "./image";
 export { Retries } from "./retries";

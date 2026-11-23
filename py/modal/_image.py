@@ -532,6 +532,10 @@ class DockerfileSpec:
     context_files: dict[str, str] = field(default_factory=dict)
 
 
+def _standalone_python_arch(platform: str | None, arch: "api_pb2.Arch.ValueType" = api_pb2.ARCH_UNSPECIFIED) -> str:
+    return "aarch64" if platform == "linux/arm64" or arch == api_pb2.ARCH_AARCH64 else "x86_64"
+
+
 async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.ImageJoinStreamingResponse:
     last_entry_id: str = ""
     result_response: api_pb2.ImageJoinStreamingResponse | None = None
@@ -709,6 +713,7 @@ class _Image(_Object, type_prefixes=("im",)):
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
         _arch: "api_pb2.Arch.ValueType" = api_pb2.ARCH_UNSPECIFIED,
+        _platform: str | None = None,
     ):
         if base_images is None:
             base_images = {}
@@ -833,6 +838,7 @@ class _Image(_Object, type_prefixes=("im",)):
                 build_args=build_args,
                 volume_mounts=volume_mounts,
                 arch=_arch,
+                platform=_platform or "",
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -2170,12 +2176,15 @@ class _Image(_Object, type_prefixes=("im",)):
     def micromamba(
         python_version: str | None = None,
         force_build: bool = False,
+        *,
+        platform: str | None = None,
     ) -> "_Image":
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers.
 
         Args:
             python_version: Python series or full version to install in the base conda environment.
             force_build: If True, skip cached image builds.
+            platform: Platform of the Image as `"linux/<arch>"`, e.g. `"linux/arm64"`. Defaults to `"linux/amd64"`.
 
         Returns:
             A Micromamba-based `Image`.
@@ -2205,6 +2214,7 @@ class _Image(_Object, type_prefixes=("im",)):
             dockerfile_function=build_dockerfile,
             force_build=force_build,
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            _platform=platform,
         )
 
     @_requires_image_instance
@@ -2319,11 +2329,12 @@ class _Image(_Object, type_prefixes=("im",)):
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,
         add_python: str | None = None,
+        platform: str | None = None,
         **kwargs,
     ) -> "_Image":
         """Build a Modal Image from a public or private image registry, such as Docker Hub.
 
-        The image must be built for the `linux/amd64` platform.
+        The registry image must have a variant for `platform`, if set.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Otherwise, the image is expected to
@@ -2351,6 +2362,7 @@ class _Image(_Object, type_prefixes=("im",)):
             setup_dockerfile_commands: Extra Dockerfile lines run after ``FROM`` during base setup.
             force_build: If True, skip cached image builds.
             add_python: Optional standalone Python series to inject when the base image lacks Python.
+            platform: Platform of the Image as `"linux/<arch>"`, e.g. `"linux/arm64"`.
             **kwargs: Additional arguments forwarded to the internal image constructor (e.g. registry config).
 
         Returns:
@@ -2361,6 +2373,7 @@ class _Image(_Object, type_prefixes=("im",)):
             modal.Image.from_registry("python:3.11-slim-bookworm")
             modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
             modal.Image.from_registry("nvcr.io/nvidia/pytorch:22.12-py3")
+            modal.Image.from_registry("python:3.12-slim", platform="linux/arm64")
             modal.Image.from_registry(
                 "ghcr.io/my-org/my-image:latest",
                 secret=modal.Secret.from_name("my-registry-secret"),
@@ -2373,9 +2386,7 @@ class _Image(_Object, type_prefixes=("im",)):
         def context_mount_function(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
-                    python_standalone_mount_name(
-                        add_python, builder_version, "aarch64" if arch == api_pb2.ARCH_AARCH64 else "x86_64"
-                    ),
+                    python_standalone_mount_name(add_python, builder_version, _standalone_python_arch(platform, arch)),
                     namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 )
                 if add_python
@@ -2396,6 +2407,7 @@ class _Image(_Object, type_prefixes=("im",)):
             dockerfile_function=build_dockerfile,
             context_mount_function=context_mount_function,
             force_build=force_build,
+            _platform=platform,
             **kwargs,
         )
         if not add_python:
@@ -2407,6 +2419,7 @@ class _Image(_Object, type_prefixes=("im",)):
             image_registry_config=kwargs.get("image_registry_config"),
             force_build=force_build,
             _arch=arch,
+            _platform=platform,
         )
 
         def build_python_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -2579,6 +2592,7 @@ class _Image(_Object, type_prefixes=("im",)):
         env: dict[str, str | None] | None = None,
         gpu: str | None = None,
         add_python: str | None = None,
+        platform: str | None = None,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -2599,6 +2613,7 @@ class _Image(_Object, type_prefixes=("im",)):
             env: Environment variables set in the build container.
             gpu: GPU type to attach to the build container.
             add_python: Standalone Python version to add when the Dockerfile does not install Python.
+            platform: Platform of the Image as `"linux/<arch>"`, e.g. `"linux/arm64"`.
 
         Returns:
             An `Image` built from the Dockerfile plus Modal runtime dependencies.
@@ -2680,12 +2695,13 @@ class _Image(_Object, type_prefixes=("im",)):
                 build_args=build_args,
                 image_registry_config=image_registry_config,
                 force_build=force_build,
+                _platform=platform if base_images is None else None,
             )
 
         def add_python_mount(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
-                    python_standalone_mount_name(add_python, builder_version),
+                    python_standalone_mount_name(add_python, builder_version, _standalone_python_arch(platform)),
                     namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 )
                 if add_python
@@ -2735,6 +2751,7 @@ class _Image(_Object, type_prefixes=("im",)):
                     dockerfile_function=lambda version: DockerfileSpec(commands=from_lines, context_files={}),
                     image_registry_config=registry_config,
                     force_build=force_build,
+                    _platform=platform,
                 )
                 rest = dockerfile_lines[from_index + 1 :]
                 rest_is_empty = all(not line.strip() or line.strip().startswith("#") for line in rest)
@@ -2757,7 +2774,7 @@ class _Image(_Object, type_prefixes=("im",)):
         return obj
 
     @staticmethod
-    def from_scratch(force_build: bool = False) -> "_Image":
+    def from_scratch(force_build: bool = False, *, platform: str | None = None) -> "_Image":
         """Create an empty Image, equivalent to `FROM scratch` in Docker.
 
         The resulting Image has no operating system, shell, or package manager. It is
@@ -2770,6 +2787,7 @@ class _Image(_Object, type_prefixes=("im",)):
 
         Args:
             force_build: If True, skip cached image builds.
+            platform: Platform of the Image as `"linux/<arch>"`, e.g. `"linux/arm64"`. Defaults to `"linux/amd64"`.
 
         Returns:
             An empty `Image` suitable for minimal filesystem mounts.
@@ -2787,17 +2805,21 @@ class _Image(_Object, type_prefixes=("im",)):
             dockerfile_function=build_dockerfile,
             force_build=force_build,
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            _platform=platform,
         )
         image._is_empty = True
         return image
 
     @staticmethod
-    def debian_slim(python_version: str | None = None, force_build: bool = False) -> "_Image":
+    def debian_slim(
+        python_version: str | None = None, force_build: bool = False, *, platform: str | None = None
+    ) -> "_Image":
         """Default image, based on the official `python` Docker images.
 
         Args:
             python_version: Python series or full version to use from the Debian slim images.
             force_build: If True, skip cached image builds.
+            platform: Platform of the Image as `"linux/<arch>"`, e.g. `"linux/arm64"`. Defaults to `"linux/amd64"`.
 
         Returns:
             The standard Debian slim Python `Image` used as Modal's default base.
@@ -2855,6 +2877,7 @@ class _Image(_Object, type_prefixes=("im",)):
             dockerfile_function=build_dockerfile,
             force_build=force_build,
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            _platform=platform,
         )
 
     @_requires_image_instance

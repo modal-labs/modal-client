@@ -101,3 +101,31 @@ func TestImageFromRegistryRefusesUnresolvableSecret(t *testing.T) {
 		g.Expect(err.Error()).To(ContainSubstring(tc.message))
 	}
 }
+
+type imagePlatformMockClient struct {
+	pb.ModalClientClient
+	platforms []string
+}
+
+func (m *imagePlatformMockClient) ImageGetOrCreate(_ context.Context, req *pb.ImageGetOrCreateRequest, _ ...grpc.CallOption) (*pb.ImageGetOrCreateResponse, error) {
+	m.platforms = append(m.platforms, req.GetImage().GetPlatform())
+	return pb.ImageGetOrCreateResponse_builder{
+		ImageId: "im-layer",
+		Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+	}.Build(), nil
+}
+
+func TestImageBuildSetsPlatformOnRootLayerOnly(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	mock := &imagePlatformMockClient{}
+	client := newEnvironmentServiceTestClient(t, mock)
+	client.profile.ImageBuilderVersion = "2025.06"
+
+	image := client.Images.FromRegistry("alpine:3.21", &ImageFromRegistryParams{Platform: "linux/arm64"}).
+		DockerfileCommands([]string{"RUN echo layer"}, nil)
+	_, err := image.Build(t.Context(), &App{AppID: "ap-test", Environment: "dev"}, nil)
+
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(mock.platforms).To(Equal([]string{"linux/arm64", ""}))
+}
