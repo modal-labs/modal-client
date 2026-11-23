@@ -910,8 +910,9 @@ def _localized(
             max_distance="long",
         )
         ```
+
+    See the [localized placement guide](https://modal.com/docs/guide/localized) for more information.
     """
-    # TODO(clairec): Add the localized placement guide link once available.
     localized = {
         "target_location": target_location,
         "preferred_distance": preferred_distance,
