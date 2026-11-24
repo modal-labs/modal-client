@@ -26,6 +26,53 @@ copyright_header_start = "# Copyright Modal Labs"
 copyright_header_full = f"{copyright_header_start} {year}"
 
 
+# Generated code from protobuf 5.26 onward calls this with the protoc version that produced it, and refuses to load on
+# an older runtime. Older generated code carries no version.
+GENCODE_STAMP_RE = re.compile(r"ValidateProtobufRuntimeVersion\(\s*\S+,\s*(\d+),\s*(\d+),\s*(\d+)")
+
+# `inv update-proto-pins` writes requirements.protos.txt from PROTOS_REQUIREMENTS and MINIMUM_PROTOBUF, plus the
+# grpcio-tools pins it computes. The file is used for:
+# 1. Container entrypoint testing: For each Python version, runs
+#    `uv run --with-requirements requirements.protos.txt scripts/compile_protos.py` to generate the protos,
+#    then imports the container entrypoint with an image builder version's dependencies.
+# 2. Single-Python CI jobs: Installs the client with `--overrides requirements.protos.txt`, for type checks,
+#    docstring tests, JS and Go SDK tests, and mount and image publishing.
+# 3. Publishing to PyPI: Generates the protos with the minimum supported Python and its pins.
+# 4. `inv protoc --isolated`: Generates the protos locally with the current Python's pins.
+# The Bazel unit tests do not use it. Their dependencies come from client/py/uv.lock.
+PROTOS_REQUIREMENTS = [
+    "mypy-protobuf~=3.3.0  # TODO: can't use mypy-protobuf>=3.4 because of protobuf==3.20 support",
+    "grpclib==0.4.7;python_version<'3.14'",
+    "grpclib==0.4.9;python_version>='3.14'",
+    "setuptools<82",
+]
+
+# The oldest protobuf runtime each supported Python version is tested against. These are support decisions, so
+# `inv update-proto-pins` never changes them. For a supported Python version missing here, it suggests the oldest
+# protobuf that works and stops. Each Python's grpcio-tools pin is the newest release whose generated code imports
+# under this protobuf. From protobuf 5.26 onward, generated code requires a runtime no older than the protoc that
+# produced it, which can be newer than grpcio-tools' declared protobuf minimum.
+# Python 3.10 is the only version that tests protobuf 3.x, pinned to 3.20.3, the last 3.x release.
+# TODO: when Python 3.10 is dropped, remove its entry, raise the protobuf floor in pyproject.toml to the oldest
+# remaining pin, and upgrade mypy-protobuf.
+MINIMUM_PROTOBUF = {
+    "3.10": "3.20.3",
+    "3.11": "4.21.3",
+    "3.12": "4.21.6",
+    "3.13": "5.27.2",
+    "3.14": "6.31.1",
+    "3.15": "7.35.1",
+}
+
+
+def _supported_pythons() -> list[str]:
+    """The Python versions in pyproject.toml's requires-python, oldest first."""
+    requires_python = re.search(r'requires-python = ">=3\.(\d+),<3\.(\d+)"', Path("pyproject.toml").read_text())
+    if requires_python is None:
+        raise Exit("Could not parse requires-python from pyproject.toml")
+    return [f"3.{minor}" for minor in range(int(requires_python[1]), int(requires_python[2]))]
+
+
 @task(
     help={
         "skip_mypy": "skip generating MyPy files",
@@ -53,6 +100,235 @@ def protoc(ctx, skip_mypy: bool = False, isolated: bool = False):
         if skip_mypy:
             cmd = f"{cmd} --skip-mypy"
         ctx.run(cmd, echo=True)
+
+
+@task
+def update_proto_pins(ctx):
+    """Write requirements.protos.txt from PROTOS_REQUIREMENTS and MINIMUM_PROTOBUF in tasks.py.
+
+    For each supported Python, pins protobuf to its MINIMUM_PROTOBUF entry and grpcio-tools to the newest release
+    whose generated code imports under it. For a supported Python missing from MINIMUM_PROTOBUF, suggests the oldest
+    protobuf that works and stops without writing.
+
+    Pins are resolved for Linux x86-64, where CI uses them, and the task runs there too, because it generates and
+    imports the protos with each candidate.
+    """
+    import platform
+    import tempfile
+
+    from packaging.requirements import Requirement
+    from packaging.specifiers import SpecifierSet
+    from packaging.utils import canonicalize_name
+    from packaging.version import Version
+
+    if sys.platform != "linux" or platform.machine() != "x86_64":
+        raise Exit(
+            "Run `inv update-proto-pins` on Linux x86-64. Some pinned grpcio-tools releases have no wheels elsewhere,"
+            " for example on Apple Silicon."
+        )
+
+    pyproject = Path("pyproject.toml").read_text()
+    pythons = _supported_pythons()
+
+    requirements_path = Path("requirements.protos.txt")
+    # Requirement strings without their comments, for resolution.
+    other_requirements = [line.split("#", 1)[0].strip() for line in PROTOS_REQUIREMENTS]
+    other_names = {canonicalize_name(Requirement(requirement).name) for requirement in other_requirements}
+
+    client_protobuf = re.search(r'"protobuf([^"]*)"', pyproject)
+    if client_protobuf is None:
+        raise Exit("Could not find the protobuf dependency in pyproject.toml")
+    client_protobuf_spec = SpecifierSet(client_protobuf[1])
+
+    # Releases are discovered by resolving with uv, so only releases the configured package index serves are
+    # considered. `--only-binary grpcio-tools` limits candidates to releases with a wheel for the target Python.
+    def resolve(py: str, requirements: list[str], *args: str) -> dict[str, str] | None:
+        """Resolve `requirements` with PROTOS_REQUIREMENTS for Python `py`.
+
+        Returns pinned versions by package name, or None if unsatisfiable.
+        """
+        result = subprocess.run(
+            [
+                "uv", "pip", "compile", "-", "--python-version", py, "--python-platform", "x86_64-manylinux_2_28",
+                "--only-binary", "grpcio-tools", "--no-header", "--no-annotate", *args,
+            ],
+            input="\n".join([*requirements, *other_requirements]), capture_output=True, text=True,
+        )  # fmt: skip
+        if result.returncode:
+            return None
+        pins = (line.split("==", 1) for line in result.stdout.splitlines() if "==" in line)
+        return {canonicalize_name(name.strip()): version.strip() for name, version in pins}
+
+    env = {**os.environ, "PYTHONWARNINGS": "ignore:pkg_resources is deprecated"}
+
+    def generate(py: str, tools: str, out: Path) -> str | None:
+        """Generate the protos into `out`. Returns an error message on failure."""
+        result = subprocess.run(
+            [
+                "uv", "run", "--no-project", "--python", py,
+                "--with", f"grpcio-tools=={tools}", "--with", "setuptools<82",
+                "python", "-m", "grpc_tools.protoc", f"--python_out={out}", "-I", "..",
+                "modal_proto/api.proto", "modal_proto/task_command_router.proto",
+            ],
+            capture_output=True, text=True, env=env,
+        )  # fmt: skip
+        if result.returncode:
+            return (result.stderr.strip().splitlines() or ["unknown error"])[-1].strip()
+        return None
+
+    def gencode_stamp(out: Path) -> Version | None:
+        match = GENCODE_STAMP_RE.search((out / "modal_proto" / "api_pb2.py").read_text())
+        return Version(".".join(match.groups())) if match else None
+
+    def imports(py: str, protobuf: Version, out: Path) -> bool:
+        result = subprocess.run(
+            [
+                "uv", "run", "--no-project", "--python", py, "--with", f"protobuf=={protobuf}",
+                "python", "-c", "import modal_proto.api_pb2, modal_proto.task_command_router_pb2",
+            ],
+            cwd=out, capture_output=True, text=True, env=env,
+        )  # fmt: skip
+        return result.returncode == 0
+
+    def oldest_protobuf(py: str) -> Version:
+        """The oldest protobuf that loads code generated by the first grpcio-tools release with a wheel for `py`."""
+        # Resolving the direct requirements to their lowest versions picks the first grpcio-tools release with a
+        # wheel for `py`, and the lowest protobuf release that it, pyproject.toml and the other requirements accept.
+        protobuf_req = f"protobuf{client_protobuf_spec}"
+        # Hold the other requirements at the versions CI installs, the newest that fit, since the lowest-direct
+        # resolution would otherwise also take their oldest releases, which may not even build.
+        newest = resolve(py, ["grpcio-tools", protobuf_req])
+        if newest is None:
+            raise Exit(f"py{py}: no grpcio-tools release with a wheel for this Python fits the other requirements")
+        held = sorted({f"{name}=={newest[name]}" for name in other_names if name in newest})
+        lowest = resolve(py, ["grpcio-tools", protobuf_req, *held], "--resolution", "lowest-direct")
+        if lowest is None:
+            raise Exit(f"py{py}: no grpcio-tools release with a wheel for this Python fits the other requirements")
+        first = lowest["grpcio-tools"]
+        with tempfile.TemporaryDirectory() as tmp:
+            if error := generate(py, first, Path(tmp)):
+                raise Exit(f"py{py}: grpcio-tools {first} failed to generate protos: {error}")
+            stamp = gencode_stamp(Path(tmp))
+        if stamp and stamp > Version(lowest["protobuf"]):
+            # The generated code needs a newer runtime than the resolved one, so take the oldest release from there.
+            lowest = resolve(
+                py,
+                [f"grpcio-tools=={first}", protobuf_req, f"protobuf>={stamp}", *held],
+                "--resolution",
+                "lowest-direct",
+            )
+            if lowest is None:
+                raise Exit(f"py{py}: no protobuf release from {stamp} fits the other requirements")
+        return Version(lowest["protobuf"])
+
+    unsupported = sorted(set(MINIMUM_PROTOBUF) - set(pythons))
+    if unsupported:
+        raise Exit(f"Remove MINIMUM_PROTOBUF entries for Python versions outside requires-python: {unsupported}")
+    missing = [py for py in pythons if py not in MINIMUM_PROTOBUF]
+    if missing:
+        suggestions = "\n".join(f'    "{py}": "{oldest_protobuf(py)}",' for py in missing)
+        raise Exit(f"Add the oldest protobuf to test against for each new Python to MINIMUM_PROTOBUF:\n{suggestions}")
+
+    results = []
+    for py in pythons:
+        protobuf = Version(MINIMUM_PROTOBUF[py])
+        if protobuf not in client_protobuf_spec:
+            raise Exit(
+                f"py{py}: MINIMUM_PROTOBUF's {protobuf} is outside pyproject.toml's range {client_protobuf_spec}"
+            )
+        if resolve(py, [f"protobuf=={protobuf}"]) is None:
+            raise Exit(f"py{py}: MINIMUM_PROTOBUF's {protobuf} conflicts with PROTOS_REQUIREMENTS")
+        print(f"py{py}: protobuf {protobuf}")
+
+        # Step down from the newest grpcio-tools release that accepts `protobuf` until one generates code that
+        # imports under it.
+        found = None
+        below = None
+        while True:
+            tools_req = f"grpcio-tools<{below}" if below else "grpcio-tools"
+            resolved = resolve(py, [tools_req, f"protobuf=={protobuf}"])
+            if resolved is None:
+                break
+            tools = resolved["grpcio-tools"]
+            with tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp)
+                if error := generate(py, tools, out):
+                    print(f"  grpcio-tools {tools}: failed to generate protos: {error}")
+                    below = tools
+                    continue
+                stamp = gencode_stamp(out)
+                ok = imports(py, protobuf, out)
+            print(f"  grpcio-tools {tools}: gencode {stamp or 'unstamped'} -> {'OK' if ok else 'does not import'}")
+            if ok:
+                found = (tools, stamp)
+                break
+            below = tools
+
+        if found is None:
+            raise Exit(f"py{py}: no grpcio-tools release generates code that imports under protobuf {protobuf}")
+        results.append((py, protobuf, *found))
+
+    print()
+    print(f"{'Python':<8}{'protobuf':<12}{'grpcio-tools':<14}gencode")
+    for py, protobuf, tools, stamp in results:
+        print(f"{py:<8}{str(protobuf):<12}{tools:<14}{stamp or 'unstamped'}")
+
+    pins = {
+        "grpcio-tools": [tools for _, _, tools, _ in results],
+        "protobuf": [str(protobuf) for _, protobuf, _, _ in results],
+    }
+
+    def marker(first: int, last: int) -> str:
+        """Environment marker for the Python versions `pythons[first:last + 1]`.
+
+        The newest Python version still gets an upper bound, so a Python version outside requires-python matches no
+        pin rather than inheriting the newest one.
+        """
+        clauses = []
+        if first > 0:
+            clauses.append(f"python_version>='{pythons[first]}'")
+        next_minor = int(pythons[last].split(".")[1]) + 1
+        clauses.append(f"python_version<'3.{next_minor}'")
+        return f";{' and '.join(clauses)}"
+
+    def pin_lines(name: str) -> list[str]:
+        by_python = pins[name]
+        lines, first = [], 0
+        for i in range(1, len(by_python) + 1):
+            if i == len(by_python) or by_python[i] != by_python[first]:
+                lines.append(f"{name}=={by_python[first]}{marker(first, i - 1)}")
+                first = i
+        return lines
+
+    lines = [
+        "# Generated by `inv update-proto-pins` from client/py/tasks.py. Do not edit by hand.",
+        "# Pins grpcio-tools and protobuf per Python for generating the protos; see tasks.py for what uses this file.",
+        "",
+        *PROTOS_REQUIREMENTS,
+        "",
+        *pin_lines("grpcio-tools"),
+        *pin_lines("protobuf"),
+    ]
+    requirements_path.write_text("\n".join(lines) + "\n")
+    print(f"\nWrote {requirements_path}")
+
+
+@task
+def check_minimum_installed_protobuf(ctx):
+    """Check that the installed protobuf is the MINIMUM_PROTOBUF entry for the oldest supported Python."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    py = _supported_pythons()[0]
+    pin = MINIMUM_PROTOBUF.get(py)
+    if pin is None:
+        raise Exit(f"MINIMUM_PROTOBUF in tasks.py has no entry for Python {py}")
+    try:
+        installed = version("protobuf")
+    except PackageNotFoundError:
+        installed = "not installed"
+    if installed != pin:
+        raise Exit(f"protobuf is {installed}, but MINIMUM_PROTOBUF in tasks.py has {pin} for Python {py}")
+    print(f"protobuf {installed} is the minimum for Python {py}")
 
 
 @task(
