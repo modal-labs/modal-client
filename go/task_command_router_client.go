@@ -804,7 +804,7 @@ func (c *taskCommandRouterClient) SnapshotMemory(ctx context.Context, request *p
 	return resp, err
 }
 
-// SandboxWaitUntilReady waits until the Sandbox's readiness probe reports ready.
+// SandboxWaitUntilReady waits until the Sandbox is ready.
 func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, taskID string, timeout time.Duration) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
 	opts := defaultRetryOptions()
 	overallDeadline := time.Now().Add(timeout)
