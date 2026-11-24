@@ -8,7 +8,6 @@ import re
 import shutil
 import sys
 import threading
-import warnings
 from collections.abc import Callable, Sequence
 from hashlib import sha256
 from pathlib import Path
@@ -32,7 +31,6 @@ from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import (
-    DeprecationError,
     ExecutionError,
     ImageBuildError,
     InvalidError,
@@ -57,48 +55,12 @@ SUPPORTED_IMAGE_BUILDER_VERSIONS = [
 
 def test_supported_python_series():
     for builder_version in get_args(ImageBuilderVersion):
-        assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS[builder_version])
+        assert set(SUPPORTED_PYTHON_SERIES[builder_version]) <= set(PYTHON_STANDALONE_VERSIONS[builder_version])
 
 
 def build_image(image: Image, client: Client) -> None:
     with App().run(client=client) as app:
         image.build(app)
-
-
-def test_python_310_deprecation_warning(servicer, client):
-    servicer.image_python_version_info = "Python 3.10.14 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]"
-    image = Image.from_registry("python:3.10-slim").pip_install("numpy").run_commands("echo hi")
-
-    with pytest.warns(DeprecationError, match="uses Python 3.10") as warnings_checker:
-        build_image(image, client)
-
-    assert sum("uses Python 3.10" in str(warning.message) for warning in warnings_checker) == 1
-
-
-def test_python_310_deprecation_warning_from_id(servicer, client):
-    servicer.image_python_version_info = "Python 3.10.14 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]"
-    base_image = Image.from_registry("python:3.10-slim")
-
-    with pytest.warns(DeprecationError, match="uses Python 3.10") as base_warnings:
-        build_image(base_image, client)
-    assert sum("uses Python 3.10" in str(warning.message) for warning in base_warnings) == 1
-
-    image = Image.from_id(base_image.object_id, client).pip_install("numpy")
-    with pytest.warns(DeprecationError, match="uses Python 3.10") as warnings_checker:
-        build_image(image, client)
-
-    assert sum("uses Python 3.10" in str(warning.message) for warning in warnings_checker) == 1
-
-
-def test_python_311_image_does_not_emit_python_310_deprecation_warning(servicer, client):
-    servicer.image_python_version_info = "Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]"
-    image = Image.from_registry("python:3.11-slim")
-
-    with warnings.catch_warnings(record=True) as recorded_warnings:
-        warnings.simplefilter("always", DeprecationError)
-        build_image(image, client)
-
-    assert not any(isinstance(warning.message, DeprecationError) for warning in recorded_warnings)
 
 
 def get_image_layers(image_id: str, servicer) -> list[api_pb2.Image]:
@@ -199,9 +161,10 @@ def test_python_version_validation(builder_version):
         _validate_python_version("3.14.2t", builder_version, allow_free_threading=False, allow_micro_granularity=True)
 
 
-def test_python_310_unsupported_after_2025_06(servicer, client, server_url_env, modal_config):
+@pytest.mark.parametrize("builder_version", get_args(ImageBuilderVersion))
+def test_python_310_unsupported(servicer, client, server_url_env, modal_config, builder_version):
     with modal_config():
-        with mock.patch("test.conftest.ImageBuilderVersion", Literal["PREVIEW"]):  # type: ignore
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
             for image in [
                 Image.debian_slim("3.10"),
                 Image.micromamba("3.10"),
@@ -293,10 +256,8 @@ def test_from_scratch(builder_version, servicer, client):
     assert layers[0].dockerfile_commands == ["FROM scratch"]
 
 
-@pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
+@pytest.mark.parametrize("python_version", [None, "3.11", "3.11.4"])
 def test_python_version(builder_version, servicer, client, python_version):
-    if python_version == "3.10" and builder_version > "2025.06":
-        pytest.skip("Python 3.10 is not supported by Image builder versions after 2025.06")
     local_python = "{}.{}".format(*sys.version_info)
     expected_python = local_python if python_version is None else python_version
 

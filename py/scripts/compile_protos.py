@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2026
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # ///
 
 import argparse

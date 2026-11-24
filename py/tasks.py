@@ -56,7 +56,6 @@ PROTOS_REQUIREMENTS = [
 # TODO: when Python 3.10 is dropped, remove its entry, raise the protobuf floor in pyproject.toml to the oldest
 # remaining pin, and upgrade mypy-protobuf.
 MINIMUM_PROTOBUF = {
-    "3.10": "3.20.3",
     "3.11": "4.21.3",
     "3.12": "4.21.6",
     "3.13": "5.27.2",

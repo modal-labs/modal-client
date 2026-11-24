@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Modal Labs" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["typing-extensions>=4.6"]
 classifiers = [
   "Operating System :: OS Independent",

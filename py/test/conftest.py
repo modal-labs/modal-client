@@ -618,7 +618,7 @@ def _clear_environment_cache():
     explicitly cleared, so subsequent unrelated tests would build images
     with whatever builder the last image test selected.  That stale value
     becomes a hard failure on Python 3.13/3.14 when the leaked builder is
-    ``2024.04`` (which only supports 3.10–3.12).  Yielding around the test
+    ``2024.04`` (which only supports 3.11–3.12).  Yielding around the test
     keeps the cache empty in both directions so test order cannot affect
     image builder resolution.
     """
