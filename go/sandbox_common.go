@@ -93,6 +93,8 @@ type sandboxImpl interface {
 
 // sandboxImplParams seeds state a backend already knows at construction time.
 type sandboxImplParams struct {
+	appID   string
+	result  *pb.GenericResult
 	taskID  string
 	tunnels map[int]*Tunnel
 	// Only good for the first command router connection; later ones fetch fresh access.
@@ -674,14 +676,29 @@ func pollExitSnapshot(ctx context.Context, impl sandboxImpl, params *SandboxExpe
 	}
 }
 
-// newSandboxImpl constructs the implementation backing the Sandbox with the
-// given ID. Server responses can return a Sandbox of either backend regardless
-// of which RPC was called, so the backend is always deduced from the ID.
+// newSandboxImpl constructs a session implementation, deducing the backend from its ID.
 func newSandboxImpl(client *Client, sandboxID string, params sandboxImplParams) sandboxImpl {
-	if getSandboxVersion(sandboxID) == sandboxVersionV2 {
-		return newSandboxImplV2(client, sandboxID, params)
+	return implClassForSandboxVersion(getSandboxVersion(sandboxID)).fromMetadata(client, sandboxID, params)
+}
+
+type sandboxImplClass interface {
+	fromMetadata(*Client, string, sandboxImplParams) sandboxImpl
+	restoreFromMemorySnapshot(context.Context, *Client, *SandboxSnapshot, pb.SandboxRestoreRequest_SandboxNameOverrideType, string) (sandboxImpl, error)
+}
+
+func implClassForSandboxVersion(version sandboxVersion) sandboxImplClass {
+	if version == sandboxVersionV2 {
+		return sandboxImplV2Class{}
 	}
-	return newSandboxImplV1(client, sandboxID, params)
+	return sandboxImplV1Class{}
+}
+
+func implClassForSnapshot(snapshot *SandboxSnapshot) sandboxImplClass {
+	version := sandboxVersionV1
+	if snapshot.isV2 != nil && *snapshot.isV2 {
+		version = sandboxVersionV2
+	}
+	return implClassForSandboxVersion(version)
 }
 
 func sandboxTagsToProto(tags map[string]string) []*pb.SandboxTag {

@@ -22,6 +22,12 @@ type sandboxImplV1 struct {
 	taskState
 }
 
+type sandboxImplV1Class struct{}
+
+func (sandboxImplV1Class) fromMetadata(client *Client, sandboxID string, params sandboxImplParams) sandboxImpl {
+	return newSandboxImplV1(client, sandboxID, params)
+}
+
 func newSandboxImplV1(client *Client, sandboxID string, params sandboxImplParams) *sandboxImplV1 {
 	s := &sandboxImplV1{
 		client: client,
@@ -78,15 +84,18 @@ func createSandboxV1(ctx context.Context, client *Client, app *App, image *Image
 	}
 
 	client.logger.DebugContext(ctx, "Created Sandbox", "sandbox_id", createResp.GetSandboxId())
-	impl := newSandboxImpl(client, createResp.GetSandboxId(), sandboxImplParams{})
+	impl := newSandboxImpl(client, createResp.GetSandboxId(), sandboxImplParams{
+		appID:  firstNonEmpty(createResp.GetMetadata().GetAppId(), app.AppID),
+		result: createResp.GetMetadata().GetResult(),
+	})
 	if err := impl.waitForScheduling(ctx, sandboxSchedulingTimeout); err != nil {
 		return nil, err
 	}
 	return impl, nil
 }
 
-// sandboxFromNameV1 looks up a running Sandbox by name through the V1 RPC.
-func sandboxFromNameV1(ctx context.Context, client *Client, appName, name string, params *SandboxFromNameParams) (sandboxImpl, error) {
+// lookupSandboxByNameV1 looks up a running Sandbox by name through the V1 RPC.
+func lookupSandboxByNameV1(ctx context.Context, client *Client, appName, name string, params *SandboxFromNameParams) (*pb.SandboxGetFromNameResponse, error) {
 	resp, err := client.cpClient.SandboxGetFromName(ctx, pb.SandboxGetFromNameRequest_builder{
 		SandboxName:     name,
 		AppName:         appName,
@@ -98,7 +107,7 @@ func sandboxFromNameV1(ctx context.Context, client *Client, appName, name string
 		}
 		return nil, err
 	}
-	return newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{}), nil
+	return resp, nil
 }
 
 // listSandboxesV1 lists running Sandboxes through the V1 list RPC.
@@ -132,7 +141,10 @@ func listSandboxesV1(ctx context.Context, client *Client, params *SandboxListPar
 				return
 			}
 			for _, info := range sandboxes {
-				if !yield(newSandboxImpl(client, info.GetId(), sandboxImplParams{}), nil) {
+				if !yield(newSandboxImpl(client, info.GetId(), sandboxImplParams{
+					appID:  info.GetMetadata().GetAppId(),
+					result: info.GetMetadata().GetResult(),
+				}), nil) {
 					return
 				}
 			}
@@ -141,9 +153,9 @@ func listSandboxesV1(ctx context.Context, client *Client, params *SandboxListPar
 	}
 }
 
-// sandboxFromSnapshotV1 restores a V1 memory snapshot into a new Sandbox and
+// restoreFromMemorySnapshot restores a V1 memory snapshot into a new Sandbox and
 // waits for it to be ready.
-func sandboxFromSnapshotV1(ctx context.Context, client *Client, snapshot *SandboxSnapshot, overrideType pb.SandboxRestoreRequest_SandboxNameOverrideType, nameOverride string) (sandboxImpl, error) {
+func (sandboxImplV1Class) restoreFromMemorySnapshot(ctx context.Context, client *Client, snapshot *SandboxSnapshot, overrideType pb.SandboxRestoreRequest_SandboxNameOverrideType, nameOverride string) (sandboxImpl, error) {
 	resp, err := client.cpClient.SandboxRestore(ctx, pb.SandboxRestoreRequest_builder{
 		SnapshotId:              snapshot.SnapshotID,
 		SandboxNameOverride:     nameOverride,
@@ -152,8 +164,6 @@ func sandboxFromSnapshotV1(ctx context.Context, client *Client, snapshot *Sandbo
 	if err != nil {
 		return nil, err
 	}
-
-	impl := newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{})
 
 	timeoutSecs := float32(55)
 	taskResp, err := client.cpClient.SandboxGetTaskId(ctx, pb.SandboxGetTaskIdRequest_builder{
@@ -169,7 +179,9 @@ func sandboxFromSnapshotV1(ctx context.Context, client *Client, snapshot *Sandbo
 		result.GetStatus() != pb.GenericResult_GENERIC_STATUS_SUCCESS {
 		return nil, ExecutionError{Exception: result.GetException()}
 	}
-	return impl, nil
+	return newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{
+		result: taskResp.GetTaskResult(),
+	}), nil
 }
 
 func (s *sandboxImplV1) terminate(ctx context.Context) error {

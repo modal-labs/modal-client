@@ -61,7 +61,11 @@ import type { App } from "./app";
 import { parseGpuConfig } from "./app";
 import { checkForRenamedParams } from "./validation";
 import { SandboxLogsManager } from "./logs";
-import type { SandboxImpl, SandboxImplParams } from "./sandbox_common";
+import {
+  type SandboxImpl,
+  implClassForSnapshot,
+  newSandboxImpl,
+} from "./sandbox_common";
 import { SandboxImplV1 } from "./sandbox_impl_v1";
 import { SandboxImplV2 } from "./sandbox_impl_v2";
 import { SandboxImplPersistent } from "./sandbox_impl_persistent";
@@ -938,13 +942,18 @@ export class SandboxService {
       }
     }
 
-    const impl = await SandboxImplV1.fromName(
+    const resp = await SandboxImplV1.lookupByName(
       this.#client,
       appName,
       name,
       params,
     );
-    return new Sandbox(impl);
+    return new Sandbox(
+      newSandboxImpl(this.#client, resp.sandboxId, {
+        appId: resp.metadata?.appId,
+        result: resp.metadata?.result,
+      }),
+    );
   }
 
   /**
@@ -965,13 +974,18 @@ export class SandboxService {
     name: string,
     params?: SandboxExperimentalFromNameParams,
   ): Promise<Sandbox> {
-    const impl = await SandboxImplV2.fromName(
+    const resp = await SandboxImplV2.lookupByName(
       this.#client,
       appName,
       name,
       params,
     );
-    return new Sandbox(impl);
+    return new Sandbox(
+      newSandboxImpl(this.#client, resp.sandboxId, {
+        appId: resp.metadata?.appId,
+        result: resp.metadata?.result,
+      }),
+    );
   }
 
   /**
@@ -987,7 +1001,6 @@ export class SandboxService {
     params?: SandboxExperimentalFromSnapshotParams,
   ): Promise<Sandbox> {
     await snapshot._hydrate();
-    const useV2 = snapshot._isV2 ?? false;
 
     let overrideType: SandboxRestoreRequest_SandboxNameOverrideType;
     let nameOverride: string | undefined;
@@ -1004,8 +1017,8 @@ export class SandboxService {
       nameOverride = params.name;
     }
 
-    const implClass = useV2 ? SandboxImplV2 : SandboxImplV1;
-    const impl = await implClass.fromSnapshot(
+    const implClass = implClassForSnapshot(snapshot);
+    const impl = await implClass.restoreFromMemorySnapshot(
       this.#client,
       snapshot,
       overrideType,
@@ -1050,39 +1063,6 @@ export class SandboxService {
       yield new Sandbox(impl);
     }
   }
-}
-
-/**
- * Select the implementation backing the Sandbox with the given ID.
- *
- * @internal
- * @hidden
- */
-export function implClassForSandboxId(
-  sandboxId: string,
-): typeof SandboxImplV1 | typeof SandboxImplV2 {
-  if (getSandboxVersion(sandboxId) === SandboxVersion.V1) {
-    return SandboxImplV1;
-  }
-  return SandboxImplV2;
-}
-
-/**
- * Construct the implementation backing the Sandbox with the given ID.
- *
- * Server responses can return a Sandbox of either backend regardless of which
- * RPC was called, so the backend is always deduced from the returned ID.
- *
- * @internal
- * @hidden
- */
-export function newSandboxImpl(
-  client: ModalClient,
-  sandboxId: string,
-  params: SandboxImplParams = {},
-): SandboxImpl {
-  const implClass = implClassForSandboxId(sandboxId);
-  return new implClass(client, sandboxId, params);
 }
 
 /**

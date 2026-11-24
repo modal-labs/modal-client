@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { ModalClient, Sandbox } from "modal";
 import { ClientError, Status } from "nice-grpc";
 import { setTimeout as sleep } from "timers/promises";
-import { newSandboxImpl } from "../src/sandbox";
+import { newSandboxImpl } from "../src/sandbox_common";
 
 // A valid V1-shaped Sandbox ID ("sb-" + 22 alphanumeric chars). These tests
 // exercise the V1 SandboxGetLogs streams, and the Sandbox constructor deduces

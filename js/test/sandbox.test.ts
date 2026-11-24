@@ -9,13 +9,13 @@ import {
   buildTaskSnapshotDirectoryRequestProto,
   ContainerProcess,
   getSandboxVersion,
-  newSandboxImpl,
   Probe,
   Sandbox,
   SandboxVersion,
   validateExecArgs,
   validateExperimentalEncryptionKey,
 } from "../src/sandbox";
+import { newSandboxImpl } from "../src/sandbox_common";
 import { expect, test, onTestFinished, vi } from "vitest";
 import {
   FileDescriptor,
@@ -30,6 +30,8 @@ import {
   SandboxCreateV2Response,
   SandboxGetExitSnapshotResponse_ErrorCode,
   SandboxRestoreV2Response,
+  SandboxRestoreResponse,
+  SandboxGetTaskIdResponse,
   SandboxSetOutboundPolicyRequest,
   SandboxSnapshotGetResponse,
 } from "../proto/modal_proto/api";
@@ -3490,6 +3492,40 @@ test("experimentalSnapshot takes a memory snapshot via the command router for V2
   expect(request.taskId).toBe("ta-v2-123");
   expect(request.idempotencyKey).toBeTruthy();
 });
+
+test.each([
+  GenericResult_GenericStatus.GENERIC_STATUS_UNSPECIFIED,
+  GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+  GenericResult_GenericStatus.GENERIC_STATUS_FAILURE,
+])(
+  "experimentalFromSnapshot defaults to V1 with task status %s",
+  async (status) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    const snapshotId = "sn-01BX5ZZKBKACTAV9WEVGEMMVRY";
+    mock.handleUnary("/SandboxSnapshotGet", () =>
+      SandboxSnapshotGetResponse.create({ snapshotId }),
+    );
+    mock.handleUnary("/SandboxRestore", (req: any) => {
+      expect(req.snapshotId).toBe(snapshotId);
+      return SandboxRestoreResponse.create({ sandboxId: V1_SANDBOX_ID });
+    });
+    mock.handleUnary("/SandboxGetTaskId", (req: any) => {
+      expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+      expect(req.waitUntilReady).toBe(true);
+      return SandboxGetTaskIdResponse.create({
+        taskResult: { status, exception: "restore failed" },
+      });
+    });
+    const snapshot = await mc.sandboxSnapshots.fromId(snapshotId);
+    const restored = mc.sandboxes.experimentalFromSnapshot(snapshot);
+    if (status === GenericResult_GenericStatus.GENERIC_STATUS_FAILURE) {
+      await expect(restored).rejects.toThrow("restore failed");
+    } else {
+      expect((await restored).sandboxId).toBe(V1_SANDBOX_ID);
+    }
+    mock.assertExhausted();
+  },
+);
 
 test("experimentalFromSnapshot restores a V2 snapshot via SandboxRestoreV2", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();

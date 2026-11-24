@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Iter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from google.protobuf.message import Message
 from grpclib import Status
 
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
@@ -687,17 +688,31 @@ class SandboxImpl(Protocol):
     sandbox_id: str
     # The Sandbox's final result once known; `None` while it is running.
     result: api_pb2.GenericResult | None
+    app_id: str
 
-    def __init__(self, client: _Client, sandbox_id: str, *, result: api_pb2.GenericResult | None = None) -> None: ...
+    async def get_app_id(self) -> str: ...
+
+    def _get_object_metadata(self) -> Message | None: ...
+
+    @classmethod
+    def _from_object_metadata(cls, client: _Client, sandbox_id: str, metadata: Message | None) -> "SandboxImpl": ...
+
+    def __init__(
+        self,
+        client: _Client,
+        sandbox_id: str,
+        *,
+        result: api_pb2.GenericResult | None = None,
+        app_id: str = "",
+    ) -> None: ...
 
     @classmethod
     async def create(
         cls, create_args: SandboxCreateArgs, *, app: "modal.app._App | None", client: _Client | None
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]":
+    ) -> "SandboxImpl":
         """Create the Sandbox described by `create_args`.
 
-        Returns the implementation backing the new Sandbox, holding its initial state, and the handle
-        metadata the backend returned; `_Sandbox._from_impl` turns them into a handle.
+        Returns the implementation backing the new Sandbox, holding its initial state.
         """
         ...
 
@@ -711,7 +726,9 @@ class SandboxImpl(Protocol):
     ) -> api_pb2.SandboxGetFromNameResponse: ...
 
     @classmethod
-    async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> api_pb2.SandboxWaitResponse: ...
+    async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> "SandboxImpl":
+        """Look up the Sandbox with the given ID, returning an implementation holding its handle metadata."""
+        ...
 
     @classmethod
     async def list_page(cls, client: _Client, req: api_pb2.SandboxListRequest) -> api_pb2.SandboxListResponse: ...
@@ -724,7 +741,7 @@ class SandboxImpl(Protocol):
         *,
         override_type: "api_pb2.SandboxRestoreRequest.SandboxNameOverrideType.ValueType",
         name_override: str | None,
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]": ...
+    ) -> "SandboxImpl": ...
 
     def make_stdio(self, check_open: Callable[[], None]) -> tuple[StreamReader[str], StreamReader[str], StreamWriter]:
         """Create the stdout, stderr and stdin streams of the Sandbox entrypoint."""

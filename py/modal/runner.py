@@ -765,8 +765,8 @@ async def _interactive_shell(
                     raise InvalidError(f"`{option}` is not supported for V2 sandboxes")
         create_args = SandboxCreateArgs(args=("sleep", "100000"), secrets=secrets, **kwargs)
         impl_cls = SandboxImplV2 if v2 else impl_class_for_create_args(create_args)
-        impl, metadata = await impl_cls.create(create_args, app=_app, client=None)
-        sandbox = _Sandbox._from_impl(impl, metadata)
+        impl = await impl_cls.create(create_args, app=_app, client=None)
+        sandbox = _Sandbox._from_impl(impl)
 
         # Re-enable quiet mode before starting the interactive session
         output_mgr.set_quiet_mode(True)

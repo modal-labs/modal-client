@@ -40,6 +40,12 @@ type sandboxImplV2 struct {
 	taskState
 }
 
+type sandboxImplV2Class struct{}
+
+func (sandboxImplV2Class) fromMetadata(client *Client, sandboxID string, params sandboxImplParams) sandboxImpl {
+	return newSandboxImplV2(client, sandboxID, params)
+}
+
 func newSandboxImplV2(client *Client, sandboxID string, params sandboxImplParams) *sandboxImplV2 {
 	s := &sandboxImplV2{
 		client: client,
@@ -102,7 +108,11 @@ func createSandboxV2(ctx context.Context, client *Client, app *App, image *Image
 		return nil, err
 	}
 
-	opts := sandboxImplParams{taskID: createResp.GetTaskId()}
+	opts := sandboxImplParams{
+		appID:  firstNonEmpty(createResp.GetMetadata().GetAppId(), app.AppID),
+		result: createResp.GetMetadata().GetResult(),
+		taskID: createResp.GetTaskId(),
+	}
 	if access := createResp.GetCommandRouterAccess(); access != nil {
 		opts.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
 	}
@@ -127,8 +137,8 @@ func createSandboxV2(ctx context.Context, client *Client, app *App, image *Image
 	return newSandboxImpl(client, createResp.GetSandboxId(), opts), nil
 }
 
-// sandboxFromNameV2 looks up a Sandbox by name through the V2 RPC.
-func sandboxFromNameV2(ctx context.Context, client *Client, appName, name string, params *SandboxExperimentalFromNameParams) (sandboxImpl, error) {
+// lookupSandboxByNameV2 looks up a Sandbox by name through the V2 RPC.
+func lookupSandboxByNameV2(ctx context.Context, client *Client, appName, name string, params *SandboxExperimentalFromNameParams) (*pb.SandboxGetFromNameResponse, error) {
 	resp, err := client.cpClient.SandboxGetFromNameV2(ctx, pb.SandboxGetFromNameRequest_builder{
 		SandboxName:       name,
 		AppName:           appName,
@@ -141,7 +151,7 @@ func sandboxFromNameV2(ctx context.Context, client *Client, appName, name string
 		}
 		return nil, err
 	}
-	return newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{}), nil
+	return resp, nil
 }
 
 // listSandboxesV2 lists running Sandboxes through the V2 list RPC.
@@ -182,7 +192,10 @@ func listSandboxesV2(ctx context.Context, client *Client, params *SandboxExperim
 				return
 			}
 			for _, info := range sandboxes {
-				if !yield(newSandboxImpl(client, info.GetId(), sandboxImplParams{}), nil) {
+				if !yield(newSandboxImpl(client, info.GetId(), sandboxImplParams{
+					appID:  info.GetMetadata().GetAppId(),
+					result: info.GetMetadata().GetResult(),
+				}), nil) {
 					return
 				}
 			}
@@ -191,8 +204,8 @@ func listSandboxesV2(ctx context.Context, client *Client, params *SandboxExperim
 	}
 }
 
-// sandboxFromSnapshotV2 restores a V2 memory snapshot into a new Sandbox.
-func sandboxFromSnapshotV2(ctx context.Context, client *Client, snapshot *SandboxSnapshot, overrideType pb.SandboxRestoreRequest_SandboxNameOverrideType, nameOverride string) (sandboxImpl, error) {
+// restoreFromMemorySnapshot restores a V2 memory snapshot into a new Sandbox.
+func (sandboxImplV2Class) restoreFromMemorySnapshot(ctx context.Context, client *Client, snapshot *SandboxSnapshot, overrideType pb.SandboxRestoreRequest_SandboxNameOverrideType, nameOverride string) (sandboxImpl, error) {
 	resp, err := client.cpClient.SandboxRestoreV2(ctx, pb.SandboxRestoreV2Request_builder{
 		SnapshotId:              snapshot.SnapshotID,
 		SandboxNameOverride:     nameOverride,
@@ -201,7 +214,11 @@ func sandboxFromSnapshotV2(ctx context.Context, client *Client, snapshot *Sandbo
 	if err != nil {
 		return nil, err
 	}
-	opts := sandboxImplParams{taskID: resp.GetTaskId()}
+	opts := sandboxImplParams{
+		appID:  resp.GetMetadata().GetAppId(),
+		result: resp.GetMetadata().GetResult(),
+		taskID: resp.GetTaskId(),
+	}
 	if access := resp.GetCommandRouterAccess(); access != nil {
 		opts.initCommandRouterAccess = &commandRouterAccess{jwt: access.GetJwt(), url: access.GetUrl()}
 	}

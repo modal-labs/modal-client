@@ -72,6 +72,11 @@ def impl_class_for_sandbox_id(sandbox_id: str) -> type[SandboxImpl]:
     return SandboxImplV2
 
 
+def impl_class_for_snapshot(snapshot: _SandboxSnapshot) -> type[SandboxImpl]:
+    """Select the implementation that restores the given Sandbox snapshot."""
+    return SandboxImplV2 if snapshot._is_v2 else SandboxImplV1
+
+
 def impl_class_for_create_args(create_args: SandboxCreateArgs) -> type[SandboxImpl]:
     """Select the implementation that creates the Sandbox described by `create_args`."""
     if create_args.persistent:
@@ -178,7 +183,6 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
     _stdin: _StreamWriter
     _attached: bool
     _filesystem: _SandboxFilesystem | None
-    _app_id: str | None
 
     @staticmethod
     async def create(
@@ -371,8 +375,8 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             runtime=runtime,
             persistent=_experimental_persistent,
         )
-        impl, metadata = await impl_class_for_create_args(create_args).create(create_args, app=app, client=client)
-        return _Sandbox._from_impl(impl, metadata)
+        impl = await impl_class_for_create_args(create_args).create(create_args, app=app, client=client)
+        return _Sandbox._from_impl(impl)
 
     @staticmethod
     async def _experimental_create(
@@ -479,28 +483,16 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             include_oidc_identity_token=include_oidc_identity_token,
             runtime=runtime,
         )
-        impl, metadata = await SandboxImplV2.create(create_args, app=app, client=client)
-        return _Sandbox._from_impl(impl, metadata)
+        impl = await SandboxImplV2.create(create_args, app=app, client=client)
+        return _Sandbox._from_impl(impl)
 
-    def _get_metadata(self) -> api_pb2.SandboxHandleMetadata:
-        metadata = api_pb2.SandboxHandleMetadata(app_id=self._app_id or "")
-        if self._impl.result is not None:
-            metadata.result.CopyFrom(self._impl.result)
-        return metadata
+    def _get_metadata(self) -> Message | None:
+        return self._impl._get_object_metadata()
 
     def _hydrate_metadata(self, handle_metadata: Message | None) -> None:
-        self._app_id = None
-        result = None
-        if handle_metadata is not None:
-            assert isinstance(handle_metadata, api_pb2.SandboxHandleMetadata), (
-                f"{type(handle_metadata)} is not SandboxHandleMetadata"
-            )
-            self._app_id = handle_metadata.app_id
-            if handle_metadata.HasField("result"):
-                result = handle_metadata.result
         self._filesystem = None
         impl_cls = impl_class_for_sandbox_id(self.object_id)
-        self._adopt_impl(impl_cls(self.client, self.object_id, result=result))
+        self._adopt_impl(impl_cls._from_object_metadata(self.client, self.object_id, handle_metadata))
 
     def _adopt_impl(self, impl: SandboxImpl) -> None:
         """Back this Sandbox with `impl`, which owns all of its backend state."""
@@ -508,22 +500,20 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         self._stdout, self._stderr, self._stdin = impl.make_stdio(self._ensure_attached)
 
     @staticmethod
-    def _from_impl(impl: SandboxImpl, metadata: api_pb2.SandboxHandleMetadata | None) -> "_Sandbox":
+    def _from_impl(impl: SandboxImpl) -> "_Sandbox":
         """Create a hydrated handle for the Sandbox that `impl` was constructed for."""
-        obj = _Sandbox._new_hydrated(impl.sandbox_id, impl.client, metadata)
+        obj = _Sandbox._new_hydrated(impl.sandbox_id, impl.client, impl._get_object_metadata())
         obj._adopt_impl(impl)
         return obj
 
     def _initialize_from_other(self, other):
         super()._initialize_from_other(other)
         self._attached = other._attached
-        self._app_id = other._app_id
         self._impl = other._impl.clone()
 
     def _initialize_from_empty(self):
         super()._initialize_from_empty()
         self._attached = True
-        self._app_id = None
 
     async def detach(self):
         """Disconnects your client from the sandbox and cleans up resources associated with the connection.
@@ -649,7 +639,13 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             include_terminated=include_terminated,
         )
         resp = await impl_cls.lookup_by_name(client, req)
-        return _Sandbox._new_hydrated(resp.sandbox_id, client, resp.metadata)
+        impl = impl_class_for_sandbox_id(resp.sandbox_id)(
+            client,
+            resp.sandbox_id,
+            app_id=resp.metadata.app_id,
+            result=resp.metadata.result if resp.metadata.HasField("result") else None,
+        )
+        return _Sandbox._from_impl(impl)
 
     @staticmethod
     async def from_id(sandbox_id: str, client: _Client | None = None) -> "_Sandbox":
@@ -667,12 +663,8 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         if client is None:
             client = await _Client.from_env()
 
-        resp = await impl_class_for_sandbox_id(sandbox_id).lookup_by_id(client, sandbox_id)
-        obj = _Sandbox._new_hydrated(sandbox_id, client, resp.metadata)
-        if resp.result.status:
-            obj._impl.result = resp.result
-
-        return obj
+        impl = await impl_class_for_sandbox_id(sandbox_id).lookup_by_id(client, sandbox_id)
+        return _Sandbox._from_impl(impl)
 
     async def _experimental_stats(
         self, *, since: datetime | None = None, until: datetime | None = None
@@ -1185,6 +1177,9 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         await self._impl.poll()
         return self.returncode
 
+    async def _get_app_id(self) -> str:
+        return await self._impl.get_app_id()
+
     async def _get_task_id(
         self, raise_if_task_complete=False, timeout: float | None = None, retry_transient: bool = False
     ) -> str:
@@ -1378,11 +1373,11 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             override_type = api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING
             name_override = name
 
-        impl_cls = SandboxImplV2 if snapshot._is_v2 else SandboxImplV1
-        impl, metadata = await impl_cls.restore_from_memory_snapshot(
+        impl_cls = impl_class_for_snapshot(snapshot)
+        impl = await impl_cls.restore_from_memory_snapshot(
             snapshot, client, override_type=override_type, name_override=name_override
         )
-        return _Sandbox._from_impl(impl, metadata)
+        return _Sandbox._from_impl(impl)
 
     @property
     def filesystem(self) -> _SandboxFilesystem:
@@ -1522,24 +1517,30 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
                 return
 
             for sandbox_info in resp.sandboxes:
-                obj = _Sandbox._new_hydrated(sandbox_info.id, client, sandbox_info.metadata)
-                obj._impl.result = sandbox_info.task_info.result
-                yield obj
+                impl = impl_class_for_sandbox_id(sandbox_info.id)(
+                    client,
+                    sandbox_info.id,
+                    app_id=sandbox_info.metadata.app_id,
+                    result=sandbox_info.task_info.result,
+                )
+                yield _Sandbox._from_impl(impl)
 
             # Fetch the next batch starting from the end of the current one.
             before_timestamp = resp.sandboxes[-1].created_at
 
     async def _get_log_query_data(self) -> _LogQueryData:
-        if not self._app_id:
+        app_id = await self._get_app_id()
+        if not app_id:
             if not self._attached:
                 raise ExecutionError("Cannot fetch logs for a detached Sandbox without hydrated app_id")
             await self.hydrate()
+            app_id = await self._get_app_id()
 
-        if not self._app_id:
+        if not app_id:
             raise ExecutionError("app_id should have been set during sandbox hydration")
 
         task_id = await self._resolve_task_id_for_logs()
-        return _LogQueryData(self._client, self._app_id, LogsFilters(task_id=task_id), self.object_id)
+        return _LogQueryData(self._client, app_id, LogsFilters(task_id=task_id), self.object_id)
 
     @property
     def logs(self) -> _SandboxLogsManager:

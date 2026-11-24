@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
+import io
+import pickle
 import pytest
 import random
 import typing
@@ -18,11 +20,9 @@ from modal._serialization import (
     validate_parameter_values,
 )
 from modal._type_manager import parameter_serde_registry
-from modal._utils.async_utils import synchronize_api, synchronizer
+from modal._utils.async_utils import synchronize_api
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
-from modal.sandbox._impl_v1 import SandboxImplV1
-from modal.sandbox._impl_v2 import SandboxImplV2
 from modal_proto import api_pb2
 
 
@@ -31,6 +31,23 @@ async def _deserialize_on_synchronizer(data, client):
 
 
 deserialize_on_synchronizer = synchronize_api(_deserialize_on_synchronizer)
+
+
+def _serialize_sandbox_with_metadata(sandbox, metadata):
+    class SandboxPickler(pickle.Pickler):
+        def persistent_id(self, obj):
+            if obj is sandbox:
+                return (sandbox.object_id, "o", metadata)
+            return None
+
+    buf = io.BytesIO()
+    SandboxPickler(buf).dump(sandbox)
+    return buf.getvalue()
+
+
+class ObjectMetadataUnpickler(pickle.Unpickler):
+    def persistent_load(self, pid):
+        return pid
 
 
 @pytest.mark.asyncio
@@ -59,22 +76,113 @@ async def test_roundtrip(servicer, client):
     ],
     ids=["v1", "v2"],
 )
-def test_sandbox_roundtrip_preserves_metadata(servicer, client, sandbox_id, is_v2):
-    servicer.sandbox_app_id = "ap-serialized-sandbox"
+@pytest.mark.parametrize("has_result", [False, True])
+def test_sandbox_serialization_payload(servicer, client, sandbox_id, is_v2, has_result):
+    result = (
+        api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=42) if has_result else None
+    )
+
+    async def wait_handler(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(
+                result=result,
+                metadata=api_pb2.SandboxHandleMetadata(app_id="ap-serialized-sandbox", result=result),
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWaitV2" if is_v2 else "SandboxWait", wait_handler)
+        sandbox = Sandbox.from_id(sandbox_id, client=client)
+        sandbox.poll()
+
+    assert ObjectMetadataUnpickler(io.BytesIO(serialize(sandbox))).load() == (
+        sandbox_id,
+        "o",
+        api_pb2.SandboxHandleMetadata(app_id="ap-serialized-sandbox", result=result),
+    )
+
+
+@pytest.mark.parametrize(
+    ("sandbox_id", "is_v2"),
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", False),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", True),
+    ],
+    ids=["v1", "v2"],
+)
+@pytest.mark.parametrize("has_result", [False, True])
+@pytest.mark.parametrize("operation", ["poll", "logs"])
+def test_sandbox_metadata_roundtrip(servicer, client, sandbox_id, is_v2, has_result, operation):
+    servicer.sandbox_app_id = "ap-from-main"
+    result = (
+        api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=42) if has_result else None
+    )
+
+    async def wait_handler(self, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(
+                result=result,
+                metadata=api_pb2.SandboxHandleMetadata(app_id=servicer.sandbox_app_id, result=result),
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWaitV2" if is_v2 else "SandboxWait", wait_handler)
+        sandbox = Sandbox.from_id(sandbox_id, client=client)
+
+    metadata = api_pb2.SandboxHandleMetadata(app_id="ap-from-main", result=result)
+    data = _serialize_sandbox_with_metadata(sandbox, metadata)
+
+    async def get_task_id(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-serialized"))
+
+    async def fetch_logs(self, stream):
+        req = await stream.recv_message()
+        assert req.app_id == "ap-from-main"
+        await stream.send_message(
+            api_pb2.AppFetchLogsResponse(
+                batches=[
+                    api_pb2.TaskLogsBatch(task_id="ta-serialized", items=[api_pb2.TaskLogs(data="serialized log\n")])
+                ]
+            )
+        )
+
+    wait_rpc = "SandboxWaitV2" if is_v2 else "SandboxWait"
+    with servicer.intercept() as ctx:
+        ctx.set_responder(wait_rpc, wait_handler)
+        ctx.set_responder("SandboxGetTaskIdV2" if is_v2 else "SandboxGetTaskId", get_task_id)
+        ctx.set_responder("AppFetchLogs", fetch_logs)
+        sandbox_roundtrip = deserialize_on_synchronizer(data, client)
+        assert isinstance(sandbox_roundtrip, Sandbox)
+        assert sandbox_roundtrip.object_id == sandbox.object_id
+        assert not ctx.get_requests(wait_rpc)
+        assert sandbox_roundtrip.returncode == (42 if has_result else None)
+        if operation == "poll":
+            assert sandbox_roundtrip.poll() == (42 if has_result else None)
+            needs_lookup = True
+        else:
+            assert [str(entry) for entry in sandbox_roundtrip.logs.tail(1)] == ["serialized log\n"]
+            assert sandbox_roundtrip.returncode == (42 if has_result else None)
+            needs_lookup = False
+        requests = ctx.get_requests(wait_rpc)
+        assert len(requests) == int(needs_lookup)
+        if needs_lookup:
+            [req] = requests
+            assert req.sandbox_id == sandbox_id
+            assert req.timeout == 0
+
+
+@pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+def test_sandbox_metadata_preserves_empty_result(client, sandbox_id):
+    metadata = api_pb2.SandboxHandleMetadata(app_id="ap-main", result=api_pb2.GenericResult())
     sandbox = Sandbox.from_id(sandbox_id, client=client)
-
-    data = serialize(sandbox)
-    sandbox_roundtrip = deserialize_on_synchronizer(data, client)
-
-    assert isinstance(sandbox_roundtrip, Sandbox)
-    assert sandbox_roundtrip.object_id == sandbox.object_id
-
-    sandbox_impl = synchronizer._translate_in(sandbox)
-    sandbox_roundtrip_impl = synchronizer._translate_in(sandbox_roundtrip)
-    assert sandbox_roundtrip_impl._app_id == sandbox_impl._app_id == servicer.sandbox_app_id
-    assert sandbox_roundtrip_impl._impl.result == sandbox_impl._impl.result == servicer.sandbox_result
-    expected_impl = SandboxImplV2 if is_v2 else SandboxImplV1
-    assert type(sandbox_roundtrip_impl._impl) is type(sandbox_impl._impl) is expected_impl
+    restored = deserialize_on_synchronizer(_serialize_sandbox_with_metadata(sandbox, metadata), client)
+    _, _, restored_metadata = ObjectMetadataUnpickler(io.BytesIO(serialize(restored))).load()
+    assert restored_metadata.HasField("result")
+    assert restored_metadata.SerializeToString() == metadata.SerializeToString()
 
 
 @pytest.mark.asyncio

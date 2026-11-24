@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable, Collection, Sequence
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
@@ -84,12 +85,14 @@ class SandboxImplPersistent:
         sandbox_id: str,
         *,
         result: api_pb2.GenericResult | None = None,
+        app_id: str = "",
         persistent_sandbox_id: str = "",
         session: SandboxImplV2 | None = None,
     ) -> None:
         self.client = client
         self.sandbox_id = sandbox_id
         self.result = result
+        self.app_id = app_id
         self._persistent_sandbox_id = persistent_sandbox_id
         self._session = session if session is not None else SandboxImplV2(client, sandbox_id)
         self._replace_lock: asyncio.Lock | None = None
@@ -103,10 +106,30 @@ class SandboxImplPersistent:
     def _client(self) -> _Client:
         return self.client
 
+    async def get_app_id(self) -> str:
+        return self.app_id
+
+    def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:
+        metadata = api_pb2.SandboxHandleMetadata(app_id=self.app_id)
+        if self.result is not None:
+            metadata.result.CopyFrom(self.result)
+        return metadata
+
+    @classmethod
+    def _from_object_metadata(
+        cls, client: _Client, sandbox_id: str, metadata: Message | None
+    ) -> "SandboxImplPersistent":
+        if metadata is None:
+            return cls(client, sandbox_id)
+        assert isinstance(metadata, api_pb2.SandboxHandleMetadata)
+        return cls(
+            client, sandbox_id, app_id=metadata.app_id, result=metadata.result if metadata.HasField("result") else None
+        )
+
     @classmethod
     async def create(
         cls, create_args: SandboxCreateArgs, *, app: "modal.app._App | None", client: _Client | None
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]":
+    ) -> "SandboxImpl":
         if create_args.timeout is not None or create_args.idle_timeout is not None:
             raise InvalidError("Persistent Sandboxes require `timeout=None` and don't support `idle_timeout`.")
         create_args = dataclasses.replace(
@@ -138,8 +161,8 @@ class SandboxImplPersistent:
             )
             resp = await client._stub.PersistentSandboxCreate(req, metadata=await auth_metadata(client))
             app_id = load_context.app_id or ""
-        impl = cls(client, resp.sandbox_id, persistent_sandbox_id=resp.persistent_sandbox_id)
-        return impl, api_pb2.SandboxHandleMetadata(app_id=app_id)
+        impl = cls(client, resp.sandbox_id, persistent_sandbox_id=resp.persistent_sandbox_id, app_id=app_id)
+        return impl
 
     # Persistent Sandboxes are only created through `create`, and can't be looked up yet.
 
@@ -148,7 +171,7 @@ class SandboxImplPersistent:
         raise NotImplementedError
 
     @classmethod
-    async def lookup_by_id(cls, *args: Any, **kwargs: Any) -> api_pb2.SandboxWaitResponse:
+    async def lookup_by_id(cls, *args: Any, **kwargs: Any) -> "SandboxImpl":
         raise NotImplementedError
 
     @classmethod
@@ -156,9 +179,7 @@ class SandboxImplPersistent:
         raise NotImplementedError
 
     @classmethod
-    async def restore_from_memory_snapshot(
-        cls, *args: Any, **kwargs: Any
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]":
+    async def restore_from_memory_snapshot(cls, *args: Any, **kwargs: Any) -> "SandboxImpl":
         raise NotImplementedError
 
     def clone(self) -> "SandboxImplPersistent":

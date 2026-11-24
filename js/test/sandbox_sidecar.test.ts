@@ -12,7 +12,8 @@ import {
 } from "../src/errors";
 import { Image } from "../src/image";
 import { Proxy } from "../src/proxy";
-import { newSandboxImpl, Sandbox } from "../src/sandbox";
+import { Sandbox } from "../src/sandbox";
+import { newSandboxImpl } from "../src/sandbox_common";
 import type { CloudBucketMount } from "../src/cloud_bucket_mount";
 import { Secret } from "../src/secret";
 import {

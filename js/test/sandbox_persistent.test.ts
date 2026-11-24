@@ -16,7 +16,7 @@ import {
   createMockModalClients,
   type MockGrpcClient,
 } from "../test-support/grpc_mock";
-import { newSandboxImpl } from "../src/sandbox";
+import { newSandboxImpl } from "../src/sandbox_common";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const SESSION_1 = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";

@@ -2,6 +2,7 @@ import { ClientError, Status } from "nice-grpc";
 import { setTimeout } from "timers/promises";
 import {
   FileDescriptor,
+  type SandboxGetFromNameResponse,
   GenericResult_GenericStatus,
   SandboxGetTaskIdRequest,
   SandboxRestoreRequest_SandboxNameOverrideType,
@@ -42,12 +43,12 @@ import {
   encodeIfString,
   getReturnCode,
   hydrateSandboxSecrets,
-  newSandboxImpl,
   validateOutboundPolicyParams,
   warnDeprecatedNetworkParams,
 } from "./sandbox";
 import {
   GET_TASK_ID_TIMEOUT_MS,
+  newSandboxImpl,
   LazyCommandRouterClient,
   SB_LOGS_TASK_ID_TIMEOUT_SECONDS,
   type SandboxImpl,
@@ -179,25 +180,28 @@ export class SandboxImplV1 implements SandboxImpl {
     }
 
     client.logger.debug("Created Sandbox", "sandbox_id", createResp.sandboxId);
-    const impl = newSandboxImpl(client, createResp.sandboxId);
+    const impl = newSandboxImpl(client, createResp.sandboxId, {
+      appId: createResp.metadata?.appId || app.appId,
+      result: createResp.metadata?.result,
+    });
     await impl.waitForScheduling(SANDBOX_SCHEDULING_TIMEOUT_MS);
     return impl;
   }
 
   /** Look up a running V1 Sandbox by name. */
-  static async fromName(
+  static async lookupByName(
     client: ModalClient,
     appName: string,
     name: string,
     params: SandboxFromNameParams | undefined,
-  ): Promise<SandboxImpl> {
+  ): Promise<SandboxGetFromNameResponse> {
     try {
       const resp = await client.cpClient.sandboxGetFromName({
         sandboxName: name,
         appName,
         environmentName: client.environmentName(params?.environment),
       });
-      return newSandboxImpl(client, resp.sandboxId);
+      return resp;
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(
@@ -234,7 +238,10 @@ export class SandboxImplV1 implements SandboxImpl {
           return;
         }
         for (const info of resp.sandboxes) {
-          yield newSandboxImpl(client, info.id);
+          yield newSandboxImpl(client, info.id, {
+            appId: info.metadata?.appId,
+            result: info.metadata?.result,
+          });
         }
         beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
       } catch (err) {
@@ -250,7 +257,7 @@ export class SandboxImplV1 implements SandboxImpl {
   }
 
   /** Restore a V1 memory snapshot into a new V1 Sandbox and wait for it to be ready. */
-  static async fromSnapshot(
+  static async restoreFromMemorySnapshot(
     client: ModalClient,
     snapshot: SandboxSnapshot,
     overrideType: SandboxRestoreRequest_SandboxNameOverrideType,
@@ -261,8 +268,6 @@ export class SandboxImplV1 implements SandboxImpl {
       sandboxNameOverrideType: overrideType,
       sandboxNameOverride: nameOverride ?? "",
     });
-
-    const impl = newSandboxImpl(client, restoreResp.sandboxId);
 
     const resp = await client.cpClient.sandboxGetTaskId({
       sandboxId: restoreResp.sandboxId,
@@ -278,7 +283,9 @@ export class SandboxImplV1 implements SandboxImpl {
     ) {
       throw new ExecutionError(resp.taskResult.exception);
     }
-    return impl;
+    return newSandboxImpl(client, restoreResp.sandboxId, {
+      result: resp.taskResult,
+    });
   }
 
   stdin(): ModalWriteStream<string> {

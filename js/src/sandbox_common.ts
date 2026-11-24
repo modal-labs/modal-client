@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   type CloudBucketMount as CloudBucketMountProto,
   FileDescriptor,
+  type GenericResult,
   GenericResult_GenericStatus,
   NetworkAccess,
   NetworkAccess_NetworkAccessType,
@@ -59,6 +60,8 @@ import {
   Tunnel,
   buildTaskExecStartRequestProto,
   getReturnCode,
+  getSandboxVersion,
+  SandboxVersion,
   buildTaskMountDirectoryRequestProto,
   buildTaskSnapshotDirectoryRequestProto,
   resolveMountImageId,
@@ -66,6 +69,8 @@ import {
   validateExecArgs,
 } from "./sandbox";
 import type { SandboxSnapshot } from "./sandbox_snapshot";
+import { SandboxImplV1 } from "./sandbox_impl_v1";
+import { SandboxImplV2 } from "./sandbox_impl_v2";
 import {
   hydrateSecrets,
   resolvableSecrets,
@@ -76,6 +81,51 @@ import {
   TaskCommandRouterClientImpl,
   type CommandRouterAccess,
 } from "./task_command_router_client";
+
+/**
+ * Select the implementation backing the Sandbox with the given ID.
+ *
+ * @internal
+ * @hidden
+ */
+export function implClassForSandboxId(
+  sandboxId: string,
+): typeof SandboxImplV1 | typeof SandboxImplV2 {
+  return implClassForSandboxVersion(getSandboxVersion(sandboxId));
+}
+
+function implClassForSandboxVersion(
+  version: SandboxVersion,
+): typeof SandboxImplV1 | typeof SandboxImplV2 {
+  if (version === SandboxVersion.V1) {
+    return SandboxImplV1;
+  }
+  return SandboxImplV2;
+}
+
+/** @internal @hidden */
+export function implClassForSnapshot(
+  snapshot: SandboxSnapshot,
+): typeof SandboxImplV1 | typeof SandboxImplV2 {
+  return implClassForSandboxVersion(
+    snapshot._isV2 ? SandboxVersion.V2 : SandboxVersion.V1,
+  );
+}
+
+/**
+ * Construct a session implementation, deducing the backend from its ID.
+ *
+ * @internal
+ * @hidden
+ */
+export function newSandboxImpl(
+  client: ModalClient,
+  sandboxId: string,
+  params: SandboxImplParams = {},
+): SandboxImpl {
+  const implClass = implClassForSandboxVersion(getSandboxVersion(sandboxId));
+  return new implClass(client, sandboxId, params);
+}
 
 /**
  * How long operations that need a running task wait for one.
@@ -275,6 +325,8 @@ export interface SandboxImpl {
  * @hidden
  */
 export type SandboxImplParams = {
+  appId?: string;
+  result?: GenericResult;
   taskId?: string;
   tunnels?: Record<number, Tunnel>;
   /** Only good for the first command router connection; later ones fetch fresh access. */

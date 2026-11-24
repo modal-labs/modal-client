@@ -880,11 +880,14 @@ func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string,
 		}
 	}
 
-	impl, err := sandboxFromNameV1(ctx, s.client, appName, name, params)
+	resp, err := lookupSandboxByNameV1(ctx, s.client, appName, name, params)
 	if err != nil {
 		return nil, err
 	}
-	return newSandboxFromImpl(impl), nil
+	return newSandboxFromImpl(newSandboxImpl(s.client, resp.GetSandboxId(), sandboxImplParams{
+		appID:  resp.GetMetadata().GetAppId(),
+		result: resp.GetMetadata().GetResult(),
+	})), nil
 }
 
 // SandboxExperimentalFromNameParams are options for SandboxService.ExperimentalFromName.
@@ -903,11 +906,14 @@ func (s *sandboxServiceImpl) ExperimentalFromName(ctx context.Context, appName, 
 	if params == nil {
 		params = &SandboxExperimentalFromNameParams{}
 	}
-	impl, err := sandboxFromNameV2(ctx, s.client, appName, name, params)
+	resp, err := lookupSandboxByNameV2(ctx, s.client, appName, name, params)
 	if err != nil {
 		return nil, err
 	}
-	return newSandboxFromImpl(impl), nil
+	return newSandboxFromImpl(newSandboxImpl(s.client, resp.GetSandboxId(), sandboxImplParams{
+		appID:  resp.GetMetadata().GetAppId(),
+		result: resp.GetMetadata().GetResult(),
+	})), nil
 }
 
 // SandboxSnapshot is a stored Sandbox memory snapshot created by calling
@@ -974,7 +980,6 @@ func (s *sandboxServiceImpl) ExperimentalFromSnapshot(ctx context.Context, snaps
 	if err := snapshot.hydrate(ctx); err != nil {
 		return nil, err
 	}
-	useV2 := snapshot.isV2 != nil && *snapshot.isV2
 
 	overrideType := pb.SandboxRestoreRequest_SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED
 	var nameOverride string
@@ -990,11 +995,7 @@ func (s *sandboxServiceImpl) ExperimentalFromSnapshot(ctx context.Context, snaps
 		}
 	}
 
-	fromSnapshot := sandboxFromSnapshotV1
-	if useV2 {
-		fromSnapshot = sandboxFromSnapshotV2
-	}
-	impl, err := fromSnapshot(ctx, s.client, snapshot, overrideType, nameOverride)
+	impl, err := implClassForSnapshot(snapshot).restoreFromMemorySnapshot(ctx, s.client, snapshot, overrideType, nameOverride)
 	if err != nil {
 		return nil, err
 	}

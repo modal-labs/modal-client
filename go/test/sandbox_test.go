@@ -1994,6 +1994,46 @@ func TestSandboxFromIDRoutesV2(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
+func TestSandboxExperimentalFromSnapshotDefaultsToV1(t *testing.T) {
+	for _, resultStatus := range []pb.GenericResult_GenericStatus{
+		pb.GenericResult_GENERIC_STATUS_UNSPECIFIED,
+		pb.GenericResult_GENERIC_STATUS_SUCCESS,
+		pb.GenericResult_GENERIC_STATUS_FAILURE,
+	} {
+		t.Run(resultStatus.String(), func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			mock := newGRPCMockClient(t)
+			const snapshotID = "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
+			grpcmock.HandleUnary(mock, "SandboxSnapshotGet", func(req *pb.SandboxSnapshotGetRequest) (*pb.SandboxSnapshotGetResponse, error) {
+				g.Expect(req.GetSnapshotId()).To(gomega.Equal(snapshotID))
+				return pb.SandboxSnapshotGetResponse_builder{SnapshotId: snapshotID}.Build(), nil
+			})
+			grpcmock.HandleUnary(mock, "SandboxRestore", func(req *pb.SandboxRestoreRequest) (*pb.SandboxRestoreResponse, error) {
+				g.Expect(req.GetSnapshotId()).To(gomega.Equal(snapshotID))
+				return pb.SandboxRestoreResponse_builder{SandboxId: validV1SandboxID}.Build(), nil
+			})
+			grpcmock.HandleUnary(mock, "SandboxGetTaskId", func(req *pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+				g.Expect(req.GetSandboxId()).To(gomega.Equal(validV1SandboxID))
+				g.Expect(req.GetWaitUntilReady()).To(gomega.BeTrue())
+				return pb.SandboxGetTaskIdResponse_builder{TaskResult: pb.GenericResult_builder{Status: resultStatus, Exception: "restore failed"}.Build()}.Build(), nil
+			})
+			snapshot, err := mock.SandboxSnapshots.FromID(t.Context(), snapshotID, nil)
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			sb, err := mock.Sandboxes.ExperimentalFromSnapshot(t.Context(), snapshot, nil)
+			if resultStatus == pb.GenericResult_GENERIC_STATUS_FAILURE {
+				var executionErr modal.ExecutionError
+				g.Expect(errors.As(err, &executionErr)).To(gomega.BeTrue())
+				g.Expect(executionErr.Exception).To(gomega.Equal("restore failed"))
+			} else {
+				g.Expect(err).ShouldNot(gomega.HaveOccurred())
+				g.Expect(sb.SandboxID).To(gomega.Equal(validV1SandboxID))
+			}
+			g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+		})
+	}
+}
+
 func TestSandboxExperimentalFromSnapshotRoutesV2(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

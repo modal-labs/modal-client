@@ -25,7 +25,7 @@ import {
 } from "modal";
 import { ClientError, Status } from "nice-grpc";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { newSandboxImpl } from "../src/sandbox";
+import { newSandboxImpl } from "../src/sandbox_common";
 
 const now = new Date("2026-07-17T12:00:00Z");
 

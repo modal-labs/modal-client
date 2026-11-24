@@ -9,6 +9,8 @@ from collections.abc import Callable, Collection, Sequence
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Literal
 
+from google.protobuf.message import Message
+
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .._experimental_outbound_policy import _OutboundPolicy as _ExperimentalOutboundPolicy
@@ -115,26 +117,51 @@ class SandboxImplV1:
         sandbox_id: str,
         *,
         result: api_pb2.GenericResult | None = None,
+        app_id: str = "",
         task_id: str | None = None,
     ) -> None:
         self.client = client
         self.sandbox_id = sandbox_id
         self.result = result
+        self.app_id = app_id
         self._task_id = task_id
         self._command_router = LazyCommandRouterClient(self._open_command_router_client)
         self._tunnels = None
+
+    def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:
+        metadata = api_pb2.SandboxHandleMetadata(app_id=self.app_id)
+        if self.result is not None:
+            metadata.result.CopyFrom(self.result)
+        return metadata
+
+    @classmethod
+    def _from_object_metadata(cls, client: _Client, sandbox_id: str, metadata: Message | None) -> "SandboxImplV1":
+        if metadata is None:
+            return cls(client, sandbox_id)
+        assert isinstance(metadata, api_pb2.SandboxHandleMetadata), f"{type(metadata)} is not SandboxHandleMetadata"
+        return cls(
+            client, sandbox_id, app_id=metadata.app_id, result=metadata.result if metadata.HasField("result") else None
+        )
+
+    def _hydrate_metadata(self, metadata: api_pb2.SandboxHandleMetadata) -> None:
+        self.app_id = metadata.app_id or self.app_id
+        if metadata.HasField("result"):
+            self.result = metadata.result
+
+    async def get_app_id(self) -> str:
+        return self.app_id
 
     @property
     def _client(self) -> _Client:
         return self.client
 
     def clone(self) -> "SandboxImplV1":
-        return type(self)(self.client, self.sandbox_id, result=self.result)
+        return type(self)(self.client, self.sandbox_id, result=self.result, app_id=self.app_id)
 
     @classmethod
     async def create(
         cls, create_args: SandboxCreateArgs, *, app: "modal.app._App | None", client: _Client | None
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]":
+    ) -> "SandboxImpl":
         if create_args.i6pn:
             raise InvalidError("i6pn is not supported by V1 Sandboxes")
         # V1 references every Secret by id, including ephemeral ones and the `env` dict.
@@ -177,7 +204,8 @@ class SandboxImplV1:
             if logger.isEnabledFor(logging.DEBUG):
                 total_elapsed = time.monotonic() - load_start
                 logger.debug(_format_sandbox_create_timing_log(sandbox_id, total_elapsed, rpc_elapsed, dep_timings))
-        return impl, create_resp.metadata
+        impl.app_id = create_resp.metadata.app_id
+        return impl
 
     @classmethod
     async def lookup_by_name(
@@ -186,8 +214,11 @@ class SandboxImplV1:
         return await client._stub.SandboxGetFromName(req)
 
     @classmethod
-    async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> api_pb2.SandboxWaitResponse:
-        return await client._stub.SandboxWait(api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0))
+    async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> "SandboxImpl":
+        resp = await client._stub.SandboxWait(api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0))
+        impl = cls(client, sandbox_id)
+        impl._hydrate_metadata(resp.metadata)
+        return impl
 
     @classmethod
     async def list_page(cls, client: _Client, req: api_pb2.SandboxListRequest) -> api_pb2.SandboxListResponse:
@@ -201,7 +232,7 @@ class SandboxImplV1:
         *,
         override_type: "api_pb2.SandboxRestoreRequest.SandboxNameOverrideType.ValueType",
         name_override: str | None,
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]":
+    ) -> "SandboxImpl":
         restore_req = api_pb2.SandboxRestoreRequest(
             snapshot_id=snapshot.object_id,
             sandbox_name_override_type=override_type,
@@ -214,8 +245,10 @@ class SandboxImplV1:
             restore_req.worker_id = worker_id
         restore_resp: api_pb2.SandboxRestoreResponse = await client._stub.SandboxRestore(restore_req)
 
-        lookup_resp = await cls.lookup_by_id(client, restore_resp.sandbox_id)
-        impl = cls(client, restore_resp.sandbox_id, result=lookup_resp.result if lookup_resp.result.status else None)
+        impl = await cls.lookup_by_id(client, restore_resp.sandbox_id)
+        # Metadata preserves empty results, but restore only caches final results.
+        if impl.result is not None and not impl.result.status:
+            impl.result = None
 
         task_id_req = api_pb2.SandboxGetTaskIdRequest(
             sandbox_id=restore_resp.sandbox_id, wait_until_ready=True, timeout=55.0
@@ -226,7 +259,7 @@ class SandboxImplV1:
             api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
         ]:
             raise ExecutionError(resp.task_result.exception)
-        return impl, lookup_resp.metadata
+        return impl
 
     def make_stdio(self, check_open: Callable[[], None]) -> tuple[StreamReader[str], StreamReader[str], StreamWriter]:
         sandbox_id = self.sandbox_id

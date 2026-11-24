@@ -10,6 +10,8 @@ from collections.abc import Callable, Collection, Sequence
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Literal
 
+from google.protobuf.message import Message
+
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .._experimental_outbound_policy import _OutboundPolicy as _ExperimentalOutboundPolicy
@@ -132,6 +134,7 @@ class SandboxImplV2:
         sandbox_id: str,
         *,
         result: api_pb2.GenericResult | None = None,
+        app_id: str = "",
         task_id: str | None = None,
         sandbox_token: str | None = None,
         command_router_access: api_pb2.CommandRouterAccess | None = None,
@@ -141,23 +144,47 @@ class SandboxImplV2:
         self.client = client
         self.sandbox_id = sandbox_id
         self.result = result
+        self.app_id = app_id
         self._task_id = task_id
         self._command_router = LazyCommandRouterClient(self._open_command_router_client)
         self._sandbox_token = sandbox_token
         self._init_command_router_access = command_router_access
         self._tunnels = tunnels
 
+    def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:
+        metadata = api_pb2.SandboxHandleMetadata(app_id=self.app_id)
+        if self.result is not None:
+            metadata.result.CopyFrom(self.result)
+        return metadata
+
+    @classmethod
+    def _from_object_metadata(cls, client: _Client, sandbox_id: str, metadata: Message | None) -> "SandboxImplV2":
+        if metadata is None:
+            return cls(client, sandbox_id)
+        assert isinstance(metadata, api_pb2.SandboxHandleMetadata), f"{type(metadata)} is not SandboxHandleMetadata"
+        return cls(
+            client, sandbox_id, app_id=metadata.app_id, result=metadata.result if metadata.HasField("result") else None
+        )
+
+    def _hydrate_metadata(self, metadata: api_pb2.SandboxHandleMetadata) -> None:
+        self.app_id = metadata.app_id or self.app_id
+        if metadata.HasField("result"):
+            self.result = metadata.result
+
+    async def get_app_id(self) -> str:
+        return self.app_id
+
     @property
     def _client(self) -> _Client:
         return self.client
 
     def clone(self) -> "SandboxImplV2":
-        return type(self)(self.client, self.sandbox_id, result=self.result)
+        return type(self)(self.client, self.sandbox_id, result=self.result, app_id=self.app_id)
 
     @classmethod
     async def create(
         cls, create_args: SandboxCreateArgs, *, app: "modal.app._App | None", client: _Client | None
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]":
+    ) -> "SandboxImpl":
         if create_args.gpu is not None or create_args.network_file_systems or create_args.pty_info is not None:
             raise InvalidError("GPUs, network file systems and PTY info are not supported by V2 Sandboxes")
         if create_args.block_network and create_args.i6pn:
@@ -226,7 +253,8 @@ class SandboxImplV2:
             if logger.isEnabledFor(logging.DEBUG):
                 total_elapsed = time.monotonic() - load_start
                 logger.debug(_format_sandbox_create_timing_log(sandbox_id, total_elapsed, rpc_elapsed, dep_timings))
-        return impl, create_resp.metadata
+        impl.app_id = create_resp.metadata.app_id
+        return impl
 
     async def _metadata(self, client: _Client | None = None) -> list[tuple[str, str]]:
         metadata = await auth_metadata(client if client is not None else self.client)
@@ -241,9 +269,12 @@ class SandboxImplV2:
         return await client._stub.SandboxGetFromNameV2(req, metadata=await auth_metadata(client))
 
     @classmethod
-    async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> api_pb2.SandboxWaitResponse:
+    async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> "SandboxImpl":
         req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0)
-        return await client._stub.SandboxWaitV2(req, metadata=await auth_metadata(client))
+        resp = await client._stub.SandboxWaitV2(req, metadata=await auth_metadata(client))
+        impl = cls(client, sandbox_id)
+        impl._hydrate_metadata(resp.metadata)
+        return impl
 
     @classmethod
     async def list_page(cls, client: _Client, req: api_pb2.SandboxListRequest) -> api_pb2.SandboxListResponse:
@@ -258,7 +289,7 @@ class SandboxImplV2:
         *,
         override_type: "api_pb2.SandboxRestoreRequest.SandboxNameOverrideType.ValueType",
         name_override: str | None,
-    ) -> "tuple[SandboxImpl, api_pb2.SandboxHandleMetadata]":
+    ) -> "SandboxImpl":
         restore_req = api_pb2.SandboxRestoreV2Request(
             snapshot_id=snapshot.object_id,
             sandbox_name_override_type=override_type,
@@ -272,17 +303,19 @@ class SandboxImplV2:
             restore_req, metadata=await auth_metadata(client)
         )
 
-        lookup_resp = await cls.lookup_by_id(client, restore_resp.sandbox_id)
+        looked_up = await cls.lookup_by_id(client, restore_resp.sandbox_id)
         impl = cls(
             client,
             restore_resp.sandbox_id,
-            result=lookup_resp.result if lookup_resp.result.status else None,
+            # Metadata preserves empty results, but restore only caches final results.
+            result=looked_up.result if looked_up.result is not None and looked_up.result.status else None,
+            app_id=looked_up.app_id,
             task_id=restore_resp.task_id,
             command_router_access=(
                 restore_resp.command_router_access if restore_resp.HasField("command_router_access") else None
             ),
         )
-        return impl, lookup_resp.metadata
+        return impl
 
     def make_stdio(self, check_open: Callable[[], None]) -> tuple[StreamReader[str], StreamReader[str], StreamWriter]:
         """Create stdio streams that read directly from the worker.

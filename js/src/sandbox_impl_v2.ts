@@ -2,6 +2,7 @@ import { ClientError, Status } from "nice-grpc";
 import { v4 as uuidv4 } from "uuid";
 import {
   FileDescriptor,
+  type SandboxGetFromNameResponse,
   Resources,
   Sandbox as SandboxDefinition,
   SandboxContainerCreateV2Request,
@@ -41,12 +42,12 @@ import {
   encodeIfString,
   getReturnCode,
   hydrateSandboxSecrets,
-  newSandboxImpl,
   validateOutboundPolicyParams,
   warnDeprecatedNetworkParams,
 } from "./sandbox";
 import {
   GET_TASK_ID_TIMEOUT_MS,
+  newSandboxImpl,
   LazyCommandRouterClient,
   SB_LOGS_TASK_ID_TIMEOUT_SECONDS,
   type SandboxImpl,
@@ -209,6 +210,8 @@ export class SandboxImplV2 implements SandboxImpl {
       : undefined;
 
     return newSandboxImpl(client, createResp.sandboxId, {
+      appId: createResp.metadata?.appId || app.appId,
+      result: createResp.metadata?.result,
       taskId: createResp.taskId,
       tunnels,
       initCommandRouterAccess: createResp.commandRouterAccess,
@@ -216,12 +219,12 @@ export class SandboxImplV2 implements SandboxImpl {
   }
 
   /** Look up a V2 Sandbox by name. */
-  static async fromName(
+  static async lookupByName(
     client: ModalClient,
     appName: string,
     name: string,
     params: SandboxExperimentalFromNameParams | undefined,
-  ): Promise<SandboxImpl> {
+  ): Promise<SandboxGetFromNameResponse> {
     try {
       // SandboxGetFromNameV2 only returns V2 Sandboxes and authenticates via
       // the auth-token metadata (attached automatically by the client), like
@@ -233,7 +236,7 @@ export class SandboxImplV2 implements SandboxImpl {
         includeTerminated: params?.includeTerminated ?? false,
       });
 
-      return newSandboxImpl(client, resp.sandboxId);
+      return resp;
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(
@@ -277,7 +280,10 @@ export class SandboxImplV2 implements SandboxImpl {
           return;
         }
         for (const info of resp.sandboxes) {
-          yield newSandboxImpl(client, info.id);
+          yield newSandboxImpl(client, info.id, {
+            appId: info.metadata?.appId,
+            result: info.metadata?.result,
+          });
         }
         // Fetch the next batch starting from the end of the current one.
         beforeTimestamp = resp.sandboxes[resp.sandboxes.length - 1].createdAt;
@@ -294,7 +300,7 @@ export class SandboxImplV2 implements SandboxImpl {
   }
 
   /** Restore a V2 memory snapshot into a new V2 Sandbox. */
-  static async fromSnapshot(
+  static async restoreFromMemorySnapshot(
     client: ModalClient,
     snapshot: SandboxSnapshot,
     overrideType: SandboxRestoreRequest_SandboxNameOverrideType,
@@ -306,6 +312,8 @@ export class SandboxImplV2 implements SandboxImpl {
       sandboxNameOverride: nameOverride ?? "",
     });
     return newSandboxImpl(client, restoreResp.sandboxId, {
+      appId: restoreResp.metadata?.appId,
+      result: restoreResp.metadata?.result,
       taskId: restoreResp.taskId,
       initCommandRouterAccess: restoreResp.commandRouterAccess,
     });

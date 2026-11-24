@@ -284,7 +284,26 @@ def test_sandbox_create_hydrates_app_id(app, monkeypatch, sandbox_version):
     else:
         sb = Sandbox._experimental_create("echo", "hello", app=app)
 
-    assert synchronizer._translate_in(sb)._app_id == app.app_id
+    assert synchronizer._translate_in(sb)._impl.app_id == app.app_id
+
+
+@pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+@pytest.mark.parametrize("app_id", ["ap-cached", ""])
+def test_sandbox_get_app_id_from_metadata(client, servicer, sandbox_id, app_id):
+    async def wait_handler(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id=app_id)))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder(
+            "SandboxWaitV2" if _get_sandbox_version(sandbox_id) == SandboxVersion.V2 else "SandboxWait", wait_handler
+        )
+        sb = Sandbox.from_id(sandbox_id, client=client)
+
+    with servicer.intercept() as ctx:
+        assert sb._get_app_id() == app_id
+
+    assert ctx.calls == []
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
@@ -300,7 +319,7 @@ def test_sandbox_initialize_from_other_preserves_app_id_and_impl(app, monkeypatc
     target_impl._init("Sandbox initialized from another Sandbox")
     target_impl._initialize_from_other(source_impl)
 
-    assert target_impl._app_id == source_impl._app_id == app.app_id
+    assert target_impl._impl.app_id == source_impl._impl.app_id == app.app_id
     expected_impl = SandboxImplV2 if sandbox_version == SandboxVersion.V2 else SandboxImplV1
     assert type(target_impl._impl) is type(source_impl._impl) is expected_impl
 
@@ -365,7 +384,7 @@ def test_sandbox_from_id_routes_v1(client, servicer):
         sb = Sandbox.from_id(sandbox_id, client=client)
 
     assert sb.returncode == 0
-    assert synchronizer._translate_in(sb)._app_id == "ap-from-id-v1"
+    assert synchronizer._translate_in(sb)._impl.app_id == "ap-from-id-v1"
     (wait_req,) = ctx.get_requests("SandboxWait")
     assert wait_req.sandbox_id == sandbox_id
     assert ctx.get_requests("SandboxWaitV2") == []
@@ -380,7 +399,7 @@ def test_sandbox_from_id_routes_v2(client, servicer):
         exit_code = sb.terminate(wait=True)
 
     assert exit_code == 137
-    assert synchronizer._translate_in(sb)._app_id == "ap-from-id-v2"
+    assert synchronizer._translate_in(sb)._impl.app_id == "ap-from-id-v2"
     assert ctx.get_requests("SandboxWait") == []
 
     wait_reqs = ctx.get_requests("SandboxWaitV2")
@@ -429,7 +448,7 @@ def test_sandbox_from_name_hydrates_app_id(app, client, servicer, sandbox_versio
             method_name = "SandboxGetFromNameV2"
             app_id = app.app_id
 
-    assert synchronizer._translate_in(sb)._app_id == app_id
+    assert synchronizer._translate_in(sb)._impl.app_id == app_id
     (request,) = ctx.get_requests(method_name)
     assert request.app_name == "my-app"
     assert request.sandbox_name == "my-sandbox"
@@ -833,7 +852,7 @@ def test_sandbox_list_app(client, servicer):
         # Create sandbox
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
         (listed_sandbox,) = list(Sandbox.list(app_id=app.app_id, client=client))
-        assert synchronizer._translate_in(listed_sandbox)._app_id == app.app_id
+        assert synchronizer._translate_in(listed_sandbox)._impl.app_id == app.app_id
         sb.terminate()
         sb.wait(raise_on_termination=False)
         assert not list(Sandbox.list(app_id=app.app_id, client=client))
@@ -878,7 +897,7 @@ def test_sandbox_experimental_list_app(client, servicer):
     with app.run(client=client):
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
         (listed_sandbox,) = list(Sandbox._experimental_list(app_id=app.app_id, client=client))
-        assert synchronizer._translate_in(listed_sandbox)._app_id == app.app_id
+        assert synchronizer._translate_in(listed_sandbox)._impl.app_id == app.app_id
         sb.terminate()
         sb.wait(raise_on_termination=False)
         assert not list(Sandbox._experimental_list(app_id=app.app_id, client=client))
@@ -2504,7 +2523,7 @@ def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
         with pytest.warns(DeprecationError, match="without an `app_id`"):
             (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode is None
-    assert synchronizer._translate_in(list_result)._app_id == "ap-list-running"
+    assert synchronizer._translate_in(list_result)._impl.app_id == "ap-list-running"
 
 
 def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
@@ -2532,7 +2551,7 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
         with pytest.warns(DeprecationError, match="without an `app_id`"):
             (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode == 0
-    assert synchronizer._translate_in(list_result)._app_id == "ap-list-stopped"
+    assert synchronizer._translate_in(list_result)._impl.app_id == "ap-list-stopped"
 
 
 @pytest.mark.parametrize("read_only", [True, False])
