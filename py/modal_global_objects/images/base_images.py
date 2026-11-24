@@ -10,9 +10,13 @@ from rich.table import Table
 import modal
 from modal._image import SUPPORTED_PYTHON_SERIES, ImageBuilderVersion
 
+PLATFORMS = ("linux/amd64", "linux/arm64")
 
-async def build_images(app: modal.App, constructor: Any, python_versions: list[str]) -> dict[str, modal.Image]:
-    images = {v: constructor(python_version=v) for v in python_versions}
+
+async def build_images(
+    app: modal.App, constructor: Any, python_versions: list[str]
+) -> dict[tuple[str, str], modal.Image]:
+    images = {(p, v): constructor(python_version=v, platform=p) for p in PLATFORMS for v in python_versions}
     tasks = [image.build.aio(app) for image in images.values()]
     await asyncio.gather(*tasks)
     return images
@@ -35,13 +39,16 @@ if __name__ == "__main__":
     app = modal.App(f"build-{name.replace('_', '-')}-image")
 
     if name == "from_scratch":
-        image = modal.Image.from_scratch()
+        scratch_images = {p: modal.Image.from_scratch(platform=p) for p in PLATFORMS}
         with app.run(), modal.enable_output():
-            image.build(app)
+            for image in scratch_images.values():
+                image.build(app)
 
-        table = Table(title=f"Image for {name} ({builder_version})")
+        table = Table(title=f"Images for {name} ({builder_version})")
+        table.add_column("Platform")
         table.add_column("Image ID")
-        table.add_row(image.object_id)
+        for p, image in scratch_images.items():
+            table.add_row(p, image.object_id)
     else:
         python_versions = SUPPORTED_PYTHON_SERIES[cast(ImageBuilderVersion, builder_version)]
 
@@ -55,11 +62,12 @@ if __name__ == "__main__":
             images = asyncio.run(build_images(app, constructor, python_versions))
 
         table = Table(title=f"Images for {name} ({builder_version})")
+        table.add_column("Platform")
         table.add_column("Python version")
         table.add_column("Image ID")
 
-        for v, image in images.items():
-            table.add_row(v, image.object_id)
+        for (p, v), image in images.items():
+            table.add_row(p, v, image.object_id)
 
     rich.print()
     rich.print(table)
