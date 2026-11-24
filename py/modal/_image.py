@@ -532,8 +532,8 @@ class DockerfileSpec:
     context_files: dict[str, str] = field(default_factory=dict)
 
 
-def _standalone_python_arch(platform: str | None, arch: "api_pb2.Arch.ValueType" = api_pb2.ARCH_UNSPECIFIED) -> str:
-    return "aarch64" if platform == "linux/arm64" or arch == api_pb2.ARCH_AARCH64 else "x86_64"
+def _standalone_python_arch(platform: str | None) -> str:
+    return "aarch64" if platform == "linux/arm64" else "x86_64"
 
 
 async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.ImageJoinStreamingResponse:
@@ -712,7 +712,6 @@ class _Image(_Object, type_prefixes=("im",)):
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
-        _arch: "api_pb2.Arch.ValueType" = api_pb2.ARCH_UNSPECIFIED,
         _platform: str | None = None,
     ):
         if base_images is None:
@@ -837,7 +836,6 @@ class _Image(_Object, type_prefixes=("im",)):
                 build_function=_build_function,
                 build_args=build_args,
                 volume_mounts=volume_mounts,
-                arch=_arch,
                 platform=_platform or "",
             )
 
@@ -2381,12 +2379,10 @@ class _Image(_Object, type_prefixes=("im",)):
             ```
         """
 
-        arch = kwargs.get("_arch", api_pb2.ARCH_UNSPECIFIED)
-
         def context_mount_function(builder_version: ImageBuilderVersion) -> _Mount | None:
             return (
                 _Mount.from_name(
-                    python_standalone_mount_name(add_python, builder_version, _standalone_python_arch(platform, arch)),
+                    python_standalone_mount_name(add_python, builder_version, _standalone_python_arch(platform)),
                     namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 )
                 if add_python
@@ -2418,7 +2414,6 @@ class _Image(_Object, type_prefixes=("im",)):
             dockerfile_function=lambda version: DockerfileSpec(commands=[f"FROM {tag}"], context_files={}),
             image_registry_config=kwargs.get("image_registry_config"),
             force_build=force_build,
-            _arch=arch,
             _platform=platform,
         )
 

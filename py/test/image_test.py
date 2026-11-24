@@ -1839,20 +1839,6 @@ def test_image_gpu(builder_version, servicer, client):
     assert layers[0].gpu_config.count == 1
 
 
-def test_image_from_registry_arch(builder_version, servicer, client):
-    for arch in [api_pb2.ARCH_UNSPECIFIED, api_pb2.ARCH_X86_64, api_pb2.ARCH_AARCH64]:
-        image = Image.from_registry("ubuntu:22.04", _arch=arch).env({"A": "1"})
-        build_image(image, client)
-        layers = get_image_layers(image.object_id, servicer)
-        assert layers[-1].arch == arch
-
-        image = Image.from_registry("ubuntu:22.04", add_python="3.12", _arch=arch)
-        build_image(image, client)
-        layers = get_image_layers(image.object_id, servicer)
-        assert layers[0].context_mount_id == ("mo-py312-aarch64" if arch == api_pb2.ARCH_AARCH64 else "mo-py312")
-        assert layers[-1].arch == arch
-
-
 @pytest.mark.parametrize("platform", [None, "linux/arm64"])
 def test_image_platform(builder_version, servicer, client, tmp_path, platform):
     dockerfile = tmp_path / "Dockerfile"
@@ -1875,14 +1861,17 @@ def test_image_platform(builder_version, servicer, client, tmp_path, platform):
     assert layer.platform == (platform or "")
 
 
-def test_image_from_dockerfile_add_python_arch(builder_version, servicer, client, tmp_path):
+@pytest.mark.parametrize("platform", [None, "linux/arm64"])
+def test_image_add_python_arch(builder_version, servicer, client, tmp_path, platform):
     dockerfile = tmp_path / "Dockerfile"
     dockerfile.write_text("FROM ubuntu:22.04\n")
-    image = Image.from_dockerfile(dockerfile, add_python="3.12", platform="linux/arm64")
-    build_image(image, client)
-    layers = get_image_layers(image.object_id, servicer)
-    assert layers[0].context_mount_id == "mo-py312-aarch64"
-    assert layers[-1].platform == "linux/arm64"
+    for image in [
+        Image.from_registry("ubuntu:22.04", add_python="3.12", platform=platform),
+        Image.from_dockerfile(dockerfile, add_python="3.12", platform=platform),
+    ]:
+        build_image(image, client)
+        layers = get_image_layers(image.object_id, servicer)
+        assert layers[0].context_mount_id == ("mo-py312-aarch64" if platform else "mo-py312")
 
 
 def test_image_force_build(builder_version, servicer, client):
