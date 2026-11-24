@@ -2050,6 +2050,7 @@ message EnvironmentCreateRequest {
   EnvironmentType environment_type = 4;
   optional EnvironmentRole default_member_role = 5;
   string default_member_role_str = 6;  // String representation; parsed when the enum is unspecified.
+  map<string, string> experimental_options = 7;
 }
 
 message EnvironmentDeleteRequest {
@@ -2160,7 +2161,7 @@ message EnvironmentListResponse {
   repeated EnvironmentListItem items = 2;
 }
 
-message EnvironmentMetadata{
+message EnvironmentMetadata {
   string name = 1;
   EnvironmentSettings settings = 2;
   EnvironmentType environment_type = 3;

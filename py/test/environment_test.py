@@ -131,6 +131,17 @@ def test_environment_objects_create(servicer, client):
     assert servicer.environment_type[servicer.environments["public-env"]] == api_pb2.ENVIRONMENT_TYPE_PUBLIC
 
 
+@pytest.mark.parametrize("value, serialized", [(True, "True"), (False, "False"), ("value", "value"), (42, "42")])
+def test_environment_objects_create_experimental_options(servicer, client, value, serialized):
+    with servicer.intercept() as ctx:
+        Environment.objects.create(
+            "experimental-env", experimental_options={"opaque-option": value, "is_public": True}, client=client
+        )
+    request = ctx.pop_request("EnvironmentCreate")
+    assert dict(request.experimental_options) == {"opaque-option": serialized}
+    assert request.environment_type == api_pb2.ENVIRONMENT_TYPE_PUBLIC
+
+
 def test_environment_objects_create_default_role_requires_restricted(servicer, client):
     with servicer.intercept() as ctx:
         with pytest.raises(

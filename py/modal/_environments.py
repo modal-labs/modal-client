@@ -57,10 +57,16 @@ class _EnvironmentManager:
         check_environment_name(name, allow_periods=False)
 
         client = await _Client.from_env() if client is None else client
-        request = api_pb2.EnvironmentCreateRequest(name=name, is_managed=restricted)
+        options = dict(experimental_options or {})
+        is_public = options.pop("is_public", False)
+        request = api_pb2.EnvironmentCreateRequest(
+            name=name,
+            is_managed=restricted,
+            experimental_options={k: str(v) for k, v in options.items()},
+        )
         if default_role:
             request.default_member_role_str = default_role
-        if (experimental_options or {}).get("is_public", False):
+        if is_public:
             request.environment_type = api_pb2.ENVIRONMENT_TYPE_PUBLIC
         await client._stub.EnvironmentCreate(request)
 
