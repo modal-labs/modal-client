@@ -14,9 +14,9 @@ PLATFORMS = ("linux/amd64", "linux/arm64")
 
 
 async def build_images(
-    app: modal.App, constructor: Any, python_versions: list[str]
+    app: modal.App, constructor: Any, python_versions: list[str], platforms: tuple[str, ...]
 ) -> dict[tuple[str, str], modal.Image]:
-    images = {(p, v): constructor(python_version=v, platform=p) for p in PLATFORMS for v in python_versions}
+    images = {(p, v): constructor(python_version=v, platform=p) for p in platforms for v in python_versions}
     tasks = [image.build.aio(app) for image in images.values()]
     await asyncio.gather(*tasks)
     return images
@@ -36,10 +36,14 @@ if __name__ == "__main__":
     builder_version = os.environ.get("MODAL_IMAGE_BUILDER_VERSION")
     assert builder_version, "Script requires MODAL_IMAGE_BUILDER_VERSION environment variable"
 
+    # Images for builder versions up to 2023.12 use Debian bullseye. deb.debian.org does not serve the
+    # bullseye-security packages, thus a build of these images that is not in the cache fails.
+    platforms = ("linux/amd64",) if builder_version <= "2023.12" else PLATFORMS
+
     app = modal.App(f"build-{name.replace('_', '-')}-image")
 
     if name == "from_scratch":
-        scratch_images = {p: modal.Image.from_scratch(platform=p) for p in PLATFORMS}
+        scratch_images = {p: modal.Image.from_scratch(platform=p) for p in platforms}
         with app.run(), modal.enable_output():
             for image in scratch_images.values():
                 image.build(app)
@@ -59,7 +63,7 @@ if __name__ == "__main__":
             app.run(),
             modal.enable_output(),
         ):  # Image.build needs these in reverse of normal order to avoid duplicate logs
-            images = asyncio.run(build_images(app, constructor, python_versions))
+            images = asyncio.run(build_images(app, constructor, python_versions, platforms))
 
         table = Table(title=f"Images for {name} ({builder_version})")
         table.add_column("Platform")
