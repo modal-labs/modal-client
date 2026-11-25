@@ -7,17 +7,16 @@ from typing import TypeGuard
 
 from ..cloud_bucket_mount import _CloudBucketMount
 from ..exception import InvalidError
-from ..network_file_system import _NetworkFileSystem
 from ..volume import _Volume
 
-T = typing.TypeVar("T", bound=_Volume | _NetworkFileSystem | _CloudBucketMount)
+T = typing.TypeVar("T", bound=_Volume | _CloudBucketMount)
 
 
 def validate_mount_points(
     display_name: str,
     volume_likes: Mapping[str | PurePosixPath, T],
 ) -> list[tuple[str, T]]:
-    """Mount point path validation for volumes and network file systems."""
+    """Mount point path validation for Volumes and CloudBucketMounts."""
 
     if not isinstance(volume_likes, dict):
         raise InvalidError(
@@ -39,21 +38,6 @@ def validate_mount_points(
             raise InvalidError(f"{display_name} {path} cannot be mounted at '/tmp'.")
         validated.append((path, vol))
     return validated
-
-
-def validate_network_file_systems(
-    network_file_systems: Mapping[str | PurePosixPath, _NetworkFileSystem],
-):
-    validated_network_file_systems = validate_mount_points("NetworkFileSystem", network_file_systems)
-
-    for path, network_file_system in validated_network_file_systems:
-        if not isinstance(network_file_system, (_NetworkFileSystem)):
-            raise InvalidError(
-                f"Object of type {type(network_file_system)} mounted at '{path}' "
-                + "is not useable as a network file system."
-            )
-
-    return validated_network_file_systems
 
 
 def validate_volumes(

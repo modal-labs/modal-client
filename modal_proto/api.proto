@@ -5214,7 +5214,7 @@ message ServiceUserListResponse {
 }
 
 
-// SharedVolume in the backend corresponds to NetworkFileSystem in the current API
+// SharedVolume is the API name of NetworkFileSystem, retired in Python SDK v1.7.
 
 message SharedVolumeDeleteRequest {
   string shared_volume_id = 1;

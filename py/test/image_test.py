@@ -1039,6 +1039,16 @@ def test_image_run_function(builder_version, servicer, client):
         Image.debian_slim().run_function([])  # type: ignore  # Testing runtime error for bad type
 
 
+def test_image_run_function_build_args_are_stable(builder_version, servicer, client):
+    # Modal rebuilds a `run_function` layer when its build function definition changes.
+    # A change to this line rebuilds every existing `run_function` Image after a client upgrade.
+    image = Image.debian_slim().run_function(run_f, include_source=False)
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    definition = layers[0].build_function.definition
+    assert definition.splitlines()[-1] == "{'secrets': '[]', 'gpu_config': '[]', 'network_file_systems': '{}'}"
+
+
 def test_image_run_function_interactivity(builder_version, servicer, client):
     image = Image.debian_slim().pip_install("pandas").run_function(run_f, include_source=False)
 

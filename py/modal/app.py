@@ -50,7 +50,6 @@ from .cls import _Cls, parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError
 from .functions import Function
-from .network_file_system import _NetworkFileSystem
 from .partial_function import PartialFunction
 from .proxy import _Proxy
 from .retries import Retries
@@ -907,7 +906,6 @@ class _App:
         secrets: Collection[_Secret] | None = None,
         gpu: str | list[str] | None = None,
         serialized: bool = False,
-        network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem] = {},
         volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
         cpu: float | tuple[float, float] | None = None,
         memory: int | tuple[int, int] | None = None,
@@ -945,7 +943,6 @@ class _App:
             secrets: Secrets to inject into the container as environment variables.
             gpu: GPU request; either a single GPU type or a list of types.
             serialized: Whether to send the function over using cloudpickle.
-            network_file_systems: Mountpoints for Modal NetworkFileSystems.
             volumes: Mount points for Modal Volumes & CloudBucketMounts.
             cpu:
                 Specify, in fractional CPU cores, how many CPU cores to request. Or, pass (request, limit) to
@@ -1110,7 +1107,6 @@ class _App:
                 schedule=schedule,
                 is_generator=is_generator,
                 gpu=gpu,
-                network_file_systems=network_file_systems,
                 volumes={**local_state.volumes_default, **volumes},
                 cpu=cpu,
                 memory=memory,
@@ -1162,7 +1158,6 @@ class _App:
         secrets: Collection[_Secret] | None = None,
         gpu: str | list[str] | None = None,
         serialized: bool = False,
-        network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem] = {},
         volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
         cpu: float | tuple[float, float] | None = None,
         memory: int | tuple[int, int] | None = None,
@@ -1198,7 +1193,6 @@ class _App:
             secrets: Secrets to inject into the container as environment variables.
             gpu: GPU request; either a single GPU type or a list of types.
             serialized: Whether to send the class over using cloudpickle.
-            network_file_systems: Mountpoints for Modal NetworkFileSystems.
             volumes: Mount points for Modal Volumes & CloudBucketMounts.
             cpu:
                 Specify, in fractional CPU cores, how many CPU cores to request. Or, pass (request, limit) to
@@ -1346,7 +1340,6 @@ class _App:
                 image=image or self._get_default_image(),
                 secrets=[*local_state.secrets_default, *secrets],
                 gpu=gpu,
-                network_file_systems=network_file_systems,
                 volumes={**local_state.volumes_default, **volumes},
                 cpu=cpu,
                 memory=memory,
@@ -1583,7 +1576,6 @@ class _App:
                 image=image or self._get_default_image(),
                 secrets=[*local_state.secrets_default, *secrets_list],
                 gpu=gpu,
-                network_file_systems={},  # Deprecated: No support for Server level network file systems
                 volumes={**local_state.volumes_default, **volumes},
                 cpu=cpu,
                 memory=memory,

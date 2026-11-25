@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- NetworkFileSystem has been retired. Removed `modal.NetworkFileSystem`, the `network_file_systems` parameter of `App.function()`, `App.cls()`, `Image.run_function()` and `Sandbox.create()`, and the `modal nfs` CLI.
 - The client requires Python >=3.11; Python 3.10 and Images using Python 3.10 are not supported. The minimum supported protobuf version is 4.21.3.
 - Added `modal.Image.objects.delete(image_id)` to delete an Image or a Sandbox filesystem or directory snapshot by ID. It replaces the deprecated `modal.experimental.image_delete()`.
 - Added a `platform` parameter (`"linux/amd64"` or `"linux/arm64"`) to `Image.from_registry()`, `Image.from_dockerfile()`, `Image.debian_slim()`, `Image.micromamba()` and `Image.from_scratch()`, and a `--platform` option to `modal shell`, `modal image pull` and `modal image build`. Without `platform`, `Image.debian_slim()`, `Image.micromamba()` and `Image.from_scratch()` stay `linux/amd64`. Layers added to an Image, and the Functions and Sandboxes that use it, run on the platform of the Image.

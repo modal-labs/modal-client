@@ -81,7 +81,7 @@ def run(output_dir: str | None = None):
     ]
     # These are excluded from the sidebar, typically to 'soft release' some documentation.
     # or where an object is late in its deprecation cycle and being deemphasized.
-    sidebar_excluded: set[str] = {"NetworkFileSystem"}
+    sidebar_excluded: set[str] = set()
 
     for name in module_docs:
         module = importlib.import_module(f"modal.{name}")

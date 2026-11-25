@@ -24,7 +24,6 @@ try:
     from .file_pattern_matcher import FilePatternMatcher
     from .functions import Function, FunctionCall
     from .image import Image
-    from .network_file_system import NetworkFileSystem
     from .output import enable_output
     from .partial_function import (
         asgi_app,
@@ -74,7 +73,6 @@ __all__ = [
     "Function",
     "FunctionCall",
     "Image",
-    "NetworkFileSystem",
     "OutboundPolicy",
     "OutboundRoute",
     "Period",

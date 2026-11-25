@@ -12,7 +12,6 @@ from click import UsageError
 
 from modal._utils.async_utils import TaskContext
 from modal.config import logger
-from modal.network_file_system import _NetworkFileSystem
 from modal.types import FileEntry, FileEntryType
 from modal.volume import _Volume
 
@@ -20,7 +19,7 @@ PIPE_PATH = Path("-")
 
 
 async def _volume_download(
-    volume: _NetworkFileSystem | _Volume,
+    volume: _Volume,
     remote_path: str,
     local_destination: Path,
     overwrite: bool,

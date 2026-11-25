@@ -955,7 +955,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queues = 0
         self.n_dict_heartbeats = 0
         self.n_queue_heartbeats = 0
-        self.n_nfs_heartbeats = 0
         self.n_vol_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
@@ -1034,7 +1033,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.task_result = None
         self.task_list_calls = 0
 
-        self.nfs_files: dict[str, dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
         self.volumes: dict[str, Volume] = {}
         self.images = {}
         self.image_build_function_ids = {}
@@ -1087,7 +1085,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             },
         }
 
-        self.deployed_nfss = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}
         self.secret_use_times = {}
@@ -4250,82 +4247,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxSnapshotGet(self, stream):
         _request: api_pb2.SandboxSnapshotGetRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxSnapshotGetResponse(snapshot_id="sn-123"))
-
-    ### Network File System (née Shared volume)
-
-    async def SharedVolumeDelete(self, stream):
-        req: api_pb2.SharedVolumeDeleteRequest = await stream.recv_message()
-        self.nfs_files.pop(req.shared_volume_id)
-        self.deployed_nfss = {k: vol_id for k, vol_id in self.deployed_nfss.items() if vol_id != req.shared_volume_id}
-        await stream.send_message(Empty())
-
-    async def SharedVolumeGetOrCreate(self, stream):
-        request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, self.get_environment(request.environment_name))
-        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
-            if k not in self.deployed_nfss:
-                if k in self.deployed_volumes:
-                    raise GRPCError(Status.NOT_FOUND, "App has wrong entity vo")
-                raise GRPCError(Status.NOT_FOUND, f"NFS {k} not found")
-            nfs_id = self.deployed_nfss[k]
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
-            nfs_id = f"sv-{len(self.nfs_files)}"
-            self.nfs_files[nfs_id] = {}
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
-            if k not in self.deployed_nfss:
-                nfs_id = f"sv-{len(self.nfs_files)}"
-                self.nfs_files[nfs_id] = {}
-                self.deployed_nfss[k] = nfs_id
-            nfs_id = self.deployed_nfss[k]
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
-            if k in self.deployed_nfss:
-                raise GRPCError(Status.ALREADY_EXISTS, f"NFS {k} already exists")
-            nfs_id = f"sv-{len(self.nfs_files)}"
-            self.nfs_files[nfs_id] = {}
-            self.deployed_nfss[k] = nfs_id
-        else:
-            raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
-
-        await stream.send_message(api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id=nfs_id))
-
-    async def SharedVolumeHeartbeat(self, stream):
-        await stream.recv_message()
-        self.n_nfs_heartbeats += 1
-        await stream.send_message(Empty())
-
-    async def SharedVolumeList(self, stream):
-        req = await stream.recv_message()
-        items = []
-        environment = self.get_environment(req.environment_name)
-        for (name, env_name), volume_id in self.deployed_nfss.items():
-            if env_name != environment:
-                continue
-            items.append(api_pb2.SharedVolumeListItem(label=name, shared_volume_id=volume_id, created_at=1))
-        resp = api_pb2.SharedVolumeListResponse(items=items, environment_name=req.environment_name)
-        await stream.send_message(resp)
-
-    async def SharedVolumePutFile(self, stream):
-        req = await stream.recv_message()
-        self.nfs_files[req.shared_volume_id][req.path] = req
-        await stream.send_message(api_pb2.SharedVolumePutFileResponse(exists=True))
-
-    async def SharedVolumeGetFile(self, stream):
-        req = await stream.recv_message()
-        put_req = self.nfs_files.get(req.shared_volume_id, {}).get(req.path)
-        if not put_req:
-            raise GRPCError(Status.NOT_FOUND, f"No such file: {req.path}")
-        if put_req.data_blob_id:
-            await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data_blob_id=put_req.data_blob_id))
-        else:
-            await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data=put_req.data))
-
-    async def SharedVolumeListFilesStream(self, stream):
-        req: api_pb2.SharedVolumeListFilesRequest = await stream.recv_message()
-        for path in self.nfs_files[req.shared_volume_id].keys():
-            entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.FILE)
-            response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
-            if req.path == "**" or req.path == "/" or req.path == path:  # hack
-                await stream.send_message(response)
 
     ### Task
 

@@ -76,7 +76,6 @@ def _commands_with_yes(
     "path, command",
     [pytest.param(path, command, id=" ".join(path)) for path, command in _commands_with_yes(entrypoint_cli)],
 )
-@pytest.mark.filterwarnings("ignore:.*`modal.NetworkFileSystem` is deprecated:modal.exception.DeprecationError")
 def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_client, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     # Force both skill commands down a path requiring confirmation.
@@ -87,8 +86,6 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
     app_id = "ap-aaaaaaaaaaaaaaaaaaaaaa"
     servicer.app_state_history[app_id] = [api_pb2.APP_STATE_DEPLOYED]
     _add_endpoint_lifecycle(servicer)
-    if path == ("nfs", "delete"):
-        run_cli_command(["nfs", "create", "test-name"])
     required_options = {
         ("server", "deploy"): ["--image", "docker.io/nginx", "--port", "80"],
         ("workspace", "member-tokens", "disable"): ["ak-0000000000000000000000"],
@@ -3855,34 +3852,6 @@ def test_app_stop(servicer, mock_dir, set_env_client):
     assert not re.search("my_app .+ deployed", res.stdout)
 
 
-def test_nfs_get(set_env_client, servicer):
-    nfs_name = "my-shared-nfs"
-    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-        run_cli_command(["nfs", "create", nfs_name])
-    with tempfile.TemporaryDirectory() as tmpdir:
-        upload_path = os.path.join(tmpdir, "upload.txt")
-        with open(upload_path, "w") as f:
-            f.write("foo bar baz")
-            f.flush()
-        with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-            run_cli_command(["nfs", "put", nfs_name, upload_path, "test.txt"])
-
-        with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-            run_cli_command(["nfs", "get", nfs_name, "test.txt", tmpdir])
-        with open(os.path.join(tmpdir, "test.txt")) as f:
-            assert f.read() == "foo bar baz"
-
-
-def test_nfs_create_delete(servicer, server_url_env, set_env_client):
-    name = "test-delete-nfs"
-    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-        run_cli_command(["nfs", "create", name])
-    assert name in run_cli_command(["nfs", "list"]).stdout
-    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-        run_cli_command(["nfs", "delete", "--yes", name])
-    assert name not in run_cli_command(["nfs", "list"]).stdout
-
-
 def test_volume_cli(set_env_client):
     run_cli_command(["volume", "--help"])
 
@@ -7515,10 +7484,6 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     "dict": {
         "Management": ["list", "create", "clear", "delete"],
         "Inspection": ["get", "items"],
-    },
-    "nfs": {
-        "Management": ["list", "create", "delete"],
-        "File operations": ["ls", "get", "put", "rm"],
     },
     "secret": {"Commands": ["list", "create", "delete"]},
     "queue": {

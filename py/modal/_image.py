@@ -61,7 +61,6 @@ from .exception import (
 )
 from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .mount import PYTHON_STANDALONE_VERSIONS, _Mount, python_standalone_mount_name
-from .network_file_system import _NetworkFileSystem
 from .output import OutputManager
 from .secret import _Secret
 from .volume import _Volume, _volume_to_mount_proto
@@ -2941,7 +2940,6 @@ class _Image(_Object, type_prefixes=("im",)):
         env: dict[str, str | None] | None = None,
         secrets: Collection[_Secret] | None = None,
         volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
-        network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem] = {},
         gpu: str | list[str] | None = None,
         cpu: float | None = None,
         memory: int | None = None,
@@ -2969,7 +2967,6 @@ class _Image(_Object, type_prefixes=("im",)):
             env: Environment variables set in the builder container.
             secrets: Secrets available to the builder function.
             volumes: Volume and bucket mounts attached for the build.
-            network_file_systems: Network file systems attached for the build.
             gpu: GPU type or list of types for the builder container.
             cpu: CPU cores to request.
             memory: Memory to request in MiB.
@@ -3020,7 +3017,6 @@ class _Image(_Object, type_prefixes=("im",)):
             secrets=secrets,
             gpu=gpu,
             volumes=volumes,
-            network_file_systems=network_file_systems,
             cloud=cloud,
             region=region,
             memory=memory,

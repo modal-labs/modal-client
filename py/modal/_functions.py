@@ -68,7 +68,7 @@ from ._utils.function_utils import (
     validate_target_concurrency,
 )
 from ._utils.grpc_utils import Retry, RetryWarningMessage, is_class_function_lookup_error
-from ._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
+from ._utils.mount_utils import validate_volumes, validate_volumes_by_object_id
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -80,7 +80,6 @@ from .exception import (
     OutputExpiredError,
 )
 from .mount import _get_client_mount, _Mount
-from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import OutputManager
 from .parallel_map import (
     _experimental_spawn_map_async,
@@ -512,7 +511,6 @@ class _FunctionSpec:
     image: _Image | None
     mounts: Sequence[_Mount]
     secrets: Collection[_Secret]
-    network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem]
     volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount]
     # TODO(colin, was irfansharif): Somehow assert that it's the first kind, in sandboxes
     gpus: str | list[str] | None
@@ -631,8 +629,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         schedule: Schedule | None = None,
         is_generator: bool = False,
         gpu: str | list[str] | None = None,
-        # TODO: maybe break this out into a separate decorator for notebooks.
-        network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem] = {},
         volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
         webhook_config: api_pb2.WebhookConfig | None = None,
         cpu: float | tuple[float, float] | None = None,
@@ -754,7 +750,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             mounts=all_mounts,
             secrets=secrets,
             gpus=gpu,
-            network_file_systems=network_file_systems,
             volumes=volumes,
             image=image,
             cloud=cloud,
@@ -832,9 +827,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes_no_cloud_buckets = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
-        # Validate NFS
-        validated_network_file_systems = validate_network_file_systems(network_file_systems)
-
         # Validate image
         if image is not None and not isinstance(image, _Image):  # type: ignore[unreachable]
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
@@ -879,8 +871,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 deps.append(proxy)
             if image:
                 deps.append(image)
-            for _, nfs in validated_network_file_systems:
-                deps.append(nfs)
             for _, vol in validated_volumes_no_cloud_buckets:
                 deps.append(vol)
             for _, cloud_bucket_mount in cloud_bucket_mounts:
@@ -1010,7 +1000,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     autoscaler_settings=autoscaler_settings,
                     method_definitions=method_definitions,
                     method_definitions_set=True,
-                    shared_volume_mounts=network_file_system_mount_protos(validated_network_file_systems),
                     volume_mounts=volume_mounts,
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,
@@ -1181,7 +1170,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._build_args = dict(
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
-            network_file_systems=repr(network_file_systems),
+            # network_file_systems is part of the Image hash of `Image.run_function` layers. If we remove it,
+            # every `run_function` Image would be rebuilt after upgrading.
+            network_file_systems="{}",
         )
         # these key are excluded if empty to avoid rebuilds on client upgrade
         if volumes:
@@ -2125,10 +2116,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             # TODO: check if we end up here in a container for a serialized function?
             raise ExecutionError("Can't call .local on service function")
 
-        if is_local() and self._spec_.volumes or self._spec_.network_file_systems:
+        if is_local() and self._spec_.volumes:
             warnings.warn(
                 f"The {info.function_name} function is executing locally "
-                + "and will not have access to the mounted Volume or NetworkFileSystem data"
+                + "and will not have access to the mounted Volume data"
             )
 
         obj: "modal.cls._Obj | None" = self._get_obj()

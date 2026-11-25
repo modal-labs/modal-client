@@ -22,7 +22,6 @@ from .environment import environment_cli
 from .function import function_cli
 from .image import image_cli
 from .logo import print_logo
-from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .queues import queue_cli
 from .secret import secret_cli
@@ -118,7 +117,6 @@ entrypoint_cli.add_command(server_cli, panel="Compute")
 
 entrypoint_cli.add_command(image_cli, panel="Storage")
 entrypoint_cli.add_command(dict_cli, panel="Storage")
-entrypoint_cli.add_command(nfs_cli, panel="Storage")
 entrypoint_cli.add_command(secret_cli, panel="Storage")
 entrypoint_cli.add_command(queue_cli, panel="Storage")
 entrypoint_cli.add_command(volume_cli, panel="Storage")

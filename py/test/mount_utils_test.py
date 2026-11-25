@@ -4,19 +4,12 @@ from pathlib import PurePosixPath
 
 from modal._utils.mount_utils import (
     validate_mount_points,
-    validate_network_file_systems,
     validate_only_modal_volumes,
     validate_volumes,
 )
 from modal.cloud_bucket_mount import _CloudBucketMount
-from modal.exception import DeprecationError, InvalidError
-from modal.network_file_system import _NetworkFileSystem
+from modal.exception import InvalidError
 from modal.volume import _Volume
-
-
-def nfs_from_name(name: str):
-    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-        return _NetworkFileSystem.from_name(name, create_if_missing=False)
 
 
 def test_validate_mount_points():
@@ -36,17 +29,6 @@ def test_validate_mount_points_invalid_paths(path):
     validated_mount_points = {path: _Volume.from_name("volume", create_if_missing=False)}
     with pytest.raises(InvalidError, match="Volume"):
         validate_mount_points("Volume", validated_mount_points)
-
-
-def test_validate_network_file_systems(client, servicer):
-    # valid network_file_systems input
-    network_file_systems = {"/my/path": nfs_from_name("foo")}
-    validate_network_file_systems(network_file_systems)  # type: ignore
-
-    # invalid non network_file_systems input
-    not_network_file_systems = {"/my/path": _Volume.from_name("foo", create_if_missing=False)}
-    with pytest.raises(InvalidError, match="_Volume"):
-        validate_network_file_systems(not_network_file_systems)  # type: ignore
 
 
 def test_validate_volumes(client, servicer):
