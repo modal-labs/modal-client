@@ -4325,6 +4325,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Snapshot
 
+    async def SandboxSnapshotDelete(self, stream):
+        _request: api_pb2.SandboxSnapshotDeleteRequest = await stream.recv_message()
+        await stream.send_message(Empty())
+
     async def SandboxSnapshotGet(self, stream):
         _request: api_pb2.SandboxSnapshotGetRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxSnapshotGetResponse(snapshot_id="sn-123"))

@@ -4733,6 +4733,10 @@ message SandboxSetOutboundPolicyRequest {
 
 message SandboxSetOutboundPolicyResponse {}
 
+message SandboxSnapshotDeleteRequest {
+  string snapshot_id = 1;
+}
+
 message SandboxSnapshotFsAsyncGetRequest {
   string image_id = 1;
   float timeout = 2;
@@ -6320,6 +6324,7 @@ service ModalClient {
   rpc SandboxSetOutboundPolicy(SandboxSetOutboundPolicyRequest) returns (SandboxSetOutboundPolicyResponse);
   rpc SandboxSetOutboundPolicyV2(SandboxSetOutboundPolicyRequest) returns (SandboxSetOutboundPolicyResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
+  rpc SandboxSnapshotDelete(SandboxSnapshotDeleteRequest) returns (google.protobuf.Empty);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
   rpc SandboxSnapshotFsAsync(SandboxSnapshotFsAsyncRequest) returns (SandboxSnapshotFsAsyncResponse);
   rpc SandboxSnapshotFsAsyncGet(SandboxSnapshotFsAsyncGetRequest) returns (SandboxSnapshotFsResponse);

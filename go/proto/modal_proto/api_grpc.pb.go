@@ -221,6 +221,7 @@ const (
 	ModalClient_SandboxSetOutboundPolicy_FullMethodName               = "/modal.client.ModalClient/SandboxSetOutboundPolicy"
 	ModalClient_SandboxSetOutboundPolicyV2_FullMethodName             = "/modal.client.ModalClient/SandboxSetOutboundPolicyV2"
 	ModalClient_SandboxSnapshot_FullMethodName                        = "/modal.client.ModalClient/SandboxSnapshot"
+	ModalClient_SandboxSnapshotDelete_FullMethodName                  = "/modal.client.ModalClient/SandboxSnapshotDelete"
 	ModalClient_SandboxSnapshotFs_FullMethodName                      = "/modal.client.ModalClient/SandboxSnapshotFs"
 	ModalClient_SandboxSnapshotFsAsync_FullMethodName                 = "/modal.client.ModalClient/SandboxSnapshotFsAsync"
 	ModalClient_SandboxSnapshotFsAsyncGet_FullMethodName              = "/modal.client.ModalClient/SandboxSnapshotFsAsyncGet"
@@ -540,6 +541,7 @@ type ModalClientClient interface {
 	SandboxSetOutboundPolicy(ctx context.Context, in *SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) (*SandboxSetOutboundPolicyResponse, error)
 	SandboxSetOutboundPolicyV2(ctx context.Context, in *SandboxSetOutboundPolicyRequest, opts ...grpc.CallOption) (*SandboxSetOutboundPolicyResponse, error)
 	SandboxSnapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error)
+	SandboxSnapshotDelete(ctx context.Context, in *SandboxSnapshotDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SandboxSnapshotFs(ctx context.Context, in *SandboxSnapshotFsRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsResponse, error)
 	SandboxSnapshotFsAsync(ctx context.Context, in *SandboxSnapshotFsAsyncRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsAsyncResponse, error)
 	SandboxSnapshotFsAsyncGet(ctx context.Context, in *SandboxSnapshotFsAsyncGetRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsResponse, error)
@@ -2666,6 +2668,16 @@ func (c *modalClientClient) SandboxSnapshot(ctx context.Context, in *SandboxSnap
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxSnapshotDelete(ctx context.Context, in *SandboxSnapshotDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxSnapshotDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxSnapshotFs(ctx context.Context, in *SandboxSnapshotFsRequest, opts ...grpc.CallOption) (*SandboxSnapshotFsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxSnapshotFsResponse)
@@ -3838,6 +3850,7 @@ type ModalClientServer interface {
 	SandboxSetOutboundPolicy(context.Context, *SandboxSetOutboundPolicyRequest) (*SandboxSetOutboundPolicyResponse, error)
 	SandboxSetOutboundPolicyV2(context.Context, *SandboxSetOutboundPolicyRequest) (*SandboxSetOutboundPolicyResponse, error)
 	SandboxSnapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error)
+	SandboxSnapshotDelete(context.Context, *SandboxSnapshotDeleteRequest) (*emptypb.Empty, error)
 	SandboxSnapshotFs(context.Context, *SandboxSnapshotFsRequest) (*SandboxSnapshotFsResponse, error)
 	SandboxSnapshotFsAsync(context.Context, *SandboxSnapshotFsAsyncRequest) (*SandboxSnapshotFsAsyncResponse, error)
 	SandboxSnapshotFsAsyncGet(context.Context, *SandboxSnapshotFsAsyncGetRequest) (*SandboxSnapshotFsResponse, error)
@@ -4535,6 +4548,9 @@ func (UnimplementedModalClientServer) SandboxSetOutboundPolicyV2(context.Context
 }
 func (UnimplementedModalClientServer) SandboxSnapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxSnapshot not implemented")
+}
+func (UnimplementedModalClientServer) SandboxSnapshotDelete(context.Context, *SandboxSnapshotDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxSnapshotDelete not implemented")
 }
 func (UnimplementedModalClientServer) SandboxSnapshotFs(context.Context, *SandboxSnapshotFsRequest) (*SandboxSnapshotFsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxSnapshotFs not implemented")
@@ -8291,6 +8307,24 @@ func _ModalClient_SandboxSnapshot_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxSnapshotDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxSnapshotDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxSnapshotDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxSnapshotDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxSnapshotDelete(ctx, req.(*SandboxSnapshotDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxSnapshotFs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxSnapshotFsRequest)
 	if err := dec(in); err != nil {
@@ -10659,6 +10693,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SandboxSnapshot",
 			Handler:    _ModalClient_SandboxSnapshot_Handler,
+		},
+		{
+			MethodName: "SandboxSnapshotDelete",
+			Handler:    _ModalClient_SandboxSnapshotDelete_Handler,
 		},
 		{
 			MethodName: "SandboxSnapshotFs",
