@@ -533,6 +533,7 @@ class TokenData:
 
     token_id: str
     token_secret: str
+    expires_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -564,9 +565,13 @@ class MemberTokenInfo:
 class ServiceUserInfo:
     """A lightweight dataclass containing metadata about a Modal Service User."""
 
+    @dataclass(frozen=True)
+    class TokenMetadata:
+        token_id: str
+        expires_at: datetime | None
+
     service_user_id: str
     name: str
-    token_id: str
     created_by: str
     created_at: datetime
     last_used_at: datetime | None
@@ -574,6 +579,15 @@ class ServiceUserInfo:
 
     # Environment Name -> Role
     environment_roles: dict[str, str]
+
+    tokens: list[TokenMetadata]
+
+    @property
+    def token_id(self):
+        if len(self.tokens) == 0:
+            return ""
+
+        return self.tokens[0].token_id
 
     @classmethod
     def _from_proto(cls, proto: api_pb2.ServiceUser) -> "ServiceUserInfo":
@@ -588,12 +602,18 @@ class ServiceUserInfo:
         return cls(
             service_user_id=proto.service_user_id,
             name=proto.name,
-            token_id=proto.token_id,
             created_by=proto.created_by,
             created_at=created_at,
             last_used_at=last_used_at,
             expires_at=expires_at,
             environment_roles=environment_roles,
+            tokens=[
+                ServiceUserInfo.TokenMetadata(
+                    t.token_id,
+                    t.expires_at.ToDatetime(UTC) if t.HasField("expires_at") else None,
+                )
+                for t in proto.tokens
+            ],
         )
 
 

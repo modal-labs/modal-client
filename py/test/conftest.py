@@ -4162,6 +4162,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Service Users
 
+    _token_index = 0
+
+    def _get_token_id_for_service_user(self):
+        self._token_index += 1
+
+        token_id = f"ak-SU{self._token_index}"
+        token_secret = f"as-SU{self._token_index}"
+
+        return token_id, token_secret
+
     async def ServiceUserInfo(self, stream):
         req: api_pb2.ServiceUserInfoRequest = await stream.recv_message()
 
@@ -4195,8 +4205,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if req.expires_in_seconds:
             expires_at = datetime.datetime.now() + datetime.timedelta(seconds=req.expires_in_seconds)
 
-        token_id = f"ak-SU{index}"
-        token_secret = f"as-SU{index}"
+        token_id, token_secret = self._get_token_id_for_service_user()
+
+        token_meta = api_pb2.ServiceUser.TokenMetadata(token_id=token_id)
+        if expires_at is not None:
+            token_meta.expires_at.FromDatetime(expires_at)
 
         next_id = f"sv-{index}"
         self.workspace_service_users[next_id] = api_pb2.ServiceUser(
@@ -4206,6 +4219,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             created_at=datetime.datetime.now().timestamp(),
             service_user_id=next_id,
             expires_at=expires_at.timestamp() if expires_at is not None else None,
+            tokens=[token_meta],
         )
 
         resp = api_pb2.ServiceUserCreateResponse(token_id=token_id, token_secret=token_secret, service_user_id=next_id)
@@ -4221,6 +4235,73 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 service_users=[su for su in self.workspace_service_users.values() if su is not None]
             )
         )
+
+    async def ServiceUserRotate(self, stream) -> None:
+        req = await stream.recv_message()
+        assert req
+
+        now = datetime.datetime.now(datetime.UTC)
+
+        rotation_infos: list[api_pb2.ServiceUserRotateResponse.RotationInfo] = []
+
+        for name in req.service_user_names:
+            for sv in self.workspace_service_users.values():
+                if sv is None:
+                    continue
+
+                if sv.name != name:
+                    continue
+
+                service_user = sv
+                break
+            else:
+                if req.allow_missing:
+                    continue
+
+                raise GRPCError(Status.NOT_FOUND, f"Service user {name!r} not found")
+
+            if req.grace_period_seconds > 0:
+                old_token_expiration = now + datetime.timedelta(seconds=req.grace_period_seconds)
+                for token in service_user.tokens:
+                    if (
+                        token.HasField("expires_at")
+                        and token.expires_at.ToDatetime(datetime.UTC) < old_token_expiration
+                    ):
+                        continue
+
+                    token.expires_at.FromDatetime(old_token_expiration)
+            else:
+                service_user.ClearField("tokens")
+
+            token_id, token_secret = self._get_token_id_for_service_user()
+
+            token_meta = api_pb2.ServiceUser.TokenMetadata(token_id=token_id)
+            if req.expires_in_seconds:
+                new_token_expiration = now + datetime.timedelta(seconds=req.expires_in_seconds)
+                token_meta.expires_at.FromDatetime(new_token_expiration)
+
+            service_user.tokens.append(token_meta)
+            service_user.token_id = token_id
+
+            service_user.expires_at = 0
+            for t in service_user.tokens:
+                if not t.expires_at:
+                    service_user.expires_at = 0
+                    break
+
+                service_user.expires_at = max(
+                    t.expires_at.ToDatetime(datetime.UTC).timestamp(), service_user.expires_at
+                )
+
+            ret = api_pb2.ServiceUserRotateResponse.RotationInfo(
+                service_user_name=name, token_id=token_id, token_secret=token_secret
+            )
+            if req.expires_in_seconds:
+                ret.expires_at.FromDatetime(now + datetime.timedelta(seconds=req.expires_in_seconds))
+
+            rotation_infos.append(ret)
+
+        await stream.send_message(api_pb2.ServiceUserRotateResponse(rotated=rotation_infos))
 
     async def ServiceUserDelete(self, stream):
         req: api_pb2.ServiceUserDeleteRequest = await stream.recv_message()

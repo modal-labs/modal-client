@@ -214,7 +214,7 @@ class _WorkspaceAuditLogsManager:
 
         Examples:
             ```python notest
-            from datetime import datetime, timezone
+            from datetime import datetime, timezone, UTC
 
             ws = modal.Workspace.from_context()
             latest_events = list(ws.audit_logs.fetch())  # defaults to latest 100 from past week
@@ -227,8 +227,8 @@ class _WorkspaceAuditLogsManager:
             environment_change_events = list(ws.audit_logs.fetch("action:(environment.create OR environment.delete)"))
 
             # return every event in range
-            start = datetime(2026, 10, 1, tzinfo=timezone.utc)
-            end = datetime(2026, 10, 8, tzinfo=timezone.utc)
+            start = datetime(2026, 10, 1, tzinfo=UTC)
+            end = datetime(2026, 10, 8, tzinfo=UTC)
             first_week_of_october_events = list(ws.audit_logs.fetch(since=start, until=end))
             ```
         """
@@ -286,10 +286,10 @@ class _WorkspaceAuditLogsManager:
 
         Examples:
             ```python notest
-            from datetime import datetime, timedelta, timezone
+            from datetime import datetime, timedelta, timezone, UTC
 
             ws = modal.Workspace.from_context()
-            start = datetime.now(timezone.utc) - timedelta(days=7)
+            start = datetime.now(UTC) - timedelta(days=7)
             past_week_count = ws.audit_logs.count(since=start)
 
             # environments created or deleted in the past week
@@ -297,8 +297,8 @@ class _WorkspaceAuditLogsManager:
                 "action:(environment.create OR environment.delete)", since=start
             )
 
-            start = datetime(2026, 10, 1, tzinfo=timezone.utc)
-            end = datetime(2026, 10, 8, tzinfo=timezone.utc)
+            start = datetime(2026, 10, 1, tzinfo=UTC)
+            end = datetime(2026, 10, 8, tzinfo=UTC)
             first_week_of_october_count = ws.audit_logs.count(since=start, until=end)
             ```
         """
@@ -330,7 +330,7 @@ class _WorkspaceProxyTokenManager:
         """
         await self._workspace.hydrate()
         resp = await self._workspace.client._stub.WebhookTokenCreate(api_pb2.WebhookTokenCreateRequest(name=name))
-        return TokenData(token_id=resp.token_id, token_secret=resp.token_secret)
+        return TokenData(token_id=resp.token_id, token_secret=resp.token_secret, expires_at=None)
 
     async def update(self, proxy_token_id: str, *, name: str) -> None:
         """Update a proxy token in the Workspace.
@@ -781,7 +781,11 @@ class _WorkspaceServiceUserManager:
 
         resp = await self._workspace.client._stub.ServiceUserCreate(req)
 
-        return TokenData(token_id=resp.token_id, token_secret=resp.token_secret)
+        return TokenData(
+            token_id=resp.token_id,
+            token_secret=resp.token_secret,
+            expires_at=resp.expires_at.ToDatetime(UTC) if resp.HasField("expires_at") else None,
+        )
 
     async def set_role(
         self,
@@ -856,6 +860,80 @@ class _WorkspaceServiceUserManager:
         )
 
         return ServiceUserInfo._from_proto(resp.service_user)
+
+    async def rotate(
+        self,
+        *names: str,
+        grace_period: int | None,
+        expires_in: int | None,
+        allow_missing: bool = False,
+    ) -> dict[str, TokenData]:
+        """Rotate the credentials associated with the specified Service User(s).
+
+        This function accepts multiple Service User names, making it useful for bulk token rotation
+        operations. Rotation is irreversible.
+
+        Args:
+            *names: The name(s) of any Service Users whose credentials you wish to rotate.
+            grace_period: A grace period, in seconds, during which any existing credentials will
+                continue to be able to authenticate with Modal. Pass `None` or `0` to immediately
+                revoke any existing credentials.
+            expires_in: An expiration time, in seconds, after which the newly created token will
+                stop working. If `None`, the new token will never expire.
+            allow_missing:  If `True`, do not throw an exception if any of the Service User(s) do
+                not exist.
+
+        Returns:
+            A dictionary mapping Service User names to `TokenData` dataclasses, containing the newly
+            created credentials for the corresponding Service User. Note that this is the only time
+            you will be able to view these credentials.
+
+        Examples:
+
+        ```python notest
+        ws = modal.Workspace.from_context()
+
+        # Rotates the credentials for a Service User named "test-service-user" with no grace period
+        service_user_token_data = ws.service_users.rotate(
+            "test-service-user",
+            grace_period=None,
+            expires_in=datetime.timedelta(days=365).total_seconds(),
+        )
+        new_token_data = service_user_token_data["test-service-user"]
+
+        # Rotates the credentials for several Service Users at once, with a grace period of 10 minutes
+        service_user_token_data = ws.service_users.rotate(
+            "user-1",
+            "user-2",
+            "user-3",
+            grace_period=datetime.timedelta(minutes=10).total_seconds(),
+            expires_in=datetime.timedelta(days=1).total_seconds(),
+        )
+        for name, token_data in service_user_token_data.items():
+            print(name, token_data)
+        ```
+        """
+
+        if not self._workspace._is_hydrated:
+            await self._workspace.hydrate()
+
+        resp = await self._workspace.client._stub.ServiceUserRotate(
+            api_pb2.ServiceUserRotateRequest(
+                service_user_names=names,
+                grace_period_seconds=grace_period or 0,
+                expires_in_seconds=expires_in or 0,
+                allow_missing=allow_missing,
+            )
+        )
+
+        return {
+            s.service_user_name: TokenData(
+                s.token_id,
+                s.token_secret,
+                s.expires_at.ToDatetime(UTC) if s.HasField("expires_at") else None,
+            )
+            for s in resp.rotated
+        }
 
     async def list(self) -> list[ServiceUserInfo]:
         """List all Service Users in the current workspace.

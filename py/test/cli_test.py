@@ -8466,8 +8466,6 @@ def test_service_users_cli(set_env_client):
     )
 
     expected_lines = [
-        r"alice-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
-        r"ops-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
         r"test-0\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
         r"test-1\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
         r"test-2\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
@@ -8494,8 +8492,6 @@ def test_service_users_cli(set_env_client):
     assert len(list_loaded) == 5
 
     expected_lines = [
-        r"alice-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
-        r"ops-bot\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
         r"test-3\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
         r"test-4\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
         r"test-5\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
@@ -8525,7 +8521,7 @@ def test_service_users_cli(set_env_client):
         r"This Service User does not have access to any Environments.",
         r"Name:\s+test-3",
         r"Service User ID:\s+sv-6",
-        r"Token ID:\s+ak-SU6",
+        r"Token ID:\s+ak-SU4",
         r"Created By:\s+user",
         r"Created At:\s+[^\s]+",
         r"Last Used:\s+-",
@@ -8540,7 +8536,7 @@ def test_service_users_cli(set_env_client):
     expected_lines = [
         r"Name:\s+test-3",
         r"Service User ID:\s+sv-6",
-        r"Token ID:\s+ak-SU6",
+        r"Token ID:\s+ak-SU4",
         r"Created By:\s+user",
         r"Created At:\s+[^\s]+",
         r"Last Used:\s+-",
@@ -8558,7 +8554,7 @@ def test_service_users_cli(set_env_client):
         r"This Service User does not have access to any Environments.",
         r"Name:\s+test-3",
         r"Service User ID:\s+sv-6",
-        r"Token ID:\s+ak-SU6",
+        r"Token ID:\s+ak-SU4",
         r"Created By:\s+user",
         r"Created At:\s+[^\s]+",
         r"Last Used:\s+-",

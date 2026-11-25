@@ -274,6 +274,32 @@ def test_workspace_service_users(servicer, client):
     assert len(info.environment_roles) == 1
     assert info.environment_roles["main"] == "viewer"
 
+    names = ["service-user-1", "service-user-3"]
+    ret = ws.service_users.rotate(*names, grace_period=60, expires_in=1800)
+    for name in names:
+        info = ws.service_users.info(name)
+        assert info.name == name
+        # New token was created, but old one wasn't destroyed
+        assert len(info.tokens) == 2
+        assert ret[name].token_id in {t.token_id for t in info.tokens}
+        assert info.expires_at is not None
+
+    ret = ws.service_users.rotate(*names, grace_period=None, expires_in=60)
+    for name in names:
+        info = ws.service_users.info(name)
+        assert info.name == name
+        # Old tokens have been destroyed
+        assert len(info.tokens) == 1
+        assert ret[name].token_id in {t.token_id for t in info.tokens}
+        assert info.expires_at is not None
+
+    ret = ws.service_users.rotate("service-user-1", grace_period=None, expires_in=None)
+    info = ws.service_users.info("service-user-1")
+    assert info.name == "service-user-1"
+    assert ret["service-user-1"].token_id in {t.token_id for t in info.tokens}
+    assert len(info.tokens) == 1
+    assert info.expires_at is None
+
 
 def test_workspace_member_tokens(client, servicer: MockClientServicer):
     ws = Workspace.from_context(client=client)
