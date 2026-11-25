@@ -439,7 +439,7 @@ class _SidecarManager:
         ]
         resolver = Resolver()
         async with TaskContext() as tc:
-            load_context = LoadContext(client=self._sandbox._client, task_context=tc)
+            load_context = LoadContext(client=await self._sandbox._impl._get_client(), task_context=tc)
             dependencies = [
                 *resolvable_secrets,
                 *(volume for _, volume in validated_volumes),

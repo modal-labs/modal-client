@@ -128,6 +128,9 @@ class SandboxImplV1:
         self._command_router = LazyCommandRouterClient(self._open_command_router_client)
         self._tunnels = None
 
+    async def _get_client(self) -> _Client:
+        return self.client
+
     def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:
         metadata = api_pb2.SandboxHandleMetadata(app_id=self.app_id)
         if self.result is not None:
@@ -145,10 +148,6 @@ class SandboxImplV1:
 
     async def get_app_id(self) -> str:
         return self.app_id
-
-    @property
-    def _client(self) -> _Client:
-        return self.client
 
     def clone(self) -> "SandboxImplV1":
         return type(self)(self.client, self.sandbox_id, result=self.result, app_id=self.app_id)
@@ -259,12 +258,11 @@ class SandboxImplV1:
 
     def make_stdio(self, check_open: Callable[[], None]) -> tuple[StreamReader[str], StreamReader[str], StreamWriter]:
         sandbox_id = self.sandbox_id
-        client = self.client
         stdout: StreamReader[str] = StreamReader(
             _StreamReaderThroughServerParams(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id=sandbox_id,
-                client=client,
+                get_client=self._get_client,
             ),
             by_line=True,
         )
@@ -272,40 +270,44 @@ class SandboxImplV1:
             _StreamReaderThroughServerParams(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDERR,
                 object_id=sandbox_id,
-                client=client,
+                get_client=self._get_client,
             ),
             by_line=True,
         )
-        stdin = StreamWriter(_StreamWriterThroughServerParams(object_id=sandbox_id, client=client))
+        stdin = StreamWriter(_StreamWriterThroughServerParams(object_id=sandbox_id, get_client=self._get_client))
         return stdout, stderr, stdin
 
     async def _snapshot_memory(self) -> str:
+        client = await self._get_client()
         await self.get_task_id()
         snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.sandbox_id)
-        snap_resp = await self.client._stub.SandboxSnapshot(snap_req)
+        snap_resp = await client._stub.SandboxSnapshot(snap_req)
 
         snapshot_id = snap_resp.snapshot_id
 
         # wait for the snapshot to succeed. this is implemented as a second idempotent rpc
         # because the snapshot itself may take a while to complete.
         wait_req = api_pb2.SandboxSnapshotWaitRequest(snapshot_id=snapshot_id, timeout=55.0)
-        wait_resp = await self.client._stub.SandboxSnapshotWait(wait_req)
+        wait_resp = await client._stub.SandboxSnapshotWait(wait_req)
         if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(wait_resp.result.exception)
         return snapshot_id
 
     async def snapshot_memory(self) -> _SandboxSnapshot:
+        client = await self._get_client()
         snapshot_id = await self._snapshot_memory()
-        return new_snapshot_handle(self.client, snapshot_id, api_pb2.SandboxSnapshotHandleMetadata(is_v2=False))
+        return new_snapshot_handle(client, snapshot_id, api_pb2.SandboxSnapshotHandleMetadata(is_v2=False))
 
     async def get_tags(self) -> dict[str, str]:
+        client = await self._get_client()
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.sandbox_id)
-        resp = await self.client._stub.SandboxTagsGet(req)
+        resp = await client._stub.SandboxTagsGet(req)
         return tags_from_protos(resp.tags)
 
     async def set_tags(self, tags: dict[str, str]) -> None:
+        client = await self._get_client()
         tags_list = tag_protos(tags)
-        stub = self.client._stub
+        stub = client._stub
         req = api_pb2.SandboxTagsSetRequest(
             environment_name=_get_environment_name(),
             sandbox_id=self.sandbox_id,
@@ -319,11 +321,13 @@ class SandboxImplV1:
     async def create_connect_token(
         self, req: api_pb2.SandboxCreateConnectTokenRequest
     ) -> api_pb2.SandboxCreateConnectTokenResponse:
-        return await self.client._stub.SandboxCreateConnectToken(req)
+        client = await self._get_client()
+        return await client._stub.SandboxCreateConnectToken(req)
 
     async def terminate(self) -> None:
+        client = await self._get_client()
         req = api_pb2.SandboxTerminateRequest(sandbox_id=self.sandbox_id)
-        await self.client._stub.SandboxTerminate(req)
+        await client._stub.SandboxTerminate(req)
 
     async def pause(self) -> None:
         raise NotImplementedError(_PERSISTENT_ONLY_MESSAGE.format("_experimental_pause()"))
@@ -332,21 +336,23 @@ class SandboxImplV1:
         raise NotImplementedError(_PERSISTENT_ONLY_MESSAGE.format("_experimental_resume()"))
 
     async def snapshot_filesystem(self, timeout: int, *, ttl: int | None, container_id: str = "") -> _Image:
+        client = await self._get_client()
         if not container_id and os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1":
             if ttl != DEFAULT_SNAPSHOT_TTL:
                 raise InvalidError("ttl is not supported with MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT")
             return await self._legacy_snapshot_filesystem(timeout)
-        return await snapshot_filesystem_via_tcr(self, self.client, timeout, ttl=ttl, container_id=container_id)
+        return await snapshot_filesystem_via_tcr(self, client, timeout, ttl=ttl, container_id=container_id)
 
     async def _legacy_snapshot_filesystem(self, timeout: int) -> _Image:
+        client = await self._get_client()
         await self.get_task_id()
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.sandbox_id, timeout=timeout)
-        resp = await self.client._stub.SandboxSnapshotFs(req)
+        resp = await client._stub.SandboxSnapshotFs(req)
 
         if resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(resp.result.exception)
 
-        return _Image._new_hydrated(resp.image_id, self.client, resp.image_metadata)
+        return _Image._new_hydrated(resp.image_id, client, resp.image_metadata)
 
     def validate_sidecar_create(
         self,
@@ -372,7 +378,7 @@ class SandboxImplV1:
         self._command_router.ensure_open()
 
     async def wait(self, raise_on_termination: bool) -> None:
-        client = self.client
+        client = await self._get_client()
         req, poll_retry = wait_poll_request(self.sandbox_id)
         while True:
             resp = await client._stub.SandboxWait(req, retry=poll_retry)
@@ -382,27 +388,30 @@ class SandboxImplV1:
                 return
 
     async def poll(self) -> None:
+        client = await self._get_client()
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.sandbox_id, timeout=0)
-        resp = await self.client._stub.SandboxWait(req)
+        resp = await client._stub.SandboxWait(req)
         if resp.result.status:
             self.result = resp.result
 
     async def tunnels(self, timeout: int) -> dict[int, Tunnel]:
+        client = await self._get_client()
         if self._tunnels:
             return self._tunnels
         req = api_pb2.SandboxGetTunnelsRequest(sandbox_id=self.sandbox_id, timeout=timeout)
-        resp = await self.client._stub.SandboxGetTunnels(req)
+        resp = await client._stub.SandboxGetTunnels(req)
         self._tunnels = tunnels_from_response(resp)
         return self._tunnels
 
     async def get_task_id(
         self, raise_if_task_complete: bool = False, timeout: float | None = None, retry_transient: bool = False
     ) -> str:
+        client = await self._get_client()
         deadline = task_id_poll_deadline(timeout)
         req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.sandbox_id)
         while not self._task_id:
             try:
-                resp = await self.client._stub.SandboxGetTaskId(req)
+                resp = await client._stub.SandboxGetTaskId(req)
             except (ServiceError, InternalError, ConnectionError) as exc:
                 raise_unless_retryable_task_id_error(exc, retry_transient=retry_transient, deadline=deadline)
             else:
@@ -415,13 +424,14 @@ class SandboxImplV1:
         return self._task_id
 
     async def resolve_task_id_for_logs(self) -> str:
+        client = await self._get_client()
         if self._task_id:
             return self._task_id
         req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.sandbox_id)
-        return task_id_for_logs(await self.client._stub.SandboxGetTaskId(req))
+        return task_id_for_logs(await client._stub.SandboxGetTaskId(req))
 
     async def get_exit_snapshot(self, timeout: float | None) -> _Image:
-        client = self.client
+        client = await self._get_client()
         poll = ExitSnapshotPoll(self.sandbox_id, timeout)
         while True:
             req, retry = poll.next_request()
@@ -436,9 +446,10 @@ class SandboxImplV1:
         return await self._command_router.get(task_id)
 
     async def _open_command_router_client(self, task_id: str) -> TaskCommandRouterClient:
-        fetch_access = command_router_access_fetcher(self.client, task_id)
+        client = await self._get_client()
+        fetch_access = command_router_access_fetcher(client, task_id)
         try:
-            return await TaskCommandRouterClient.connect(self.client, task_id, fetch_access)
+            return await TaskCommandRouterClient.connect(client, task_id, fetch_access)
         except ConflictError as e:
             raise NotFoundError(str(e)) from e
 
@@ -449,11 +460,13 @@ class SandboxImplV1:
         await set_network_access_via_tcr(self, network_access)
 
     async def set_outbound_policy(self, outbound_policy: _OutboundPolicy) -> None:
-        req = await set_outbound_policy_request(self.client, self.sandbox_id, outbound_policy)
-        await retry_while_starting(lambda: self.client._stub.SandboxSetOutboundPolicy(req))
+        client = await self._get_client()
+        req = await set_outbound_policy_request(client, self.sandbox_id, outbound_policy)
+        await retry_while_starting(lambda: client._stub.SandboxSetOutboundPolicy(req))
 
     async def update_experimental_outbound_policy(self, outbound_policy: _ExperimentalOutboundPolicy) -> None:
-        await update_experimental_outbound_policy_via_tcr(self, self.client, outbound_policy)
+        client = await self._get_client()
+        await update_experimental_outbound_policy_via_tcr(self, client, outbound_policy)
 
     async def mount_image(
         self,
@@ -477,8 +490,9 @@ class SandboxImplV1:
         encryption_key: bytes | None,
         container_id: str = "",
     ) -> _Image:
+        client = await self._get_client()
         return await snapshot_directory_via_tcr(
-            self, self.client, path, timeout=timeout, ttl=ttl, encryption_key=encryption_key, container_id=container_id
+            self, client, path, timeout=timeout, ttl=ttl, encryption_key=encryption_key, container_id=container_id
         )
 
     async def reload_volumes(self, *, timeout: int, container_id: str = "") -> None:
@@ -499,9 +513,10 @@ class SandboxImplV1:
         bufsize: Literal[-1, 1],
         container_id: str | None,
     ) -> _ContainerProcess[bytes] | _ContainerProcess[str]:
+        client = await self._get_client()
         return await exec_via_tcr(
             self,
-            self.client,
+            client,
             *args,
             pty_info=pty_info,
             stdout=stdout,

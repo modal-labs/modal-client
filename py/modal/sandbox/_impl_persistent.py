@@ -102,12 +102,11 @@ class SandboxImplPersistent:
     def _delegate(self) -> SandboxImplV2:
         return self._session
 
-    @property
-    def _client(self) -> _Client:
-        return self.client
-
     async def get_app_id(self) -> str:
         return self.app_id
+
+    async def _get_client(self) -> _Client:
+        return self.client
 
     def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:
         metadata = api_pb2.SandboxHandleMetadata(app_id=self.app_id)
@@ -228,17 +227,19 @@ class SandboxImplPersistent:
             return await op(replacement)
 
     async def _get_running_session_id(self) -> str:
+        client = await self._get_client()
         req = api_pb2.PersistentSandboxGetRequest(persistent_sandbox_id=self._persistent_sandbox_id)
-        resp = await self._client._stub.PersistentSandboxGet(req, metadata=await auth_metadata(self._client))
+        resp = await client._stub.PersistentSandboxGet(req, metadata=await auth_metadata(client))
         return resp.sandbox_id
 
     async def _resume_session(self) -> str:
         """Resume the persistent Sandbox, returning the ID of its running session."""
+        client = await self._get_client()
         req = api_pb2.PersistentSandboxResumeRequest(persistent_sandbox_id=self._persistent_sandbox_id)
         deadline = time.monotonic() + _RESUME_RETRY_TIMEOUT
         while True:
             try:
-                resp = await self._client._stub.PersistentSandboxResume(req, metadata=await auth_metadata(self._client))
+                resp = await client._stub.PersistentSandboxResume(req, metadata=await auth_metadata(client))
                 return resp.sandbox_id
             except GRPCError as exc:
                 # UNAVAILABLE means the previous session is still pausing or another resume is in progress.
@@ -248,6 +249,7 @@ class SandboxImplPersistent:
 
     async def _replace_session(self, failed: SandboxImplV2 | None, *, resume: bool = True) -> SandboxImplV2 | None:
         """Switch from the `failed` session, or return None if it is still the running session."""
+        client = await self._get_client()
         # Lazily create the lock on the event loop that first uses the Sandbox.
         if self._replace_lock is None:
             self._replace_lock = asyncio.Lock()
@@ -264,7 +266,7 @@ class SandboxImplPersistent:
                     return None
                 session_id = await self._resume_session()
             logger.debug(f"Switching persistent Sandbox {self._persistent_sandbox_id} to session {session_id}")
-            replacement = SandboxImplV2(self.client, session_id)
+            replacement = SandboxImplV2(client, session_id)
             self._session = replacement
             if failed is not None:
                 await failed.close()
@@ -296,8 +298,9 @@ class SandboxImplPersistent:
             self.result = None
 
     async def terminate(self) -> None:
+        client = await self._get_client()
         req = api_pb2.PersistentSandboxTerminateRequest(persistent_sandbox_id=self._persistent_sandbox_id)
-        await self._client._stub.PersistentSandboxTerminate(req, metadata=await auth_metadata(self._client))
+        await client._stub.PersistentSandboxTerminate(req, metadata=await auth_metadata(client))
         self._terminated = True
         self._set_terminated_result()
 
@@ -310,11 +313,12 @@ class SandboxImplPersistent:
 
     async def resume(self) -> None:
         """Start a session from the latest exit snapshot, unless one is already running."""
+        client = await self._get_client()
         self._check_not_terminated()
         session = self._delegate
         session_id = await self._resume_session()
         if session_id != session.sandbox_id:
-            self._session = SandboxImplV2(self.client, session_id)
+            self._session = SandboxImplV2(client, session_id)
             await session.close()
 
     def _check_not_terminated(self) -> None:
@@ -322,8 +326,9 @@ class SandboxImplPersistent:
             raise InvalidError(f"Persistent Sandbox {self._persistent_sandbox_id} has been terminated.")
 
     async def tunnels(self, timeout: int) -> dict[int, Tunnel]:
+        client = await self._get_client()
         req = api_pb2.PersistentSandboxTunnelsListRequest(persistent_sandbox_id=self._persistent_sandbox_id)
-        resp = await self._client._stub.PersistentSandboxTunnelsList(req, metadata=await auth_metadata(self._client))
+        resp = await client._stub.PersistentSandboxTunnelsList(req, metadata=await auth_metadata(client))
         return tunnels_from_protos(resp.tunnels)
 
     async def get_task_id(

@@ -42,7 +42,9 @@ async def test_server_log_retries_bound_consecutive_failures(monkeypatch, makes_
 
     monkeypatch.setattr(io_streams, "_sandbox_logs_iterator", logs_iterator)
     reader = io_streams._StreamReaderThroughServer[str](
-        _StreamReaderThroughServerParams(object_id="sb-test", file_descriptor=file_descriptor, client=None)
+        _StreamReaderThroughServerParams(
+            object_id="sb-test", file_descriptor=file_descriptor, get_client=AsyncMock(return_value=None)
+        )
     )
     if makes_progress:
         assert await reader.read() == "output" * 11
@@ -74,7 +76,7 @@ def _build_stream_reader_params(
     return _StreamReaderThroughServerParams(
         file_descriptor=file_descriptor,
         object_id=object_id,
-        client=client,
+        get_client=AsyncMock(return_value=client),
     )
 
 

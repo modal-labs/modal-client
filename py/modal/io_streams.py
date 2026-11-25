@@ -87,7 +87,7 @@ class _StreamReaderThroughServer(_StreamReaderImpl[T]):
         """mdmd:hidden"""
         self._file_descriptor = params.file_descriptor
         self._object_id = params.object_id
-        self._client = params.client
+        self._get_client = params.get_client
         self._stream = None
         self._last_entry_id: str = ""
         self._line_buffer = b""
@@ -142,7 +142,7 @@ class _StreamReaderThroughServer(_StreamReaderImpl[T]):
         while not completed:
             try:
                 iterator = _sandbox_logs_iterator(
-                    self._object_id, self._file_descriptor, self._last_entry_id, self._client
+                    self._object_id, self._file_descriptor, self._last_entry_id, await self._get_client()
                 )
 
                 async for message, entry_id in iterator:
@@ -249,7 +249,7 @@ class _StreamReaderThroughServerParams:
 
     file_descriptor: "api_pb2.FileDescriptor.ValueType"
     object_id: str
-    client: _Client
+    get_client: Callable[[], Awaitable[_Client]]
 
 
 @dataclass(frozen=True)
@@ -641,7 +641,7 @@ class _StreamWriterThroughServerParams:
     """Parameters for a ``_StreamWriter`` that writes sandbox stdin through the server."""
 
     object_id: str
-    client: _Client
+    get_client: Callable[[], Awaitable[_Client]]
 
 
 @dataclass(frozen=True)
@@ -675,7 +675,7 @@ class _StreamWriterThroughServer:
         """mdmd:hidden"""
         self._index = 1
         self._object_id = params.object_id
-        self._client = params.client
+        self._get_client = params.get_client
         self._is_closed = False
         self._buffer = bytearray()
 
@@ -721,7 +721,7 @@ class _StreamWriterThroughServer:
         index = self._get_next_index()
 
         try:
-            await self._client._stub.SandboxStdinWrite(
+            await (await self._get_client())._stub.SandboxStdinWrite(
                 api_pb2.SandboxStdinWriteRequest(
                     sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
                 ),

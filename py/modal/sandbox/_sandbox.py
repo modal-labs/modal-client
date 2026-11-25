@@ -572,7 +572,7 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             request.until.FromDatetime(until.astimezone(timezone.utc))
         if since is not None and until is not None and since >= until:
             raise InvalidError("`since` must be before `until`.")
-        response = await self.client._stub.SandboxGetStats(request)
+        response = await (await self._impl._get_client())._stub.SandboxGetStats(request)
         return SandboxStats._from_proto(response)
 
     async def get_tags(self) -> dict[str, str]:
@@ -1368,7 +1368,7 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             raise ExecutionError("app_id should have been set during sandbox hydration")
 
         task_id = await self._resolve_task_id_for_logs()
-        return _LogQueryData(self._client, app_id, LogsFilters(task_id=task_id), self.object_id)
+        return _LogQueryData(await self._impl._get_client(), app_id, LogsFilters(task_id=task_id), self.object_id)
 
     @property
     def logs(self) -> _SandboxLogsManager:
