@@ -3,6 +3,7 @@ package modal
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -454,4 +455,91 @@ func TestFunctionInfo(t *testing.T) {
 
 	// The Env has been hydrated into a secret:
 	g.Expect(len(hydratedInfo.SecretIDs)).To(gomega.Equal(2))
+}
+
+type remoteRetryMockClient struct {
+	pb.ModalClientClient
+	outputs []*pb.FunctionGetOutputsItem
+	rpcs    []string
+}
+
+func (m *remoteRetryMockClient) nextOutput(rpc string) *pb.FunctionGetOutputsItem {
+	m.rpcs = append(m.rpcs, rpc)
+	output := m.outputs[0]
+	m.outputs = m.outputs[1:]
+	return output
+}
+
+func (m *remoteRetryMockClient) FunctionMap(context.Context, *pb.FunctionMapRequest, ...grpc.CallOption) (*pb.FunctionMapResponse, error) {
+	m.rpcs = append(m.rpcs, "FunctionMap")
+	return pb.FunctionMapResponse_builder{
+		FunctionCallId:  "fc-1",
+		PipelinedInputs: []*pb.FunctionPutInputsResponseItem{pb.FunctionPutInputsResponseItem_builder{InputJwt: "in-jwt"}.Build()},
+	}.Build(), nil
+}
+
+func (m *remoteRetryMockClient) FunctionGetOutputs(context.Context, *pb.FunctionGetOutputsRequest, ...grpc.CallOption) (*pb.FunctionGetOutputsResponse, error) {
+	return pb.FunctionGetOutputsResponse_builder{Outputs: []*pb.FunctionGetOutputsItem{m.nextOutput("FunctionGetOutputs")}}.Build(), nil
+}
+
+func (m *remoteRetryMockClient) FunctionRetryInputs(context.Context, *pb.FunctionRetryInputsRequest, ...grpc.CallOption) (*pb.FunctionRetryInputsResponse, error) {
+	m.rpcs = append(m.rpcs, "FunctionRetryInputs")
+	return pb.FunctionRetryInputsResponse_builder{InputJwts: []string{"in-jwt-retry"}}.Build(), nil
+}
+
+func (m *remoteRetryMockClient) AttemptStart(context.Context, *pb.AttemptStartRequest, ...grpc.CallOption) (*pb.AttemptStartResponse, error) {
+	m.rpcs = append(m.rpcs, "AttemptStart")
+	return pb.AttemptStartResponse_builder{AttemptToken: "at-1"}.Build(), nil
+}
+
+func (m *remoteRetryMockClient) AttemptAwait(context.Context, *pb.AttemptAwaitRequest, ...grpc.CallOption) (*pb.AttemptAwaitResponse, error) {
+	return pb.AttemptAwaitResponse_builder{Output: m.nextOutput("AttemptAwait")}.Build(), nil
+}
+
+func (m *remoteRetryMockClient) AttemptRetry(context.Context, *pb.AttemptRetryRequest, ...grpc.CallOption) (*pb.AttemptRetryResponse, error) {
+	m.rpcs = append(m.rpcs, "AttemptRetry")
+	return pb.AttemptRetryResponse_builder{AttemptToken: "at-2"}.Build(), nil
+}
+
+func TestFunctionRemoteInternalFailureRetries(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	internalFailure := pb.FunctionGetOutputsItem_builder{Result: pb.GenericResult_builder{
+		Status:    pb.GenericResult_GENERIC_STATUS_INTERNAL_FAILURE,
+		Exception: "lost input",
+	}.Build()}.Build()
+	data, err := cborSerialize("ok")
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	success := pb.FunctionGetOutputsItem_builder{
+		Result:     pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS, Data: data}.Build(),
+		DataFormat: pb.DataFormat_DATA_FORMAT_CBOR,
+	}.Build()
+
+	remote := func(inputPlaneURL string) (*remoteRetryMockClient, any, error) {
+		mock := &remoteRetryMockClient{outputs: []*pb.FunctionGetOutputsItem{internalFailure, success}}
+		f := &Function{
+			FunctionID: "fu-1",
+			handleMetadata: pb.FunctionHandleMetadata_builder{
+				SupportedInputFormats: []pb.DataFormat{pb.DataFormat_DATA_FORMAT_CBOR},
+				InputPlaneUrl:         &inputPlaneURL,
+			}.Build(),
+			client: &Client{
+				cpClient:  &clientWithConn{ModalClientClient: mock},
+				ipClients: map[string]*clientWithConn{inputPlaneURL: {ModalClientClient: mock}},
+				logger:    slog.New(slog.DiscardHandler),
+			},
+		}
+		output, err := f.Remote(t.Context(), nil, nil)
+		return mock, output, err
+	}
+
+	cpMock, _, err := remote("")
+	g.Expect(err).To(gomega.MatchError(InternalFailure{Exception: "lost input"}))
+	g.Expect(cpMock.rpcs).To(gomega.Equal([]string{"FunctionMap", "FunctionGetOutputs"}))
+
+	ipMock, output, err := remote("https://input-plane.test")
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(output).To(gomega.Equal("ok"))
+	g.Expect(ipMock.rpcs).To(gomega.Equal([]string{"AttemptStart", "AttemptAwait", "AttemptRetry", "AttemptAwait"}))
 }

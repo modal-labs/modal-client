@@ -46,7 +46,7 @@ from modal._functions import _Function
 from modal._image import SUPPORTED_PYTHON_SERIES, ImageBuilderVersion
 from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._runtime.task_lifecycle_manager import _TaskLifecycleManager
-from modal._serialization import deserialize, deserialize_data_format, deserialize_params, serialize_data_format
+from modal._serialization import deserialize_data_format, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
@@ -965,7 +965,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_id_for_function_call = {}
         self.function_call_inputs = {}
         self.function_call_inputs_update_event = asyncio.Event()
-        self.sync_client_retries_enabled = False
         self.function_is_running = False
         self.n_functions = 0
         self.n_schedules = 0
@@ -2943,27 +2942,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 retry_policy=retry_policy,
                 function_call_jwt=function_call_jwt,
                 pipelined_inputs=response_inputs,
-                sync_client_retries_enabled=self.sync_client_retries_enabled,
                 max_inputs_outstanding=1000,
             )
         )
 
     async def FunctionRetryInputs(self, stream):
-        request: api_pb2.FunctionRetryInputsRequest = await stream.recv_message()
-        function_id, function_call_id = decode_function_call_jwt(request.function_call_jwt)
-        function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
-        input_jwts = []
-        for item in request.inputs:
-            if item.input.WhichOneof("args_oneof") == "args":
-                args, kwargs = deserialize(item.input.args, None)
-            else:
-                args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
-            self.n_inputs += 1
-            idx, input_id, function_call_id, _, _ = decode_input_jwt(item.input_jwt)
-            input_jwts.append(encode_input_jwt(idx, input_id, function_call_id, self.next_entry_id(), item.retry_count))
-            function_call_inputs.append(((idx, input_id, item.retry_count), (args, kwargs)))
-            self.function_call_inputs_update_event.set()
-        await stream.send_message(api_pb2.FunctionRetryInputsResponse(input_jwts=input_jwts))
+        raise GRPCError(Status.UNIMPLEMENTED, "FunctionRetryInputs is not mocked")
 
     async def FunctionPutInputs(self, stream):
         if self.fail_put_inputs_with_grpc_error and self.fail_put_inputs_with_grpc_error.count > 0:
@@ -5768,34 +5752,12 @@ def encode_input_jwt(idx: int, input_id: str, function_call_id: str, entry_id: s
     )
 
 
-def decode_input_jwt(input_jwt: str) -> tuple[int, str, str, str, int]:
-    """
-    Decodes fake input jwt. Returns idx, input_id, function_call_id, entry_id, retry_count.
-    """
-    decoded = DecodedJwt.decode_without_verification(input_jwt)
-    return (
-        decoded.payload["idx"],
-        decoded.payload["input_id"],
-        decoded.payload["function_call_id"],
-        decoded.payload["entry_id"],
-        decoded.payload["retry_count"],
-    )
-
-
 def encode_function_call_jwt(function_id: str, function_call_id: str) -> str:
     """
     Creates fake function call jwt.
     """
     assert function_id and function_call_id
     return DecodedJwt.encode_without_signature({"function_id": function_id, "function_call_id": function_call_id})
-
-
-def decode_function_call_jwt(function_call_jwt: str) -> tuple[str, str]:
-    """
-    Decodes fake function call jwt. Returns function_id, function_call_id.
-    """
-    decoded = DecodedJwt.decode_without_verification(function_call_jwt)
-    return (decoded.payload["function_id"], decoded.payload["function_call_id"])
 
 
 @pytest.fixture

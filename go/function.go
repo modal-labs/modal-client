@@ -5,7 +5,6 @@ package modal
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -34,9 +33,6 @@ const maxAsyncObjectSizeBytes int = 8 * 1024   // 8 KiB
 
 // From: modal-client/modal/_utils/function_utils.py
 const outputsTimeout time.Duration = time.Second * 55
-
-// From: client/modal/_functions.py
-const maxSystemRetries = 8
 
 // Async invocations use the (smaller) async threshold. Mirrors `should_upload` in
 // modal/_utils/function_utils.py.
@@ -783,26 +779,12 @@ func (f *Function) Remote(ctx context.Context, args []any, kwargs map[string]any
 	if err != nil {
 		return nil, err
 	}
-	// TODO(ryan): Add tests for retries.
-	retryCount := uint32(0)
-	for {
-		output, err := invocation.awaitOutput(ctx, nil)
-		if err == nil {
-			f.client.logger.DebugContext(ctx, "Function call completed", "function_id", f.FunctionID)
-			return output, nil
-		}
-		if errors.As(err, &InternalFailure{}) && retryCount <= maxSystemRetries {
-			f.client.logger.DebugContext(ctx, "Retrying function call due to internal failure",
-				"function_id", f.FunctionID,
-				"retry_count", retryCount)
-			if retryErr := invocation.retry(ctx, retryCount); retryErr != nil {
-				return nil, retryErr
-			}
-			retryCount++
-			continue
-		}
+	output, err := invocation.awaitOutput(ctx, nil)
+	if err != nil {
 		return nil, err
 	}
+	f.client.logger.DebugContext(ctx, "Function call completed", "function_id", f.FunctionID)
+	return output, nil
 }
 
 // createRemoteInvocation creates an Invocation using either the input plane or control plane.

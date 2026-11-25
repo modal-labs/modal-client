@@ -2,6 +2,7 @@ package modal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,17 +11,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// From: client/modal/_functions.py
+const maxSystemRetries = 8
+
 type invocation interface {
 	awaitOutput(ctx context.Context, timeout *time.Duration) (any, error)
-	retry(ctx context.Context, retryCount uint32) error
 }
 
 // controlPlaneInvocation implements the invocation interface.
 type controlPlaneInvocation struct {
-	FunctionCallID  string
-	input           *pb.FunctionInput
-	functionCallJwt string
-	inputJwt        string
+	FunctionCallID string
 
 	cpClient pb.ModalClientClient
 	logger   *slog.Logger
@@ -44,12 +44,9 @@ func createControlPlaneInvocation(ctx context.Context, cpClient pb.ModalClientCl
 	}
 
 	return &controlPlaneInvocation{
-		FunctionCallID:  functionMapResponse.GetFunctionCallId(),
-		input:           input,
-		functionCallJwt: functionMapResponse.GetFunctionCallJwt(),
-		inputJwt:        functionMapResponse.GetPipelinedInputs()[0].GetInputJwt(),
-		cpClient:        cpClient,
-		logger:          logger,
+		FunctionCallID: functionMapResponse.GetFunctionCallId(),
+		cpClient:       cpClient,
+		logger:         logger,
 	}, nil
 }
 
@@ -60,7 +57,7 @@ func (c *controlPlaneInvocation) pollOutput(
 ) (any, error) {
 	clearOnSuccess := false
 	return pollFunctionOutput(ctx, c.cpClient, c.logger, func(ctx context.Context, timeout time.Duration) (*pb.FunctionGetOutputsItem, error) {
-		return c.getOutput(ctx, timeout, clearOnSuccess, nil)
+		return c.getOutput(ctx, timeout, clearOnSuccess)
 	}, timeout)
 }
 
@@ -72,44 +69,19 @@ func controlPlaneInvocationFromFunctionCallID(cpClient pb.ModalClientClient, log
 // Used for Remote calls
 func (c *controlPlaneInvocation) awaitOutput(ctx context.Context, timeout *time.Duration) (any, error) {
 	clearOnSuccess := true
-	var inputJwts []string
-	if c.inputJwt != "" {
-		inputJwts = []string{c.inputJwt}
-	}
 	return pollFunctionOutput(ctx, c.cpClient, c.logger, func(ctx context.Context, timeout time.Duration) (*pb.FunctionGetOutputsItem, error) {
-		return c.getOutput(ctx, timeout, clearOnSuccess, inputJwts)
+		return c.getOutput(ctx, timeout, clearOnSuccess)
 	}, timeout)
 }
 
-func (c *controlPlaneInvocation) retry(ctx context.Context, retryCount uint32) error {
-	if c.input == nil {
-		return fmt.Errorf("cannot retry Function invocation - input missing")
-	}
-	retryItem := pb.FunctionRetryInputsItem_builder{
-		InputJwt:   c.inputJwt,
-		Input:      c.input,
-		RetryCount: retryCount,
-	}.Build()
-	functionRetryResponse, err := c.cpClient.FunctionRetryInputs(ctx, pb.FunctionRetryInputsRequest_builder{
-		FunctionCallJwt: c.functionCallJwt,
-		Inputs:          []*pb.FunctionRetryInputsItem{retryItem},
-	}.Build())
-	if err != nil {
-		return err
-	}
-	c.inputJwt = functionRetryResponse.GetInputJwts()[0]
-	return nil
-}
-
 // getOutput fetches the output for the current function call.
-func (c *controlPlaneInvocation) getOutput(ctx context.Context, timeout time.Duration, clearOnSuccess bool, inputJwts []string) (*pb.FunctionGetOutputsItem, error) {
+func (c *controlPlaneInvocation) getOutput(ctx context.Context, timeout time.Duration, clearOnSuccess bool) (*pb.FunctionGetOutputsItem, error) {
 	response, err := c.cpClient.FunctionGetOutputs(ctx, pb.FunctionGetOutputsRequest_builder{
 		FunctionCallId: c.FunctionCallID,
 		MaxValues:      1,
 		Timeout:        float32(timeout.Seconds()),
 		LastEntryId:    "0-0",
 		ClearOnSuccess: clearOnSuccess,
-		InputJwts:      inputJwts,
 		RequestedAt:    timeNowSeconds(),
 	}.Build())
 	if err != nil {
@@ -154,9 +126,20 @@ func createInputPlaneInvocation(ctx context.Context, ipClient pb.ModalClientClie
 	}, nil
 }
 
-// awaitOutput waits for the output with an optional timeout.
+// awaitOutput waits for the output with an optional timeout, retrying the input on internal failures.
 func (i *inputPlaneInvocation) awaitOutput(ctx context.Context, timeout *time.Duration) (any, error) {
-	return pollFunctionOutput(ctx, i.ipClient, i.logger, i.getOutput, timeout)
+	for retryCount := 0; ; retryCount++ {
+		output, err := pollFunctionOutput(ctx, i.ipClient, i.logger, i.getOutput, timeout)
+		if err == nil || !errors.As(err, &InternalFailure{}) || retryCount > maxSystemRetries {
+			return output, err
+		}
+		i.logger.DebugContext(ctx, "Retrying function call due to internal failure",
+			"function_id", i.functionID,
+			"retry_count", retryCount)
+		if err := i.retry(ctx); err != nil {
+			return nil, err
+		}
+	}
 }
 
 // getOutput fetches the output for the current attempt.
@@ -173,8 +156,7 @@ func (i *inputPlaneInvocation) getOutput(ctx context.Context, timeout time.Durat
 }
 
 // retry retries the invocation.
-func (i *inputPlaneInvocation) retry(ctx context.Context, retryCount uint32) error {
-	// We ignore retryCount - it is used only by controlPlaneInvocation.
+func (i *inputPlaneInvocation) retry(ctx context.Context) error {
 	resp, err := i.ipClient.AttemptRetry(ctx, pb.AttemptRetryRequest_builder{
 		FunctionId:   i.functionID,
 		Input:        i.input,

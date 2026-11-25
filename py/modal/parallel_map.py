@@ -35,7 +35,6 @@ from modal._utils.function_utils import (
     _process_result,
 )
 from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, Retry, RetryWarningMessage
-from modal._utils.jwt_utils import DecodedJwt
 from modal.config import logger
 from modal.retries import RetryManager
 from modal_proto import api_pb2
@@ -221,9 +220,7 @@ class SyncInputPumper(InputPumper):
         client: "modal.client._Client",
         *,
         input_queue: asyncio.Queue,
-        retry_queue: TimestampPriorityQueue,
         function: "modal._functions._Function",
-        function_call_jwt: str,
         function_call_id: str,
         map_items_manager: "_MapItemsManager",
     ):
@@ -235,28 +232,6 @@ class SyncInputPumper(InputPumper):
             max_batch_size=MAP_INVOCATION_CHUNK_SIZE,
             map_items_manager=map_items_manager,
         )
-        self.retry_queue = retry_queue
-        self.inputs_retried = 0
-        self.function_call_jwt = function_call_jwt
-
-    async def retry_inputs(self):
-        async for retriable_idxs in queue_batch_iterator(self.retry_queue, max_batch_size=self.max_batch_size):
-            # For each index, use the context in the manager to create a FunctionRetryInputsItem.
-            # This will also update the context state to RETRYING.
-            inputs: list[api_pb2.FunctionRetryInputsItem] = await self.map_items_manager.prepare_items_for_retry(
-                retriable_idxs
-            )
-            request = api_pb2.FunctionRetryInputsRequest(
-                function_call_jwt=self.function_call_jwt,
-                inputs=inputs,
-            )
-            resp = await self.client._stub.FunctionRetryInputs(request, retry=self._function_inputs_retry)
-            # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
-            # to the new value in the response.
-            self.map_items_manager.handle_retry_response(resp.input_jwts)
-            logger.debug(f"Successfully pushed retry for {len(inputs)} to server.")
-            self.inputs_retried += len(inputs)
-        yield
 
 
 class AsyncInputPumper(InputPumper):
@@ -379,9 +354,7 @@ async def _map_invocation(
     response: api_pb2.FunctionMapResponse = await client._stub.FunctionMap(request)
 
     function_call_id = response.function_call_id
-    function_call_jwt = response.function_call_jwt
     retry_policy = response.retry_policy
-    sync_client_retries_enabled = response.sync_client_retries_enabled
     # The server should always send a value back for max_inputs_outstanding.
     # Falling back to a default just in case something very unexpected happens.
     max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
@@ -391,18 +364,16 @@ async def _map_invocation(
     inputs_created = 0
     outputs_completed = 0
     outputs_received = 0
-    retried_outputs = 0
     successful_completions = 0
     failed_completions = 0
     already_complete_duplicates = 0
     stale_retry_duplicates = 0
     no_context_duplicates = 0
 
-    retry_queue = TimestampPriorityQueue()
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
     map_items_manager = _MapItemsManager(
-        retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled, max_inputs_outstanding
+        retry_policy, function_call_invocation_type, TimestampPriorityQueue(), max_inputs_outstanding
     )
 
     input_preprocessor = InputPreprocessor(
@@ -417,10 +388,8 @@ async def _map_invocation(
     input_pumper = SyncInputPumper(
         client=client,
         input_queue=input_queue,
-        retry_queue=retry_queue,
         function=function,
         map_items_manager=map_items_manager,
-        function_call_jwt=function_call_jwt,
         function_call_id=function_call_id,
     )
 
@@ -452,8 +421,7 @@ async def _map_invocation(
             outputs_received, \
             already_complete_duplicates, \
             no_context_duplicates, \
-            stale_retry_duplicates, \
-            retried_outputs
+            stale_retry_duplicates
 
         last_entry_id = "0-0"
 
@@ -499,9 +467,6 @@ async def _map_invocation(
             now_seconds = int(time.time())
             for item in response.outputs:
                 outputs_received += 1
-                # If the output failed, and there are retries remaining, the input will be placed on the
-                # retry queue, and state updated to WAITING_FOR_RETRY. Otherwise, the output is considered
-                # complete and the item is removed from the manager.
                 output_type = await map_items_manager.handle_get_outputs_response(item, now_seconds)
                 if output_type == _OutputType.SUCCESSFUL_COMPLETION:
                     successful_completions += 1
@@ -513,8 +478,6 @@ async def _map_invocation(
                     stale_retry_duplicates += 1
                 elif output_type == _OutputType.ALREADY_COMPLETE_DUPLICATE:
                     already_complete_duplicates += 1
-                elif output_type == _OutputType.RETRYING:
-                    retried_outputs += 1
 
                 if output_type == _OutputType.SUCCESSFUL_COMPLETION or output_type == _OutputType.FAILED_COMPLETION:
                     completed_outputs.add(item.input_id)
@@ -537,7 +500,6 @@ async def _map_invocation(
                 requested_at=time.time(),
             )
             await client._stub.FunctionGetOutputs(request)
-            await retry_queue.close()
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
@@ -580,17 +542,14 @@ async def _map_invocation(
     async def log_debug_stats():
         def log_stats():
             logger.debug(
-                f"Map stats: sync_client_retries_enabled={sync_client_retries_enabled} "
-                f"have_all_inputs={have_all_inputs} "
+                f"Map stats: have_all_inputs={have_all_inputs} "
                 f"inputs_created={inputs_created} "
                 f"input_sent={input_pumper.inputs_sent} "
-                f"inputs_retried={input_pumper.inputs_retried} "
                 f"outputs_received={outputs_received} "
                 f"successful_completions={successful_completions} failed_completions={failed_completions} "
                 f"no_context_duplicates={no_context_duplicates} old_retry_duplicates={stale_retry_duplicates} "
                 f"already_complete_duplicates={already_complete_duplicates} "
-                f"retried_outputs={retried_outputs} input_queue_size={input_queue.qsize()} "
-                f"retry_queue_size={retry_queue.qsize()} map_items_manager={len(map_items_manager)}"
+                f"input_queue_size={input_queue.qsize()} map_items_manager={len(map_items_manager)}"
             )
 
         while True:
@@ -607,7 +566,6 @@ async def _map_invocation(
         async_merge(
             input_preprocessor.drain_input_generator(),
             input_pumper.pump_inputs(),
-            input_pumper.retry_inputs(),
             poll_outputs(),
         )
     ) as streamer:
@@ -682,7 +640,6 @@ async def _map_invocation_inputplane(
         retry_policy=retry_policy,
         function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue=retry_queue,
-        sync_client_retries_enabled=True,
         max_inputs_outstanding=MAX_INPUTS_OUTSTANDING_DEFAULT,
         is_input_plane_instance=True,
     )
@@ -1329,12 +1286,10 @@ def _starmap_sync(
 class _MapItemState(enum.Enum):
     # The input is being sent the server with a PutInputs request, but the response has not been received yet.
     SENDING = 1
-    # A call to either PutInputs or FunctionRetry has completed, and we are waiting to receive the output.
+    # A call to either PutInputs or MapStartOrContinue has completed, and we are waiting to receive the output.
     WAITING_FOR_OUTPUT = 2
     # The input is on the retry queue, and waiting for its delay to expire.
     WAITING_TO_RETRY = 3
-    # The input is being sent to the server with a FunctionRetry request, but the response has not been received yet.
-    RETRYING = 4
     # The output has been received and was either successful, or failed with no more retries remaining.
     COMPLETE = 5
 
@@ -1352,7 +1307,6 @@ class _MapItemContext:
     state: _MapItemState
     input: api_pb2.FunctionInput
     retry_manager: RetryManager
-    sync_client_retries_enabled: bool
     # Both these futures are strings. Omitting generic type because
     # it causes an error when running `inv protoc type-stubs`.
     # Unused. But important, input_id is not set for inputplane invocations.
@@ -1365,13 +1319,11 @@ class _MapItemContext:
         self,
         input: api_pb2.FunctionInput,
         retry_manager: RetryManager,
-        sync_client_retries_enabled: bool,
         is_input_plane_instance: bool = False,
     ):
         self.state = _MapItemState.SENDING
         self.input = input
         self.retry_manager = retry_manager
-        self.sync_client_retries_enabled = sync_client_retries_enabled
         self._event_loop = asyncio.get_event_loop()
         # create a future for each input, to be resolved when we have
         # received the input ID and JWT from the server. this addresses
@@ -1391,7 +1343,7 @@ class _MapItemContext:
             self.input_jwt.set_result(attempt_token)
 
         # Set state to WAITING_FOR_OUTPUT only if current state is SENDING. If state is
-        # RETRYING, WAITING_TO_RETRY, or COMPLETE, then we already got the output.
+        # WAITING_TO_RETRY or COMPLETE, then we already got the output.
         if self.state == _MapItemState.SENDING:
             self.state = _MapItemState.WAITING_FOR_OUTPUT
 
@@ -1399,7 +1351,7 @@ class _MapItemContext:
         self.input_jwt.set_result(item.input_jwt)
         self.input_id.set_result(item.input_id)
         # Set state to WAITING_FOR_OUTPUT only if current state is SENDING. If state is
-        # RETRYING, WAITING_TO_RETRY, or COMPLETE, then we already got the output.
+        # WAITING_TO_RETRY or COMPLETE, then we already got the output.
         if self.state == _MapItemState.SENDING:
             self.state = _MapItemState.WAITING_FOR_OUTPUT
 
@@ -1436,7 +1388,7 @@ class _MapItemContext:
         if (
             item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
             or function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-            or not self.sync_client_retries_enabled
+            or not self._is_input_plane_instance
         ):
             self.state = _MapItemState.COMPLETE
             if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
@@ -1468,31 +1420,13 @@ class _MapItemContext:
 
         self.state = _MapItemState.WAITING_TO_RETRY
 
-        if self._is_input_plane_instance:
-            retry_item = await self.create_map_start_or_continue_item(item.idx)
-            await retry_queue.put(now_seconds + delay_ms / 1_000, retry_item)
-        else:
-            await retry_queue.put(now_seconds + delay_ms / 1_000, item.idx)
+        retry_item = await self.create_map_start_or_continue_item(item.idx)
+        await retry_queue.put(now_seconds + delay_ms / 1_000, retry_item)
 
         return _OutputType.RETRYING
 
-    async def prepare_item_for_retry(self) -> api_pb2.FunctionRetryInputsItem:
-        self.state = _MapItemState.RETRYING
-        # If the input_jwt is not set, then put_inputs hasn't returned yet. Block until we have it.
-        input_jwt = await self.input_jwt
-        self.input_jwt = self._event_loop.create_future()
-        return api_pb2.FunctionRetryInputsItem(
-            input_jwt=input_jwt,
-            input=self.input,
-            retry_count=self.retry_manager.retry_count,
-        )
-
     def set_retry_policy(self, retry_policy: api_pb2.FunctionRetryPolicy):
         self.retry_manager = RetryManager(retry_policy)
-
-    def handle_retry_response(self, input_jwt: str):
-        self.input_jwt.set_result(input_jwt)
-        self.state = _MapItemState.WAITING_FOR_OUTPUT
 
     async def create_map_start_or_continue_item(self, idx: int) -> api_pb2.MapStartOrContinueItem:
         attempt_token = await self.input_jwt
@@ -1511,7 +1445,6 @@ class _MapItemsManager:
         retry_policy: api_pb2.FunctionRetryPolicy,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         retry_queue: TimestampPriorityQueue,
-        sync_client_retries_enabled: bool,
         max_inputs_outstanding: int,
         is_input_plane_instance: bool = False,
     ):
@@ -1523,7 +1456,6 @@ class _MapItemsManager:
         # until some of the existing inputs are completed.
         self._inputs_outstanding = asyncio.BoundedSemaphore(max_inputs_outstanding)
         self._item_context: dict[int, _MapItemContext] = {}
-        self._sync_client_retries_enabled = sync_client_retries_enabled
         self._is_input_plane_instance = is_input_plane_instance
 
     def set_retry_policy(self, retry_policy: api_pb2.FunctionRetryPolicy):
@@ -1537,7 +1469,6 @@ class _MapItemsManager:
             self._item_context[item.idx] = _MapItemContext(
                 input=item.input,
                 retry_manager=RetryManager(self._retry_policy),
-                sync_client_retries_enabled=self._sync_client_retries_enabled,
             )
 
     async def add_items_inputplane(self, items: list[api_pb2.MapStartOrContinueItem]):
@@ -1551,12 +1482,8 @@ class _MapItemsManager:
             self._item_context[item.input.idx] = _MapItemContext(
                 input=item.input.input,
                 retry_manager=RetryManager(self._retry_policy),
-                sync_client_retries_enabled=self._sync_client_retries_enabled,
                 is_input_plane_instance=self._is_input_plane_instance,
             )
-
-    async def prepare_items_for_retry(self, retriable_idxs: list[int]) -> list[api_pb2.FunctionRetryInputsItem]:
-        return [await self._item_context[idx].prepare_item_for_retry() for idx in retriable_idxs]
 
     def update_items_retry_policy(self, retry_policy: api_pb2.FunctionRetryPolicy):
         for ctx in self._item_context.values():
@@ -1611,16 +1538,6 @@ class _MapItemsManager:
             # before FunctionPutInputsResponse is received.
             if ctx is not None:
                 ctx.handle_put_inputs_response(item)
-
-    def handle_retry_response(self, input_jwts: list[str]):
-        for input_jwt in input_jwts:
-            decoded_jwt = DecodedJwt.decode_without_verification(input_jwt)
-            ctx = self._item_context.get(decoded_jwt.payload["idx"], None)
-            # If the context is None, then get_all_outputs() has already received a successful
-            # output, and deleted the context. This happens if FunctionGetOutputs completes
-            # before FunctionRetryInputsResponse is received.
-            if ctx is not None:
-                ctx.handle_retry_response(input_jwt)
 
     async def handle_check_inputs_response(self, response: list[tuple[int, bool]]):
         for idx, lost in response:

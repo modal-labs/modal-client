@@ -56,11 +56,3 @@ def assert_context_is(
         assert InputJwtData.from_jwt(ctx.input_jwt.result()) == input_jwt
     else:
         assert not ctx.input_jwt.done()
-
-
-def assert_retry_item_is(
-    retry_item: api_pb2.FunctionRetryInputsItem, input_jwt: InputJwtData, retry_count: int, input_args: bytes
-):
-    assert InputJwtData.from_jwt(retry_item.input_jwt) == input_jwt
-    assert retry_item.retry_count == retry_count
-    assert retry_item.input == api_pb2.FunctionInput(args=input_args)

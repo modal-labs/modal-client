@@ -1,9 +1,13 @@
 import { ClientError, Status } from "nice-grpc";
 import { tc } from "../test-support/test-client";
-import { InvalidError, NotFoundError, Retries } from "modal";
-import { expect, test } from "vitest";
-import { createMockModalClients } from "../test-support/grpc_mock";
+import { InternalFailure, InvalidError, NotFoundError, Retries } from "modal";
+import { expect, test, vi } from "vitest";
+import {
+  createMockModalClients,
+  MockGrpcClient,
+} from "../test-support/grpc_mock";
 import { Function_ } from "../src/function";
+import { cborEncode } from "../src/serialization";
 import {
   FunctionGetTimeRangeStatsRequest,
   FunctionGetTimeRangeStatsResponse,
@@ -12,6 +16,7 @@ import {
   DataFormat,
   FunctionUpdateSchedulingParamsRequest,
   FunctionMessage,
+  GenericResult_GenericStatus,
 } from "../proto/modal_proto/api";
 
 test("FunctionCall", async () => {
@@ -793,4 +798,67 @@ test("FunctionInfoIsCached", async () => {
 
   expect(memInfo.cpu).toBeUndefined();
   expect(memInfo.memoryMiB).toEqual([512, 1024]);
+});
+
+test("FunctionRemoteInternalFailureRetries", async () => {
+  const internalFailure = {
+    result: {
+      status: GenericResult_GenericStatus.GENERIC_STATUS_INTERNAL_FAILURE,
+      exception: "lost input",
+    },
+  };
+  const success = {
+    result: {
+      status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+      data: cborEncode("ok"),
+    },
+    dataFormat: DataFormat.DATA_FORMAT_CBOR,
+  };
+  const supportedInputFormats = [DataFormat.DATA_FORMAT_CBOR];
+
+  const { mockClient: cpMc, mockCpClient: cpMock } = createMockModalClients();
+  cpMock.handleUnary("FunctionGet", () => ({
+    functionId: "fu-cp",
+    handleMetadata: { supportedInputFormats },
+  }));
+  cpMock.handleUnary("FunctionMap", () => ({
+    functionCallId: "fc-1",
+    pipelinedInputs: [{ inputJwt: "in-jwt" }],
+  }));
+  cpMock.handleUnary("FunctionGetOutputs", () => ({
+    outputs: [internalFailure],
+  }));
+  const cpFunction = await cpMc.functions.fromName(
+    "libmodal-test-support",
+    "echo_string",
+  );
+  await expect(cpFunction.remote()).rejects.toThrow(InternalFailure);
+  cpMock.assertExhausted();
+
+  const { mockClient: ipMc, mockCpClient: ipCpMock } = createMockModalClients();
+  const ipMock = new MockGrpcClient();
+  vi.spyOn(ipMc, "ipClient").mockReturnValue(ipMock as any);
+  ipCpMock.handleUnary("FunctionGet", () => ({
+    functionId: "fu-ip",
+    handleMetadata: {
+      supportedInputFormats,
+      inputPlaneUrl: "https://input-plane.test",
+    },
+  }));
+  ipMock.handleUnary("AttemptStart", () => ({ attemptToken: "at-1" }));
+  ipMock.handleUnary("AttemptAwait", () => ({ output: internalFailure }));
+  ipMock.handleUnary("AttemptRetry", (req) => {
+    expect(req).toMatchObject({ attemptToken: "at-1" });
+    return { attemptToken: "at-2" };
+  });
+  ipMock.handleUnary("AttemptAwait", (req) => {
+    expect(req).toMatchObject({ attemptToken: "at-2" });
+    return { output: success };
+  });
+  const ipFunction = await ipMc.functions.fromName(
+    "libmodal-test-support",
+    "echo_string",
+  );
+  expect(await ipFunction.remote()).toBe("ok");
+  ipMock.assertExhausted();
 });

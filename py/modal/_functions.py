@@ -135,17 +135,6 @@ TERMINAL_STATUSES = (
 )
 
 
-@dataclasses.dataclass
-class _RetryContext:
-    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
-    retry_policy: api_pb2.FunctionRetryPolicy
-    function_call_jwt: str
-    input_jwt: str
-    input_id: str
-    item: api_pb2.FunctionPutInputsItem
-    sync_client_retries_enabled: bool
-
-
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
@@ -156,12 +145,10 @@ class _Invocation:
         stub: ModalClientModal,
         function_call_id: str,
         client: _Client,
-        retry_context: _RetryContext | None = None,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
-        self._retry_context = retry_context
 
     @staticmethod
     async def create(
@@ -215,17 +202,7 @@ class _Invocation:
         function_call_id = response.function_call_id
         if response.pipelined_inputs:
             assert len(response.pipelined_inputs) == 1
-            input = response.pipelined_inputs[0]
-            retry_context = _RetryContext(
-                function_call_invocation_type=function_call_invocation_type,
-                retry_policy=response.retry_policy,
-                function_call_jwt=response.function_call_jwt,
-                input_jwt=input.input_jwt,
-                input_id=input.input_id,
-                item=item,
-                sync_client_retries_enabled=response.sync_client_retries_enabled,
-            )
-            return _Invocation(stub, function_call_id, client, retry_context)
+            return _Invocation(stub, function_call_id, client)
 
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
@@ -234,24 +211,13 @@ class _Invocation:
         processed_inputs = inputs_response.inputs
         if not processed_inputs:
             raise Exception("Could not create function call - the input queue seems to be full")
-        input = inputs_response.inputs[0]
-        retry_context = _RetryContext(
-            function_call_invocation_type=function_call_invocation_type,
-            retry_policy=response.retry_policy,
-            function_call_jwt=response.function_call_jwt,
-            input_jwt=input.input_jwt,
-            input_id=input.input_id,
-            item=item,
-            sync_client_retries_enabled=response.sync_client_retries_enabled,
-        )
-        return _Invocation(stub, function_call_id, client, retry_context)
+        return _Invocation(stub, function_call_id, client)
 
     async def pop_function_call_outputs(
         self,
         index: int = 0,
         timeout: float | None = None,
         clear_on_success: bool = False,
-        input_jwts: list[str] | None = None,
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -268,7 +234,6 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
                 requested_at=time.time(),
-                input_jwts=input_jwts,
                 start_idx=index,
                 end_idx=index,
             )
@@ -287,58 +252,20 @@ class _Invocation:
                     # return the last response to check for state of num_unfinished_inputs
                     return response
 
-    async def _retry_input(self) -> None:
-        ctx = self._retry_context
-        if not ctx:
-            raise ValueError("Cannot retry input when _retry_context is empty.")
-
-        item = api_pb2.FunctionRetryInputsItem(input_jwt=ctx.input_jwt, input=ctx.item.input)
-        request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
-        await self.stub.FunctionRetryInputs(request)
-
-    async def _get_single_output(self, expected_jwt: str | None = None) -> api_pb2.FunctionGetOutputsItem:
+    async def _get_single_output(self) -> api_pb2.FunctionGetOutputsItem:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
                 index=0,
                 timeout=None,
                 clear_on_success=True,
-                input_jwts=[expected_jwt] if expected_jwt else None,
             )
         ).outputs[0]
         return item
 
     async def run_function(self) -> Any:
-        # Use retry logic only if retry policy is specified and
-        ctx = self._retry_context
-        if (
-            not ctx
-            or not ctx.retry_policy
-            or ctx.retry_policy.retries == 0
-            or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-            or not ctx.sync_client_retries_enabled
-        ):
-            item = await self._get_single_output()
-            return await _process_result(item.result, item.data_format, self.stub, self.client)
-
-        # User errors including timeouts are managed by the user specified retry policy.
-        user_retry_manager = RetryManager(ctx.retry_policy)
-
-        while True:
-            item = await self._get_single_output(ctx.input_jwt)
-            if item.result.status in TERMINAL_STATUSES:
-                return await _process_result(item.result, item.data_format, self.stub, self.client)
-
-            if item.result.status != api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
-                # non-internal failures get a delay before retrying
-                delay_ms = user_retry_manager.get_delay_ms()
-                if delay_ms is None:
-                    # no more retries, this should raise an error when the non-success status is converted
-                    # to an exception:
-                    return await _process_result(item.result, item.data_format, self.stub, self.client)
-                await asyncio.sleep(delay_ms / 1000)
-
-            await self._retry_input()
+        item = await self._get_single_output()
+        return await _process_result(item.result, item.data_format, self.stub, self.client)
 
     async def poll_function(self, timeout: float | None = None, *, index: int = 0):
         """Waits up to timeout for a result from a function.

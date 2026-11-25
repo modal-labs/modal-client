@@ -5,7 +5,6 @@ import {
   FunctionGetOutputsItem,
   FunctionInput,
   FunctionPutInputsItem,
-  FunctionRetryInputsItem,
   GeneratorDone,
   GenericResult,
   GenericResult_GenericStatus,
@@ -24,15 +23,17 @@ import type { Logger } from "./logger";
 // From: modal-client/modal/_utils/function_utils.py
 const outputsTimeoutMs = 55 * 1000;
 
+// From: client/modal/_functions.py
+const maxSystemRetries = 8;
+
 /**
  * This abstraction exists so that we can easily send inputs to either the control plane or the input plane.
- * For the control plane, we call the FunctionMap, FunctionRetryInputs, and FunctionGetOutputs RPCs.
+ * For the control plane, we call the FunctionMap and FunctionGetOutputs RPCs.
  * For the input plane, we call the AttemptStart, AttemptRetry, and AttemptAwait RPCs.
  * For now, we support just the control plane, and will add support for the input plane soon.
  */
 export interface Invocation {
   awaitOutput(timeoutMs?: number, clearOnSuccess?: boolean): Promise<any>;
-  retry(retryCount: number): Promise<void>;
 }
 
 /**
@@ -42,24 +43,15 @@ export class ControlPlaneInvocation implements Invocation {
   private readonly cpClient: ModalGrpcClient;
   private readonly logger: Logger;
   readonly functionCallId: string;
-  private readonly input?: FunctionInput;
-  private readonly functionCallJwt?: string;
-  private inputJwt?: string;
 
   private constructor(
     cpClient: ModalGrpcClient,
     logger: Logger,
     functionCallId: string,
-    input?: FunctionInput,
-    functionCallJwt?: string,
-    inputJwt?: string,
   ) {
     this.cpClient = cpClient;
     this.logger = logger;
     this.functionCallId = functionCallId;
-    this.input = input;
-    this.functionCallJwt = functionCallJwt;
-    this.inputJwt = inputJwt;
   }
 
   static async create(
@@ -84,9 +76,6 @@ export class ControlPlaneInvocation implements Invocation {
       client.cpClient,
       client.logger,
       functionMapResponse.functionCallId,
-      input,
-      functionMapResponse.functionCallJwt,
-      functionMapResponse.pipelinedInputs[0].inputJwt,
     );
   }
 
@@ -105,12 +94,7 @@ export class ControlPlaneInvocation implements Invocation {
     return await pollFunctionOutput(
       this.cpClient,
       this.logger,
-      (timeoutMs: number) =>
-        this.#getOutput(
-          timeoutMs,
-          clearOnSuccess,
-          this.inputJwt ? [this.inputJwt] : [],
-        ),
+      (timeoutMs: number) => this.#getOutput(timeoutMs, clearOnSuccess),
       timeoutMs,
     );
   }
@@ -118,7 +102,6 @@ export class ControlPlaneInvocation implements Invocation {
   async #getOutput(
     timeoutMs: number,
     clearOnSuccess: boolean,
-    jwts: string[] = [],
   ): Promise<FunctionGetOutputsItem | undefined> {
     const response = await this.cpClient.functionGetOutputs({
       functionCallId: this.functionCallId,
@@ -126,29 +109,9 @@ export class ControlPlaneInvocation implements Invocation {
       timeout: timeoutMs / 1000,
       lastEntryId: "0-0",
       clearOnSuccess,
-      inputJwts: jwts,
       requestedAt: timeNowSeconds(),
     });
     return response.outputs ? response.outputs[0] : undefined;
-  }
-
-  async retry(retryCount: number): Promise<void> {
-    // we do not expect this to happen
-    if (!this.input) {
-      throw new Error("Cannot retry Function invocation - input missing");
-    }
-
-    const retryItem: FunctionRetryInputsItem = {
-      inputJwt: this.inputJwt!,
-      input: this.input,
-      retryCount,
-    };
-
-    const functionRetryResponse = await this.cpClient.functionRetryInputs({
-      functionCallJwt: this.functionCallJwt,
-      inputs: [retryItem],
-    });
-    this.inputJwt = functionRetryResponse.inputJwts[0];
   }
 }
 
@@ -206,12 +169,31 @@ export class InputPlaneInvocation implements Invocation {
   }
 
   async awaitOutput(timeoutMs?: number): Promise<any> {
-    return await pollFunctionOutput(
-      this.cpClient,
-      this.logger,
-      (timeoutMs: number) => this.#getOutput(timeoutMs),
-      timeoutMs,
-    );
+    for (let retryCount = 0; ; retryCount++) {
+      try {
+        return await pollFunctionOutput(
+          this.cpClient,
+          this.logger,
+          (timeoutMs: number) => this.#getOutput(timeoutMs),
+          timeoutMs,
+        );
+      } catch (err) {
+        if (
+          !(err instanceof InternalFailure) ||
+          retryCount > maxSystemRetries
+        ) {
+          throw err;
+        }
+        this.logger.debug(
+          "Retrying function call due to internal failure",
+          "function_id",
+          this.functionId,
+          "retry_count",
+          retryCount,
+        );
+        await this.#retry();
+      }
+    }
   }
 
   async #getOutput(
@@ -225,7 +207,7 @@ export class InputPlaneInvocation implements Invocation {
     return response.output;
   }
 
-  async retry(_retryCount: number): Promise<void> {
+  async #retry(): Promise<void> {
     const attemptRetryResponse = await this.ipClient.attemptRetry({
       functionId: this.functionId,
       input: this.input,

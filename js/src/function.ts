@@ -24,7 +24,7 @@ import {
 } from "../proto/modal_proto/api";
 import { type ModalClient } from "./client";
 import { FunctionCall } from "./function_call";
-import { InternalFailure, InvalidError, NotFoundError } from "./errors";
+import { InvalidError, NotFoundError } from "./errors";
 import { cborEncode } from "./serialization";
 import { ClientError, Status } from "nice-grpc";
 import { FunctionLogsManager } from "./logs";
@@ -44,9 +44,6 @@ import { parseGpuConfig } from "./app";
 // From: modal/_utils/blob_utils.py
 const maxObjectSizeBytes = 2 * 1024 * 1024; // 2 MiB
 const maxAsyncObjectSizeBytes = 8 * 1024; // 8 KiB
-
-// From: client/modal/_functions.py
-const maxSystemRetries = 8;
 
 /**
  * Async invocations use the (smaller) async threshold. Mirrors `should_upload` in
@@ -812,33 +809,13 @@ export class Function_ {
       FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
     );
     const invocation = await this.#createRemoteInvocation(input);
-    // TODO(ryan): Add tests for retries.
-    let retryCount = 0;
-    while (true) {
-      try {
-        const result = await invocation.awaitOutput(undefined, true);
-        this.#client.logger.debug(
-          "Function call completed",
-          "function_id",
-          this.functionId,
-        );
-        return result;
-      } catch (err) {
-        if (err instanceof InternalFailure && retryCount <= maxSystemRetries) {
-          this.#client.logger.debug(
-            "Retrying function call due to internal failure",
-            "function_id",
-            this.functionId,
-            "retry_count",
-            retryCount,
-          );
-          await invocation.retry(retryCount);
-          retryCount++;
-        } else {
-          throw err;
-        }
-      }
-    }
+    const result = await invocation.awaitOutput(undefined, true);
+    this.#client.logger.debug(
+      "Function call completed",
+      "function_id",
+      this.functionId,
+    );
+    return result;
   }
 
   async #createRemoteInvocation(input: FunctionInput): Promise<Invocation> {
