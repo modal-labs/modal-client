@@ -98,7 +98,7 @@ from .parallel_map import (
     _SynchronizedQueue,
 )
 from .proxy import _Proxy
-from .retries import Retries, RetryManager
+from .retries import MAX_INTERNAL_FAILURE_COUNT, Retries, RetryManager
 from .schedule import Schedule
 from .secret import _Secret
 from .types import (
@@ -117,7 +117,6 @@ if TYPE_CHECKING:
     import modal.cls
     import modal.functions
 
-MAX_INTERNAL_FAILURE_COUNT = 8
 _OBSERVABILITY_ONLY_APIS = (
     ".logs",
     ".metrics",

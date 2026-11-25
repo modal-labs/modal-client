@@ -73,7 +73,7 @@ async def test_failed_output_zero_retries(retry_queue):
     )
 
     assert output_type == _OutputType.FAILED_COMPLETION
-    assert_context_is(ctx, _MapItemState.COMPLETE, 1, None, input_jwt_data, input_data.args)
+    assert_context_is(ctx, _MapItemState.COMPLETE, 0, None, input_jwt_data, input_data.args)
     assert retry_queue.empty()
 
 

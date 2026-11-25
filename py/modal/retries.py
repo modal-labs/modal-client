@@ -7,6 +7,7 @@ from .exception import InvalidError
 
 MIN_INPUT_RETRY_DELAY_MS = 1000
 MAX_INPUT_RETRY_DELAY_MS = 24 * 60 * 60 * 1000
+MAX_INTERNAL_FAILURE_COUNT = 8
 
 
 class Retries:

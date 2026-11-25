@@ -36,7 +36,7 @@ from modal._utils.function_utils import (
 )
 from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, Retry, RetryWarningMessage
 from modal.config import logger
-from modal.retries import RetryManager
+from modal.retries import MAX_INTERNAL_FAILURE_COUNT, RetryManager
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
@@ -46,6 +46,7 @@ if typing.TYPE_CHECKING:
 PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES = RETRYABLE_GRPC_STATUS_CODES + [Status.RESOURCE_EXHAUSTED]
 PUMP_INPUTS_MAX_RETRIES = 8
 PUMP_INPUTS_MAX_RETRY_DELAY = 15
+MAP_CHECK_INPUTS_INTERVAL = 1
 
 
 class _SynchronizedQueue:
@@ -620,7 +621,8 @@ async def _map_invocation_inputplane(
     map_token_or_done = asyncio.Event()
 
     input_queue: asyncio.Queue[api_pb2.MapStartOrContinueItem | None] = asyncio.Queue()
-    retry_queue: TimestampPriorityQueue[api_pb2.MapStartOrContinueItem] = TimestampPriorityQueue()
+    # Holds input idxs; the retry item is built when sent because the previous attempt token may not have arrived yet.
+    retry_queue: TimestampPriorityQueue[int] = TimestampPriorityQueue()
 
     # Maximum number of inputs that may be in-flight (the server sends this in
     # the first response – fall back to the default if we never receive it for
@@ -742,47 +744,61 @@ async def _map_invocation_inputplane(
 
     async def retry_inputs():
         while True:
-            retry_item = await retry_queue.get()
-            if retry_item is None:
+            retry_idx = await retry_queue.get()
+            if retry_idx is None:
                 break
-            request_items = [retry_item]
+            ctx = map_items_manager.get_item_context(retry_idx)
+            # A queued input can only complete from an output of the attempt this retry creates.
+            assert ctx is not None
+            request_items = [await ctx.create_map_start_or_continue_item(retry_idx)]
             await map_items_manager.add_items_inputplane(request_items)
             await send_map_start_or_continue(request_items)
         yield
 
     async def check_lost_inputs():
-        nonlocal last_entry_id  # shared with get_all_outputs
+        nonlocal failed_completions
         try:
             while not map_done_event.is_set():
                 if map_token is None:
                     await map_token_or_done.wait()
                     continue
 
-                sleep_task = asyncio.create_task(asyncio.sleep(1))
+                sleep_task = asyncio.create_task(asyncio.sleep(MAP_CHECK_INPUTS_INTERVAL))
                 map_done_task = asyncio.create_task(map_done_event.wait())
                 done, _ = await asyncio.wait([sleep_task, map_done_task], return_when=FIRST_COMPLETED)
                 if map_done_task in done:
                     break
 
-                # check_inputs = [(idx, attempt_token), ...]
-                check_inputs = map_items_manager.get_input_idxs_waiting_for_output()
-                attempt_tokens = [attempt_token for _, attempt_token in check_inputs]
+                check_inputs = map_items_manager.get_attempts_waiting_for_output()
                 request = api_pb2.MapCheckInputsRequest(
                     last_entry_id=last_entry_id,
                     timeout=0,  # Non-blocking read
-                    attempt_tokens=attempt_tokens,
+                    attempt_tokens=[token for _, _, token in check_inputs],
                 )
 
                 metadata = await client.get_input_plane_metadata(function._input_plane_region)
                 response: api_pb2.MapCheckInputsResponse = await input_plane_stub.MapCheckInputs(
                     request, metadata=metadata
                 )
-                check_inputs_response = [
-                    (check_inputs[resp_idx][0], response.lost[resp_idx]) for resp_idx, _ in enumerate(response.lost)
-                ]
-                # check_inputs_response = [(idx, lost: bool), ...]
-                await map_items_manager.handle_check_inputs_response(check_inputs_response)
-            yield
+                # Reuse output handling so stale checks are ignored and lost inputs share the internal failure limit.
+                for (idx, retry_count, _), lost in zip(check_inputs, response.lost):
+                    if not lost:
+                        continue
+                    output = api_pb2.FunctionGetOutputsItem(
+                        idx=idx,
+                        retry_count=retry_count,
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE,
+                            exception="Server has lost track of input",
+                        ),
+                    )
+                    if (
+                        await map_items_manager.handle_get_outputs_response(output, int(time.time()))
+                        == _OutputType.FAILED_COMPLETION
+                    ):
+                        failed_completions += 1
+                        update_counters(completed_delta=1)
+                        yield output
         except asyncio.CancelledError:
             pass
 
@@ -832,8 +848,6 @@ async def _map_invocation_inputplane(
                 # clean up tasks, in case of cancellations etc.
                 get_response_task.cancel()
                 map_done_task.cancel()
-            last_entry_id = response.last_entry_id
-
             for output_item in response.outputs:
                 output_type = await map_items_manager.handle_get_outputs_response(output_item, int(time.time()))
                 if output_type == _OutputType.SUCCESSFUL_COMPLETION:
@@ -854,10 +868,13 @@ async def _map_invocation_inputplane(
                 if output_type == _OutputType.SUCCESSFUL_COMPLETION or output_type == _OutputType.FAILED_COMPLETION:
                     update_counters(completed_delta=1)
                     yield output_item
+            # Advance after processing the batch so lost-input checks do not treat unprocessed outputs as lost.
+            last_entry_id = response.last_entry_id
 
     async def get_all_outputs_and_clean_up():
         try:
-            async with aclosing(get_all_outputs()) as stream:
+            # Merge lost-input checks here so exhausted inputs go through output ordering and error handling.
+            async with aclosing(async_merge(get_all_outputs(), check_lost_inputs())) as stream:
                 async for item in stream:
                     yield item
         finally:
@@ -924,9 +941,7 @@ async def _map_invocation_inputplane(
 
     log_task = asyncio.create_task(log_debug_stats())
 
-    async with aclosing(
-        async_merge(drain_input_generator(), pump_inputs(), retry_inputs(), poll_outputs(), check_lost_inputs())
-    ) as merged:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), retry_inputs(), poll_outputs())) as merged:
         async for maybe_output in merged:
             if maybe_output is not None:  # ignore None sentinels
                 yield maybe_output.value
@@ -1307,6 +1322,9 @@ class _MapItemContext:
     state: _MapItemState
     input: api_pb2.FunctionInput
     retry_manager: RetryManager
+    # Counts all scheduled retries (user and internal) to match outputs to the current attempt.
+    retry_count: int
+    internal_failure_count: int
     # Both these futures are strings. Omitting generic type because
     # it causes an error when running `inv protoc type-stubs`.
     # Unused. But important, input_id is not set for inputplane invocations.
@@ -1324,6 +1342,8 @@ class _MapItemContext:
         self.state = _MapItemState.SENDING
         self.input = input
         self.retry_manager = retry_manager
+        self.retry_count = 0
+        self.internal_failure_count = 0
         self._event_loop = asyncio.get_event_loop()
         # create a future for each input, to be resolved when we have
         # received the input ID and JWT from the server. this addresses
@@ -1376,11 +1396,11 @@ class _MapItemContext:
             )
             return _OutputType.ALREADY_COMPLETE_DUPLICATE
         # If the item's retry count doesn't match our retry count, this is probably a duplicate of an old output.
-        if item.retry_count != self.retry_manager.retry_count:
+        if item.retry_count != self.retry_count:
             logger.debug(
                 f"Received output with stale retry_count, so ignoring. "
                 f"idx={item.idx} input_id={item.input_id} retry_count={item.retry_count} "
-                f"expected_retry_count={self.retry_manager.retry_count}"
+                f"expected_retry_count={self.retry_count}"
             )
             return _OutputType.STALE_RETRY_DUPLICATE
 
@@ -1396,22 +1416,13 @@ class _MapItemContext:
             else:
                 return _OutputType.FAILED_COMPLETION
 
-        # Get the retry delay and increment the retry count.
-        # TODO(ryan): We must call this for lost inputs - even though we will set the retry delay to 0 later -
-        # because we must increment the retry count. That's awkward, let's come up with something better.
-        # TODO(ryan):To maintain parity with server-side retries, retrying lost inputs should not count towards
-        # the retry policy. However we use the retry_count number as a unique identifier on each attempt to:
-        #  1) ignore duplicate outputs
-        #  2) ignore late outputs received from previous attempts
-        #  3) avoid a server race condition between FunctionRetry and GetOutputs that results in deleted input metadata
-        # For now, lost inputs will count towards the retry policy. But let's address this in another PR, perhaps by
-        # tracking total attempts and attempts which count towards the retry policy separately.
-        delay_ms = self.retry_manager.get_delay_ms()
-
-        # For system failures on the server, we retry immediately.
-        # and the failure does not count towards the retry policy.
+        # Track internal failures separately so they do not consume the user's retry budget.
+        delay_ms: float | None
         if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
-            delay_ms = 0
+            self.internal_failure_count += 1
+            delay_ms = 0 if self.internal_failure_count < MAX_INTERNAL_FAILURE_COUNT else None
+        else:
+            delay_ms = self.retry_manager.get_delay_ms()
 
         # None means the maximum number of retries has been reached, so output the error
         if delay_ms is None or item.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
@@ -1419,9 +1430,9 @@ class _MapItemContext:
             return _OutputType.FAILED_COMPLETION
 
         self.state = _MapItemState.WAITING_TO_RETRY
+        self.retry_count += 1
 
-        retry_item = await self.create_map_start_or_continue_item(item.idx)
-        await retry_queue.put(now_seconds + delay_ms / 1_000, retry_item)
+        await retry_queue.put(now_seconds + delay_ms / 1_000, item.idx)
 
         return _OutputType.RETRYING
 
@@ -1500,13 +1511,9 @@ class _MapItemsManager:
             if ctx.state == _MapItemState.WAITING_FOR_OUTPUT and ctx.input_jwt.done()
         ]
 
-    def get_input_idxs_waiting_for_output(self) -> list[tuple[int, str]]:
-        """
-        Returns a list of input_idxs for inputs that are waiting for output.
-        """
-        # Idx doesn't need a future because it is set by client and not server.
+    def get_attempts_waiting_for_output(self) -> list[tuple[int, int, str]]:
         return [
-            (idx, ctx.input_jwt.result())
+            (idx, ctx.retry_count, ctx.input_jwt.result())
             for idx, ctx in self._item_context.items()
             if ctx.state == _MapItemState.WAITING_FOR_OUTPUT and ctx.input_jwt.done()
         ]
@@ -1515,7 +1522,7 @@ class _MapItemsManager:
         del self._item_context[item_idx]
         self._inputs_outstanding.release()
 
-    def get_item_context(self, item_idx: int) -> _MapItemContext:
+    def get_item_context(self, item_idx: int) -> _MapItemContext | None:
         return self._item_context.get(item_idx)
 
     def handle_put_continue_response(
@@ -1538,16 +1545,6 @@ class _MapItemsManager:
             # before FunctionPutInputsResponse is received.
             if ctx is not None:
                 ctx.handle_put_inputs_response(item)
-
-    async def handle_check_inputs_response(self, response: list[tuple[int, bool]]):
-        for idx, lost in response:
-            ctx = self._item_context.get(idx, None)
-            if ctx is not None:
-                if lost:
-                    ctx.state = _MapItemState.WAITING_TO_RETRY
-                    retry_item = await ctx.create_map_start_or_continue_item(idx)
-                    _ = ctx.retry_manager.get_delay_ms()  # increment retry count but instant retry for lost inputs
-                    await self._retry_queue.put(time.time(), retry_item)
 
     async def handle_get_outputs_response(self, item: api_pb2.FunctionGetOutputsItem, now_seconds: int) -> _OutputType:
         ctx = self._item_context.get(item.idx, None)

@@ -46,7 +46,7 @@ def assert_context_is(
     assert ctx
     assert ctx.state == state
     assert ctx.input == api_pb2.FunctionInput(args=input_args)
-    assert ctx.retry_manager.retry_count == retry_count
+    assert ctx.retry_count == retry_count
     if input_id:
         # We call result rather than await because we want to test that the result has been set already.
         assert ctx.input_id.result() == input_id
