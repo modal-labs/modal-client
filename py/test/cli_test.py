@@ -91,6 +91,7 @@ def test_yes_commands_abort_without_terminal(path, command, servicer, set_env_cl
         ("workspace", "member-tokens", "disable"): ["ak-0000000000000000000000"],
         ("workspace", "member-tokens", "enable"): ["ak-0000000000000000000000"],
         ("workspace", "member-tokens", "delete"): ["ak-0000000000000000000000"],
+        ("workspace", "service-users", "rotate"): ["test-service-user"],
     }.get(path, [])
     if path == ("server", "deploy"):
         # Deploy once so that deploying again asks to confirm the redeploy.
@@ -7495,7 +7496,7 @@ _CLI_HELP_LAYOUT: dict[str, dict[str, list[str]]] = {
     "workspace proxy-tokens": {"Commands": ["list", "create", "update", "allow", "revoke", "delete"]},
     "workspace settings": {"Commands": ["list", "set"]},
     "workspace member-tokens": {"Commands": ["list", "delete", "disable", "enable"]},
-    "workspace service-users": {"Commands": ["create", "list", "delete", "info", "set-role"]},
+    "workspace service-users": {"Commands": ["create", "list", "delete", "info", "rotate", "set-role"]},
     "environment": {
         "Management": ["list", "create", "update", "delete", "roles"],
         "Inspection": ["billing"],
@@ -8466,12 +8467,12 @@ def test_service_users_cli(set_env_client):
     )
 
     expected_lines = [
-        r"test-0\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+-",
-        r"test-1\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
-        r"test-2\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
-        r"test-3\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
-        r"test-4\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
-        r"test-5\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-0\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+-",
+        r"test-1\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
+        r"test-2\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
+        r"test-3\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
+        r"test-4\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
+        r"test-5\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
     ]
 
     list_output = run_cli_command(["workspace", "service-users", "list"])
@@ -8492,9 +8493,9 @@ def test_service_users_cli(set_env_client):
     assert len(list_loaded) == 5
 
     expected_lines = [
-        r"test-3\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
-        r"test-4\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
-        r"test-5\s+ak-[a-zA-Z0-9]+\s+[^\s]+\s+[^\s]+",
+        r"test-3\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
+        r"test-4\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
+        r"test-5\s+[^\s]+\s+ak-[a-zA-Z0-9]+\s+[^\s]+",
     ]
 
     list_output = run_cli_command(["workspace", "service-users", "list"])
@@ -8521,11 +8522,11 @@ def test_service_users_cli(set_env_client):
         r"This Service User does not have access to any Environments.",
         r"Name:\s+test-3",
         r"Service User ID:\s+sv-6",
-        r"Token ID:\s+ak-SU4",
         r"Created By:\s+user",
         r"Created At:\s+[^\s]+",
         r"Last Used:\s+-",
-        r"Expires:\s+[^\s]+",
+        r"Tokens:",
+        r"ak-SU4\s+Expires at [^\s]+",
     ]
     for line in expected_lines:
         assert re.search(line, info_output.stdout)
@@ -8536,11 +8537,11 @@ def test_service_users_cli(set_env_client):
     expected_lines = [
         r"Name:\s+test-3",
         r"Service User ID:\s+sv-6",
-        r"Token ID:\s+ak-SU4",
         r"Created By:\s+user",
         r"Created At:\s+[^\s]+",
         r"Last Used:\s+-",
-        r"Expires:\s+[^\s]+",
+        r"Tokens:",
+        r"ak-SU4\s+Expires at [^\s]+",
         r"Environment Access:",
         r"main\s+Contributor",
     ]
@@ -8554,11 +8555,84 @@ def test_service_users_cli(set_env_client):
         r"This Service User does not have access to any Environments.",
         r"Name:\s+test-3",
         r"Service User ID:\s+sv-6",
-        r"Token ID:\s+ak-SU4",
         r"Created By:\s+user",
         r"Created At:\s+[^\s]+",
         r"Last Used:\s+-",
-        r"Expires:\s+[^\s]+",
+        r"Tokens:",
+        r"ak-SU4\s+Expires at [^\s]+",
+    ]
+    for line in expected_lines:
+        assert re.search(line, info_output.stdout)
+
+    run_cli_command(["workspace", "service-users", "rotate", "test-3", "-y"])
+
+    info_output = run_cli_command(["workspace", "service-users", "info", "test-3"])
+    expected_lines = [
+        r"This Service User does not have access to any Environments.",
+        r"Name:\s+test-3",
+        r"Service User ID:\s+sv-6",
+        r"Created By:\s+user",
+        r"Created At:\s+[^\s]+",
+        r"Last Used:\s+-",
+        r"Tokens:",
+        r"ak-SU7\s+-",
+    ]
+    for line in expected_lines:
+        assert re.search(line, info_output.stdout)
+
+    run_cli_command(["workspace", "service-users", "rotate", "test-3", "-y", "--grace-period", "1h"])
+
+    info_output = run_cli_command(["workspace", "service-users", "info", "test-3"])
+    expected_lines = [
+        r"This Service User does not have access to any Environments.",
+        r"Name:\s+test-3",
+        r"Service User ID:\s+sv-6",
+        r"Created By:\s+user",
+        r"Created At:\s+[^\s]+",
+        r"Last Used:\s+-",
+        r"Tokens:",
+        r"ak-SU7\s+Expires at [^\s]+",
+        r"ak-SU8\s+-",
+    ]
+    for line in expected_lines:
+        assert re.search(line, info_output.stdout)
+
+    run_cli_command(["workspace", "service-users", "rotate", "test-3", "-y", "--grace-period", "1h"])
+    run_cli_command(["workspace", "service-users", "rotate", "test-3", "-y", "--grace-period", "1h"])
+    run_cli_command(["workspace", "service-users", "rotate", "test-3", "-y", "--grace-period", "1h"])
+    run_cli_command(["workspace", "service-users", "rotate", "test-3", "-y", "--grace-period", "1h"])
+
+    info_output = run_cli_command(["workspace", "service-users", "info", "test-3"])
+    expected_lines = [
+        r"This Service User does not have access to any Environments.",
+        r"Name:\s+test-3",
+        r"Service User ID:\s+sv-6",
+        r"Created By:\s+user",
+        r"Created At:\s+[^\s]+",
+        r"Last Used:\s+-",
+        r"Tokens:",
+        r"ak-SU7\s+Expires at [^\s]+",
+        r"ak-SU8\s+Expires at [^\s]+",
+        r"ak-SU9\s+Expires at [^\s]+",
+        r"ak-SU10\s+Expires at [^\s]+",
+        r"ak-SU11\s+Expires at [^\s]+",
+        r"ak-SU12\s+-",
+    ]
+    for line in expected_lines:
+        assert re.search(line, info_output.stdout)
+
+    run_cli_command(["workspace", "service-users", "rotate", "test-3", "-y"])
+
+    info_output = run_cli_command(["workspace", "service-users", "info", "test-3"])
+    expected_lines = [
+        r"This Service User does not have access to any Environments.",
+        r"Name:\s+test-3",
+        r"Service User ID:\s+sv-6",
+        r"Created By:\s+user",
+        r"Created At:\s+[^\s]+",
+        r"Last Used:\s+-",
+        r"Tokens:",
+        r"ak-SU13\s+-",
     ]
     for line in expected_lines:
         assert re.search(line, info_output.stdout)

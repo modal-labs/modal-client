@@ -392,11 +392,11 @@ async def service_users_create(name: str, expires_in_str: str | None, json: bool
     or [`modal environment roles update`](https://modal.com/docs/cli/latest/environment#modal-environment-roles-update).
 
     Optionally, you can also specify an expiration window by passing `--expires-in`. After the specified
-    amount of time elapses, this Service User will be deleted, and any credentials associated with
-    this Service User will stop working. The option expects a positive integer value, optionally
-    suffixed by the units `s`, `m`, `h`, or `d`, meaning seconds, minutes, hours, and days respectively.
-    If no suffix is provided, the value is interpreted as seconds. If `--expires-in` is not provided,
-    the newly created Service User will never expire.
+    amount of time elapses, this Service User's credentials will stop working. The option expects a
+    positive integer value, optionally suffixed by the units `s`, `m`, `h`, or `d`, meaning seconds,
+    minutes, hours, and days respectively. If no suffix is provided, the value is interpreted as
+    seconds. If `--expires-in` is not provided, the newly created Service User's credentials will
+    never expire. Expired credentials may be refreshed using [`modal workspace service-users rotate`](https://modal.com/docs/cli/latest/workspace#modal-workspace-service-users-rotate)
 
     Examples:
 
@@ -507,7 +507,16 @@ def service_users_list(json: bool):
                     {
                         "name": su.name,
                         "service_user_id": su.service_user_id,
-                        "token_id": su.token_id,
+                        "token_id": su.tokens[0].token_id if len(su.tokens) > 0 else "",
+                        "tokens": [
+                            {
+                                "token_id": t.token_id,
+                                "expires_at": timestamp_to_localized_str(t.expires_at.timestamp())
+                                if t.expires_at is not None
+                                else None,
+                            }
+                            for t in su.tokens
+                        ],
                         "created_by": su.created_by,
                         "created_at": timestamp_to_localized_str(su.created_at.timestamp()),
                         "last_used_at": timestamp_to_localized_str(su.last_used_at.timestamp())
@@ -526,17 +535,32 @@ def service_users_list(json: bool):
 
     table = rich.table.Table(box=SIMPLE_HEAD)
     table.add_column("Name")
-    table.add_column("Token ID")
     table.add_column("Created By")
+    table.add_column("Token ID")
     table.add_column("Expires")
 
     for su in service_users:
+        if len(su.tokens) == 0:
+            continue
+
         table.add_row(
             su.name,
-            su.token_id,
             su.created_by,
-            timestamp_to_localized_str(su.expires_at.timestamp(), isotz=False) if su.expires_at is not None else "-",
+            su.tokens[0].token_id,
+            timestamp_to_localized_str(su.tokens[0].expires_at.timestamp(), isotz=False)
+            if su.tokens[0].expires_at is not None
+            else "-",
         )
+
+        for token in su.tokens[1:]:
+            table.add_row(
+                "",
+                "",
+                token.token_id,
+                timestamp_to_localized_str(token.expires_at.timestamp(), isotz=False)
+                if token.expires_at is not None
+                else "-",
+            )
 
     output_manager.print(table)
 
@@ -595,7 +619,16 @@ def service_users_info(name: str, json: bool):
                 {
                     "name": su.name,
                     "service_user_id": su.service_user_id,
-                    "token_id": su.token_id,
+                    "token_id": su.tokens[0].token_id if len(su.tokens) > 0 else "",
+                    "tokens": [
+                        {
+                            "token_id": t.token_id,
+                            "expires_at": timestamp_to_localized_str(t.expires_at.timestamp())
+                            if t.expires_at is not None
+                            else None,
+                        }
+                        for t in su.tokens
+                    ],
                     "created_by": su.created_by,
                     "created_at": timestamp_to_localized_str(su.created_at.timestamp()),
                     "last_used_at": timestamp_to_localized_str(su.last_used_at.timestamp())
@@ -614,7 +647,6 @@ def service_users_info(name: str, json: bool):
 
     rows.append(("Name:", su.name))
     rows.append(("Service User ID:", su.service_user_id))
-    rows.append(("Token ID:", su.token_id))
 
     environment_roles: list[tuple[str, str]] = []
     for env_name, role in su.environment_roles.items():
@@ -633,14 +665,17 @@ def service_users_info(name: str, json: bool):
             else "-",
         )
     )
-    rows.append(
-        (
-            "Expires:",
-            str(timestamp_to_localized_str(su.expires_at.timestamp(), isotz=False))
-            if su.expires_at is not None
-            else "-",
+
+    rows.append(("Tokens:", ""))
+    for token in su.tokens:
+        rows.append(
+            (
+                f"  {token.token_id}",
+                f"Expires at {timestamp_to_localized_str(token.expires_at.timestamp(), isotz=False)}"
+                if token.expires_at is not None
+                else "-",
+            )
         )
-    )
 
     if len(environment_roles) > 0:
         rows.append(("", ""))
@@ -658,6 +693,143 @@ def service_users_info(name: str, json: bool):
         table.add_row(left, Text(right, justify="right"))
 
     output_manager.print(table)
+
+
+@service_users_cli.command("rotate", no_args_is_help=True)
+@click.argument("service_user_names", nargs=-1)
+@click.option(
+    "--expires-in",
+    "expires_in_str",
+    default=None,
+    help="Amount of time before the newly created credentials expire. Accepts integers (interpreted "
+    "as seconds), as well as values suffixed by `s`, `m`, `h`, or `d`.",
+)
+@click.option(
+    "--grace-period",
+    "grace_period_str",
+    default=None,
+    help="Grace period before existing credentials are revoked. Accepts integers (interpreted as "
+    "seconds), as well as values suffixed by `s`, `m`, `h`, or `d`.",
+)
+@click.option(
+    "--allow-missing",
+    is_flag=True,
+    default=False,
+    help="Don't error if any of the specified Service Users don't exist.",
+)
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@yes_option
+def service_users_rotate(
+    service_user_names: list[str],
+    expires_in_str: str | None,
+    grace_period_str: str | None,
+    allow_missing: bool,
+    json: bool,
+    yes: bool,
+):
+    """Rotate the credentials of the specified Service Users.
+
+    This operation will create new credentials paired with the Service Users, while also invalidating
+    any existing credentials. Like in [`modal workspace service-users create`](https://modal.com/docs/cli/latest/workspace#modal-workspace-service-users-create),
+    you can provide an expiration time for the new credentials using `--expires-in`.
+
+    Additionally, you may optionally provide a grace period using `--grace-period`. If specified,
+    any previous credentials will continue to work for the provided amount of time.
+
+    Examples:
+
+    ```bash
+    # Rotate the credentials for `test-1`
+    modal workspace service-users rotate test-1
+
+    # Two ways of rotating credentials, where both are configured to expire in 1 hour
+    modal workspace service-users rotate test-2 --expires-in 3600
+    modal workspace service-users rotate test-3 --expires-in 1h
+
+    # Rotate credentials, while leaving the existing credentials active for 1 hour, outputting JSON:
+    modal workspace service-users rotate test-4 --grace-period 1h --json
+    ```
+    """
+
+    ws = Workspace.from_context()
+
+    expires_in: int | None
+    if expires_in_str is None:
+        expires_in = None
+    else:
+        try:
+            expires_in = int(expires_in_str)
+        except ValueError:
+            try:
+                expires_in = int(parse_duration(expires_in_str).total_seconds())
+            except ValueError as e:
+                raise click.UsageError(str(e)) from e
+
+    grace_period: int | None
+    if grace_period_str is None:
+        grace_period = None
+    else:
+        try:
+            grace_period = int(grace_period_str)
+        except ValueError:
+            try:
+                grace_period = int(parse_duration(grace_period_str).total_seconds())
+            except ValueError as e:
+                raise click.UsageError(str(e)) from e
+
+    if not yes:
+        confirm_or_suggest_yes("Are you sure you want to rotate the specified Service Users' credentials?")
+
+    rotated = ws.service_users.rotate(
+        *service_user_names,
+        grace_period=grace_period,
+        expires_in=expires_in,
+        allow_missing=allow_missing,
+    )
+
+    output_manager = OutputManager.get()
+
+    if json:
+        output_manager.print_json(
+            json_mod.dumps(
+                {
+                    name: {
+                        "token_id": token_data.token_id,
+                        "token_secret": token_data.token_secret,
+                        "expires_at": timestamp_to_localized_str(token_data.expires_at.timestamp())
+                        if token_data.expires_at is not None
+                        else None,
+                    }
+                    for name, token_data in rotated.items()
+                }
+            )
+        )
+        return
+
+    columns, _ = shutil.get_terminal_size()
+    output_manager.print("[green]✓[/green] Successfully rotated Service User credentials.")
+    output_manager.print("")
+
+    for name, token_data in rotated.items():
+        output_manager.print(
+            Syntax(
+                "\n".join(
+                    [
+                        f" # Credentials for Service User {name!r}",
+                        f" export MODAL_TOKEN_ID={token_data.token_id}",
+                        f" export MODAL_TOKEN_SECRET={token_data.token_secret}\n",
+                    ]
+                ),
+                "sh",
+                code_width=min(_MAX_HELP_WIDTH, columns),
+                word_wrap=True,
+            )
+        )
+        output_manager.print("")
+
+    output_manager.print(
+        "[yellow]:warning:[/yellow] This is the only time you will be able to see these Token Secret(s)."
+    )
 
 
 @service_users_cli.command("set-role", no_args_is_help=True)

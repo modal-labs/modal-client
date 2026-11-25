@@ -584,6 +584,9 @@ class ServiceUserInfo:
 
     @property
     def token_id(self):
+        from modal._utils.deprecation import deprecation_warning
+
+        deprecation_warning((2026, 11, 19), "`ServiceUserInfo.token_id` is deprecated. Use `.token_ids` instead.")
         if len(self.tokens) == 0:
             return ""
 
