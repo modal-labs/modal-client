@@ -23,6 +23,7 @@ from typing import (
 import typing_extensions
 from google.protobuf.message import Message
 from grpclib.exceptions import StreamTerminatedError
+from synchronicity import classproperty
 from typing_extensions import Self
 
 from modal._serialization import serialize_data_format
@@ -574,6 +575,26 @@ class _FailedBuildAttempt:
     client: _Client
 
 
+class _ImageManager:
+    """Namespace with methods for managing Image objects."""
+
+    async def delete(self, image_id: str, *, client: _Client | None = None) -> None:
+        """Delete an Image by its ID.
+
+        Deletion is irreversible and prevents Functions and Sandboxes from using
+        this Image. Only the specified Image is deleted; intermediate layers
+        created by chained Image methods are not deleted.
+
+        Args:
+            image_id: Image object ID to delete.
+            client: Modal client to use; defaults to `Client.from_env()` when omitted.
+        """
+        if client is None:
+            client = await _Client.from_env()
+
+        await client._stub.ImageDelete(api_pb2.ImageDeleteRequest(image_id=image_id))
+
+
 class _Image(_Object, type_prefixes=("im",)):
     """Base class for container images to run functions in.
 
@@ -594,6 +615,11 @@ class _Image(_Object, type_prefixes=("im",)):
     _build_steps: list[api_pb2.ImageBuildStep] | None = None
     # A failed image ID is only queryable through the client that performed the build.
     _failed_build_attempt: _FailedBuildAttempt | None = None
+
+    @classproperty
+    @classmethod
+    def objects(cls) -> _ImageManager:
+        return _ImageManager()
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []

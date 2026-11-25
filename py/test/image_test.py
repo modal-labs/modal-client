@@ -15,6 +15,8 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Literal, get_args
 from unittest import mock
 
+from google.protobuf.empty_pb2 import Empty
+
 import modal
 from modal import App, Dict, Image, Secret
 from modal._image import (
@@ -2755,6 +2757,27 @@ def test_image_duplicate_volumes(client, servicer):
     with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
         with app.run(client=client):
             image.build(app)
+
+
+def test_image_delete(client, servicer):
+    image = Image.debian_slim()
+    build_image(image, client)
+
+    assert image.object_id in servicer.images
+    Image.objects.delete(image.object_id, client=client)
+    assert image.object_id not in servicer.images
+
+    with pytest.raises(NotFoundError):
+        Image.objects.delete(image.object_id, client=client)
+
+
+@pytest.mark.asyncio
+async def test_image_delete_aio(client, servicer):
+    with servicer.intercept() as ctx:
+        ctx.add_response("ImageDelete", Empty())
+        await Image.objects.delete.aio("im-123", client=client)
+
+    assert ctx.pop_request("ImageDelete").image_id == "im-123"
 
 
 ### Named image tests

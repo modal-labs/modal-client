@@ -306,19 +306,10 @@ async def image_delete(
 ) -> None:
     """Delete an Image by its ID.
 
-    Deletion is irreversible and will prevent Functions/Sandboxes from using
-    the Image.
-
-    This is an experimental interface for a feature that we will be adding to
-    the main Image class. The stable form of this interface may look different.
-
-    Note: When building an Image, each chained method call will create an
-    intermediate Image layer, each with its own ID. Deleting an Image will not
-    delete any of its intermediate layers, only the image identified by the
-    provided ID.
+    Deprecated: use `modal.Image.objects.delete(image_id)` instead.
     """
-    if client is None:
-        client = await _Client.from_env()
-
-    req = api_pb2.ImageDeleteRequest(image_id=image_id)
-    await client._stub.ImageDelete(req)
+    deprecation_warning(
+        (2026, 11, 24),
+        "`modal.experimental.image_delete` is deprecated; use `modal.Image.objects.delete(image_id)` instead.",
+    )
+    await _Image.objects.delete(image_id, client=client)

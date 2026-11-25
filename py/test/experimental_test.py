@@ -72,10 +72,11 @@ def test_image_delete(client, servicer):
         image = modal.Image.debian_slim().build(app)
 
     assert image.object_id in servicer.images
-    modal.experimental.image_delete(image.object_id, client=client)
+    with pytest.warns(DeprecationError, match=r"modal\.Image\.objects\.delete"):
+        modal.experimental.image_delete(image.object_id, client=client)
     assert image.object_id not in servicer.images
 
-    with pytest.raises(NotFoundError):
+    with pytest.warns(DeprecationError, match=r"modal\.Image\.objects\.delete"), pytest.raises(NotFoundError):
         modal.experimental.image_delete("im-nonexistent", client=client)
 
 
