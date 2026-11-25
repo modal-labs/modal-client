@@ -249,6 +249,7 @@ const (
 	ModalClient_ServiceUserDelete_FullMethodName                      = "/modal.client.ModalClient/ServiceUserDelete"
 	ModalClient_ServiceUserInfo_FullMethodName                        = "/modal.client.ModalClient/ServiceUserInfo"
 	ModalClient_ServiceUserList_FullMethodName                        = "/modal.client.ModalClient/ServiceUserList"
+	ModalClient_ServiceUserRotate_FullMethodName                      = "/modal.client.ModalClient/ServiceUserRotate"
 	ModalClient_SharedVolumeDelete_FullMethodName                     = "/modal.client.ModalClient/SharedVolumeDelete"
 	ModalClient_SharedVolumeGetFile_FullMethodName                    = "/modal.client.ModalClient/SharedVolumeGetFile"
 	ModalClient_SharedVolumeGetOrCreate_FullMethodName                = "/modal.client.ModalClient/SharedVolumeGetOrCreate"
@@ -570,6 +571,7 @@ type ModalClientClient interface {
 	ServiceUserDelete(ctx context.Context, in *ServiceUserDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ServiceUserInfo(ctx context.Context, in *ServiceUserInfoRequest, opts ...grpc.CallOption) (*ServiceUserInfoResponse, error)
 	ServiceUserList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceUserListResponse, error)
+	ServiceUserRotate(ctx context.Context, in *ServiceUserRotateRequest, opts ...grpc.CallOption) (*ServiceUserRotateResponse, error)
 	// SharedVolumes
 	SharedVolumeDelete(ctx context.Context, in *SharedVolumeDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SharedVolumeGetFile(ctx context.Context, in *SharedVolumeGetFileRequest, opts ...grpc.CallOption) (*SharedVolumeGetFileResponse, error)
@@ -2944,6 +2946,16 @@ func (c *modalClientClient) ServiceUserList(ctx context.Context, in *emptypb.Emp
 	return out, nil
 }
 
+func (c *modalClientClient) ServiceUserRotate(ctx context.Context, in *ServiceUserRotateRequest, opts ...grpc.CallOption) (*ServiceUserRotateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceUserRotateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_ServiceUserRotate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SharedVolumeDelete(ctx context.Context, in *SharedVolumeDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -3857,6 +3869,7 @@ type ModalClientServer interface {
 	ServiceUserDelete(context.Context, *ServiceUserDeleteRequest) (*emptypb.Empty, error)
 	ServiceUserInfo(context.Context, *ServiceUserInfoRequest) (*ServiceUserInfoResponse, error)
 	ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error)
+	ServiceUserRotate(context.Context, *ServiceUserRotateRequest) (*ServiceUserRotateResponse, error)
 	// SharedVolumes
 	SharedVolumeDelete(context.Context, *SharedVolumeDeleteRequest) (*emptypb.Empty, error)
 	SharedVolumeGetFile(context.Context, *SharedVolumeGetFileRequest) (*SharedVolumeGetFileResponse, error)
@@ -4606,6 +4619,9 @@ func (UnimplementedModalClientServer) ServiceUserInfo(context.Context, *ServiceU
 }
 func (UnimplementedModalClientServer) ServiceUserList(context.Context, *emptypb.Empty) (*ServiceUserListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ServiceUserList not implemented")
+}
+func (UnimplementedModalClientServer) ServiceUserRotate(context.Context, *ServiceUserRotateRequest) (*ServiceUserRotateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ServiceUserRotate not implemented")
 }
 func (UnimplementedModalClientServer) SharedVolumeDelete(context.Context, *SharedVolumeDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SharedVolumeDelete not implemented")
@@ -8779,6 +8795,24 @@ func _ModalClient_ServiceUserList_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_ServiceUserRotate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceUserRotateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).ServiceUserRotate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_ServiceUserRotate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).ServiceUserRotate(ctx, req.(*ServiceUserRotateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SharedVolumeDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SharedVolumeDeleteRequest)
 	if err := dec(in); err != nil {
@@ -10737,6 +10771,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ServiceUserList",
 			Handler:    _ModalClient_ServiceUserList_Handler,
+		},
+		{
+			MethodName: "ServiceUserRotate",
+			Handler:    _ModalClient_ServiceUserRotate_Handler,
 		},
 		{
 			MethodName: "SharedVolumeDelete",

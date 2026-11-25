@@ -5226,6 +5226,23 @@ message ServiceUserListResponse {
   repeated ServiceUser service_users = 1;
 }
 
+message ServiceUserRotateRequest {
+  repeated string service_user_names = 1;
+  uint32 grace_period_seconds = 2;
+  bool allow_missing = 3;
+  uint32 expires_in_seconds = 4;
+}
+
+message ServiceUserRotateResponse {
+  message RotationInfo {
+    string service_user_name = 1;
+    string token_id = 2;
+    string token_secret = 3;
+    google.protobuf.Timestamp expires_at = 4;
+  }
+
+  repeated RotationInfo rotated = 1;
+}
 
 // SharedVolume is the API name of NetworkFileSystem, retired in Python SDK v1.7.
 
@@ -6337,6 +6354,7 @@ service ModalClient {
   rpc ServiceUserDelete(ServiceUserDeleteRequest) returns (google.protobuf.Empty);
   rpc ServiceUserInfo(ServiceUserInfoRequest) returns (ServiceUserInfoResponse);
   rpc ServiceUserList(google.protobuf.Empty) returns (ServiceUserListResponse);
+  rpc ServiceUserRotate(ServiceUserRotateRequest) returns (ServiceUserRotateResponse);
 
   // SharedVolumes
   rpc SharedVolumeDelete(SharedVolumeDeleteRequest) returns (google.protobuf.Empty);
