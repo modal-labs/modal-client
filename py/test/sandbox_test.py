@@ -26,7 +26,6 @@ import modal.sandbox._impl_v1
 from modal import (
     App,
     Image,
-    NetworkFileSystem,
     Proxy,
     Sandbox,
     SandboxSnapshot,
@@ -327,17 +326,6 @@ def test_sandbox_initialize_from_other_preserves_app_id_and_impl(app, monkeypatc
     assert target_impl._impl.app_id == source_impl._impl.app_id == app.app_id
     expected_impl = SandboxImplV2 if sandbox_version == SandboxVersion.V2 else SandboxImplV1
     assert type(target_impl._impl) is type(source_impl._impl) is expected_impl
-
-
-def test_sandbox_nfs(client, app, servicer, tmpdir):
-    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-        with NetworkFileSystem.ephemeral(client=client) as nfs:
-            with pytest.raises(InvalidError):
-                Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs}, app=app)
-
-            Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs}, app=app)
-
-    assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 
 
 @skip_non_subprocess
@@ -1031,20 +1019,6 @@ def test_sandbox_create_env_flag_placement_uses_v2(app, servicer, monkeypatch):
     cloud_req, region_req = ctx.get_requests("SandboxCreateV2")
     assert cloud_req.definition.cloud_provider_str == "aws"
     assert region_req.definition.scheduler_placement.regions == ["us-east-1"]
-
-
-def test_sandbox_create_env_flag_nfs_stays_v1(app, client, servicer, monkeypatch):
-    # Network file systems have no V2 equivalent, so the call stays on V1.
-    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
-
-    with pytest.warns(DeprecationError, match="`modal.NetworkFileSystem` is deprecated"):
-        with NetworkFileSystem.ephemeral(client=client) as nfs:
-            with servicer.intercept() as ctx:
-                sb = Sandbox.create("echo", "hi", network_file_systems={"/cache": nfs}, app=app)
-
-    assert _get_sandbox_version(sb.object_id) == SandboxVersion.V1
-    assert ctx.get_requests("SandboxCreateV2") == []
-    assert len(ctx.get_requests("SandboxCreate")) == 1
 
 
 def test_sandbox_from_name_env_flag_resolves_v2(client, servicer, monkeypatch):

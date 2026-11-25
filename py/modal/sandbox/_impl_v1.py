@@ -357,9 +357,8 @@ class SandboxImplV1:
     ) -> None:
         if cloud_bucket_mounts:
             raise InvalidError(
-                "CloudBucketMount is not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU, "
-                "network file systems or a PTY, or when MODAL_SANDBOX_V2=0 is set; contact Modal support for more "
-                "information."
+                "CloudBucketMount is not supported in sidecars of V1 Sandboxes. A Sandbox is V1 when it has a GPU "
+                "or a PTY, or when MODAL_SANDBOX_V2=0 is set; contact Modal support for more information."
             )
         if has_proxy:
             raise InvalidError("Sandbox._experimental_sidecars.create(proxy=...) is not supported for GPU Sandboxes.")

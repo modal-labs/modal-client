@@ -33,7 +33,7 @@ from .._tunnel import Tunnel
 from .._utils.async_utils import TaskContext
 from .._utils.deprecation import deprecation_warning
 from .._utils.grpc_utils import Retry
-from .._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
+from .._utils.mount_utils import validate_volumes, validate_volumes_by_object_id
 from .._utils.name_utils import check_object_name
 from ..client import _Client
 from ..cloud_bucket_mount import _CloudBucketMount
@@ -53,7 +53,6 @@ from ..exception import (
 )
 from ..io_streams import StreamReader, StreamWriter
 from ..mount import _Mount
-from ..network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from ..proxy import _Proxy
 from ..secret import _resolvable_secrets, _Secret, _secret_sources
 from ..stream_type import StreamType
@@ -430,7 +429,6 @@ class SandboxCreateArgs:
     cpu: float | tuple[float, float] | None = None
     memory: int | tuple[int, int] | None = None
     mounts: Sequence[_Mount] = ()
-    network_file_systems: Mapping[str | PurePosixPath, _NetworkFileSystem] = dataclasses.field(default_factory=dict)
     block_network: bool = False
     outbound_cidr_allowlist: Sequence[str] | None = None
     outbound_domain_allowlist: Sequence[str] | None = None
@@ -514,7 +512,6 @@ class SandboxCreateCommon:
         self.timeout = a.timeout
         self.secrets = secrets
         self.image = a.image or _default_image
-        self.network_file_systems = validate_network_file_systems(a.network_file_systems)
         self.volumes, self.cloud_bucket_mounts = split_volumes(a.volumes)
         self.network_access = network_access
         self.open_ports = open_port_specs(a.encrypted_ports, a.unencrypted_ports, a.h2_ports)
@@ -540,7 +537,6 @@ class SandboxCreateCommon:
             deps.extend(a.experimental_outbound_policy._secrets())
         if a.outbound_policy:
             deps.extend(a.outbound_policy._secrets())
-        deps.extend(nfs for _, nfs in self.network_file_systems)
         deps.extend(volume for _, volume in self.volumes)
         for _, cloud_bucket_mount in self.cloud_bucket_mounts:
             secret = cloud_bucket_mount.secret
@@ -593,7 +589,6 @@ class SandboxCreateCommon:
             inbound_cidr_allowlist=(list(a.inbound_cidr_allowlist) if a.inbound_cidr_allowlist is not None else []),
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts=[_volume_to_mount_proto(path, volume) for path, volume in self.volumes],
-            nfs_mounts=network_file_system_mount_protos(self.network_file_systems),
             cloud_bucket_mounts=cloud_bucket_mounts,
             i6pn_enabled=a.i6pn,
         )

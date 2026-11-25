@@ -180,8 +180,8 @@ class SandboxImplV2:
     async def create(
         cls, create_args: SandboxCreateArgs, *, app: "modal.app._App | None", client: _Client | None
     ) -> "SandboxImpl":
-        if create_args.gpu is not None or create_args.network_file_systems or create_args.pty_info is not None:
-            raise InvalidError("GPUs, network file systems and PTY info are not supported by V2 Sandboxes")
+        if create_args.gpu is not None or create_args.pty_info is not None:
+            raise InvalidError("GPUs and PTY info are not supported by V2 Sandboxes")
         if create_args.block_network and create_args.i6pn:
             raise InvalidError(
                 "`block_network` disables all networking, including i6pn. To keep i6pn while blocking "

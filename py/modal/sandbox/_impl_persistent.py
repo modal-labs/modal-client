@@ -139,8 +139,8 @@ class SandboxImplPersistent:
         )
         if create_args.name is not None:
             raise InvalidError("Named persistent Sandboxes are not supported yet.")
-        if create_args.gpu is not None or create_args.network_file_systems or create_args.pty_info is not None:
-            raise InvalidError("GPUs, network file systems and PTYs are not supported by persistent Sandboxes yet.")
+        if create_args.gpu is not None or create_args.pty_info is not None:
+            raise InvalidError("GPUs and PTYs are not supported by persistent Sandboxes yet.")
         if create_args.enable_snapshot:
             raise InvalidError("Memory snapshots are not supported by persistent Sandboxes.")
         if create_args.env or create_args.tags:

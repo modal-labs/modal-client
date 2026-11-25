@@ -760,9 +760,8 @@ async def _interactive_shell(
         # Temporarily enable output to show image build logs during sandbox creation
         output_mgr.set_quiet_mode(False)
         if v2:
-            for option in ("gpu", "network_file_systems"):
-                if kwargs.pop(option, None):
-                    raise InvalidError(f"`{option}` is not supported for V2 sandboxes")
+            if kwargs.pop("gpu", None):
+                raise InvalidError("`gpu` is not supported for V2 sandboxes")
         create_args = SandboxCreateArgs(args=("sleep", "100000"), secrets=secrets, **kwargs)
         impl_cls = SandboxImplV2 if v2 else impl_class_for_create_args(create_args)
         impl = await impl_cls.create(create_args, app=_app, client=None)

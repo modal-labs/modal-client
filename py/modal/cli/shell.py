@@ -201,7 +201,6 @@ def _start_shell_from_function_spec(
         image=function_spec.image,
         mounts=function_spec.mounts,
         secrets=function_spec.secrets,
-        network_file_systems=function_spec.network_file_systems,
         gpu=function_spec.gpus,
         cloud=function_spec.cloud,
         cpu=function_spec.cpu,

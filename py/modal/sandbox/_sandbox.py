@@ -28,7 +28,6 @@ from ..config import config, logger as logger
 from ..container_process import _ContainerProcess
 from ..exception import ClientClosed, ConflictError, ExecutionError, InvalidError, NotFoundError
 from ..io_streams import _StreamReader, _StreamWriter
-from ..network_file_system import _NetworkFileSystem
 from ..proxy import _Proxy
 from ..secret import _Secret
 from ..stream_type import StreamType
@@ -80,9 +79,8 @@ def impl_class_for_create_args(create_args: SandboxCreateArgs) -> type[SandboxIm
     """Select the implementation that creates the Sandbox described by `create_args`."""
     if create_args.persistent:
         return SandboxImplPersistent
-    if create_args.gpu is not None or create_args.network_file_systems or create_args.pty_info is not None:
-        # GPUs, network file systems, and PTYs are not supported on V2, so those calls use the V1
-        # backend regardless of the setting.
+    if create_args.gpu is not None or create_args.pty_info is not None:
+        # GPUs and PTYs are not supported on V2, so those calls use the V1 backend regardless of the setting.
         return SandboxImplV1
     return SandboxImplV2 if config.get("sandbox_v2") else SandboxImplV1
 
@@ -192,7 +190,6 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         image: _Image | None = None,
         env: dict[str, str | None] | None = None,
         secrets: Collection[_Secret] | None = None,
-        network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
         timeout: int | None = 300,
         idle_timeout: int | None = None,
         workdir: str | None = None,
@@ -239,7 +236,6 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             image: The image to run as the container for the sandbox.
             env: Environment variables to set in the Sandbox.
             secrets: Secrets to inject into the Sandbox as environment variables.
-            network_file_systems: Network file systems to mount into the sandbox.
             timeout: Maximum lifetime of the sandbox in seconds.
             idle_timeout: The amount of time in seconds that a sandbox can be idle before being terminated.
             workdir: Working directory of the sandbox.
@@ -350,7 +346,6 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             region=region,
             cpu=cpu,
             memory=memory,
-            network_file_systems=network_file_systems,
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
             outbound_domain_allowlist=outbound_domain_allowlist,
