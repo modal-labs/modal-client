@@ -5160,8 +5160,16 @@ message ServiceUser {
     EnvironmentRoleDefinition environment_role_definition = 6;
   }
 
+  message TokenMetadata {
+    string token_id = 1;
+    optional google.protobuf.Timestamp expires_at = 2;
+  }
+
   string name = 1;
-  string token_id = 2;
+  
+  // Deprecated: use tokens instead
+  string token_id = 2; 
+  
   string created_by = 3;
   double created_at = 4;
   double last_used_at = 5;
@@ -5173,6 +5181,11 @@ message ServiceUser {
 
   // This should be a TImestamp type, but keeping as a double for compatibility with public_api.proto
   optional double expires_at = 11;
+
+  bool tokenless = 12;
+  string bound_service = 13;
+
+  repeated TokenMetadata tokens = 14;
 }
 
 message ServiceUserCreateRequest {
