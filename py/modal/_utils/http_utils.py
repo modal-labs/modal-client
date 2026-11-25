@@ -84,8 +84,9 @@ async def run_temporary_http_server(app: "Application"):
 
     from aiohttp.web_runner import AppRunner, SockSite
 
+    # Loopback only: these servers are for local consumers and must not be reachable from the network.
     sock = socket.socket()
-    sock.bind(("", 0))
+    sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
     host = f"http://127.0.0.1:{port}"
 

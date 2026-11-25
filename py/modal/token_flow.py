@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import itertools
 import os
+import urllib.parse
 from collections.abc import AsyncGenerator
 
 from synchronicity.async_wrap import asynccontextmanager
@@ -40,7 +41,8 @@ class _TokenFlow:
         # TODO(erikbern): handle failure launching server
 
         async def slash(request):
-            headers = {"Access-Control-Allow-Origin": "*"}
+            # Only the web page for this flow may read the flow id from a browser.
+            headers = {"Access-Control-Allow-Origin": self.web_origin}
             return aiohttp.web.Response(text=self.token_flow_id, headers=headers)
 
         app = aiohttp.web.Application()
@@ -55,6 +57,8 @@ class _TokenFlow:
             resp = await self.stub.TokenFlowCreate(req)
             self.token_flow_id = resp.token_flow_id
             self.wait_secret = resp.wait_secret
+            web_url = urllib.parse.urlsplit(resp.web_url)
+            self.web_origin = f"{web_url.scheme}://{web_url.netloc}"
             yield (resp.token_flow_id, resp.web_url, resp.code)
 
     async def finish(

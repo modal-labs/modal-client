@@ -16,3 +16,4 @@ async def test_token_flow_server(servicer, client):
             async with session.get(localhost_url) as resp:
                 text = await resp.text()
                 assert text == token_flow_id
+                assert resp.headers["Access-Control-Allow-Origin"] == "https://localhost"
