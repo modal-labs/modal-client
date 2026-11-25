@@ -1585,15 +1585,15 @@ func (m *mockSandboxListClient) SandboxListV2(
 	return pb.SandboxListResponse_builder{}.Build(), nil
 }
 
-func TestExperimentalListForwardsTags(t *testing.T) {
+func TestV2ListForwardsTags(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 
 	mock := &mockSandboxListClient{}
-	svc := &sandboxServiceImpl{client: &Client{cpClient: &clientWithConn{ModalClientClient: mock}}}
+	svc := &sandboxServiceImpl{client: &Client{profile: Profile{SandboxV2: true}, cpClient: &clientWithConn{ModalClientClient: mock}}}
 
-	seq, err := svc.ExperimentalList(ctx, &SandboxExperimentalListParams{
+	seq, err := svc.List(ctx, &SandboxListParams{
 		AppID: "ap-1234",
 		Tags:  map[string]string{"env": "prod"},
 	})
@@ -1627,10 +1627,11 @@ func (m *mockSandboxCreateV2Client) SandboxCreateV2(
 	}.Build(), nil
 }
 
-func TestExperimentalCreateSeedsCommandRouterAccess(t *testing.T) {
+func TestV2CreateSeedsCommandRouterAccess(t *testing.T) {
 	newService := func(access *pb.CommandRouterAccess) *sandboxServiceImpl {
 		return &sandboxServiceImpl{client: &Client{
 			cpClient: &clientWithConn{ModalClientClient: &mockSandboxCreateV2Client{access: access}},
+			profile:  Profile{SandboxV2: true},
 			logger:   slog.New(slog.DiscardHandler),
 		}}
 	}
@@ -1641,7 +1642,7 @@ func TestExperimentalCreateSeedsCommandRouterAccess(t *testing.T) {
 
 		sb, err := newService(pb.CommandRouterAccess_builder{
 			Jwt: "seeded-jwt", Url: "https://task-abc123.modal.test",
-		}.Build()).ExperimentalCreate(t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
+		}.Build()).Create(t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
 		g.Expect(err).ShouldNot(gomega.HaveOccurred())
 		g.Expect(sb.task().initCommandRouterAccess).ShouldNot(gomega.BeNil())
 		g.Expect(sb.task().initCommandRouterAccess.jwt).To(gomega.Equal("seeded-jwt"))
@@ -1655,7 +1656,7 @@ func TestExperimentalCreateSeedsCommandRouterAccess(t *testing.T) {
 		t.Parallel()
 		g := gomega.NewWithT(t)
 
-		sb, err := newService(nil).ExperimentalCreate(
+		sb, err := newService(nil).Create(
 			t.Context(), &App{AppID: "ap-1234"}, &Image{ImageID: "im-123"}, nil)
 		g.Expect(err).ShouldNot(gomega.HaveOccurred())
 		g.Expect(sb.task().initCommandRouterAccess).Should(gomega.BeNil())

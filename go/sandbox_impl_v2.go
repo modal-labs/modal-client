@@ -133,12 +133,12 @@ func createSandboxV2(ctx context.Context, client *Client, app *App, image *Image
 		}
 	}
 
-	client.logger.DebugContext(ctx, "Created experimental V2 Sandbox", "sandbox_id", createResp.GetSandboxId())
+	client.logger.DebugContext(ctx, "Created V2 Sandbox", "sandbox_id", createResp.GetSandboxId())
 	return newSandboxImpl(client, createResp.GetSandboxId(), opts), nil
 }
 
 // lookupSandboxByNameV2 looks up a Sandbox by name through the V2 RPC.
-func lookupSandboxByNameV2(ctx context.Context, client *Client, appName, name string, params *SandboxExperimentalFromNameParams) (*pb.SandboxGetFromNameResponse, error) {
+func lookupSandboxByNameV2(ctx context.Context, client *Client, appName, name string, params *SandboxFromNameParams) (*pb.SandboxGetFromNameResponse, error) {
 	resp, err := client.cpClient.SandboxGetFromNameV2(ctx, pb.SandboxGetFromNameRequest_builder{
 		SandboxName:       name,
 		AppName:           appName,
@@ -155,11 +155,11 @@ func lookupSandboxByNameV2(ctx context.Context, client *Client, appName, name st
 }
 
 // listSandboxesV2 lists running Sandboxes through the V2 list RPC.
-func listSandboxesV2(ctx context.Context, client *Client, params *SandboxExperimentalListParams) iter.Seq2[sandboxImpl, error] {
+func listSandboxesV2(ctx context.Context, client *Client, params *SandboxListParams) iter.Seq2[sandboxImpl, error] {
 	var environmentName string
 	if params.AppID == "" {
 		client.logger.WarnContext(ctx,
-			"Sandboxes.ExperimentalList without an AppID lists across the whole environment and is deprecated; pass AppID to scope the query")
+			"Sandboxes.List without an AppID lists across the whole environment and is deprecated; pass AppID to scope the query")
 		environmentName = firstNonEmpty(params.Environment, client.profile.Environment)
 	}
 

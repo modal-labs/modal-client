@@ -336,7 +336,8 @@ test("SandboxCreate hydrates a fromObject Secret", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalCreate passes env as secret sources", async () => {
+test("V2 Create passes env as secret sources", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "1");
   const { mockClient: mc, mockCpClient: mock } =
     createMockClientWithPinnedBuilder();
   registerSandboxCreateDeps(mock);
@@ -356,7 +357,7 @@ test("ExperimentalCreate passes env as secret sources", async () => {
   });
   const image = mc.images.fromRegistry("alpine:3.21");
 
-  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+  const sb = await mc.sandboxes.create(app, image, {
     env: { FOO: "bar" },
   });
   expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
@@ -364,7 +365,8 @@ test("ExperimentalCreate passes env as secret sources", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalCreate rejects invalid env var keys", async () => {
+test("V2 Create rejects invalid env var keys", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "1");
   const { mockClient: mc, mockCpClient: mock } =
     createMockClientWithPinnedBuilder();
   registerSandboxCreateDeps(mock);
@@ -378,13 +380,14 @@ test("ExperimentalCreate rejects invalid env var keys", async () => {
   // must be caught client-side before any SandboxCreateV2 RPC is issued (no
   // handler is registered, so an unexpected RPC would throw).
   await expect(
-    mc.sandboxes.experimentalCreate(app, image, {
+    mc.sandboxes.create(app, image, {
       env: { "bad-key": "value" },
     }),
   ).rejects.toThrow(/is invalid for environment variables/);
 });
 
-test("ExperimentalCreate passes a fromObject Secret as secret sources", async () => {
+test("V2 Create passes a fromObject Secret as secret sources", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "1");
   const { mockClient: mc, mockCpClient: mock } =
     createMockClientWithPinnedBuilder();
   registerSandboxCreateDeps(mock);
@@ -412,7 +415,7 @@ test("ExperimentalCreate passes a fromObject Secret as secret sources", async ()
     FOO: "from-secret",
     BAZ: "qux",
   });
-  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+  const sb = await mc.sandboxes.create(app, image, {
     secrets: [secret],
     env: { FOO: "from-env" },
   });
@@ -424,7 +427,8 @@ test("ExperimentalCreate passes a fromObject Secret as secret sources", async ()
   mock.assertExhausted();
 });
 
-test("ExperimentalCreate lets a later fromName Secret override a fromObject Secret", async () => {
+test("V2 Create lets a later fromName Secret override a fromObject Secret", async () => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "1");
   const { mockClient: mc, mockCpClient: mock } =
     createMockClientWithPinnedBuilder();
   registerSandboxCreateDeps(mock);
@@ -454,7 +458,7 @@ test("ExperimentalCreate lets a later fromName Secret override a fromObject Secr
   const local = await mc.secrets.fromObject({ K: "local", LOCAL_ONLY: "yes" });
   const named = await mc.secrets.fromName("my-secret");
 
-  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+  const sb = await mc.sandboxes.create(app, image, {
     secrets: [local, named],
     env: { ENV_ONLY: "env" },
   });

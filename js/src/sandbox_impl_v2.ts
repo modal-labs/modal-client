@@ -29,9 +29,9 @@ import {
   type SandboxCreateConnectCredentials,
   type SandboxCreateParams,
   type SandboxExecParams,
-  type SandboxExperimentalFromNameParams,
+  type SandboxFromNameParams,
   type SandboxExperimentalGetExitSnapshotParams,
-  type SandboxExperimentalListParams,
+  type SandboxListParams,
   type SandboxMountImageParams,
   type SandboxReloadVolumesParams,
   type SandboxSnapshotDirectoryParams,
@@ -189,7 +189,7 @@ export class SandboxImplV2 implements SandboxImpl {
     }
 
     client.logger.debug(
-      "Created experimental V2 Sandbox",
+      "Created V2 Sandbox",
       "sandbox_id",
       createResp.sandboxId,
     );
@@ -223,7 +223,7 @@ export class SandboxImplV2 implements SandboxImpl {
     client: ModalClient,
     appName: string,
     name: string,
-    params: SandboxExperimentalFromNameParams | undefined,
+    params: SandboxFromNameParams | undefined,
   ): Promise<SandboxGetFromNameResponse> {
     try {
       // SandboxGetFromNameV2 only returns V2 Sandboxes and authenticates via
@@ -249,12 +249,12 @@ export class SandboxImplV2 implements SandboxImpl {
   /** List running Sandboxes through the V2 list RPC. */
   static async *list(
     client: ModalClient,
-    params: SandboxExperimentalListParams,
+    params: SandboxListParams,
   ): AsyncGenerator<SandboxImpl, void, unknown> {
     let environmentName: string | undefined = undefined;
     if (!params.appId) {
       client.logger.warn(
-        "experimentalList without an `appId` lists across the whole environment and is deprecated; pass `appId` to scope the query.",
+        "list without an `appId` lists across the whole environment and is deprecated; pass `appId` to scope the query.",
       );
       environmentName = client.environmentName(params.environment);
     }

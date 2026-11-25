@@ -49,13 +49,14 @@ import {
 } from "../proto/modal_proto/task_command_router";
 import {
   ClientClosedError,
-  AlreadyExistsError,
   App,
   CloudBucketMount,
+  AlreadyExistsError,
   ConflictError,
   ExecutionError,
   Image,
   InvalidError,
+  ModalClient,
   NotFoundError,
   ExperimentalOutboundPolicy,
   OutboundPolicy,
@@ -179,14 +180,17 @@ test("SandboxFirstStdoutReadAfterTerminate", async () => {
   expect(await sb.stdout.readText()).toContain("only-line");
 });
 
-// The same for a Sandbox created with experimentalCreate.
+// The same for a Sandbox created with the V2 backend.
 test("SandboxFirstStdoutReadAfterTerminateV2", async () => {
-  const app = await tc.apps.fromName("libmodal-test", {
+  const v2Client = new ModalClient();
+  v2Client.profile.sandboxV2 = true;
+  onTestFinished(() => v2Client.close());
+  const app = await v2Client.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
-  const image = tc.images.fromRegistry("alpine:3.21");
+  const image = v2Client.images.fromRegistry("alpine:3.21");
 
-  const sb = await tc.sandboxes.experimentalCreate(app, image, {
+  const sb = await v2Client.sandboxes.create(app, image, {
     command: ["sh", "-c", "echo only-line; sleep 60"],
     readinessProbe: Probe.withExec(["true"]),
   });
@@ -1549,10 +1553,11 @@ test("fromName forwards includeTerminated to SandboxGetFromNameV2", async () => 
   mock.assertExhausted();
 });
 
-test("experimentalList routes mirrored V1 sandboxes to the V1 backend", async () => {
+test("V2 List routes mirrored V1 sandboxes to the V1 backend", async () => {
   // V1 Sandboxes are mirrored into the V2 store during the V1->V2 migration,
   // so SandboxListV2 can return V1 Sandboxes.
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/SandboxListV2", () => {
     return { sandboxes: [{ id: V1_SANDBOX_ID, createdAt: 1 }] };
@@ -1566,7 +1571,7 @@ test("experimentalList routes mirrored V1 sandboxes to the V1 backend", async ()
   });
 
   const sandboxes = [];
-  for await (const sb of mc.sandboxes.experimentalList({ appId: "ap-123" })) {
+  for await (const sb of mc.sandboxes.list({ appId: "ap-123" })) {
     sandboxes.push(sb);
   }
   expect(sandboxes).toHaveLength(1);
@@ -1575,8 +1580,9 @@ test("experimentalList routes mirrored V1 sandboxes to the V1 backend", async ()
   mock.assertExhausted();
 });
 
-test("experimentalFromName routes a mirrored V1 sandbox to the V1 backend", async () => {
+test("V2 FromName routes a mirrored V1 sandbox to the V1 backend", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/SandboxGetFromNameV2", () => {
     return { sandboxId: V1_SANDBOX_ID };
@@ -1586,10 +1592,7 @@ test("experimentalFromName routes a mirrored V1 sandbox to the V1 backend", asyn
     return {};
   });
 
-  const sb = await mc.sandboxes.experimentalFromName(
-    "libmodal-test",
-    "mirrored-v1",
-  );
+  const sb = await mc.sandboxes.fromName("libmodal-test", "mirrored-v1");
   await sb.terminate();
 
   mock.assertExhausted();
@@ -1754,8 +1757,9 @@ test("buildSandboxCreateV2RequestProto supports OIDC identity tokens", async () 
   );
 });
 
-test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
+test("V2 Create routes lifecycle calls to V2 RPCs", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
     return AppGetOrCreateResponse.create({ appId: "ap-1234" });
@@ -1826,7 +1830,7 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   });
   const image = mc.images.fromRegistry("alpine:3.21");
 
-  const sb = await mc.sandboxes.experimentalCreate(app, image);
+  const sb = await mc.sandboxes.create(app, image);
   expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
   expect(await sb.wait()).toBe(0);
   expect(await sb.poll()).toBeNull();
@@ -1836,8 +1840,9 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalCreate caches encrypted-only tunnels from the create response", async () => {
+test("V2 Create caches encrypted-only tunnels from the create response", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
     return AppGetOrCreateResponse.create({ appId: "ap-1234" });
@@ -1886,7 +1891,7 @@ test("ExperimentalCreate caches encrypted-only tunnels from the create response"
   });
   const image = mc.images.fromRegistry("alpine:3.21");
 
-  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+  const sb = await mc.sandboxes.create(app, image, {
     encryptedPorts: [8080],
   });
 
@@ -1898,8 +1903,9 @@ test("ExperimentalCreate caches encrypted-only tunnels from the create response"
   mock.assertExhausted();
 });
 
-test("ExperimentalCreate uses command router access from the create response", async () => {
+test("V2 Create uses command router access from the create response", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
     return AppGetOrCreateResponse.create({ appId: "ap-1234" });
@@ -1957,7 +1963,7 @@ test("ExperimentalCreate uses command router access from the create response", a
     createIfMissing: true,
   });
   const image = mc.images.fromRegistry("alpine:3.21");
-  const sb = await mc.sandboxes.experimentalCreate(app, image);
+  const sb = await mc.sandboxes.create(app, image);
 
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- tests the deprecated method
   await sb.updateNetworkPolicy({
@@ -2030,8 +2036,9 @@ test("experimentalFromSnapshot uses command router access from the restore respo
   mock.assertExhausted();
 });
 
-test("ExperimentalCreate fetches unencrypted tunnels missing from the create response", async () => {
+test("V2 Create fetches unencrypted tunnels missing from the create response", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
     return AppGetOrCreateResponse.create({ appId: "ap-1234" });
@@ -2095,7 +2102,7 @@ test("ExperimentalCreate fetches unencrypted tunnels missing from the create res
   });
   const image = mc.images.fromRegistry("alpine:3.21");
 
-  const sb = await mc.sandboxes.experimentalCreate(app, image, {
+  const sb = await mc.sandboxes.create(app, image, {
     encryptedPorts: [8080],
     unencryptedPorts: [9000],
   });
@@ -2111,8 +2118,9 @@ test("ExperimentalCreate fetches unencrypted tunnels missing from the create res
   mock.assertExhausted();
 });
 
-test("ExperimentalList yields V2 Sandboxes and paginates", async () => {
+test("V2 List yields V2 Sandboxes and paginates", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   // First batch returns a Sandbox; the empty second batch terminates the loop.
   mock.handleUnary("/SandboxListV2", (req: any) => {
@@ -2128,7 +2136,7 @@ test("ExperimentalList yields V2 Sandboxes and paginates", async () => {
   });
 
   const ids: string[] = [];
-  for await (const sb of mc.sandboxes.experimentalList({ appId: "ap-1234" })) {
+  for await (const sb of mc.sandboxes.list({ appId: "ap-1234" })) {
     expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
     ids.push(sb.sandboxId);
   }
@@ -2137,8 +2145,9 @@ test("ExperimentalList yields V2 Sandboxes and paginates", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalList lists environment-scoped without an appId", async () => {
+test("V2 List lists environment-scoped without an appId", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   // Without an appId the query is environment-scoped. The empty second batch
   // terminates the loop.
@@ -2152,7 +2161,7 @@ test("ExperimentalList lists environment-scoped without an appId", async () => {
   });
 
   const ids: string[] = [];
-  for await (const sb of mc.sandboxes.experimentalList({
+  for await (const sb of mc.sandboxes.list({
     environment: "my-env",
   })) {
     ids.push(sb.sandboxId);
@@ -2161,8 +2170,9 @@ test("ExperimentalList lists environment-scoped without an appId", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalList forwards tag filters", async () => {
+test("V2 List forwards tag filters", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/SandboxListV2", (req: any) => {
     expect(req.tags).toEqual([
@@ -2173,7 +2183,7 @@ test("ExperimentalList forwards tag filters", async () => {
   });
 
   const ids: string[] = [];
-  for await (const sb of mc.sandboxes.experimentalList({
+  for await (const sb of mc.sandboxes.list({
     appId: "ap-1234",
     tags: { env: "prod", team: "infra" },
   })) {
@@ -2183,8 +2193,9 @@ test("ExperimentalList forwards tag filters", async () => {
   mock.assertExhausted();
 });
 
-test("ExperimentalFromName routes to V2 RPCs", async () => {
+test("V2 FromName routes to V2 RPCs", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  mc.profile.sandboxV2 = true;
 
   mock.handleUnary("/SandboxGetFromNameV2", (req: any) => {
     expect(req.sandboxName).toBe("my-sandbox");
@@ -2198,10 +2209,7 @@ test("ExperimentalFromName routes to V2 RPCs", async () => {
     return {};
   });
 
-  const sb = await mc.sandboxes.experimentalFromName(
-    "libmodal-test",
-    "my-sandbox",
-  );
+  const sb = await mc.sandboxes.fromName("libmodal-test", "my-sandbox");
   expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
 
   await sb.terminate();

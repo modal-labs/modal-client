@@ -79,19 +79,6 @@ test("create sends a PersistentSandboxCreate with the session timeouts", async (
   mock.assertExhausted();
 });
 
-test("experimentalCreate also creates a persistent Sandbox", async () => {
-  const { mc, mock, app, image } = setup();
-  mock.handleUnary("/PersistentSandboxCreate", () => ({
-    persistentSandboxId: PERSISTENT_ID,
-    sandboxId: SESSION_1,
-  }));
-  const sb = await mc.sandboxes.experimentalCreate(app, image, {
-    experimentalPersistent: true,
-  });
-  expect(sb.sandboxId).toBe(SESSION_1);
-  mock.assertExhausted();
-});
-
 test.each<[string, SandboxCreateParams]>([
   ["timeoutMs", { timeoutMs: 300_000 }],
   ["idleTimeoutMs", { idleTimeoutMs: 60_000 }],

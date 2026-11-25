@@ -131,8 +131,6 @@ export type {
   StreamMode,
   Tunnel,
   SandboxListParams,
-  SandboxExperimentalListParams,
-  SandboxExperimentalFromNameParams,
   SandboxExperimentalFromSnapshotParams,
   SandboxCreateParams,
   SandboxRuntime,

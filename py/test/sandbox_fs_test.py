@@ -1705,10 +1705,11 @@ def test_sidecar_relative_path_rejected(sidecar):
 
 
 @pytest.fixture
-def sandbox_v2(app):
+def sandbox_v2(app, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     sb = None
     try:
-        sb = Sandbox._experimental_create(app=app)
+        sb = Sandbox.create(app=app)
         yield sb
     finally:
         if sb:

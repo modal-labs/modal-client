@@ -99,7 +99,7 @@ export class SecretService {
    * The returned Secret is lazy: no server-side Secret is created (and
    * {@link Secret#secretId secretId} stays empty) until it is first used. When
    * used with {@link Sandbox#exec Sandbox.exec()} or
-   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()},
+   * {@link SandboxService#create client.sandboxes.create()} on the newer Sandbox backend,
    * the values are sent directly to the worker as environment variables,
    * avoiding a `SecretGetOrCreate` round-trip entirely.
    */

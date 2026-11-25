@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 
 	modal "github.com/modal-labs/modal-client/go"
 )
 
 func main() {
 	ctx := context.Background()
+	if err := os.Setenv("MODAL_SANDBOX_V2", "1"); err != nil {
+		log.Fatalf("Failed to select Sandbox V2: %v", err)
+	}
 	mc, err := modal.NewClient()
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
@@ -26,7 +30,7 @@ func main() {
 		log.Fatalf("Failed to build Image: %v", err)
 	}
 
-	sb, err := mc.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"sleep", "infinity"},
 	})
 	if err != nil {

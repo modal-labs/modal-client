@@ -34,11 +34,11 @@ from modal import (
     Volume,
 )
 from modal._serialization import deserialize, serialize
-from modal._utils.async_utils import synchronizer
+from modal._utils.async_utils import synchronize_api, synchronizer
 from modal._utils.grpc_utils import DEFAULT_MAX_RETRIES
 from modal.exception import AlreadyExistsError, ConflictError, DeprecationError, InvalidError, TimeoutError
 from modal.sandbox import SidecarContainer
-from modal.sandbox._common import SandboxVersion, _get_sandbox_version
+from modal.sandbox._common import SandboxCreateArgs, SandboxVersion, _get_sandbox_version
 from modal.sandbox._impl_v1 import SandboxImplV1
 from modal.sandbox._impl_v2 import SandboxImplV2
 from modal.sandbox._task_command_router_client import _is_v2_task_id
@@ -109,6 +109,11 @@ def test_probe_rejects_invalid_raw_configuration(kwargs, match):
         modal.Probe(**kwargs)
 
 
+def _create_v2_sandbox(*args, **kwargs):
+    with mock.patch.dict(os.environ, {"MODAL_SANDBOX_V2": "1"}):
+        return Sandbox.create(*args, **kwargs)
+
+
 def _create_v1_sandbox(*args, **kwargs):
     with mock.patch.dict(os.environ, {"MODAL_SANDBOX_V2": "0"}):
         return Sandbox.create(*args, **kwargs)
@@ -124,7 +129,7 @@ _CONNECT_TOKEN_VERSIONS = [
         id="v1",
     ),
     pytest.param(
-        Sandbox._experimental_create,
+        _create_v2_sandbox,
         "SandboxCreateConnectTokenV2",
         "SandboxCreateConnectToken",
         "https://sandbox.modal.host/connect/v2",
@@ -134,7 +139,7 @@ _CONNECT_TOKEN_VERSIONS = [
 ]
 
 
-@pytest.mark.parametrize("sandbox_create", [_create_v1_sandbox, Sandbox._experimental_create], ids=["v1", "v2"])
+@pytest.mark.parametrize("sandbox_create", [_create_v1_sandbox, _create_v2_sandbox], ids=["v1", "v2"])
 @pytest.mark.parametrize("port", ["8080", 0, 65536, -1, 8080.0])
 def test_create_connect_token_bad_port_raises(app, servicer, sandbox_create, port):
     sb = sandbox_create("sleep", "infinity", app=app)
@@ -180,7 +185,7 @@ def test_create_connect_token_defaults_to_8080(
     "sandbox_create, rpc",
     [
         pytest.param(_create_v1_sandbox, "SandboxCreateConnectToken", id="v1"),
-        pytest.param(Sandbox._experimental_create, "SandboxCreateConnectTokenV2", id="v2"),
+        pytest.param(_create_v2_sandbox, "SandboxCreateConnectTokenV2", id="v2"),
     ],
 )
 def test_create_connect_token_serializes_dict_metadata(app, servicer, sandbox_create, rpc):
@@ -282,7 +287,7 @@ def test_sandbox_create_hydrates_app_id(app, monkeypatch, sandbox_version):
         monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
         sb = Sandbox.create("echo", "hello", app=app)
     else:
-        sb = Sandbox._experimental_create("echo", "hello", app=app)
+        sb = _create_v2_sandbox("echo", "hello", app=app)
 
     assert synchronizer._translate_in(sb)._impl.app_id == app.app_id
 
@@ -312,7 +317,7 @@ def test_sandbox_initialize_from_other_preserves_app_id_and_impl(app, monkeypatc
         monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
         source = Sandbox.create("echo", "hello", app=app)
     else:
-        source = Sandbox._experimental_create("echo", "hello", app=app)
+        source = _create_v2_sandbox("echo", "hello", app=app)
 
     source_impl = synchronizer._translate_in(source)
     target_impl = type(source_impl).__new__(type(source_impl))  # type: ignore
@@ -376,6 +381,26 @@ def test_is_v2_task_id(task_id, expected):
     assert _is_v2_task_id(task_id) == expected
 
 
+@pytest.mark.parametrize(
+    ("sandbox_id", "method"),
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", "SandboxWait"),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", "SandboxWaitV2"),
+    ],
+    ids=["v1", "v2"],
+)
+def test_sandbox_from_id_preserves_exit_code_without_metadata_result(client, servicer, sandbox_id, method):
+    result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=42)
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            method,
+            api_pb2.SandboxWaitResponse(result=result, metadata=api_pb2.SandboxHandleMetadata(app_id="ap-from-id")),
+        )
+        sandbox = Sandbox.from_id(sandbox_id, client=client)
+
+    assert sandbox.returncode == 42
+
+
 def test_sandbox_from_id_routes_v1(client, servicer):
     sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
     servicer.sandbox_app_id = "ap-from-id-v1"
@@ -433,7 +458,8 @@ def test_sandbox_create_selects_impl(app, servicer, monkeypatch, sandbox_v2):
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
-def test_sandbox_from_name_hydrates_app_id(app, client, servicer, sandbox_version):
+def test_sandbox_from_name_hydrates_app_id(app, client, servicer, sandbox_version, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_version == SandboxVersion.V2 else "0")
     servicer.sandbox_app_id = "ap-from-name"
 
     with servicer.intercept() as ctx:
@@ -442,9 +468,10 @@ def test_sandbox_from_name_hydrates_app_id(app, client, servicer, sandbox_versio
             method_name = "SandboxGetFromName"
             app_id = "ap-from-name"
         else:
-            sb = Sandbox._experimental_create("bash", "-c", "sleep 100", app=app, name="my-sandbox")
-            sb._experimental_set_name("my-sandbox")
-            sb = Sandbox._experimental_from_name("my-app", "my-sandbox", client=client)
+            created = Sandbox.create("bash", "-c", "sleep 100", app=app, name="my-sandbox")
+            created._experimental_set_name("my-sandbox")
+            sb = Sandbox.from_name("my-app", "my-sandbox", client=client)
+            assert sb.object_id == created.object_id
             method_name = "SandboxGetFromNameV2"
             app_id = app.app_id
 
@@ -486,7 +513,7 @@ def test_experimental_set_name_rejects_v1(app, servicer, monkeypatch):
 
 
 def test_experimental_set_name_rejects_invalid_name(app, servicer):
-    sb = Sandbox._experimental_create("bash", "-c", "sleep 100", app=app)
+    sb = _create_v2_sandbox("bash", "-c", "sleep 100", app=app)
 
     with servicer.intercept() as ctx:
         with pytest.raises(InvalidError, match="Invalid Sandbox name"):
@@ -513,11 +540,12 @@ def test_experimental_set_name_duplicate_conflicts(client, servicer):
         second._experimental_set_name("shared")
 
 
-def test_experimental_set_name_then_from_name_roundtrip(client, servicer):
+def test_experimental_set_name_then_from_name_roundtrip(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     sb = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
     sb._experimental_set_name("round-trip")
 
-    resolved = Sandbox._experimental_from_name("my-app", "round-trip", client=client)
+    resolved = Sandbox.from_name("my-app", "round-trip", client=client)
     assert resolved.object_id == sb.object_id
 
 
@@ -874,8 +902,9 @@ def test_sandbox_list_tags(app, client, servicer):
 
 
 @pytest.mark.parametrize("app_id", [None, ""])
-def test_sandbox_experimental_list_environment_scoped(app_id, client, servicer):
-    # Without an app_id (None or ""), _experimental_list lists across the current
+def test_sandbox_experimental_list_environment_scoped(app_id, client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
+    # Without an app_id (None or ""), the V2 list scans the current
     # environment and emits a soft deprecation warning steering callers toward
     # app_id. pytest.warns records the warning (the suite otherwise treats
     # DeprecationError as an error) and lets the call proceed, so we can also
@@ -884,11 +913,12 @@ def test_sandbox_experimental_list_environment_scoped(app_id, client, servicer):
     with app.run(client=client):
         sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
         with pytest.warns(DeprecationError, match="without an `app_id`"):
-            listed = [s.object_id for s in Sandbox._experimental_list(app_id=app_id, client=client)]
+            listed = [s.object_id for s in Sandbox.list(app_id=app_id, client=client)]
         assert sb.object_id in listed
 
 
-def test_sandbox_experimental_list_app(client, servicer):
+def test_sandbox_experimental_list_app(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, "/xyz")
     secret = Secret.from_dict({"FOO": "bar"})
 
@@ -896,28 +926,30 @@ def test_sandbox_experimental_list_app(client, servicer):
 
     with app.run(client=client):
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
-        (listed_sandbox,) = list(Sandbox._experimental_list(app_id=app.app_id, client=client))
+        (listed_sandbox,) = list(Sandbox.list(app_id=app.app_id, client=client))
         assert synchronizer._translate_in(listed_sandbox)._impl.app_id == app.app_id
         sb.terminate()
         sb.wait(raise_on_termination=False)
-        assert not list(Sandbox._experimental_list(app_id=app.app_id, client=client))
+        assert not list(Sandbox.list(app_id=app.app_id, client=client))
 
 
-def test_sandbox_experimental_list_tags(client, servicer):
+def test_sandbox_experimental_list_tags(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     app = App()
     with app.run(client=client):
-        sb = Sandbox._experimental_create("bash", "-c", "sleep 10000", app=app)
+        sb = _create_v2_sandbox("bash", "-c", "sleep 10000", app=app)
         sb.set_tags({"env": "prod", "team": "infra"})
 
         def experimental_list(tags):
-            return [s.object_id for s in Sandbox._experimental_list(app_id=app.app_id, tags=tags, client=client)]
+            return [s.object_id for s in Sandbox.list(app_id=app.app_id, tags=tags, client=client)]
 
         assert experimental_list({"env": "prod"}) == [sb.object_id]
         assert experimental_list({"env": "prod", "team": "infra"}) == [sb.object_id]
         assert experimental_list({"env": "staging"}) == []
 
 
-def test_sandbox_experimental_list_routes_mirrored_v1_sandbox_to_v1(client, servicer):
+def test_sandbox_experimental_list_routes_mirrored_v1_sandbox_to_v1(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     # V1 sandboxes are mirrored into the V2 store during the V1->V2 migration,
     # so SandboxListV2 can return V1 sandboxes; their handles must route to the
     # V1 RPCs based on the ID shape.
@@ -926,7 +958,7 @@ def test_sandbox_experimental_list_routes_mirrored_v1_sandbox_to_v1(client, serv
     servicer.sandbox_tags[v1_sandbox_id] = {}
 
     with servicer.intercept() as ctx:
-        (sb,) = list(Sandbox._experimental_list(app_id="ap-list-mirrored", client=client))
+        (sb,) = list(Sandbox.list(app_id="ap-list-mirrored", client=client))
         sb.terminate()
 
     assert sb.object_id == v1_sandbox_id
@@ -935,13 +967,14 @@ def test_sandbox_experimental_list_routes_mirrored_v1_sandbox_to_v1(client, serv
     assert ctx.get_requests("SandboxTerminateV2") == []
 
 
-def test_sandbox_experimental_from_name_routes_mirrored_v1_sandbox_to_v1(client, servicer):
+def test_sandbox_experimental_from_name_routes_mirrored_v1_sandbox_to_v1(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     # Same as above: the V2 backend may resolve a mirrored V1 sandbox by name.
     v1_sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
     servicer.sandbox_names[v1_sandbox_id] = "mirrored-v1"
 
     with servicer.intercept() as ctx:
-        sb = Sandbox._experimental_from_name("my-app", "mirrored-v1", client=client)
+        sb = Sandbox.from_name("my-app", "mirrored-v1", client=client)
         sb.terminate()
 
     assert sb.object_id == v1_sandbox_id
@@ -1086,7 +1119,7 @@ def test_sandbox_list_env_flag_env_wide_warns_and_routes_to_v2(client, servicer,
     assert sb.object_id in listed
     assert len(ctx.get_requests("SandboxListV2")) >= 1
     assert ctx.get_requests("SandboxList") == []
-    assert "_experimental_list" not in str(record[0].message)
+    assert "modal.Sandbox.list" in str(record[0].message)
 
 
 def test_sandbox_list_env_flag_false_stays_v1(client, servicer, monkeypatch):
@@ -1212,7 +1245,7 @@ def test_sandbox_stats_after_detach(app, client, servicer):
 def test_experimental_sandbox_stats(client, servicer):
     app = App()
     with app.run(client=client):
-        sb = Sandbox._experimental_create("bash", "-c", "sleep 10000", app=app)
+        sb = _create_v2_sandbox("bash", "-c", "sleep 10000", app=app)
         servicer.sandbox_get_stats[sb.object_id] = api_pb2.SandboxGetStatsResponse(
             cost="0.50000000", cost_by_resource={"H100": "0.50000000"}
         )
@@ -1225,7 +1258,7 @@ def test_experimental_sandbox_stats(client, servicer):
 def test_experimental_sandbox_get_set_tags(client, servicer):
     app = App()
     with app.run(client=client):
-        sb = Sandbox._experimental_create("bash", "-c", "sleep 10000", app=app)
+        sb = _create_v2_sandbox("bash", "-c", "sleep 10000", app=app)
         assert sb.get_tags() == {}
 
         sb.set_tags({"env": "prod", "team": "infra"})
@@ -1354,7 +1387,7 @@ def test_sandbox__experimental_set_outbound_network_policy(app, servicer):
 
 @ignore_deprecated_network_apis
 def test_sandbox__experimental_set_outbound_network_policy_v2(app, servicer):
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
 
     # Allowlist mode
     with servicer.intercept() as ctx:
@@ -1534,7 +1567,7 @@ def test_sandbox_snapshot(app, client, servicer, monkeypatch):
 
 def test_sandbox_snapshot_v2(app, servicer):
     """V2 sandboxes take memory snapshots through the task command router."""
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
     with servicer.task_command_router.intercept() as tcr_ctx:
         snapshot = sb._experimental_snapshot()
 
@@ -1548,7 +1581,7 @@ def test_sandbox_snapshot_v2(app, servicer):
 
 
 def test_sandbox_from_snapshot_v2(app, client, servicer):
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app, encrypted_ports=[8080])
+    sb = _create_v2_sandbox("sleep", "infinity", app=app, encrypted_ports=[8080])
     snapshot = sb._experimental_snapshot()
     assert snapshot.object_id == "sn-01BX5ZZKBKACTAV9WEVGEMMVRY"
 
@@ -1572,7 +1605,7 @@ def test_sandbox_from_snapshot_v2(app, client, servicer):
 
 def test_sandbox_from_snapshot_v2_auto_detects_version(app, client, servicer):
     """A snapshot taken from a V2 sandbox remembers its version and restores as V2 without a flag."""
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
     snapshot = sb._experimental_snapshot()
 
     with servicer.intercept() as ctx:
@@ -1665,7 +1698,7 @@ def test_sandbox_snapshot_fs_v2(app, servicer, monkeypatch, legacy_env_var):
     if legacy_env_var:
         monkeypatch.setenv("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT", "1")
 
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
     with servicer.intercept() as ctx:
         with servicer.task_command_router.intercept() as tcr_ctx:
             image = sb.snapshot_filesystem()
@@ -1700,7 +1733,7 @@ def test_sandbox_reload_volumes(app, servicer):
 
 def test_sandbox_reload_volumes_v2(app, servicer):
     """V2 sandboxes route reload_volumes() through the command router."""
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
     with servicer.task_command_router.intercept() as tcr_ctx:
         sb.reload_volumes()
 
@@ -1712,7 +1745,7 @@ def test_sandbox_reload_volumes_v2(app, servicer):
 
 def test_sandbox_v2_uses_command_router_access_from_create(app, servicer):
     """V2 create returns router access, so reaching the worker costs no extra RPC."""
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
 
     with servicer.intercept() as ctx:
         with servicer.task_command_router.intercept() as tcr_ctx:
@@ -1729,7 +1762,7 @@ def test_sandbox_v2_uses_command_router_access_from_create(app, servicer):
 
 def test_sandbox_v2_sends_sandbox_token_from_create(app, servicer):
     servicer.sandbox_create_v2_omits_router_access = True
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
 
     sb.reload_volumes()
     sb.poll()
@@ -1745,7 +1778,7 @@ def test_sandbox_v2_sends_sandbox_token_from_create(app, servicer):
 def test_sandbox_v2_fetches_command_router_access_when_create_omits_it(app, servicer):
     """A scheduler that could not mint a token omits the field, so we ask for it."""
     servicer.sandbox_create_v2_omits_router_access = True
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
 
     with servicer.intercept() as ctx:
         with servicer.task_command_router.intercept() as tcr_ctx:
@@ -1760,7 +1793,7 @@ def test_sandbox_v2_fetches_command_router_access_when_create_omits_it(app, serv
 
 def test_sandbox_v2_uses_command_router_access_from_restore(app, client, servicer):
     """V2 restore returns router access, so reaching the worker costs no extra RPC."""
-    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    sb = _create_v2_sandbox("sleep", "infinity", app=app)
     snapshot = sb._experimental_snapshot()
     restored = Sandbox._experimental_from_snapshot(snapshot, client=client)
 
@@ -1789,7 +1822,7 @@ def test_sandbox_v2_fetches_command_router_access_when_reattached(client, servic
     sb.terminate()
 
 
-@pytest.mark.parametrize("create", [Sandbox.create, Sandbox._experimental_create], ids=["v1", "v2"])
+@pytest.mark.parametrize("create", [_create_v1_sandbox, _create_v2_sandbox], ids=["v1", "v2"])
 def test_sandbox_reload_volumes_timeout_validation(app, servicer, create):
     """A non-positive `timeout` is rejected for all sandboxes."""
     sb = create("sleep", "infinity", app=app)
@@ -2587,7 +2620,7 @@ def test_sandbox_create_pty(app, servicer):
 
 def test_experimental_sandbox_create_resources_default(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app)
+        _create_v2_sandbox("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
 
         assert req.definition.resources.memory_mb == 0
@@ -2596,7 +2629,7 @@ def test_experimental_sandbox_create_resources_default(app, servicer):
 
 def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, cpu=2.0, memory=512)
+        _create_v2_sandbox("echo", "hi", app=app, cpu=2.0, memory=512)
         req = ctx.pop_request("SandboxCreateV2")
 
         assert req.definition.resources.memory_mb == 512
@@ -2606,7 +2639,7 @@ def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
 
 def test_experimental_sandbox_create_cpu_and_memory_limits(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, cpu=(0.5, 2), memory=(1024, 2048))
+        _create_v2_sandbox("echo", "hi", app=app, cpu=(0.5, 2), memory=(1024, 2048))
         req = ctx.pop_request("SandboxCreateV2")
 
         assert req.definition.resources.milli_cpu == 500
@@ -2617,7 +2650,7 @@ def test_experimental_sandbox_create_cpu_and_memory_limits(app, servicer):
 
 def test_experimental_sandbox_create_custom_domain(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, custom_domain="sandboxes.example.com")
+        _create_v2_sandbox("echo", "hi", app=app, custom_domain="sandboxes.example.com")
         req = ctx.pop_request("SandboxCreateV2")
 
         assert req.definition.custom_domain == "sandboxes.example.com"
@@ -2625,7 +2658,7 @@ def test_experimental_sandbox_create_custom_domain(app, servicer):
 
 def test_experimental_sandbox_tunnels_encrypted_only_cached_from_create(app, servicer):
     with servicer.intercept() as ctx:
-        sb = Sandbox._experimental_create("echo", "hi", app=app, encrypted_ports=[8080])
+        sb = _create_v2_sandbox("echo", "hi", app=app, encrypted_ports=[8080])
         tunnels = sb.tunnels()
 
         assert len(ctx.get_requests("SandboxGetTunnelsV2")) == 0
@@ -2635,7 +2668,7 @@ def test_experimental_sandbox_tunnels_encrypted_only_cached_from_create(app, ser
 
 def test_experimental_sandbox_tunnels_fetches_unencrypted(app, servicer):
     with servicer.intercept() as ctx:
-        sb = Sandbox._experimental_create("echo", "hi", app=app, encrypted_ports=[8080], unencrypted_ports=[9000])
+        sb = _create_v2_sandbox("echo", "hi", app=app, encrypted_ports=[8080], unencrypted_ports=[9000])
         tunnels = sb.tunnels()
 
         # Unencrypted tunnels are missing from the create response. tunnels() fetches all of them.
@@ -2648,14 +2681,14 @@ def test_experimental_sandbox_tunnels_fetches_unencrypted(app, servicer):
 
 def test_experimental_sandbox_create_experimental_options(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, experimental_options={"enable_docker": True})
+        _create_v2_sandbox("echo", "hi", app=app, experimental_options={"enable_docker": True})
         req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.experimental_options_v2 == {"enable_docker": "True"}
 
 
 def test_experimental_sandbox_create_no_experimental_options_by_default(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app)
+        _create_v2_sandbox("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
         assert dict(req.definition.experimental_options_v2) == {}
 
@@ -2667,7 +2700,7 @@ def test_sandbox_create_runtime(app, servicer, monkeypatch, runtime, expected):
         Sandbox.create("echo", "hi", app=app, runtime=runtime)
         assert ctx.pop_request("SandboxCreate").definition.runtime == expected
 
-        Sandbox._experimental_create("echo", "hi", app=app, runtime=runtime)
+        _create_v2_sandbox("echo", "hi", app=app, runtime=runtime)
         assert ctx.pop_request("SandboxCreateV2").definition.runtime == expected
 
 
@@ -2698,7 +2731,7 @@ def test_sandbox_create_invalid_runtime(app, servicer):
         with pytest.raises(InvalidError, match="runtime must be one of"):
             Sandbox.create("echo", "hi", app=app, runtime="runc")  # type: ignore
         with pytest.raises(InvalidError, match="runtime must be one of"):
-            Sandbox._experimental_create("echo", "hi", app=app, runtime="runc")  # type: ignore
+            _create_v2_sandbox("echo", "hi", app=app, runtime="runc")  # type: ignore
 
     assert ctx.get_requests("SandboxCreate") == []
     assert ctx.get_requests("SandboxCreateV2") == []
@@ -2712,7 +2745,7 @@ def test_experimental_sandbox_create_volume(app, servicer, read_only):
         volume = volume.with_mount_options(read_only=True)
 
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": volume})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt": volume})
         req = ctx.pop_request("SandboxCreateV2")
         assert len(req.definition.volume_mounts) == 1
         assert req.definition.volume_mounts[0].mount_path == "/mnt"
@@ -2722,7 +2755,7 @@ def test_experimental_sandbox_create_volume(app, servicer, read_only):
 def test_experimental_sandbox_create_cloud_bucket_mount(app, servicer):
     cbm = modal.CloudBucketMount(bucket_name="my-bucket")
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt": cbm})
         req = ctx.pop_request("SandboxCreateV2")
         assert len(req.definition.cloud_bucket_mounts) == 1
         assert req.definition.cloud_bucket_mounts[0].bucket_name == "my-bucket"
@@ -2733,7 +2766,7 @@ def test_experimental_sandbox_create_cloud_bucket_mount(app, servicer):
 def test_experimental_sandbox_create_cloud_bucket_mount_no_credentials(app, servicer):
     cbm = modal.CloudBucketMount(bucket_name="my-bucket")
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt": cbm})
         req = ctx.pop_request("SandboxCreateV2")
         assert dict(req.cloud_bucket_mount_credentials) == {}
         assert req.definition.cloud_bucket_mounts[0].credentials_secret_id == ""
@@ -2743,7 +2776,7 @@ def test_experimental_sandbox_create_cloud_bucket_mount_credentials(app, service
     secret = modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "abc", "AWS_SECRET_ACCESS_KEY": "xyz"})
     cbm = modal.CloudBucketMount(bucket_name="my-bucket", secret=secret)
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt": cbm})
         req = ctx.pop_request("SandboxCreateV2")
 
     # Credentials are passed out-of-band, keyed by mount path, not via a secret id.
@@ -2769,7 +2802,7 @@ def test_experimental_sandbox_create_cloud_bucket_mount_credentials_multiple(app
         secret=modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "three"}),
     )
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt1": cbm1, "/mnt2": cbm2, "/mnt3": cbm3})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt1": cbm1, "/mnt2": cbm2, "/mnt3": cbm3})
         req = ctx.pop_request("SandboxCreateV2")
 
     # Out-of-band credentials are keyed by mount path.
@@ -2785,7 +2818,7 @@ def test_experimental_sandbox_create_cloud_bucket_mount_credentials_from_name(ap
     Secret.objects.create("my-bucket-creds", {"AWS_ACCESS_KEY_ID": "abc"}, client=client)
     cbm = modal.CloudBucketMount(bucket_name="my-bucket", secret=modal.Secret.from_name("my-bucket-creds"))
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt": cbm})
         req = ctx.pop_request("SandboxCreateV2")
 
     # `Secret.from_name` credentials are resolved server-side and referenced by id, rather than
@@ -2806,7 +2839,7 @@ def test_experimental_sandbox_create_cloud_bucket_mount_credentials_from_dict_an
         secret=modal.Secret.from_name("my-bucket-creds"),
     )
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt-dict": cbm_dict, "/mnt-name": cbm_name})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt-dict": cbm_dict, "/mnt-name": cbm_name})
         req = ctx.pop_request("SandboxCreateV2")
 
     mounts = {m.mount_path: m for m in req.definition.cloud_bucket_mounts}
@@ -2825,7 +2858,7 @@ def test_experimental_sandbox_create_cloud_bucket_mount_credentials_from_dict_an
 
 def test_experimental_sandbox_create_proxy(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, proxy=Proxy.from_name("my-proxy"))
+        _create_v2_sandbox("echo", "hi", app=app, proxy=Proxy.from_name("my-proxy"))
         req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.proxy_id == "pr-123"
 
@@ -2833,62 +2866,72 @@ def test_experimental_sandbox_create_proxy(app, servicer):
 def test_experimental_sandbox_create_with_tags(app, servicer):
     tags = {"env": "prod", "team": "infra"}
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, tags=tags)
+        _create_v2_sandbox("echo", "hi", app=app, tags=tags)
         req = ctx.pop_request("SandboxCreateV2")
         assert {tag.tag_name: tag.tag_value for tag in req.tags} == tags
 
 
 def test_experimental_sandbox_create_no_tags_by_default(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app)
+        _create_v2_sandbox("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
         assert list(req.tags) == []
 
 
 def test_experimental_sandbox_create_no_proxy_by_default(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app)
+        _create_v2_sandbox("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.proxy_id == ""
 
 
 def test_experimental_sandbox_create_no_oidc_identity_token_by_default(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app)
+        _create_v2_sandbox("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.include_oidc_identity_token is False
 
 
 def test_experimental_sandbox_create_include_oidc_identity_token(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, include_oidc_identity_token=True)
+        _create_v2_sandbox("echo", "hi", app=app, include_oidc_identity_token=True)
         req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.include_oidc_identity_token is True
 
 
 def test_experimental_sandbox_create_no_i6pn_by_default(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app)
+        _create_v2_sandbox("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.i6pn_enabled is False
 
 
-def test_experimental_sandbox_create_i6pn(app, servicer):
+async def _create_sandbox_impl_v2(create_args, *, app):
+    return await SandboxImplV2.create(create_args, app=app, client=None)
+
+
+_create_v2_sandbox_impl = synchronize_api(_create_sandbox_impl_v2)
+
+
+def test_sandbox_v2_create_i6pn(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, i6pn=True)
+        _create_v2_sandbox_impl(SandboxCreateArgs(args=("echo", "hi"), i6pn=True), app=app)
         req = ctx.pop_request("SandboxCreateV2")
         assert req.definition.i6pn_enabled is True
 
 
-def test_experimental_sandbox_create_i6pn_with_block_network_raises(app, servicer):
+def test_sandbox_v2_create_i6pn_with_block_network_raises(app, servicer):
     with pytest.raises(InvalidError, match="`block_network` disables all networking, including i6pn"):
-        Sandbox._experimental_create("echo", "hi", app=app, i6pn=True, block_network=True)
+        _create_v2_sandbox_impl(
+            SandboxCreateArgs(args=("echo", "hi"), i6pn=True, block_network=True),
+            app=app,
+        )
 
 
 def test_experimental_sandbox_create_cloud_bucket_mount_oidc_auth_role_arn(app, servicer):
     cbm = modal.CloudBucketMount(bucket_name="my-bucket", oidc_auth_role_arn="arn:aws:iam::123456789012:role/r")
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        _create_v2_sandbox("echo", "hi", app=app, volumes={"/mnt": cbm})
         req = ctx.pop_request("SandboxCreateV2")
         assert len(req.definition.cloud_bucket_mounts) == 1
         assert req.definition.cloud_bucket_mounts[0].oidc_auth_role_arn == "arn:aws:iam::123456789012:role/r"
@@ -2896,7 +2939,7 @@ def test_experimental_sandbox_create_cloud_bucket_mount_oidc_auth_role_arn(app, 
 
 def test_experimental_sandbox_create_env_uses_secret_sources(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar", "BAZ": "qux"})
+        _create_v2_sandbox("echo", "hi", app=app, env={"FOO": "bar", "BAZ": "qux"})
         req = ctx.pop_request("SandboxCreateV2")
 
     assert _secret_sources(req.secret_sources) == [{"FOO": "bar", "BAZ": "qux"}]
@@ -2907,7 +2950,7 @@ def test_experimental_sandbox_create_env_uses_secret_sources(app, servicer):
 
 def test_experimental_sandbox_create_env_drops_none_values(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar", "SKIP": None})
+        _create_v2_sandbox("echo", "hi", app=app, env={"FOO": "bar", "SKIP": None})
         req = ctx.pop_request("SandboxCreateV2")
 
     assert _secret_sources(req.secret_sources) == [{"FOO": "bar"}]
@@ -2916,7 +2959,7 @@ def test_experimental_sandbox_create_env_drops_none_values(app, servicer):
 def test_experimental_sandbox_create_secret_from_dict_is_inlined(app, servicer):
     secret = Secret.from_dict({"DB_PASSWORD": "hunter2"})
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, secrets=[secret])
+        _create_v2_sandbox("echo", "hi", app=app, secrets=[secret])
         req = ctx.pop_request("SandboxCreateV2")
 
     # `Secret.from_dict` is resolvable locally, so its contents are inlined into the request
@@ -2929,7 +2972,7 @@ def test_experimental_sandbox_create_secret_from_dict_is_inlined(app, servicer):
 def test_experimental_sandbox_create_multiple_secrets_from_dict_keep_order(app, servicer):
     secrets = [Secret.from_dict({"FOO": "bar"}), Secret.from_dict({"BAZ": "qux"})]
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        _create_v2_sandbox("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
     assert _secret_sources(req.secret_sources) == [{"FOO": "bar"}, {"BAZ": "qux"}]
@@ -2940,7 +2983,7 @@ def test_experimental_sandbox_create_multiple_secrets_from_dict_keep_order(app, 
 def test_experimental_sandbox_create_env_and_secrets_coexist(app, servicer):
     secret = Secret.from_dict({"DB_PASSWORD": "hunter2"})
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar"}, secrets=[secret])
+        _create_v2_sandbox("echo", "hi", app=app, env={"FOO": "bar"}, secrets=[secret])
         req = ctx.pop_request("SandboxCreateV2")
 
     # `env` is applied after all Secrets.
@@ -2953,7 +2996,7 @@ def test_experimental_sandbox_create_secret_from_dict_and_from_name(app, service
     Secret.objects.create("my-secret", {"DB_PASSWORD": "hunter2"}, client=client)
     secrets = [Secret.from_dict({"FOO": "bar"}), Secret.from_name("my-secret")]
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        _create_v2_sandbox("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
     # `from_dict` is inlined; `from_name` is resolved server-side and referenced by id.
@@ -2965,7 +3008,7 @@ def test_experimental_sandbox_create_secret_ordering_named_after_local(app, serv
     Secret.objects.create("my-secret", {"K": "named", "NAMED_ONLY": "yes"}, client=client)
     secrets = [Secret.from_dict({"K": "local", "LOCAL_ONLY": "yes"}), Secret.from_name("my-secret")]
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        _create_v2_sandbox("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
     (secret_id,) = req.definition.secret_ids
@@ -2976,7 +3019,7 @@ def test_experimental_sandbox_create_secret_ordering_local_after_named(app, serv
     Secret.objects.create("my-secret", {"K": "named"}, client=client)
     secrets = [Secret.from_name("my-secret"), Secret.from_dict({"K": "local"})]
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        _create_v2_sandbox("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
     (secret_id,) = req.definition.secret_ids
@@ -2991,7 +3034,7 @@ def test_experimental_sandbox_create_secret_ordering_interleaved(app, servicer, 
         Secret.from_dict({"K": "last"}),
     ]
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, secrets=secrets)
+        _create_v2_sandbox("echo", "hi", app=app, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
     (secret_id,) = req.definition.secret_ids
@@ -3002,7 +3045,7 @@ def test_experimental_sandbox_create_env_overrides_named_secret(app, servicer, c
     Secret.objects.create("my-secret", {"K": "named"}, client=client)
     secrets = [Secret.from_dict({"K": "local"}), Secret.from_name("my-secret")]
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, env={"K": "env"}, secrets=secrets)
+        _create_v2_sandbox("echo", "hi", app=app, env={"K": "env"}, secrets=secrets)
         req = ctx.pop_request("SandboxCreateV2")
 
     # `env` is applied last, so it takes precedence over Secrets regardless of list order.
@@ -3012,7 +3055,7 @@ def test_experimental_sandbox_create_env_overrides_named_secret(app, servicer, c
 
 def test_experimental_sandbox_create_no_env_omits_secret_sources(app, servicer):
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app)
+        _create_v2_sandbox("echo", "hi", app=app)
         req = ctx.pop_request("SandboxCreateV2")
 
     assert list(req.secret_sources) == []
@@ -3023,26 +3066,24 @@ def test_experimental_sandbox_create_no_env_omits_secret_sources(app, servicer):
 def test_experimental_sandbox_create_env_rejects_invalid_key(app, servicer, bad_key):
     with servicer.intercept() as ctx:
         with pytest.raises(InvalidError, match="invalid for environment variables"):
-            Sandbox._experimental_create("echo", "hi", app=app, env={bad_key: "value"})
+            _create_v2_sandbox("echo", "hi", app=app, env={bad_key: "value"})
         assert ctx.get_requests("SandboxCreateV2") == []
 
 
 def test_experimental_sandbox_create_env_rejects_empty_key(app, servicer):
     with pytest.raises(InvalidError, match="cannot be empty"):
-        Sandbox._experimental_create("echo", "hi", app=app, env={"": "value"})
+        _create_v2_sandbox("echo", "hi", app=app, env={"": "value"})
 
 
 @ignore_deprecated_network_apis
 def test_experimental_sandbox_create_outbound_domain_allowlist(app, servicer):
     # Cannot combine with block_network.
     with pytest.raises(InvalidError, match="`outbound_domain_allowlist` cannot be used when `block_network`"):
-        Sandbox._experimental_create(
-            "echo", "hi", app=app, block_network=True, outbound_domain_allowlist=["example.com"]
-        )
+        _create_v2_sandbox("echo", "hi", app=app, block_network=True, outbound_domain_allowlist=["example.com"])
 
     # Domain allowlist maps to an ALLOWLIST with allowed_domains set.
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create("echo", "hi", app=app, outbound_domain_allowlist=["example.com", "*.modal.com"])
+        _create_v2_sandbox("echo", "hi", app=app, outbound_domain_allowlist=["example.com", "*.modal.com"])
         req = ctx.pop_request("SandboxCreateV2")
     net = req.definition.network_access
     assert net.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
@@ -3051,7 +3092,7 @@ def test_experimental_sandbox_create_outbound_domain_allowlist(app, servicer):
 
     # Domains and CIDRs combine into a single ALLOWLIST.
     with servicer.intercept() as ctx:
-        Sandbox._experimental_create(
+        _create_v2_sandbox(
             "echo", "hi", app=app, outbound_domain_allowlist=["example.com"], outbound_cidr_allowlist=["8.8.8.8/32"]
         )
         req = ctx.pop_request("SandboxCreateV2")
@@ -4529,7 +4570,7 @@ def test_sandbox_wait_retries_poll_the_server_never_answers(app, servicer, monke
 
 def _create_wait_until_ready_sandbox(app, sandbox_version: SandboxVersion, *, with_readiness_probe: bool = True):
     if sandbox_version == SandboxVersion.V2:
-        return Sandbox._experimental_create("bash", "-c", "sleep 100", app=app)
+        return _create_v2_sandbox("bash", "-c", "sleep 100", app=app)
     readiness_probe = modal.Probe.with_tcp(8080) if with_readiness_probe else None
     return Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=readiness_probe)
 
@@ -4649,7 +4690,7 @@ def test_sandbox_create_logs_per_dependency_timing(app, servicer, caplog, monkey
 
 
 def test_experimental_sandbox_create_logs_per_dependency_timing(app, servicer, client, caplog):
-    """V2 Sandbox._experimental_create emits the same per-dependency debug log."""
+    """V2 _create_v2_sandbox emits the same per-dependency debug log."""
     import logging
 
     image = Image.debian_slim().add_local_python_source("modal", copy=True)
@@ -4659,7 +4700,7 @@ def test_experimental_sandbox_create_logs_per_dependency_timing(app, servicer, c
     secret = Secret.from_name("my-secret")
 
     with caplog.at_level(logging.DEBUG, logger="modal-client"):
-        sb = Sandbox._experimental_create("echo", "hi", app=app, image=image, secrets=[secret])
+        sb = _create_v2_sandbox("echo", "hi", app=app, image=image, secrets=[secret])
 
     matching = [r for r in caplog.records if "created in" in r.message and "dependencies:" in r.message]
     assert matching, f"expected a sandbox-create debug log, got: {[r.message for r in caplog.records]}"

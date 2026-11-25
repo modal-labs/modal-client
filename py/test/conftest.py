@@ -3626,6 +3626,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_create_v2_requests.append(request)
         self.sandbox_tags["sb-v2-123"] = {tag.tag_name: tag.tag_value for tag in request.tags}
         self.sandbox_task_ids["sb-v2-123"] = "ta-v2-123"
+        if request.definition.name:
+            self.sandbox_names["sb-v2-123"] = request.definition.name
 
         # Only encrypted tunnels are known at create time. Unencrypted
         # tunnels are relay-assigned after the container starts.

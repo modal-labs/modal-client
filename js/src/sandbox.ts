@@ -833,7 +833,7 @@ export async function buildSandboxCreateV2RequestProto(
   secretSources: SecretSource[] = [],
 ): Promise<SandboxCreateV2Request> {
   if (params.gpu) {
-    throw new Error("GPUs are not supported by experimentalCreate");
+    throw new Error("GPUs are not supported by V2 sandboxes");
   }
 
   const req = await buildSandboxCreateRequestProto(appId, imageId, params);
@@ -874,40 +874,6 @@ export class SandboxService {
     return new Sandbox(impl);
   }
 
-  /**
-   * Create a new {@link Sandbox} using the experimental V2 backend.
-   *
-   * Supported features include exec, encrypted tunnels, wait/poll/terminate,
-   * CPU and memory configuration, region placement, volumes, cloud bucket
-   * mounts (with static credentials via {@link Secret} or `oidcAuthRoleArn`),
-   * OIDC identity tokens, {@link Proxy proxies}, filesystem snapshots, and
-   * custom domains (`customDomain` allows connections to the Sandbox via a
-   * subdomain of that parent domain rather than a default Modal domain;
-   * requires prior setup by Modal).
-   *
-   * Pass `experimentalEnableSnapshot: true` to create a sandbox that can be
-   * snapshotted with {@link Sandbox#experimentalSnapshot}. Features like network
-   * file systems and GPUs are not supported.
-   *
-   * V2 sandboxes created with this method are not currently returned by
-   * {@link SandboxService#list client.sandboxes.list()}. A named Sandbox can be
-   * looked up with
-   * {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()};
-   * otherwise store {@link Sandbox#sandboxId sandbox.sandboxId} and use
-   * {@link SandboxService#fromId client.sandboxes.fromId()} to reattach.
-   */
-  async experimentalCreate(
-    app: App,
-    image: Image,
-    params: SandboxCreateParams = {},
-  ): Promise<Sandbox> {
-    const implClass = params.experimentalPersistent
-      ? SandboxImplPersistent
-      : SandboxImplV2;
-    const impl = await implClass.create(this.#client, app, image, params);
-    return new Sandbox(impl);
-  }
-
   /** Returns a running {@link Sandbox} object from an ID.
    *
    * @returns Sandbox with ID
@@ -935,7 +901,18 @@ export class SandboxService {
   ): Promise<Sandbox> {
     if (params?.includeTerminated || this.#client.profile.sandboxV2) {
       try {
-        return await this.experimentalFromName(appName, name, params);
+        const resp = await SandboxImplV2.lookupByName(
+          this.#client,
+          appName,
+          name,
+          params,
+        );
+        return new Sandbox(
+          newSandboxImpl(this.#client, resp.sandboxId, {
+            appId: resp.metadata?.appId,
+            result: resp.metadata?.result,
+          }),
+        );
       } catch (err) {
         if (!(err instanceof NotFoundError) || params?.includeTerminated)
           throw err;
@@ -943,38 +920,6 @@ export class SandboxService {
     }
 
     const resp = await SandboxImplV1.lookupByName(
-      this.#client,
-      appName,
-      name,
-      params,
-    );
-    return new Sandbox(
-      newSandboxImpl(this.#client, resp.sandboxId, {
-        appId: resp.metadata?.appId,
-        result: resp.metadata?.result,
-      }),
-    );
-  }
-
-  /**
-   * Get a running V2 {@link Sandbox} by name from a deployed {@link App}.
-   *
-   * This looks up V2 Sandboxes, i.e. Sandboxes created via
-   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
-   *
-   * EXPERIMENTAL: the API is subject to change.
-   *
-   * @param appName - Name of the deployed App
-   * @param name - Name of the Sandbox
-   * @param params - Optional parameters for getting the Sandbox
-   * @returns Promise that resolves to a Sandbox
-   */
-  async experimentalFromName(
-    appName: string,
-    name: string,
-    params?: SandboxExperimentalFromNameParams,
-  ): Promise<Sandbox> {
-    const resp = await SandboxImplV2.lookupByName(
       this.#client,
       appName,
       name,
@@ -1034,32 +979,10 @@ export class SandboxService {
   async *list(
     params: SandboxListParams = {},
   ): AsyncGenerator<Sandbox, void, unknown> {
-    if (this.#client.profile.sandboxV2) {
-      yield* this.experimentalList(params);
-      return;
-    }
-
-    for await (const impl of SandboxImplV1.list(this.#client, params)) {
-      yield new Sandbox(impl);
-    }
-  }
-
-  /**
-   * List V2 {@link Sandbox}es.
-   *
-   * This lists all Sandboxes (both v1 and v2).
-   * Pass `appId` to scope to an App; omit it to list across the current
-   * environment (deprecated — prefer scoping by `appId`). If tags are specified,
-   * only Sandboxes that have at least those tags are returned.
-   *
-   * Yields {@link Sandbox} objects that are currently running.
-   *
-   * EXPERIMENTAL: the API is subject to change.
-   */
-  async *experimentalList(
-    params: SandboxExperimentalListParams = {},
-  ): AsyncGenerator<Sandbox, void, unknown> {
-    for await (const impl of SandboxImplV2.list(this.#client, params)) {
+    const implClass = this.#client.profile.sandboxV2
+      ? SandboxImplV2
+      : SandboxImplV1;
+    for await (const impl of implClass.list(this.#client, params)) {
       yield new Sandbox(impl);
     }
   }
@@ -1096,28 +1019,8 @@ export type SandboxListParams = {
   environment?: string;
 };
 
-/** Parameters for {@link SandboxService#experimentalList client.sandboxes.experimentalList()}. */
-export type SandboxExperimentalListParams = {
-  /** The App to list Sandboxes under. Omit to list across the environment (deprecated). */
-  appId?: string;
-  /** Only return Sandboxes that include all specified tags. */
-  tags?: Record<string, string>;
-  /** Override environment for the request; defaults to current profile. */
-  environment?: string;
-};
-
 /** Optional parameters for {@link SandboxService#fromName client.sandboxes.fromName()}. */
 export type SandboxFromNameParams = {
-  environment?: string;
-  /**
-   * If `includeTerminated` is set to `true` and no Sandbox with the name is
-   * currently running, the most recent terminated Sandbox will be returned instead.
-   */
-  includeTerminated?: boolean;
-};
-
-/** Optional parameters for {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()}. */
-export type SandboxExperimentalFromNameParams = {
   environment?: string;
   /**
    * If `includeTerminated` is set to `true` and no Sandbox with the name is
@@ -1615,11 +1518,10 @@ export class Sandbox {
   /**
    * Assign a name to a running V2 {@link Sandbox} that was created without one.
    *
-   * This is only supported for V2 Sandboxes, i.e. Sandboxes created via
-   * {@link SandboxService#experimentalCreate client.sandboxes.experimentalCreate()}.
+   * This is only supported for V2 Sandboxes.
    * A name may only be set once, and only on a Sandbox that has never had one;
    * afterwards the Sandbox can be looked up with
-   * {@link SandboxService#experimentalFromName client.sandboxes.experimentalFromName()}.
+   * {@link SandboxService#fromName client.sandboxes.fromName()}.
    *
    * EXPERIMENTAL: the API is subject to change.
    *

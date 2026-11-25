@@ -916,8 +916,8 @@ func TestSandboxListByAppId(t *testing.T) {
 	g.Expect(count).ToNot(gomega.Equal(0))
 }
 
-func TestSandboxExperimentalListMock(t *testing.T) {
-	t.Parallel()
+func TestSandboxV2ListMock(t *testing.T) {
+	t.Setenv("MODAL_SANDBOX_V2", "1")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
@@ -940,7 +940,7 @@ func TestSandboxExperimentalListMock(t *testing.T) {
 			return pb.SandboxListResponse_builder{}.Build(), nil
 		})
 
-	it, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{AppID: "ap-1234"})
+	it, err := mock.Sandboxes.List(ctx, &modal.SandboxListParams{AppID: "ap-1234"})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	var ids []string
@@ -1335,8 +1335,8 @@ func TestSandboxGetExitSnapshotRateLimitWithoutPolicyMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxExperimentalListEnvironmentScoped(t *testing.T) {
-	t.Parallel()
+func TestSandboxV2ListEnvironmentScoped(t *testing.T) {
+	t.Setenv("MODAL_SANDBOX_V2", "1")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
@@ -1357,7 +1357,7 @@ func TestSandboxExperimentalListEnvironmentScoped(t *testing.T) {
 			return pb.SandboxListResponse_builder{}.Build(), nil
 		})
 
-	it, err := mock.Sandboxes.ExperimentalList(ctx, &modal.SandboxExperimentalListParams{Environment: "my-env"})
+	it, err := mock.Sandboxes.List(ctx, &modal.SandboxListParams{Environment: "my-env"})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	var ids []string
@@ -1701,8 +1701,8 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestExperimentalCreateCachesEncryptedOnlyTunnels(t *testing.T) {
-	t.Parallel()
+func TestV2CreateCachesEncryptedOnlyTunnels(t *testing.T) {
+	t.Setenv("MODAL_SANDBOX_V2", "1")
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 
@@ -1760,7 +1760,7 @@ func TestExperimentalCreateCachesEncryptedOnlyTunnels(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	image := mock.Images.FromRegistry("alpine:3.21", nil)
 
-	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		EncryptedPorts: []int{8080},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -1774,8 +1774,8 @@ func TestExperimentalCreateCachesEncryptedOnlyTunnels(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestExperimentalCreateFetchesUnencryptedTunnels(t *testing.T) {
-	t.Parallel()
+func TestV2CreateFetchesUnencryptedTunnels(t *testing.T) {
+	t.Setenv("MODAL_SANDBOX_V2", "1")
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 
@@ -1860,7 +1860,7 @@ func TestExperimentalCreateFetchesUnencryptedTunnels(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	image := mock.Images.FromRegistry("alpine:3.21", nil)
 
-	sb, err := mock.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		EncryptedPorts:   []int{8080},
 		UnencryptedPorts: []int{9000},
 	})
@@ -2069,8 +2069,8 @@ func TestSandboxExperimentalFromSnapshotRoutesV2(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestSandboxExperimentalFromNameRoutesV2(t *testing.T) {
-	t.Parallel()
+func TestSandboxV2FromNameRoutesV2(t *testing.T) {
+	t.Setenv("MODAL_SANDBOX_V2", "1")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
@@ -2090,7 +2090,7 @@ func TestSandboxExperimentalFromNameRoutesV2(t *testing.T) {
 			return pb.SandboxTerminateResponse_builder{}.Build(), nil
 		})
 
-	sb, err := mock.Sandboxes.ExperimentalFromName(ctx, "libmodal-test", "my-sandbox", nil)
+	sb, err := mock.Sandboxes.FromName(ctx, "libmodal-test", "my-sandbox", nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(sb.SandboxID).To(gomega.Equal(sandboxID))
 
@@ -2671,9 +2671,9 @@ func TestSandboxFirstStdoutReadAfterTerminate(t *testing.T) {
 	g.Expect(string(out)).To(gomega.ContainSubstring("only-line"))
 }
 
-// The same for a Sandbox created with ExperimentalCreate.
+// The same for a Sandbox created with the V2 backend.
 func TestSandboxFirstStdoutReadAfterTerminateV2(t *testing.T) {
-	t.Parallel()
+	t.Setenv("MODAL_SANDBOX_V2", "1")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	tc := newTestClient(t)
@@ -2688,7 +2688,7 @@ func TestSandboxFirstStdoutReadAfterTerminateV2(t *testing.T) {
 	probe, err := modal.NewExecProbe([]string{"true"}, nil)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
-	sb, err := tc.Sandboxes.ExperimentalCreate(ctx, app, image, &modal.SandboxCreateParams{
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command:        []string{"sh", "-c", "echo only-line; sleep 60"},
 		ReadinessProbe: probe,
 	})

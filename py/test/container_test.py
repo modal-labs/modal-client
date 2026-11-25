@@ -1009,6 +1009,7 @@ def test_snapshot_client_refs(servicer, credentials, client, tmp_path):
             deployed,
             inputs=[("check", (), {})],
             env={
+                "MODAL_SANDBOX_V2": "1",
                 "MODAL_SERVER_URL": servicer.client_addr,
                 "MODAL_RESTORE_STATE_PATH": str(restore_state_path),
                 "MODAL_ENABLE_SNAP_RESTORE": "1",
@@ -1064,6 +1065,7 @@ def test_snapshot_sandbox_handle(servicer, credentials, client, tmp_path):
             deployed,
             inputs=[("poll_sandbox", (), {})],
             env={
+                "MODAL_SANDBOX_V2": "1",
                 "MODAL_SERVER_URL": servicer.container_addr,
                 "MODAL_RESTORE_STATE_PATH": str(restore_state_path),
                 "MODAL_ENABLE_SNAP_RESTORE": "1",

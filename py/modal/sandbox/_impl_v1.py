@@ -143,11 +143,6 @@ class SandboxImplV1:
             client, sandbox_id, app_id=metadata.app_id, result=metadata.result if metadata.HasField("result") else None
         )
 
-    def _hydrate_metadata(self, metadata: api_pb2.SandboxHandleMetadata) -> None:
-        self.app_id = metadata.app_id or self.app_id
-        if metadata.HasField("result"):
-            self.result = metadata.result
-
     async def get_app_id(self) -> str:
         return self.app_id
 
@@ -216,8 +211,9 @@ class SandboxImplV1:
     @classmethod
     async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> "SandboxImpl":
         resp = await client._stub.SandboxWait(api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0))
-        impl = cls(client, sandbox_id)
-        impl._hydrate_metadata(resp.metadata)
+        impl = cls._from_object_metadata(client, sandbox_id, resp.metadata)
+        if resp.result.status:
+            impl.result = resp.result
         return impl
 
     @classmethod

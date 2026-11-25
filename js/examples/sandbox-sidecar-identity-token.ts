@@ -1,5 +1,6 @@
 import { ModalClient } from "modal";
 
+process.env["MODAL_SANDBOX_V2"] = "1";
 const modal = new ModalClient();
 
 const app = await modal.apps.fromName("libmodal-example", {
@@ -8,7 +9,7 @@ const app = await modal.apps.fromName("libmodal-example", {
 
 const image = await modal.images.fromRegistry("alpine:3.21").build(app);
 
-const sb = await modal.sandboxes.experimentalCreate(app, image, {
+const sb = await modal.sandboxes.create(app, image, {
   command: ["sleep", "infinity"],
 });
 console.log("Started Sandbox:", sb.sandboxId);

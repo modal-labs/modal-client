@@ -13,7 +13,6 @@ from google.protobuf.message import Message
 from modal._logs_manager import _SandboxLogsManager
 from modal._supports_logs import LogsFilters, _LogQueryData
 from modal._tunnel import Tunnel
-from modal.mount import _Mount
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .._experimental_outbound_policy import _OutboundPolicy as _ExperimentalOutboundPolicy
@@ -378,114 +377,6 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         impl = await impl_class_for_create_args(create_args).create(create_args, app=app, client=client)
         return _Sandbox._from_impl(impl)
 
-    @staticmethod
-    async def _experimental_create(
-        *args: str,
-        app: "modal.app._App | None" = None,
-        name: str | None = None,
-        tags: dict[str, str] | None = None,
-        image: _Image | None = None,
-        env: dict[str, str | None] | None = None,
-        secrets: Collection[_Secret] | None = None,
-        mounts: Sequence[_Mount] = (),
-        timeout: int = 300,
-        idle_timeout: int | None = None,
-        workdir: str | None = None,
-        cpu: float | tuple[float, float] | None = None,
-        memory: int | tuple[int, int] | None = None,
-        runtime: SandboxRuntime | None = None,
-        cloud: str | None = None,
-        region: str | Sequence[str] | None = None,
-        block_network: bool = False,
-        outbound_cidr_allowlist: Sequence[str] | None = None,
-        outbound_domain_allowlist: Sequence[str] | None = None,
-        outbound_policy: _OutboundPolicy | None = None,
-        _experimental_outbound_policy: _ExperimentalOutboundPolicy | None = None,
-        inbound_cidr_allowlist: Sequence[str] | None = None,
-        i6pn: bool = False,
-        volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
-        pty: bool = False,
-        encrypted_ports: Sequence[int] = [],
-        h2_ports: Sequence[int] = [],
-        unencrypted_ports: Sequence[int] = [],
-        proxy: _Proxy | None = None,
-        readiness_probe: Probe | None = None,
-        experimental_options: dict[str, Any] | None = None,
-        include_oidc_identity_token: bool = False,
-        verbose: bool = False,
-        custom_domain: str | None = None,
-        client: _Client | None = None,
-        _experimental_enable_snapshot: bool = False,
-    ) -> "_Sandbox":
-        """Create a sandbox using the V2 backend.
-
-        Supported features include exec, encrypted tunnels, wait/poll/terminate,
-        CPU and memory configuration, region placement, private IPv6 networking
-        (i6pn), volumes, cloud bucket mounts (with static credentials via
-        `secret=...` or `oidc_auth_role_arn`), OIDC identity tokens, proxies,
-        filesystem snapshots, and custom domains (`custom_domain=...` allows
-        connections to the sandbox via a subdomain of that parent domain rather
-        than a default Modal domain; requires prior setup by Modal).
-
-        `cpu` and `memory` accept either a scalar request or a `(request, limit)`
-        tuple that additionally sets a hard limit (fractional CPU cores; memory
-        in MiB), matching `Sandbox.create()`.
-
-        Pass `_experimental_enable_snapshot=True` to create a sandbox that can be
-        snapshotted with `._experimental_snapshot()`. Features like network
-        file systems and GPUs are not supported.
-
-        Set `i6pn=True` to enable private IPv6 networking so sandboxes in the same
-        workspace can address each other directly at their `i6pn.modal.local`
-        address. i6pn only connects sandboxes co-located on the same routable
-        network, so pin every sandbox in the group to the same specific region
-        (e.g. `region="us-east-1"`).
-
-        V2 sandboxes created with this method are not currently returned by
-        `Sandbox.list()`. A named sandbox can be looked up with
-        `Sandbox._experimental_from_name(app_name, name)`; otherwise store
-        `sandbox.object_id` and use `Sandbox.from_id(sandbox.object_id)` to
-        reattach.
-        """
-        create_args = SandboxCreateArgs(
-            args=args,
-            image=image,
-            secrets=secrets,
-            env=env,
-            name=name,
-            timeout=timeout,
-            idle_timeout=idle_timeout,
-            workdir=workdir,
-            cloud=cloud,
-            region=region,
-            cpu=cpu,
-            memory=memory,
-            mounts=mounts,
-            block_network=block_network,
-            outbound_cidr_allowlist=outbound_cidr_allowlist,
-            outbound_domain_allowlist=outbound_domain_allowlist,
-            experimental_outbound_policy=_experimental_outbound_policy,
-            outbound_policy=outbound_policy,
-            inbound_cidr_allowlist=inbound_cidr_allowlist,
-            i6pn=i6pn,
-            volumes=volumes,
-            pty=pty,
-            encrypted_ports=encrypted_ports,
-            h2_ports=h2_ports,
-            unencrypted_ports=unencrypted_ports,
-            proxy=proxy,
-            readiness_probe=readiness_probe,
-            experimental_options=experimental_options,
-            tags=tags,
-            enable_snapshot=_experimental_enable_snapshot,
-            verbose=verbose,
-            custom_domain=custom_domain,
-            include_oidc_identity_token=include_oidc_identity_token,
-            runtime=runtime,
-        )
-        impl = await SandboxImplV2.create(create_args, app=app, client=client)
-        return _Sandbox._from_impl(impl)
-
     def _get_metadata(self) -> Message | None:
         return self._impl._get_object_metadata()
 
@@ -574,52 +465,14 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
 
         if include_terminated or config.get("sandbox_v2") is True:
             try:
-                return await _Sandbox._experimental_from_name(
-                    app_name,
-                    name,
-                    environment_name=environment_name,
-                    include_terminated=include_terminated,
-                    client=client,
+                return await _Sandbox._from_name(
+                    SandboxImplV2, app_name, name, environment_name, client, include_terminated=include_terminated
                 )
             except NotFoundError:
                 if include_terminated:
                     raise
 
         return await _Sandbox._from_name(SandboxImplV1, app_name, name, environment_name, client)
-
-    @staticmethod
-    async def _experimental_from_name(
-        app_name: str,
-        name: str,
-        *,
-        environment_name: str | None = None,
-        include_terminated: bool = False,
-        client: _Client | None = None,
-    ) -> "_Sandbox":
-        """Get a running V2 Sandbox by name from a deployed App.
-
-        This looks up V2 sandboxes, ie sandboxes created via `modal.Sandbox._experimental_create`.
-
-        Args:
-            app_name: Name of the deployed app to look up the sandbox under.
-            name: Sandbox name to resolve.
-            environment_name: Optional environment name for the lookup; defaults to the configured environment.
-            include_terminated: If set to `True` and no Sandbox with the name is currently running, the most
-                recent terminated Sandbox will be returned instead.
-            client: Modal client to use for the RPC; defaults to `Client.from_env()` when omitted.
-
-        Returns:
-            A `Sandbox` handle for the running Sandbox, or the most recent terminated one when
-            `include_terminated=True`.
-
-        Raises:
-            NotFoundError: If no matching sandbox exists with the given name.
-        """
-        if client is None:
-            client = await _Client.from_env()
-        return await _Sandbox._from_name(
-            SandboxImplV2, app_name, name, environment_name, client, include_terminated=include_terminated
-        )
 
     @staticmethod
     async def _from_name(
@@ -759,10 +612,9 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
     async def _experimental_set_name(self, name: str) -> None:
         """Assign a name to a running V2 Sandbox that was created without one.
 
-        This is only supported for V2 sandboxes, ie sandboxes created via
-        `modal.Sandbox._experimental_create`. A name may only be set once and
+        This is only supported for V2 Sandboxes. A name may only be set once and
         only on a Sandbox that has never had one; afterwards the Sandbox can
-        be looked up with `Sandbox._experimental_from_name(app_name, name)`.
+        be looked up with `Sandbox.from_name(app_name, name)`.
         Repeating the Sandbox's current name is idempotent and succeeds, so
         the call is safe to retry.
 
@@ -1452,44 +1304,20 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         Returns:
             An async generator yielding `Sandbox` objects.
         """
-        if config.get("sandbox_v2") is True:
-            async for sandbox in _Sandbox._experimental_list(app_id=app_id, tags=tags, client=client):
-                yield sandbox
-            return
+        impl_cls = SandboxImplV2 if config.get("sandbox_v2") is True else SandboxImplV1
+        environment_name = _get_environment_name() if impl_cls is SandboxImplV1 or not app_id else ""
+        if impl_cls is SandboxImplV2:
+            if not app_id:
+                deprecation_warning(
+                    (2026, 8, 10),
+                    "Listing Sandboxes without an `app_id` scans the entire Environment, which is deprecated. "
+                    "Pass an `app_id` to scope the query:\n\n"
+                    'app = modal.App.lookup("my-app")\n'
+                    "modal.Sandbox.list(app_id=app.app_id)",
+                )
+            app_id = app_id or ""
 
-        environment_name = _get_environment_name()
-        async for sandbox in _Sandbox._list(SandboxImplV1, app_id, environment_name, tags, client):
-            yield sandbox
-
-    @staticmethod
-    async def _experimental_list(
-        *, app_id: str | None = None, tags: dict[str, str] | None = None, client: _Client | None = None
-    ) -> AsyncGenerator["_Sandbox", None]:
-        """List all sandboxes (both v1 and v2).
-
-        Pass `app_id` to scope to an App; without it, Sandboxes across the current
-        Environment are listed (deprecated — prefer scoping by `app_id`).
-
-        Args:
-            app_id: If set, restrict results to Sandboxes under this App.
-            tags: If set, only sandboxes containing at least these tags are returned.
-            client: Optional client to use for the session.
-
-        Yields:
-            `Sandbox` objects that are currently running.
-        """
-        environment_name = ""
-        if not app_id:
-            deprecation_warning(
-                (2026, 8, 10),
-                "Listing Sandboxes without an `app_id` scans the entire Environment, which is deprecated. "
-                "Pass an `app_id` to scope the query:\n\n"
-                'app = modal.App.lookup("my-app")\n'
-                "modal.Sandbox.list(app_id=app.app_id)",
-            )
-            environment_name = _get_environment_name()
-
-        async for sandbox in _Sandbox._list(SandboxImplV2, app_id or "", environment_name, tags, client):
+        async for sandbox in _Sandbox._list(impl_cls, app_id, environment_name, tags, client):
             yield sandbox
 
     @staticmethod

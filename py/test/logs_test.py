@@ -1474,7 +1474,8 @@ def test_sandbox_logs_fetch(client, servicer, monkeypatch):
     assert fetch_requests[0].search_text == "needle"
 
 
-def test_sandbox_logs_tail_v2_uses_task_id(client, servicer):
+def test_sandbox_logs_tail_v2_uses_task_id(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "1")
     app = modal.App()
     sandbox_get_task_id_requests = []
     fetch_requests = []
@@ -1494,7 +1495,7 @@ def test_sandbox_logs_tail_v2_uses_task_id(client, servicer):
         ctx.set_responder("AppFetchLogs", fetch_handler)
 
         with app.run(client=client):
-            sandbox = modal.Sandbox._experimental_create("echo", "hello", app=app)
+            sandbox = modal.Sandbox.create("echo", "hello", app=app)
             sandbox_id = sandbox.object_id
             app_id = app.app_id
 
