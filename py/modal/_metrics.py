@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2026
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from modal_proto import api_pb2
 
@@ -14,8 +14,8 @@ from .types import MetricDefinition, MetricSeries, MetricsSchema, ObjectMetrics,
 def _metrics_request(
     since: datetime | None, until: datetime | None, bucket_size: timedelta | None, groups: list[str] | None
 ) -> api_pb2.FunctionGetMetricsRequest:
-    until = (until or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    since = (since or until - timedelta(hours=1)).astimezone(timezone.utc)
+    until = (until or datetime.now(UTC)).astimezone(UTC)
+    since = (since or until - timedelta(hours=1)).astimezone(UTC)
     if since >= until:
         raise InvalidError("`since` must be before `until`.")
     if since.timestamp() < 0:
@@ -50,7 +50,7 @@ def _object_metrics(
             description=item.description,
             points=[
                 TimeSeriesPoint(
-                    time=point.timestamp.ToDatetime(tzinfo=timezone.utc),
+                    time=point.timestamp.ToDatetime(tzinfo=UTC),
                     value=point.value if point.HasField("value") else None,
                 )
                 for point in item.points
@@ -60,8 +60,8 @@ def _object_metrics(
     }
     return ObjectMetrics(
         object_id=object_id,
-        since=response.since.ToDatetime(tzinfo=timezone.utc),
-        until=response.until.ToDatetime(tzinfo=timezone.utc),
+        since=response.since.ToDatetime(tzinfo=UTC),
+        until=response.until.ToDatetime(tzinfo=UTC),
         bucket_size=timedelta(seconds=response.bucket_secs),
         point_count=sum(len(item.points) for item in series.values()),
         series=series,

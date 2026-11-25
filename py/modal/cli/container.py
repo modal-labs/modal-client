@@ -2,7 +2,7 @@
 import asyncio
 import dataclasses
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import click
 from click import UsageError
@@ -215,7 +215,7 @@ async def logs(
                     sandbox._get_task_id(raise_if_task_complete=True),
                     timeout=_SANDBOX_TASK_ID_WAIT_SECS,
                 )
-            except (asyncio.TimeoutError, ConflictError):
+            except (TimeoutError, ConflictError):
                 # No container ran (still queued, or finished before starting), so there are no
                 # logs. Returning empty is consistent with other no-logs-yet cases (e.g. logs not
                 # yet flushed to ClickHouse), so we don't warn.
@@ -233,11 +233,11 @@ async def logs(
             if not task_info_resp.info.enqueued_at:
                 return
 
-            enqueued_dt = datetime.fromtimestamp(task_info_resp.info.enqueued_at, timezone.utc)
+            enqueued_dt = datetime.fromtimestamp(task_info_resp.info.enqueued_at, UTC)
             if task_info_resp.info.finished_at:
-                finished_dt = datetime.fromtimestamp(task_info_resp.info.finished_at, timezone.utc)
+                finished_dt = datetime.fromtimestamp(task_info_resp.info.finished_at, UTC)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # V2 Sandboxes don't expose task enqueue/finish times to the client, so fall back to the
         # widest single-query window. This can miss logs older than _MAX_FETCH_RANGE for workspaces
         # whose custom log retention window exceeds it.

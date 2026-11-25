@@ -4,7 +4,7 @@ import os
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, overload
 
@@ -565,11 +565,11 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         if since is not None:
             if since.tzinfo is None:
                 since = since.astimezone()
-            request.since.FromDatetime(since.astimezone(timezone.utc))
+            request.since.FromDatetime(since.astimezone(UTC))
         if until is not None:
             if until.tzinfo is None:
                 until = until.astimezone()
-            request.until.FromDatetime(until.astimezone(timezone.utc))
+            request.until.FromDatetime(until.astimezone(UTC))
         if since is not None and until is not None and since >= until:
             raise InvalidError("`since` must be before `until`.")
         response = await (await self._impl._get_client())._stub.SandboxGetStats(request)

@@ -1,12 +1,11 @@
 # Copyright Modal Labs 2025
-import asyncio
 import dataclasses
 import inspect
 import json
 import time
 import typing
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from typing_extensions import Self
 
@@ -486,15 +485,15 @@ class _Server:
         Returns:
             A `ServerStats` object
         """
-        until = until or datetime.now(timezone.utc)
+        until = until or datetime.now(UTC)
         if until.tzinfo is None:
             until = until.astimezone()
-        until = until.astimezone(timezone.utc)
+        until = until.astimezone(UTC)
 
         since = since or until - timedelta(hours=1)
         if since.tzinfo is None:
             since = since.astimezone()
-        since = since.astimezone(timezone.utc)
+        since = since.astimezone(UTC)
         if since >= until:
             raise InvalidError("`since` must be before `until`.")
 
@@ -588,8 +587,8 @@ class _ServerSessionsManager:
 
         try:
             status, reason, body = await _post_session_start(url, fn, idle_timeout)
-        except asyncio.TimeoutError:
-            raise asyncio.TimeoutError("Failed to start session: timed out") from None
+        except TimeoutError:
+            raise TimeoutError("Failed to start session: timed out") from None
         except ServiceError as exc:
             raise ExecutionError(f"Failed to start session: {exc}") from None
         if status >= 400:

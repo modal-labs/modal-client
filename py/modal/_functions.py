@@ -9,7 +9,7 @@ import warnings
 from collections import OrderedDict
 from collections.abc import AsyncGenerator, Callable, Collection, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -2260,15 +2260,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Returns:
             A `FunctionStats` object
         """
-        until = until or datetime.now(timezone.utc)
+        until = until or datetime.now(UTC)
         if until.tzinfo is None:
             until = until.astimezone()
-        until = until.astimezone(timezone.utc)
+        until = until.astimezone(UTC)
 
         since = since or until - timedelta(hours=1)
         if since.tzinfo is None:
             since = since.astimezone()
-        since = since.astimezone(timezone.utc)
+        since = since.astimezone(UTC)
         if since >= until:
             raise InvalidError("`since` must be before `until`.")
 

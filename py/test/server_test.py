@@ -3,7 +3,7 @@ import contextlib
 import pytest
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from unittest import mock
 
@@ -1742,7 +1742,7 @@ def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb
 def test_server_stats(client, servicer, active_count):
     server_app.deploy(client=client)
     server = Server.from_name("server-test-app", "BasicServer", client=client)
-    since = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    since = datetime(2026, 9, 22, 12, tzinfo=UTC)
     until = since + timedelta(hours=2)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
         request_count=1284,
@@ -1781,8 +1781,8 @@ def test_server_stats(client, servicer, active_count):
 
     request = ctx.pop_request("ServerGetTimeRangeStats")
     assert request.function_id == server.object_id
-    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
-    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert request.since.ToDatetime(tzinfo=UTC) == since
+    assert request.until.ToDatetime(tzinfo=UTC) == until
     assert request.container_id == "ta-123"
 
     assert stats.since == since
@@ -1807,21 +1807,21 @@ def test_server_stats(client, servicer, active_count):
 def test_server_stats_default_time_range(client, servicer):
     server_app.deploy(client=client)
     server = Server.from_name("server-test-app", "BasicServer", client=client)
-    response_since = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    response_since = datetime(2026, 9, 22, 12, tzinfo=UTC)
     response_until = response_since + timedelta(hours=1)
     response = api_pb2.ServerGetTimeRangeStatsResponse()
     response.since.FromDatetime(response_since)
     response.until.FromDatetime(response_until)
 
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     with servicer.intercept() as ctx:
         ctx.add_response("ServerGetTimeRangeStats", response)
         server.stats()
-    after = datetime.now(timezone.utc)
+    after = datetime.now(UTC)
 
     request = ctx.pop_request("ServerGetTimeRangeStats")
-    requested_since = request.since.ToDatetime(tzinfo=timezone.utc)
-    requested_until = request.until.ToDatetime(tzinfo=timezone.utc)
+    requested_since = request.since.ToDatetime(tzinfo=UTC)
+    requested_until = request.until.ToDatetime(tzinfo=UTC)
     assert before <= requested_until <= after
     assert requested_until - requested_since == timedelta(hours=1)
 
@@ -1829,7 +1829,7 @@ def test_server_stats_default_time_range(client, servicer):
 def test_server_stats_rejects_invalid_time_range(client, servicer):
     server_app.deploy(client=client)
     server = Server.from_name("server-test-app", "BasicServer", client=client)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     with servicer.intercept() as ctx:
         with pytest.raises(InvalidError, match="must be before"):

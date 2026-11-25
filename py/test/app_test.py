@@ -5,7 +5,7 @@ import pytest
 import re
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest import mock
 
@@ -27,8 +27,8 @@ from .supports import module_1, module_2
 
 def test_app_stats(client, servicer, app_stats_response):
     response = app_stats_response
-    since = response.since.ToDatetime(tzinfo=timezone.utc)
-    until = response.until.ToDatetime(tzinfo=timezone.utc)
+    since = response.since.ToDatetime(tzinfo=UTC)
+    until = response.until.ToDatetime(tzinfo=UTC)
     with servicer.intercept() as ctx:
         ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
         ctx.add_response("AppGetTimeRangeStats", response)
@@ -41,8 +41,8 @@ def test_app_stats(client, servicer, app_stats_response):
     assert lookup.object_creation_type != api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
     request = ctx.pop_request("AppGetTimeRangeStats")
     assert request.app_id == "ap-stats"
-    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
-    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert request.since.ToDatetime(tzinfo=UTC) == since
+    assert request.until.ToDatetime(tzinfo=UTC) == until
     assert stats.since == since and stats.until == until
     assert stats.functions.total == AppStats.FunctionCounts(
         calls=AppStats.CallCounts(total=80, succeeded=75, failed=5),
@@ -82,19 +82,19 @@ async def test_app_stats_async(client, servicer, app_stats_response):
 
 @pytest.mark.parametrize("supplied_until", [None, datetime(2026, 10, 19, 12, tzinfo=timezone(timedelta(hours=2)))])
 def test_app_stats_default_window(client, servicer, app_stats_response, supplied_until):
-    now_before = datetime.now(timezone.utc)
+    now_before = datetime.now(UTC)
     with servicer.intercept() as ctx:
         ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
         ctx.add_response("AppGetTimeRangeStats", app_stats_response)
         App.lookup("my-app", client=client).stats(until=supplied_until)
-    now_after = datetime.now(timezone.utc)
+    now_after = datetime.now(UTC)
     request = ctx.pop_request("AppGetTimeRangeStats")
-    until = request.until.ToDatetime(tzinfo=timezone.utc)
+    until = request.until.ToDatetime(tzinfo=UTC)
     if supplied_until is None:
         assert now_before <= until <= now_after
     else:
         assert until == supplied_until
-    assert until - request.since.ToDatetime(tzinfo=timezone.utc) == timedelta(hours=1)
+    assert until - request.since.ToDatetime(tzinfo=UTC) == timedelta(hours=1)
 
 
 @pytest.mark.skipif(not hasattr(time, "tzset"), reason="Requires timezone switching")
@@ -108,8 +108,8 @@ def test_app_stats_naive_datetimes(client, servicer, app_stats_response):
     finally:
         time.tzset()
     request = ctx.pop_request("AppGetTimeRangeStats")
-    assert request.since.ToDatetime(tzinfo=timezone.utc) == datetime(2026, 10, 19, 12, tzinfo=timezone.utc)
-    assert request.until.ToDatetime(tzinfo=timezone.utc) == datetime(2026, 10, 19, 13, tzinfo=timezone.utc)
+    assert request.since.ToDatetime(tzinfo=UTC) == datetime(2026, 10, 19, 12, tzinfo=UTC)
+    assert request.until.ToDatetime(tzinfo=UTC) == datetime(2026, 10, 19, 13, tzinfo=UTC)
 
 
 def test_app_stats_requires_remote_app(client, servicer):
@@ -118,7 +118,7 @@ def test_app_stats_requires_remote_app(client, servicer):
     with servicer.intercept() as ctx:
         ctx.add_response("AppGetOrCreate", api_pb2.AppGetOrCreateResponse(app_id="ap-stats"))
         app = App.lookup("my-app", client=client)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with pytest.raises(InvalidError, match="must be before"):
             app.stats(since=now, until=now)
     assert ctx.get_requests("AppGetTimeRangeStats") == []
@@ -824,7 +824,7 @@ def test_app_sandboxes_stats(servicer, client):
     servicer.sandbox_stats_pages = 3
     servicer.sandbox_stats_throttle_remaining = 1
 
-    since = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, tzinfo=UTC)
     groups = list(app.sandboxes.stats(since=since, group_by_tags=["team"], tags={"env": "prod"}))
     assert [g.tags for g in groups] == [{"team": None}, {"team": "team-1"}, {"team": "team-2"}]
     assert groups[0].cost == Decimal("0.125")
@@ -838,16 +838,16 @@ def test_app_sandboxes_stats(servicer, client):
     assert requests[0].since.ToDatetime() == since.replace(tzinfo=None)
     assert not requests[0].HasField("until")
 
-    until = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    until = datetime(2026, 1, 2, tzinfo=UTC)
     list(app.sandboxes.stats(since=since, until=until))
     assert requests[-1].until.ToDatetime() == until.replace(tzinfo=None)
 
     with pytest.raises(InvalidError, match="before"):
         list(app.sandboxes.stats(since=since, until=since))
     with pytest.raises(InvalidError, match="past"):
-        list(app.sandboxes.stats(since=datetime.now(timezone.utc) + timedelta(days=1)))
+        list(app.sandboxes.stats(since=datetime.now(UTC) + timedelta(days=1)))
     with pytest.raises(InvalidError, match="past"):
-        future = datetime.now(timezone.utc) + timedelta(days=1)
+        future = datetime.now(UTC) + timedelta(days=1)
         list(app.sandboxes.stats(since=future, until=future + timedelta(days=1)))
 
     with pytest.raises(InvalidError, match="requires"):

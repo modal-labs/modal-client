@@ -7,7 +7,7 @@ import os
 import pytest
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import aiohttp.web
 import jwt
@@ -446,7 +446,7 @@ async def test_read_and_info(client, service):
         (2, "k2", "value", "b"),
         (3, "k3", "value", "c"),
     ]
-    assert entries[1].ts == datetime.fromtimestamp(2, tz=timezone.utc)
+    assert entries[1].ts == datetime.fromtimestamp(2, tz=UTC)
     assert [e.value async for e in stream.read.aio(3)] == ["c"]
     assert (await asyncio.to_thread(lambda: stream[2])).value == "b"
     for seq in (4, 0):
@@ -455,7 +455,7 @@ async def test_read_and_info(client, service):
     with pytest.raises(TypeError):
         await asyncio.to_thread(stream.__getitem__, slice(1, 2))  # type: ignore[arg-type]
 
-    epoch = datetime.fromtimestamp(0, tz=timezone.utc)
+    epoch = datetime.fromtimestamp(0, tz=UTC)
     assert await stream.info.aio() == StreamInfo("s", 3, False, epoch, epoch + timedelta(seconds=3), None)
     kept = Stream.from_name("kept", create_if_missing=True, retention=timedelta(hours=1), client=client)
     info = await kept.info.aio()

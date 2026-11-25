@@ -9,7 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncGenerator, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from synchronicity import classproperty
@@ -211,7 +211,7 @@ def _entry(event: dict[str, Any]) -> Entry:
 
 
 def _utc(ts_us: int) -> datetime:
-    return datetime.fromtimestamp(ts_us / 1_000_000, tz=timezone.utc)
+    return datetime.fromtimestamp(ts_us / 1_000_000, tz=UTC)
 
 
 async def _sse_messages(content: Any) -> AsyncGenerator[tuple[str, str], None]:
@@ -393,7 +393,7 @@ class _Stream:
             await self._create_locked()
         data, _ = await self._call("POST", f"{self._path}/tokens", body)
         out = json.loads(data)
-        return StreamToken(out["token"], datetime.fromtimestamp(out["expires_at"], tz=timezone.utc))
+        return StreamToken(out["token"], datetime.fromtimestamp(out["expires_at"], tz=UTC))
 
     async def _headers(self) -> dict[str, str]:
         if self._token is not None:
@@ -446,7 +446,7 @@ class _Stream:
                 if headers is not None or token is None or renewed or not await self._renew(token):
                     raise
                 renewed = True
-            except (aiohttp.ClientError, asyncio.TimeoutError, _Transient) as exc:
+            except (TimeoutError, aiohttp.ClientError, _Transient) as exc:
                 delay = _backoff(attempt)
                 if not retry or time.monotonic() + delay > deadline:
                     raise self._unreachable(exc) from exc
@@ -687,7 +687,7 @@ class _Stream:
                     raise
                 renewed = True
                 continue
-            except (aiohttp.ClientError, asyncio.TimeoutError, _Transient) as exc:
+            except (TimeoutError, aiohttp.ClientError, _Transient) as exc:
                 failures += 1
                 if failures == 1:
                     deadline = time.monotonic() + RETRY_DEADLINE_S

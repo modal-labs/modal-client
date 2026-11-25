@@ -721,7 +721,7 @@ def sandbox_subprocess_intercept(servicer):
             return
         try:
             await asyncio.wait_for(proc.wait(), request.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         if proc.returncode is None:
             await stream.send_message(
@@ -1653,7 +1653,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if self.app_publish_is_noop:
                 deployed_at = 0.0
             else:
-                deployed_at = datetime.datetime.now(datetime.timezone.utc).timestamp()
+                deployed_at = datetime.datetime.now(datetime.UTC).timestamp()
 
             response = api_pb2.AppPublishResponse(
                 url="http://test.modal.com/foo/bar",
@@ -1663,7 +1663,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 # Early exit for noop deployment
                 return response
         else:
-            response = api_pb2.AppPublishResponse(deployed_at=datetime.datetime.now(datetime.timezone.utc).timestamp())
+            response = api_pb2.AppPublishResponse(deployed_at=datetime.datetime.now(datetime.UTC).timestamp())
 
         self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
         self.app_state_history[request.app_id].append(request.app_state)
@@ -1978,7 +1978,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ContainerExecWaitRequest = await stream.recv_message()
         try:
             await asyncio.wait_for(self.container_exec.wait(), request.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         if self.container_exec.returncode is None:
@@ -3088,7 +3088,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 try:
                     await asyncio.wait_for(self.function_call_inputs_update_event.wait(), timeout=request.timeout)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 self.function_call_inputs_update_event.clear()
                 await stream.send_message(
@@ -4022,7 +4022,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Secret
 
     def _use_secret(self, secret_id: str):
-        self.secret_use_times[secret_id] = datetime.datetime.now(datetime.timezone.utc).timestamp()
+        self.secret_use_times[secret_id] = datetime.datetime.now(datetime.UTC).timestamp()
 
     async def SecretDelete(self, stream):
         request: api_pb2.SecretDeleteRequest = await stream.recv_message()
@@ -4441,7 +4441,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         user_id = "us-1"
         username = self.workspace_users[user_id].capitalize()
 
-        created_at = datetime.datetime.now(datetime.timezone.utc)
+        created_at = datetime.datetime.now(datetime.UTC)
         expires_at: datetime.datetime | None = None
         if expiration:
             expires_at = created_at + datetime.timedelta(seconds=expiration)
@@ -5152,7 +5152,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if not len(fc_inputs):
                 try:
                     await asyncio.wait_for(self.function_call_inputs_update_event.wait(), timeout=request.timeout)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 self.function_call_inputs_update_event.clear()
 
@@ -5806,7 +5806,7 @@ def mock_shell_pty(servicer, monkeypatch):
 
 @pytest.fixture
 def app_stats_response():
-    since = datetime.datetime(2026, 10, 19, 12, tzinfo=datetime.timezone.utc)
+    since = datetime.datetime(2026, 10, 19, 12, tzinfo=datetime.UTC)
     until = since + datetime.timedelta(hours=1)
     response = api_pb2.AppGetTimeRangeStatsResponse(
         functions=api_pb2.AppFunctionStatsGroup(

@@ -7,7 +7,7 @@ import enum
 import socket
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from grpclib.exceptions import StreamTerminatedError
 
@@ -42,8 +42,8 @@ def _normalize_utc_datetime(value: datetime, name: str) -> datetime:
     if not isinstance(value, datetime):
         raise TypeError(f"{name} must be a datetime")
     if value.tzinfo is None:
-        return value.replace(tzinfo=locale_tz()).astimezone(timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=locale_tz()).astimezone(UTC)
+    return value.astimezone(UTC)
 
 
 def _entry_source(file_descriptor: api_pb2.FileDescriptor.ValueType) -> LogSource:
@@ -58,8 +58,8 @@ def _entry_source(file_descriptor: api_pb2.FileDescriptor.ValueType) -> LogSourc
 
 def _entry_timestamp(item: api_pb2.TaskLogs) -> datetime:
     if item.timestamp_ns:
-        return datetime.fromtimestamp(item.timestamp_ns / 1_000_000_000, timezone.utc)
-    return datetime.fromtimestamp(item.timestamp, timezone.utc)
+        return datetime.fromtimestamp(item.timestamp_ns / 1_000_000_000, UTC)
+    return datetime.fromtimestamp(item.timestamp, UTC)
 
 
 def _resolve_source(source: LogSource | None) -> api_pb2.FileDescriptor.ValueType:
@@ -147,7 +147,7 @@ class _LogsManager:
     ) -> AsyncGenerator[LogEntry, None]:
         """Fetch all associated logs corresponding to the date range and filters."""
         since = _normalize_utc_datetime(since, "since")
-        until = _normalize_utc_datetime(until or datetime.now(timezone.utc), "until")
+        until = _normalize_utc_datetime(until or datetime.now(UTC), "until")
         target = await self._params()
         filters = dataclasses.replace(
             target.filters,
@@ -670,10 +670,10 @@ class _FunctionCallLogsManager:
 
         if since_was_defaulted:
             function_call_info = await self._get_function_call_info()
-            since = datetime.fromtimestamp(function_call_info.created_at, timezone.utc)
+            since = datetime.fromtimestamp(function_call_info.created_at, UTC)
 
         if until_was_defaulted:
-            until = datetime.now(timezone.utc)
+            until = datetime.now(UTC)
 
         if since_was_defaulted and until_was_defaulted and since > until:
             until = since
@@ -729,8 +729,8 @@ class _ImageLogsManager:
                             params.client,
                             step.builder_app_id,
                             # Protobuf timestamps represent UTC time.
-                            since=step.started_at.ToDatetime(tzinfo=timezone.utc),
-                            until=step.finished_at.ToDatetime(tzinfo=timezone.utc),
+                            since=step.started_at.ToDatetime(tzinfo=UTC),
+                            until=step.finished_at.ToDatetime(tzinfo=UTC),
                             filters=LogsFilters(
                                 task_id=step.builder_task_id,
                             ),
@@ -781,8 +781,8 @@ class _ImageLogsManager:
                 params.client,
                 step.builder_app_id,
                 remaining_entries,
-                since=step.started_at.ToDatetime(tzinfo=timezone.utc),
-                until=step.finished_at.ToDatetime(tzinfo=timezone.utc),
+                since=step.started_at.ToDatetime(tzinfo=UTC),
+                until=step.finished_at.ToDatetime(tzinfo=UTC),
                 filters=LogsFilters(task_id=step.builder_task_id),
             ):
                 for item in batch.items:

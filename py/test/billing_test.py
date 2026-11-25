@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -12,11 +12,11 @@ from modal_proto import api_pb2
 
 
 def test_workspace_billing_report(servicer, client):
-    before_request = datetime.now(timezone.utc)
+    before_request = datetime.now(UTC)
     with servicer.intercept() as ctx:
         with pytest.raises(DeprecationError):
             modal.billing.workspace_billing_report(
-                start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC),
                 tag_names=["team", "project"],
                 client=client,
             )
@@ -24,19 +24,19 @@ def test_workspace_billing_report(servicer, client):
         ws = Workspace.from_context(client=client)
 
         report = ws.billing.report(
-            start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC),
             tag_names=["team", "project"],
         )
 
         assert len(ctx.get_requests("WorkspaceBillingReport")) == 1
 
     request: api_pb2.WorkspaceBillingReportRequest = ctx.pop_request("WorkspaceBillingReport")
-    assert request.end_timestamp.ToDatetime().replace(tzinfo=timezone.utc) >= before_request
+    assert request.end_timestamp.ToDatetime().replace(tzinfo=UTC) >= before_request
 
     for item in report:
         assert isinstance(item["tags"], dict)
         assert isinstance(item["interval_start"], datetime)
-        assert item["interval_start"].tzinfo == timezone.utc
+        assert item["interval_start"].tzinfo == UTC
         assert isinstance(item["cost"], Decimal)
 
     with pytest.raises(InvalidError, match="'start' parameter must be in UTC"):
@@ -52,24 +52,24 @@ def test_workspace_billing_report(servicer, client):
 
 
 def test_workspace_object_billing_report(servicer, client):
-    before_request = datetime.now(timezone.utc)
+    before_request = datetime.now(UTC)
     with servicer.intercept() as ctx:
         ws = Workspace.from_context(client=client)
         report = ws.billing.report(
-            start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC),
             tag_names=["team", "project"],
         )
 
         assert len(ctx.get_requests("WorkspaceBillingReport")) == 1
 
     request: api_pb2.WorkspaceBillingReportRequest = ctx.pop_request("WorkspaceBillingReport")
-    assert request.end_timestamp.ToDatetime().replace(tzinfo=timezone.utc) >= before_request
+    assert request.end_timestamp.ToDatetime().replace(tzinfo=UTC) >= before_request
 
     assert len(report) == 2
     for item in report:
         assert isinstance(item.tags, dict)
         assert isinstance(item.interval_start, datetime)
-        assert item.interval_start.tzinfo == timezone.utc
+        assert item.interval_start.tzinfo == UTC
         assert isinstance(item.cost, Decimal)
         assert isinstance(item.cost_by_resource, dict)
 
@@ -77,12 +77,12 @@ def test_workspace_object_billing_report(servicer, client):
 def test_workspace_object_billing_summary(servicer, client):
     with servicer.intercept() as ctx:
         ws = Workspace.from_context(client=client)
-        summary = ws.billing.summary(cycle=datetime(2025, 1, 1, tzinfo=timezone.utc))
+        summary = ws.billing.summary(cycle=datetime(2025, 1, 1, tzinfo=UTC))
 
         assert len(ctx.get_requests("WorkspaceBillingSummary")) == 1
 
     request: api_pb2.WorkspaceBillingSummaryRequest = ctx.pop_request("WorkspaceBillingSummary")
-    start = request.start_timestamp.ToDatetime(timezone.utc)
+    start = request.start_timestamp.ToDatetime(UTC)
 
     assert start.day == 1
     assert start.hour == 0
@@ -99,11 +99,11 @@ def test_workspace_object_billing_summary(servicer, client):
 
 
 def test_environment_object_billing_report(servicer, client):
-    before_request = datetime.now(timezone.utc)
+    before_request = datetime.now(UTC)
     with servicer.intercept() as ctx:
         env = Environment.from_name("main", client=client)
         report = env.billing.report(
-            start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC),
             tag_names=["team", "project"],
         )
         assert len(ctx.get_requests("WorkspaceBillingReport")) == 1
@@ -112,14 +112,14 @@ def test_environment_object_billing_report(servicer, client):
         assert len(ctx.get_requests("EnvironmentGetOrCreate")) == 1
 
     request: api_pb2.WorkspaceBillingReportRequest = ctx.pop_request("WorkspaceBillingReport")
-    assert request.end_timestamp.ToDatetime().replace(tzinfo=timezone.utc) >= before_request
+    assert request.end_timestamp.ToDatetime().replace(tzinfo=UTC) >= before_request
 
     assert len(report) == 1
 
     item = report[0]
     assert isinstance(item.tags, dict)
     assert isinstance(item.interval_start, datetime)
-    assert item.interval_start.tzinfo == timezone.utc
+    assert item.interval_start.tzinfo == UTC
     assert isinstance(item.cost, Decimal)
     assert isinstance(item.cost_by_resource, dict)
 
@@ -129,7 +129,7 @@ def test_environment_object_billing_report(servicer, client):
 def test_environment_object_billing_summary(servicer, client):
     with servicer.intercept() as ctx:
         env = Environment.from_name("main", client=client)
-        summary = env.billing.summary(cycle=datetime(2025, 1, 1, tzinfo=timezone.utc))
+        summary = env.billing.summary(cycle=datetime(2025, 1, 1, tzinfo=UTC))
 
         assert len(ctx.get_requests("EnvironmentBillingSummary")) == 1
 
@@ -137,7 +137,7 @@ def test_environment_object_billing_summary(servicer, client):
         assert len(ctx.get_requests("EnvironmentGetOrCreate")) == 1
 
     request: api_pb2.EnvironmentBillingSummaryRequest = ctx.pop_request("EnvironmentBillingSummary")
-    start = request.start_timestamp.ToDatetime(timezone.utc)
+    start = request.start_timestamp.ToDatetime(UTC)
 
     assert start.day == 1
     assert start.hour == 0

@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import modal
@@ -108,11 +108,11 @@ def test_get_app_lifecycle(client, servicer):
         lifecycle = modal.experimental.get_app_lifecycle("ap-123", client=client)
 
     assert ctx.pop_request("AppGetLifecycle").app_id == "ap-123"
-    assert lifecycle.created_at == datetime.fromtimestamp(1000.0, timezone.utc)
+    assert lifecycle.created_at == datetime.fromtimestamp(1000.0, UTC)
     assert lifecycle.created_by == "alice"
-    assert lifecycle.deployed_at == datetime.fromtimestamp(2000.0, timezone.utc)
+    assert lifecycle.deployed_at == datetime.fromtimestamp(2000.0, UTC)
     assert lifecycle.deployed_by == "bob"
-    assert lifecycle.stopped_at == datetime.fromtimestamp(3000.0, timezone.utc)
+    assert lifecycle.stopped_at == datetime.fromtimestamp(3000.0, UTC)
     assert lifecycle.stopped_by == "carol"
 
 
@@ -126,7 +126,7 @@ def test_get_app_lifecycle_running(client, servicer):
         )
         lifecycle = modal.experimental.get_app_lifecycle("ap-123", client=client)
 
-    assert lifecycle.created_at == datetime.fromtimestamp(1000.0, timezone.utc)
+    assert lifecycle.created_at == datetime.fromtimestamp(1000.0, UTC)
     assert lifecycle.deployed_at is None
     assert lifecycle.deployed_by is None
     assert lifecycle.stopped_at is None

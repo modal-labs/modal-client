@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Sequence, TypeVar
 
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -366,7 +366,7 @@ async def tail_logs(
     if n > _FETCH_LIMIT:
         raise LogsFetchError(f"--tail value must not exceed {_FETCH_LIMIT}.")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if since is not None and since.tzinfo is None:
         raise ValueError("since must be timezone-aware")

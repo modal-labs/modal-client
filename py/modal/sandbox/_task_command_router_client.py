@@ -266,7 +266,7 @@ async def call_with_retries_on_transient_errors(
                 if not can_retry():
                     raise
                 await sleep_and_advance(e)
-            except (asyncio.TimeoutError, OSError) as e:
+            except (TimeoutError, OSError) as e:
                 if not can_retry():
                     # Client-side timeout / network OSError surfaces as a generic
                     # ConnectionError once we stop retrying. Callers that pass
@@ -855,7 +855,7 @@ class TaskCommandRouterClient:
                     ),
                     timeout=timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
 
     async def exec_wait(
@@ -907,7 +907,7 @@ class TaskCommandRouterClient:
                     ),
                     timeout=timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
 
     async def _refresh_jwt(self) -> None:
@@ -1057,7 +1057,7 @@ class TaskCommandRouterClient:
                     await sleep_and_update_delay_and_num_retries_remaining(e)
                 else:
                     raise e
-            except asyncio.TimeoutError as e:
+            except TimeoutError as e:
                 if num_retries_remaining > 0:
                     await sleep_and_update_delay_and_num_retries_remaining(e)
                 else:

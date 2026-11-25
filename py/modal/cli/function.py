@@ -2,7 +2,7 @@
 import dataclasses
 import json as json_lib
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, AsyncGenerator, Sequence, cast
 
 import click
@@ -110,8 +110,8 @@ def _function_call_status_cell(status: api_pb2.FunctionCallInputStatus.ValueType
 
 def _time_range_stats_json(response: api_pb2.FunctionGetTimeRangeStatsResponse) -> dict[str, object]:
     return {
-        "since": response.since.ToDatetime(tzinfo=timezone.utc).isoformat(),
-        "until": response.until.ToDatetime(tzinfo=timezone.utc).isoformat(),
+        "since": response.since.ToDatetime(tzinfo=UTC).isoformat(),
+        "until": response.until.ToDatetime(tzinfo=UTC).isoformat(),
         "input_success_count": response.input_success_count,
         "input_failure_count": response.input_failure_count,
         "input_timeout_count": response.input_timeout_count,
@@ -732,7 +732,7 @@ async def stats(
     modal function stats my-app/my-function --container ta-12345
     ```
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     until_dt = _parse_time_arg(until, default=now, now=now)
     since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW, now=now)
     if since_dt >= until_dt:
@@ -774,8 +774,8 @@ async def stats(
     use_color = not no_color
     output.print(Text(heading, style=stats_style(STATS_HEADING_STYLE, use_color)))
     output.print("")
-    since_label = resp.since.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    until_label = resp.until.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    since_label = resp.since.ToDatetime(tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S")
+    until_label = resp.until.ToDatetime(tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S")
     range_heading = ""
     if history_duration is not None:
         range_heading = f"Duration {str(history_duration)} · "
@@ -1130,7 +1130,7 @@ async def calls(
 
         if call.HasField("started_at") and enqueued_date:
             started_secs = (
-                call.started_at.ToDatetime(tzinfo=timezone.utc) - call.enqueued_at.ToDatetime(tzinfo=timezone.utc)
+                call.started_at.ToDatetime(tzinfo=UTC) - call.enqueued_at.ToDatetime(tzinfo=UTC)
             ).total_seconds()
             started_at = f"{started_secs:.2f}"
         else:
@@ -1158,8 +1158,8 @@ async def calls(
     date_range = ""
     if fetch_range is not None:
         since_dt, until_dt = fetch_range
-        since_label = since_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        until_label = until_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        since_label = since_dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        until_label = until_dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
         date_range += f" · [{since_label}, {until_label}) UTC"
     if all_variants:
         title += " · all variants"

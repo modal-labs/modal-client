@@ -6,7 +6,7 @@ import ipaddress
 import json
 from collections.abc import Iterator, Mapping
 from dataclasses import FrozenInstanceError, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Iterable, Literal, Optional, TypedDict
 
@@ -70,7 +70,7 @@ class AuditEvent:
             ip_address = None
         return cls(
             id=entry.id,
-            timestamp=entry.event_at_timestamp.ToDatetime(tzinfo=timezone.utc),
+            timestamp=entry.event_at_timestamp.ToDatetime(tzinfo=UTC),
             action=entry.action,
             status=entry.status,
             actor=cls.Actor(type=entry.actor.type, id=entry.actor.id, name=entry.actor.name, email=entry.actor.email),
@@ -334,8 +334,8 @@ class FunctionStats:
     @classmethod
     def _from_proto(cls, proto: api_pb2.FunctionGetTimeRangeStatsResponse, all_variants: bool) -> "FunctionStats":
         return cls(
-            since=proto.since.ToDatetime(tzinfo=timezone.utc),
-            until=proto.until.ToDatetime(tzinfo=timezone.utc),
+            since=proto.since.ToDatetime(tzinfo=UTC),
+            until=proto.until.ToDatetime(tzinfo=UTC),
             input_success_count=proto.input_success_count,
             input_failure_count=proto.input_failure_count,
             input_timeout_count=proto.input_timeout_count,
@@ -411,8 +411,8 @@ class ServerStats:
     @classmethod
     def _from_proto(cls, proto: api_pb2.ServerGetTimeRangeStatsResponse) -> "ServerStats":
         return cls(
-            since=proto.since.ToDatetime(tzinfo=timezone.utc),
-            until=proto.until.ToDatetime(tzinfo=timezone.utc),
+            since=proto.since.ToDatetime(tzinfo=UTC),
+            until=proto.until.ToDatetime(tzinfo=UTC),
             request_count=proto.request_count,
             request_count_by_status_code={item.status_code: item.count for item in proto.request_count_by_status_code},
             request_rate_per_second=proto.request_rate_per_second,
@@ -553,9 +553,9 @@ class MemberTokenInfo:
             token_id=proto.token_id,
             user_id=proto.user_id,
             username=proto.member_displayname,
-            created_at=datetime.fromtimestamp(proto.created_at, timezone.utc),
-            last_used_at=datetime.fromtimestamp(proto.last_used_at, timezone.utc) if proto.last_used_at else None,
-            expires_at=datetime.fromtimestamp(proto.expires_at, timezone.utc) if proto.expires_at else None,
+            created_at=datetime.fromtimestamp(proto.created_at, UTC),
+            last_used_at=datetime.fromtimestamp(proto.last_used_at, UTC) if proto.last_used_at else None,
+            expires_at=datetime.fromtimestamp(proto.expires_at, UTC) if proto.expires_at else None,
             disabled=proto.disabled,
         )
 
@@ -577,9 +577,9 @@ class ServiceUserInfo:
 
     @classmethod
     def _from_proto(cls, proto: api_pb2.ServiceUser) -> "ServiceUserInfo":
-        created_at = datetime.fromtimestamp(proto.created_at, tz=timezone.utc)
-        last_used_at = datetime.fromtimestamp(proto.last_used_at, tz=timezone.utc) if proto.last_used_at else None
-        expires_at = datetime.fromtimestamp(proto.expires_at, tz=timezone.utc) if proto.expires_at else None
+        created_at = datetime.fromtimestamp(proto.created_at, tz=UTC)
+        last_used_at = datetime.fromtimestamp(proto.last_used_at, tz=UTC) if proto.last_used_at else None
+        expires_at = datetime.fromtimestamp(proto.expires_at, tz=UTC) if proto.expires_at else None
 
         environment_roles: dict[str, str] = {}
         for item in proto.environment_roles:
@@ -659,7 +659,7 @@ class BillingReportItem:
             object_id=pb_item.object_id,
             description=pb_item.description,
             environment_name=pb_item.environment_name,
-            interval_start=pb_item.interval.ToDatetime().replace(tzinfo=timezone.utc),
+            interval_start=pb_item.interval.ToDatetime().replace(tzinfo=UTC),
             cost=Decimal(pb_item.cost),
             cost_by_resource={k: Decimal(v) for k, v in pb_item.cost_by_resource.items()},
             tags=dict(pb_item.tags),
@@ -699,8 +699,8 @@ class SandboxStats:
     @classmethod
     def _from_proto(cls, pb: "api_pb2.SandboxGetStatsResponse") -> "SandboxStats":
         return cls(
-            since=pb.since.ToDatetime(tzinfo=timezone.utc),
-            until=pb.until.ToDatetime(tzinfo=timezone.utc),
+            since=pb.since.ToDatetime(tzinfo=UTC),
+            until=pb.until.ToDatetime(tzinfo=UTC),
             duration=timedelta(hours=pb.duration_hours),
             percentile_stats={k: StatsPercentileDistribution._from_proto(v) for k, v in pb.percentile_stats.items()},
             cost=Decimal(pb.cost) if pb.HasField("cost") else None,
@@ -736,8 +736,8 @@ class WorkspaceBillingSummary:
             adjustments[key] = Decimal(value)
 
         return cls(
-            start=pb_item.start_timestamp.ToDatetime(timezone.utc),
-            end=pb_item.end_timestamp.ToDatetime(timezone.utc),
+            start=pb_item.start_timestamp.ToDatetime(UTC),
+            end=pb_item.end_timestamp.ToDatetime(UTC),
             metered_cost=Decimal(pb_item.metered_cost),
             billed_cost=Decimal(pb_item.billed_cost),
             metered_cost_breakdown=metered_cost_breakdown,
@@ -762,8 +762,8 @@ class EnvironmentBillingSummary:
             metered_cost_breakdown[key] = Decimal(value)
 
         return cls(
-            start=pb_item.start_timestamp.ToDatetime(timezone.utc),
-            end=pb_item.end_timestamp.ToDatetime(timezone.utc),
+            start=pb_item.start_timestamp.ToDatetime(UTC),
+            end=pb_item.end_timestamp.ToDatetime(UTC),
             metered_cost=Decimal(pb_item.metered_cost),
             metered_cost_breakdown=metered_cost_breakdown,
         )
@@ -1256,11 +1256,11 @@ class AppLifecycle:
             state=proto_to_state[proto.app_state],
             version=proto.version if proto.version else None,
             deployed_by=proto.deployed_by if proto.deployed_by else None,
-            stopped_at=datetime.fromtimestamp(proto.stopped_at, tz=timezone.utc) if proto.stopped_at > 0 else None,
+            stopped_at=datetime.fromtimestamp(proto.stopped_at, tz=UTC) if proto.stopped_at > 0 else None,
             stopped_by=proto.stopped_by if proto.stopped_by else None,
             created_by=proto.created_by,
-            deployed_at=datetime.fromtimestamp(proto.deployed_at, tz=timezone.utc) if proto.deployed_at > 0 else None,
-            created_at=datetime.fromtimestamp(proto.created_at, tz=timezone.utc),
+            deployed_at=datetime.fromtimestamp(proto.deployed_at, tz=UTC) if proto.deployed_at > 0 else None,
+            created_at=datetime.fromtimestamp(proto.created_at, tz=UTC),
         )
 
 
@@ -1415,8 +1415,8 @@ class AppStats:
     @classmethod
     def _from_proto(cls, proto: api_pb2.AppGetTimeRangeStatsResponse) -> "AppStats":
         return cls(
-            since=proto.since.ToDatetime(tzinfo=timezone.utc),
-            until=proto.until.ToDatetime(tzinfo=timezone.utc),
+            since=proto.since.ToDatetime(tzinfo=UTC),
+            until=proto.until.ToDatetime(tzinfo=UTC),
             functions=cls.FunctionStatsGroup(
                 total=cls.FunctionCounts._from_proto(proto.functions.total),
                 by_name={

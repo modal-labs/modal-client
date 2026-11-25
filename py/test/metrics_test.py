@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2026
 import asyncio
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from grpclib import GRPCError, Status
 
@@ -10,7 +10,7 @@ from modal.exception import InvalidError
 from modal.types import ObjectMetrics
 from modal_proto import api_pb2
 
-START = datetime(2026, 10, 1, tzinfo=timezone.utc)
+START = datetime(2026, 10, 1, tzinfo=UTC)
 
 
 def _handle(kind, client):
@@ -74,7 +74,7 @@ async def test_metrics_export(client, servicer, kind, async_call):
     ctx.pop_request("FunctionGetById")
     request = ctx.pop_request(rpc)
     assert request.function_id == "fu-test"
-    assert request.since.ToDatetime(tzinfo=timezone.utc) == kwargs["since"]
+    assert request.since.ToDatetime(tzinfo=UTC) == kwargs["since"]
     assert request.bucket_secs == 60
     assert list(request.groups) == ["future"]
     if kind == "function":
@@ -85,15 +85,15 @@ async def test_metrics_export(client, servicer, kind, async_call):
 @pytest.mark.parametrize("kind", ["function", "server"])
 def test_metrics_defaults(client, servicer, kind):
     rpc = "FunctionGetMetrics" if kind == "function" else "ServerGetMetrics"
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     with servicer.intercept() as ctx:
         ctx.add_response("FunctionGetById", _get_response(kind))
         ctx.add_response(rpc, _samples(kind))
         _handle(kind, client).metrics.export()
     request = ctx.pop_request(rpc)
-    until = request.until.ToDatetime(tzinfo=timezone.utc)
-    assert before <= until <= datetime.now(timezone.utc)
-    assert until - request.since.ToDatetime(tzinfo=timezone.utc) == timedelta(hours=1)
+    until = request.until.ToDatetime(tzinfo=UTC)
+    assert before <= until <= datetime.now(UTC)
+    assert until - request.since.ToDatetime(tzinfo=UTC) == timedelta(hours=1)
     assert not request.HasField("bucket_secs") and not request.groups
     if kind == "function":
         assert not request.rollup
@@ -152,7 +152,7 @@ def test_metrics_naive_datetimes_and_until_default():
 
     until = datetime(2026, 10, 1)
     request = _metrics_request(None, until, None, None)
-    assert request.until.ToDatetime(tzinfo=timezone.utc) == until.astimezone(timezone.utc)
+    assert request.until.ToDatetime(tzinfo=UTC) == until.astimezone(UTC)
     assert request.until.seconds - request.since.seconds == 3600
 
 

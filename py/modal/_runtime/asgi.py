@@ -158,7 +158,7 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., Asyn
                     # see comment above about manual cancellation
                     first_message_task.cancel()
                 raise
-            except (asyncio.TimeoutError, StopAsyncIteration):
+            except (TimeoutError, StopAsyncIteration):
                 # About `StopAsyncIteration` above: The generator shouldn't typically exit,
                 # but if it does, we handle it like a timeout in that case.
                 await handle_first_input_timeout()

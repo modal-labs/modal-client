@@ -3,7 +3,7 @@ import inspect
 import typing
 from collections.abc import AsyncGenerator, Callable, Collection, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -187,11 +187,11 @@ class _AppSandboxesManager:
         if until is not None:
             if until.tzinfo is None:
                 until = until.astimezone()
-            until = until.astimezone(timezone.utc)
+            until = until.astimezone(UTC)
         if since.tzinfo is None:
             since = since.astimezone()
-        since = since.astimezone(timezone.utc)
-        if since >= datetime.now(timezone.utc):
+        since = since.astimezone(UTC)
+        if since >= datetime.now(UTC):
             raise InvalidError("`since` must be in the past.")
         if until is not None and since >= until:
             raise InvalidError("`since` must be before `until`.")
@@ -1812,8 +1812,8 @@ class _App:
         """
         if not self._app_id:
             raise InvalidError("`app.stats` requires a running or stopped app.")
-        until = (until or datetime.now(timezone.utc)).astimezone(timezone.utc)
-        since = (since or until - timedelta(hours=1)).astimezone(timezone.utc)
+        until = (until or datetime.now(UTC)).astimezone(UTC)
+        since = (since or until - timedelta(hours=1)).astimezone(UTC)
         if since >= until:
             raise InvalidError("`since` must be before `until`.")
         request = api_pb2.AppGetTimeRangeStatsRequest(app_id=self._app_id)

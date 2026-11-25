@@ -263,8 +263,8 @@ async def _stop_and_wait_for_containers(
 
     try:
         await asyncio.wait_for(poll_until_stopped(), timeout=WAIT_FOR_CONTAINER_STOP_TIMEOUT)
-    except asyncio.TimeoutError:
-        raise asyncio.TimeoutError(f"Containers did not terminate in under {WAIT_FOR_CONTAINER_STOP_TIMEOUT} seconds.")
+    except TimeoutError:
+        raise TimeoutError(f"Containers did not terminate in under {WAIT_FOR_CONTAINER_STOP_TIMEOUT} seconds.")
 
 
 def _validate_deployment_strategy(strategy: str) -> DEPLOYMENT_STRATEGY_TYPE:
@@ -513,7 +513,7 @@ async def _run_app(
                 if logs_loop:
                     try:
                         await asyncio.wait_for(logs_loop, timeout=logs_timeout)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning("Timed out waiting for final app logs.")
 
                 output_mgr.step_completed(
@@ -539,7 +539,7 @@ async def _run_app(
         if logs_loop:
             try:
                 await asyncio.wait_for(logs_loop, timeout=logs_timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Timed out waiting for final app logs.")
 
     # Print completion message if output is still enabled (it may have been disabled during PTY mode)

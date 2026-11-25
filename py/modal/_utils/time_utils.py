@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 import re
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo
 
 _DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -113,7 +113,7 @@ def parse_date(
     """
     s_orig = s.strip()
     s = s_orig.lower()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if s == "now":
         return now
@@ -121,14 +121,14 @@ def parse_date(
     if s == "today":
         if tz is not None:
             today_local = now.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-            return today_local.astimezone(timezone.utc)
+            return today_local.astimezone(UTC)
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     if s == "yesterday":
         if tz is not None:
             today_local = now.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
             yesterday_local = today_local - timedelta(days=1)
-            return yesterday_local.astimezone(timezone.utc)
+            return yesterday_local.astimezone(UTC)
         return (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     # "N days/weeks/months/hours ago"
@@ -154,11 +154,11 @@ def parse_date(
 
     if dt.tzinfo is not None:
         # Already has timezone info — convert to UTC
-        return dt.astimezone(timezone.utc)
+        return dt.astimezone(UTC)
     if tz is not None:
         # Interpret as local time in the given timezone, then convert to UTC
-        return dt.replace(tzinfo=tz).astimezone(timezone.utc)
-    return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=tz).astimezone(UTC)
+    return dt.replace(tzinfo=UTC)
 
 
 _iso_month_expr = re.compile(r"^(?P<year>\d\d\d\d)-(?P<month>\d\d)$")
@@ -180,7 +180,7 @@ def parse_date_range(
     Raises ValueError for unrecognized input.
     """
     s = s.strip().lower()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if tz is not None:
         today = now.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -188,7 +188,7 @@ def parse_date_range(
         today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     def _to_utc(dt: datetime) -> datetime:
-        return dt.astimezone(timezone.utc)
+        return dt.astimezone(UTC)
 
     if s == "today":
         return _to_utc(today), _to_utc(today + timedelta(days=1))
@@ -222,7 +222,7 @@ def parse_date_range(
 def parse_billing_cycle(s: str) -> datetime:
     s = s.strip().lower()
 
-    this_month_start = datetime.now(timezone.utc).replace(
+    this_month_start = datetime.now(UTC).replace(
         day=1,
         hour=0,
         minute=0,
@@ -246,7 +246,7 @@ def parse_billing_cycle(s: str) -> datetime:
         year=int(match["year"]),
         month=int(match["month"]),
         day=1,
-        tzinfo=timezone.utc,
+        tzinfo=UTC,
     )
 
     return start
@@ -282,7 +282,7 @@ def relative_timestamp(dt: datetime) -> str:
     if dt.tzinfo is None:
         raise ValueError("datetime must be timezone-aware")
 
-    total_seconds = int((datetime.now(timezone.utc) - dt).total_seconds())
+    total_seconds = int((datetime.now(UTC) - dt).total_seconds())
     if total_seconds < 10:
         return "just now"
     if 86400 <= total_seconds < 2 * 86400:
@@ -357,9 +357,9 @@ def format_interval(
 
 def is_utc_month_aligned(dt: datetime) -> bool:
     if dt.tzinfo is None:
-        utc = dt.replace(tzinfo=timezone.utc)
+        utc = dt.replace(tzinfo=UTC)
     else:
-        utc = dt.astimezone(timezone.utc)
+        utc = dt.astimezone(UTC)
 
     return utc == utc.replace(
         day=1,

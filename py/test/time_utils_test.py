@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -17,8 +17,8 @@ from modal._utils.time_utils import (
     resolve_timezone,
 )
 
-FIXED_NOW = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-END_OF_MONTH = datetime(2025, 1, 31, 12, 0, 0, tzinfo=timezone.utc)
+FIXED_NOW = datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
+END_OF_MONTH = datetime(2025, 1, 31, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.mark.parametrize(
@@ -139,8 +139,8 @@ def test_parse_date_now(mock_now):
 @pytest.mark.parametrize(
     "input,expected",
     [
-        ("2025-01-15", datetime(2025, 1, 15, tzinfo=timezone.utc)),
-        ("2025-01-15T14:30:00", datetime(2025, 1, 15, 14, 30, 0, tzinfo=timezone.utc)),
+        ("2025-01-15", datetime(2025, 1, 15, tzinfo=UTC)),
+        ("2025-01-15T14:30:00", datetime(2025, 1, 15, 14, 30, 0, tzinfo=UTC)),
     ],
 )
 def test_parse_date_iso(input, expected):
@@ -154,7 +154,7 @@ def test_parse_date_invalid(input):
 
 
 # FIXED_NOW = 2025-01-15 12:00 UTC (Wednesday, weekday=2)
-_UTC = timezone.utc
+_UTC = UTC
 
 
 def _utc(y, m, d):
@@ -230,7 +230,7 @@ def test_resolve_timezone_integer_offset():
     assert tz == timezone(timedelta(hours=-4))
 
     tz = resolve_timezone("0")
-    assert tz == timezone.utc
+    assert tz == UTC
 
 
 def test_resolve_timezone_offset_string():
@@ -261,7 +261,7 @@ _EASTERN = ZoneInfo("America/New_York")
 def test_parse_date_iso_with_tz():
     # 2025-01-01 midnight in Eastern (UTC-5) = 2025-01-01 05:00 UTC
     result = parse_date("2025-01-01", tz=_EASTERN)
-    assert result == datetime(2025, 1, 1, 5, 0, 0, tzinfo=timezone.utc)
+    assert result == datetime(2025, 1, 1, 5, 0, 0, tzinfo=UTC)
 
 
 def test_parse_date_today_with_tz(mock_now):
@@ -269,14 +269,14 @@ def test_parse_date_today_with_tz(mock_now):
     # In UTC-5, that's 2025-01-15 07:00 Eastern
     # Midnight Eastern on that day = 2025-01-15 05:00 UTC
     result = parse_date("today", tz=_EASTERN)
-    assert result == datetime(2025, 1, 15, 5, 0, 0, tzinfo=timezone.utc)
+    assert result == datetime(2025, 1, 15, 5, 0, 0, tzinfo=UTC)
 
 
 def test_parse_date_yesterday_with_tz(mock_now):
     # FIXED_NOW = 2025-01-15 12:00 UTC -> 07:00 Eastern
     # Yesterday midnight Eastern = 2025-01-14 05:00 UTC
     result = parse_date("yesterday", tz=_EASTERN)
-    assert result == datetime(2025, 1, 14, 5, 0, 0, tzinfo=timezone.utc)
+    assert result == datetime(2025, 1, 14, 5, 0, 0, tzinfo=UTC)
 
 
 def test_parse_date_now_ignores_tz(mock_now):
@@ -295,15 +295,15 @@ def test_parse_date_iso_with_explicit_tz_in_string():
     # If the ISO string already has timezone info, it should be converted to UTC (not replaced)
     # +05:00 means midnight at UTC+5 = 19:00 previous day in UTC
     result = parse_date("2025-01-01T00:00:00+05:00", tz=_EASTERN)
-    assert result == datetime(2024, 12, 31, 19, 0, 0, tzinfo=timezone.utc)
+    assert result == datetime(2024, 12, 31, 19, 0, 0, tzinfo=UTC)
 
     # +00:00 should remain unchanged
     result = parse_date("2025-01-01T00:00:00+00:00", tz=_EASTERN)
-    assert result == datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    assert result == datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
 
     # Without tz param, explicit offset should still be converted
     result = parse_date("2025-01-01T00:00:00+05:00")
-    assert result == datetime(2024, 12, 31, 19, 0, 0, tzinfo=timezone.utc)
+    assert result == datetime(2024, 12, 31, 19, 0, 0, tzinfo=UTC)
 
 
 # --- parse_date_range with tz tests ---
@@ -314,14 +314,14 @@ def test_parse_date_range_this_month_with_tz(mock_now):
     # "this month" in Eastern: Jan 1 00:00 Eastern -> Feb 1 00:00 Eastern
     # = Jan 1 05:00 UTC -> Feb 1 05:00 UTC
     start, end = parse_date_range("this month", tz=_EASTERN)
-    assert start == datetime(2025, 1, 1, 5, 0, 0, tzinfo=timezone.utc)
-    assert end == datetime(2025, 2, 1, 5, 0, 0, tzinfo=timezone.utc)
+    assert start == datetime(2025, 1, 1, 5, 0, 0, tzinfo=UTC)
+    assert end == datetime(2025, 2, 1, 5, 0, 0, tzinfo=UTC)
 
 
 def test_parse_date_range_today_with_tz(mock_now):
     start, end = parse_date_range("today", tz=_EASTERN)
-    assert start == datetime(2025, 1, 15, 5, 0, 0, tzinfo=timezone.utc)
-    assert end == datetime(2025, 1, 16, 5, 0, 0, tzinfo=timezone.utc)
+    assert start == datetime(2025, 1, 15, 5, 0, 0, tzinfo=UTC)
+    assert end == datetime(2025, 1, 16, 5, 0, 0, tzinfo=UTC)
 
 
 def test_parse_date_range_without_tz_unchanged(mock_now):
@@ -337,8 +337,8 @@ def test_parse_date_range_with_fixed_offset(mock_now):
     # FIXED_NOW = 2025-01-15 12:00 UTC = 2025-01-15 17:30 IST
     # "today" in IST: Jan 15 00:00 IST = Jan 14 18:30 UTC
     start, end = parse_date_range("today", tz=ist)
-    assert start == datetime(2025, 1, 14, 18, 30, 0, tzinfo=timezone.utc)
-    assert end == datetime(2025, 1, 15, 18, 30, 0, tzinfo=timezone.utc)
+    assert start == datetime(2025, 1, 14, 18, 30, 0, tzinfo=UTC)
+    assert end == datetime(2025, 1, 15, 18, 30, 0, tzinfo=UTC)
 
 
 # --- relative_timestamp tests ---
@@ -372,7 +372,7 @@ def test_parse_date_range_with_fixed_offset(mock_now):
     ],
 )
 def test_relative_timestamp(delta, expected):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     dt = now - delta
     assert relative_timestamp(dt) == expected
 
@@ -392,7 +392,7 @@ def test_relative_timestamp_non_utc():
 
 def test_relative_timestamp_future():
     # Future datetimes should return "just now"
-    dt = datetime.now(timezone.utc) + timedelta(hours=1)
+    dt = datetime.now(UTC) + timedelta(hours=1)
     assert relative_timestamp(dt) == "just now"
 
 

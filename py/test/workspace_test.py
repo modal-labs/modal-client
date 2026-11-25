@@ -3,7 +3,7 @@ import ipaddress
 import pytest
 import re
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from grpclib import GRPCError, Status
@@ -45,15 +45,15 @@ def test_workspace_members_list(servicer, client):
             name="Alice",
             email="alice@example.com",
             role="owner",
-            joined_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
-            last_active_at=datetime(2021, 1, 1, tzinfo=timezone.utc),
+            joined_at=datetime(2020, 1, 1, tzinfo=UTC),
+            last_active_at=datetime(2021, 1, 1, tzinfo=UTC),
         ),
         WorkspaceMemberInfo(
             user_id="us-2",
             name="Bob",
             email="bob@example.com",
             role="member",
-            joined_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            joined_at=datetime(2020, 1, 1, tzinfo=UTC),
             last_active_at=None,  # Bob has never been active
         ),
     ]
@@ -358,11 +358,11 @@ def test_workspace_member_tokens(client, servicer: MockClientServicer):
 
 
 def test_workspace_audit_logs_newest(servicer, client):
-    until = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 10, 12, tzinfo=UTC)
     servicer.audit_log_entries = [
         api_pb2.AuditLogEntry(
             id=f"al-{n}",
-            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, n, tzinfo=timezone.utc).timestamp())),
+            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, n, tzinfo=UTC).timestamp())),
             action="app.deploy",
             status="success",
             actor=api_pb2.AuditLogActor(type="user", id="us-1"),
@@ -380,7 +380,7 @@ def test_workspace_audit_logs_newest(servicer, client):
     assert [entry.id for entry in entries] == [f"al-{n}" for n in range(1, 10)]
     entry = entries[0]
     assert isinstance(entry, AuditEvent)
-    assert entry.timestamp == datetime(2026, 10, 11, 14, 1, tzinfo=timezone.utc)
+    assert entry.timestamp == datetime(2026, 10, 11, 14, 1, tzinfo=UTC)
     assert entry.actor.id == "us-1"
     assert entry.actor == AuditEvent.Actor(type="user", id="us-1", name="", email="")
     assert entry.targets[0].id == "ap-1"
@@ -410,11 +410,11 @@ def test_workspace_audit_logs_ip_address(servicer, client, raw, expected):
     servicer.audit_log_entries = [
         api_pb2.AuditLogEntry(
             id="al-1",
-            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, tzinfo=timezone.utc).timestamp())),
+            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, tzinfo=UTC).timestamp())),
             context=api_pb2.AuditLogContext(ip_address=raw),
         )
     ]
-    until = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 10, 12, tzinfo=UTC)
     [entry] = Workspace.from_context(client=client).audit_logs.fetch(until=until)
     assert entry.context.ip_address == expected
 
@@ -430,12 +430,12 @@ def test_workspace_audit_logs_resolved_names(servicer, client, name, email, envi
     servicer.audit_log_entries = [
         api_pb2.AuditLogEntry(
             id="al-1",
-            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, tzinfo=timezone.utc).timestamp())),
+            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, tzinfo=UTC).timestamp())),
             actor=api_pb2.AuditLogActor(type="user", id="us-1", name=name, email=email),
             context=api_pb2.AuditLogContext(environment_id="en-1", environment_name=environment_name),
         )
     ]
-    until = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 10, 12, tzinfo=UTC)
     [entry] = Workspace.from_context(client=client).audit_logs.fetch(until=until)
     assert (entry.actor.id, entry.actor.name, entry.actor.email) == ("us-1", name, email)
     assert (entry.context.environment_id, entry.context.environment_name) == ("en-1", environment_name)
@@ -443,12 +443,12 @@ def test_workspace_audit_logs_resolved_names(servicer, client, name, email, envi
 
 @pytest.mark.asyncio
 async def test_workspace_audit_logs_since_with_limit(servicer, client):
-    since = datetime(2026, 10, 11, tzinfo=timezone.utc)
+    since = datetime(2026, 10, 11, tzinfo=UTC)
     until = since + timedelta(days=1)
     servicer.audit_log_entries = [
         api_pb2.AuditLogEntry(
             id=f"al-{n}",
-            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, n, tzinfo=timezone.utc).timestamp())),
+            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, n, tzinfo=UTC).timestamp())),
         )
         for n in range(9, 0, -1)
     ]
@@ -465,10 +465,10 @@ async def test_workspace_audit_logs_since_with_limit(servicer, client):
 @pytest.mark.parametrize(
     "timestamp, expected",
     [
-        (Timestamp(seconds=1791727200, nanos=123000000), datetime(2026, 10, 11, 14, 0, 0, 123000, tzinfo=timezone.utc)),
-        (Timestamp(), datetime(1970, 1, 1, tzinfo=timezone.utc)),
-        (Timestamp(seconds=-1, nanos=877000000), datetime(1969, 12, 31, 23, 59, 59, 877000, tzinfo=timezone.utc)),
-        (None, datetime(1970, 1, 1, tzinfo=timezone.utc)),
+        (Timestamp(seconds=1791727200, nanos=123000000), datetime(2026, 10, 11, 14, 0, 0, 123000, tzinfo=UTC)),
+        (Timestamp(), datetime(1970, 1, 1, tzinfo=UTC)),
+        (Timestamp(seconds=-1, nanos=877000000), datetime(1969, 12, 31, 23, 59, 59, 877000, tzinfo=UTC)),
+        (None, datetime(1970, 1, 1, tzinfo=UTC)),
     ],
 )
 def test_workspace_audit_logs_typed_timestamp(servicer, client, timestamp, expected):
@@ -477,7 +477,7 @@ def test_workspace_audit_logs_typed_timestamp(servicer, client, timestamp, expec
     ]
     [entry] = Workspace.from_context(client=client).audit_logs.fetch()
     assert entry.timestamp == expected
-    assert entry.timestamp.tzinfo is timezone.utc
+    assert entry.timestamp.tzinfo is UTC
 
 
 def test_workspace_audit_logs_invalid_timestamp(servicer, client):
@@ -487,7 +487,7 @@ def test_workspace_audit_logs_invalid_timestamp(servicer, client):
 
 
 def test_workspace_audit_logs_count(servicer, client):
-    until = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 10, 12, tzinfo=UTC)
     since = until - timedelta(days=3)
     servicer.audit_log_entries = [api_pb2.AuditLogEntry(id="al-1")]
     with servicer.intercept() as ctx:
@@ -506,13 +506,13 @@ def test_workspace_audit_logs_count_requires_since(client):
 
 
 def test_workspace_audit_logs_count_defaults_until_to_now(servicer, client):
-    since = datetime.now(timezone.utc) - timedelta(days=1)
-    before = datetime.now(timezone.utc)
+    since = datetime.now(UTC) - timedelta(days=1)
+    before = datetime.now(UTC)
     with servicer.intercept() as ctx:
         assert Workspace.from_context(client=client).audit_logs.count(since=since) == 0
         request = ctx.pop_request("AuditLogCount")
     assert request.oldest_ms == int(since.timestamp() * 1000)
-    assert int(before.timestamp() * 1000) <= request.newest_ms <= int(datetime.now(timezone.utc).timestamp() * 1000)
+    assert int(before.timestamp() * 1000) <= request.newest_ms <= int(datetime.now(UTC).timestamp() * 1000)
 
 
 @pytest.mark.parametrize("limit", [0, -1])
@@ -523,7 +523,7 @@ def test_workspace_audit_logs_invalid_newest_limit(client, limit):
 
 @pytest.mark.parametrize("limit", [0, -1])
 def test_workspace_audit_logs_invalid_since_limit(client, limit):
-    until = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 10, 12, tzinfo=UTC)
     with pytest.raises(InvalidError):
         list(
             Workspace.from_context(client=client).audit_logs.fetch(
@@ -534,7 +534,7 @@ def test_workspace_audit_logs_invalid_since_limit(client, limit):
 
 @pytest.mark.parametrize("with_since", [False, True])
 def test_workspace_audit_logs_empty(servicer, client, with_since):
-    until = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    until = datetime(2026, 10, 12, tzinfo=UTC)
     since = until - timedelta(days=1) if with_since else None
     manager = Workspace.from_context(client=client).audit_logs
     assert list(manager.fetch(since=since, until=until)) == []
@@ -554,7 +554,7 @@ def test_workspace_audit_logs_rpc_errors(servicer, client, operation):
             if operation == "fetch":
                 list(manager.fetch())
             else:
-                manager.count(since=datetime(2026, 10, 11, tzinfo=timezone.utc))
+                manager.count(since=datetime(2026, 10, 11, tzinfo=UTC))
 
 
 @pytest.mark.parametrize("metadata, expected", [("", {}), ("invalid", "invalid"), ('{"key": 1}', {"key": 1})])
@@ -564,9 +564,7 @@ def test_workspace_audit_logs_metadata(servicer, client, metadata, expected):
             id="al-1", event_at_timestamp=Timestamp(seconds=1, nanos=123000000), metadata_json=metadata
         )
     ]
-    entry = next(
-        Workspace.from_context(client=client).audit_logs.fetch(until=datetime(2026, 10, 12, tzinfo=timezone.utc))
-    )
+    entry = next(Workspace.from_context(client=client).audit_logs.fetch(until=datetime(2026, 10, 12, tzinfo=UTC)))
     assert entry.metadata == expected
 
 
@@ -583,7 +581,7 @@ def test_workspace_audit_logs_naive_bounds(servicer, client):
 
 
 def test_workspace_audit_logs_since_large_limit(servicer, client):
-    since = datetime(2026, 10, 11, tzinfo=timezone.utc)
+    since = datetime(2026, 10, 11, tzinfo=UTC)
     servicer.audit_log_entries = [
         api_pb2.AuditLogEntry(id="al-1", event_at_timestamp=Timestamp(seconds=1, nanos=123000000))
     ]
@@ -594,7 +592,7 @@ def test_workspace_audit_logs_since_large_limit(servicer, client):
 
 
 def test_workspace_audit_logs_large_limit_returns_newest(servicer, client):
-    since = datetime(2026, 10, 11, tzinfo=timezone.utc)
+    since = datetime(2026, 10, 11, tzinfo=UTC)
     servicer.audit_log_entries = [
         api_pb2.AuditLogEntry(id=f"al-{n}", event_at_timestamp=Timestamp(seconds=1, nanos=123000000))
         for n in range(5002, 0, -1)

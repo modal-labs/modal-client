@@ -5,7 +5,7 @@ import time
 import warnings
 from collections.abc import Mapping
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from json import dumps
 from typing import Literal, get_args
 
@@ -893,7 +893,7 @@ async def stats(
     modal app stats ap-123 --since 5h --until 2h --json
     ```
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     until_dt = _parse_time_arg(until, default=now, now=now)
     since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW, now=now)
     if since_dt >= until_dt:
@@ -913,8 +913,8 @@ async def stats(
             dumps(
                 {
                     "app_id": app.app_id,
-                    "since": result.since.astimezone(timezone.utc).isoformat(),
-                    "until": result.until.astimezone(timezone.utc).isoformat(),
+                    "since": result.since.astimezone(UTC).isoformat(),
+                    "until": result.until.astimezone(UTC).isoformat(),
                     "lifecycle": {
                         "state": lifecycle.state.value,
                         "version": lifecycle.version,
@@ -953,7 +953,7 @@ async def stats(
         output.print("")
     live_label = "live"
     if until is not None:
-        live_label += f" as of {result.until.astimezone(timezone.utc):%Y-%m-%d %H:%M:%S UTC}"
+        live_label += f" as of {result.until.astimezone(UTC):%Y-%m-%d %H:%M:%S UTC}"
     sandboxes = Table.grid(padding=(0, 4))
     sandboxes.add_column(width=column_widths[0])
     sandboxes.add_column()

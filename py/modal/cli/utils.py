@@ -6,7 +6,7 @@ import sys
 from collections.abc import Sequence
 from contextlib import nullcontext
 from csv import writer as csv_writer
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from json import dumps
 from typing import Literal
 
@@ -34,7 +34,7 @@ HEADER_ONLY = SIMPLE_HEAD
 
 
 def grouped_utc_timestamp(timestamp: Timestamp, previous_date: date | None) -> tuple[str, date]:
-    timestamp_datetime = timestamp.ToDatetime(tzinfo=timezone.utc)
+    timestamp_datetime = timestamp.ToDatetime(tzinfo=UTC)
     current_date = timestamp_datetime.date()
     date_prefix = f"{current_date.isoformat()} " if current_date != previous_date else ""
     time_label = timestamp_datetime.strftime("%H:%M:%S")

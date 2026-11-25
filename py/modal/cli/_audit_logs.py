@@ -5,7 +5,7 @@ import io
 import json
 import logging
 from collections.abc import Iterable, Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import click
 
@@ -36,7 +36,7 @@ _CSV_COLUMNS = (
 
 
 def _timestamp(entry: AuditEvent) -> str:
-    return entry.timestamp.astimezone(timezone.utc).isoformat(timespec="milliseconds")
+    return entry.timestamp.astimezone(UTC).isoformat(timespec="milliseconds")
 
 
 def _csv_row(entry: AuditEvent) -> list[str | None]:

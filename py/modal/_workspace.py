@@ -3,7 +3,7 @@ import builtins
 import warnings
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import aclosing
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -167,15 +167,15 @@ class _WorkspaceAuditLogsManager:
 
     @staticmethod
     def _range(since: datetime | None, until: datetime | None) -> tuple[int, int]:
-        until = until or datetime.now(timezone.utc)
+        until = until or datetime.now(UTC)
         if until.tzinfo is None:
             until = until.replace(tzinfo=locale_tz())
-        until = until.astimezone(timezone.utc)
+        until = until.astimezone(UTC)
         if since is None:
             since = until - _AUDIT_LOG_DEFAULT_WINDOW
         elif since.tzinfo is None:
             since = since.replace(tzinfo=locale_tz())
-        since = since.astimezone(timezone.utc)
+        since = since.astimezone(UTC)
         return int(since.timestamp() * 1000), int(until.timestamp() * 1000)
 
     async def fetch(
@@ -578,16 +578,16 @@ class _WorkspaceBillingManager:
             tag_names = []
 
         if end is None:
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
 
         if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
-        elif start.tzinfo != timezone.utc:
+            start = start.replace(tzinfo=UTC)
+        elif start.tzinfo != UTC:
             raise InvalidError("Timezone-aware 'start' parameter must be in UTC.")
 
         if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        elif end.tzinfo != timezone.utc:
+            end = end.replace(tzinfo=UTC)
+        elif end.tzinfo != UTC:
             raise InvalidError("Timezone-aware 'end' parameter must be in UTC.")
 
         if not self._workspace._is_hydrated:
@@ -640,7 +640,7 @@ class _WorkspaceBillingManager:
         """
 
         if cycle is None:
-            cycle = datetime.now(timezone.utc).replace(
+            cycle = datetime.now(UTC).replace(
                 day=1,
                 hour=0,
                 minute=0,
@@ -651,14 +651,14 @@ class _WorkspaceBillingManager:
             cycle = parse_billing_cycle(cycle)
 
         if cycle.tzinfo is None:
-            cycle = cycle.replace(tzinfo=timezone.utc)
-        elif cycle.tzinfo != timezone.utc:
+            cycle = cycle.replace(tzinfo=UTC)
+        elif cycle.tzinfo != UTC:
             raise InvalidError("Timezone-aware 'cycle' parameter must be in UTC.")
 
         if not is_utc_month_aligned(cycle):
             raise InvalidError("Provided 'cycle' parameter must be the first of a month.")
 
-        if cycle > datetime.now(timezone.utc):
+        if cycle > datetime.now(UTC):
             raise InvalidError("Provided 'cycle' parameter cannot be in the future.")
 
         if not self._workspace._is_hydrated:

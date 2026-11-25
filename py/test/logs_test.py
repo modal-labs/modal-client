@@ -2,7 +2,7 @@
 import asyncio
 import pytest
 import socket
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, cast
 
 import modal
@@ -32,14 +32,14 @@ from .conftest import run_cli_command
 
 
 def test_pick_bucket_secs_small_range():
-    since = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
     until = since + timedelta(seconds=100)
     # 100s / 2s = 50 buckets <= 100, so smallest bucket size (2) works
     assert _pick_bucket_secs(since, until) == 2
 
 
 def test_pick_bucket_secs_medium_range():
-    since = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
     until = since + timedelta(hours=1)
     # 3600s / 60s = 60 buckets <= 100
     bucket = _pick_bucket_secs(since, until)
@@ -48,7 +48,7 @@ def test_pick_bucket_secs_medium_range():
 
 
 def test_pick_bucket_secs_large_range():
-    since = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
     until = since + timedelta(days=30)
     bucket = _pick_bucket_secs(since, until)
     assert 30 * 86400 / bucket <= 100
@@ -183,12 +183,12 @@ def test_timestamp_roundtrip():
 
 
 def test_parse_time_arg_none():
-    default = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    default = datetime(2026, 1, 1, tzinfo=UTC)
     assert _parse_time_arg(None, default, now=default) == default
 
 
 def test_parse_time_arg_relative():
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
     assert _parse_time_arg("30m", datetime.min, now=now) == now - timedelta(minutes=30)
 
 
@@ -511,7 +511,7 @@ async def test_fetch_logs_errors_on_too_dense_interval():
     """fetch_logs should raise ValueError if a range exceeds _FETCH_LIMIT after refinement."""
     from modal._logs import fetch_logs
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now - timedelta(hours=1)
     until = since + timedelta(seconds=4)
 
@@ -538,7 +538,7 @@ async def test_fetch_logs_errors_on_too_many_intervals():
     from modal._logs import _INTERVAL_LOG_THRESHOLD, fetch_logs
 
     n_buckets = _MAX_FETCHES + 1
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now - timedelta(hours=1)
     # Use a range that yields bucket_secs=2 (needs duration / 2 <= 100)
     until = since + timedelta(seconds=2 * n_buckets)
@@ -569,7 +569,7 @@ async def test_fetch_logs_trims_leading_trailing_zeros():
     """fetch_logs should trim empty buckets at the edges, giving refinement more budget."""
     from modal._logs import fetch_logs
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now - timedelta(hours=4)
     until = now
 
@@ -627,7 +627,7 @@ async def test_fetch_logs_trims_leading_trailing_zeros():
 async def test_fetch_time_range_bounds_concurrency_and_orders_results():
     from modal._logs import _fetch_time_range
 
-    since = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, tzinfo=UTC)
     active = 0
     max_active = 0
     started = [asyncio.Event() for _ in range(12)]
@@ -682,7 +682,7 @@ async def test_fetch_time_range_bounds_concurrency_and_orders_results():
 async def test_fetch_time_range_cancels_pending_fetches_on_close():
     from modal._logs import _fetch_time_range
 
-    since = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, tzinfo=UTC)
     started = asyncio.Event()
     active = 0
 
@@ -810,7 +810,7 @@ async def test_tail_logs_with_explicit_since():
         _stub = _TailMockStub()
 
     client: Any = _TailMockClient()
-    since = datetime.now(timezone.utc) - timedelta(hours=2)
+    since = datetime.now(UTC) - timedelta(hours=2)
     # Only 1 result even though n=50 — no widening because since is explicit
     batches = [b async for b in tail_logs(client, "app-1", 50, since=since)]
 
@@ -846,7 +846,7 @@ async def test_tail_logs_with_explicit_until():
         _stub = _TailMockStub()
 
     client: Any = _TailMockClient()
-    until = datetime.now(timezone.utc) - timedelta(hours=1)
+    until = datetime.now(UTC) - timedelta(hours=1)
     batches = [b async for b in tail_logs(client, "app-1", 10, until=until)]
 
     assert len(fetch_requests) == 1
@@ -869,7 +869,7 @@ async def test_fetch_logs_errors_on_range_exceeding_max():
     """fetch_logs should raise LogsFetchError if until - since > _MAX_FETCH_RANGE."""
     from modal._logs import _MAX_FETCH_RANGE, fetch_logs
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now - _MAX_FETCH_RANGE - timedelta(days=1)
     until = now
 
@@ -884,7 +884,7 @@ async def test_tail_logs_errors_on_range_exceeding_max():
     """tail_logs with explicit since should raise LogsFetchError if the range exceeds _MAX_FETCH_RANGE."""
     from modal._logs import _MAX_FETCH_RANGE, tail_logs
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now - _MAX_FETCH_RANGE - timedelta(days=1)
 
     client: Any = _MockClient({})
@@ -899,7 +899,7 @@ async def test_tail_logs_errors_on_range_exceeding_max():
 
 
 def _image_build_step(index: int) -> api_pb2.ImageBuildStep:
-    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=index)
+    started_at = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=index)
     finished_at = started_at + timedelta(seconds=30)
     step = api_pb2.ImageBuildStep(
         image_id=f"im-{index}",
@@ -948,7 +948,7 @@ async def test_image_logs_fetch_runs_steps_concurrently_and_returns_build_order(
 
     assert [entry.message for entry in entries] == ["ap-1\n", "ap-2\n"]
     assert {(app_id, task_id) for app_id, _, _, task_id in calls} == {("ap-1", "ta-1"), ("ap-2", "ta-2")}
-    assert all(since.tzinfo is timezone.utc and until.tzinfo is timezone.utc for _, since, until, _ in calls)
+    assert all(since.tzinfo is UTC and until.tzinfo is UTC for _, since, until, _ in calls)
 
 
 async def _collect_entries(generator):
@@ -1036,7 +1036,7 @@ async def test_image_logs_tail_queries_backwards_and_returns_chronological_build
         ("ap-2", 4, "ta-2"),
         ("ap-1", 2, "ta-1"),
     ]
-    assert all(since.tzinfo is timezone.utc and until.tzinfo is timezone.utc for _, _, since, until, _ in calls)
+    assert all(since.tzinfo is UTC and until.tzinfo is UTC for _, _, since, until, _ in calls)
 
 
 @pytest.mark.asyncio
@@ -1074,7 +1074,7 @@ app = modal.App("my_app")
 """
 
 # Use recent timestamps for realistic test data
-_now = datetime.now(timezone.utc)
+_now = datetime.now(UTC)
 _TEST_TIMESTAMP = (_now - timedelta(hours=1)).timestamp()
 _BUCKET_START = _TEST_TIMESTAMP - 60  # Bucket starts 60s before the log
 # CLI args that bracket the test data
@@ -1162,7 +1162,7 @@ def test_function_logs_tail(client, servicer):
 
     assert [str(log) for log in logs] == ["hello\n"]
     assert logs[0].message == "hello\n"
-    assert logs[0].timestamp == datetime.fromtimestamp(_TEST_TIMESTAMP, timezone.utc)
+    assert logs[0].timestamp == datetime.fromtimestamp(_TEST_TIMESTAMP, UTC)
     assert logs[0].source == "stdout"
     assert logs[0].object_id == function_id
     assert len(fetch_requests) == 1
@@ -1660,12 +1660,8 @@ async def test_logs_manager_fetch_interprets_naive_datetime_as_local_time(monkey
     logs = [_ async for _ in manager.fetch(since=datetime(2026, 7, 16, 12, 13), until=datetime(2026, 7, 16, 12, 20))]
     assert logs == []
     assert len(log_source.count_requests) == 1
-    assert log_source.count_requests[0].since.ToDatetime(tzinfo=timezone.utc) == datetime(
-        2026, 7, 16, 16, 13, tzinfo=timezone.utc
-    )
-    assert log_source.count_requests[0].until.ToDatetime(tzinfo=timezone.utc) == datetime(
-        2026, 7, 16, 16, 20, tzinfo=timezone.utc
-    )
+    assert log_source.count_requests[0].since.ToDatetime(tzinfo=UTC) == datetime(2026, 7, 16, 16, 13, tzinfo=UTC)
+    assert log_source.count_requests[0].until.ToDatetime(tzinfo=UTC) == datetime(2026, 7, 16, 16, 20, tzinfo=UTC)
 
     logs = [
         _
@@ -1675,9 +1671,7 @@ async def test_logs_manager_fetch_interprets_naive_datetime_as_local_time(monkey
         )
     ]
     assert logs == []
-    assert log_source.count_requests[-1].since.ToDatetime(tzinfo=timezone.utc) == datetime(
-        2026, 1, 1, 5, 0, tzinfo=timezone.utc
-    )
+    assert log_source.count_requests[-1].since.ToDatetime(tzinfo=UTC) == datetime(2026, 1, 1, 5, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio

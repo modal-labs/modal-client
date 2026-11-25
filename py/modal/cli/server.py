@@ -7,7 +7,7 @@ import math
 import os
 import shlex
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import AsyncGenerator, Sequence, cast
 
@@ -1134,8 +1134,8 @@ def _stats_json(
     id_dict = {"object_id": function_id} if not endpoint_id else {"endpoint_id": endpoint_id}
     return {
         **id_dict,
-        "since": history.since.ToDatetime(tzinfo=timezone.utc).isoformat(),
-        "until": history.until.ToDatetime(tzinfo=timezone.utc).isoformat(),
+        "since": history.since.ToDatetime(tzinfo=UTC).isoformat(),
+        "until": history.until.ToDatetime(tzinfo=UTC).isoformat(),
         "request_count": history.request_count,
         "request_count_by_status_code": {
             f"{status_count.status_code // 100}xx": status_count.count
@@ -1252,7 +1252,7 @@ def _render_inference(history: api_pb2.ServerGetTimeRangeStatsResponse, use_colo
 
 
 def _server_stats_time_range(since: str | None, until: str | None) -> tuple[datetime, datetime, timedelta]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     until_dt = _parse_time_arg(until, default=now, now=now)
     since_dt = _parse_time_arg(since, default=until_dt - _DEFAULT_STATS_WINDOW, now=now)
     if since_dt >= until_dt:
@@ -1299,8 +1299,8 @@ async def _run_server_stats(
     use_color = not no_color
     output.print(Text(heading or f"Server stats for {function_id}", style=stats_style(STATS_HEADING_STYLE, use_color)))
     output.print("")
-    since_label = history.since.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    until_label = history.until.ToDatetime(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    since_label = history.since.ToDatetime(tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S")
+    until_label = history.until.ToDatetime(tzinfo=UTC).strftime("%Y-%m-%d %H:%M:%S")
     range_heading = f"Duration {str(history_duration)} · "
     output.print(
         Text(
@@ -1643,8 +1643,8 @@ async def requests(
     title = f"Server requests for {function_id}"
     if fetch_range is not None:
         since_dt, until_dt = fetch_range
-        since_label = since_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        until_label = until_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        since_label = since_dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        until_label = until_dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
         title += f" · fetch [{since_label}, {until_label}) UTC"
     output.print(Text(title))
     output.print(

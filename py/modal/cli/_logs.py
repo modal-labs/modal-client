@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2026
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from click import UsageError
 
@@ -56,7 +56,7 @@ def _validate_logs_args(*, follow: bool, since: str | None, until: str | None, t
 def _parse_fetch_range(
     since: str | None, until: str | None, default_window: timedelta = timedelta(hours=1)
 ) -> tuple[datetime, datetime]:
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
 
     def parse_bound(value: str | None, default: datetime, flag: str) -> datetime:
         if value is None:
@@ -67,7 +67,7 @@ def _parse_fetch_range(
             result = _parse_time_arg(value, default=default, now=now)
         else:
             result = now - duration
-        if result.astimezone(timezone.utc).microsecond:
+        if result.astimezone(UTC).microsecond:
             raise UsageError(f"{flag} must have whole-second precision; fractional seconds are not supported.")
         return result
 
@@ -125,7 +125,7 @@ async def _run_logs_command(
         )
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since_dt = _parse_time_arg(since, default=now, now=now) if since else None
     until_dt = _parse_time_arg(until, default=now, now=now) if until else None
     if since_dt is not None:

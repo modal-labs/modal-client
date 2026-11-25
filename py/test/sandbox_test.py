@@ -11,7 +11,7 @@ import re
 import time
 import typing
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -1139,7 +1139,7 @@ def test_sandbox_stats(app, client, servicer):
             ],
         )
 
-    since = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, 12, tzinfo=UTC)
     until = since + timedelta(hours=1)
     response = api_pb2.SandboxGetStatsResponse(
         cost="0.12500000",
@@ -1193,13 +1193,13 @@ def test_sandbox_stats(app, client, servicer):
 
 def test_sandbox_stats_time_range(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
-    since = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+    since = datetime(2026, 1, 1, 12, tzinfo=UTC)
     until = datetime(2026, 1, 1, 9, tzinfo=timezone(timedelta(hours=-5)))  # 14:00 UTC
     with servicer.intercept() as ctx:
         sb._experimental_stats(since=since.astimezone().replace(tzinfo=None), until=until)
     request = ctx.pop_request("SandboxGetStats")
-    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
-    assert request.until.ToDatetime(tzinfo=timezone.utc) == datetime(2026, 1, 1, 14, tzinfo=timezone.utc)
+    assert request.since.ToDatetime(tzinfo=UTC) == since
+    assert request.until.ToDatetime(tzinfo=UTC) == datetime(2026, 1, 1, 14, tzinfo=UTC)
 
     with servicer.intercept() as ctx:
         with pytest.raises(InvalidError, match="`since` must be before `until`"):

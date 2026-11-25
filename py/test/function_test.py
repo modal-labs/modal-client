@@ -10,7 +10,7 @@ import time
 import typing
 import warnings
 from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import jwt
@@ -3095,7 +3095,7 @@ EXAMPLE_FUNCTION = api_pb2.FunctionData(
 def test_function_stats(client, servicer, active_count):
     f = Function.from_name("dummy-app", "func", client=client)
     function_id = "fu-1"
-    since = datetime(2026, 8, 20, 12, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 20, 12, tzinfo=UTC)
     until = since + timedelta(hours=2)
     historical_response = api_pb2.FunctionGetTimeRangeStatsResponse(
         input_success_count=100,
@@ -3130,8 +3130,8 @@ def test_function_stats(client, servicer, active_count):
 
     historical_request = ctx.pop_request("FunctionGetTimeRangeStats")
     assert historical_request.function_id == function_id
-    assert historical_request.since.ToDatetime(tzinfo=timezone.utc) == since
-    assert historical_request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert historical_request.since.ToDatetime(tzinfo=UTC) == since
+    assert historical_request.until.ToDatetime(tzinfo=UTC) == until
     assert historical_request.rollup
     assert ctx.get_requests("FunctionGetCurrentStats") == []
 
@@ -3163,13 +3163,13 @@ def test_function_stats(client, servicer, active_count):
 
 def test_function_stats_default_time_range(client, servicer):
     f = Function.from_name("dummy-app", "func", client=client)
-    response_since = datetime(2026, 8, 20, 12, tzinfo=timezone.utc)
+    response_since = datetime(2026, 8, 20, 12, tzinfo=UTC)
     response_until = response_since + timedelta(hours=1)
     response = api_pb2.FunctionGetTimeRangeStatsResponse()
     response.since.FromDatetime(response_since)
     response.until.FromDatetime(response_until)
 
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     with servicer.intercept() as ctx:
         ctx.add_response(
             "FunctionGet",
@@ -3180,11 +3180,11 @@ def test_function_stats_default_time_range(client, servicer):
         )
         ctx.add_response("FunctionGetTimeRangeStats", response)
         stats = f.stats()
-    after = datetime.now(timezone.utc)
+    after = datetime.now(UTC)
 
     request = ctx.pop_request("FunctionGetTimeRangeStats")
-    requested_since = request.since.ToDatetime(tzinfo=timezone.utc)
-    requested_until = request.until.ToDatetime(tzinfo=timezone.utc)
+    requested_since = request.since.ToDatetime(tzinfo=UTC)
+    requested_until = request.until.ToDatetime(tzinfo=UTC)
     assert before <= requested_until <= after
     assert requested_until - requested_since == timedelta(hours=1)
     assert not request.rollup
@@ -3195,7 +3195,7 @@ def test_function_stats_default_time_range(client, servicer):
 
 def test_function_stats_rejects_invalid_time_range(client, servicer):
     f = Function.from_name("dummy-app", "func", client=client)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with servicer.intercept() as ctx:
         ctx.add_response(
             "FunctionGet",

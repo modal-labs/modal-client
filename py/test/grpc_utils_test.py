@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import builtins
 import pytest
 import time
 import urllib.parse
@@ -63,7 +64,7 @@ def test_retry_timeout_error_message():
     other_exc = RetryTimeoutError(ConnectionError("connection closed"))
     assert "last error: ConnectionError: connection closed" in str(other_exc)
 
-    timeout_exc = RetryTimeoutError(asyncio.TimeoutError("deadline exceeded"))
+    timeout_exc = RetryTimeoutError(builtins.TimeoutError("deadline exceeded"))
     assert "last error: TimeoutError: deadline exceeded" in str(timeout_exc)
     assert isinstance(timeout_exc.final_exception, asyncio.TimeoutError)
 

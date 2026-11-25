@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2025
 import json as json_mod
 import shutil
-from datetime import timezone
+from datetime import UTC
 
 import click
 import rich
@@ -446,7 +446,7 @@ async def service_users_create(name: str, expires_in_str: str | None, json: bool
                 {
                     "token_id": resp.token_id,
                     "token_secret": resp.token_secret,
-                    "expires_at": timestamp_to_localized_str(resp.expires_at.ToDatetime(timezone.utc).timestamp())
+                    "expires_at": timestamp_to_localized_str(resp.expires_at.ToDatetime(UTC).timestamp())
                     if expires_in
                     else None,
                 }
@@ -456,7 +456,7 @@ async def service_users_create(name: str, expires_in_str: str | None, json: bool
 
     base = f"[green]✓[/green] Successfully created Service User [bold]{name}[/bold]"
     if expires_in:
-        expiration_time = timestamp_to_localized_str(resp.expires_at.ToDatetime(timezone.utc).timestamp(), isotz=False)
+        expiration_time = timestamp_to_localized_str(resp.expires_at.ToDatetime(UTC).timestamp(), isotz=False)
         base = f"{base}, expiring at [bold]{expiration_time}[/bold]"
 
     output_manager.print(f"{base}.\n", highlight=False)

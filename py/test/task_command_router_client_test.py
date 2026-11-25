@@ -658,7 +658,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_send_raises_exec_timeout_err
         async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
             assert self._timeout is not None
             await asyncio.sleep(self._timeout + 0.05)
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         def __aiter__(self):
             return self
@@ -703,7 +703,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_first_item_raises_exec_timeo
                 self._sent_first = True
                 assert self._timeout is not None
                 await asyncio.sleep(self._timeout + 0.05)
-                raise asyncio.TimeoutError()
+                raise TimeoutError()
             raise StopAsyncIteration
 
     def _open(timeout: float | None = None):
@@ -873,7 +873,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
             nonlocal aenter_called
             aenter_called += 1
             await asyncio.sleep(self._timeout + 0.05)
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
             return False
@@ -988,7 +988,7 @@ async def test_exec_wait_warns_once_after_three_failures(make_router_client, mon
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("timeout", [asyncio.TimeoutError(), GRPCError(Status.DEADLINE_EXCEEDED)])
+@pytest.mark.parametrize("timeout", [TimeoutError(), GRPCError(Status.DEADLINE_EXCEEDED)])
 async def test_exec_wait_timeouts_reset_warning_threshold(make_router_client, monkeypatch, caplog, timeout):
     caplog.set_level("WARNING", logger="modal-client")
     client = make_router_client()
@@ -1119,7 +1119,7 @@ async def test_snapshot_filesystem_grpclib_timeout_raises_timeout_error(make_rou
             # Simulate the per-call deadline elapsing: sleep past the overall
             # timeout before the (mocked) grpclib timeout fires.
             await asyncio.sleep(1.0)
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
     monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
 

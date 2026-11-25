@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from modal_proto import api_pb2
@@ -210,7 +210,7 @@ class AppLifecycle:
 
 def _timestamp_to_datetime(ts: float) -> datetime | None:
     # Unset timestamps come back from the server as 0.
-    return datetime.fromtimestamp(ts, timezone.utc) if ts else None
+    return datetime.fromtimestamp(ts, UTC) if ts else None
 
 
 @synchronizer.create_blocking
@@ -228,7 +228,7 @@ async def get_app_lifecycle(app_id: str, *, client: _Client | None = None) -> Ap
     lifecycle = resp.lifecycle
     return AppLifecycle(
         version=lifecycle.version or None,
-        created_at=datetime.fromtimestamp(lifecycle.created_at, timezone.utc),
+        created_at=datetime.fromtimestamp(lifecycle.created_at, UTC),
         created_by=lifecycle.created_by,
         deployed_at=_timestamp_to_datetime(lifecycle.deployed_at),
         deployed_by=lifecycle.deployed_by or None,

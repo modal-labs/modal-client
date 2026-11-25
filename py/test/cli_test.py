@@ -17,7 +17,7 @@ import textwrap
 import threading
 import time
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
 from pickle import dumps
@@ -388,7 +388,7 @@ def test_image_cli_logs(set_env_client, monkeypatch):
         fetch_calls.append(layers)
         yield LogEntry(
             message=f"logs for {layers=}\n",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source="stdout",
             object_id="im-123",
             context_ids=[],
@@ -2033,8 +2033,8 @@ def test_server_stats_relative_since_and_until_share_now():
 
 def test_endpoint_stats_includes_endpoint_id_in_json_output(set_env_client, monkeypatch):
     client = _mock_endpoint_client(monkeypatch)
-    since = datetime(2026, 9, 25, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 9, 25, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 9, 25, 12, tzinfo=UTC)
+    until = datetime(2026, 9, 25, 13, tzinfo=UTC)
     response = api_pb2.ServerGetTimeRangeStatsResponse()
     response.since.FromDatetime(since)
     response.until.FromDatetime(until)
@@ -3752,7 +3752,7 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
             assert res.stdout.rstrip().endswith("hello")
 
         # Default `app logs` uses the tail path (single AppFetchLogs, no count)
-        now = datetime.now(timezone.utc).timestamp()
+        now = datetime.now(UTC).timestamp()
         log = api_pb2.TaskLogs(data="hello\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT, timestamp=now)
         fetch_resp = api_pb2.AppFetchLogsResponse(batches=[api_pb2.TaskLogsBatch(items=[log])])
 
@@ -3800,13 +3800,11 @@ def test_logs_spinner_text(servicer, server_url_env, set_env_client, mock_dir):
 
 
 def test_run_timestamps(servicer, server_url_env, set_env_client, test_dir, monkeypatch):
-    from datetime import timezone
-
     # Use a known timestamp (2025-01-15 12:00:45 UTC)
     known_timestamp = 1736942445.0
 
     # Mock locale_tz to return UTC for predictable timestamp formatting
-    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: UTC)
 
     async def app_logs_with_timestamp(self, stream):
         await stream.recv_message()
@@ -4710,9 +4708,7 @@ def test_app_stats_cli_deployment_pluralization(servicer, set_env_client, app_st
 def test_app_stats_cli_relative_window(servicer, set_env_client, app_stats_response):
     _, ctx = _run_app_stats_cli(servicer, app_stats_response, "--since", "5h", "--until", "2h", "--json")
     request = ctx.pop_request("AppGetTimeRangeStats")
-    assert request.until.ToDatetime(tzinfo=timezone.utc) - request.since.ToDatetime(tzinfo=timezone.utc) == timedelta(
-        hours=3
-    )
+    assert request.until.ToDatetime(tzinfo=UTC) - request.since.ToDatetime(tzinfo=UTC) == timedelta(hours=3)
 
 
 @pytest.mark.parametrize("options", [["--since", "bad"], ["--until", "bad"], ["--since", "1h", "--until", "2h"]])
@@ -4770,7 +4766,7 @@ def test_app_stats_cli_section_presence(servicer, set_env_client, app_stats_resp
 
 def test_app_stats_cli_ninety_minute_window(servicer, set_env_client, app_stats_response):
     response = app_stats_response
-    response.until.FromDatetime(datetime(2026, 10, 19, 13, 30, tzinfo=timezone.utc))
+    response.until.FromDatetime(datetime(2026, 10, 19, 13, 30, tzinfo=UTC))
     result, _ = _run_app_stats_cli(
         servicer, response, "--since", "2026-10-19T12:00:00+00:00", "--until", "2026-10-19T13:30:00+00:00", "--no-color"
     )
@@ -6043,7 +6039,7 @@ def _stats_distribution(unit: str, p50: float, p90: float, p99: float) -> api_pb
 
 def test_function_calls_cli(servicer, set_env_client, monkeypatch):
     monkeypatch.setenv("COLUMNS", "160")
-    enqueued_at = datetime(2026, 9, 15, 12, 0, 0, 123000, tzinfo=timezone.utc)
+    enqueued_at = datetime(2026, 9, 15, 12, 0, 0, 123000, tzinfo=UTC)
     started_at = enqueued_at + timedelta(seconds=1)
     response = api_pb2.FunctionCallFetchResponse()
     completed = response.function_call_inputs.add(
@@ -6175,7 +6171,7 @@ def test_function_calls_cli_hides_function_call_id_by_default(servicer, set_env_
 
 def test_server_requests_cli(servicer, set_env_client, monkeypatch):
     monkeypatch.setenv("COLUMNS", "160")
-    timestamp = datetime(2026, 9, 15, 12, 0, 0, 123000, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 9, 15, 12, 0, 0, 123000, tzinfo=UTC)
     response = api_pb2.ServerRequestFetchResponse()
     request_info = response.requests.add(
         route="/v1/responses",
@@ -6235,7 +6231,7 @@ def test_server_requests_cli(servicer, set_env_client, monkeypatch):
 @pytest.mark.parametrize("is_server", [False, True])
 @pytest.mark.parametrize("mode", ["range", "until", "empty", "dense"])
 def test_invocation_cli_fetch_range(servicer, set_env_client, is_server, mode):
-    base = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    base = datetime(2026, 9, 15, 12, tzinfo=UTC)
     command = ["server", "requests"] if is_server else ["function", "calls"]
     count_rpc = "ServerCountRequests" if is_server else "FunctionCallCount"
     fetch_rpc = "ServerRequestFetch" if is_server else "FunctionCallFetch"
@@ -6254,7 +6250,7 @@ def test_invocation_cli_fetch_range(servicer, set_env_client, is_server, mode):
 
     async def fetch(self, stream):
         request = await stream.recv_message()
-        start = request.range.since.ToDatetime(tzinfo=timezone.utc)
+        start = request.range.since.ToDatetime(tzinfo=UTC)
         # Complete later intervals first to verify output order.
         await asyncio.sleep(0.001 * (7 - (start - base).total_seconds()))
         response = fetch_type()
@@ -6282,11 +6278,11 @@ def test_invocation_cli_fetch_range(servicer, set_env_client, is_server, mode):
 
     count_request = ctx.pop_request(count_rpc)
     assert count_request.function_id == "fu-test"
-    assert count_request.until.ToDatetime(tzinfo=timezone.utc) == base + timedelta(seconds=7)
+    assert count_request.until.ToDatetime(tzinfo=UTC) == base + timedelta(seconds=7)
     expected_since = (
         base + timedelta(seconds=7) - timedelta(hours=1) if mode == "until" else base + timedelta(seconds=1)
     )
-    assert count_request.since.ToDatetime(tzinfo=timezone.utc) == expected_since
+    assert count_request.since.ToDatetime(tzinfo=UTC) == expected_since
     if not is_server:
         assert count_request.all_variants
     fetch_requests = ctx.get_requests(fetch_rpc)
@@ -6301,8 +6297,8 @@ def test_invocation_cli_fetch_range(servicer, set_env_client, is_server, mode):
     for request in fetch_requests:
         assert request.WhichOneof("query_oneof") == "range"
         assert request.range.limit == 20_000
-        assert request.range.since.ToDatetime(tzinfo=timezone.utc) >= expected_since
-        assert request.range.until.ToDatetime(tzinfo=timezone.utc) <= base + timedelta(seconds=7)
+        assert request.range.since.ToDatetime(tzinfo=UTC) >= expected_since
+        assert request.range.until.ToDatetime(tzinfo=UTC) <= base + timedelta(seconds=7)
         if not is_server:
             assert request.all_variants
     key = "route" if is_server else "function_call_id"
@@ -6338,7 +6334,7 @@ def test_invocation_cli_validates_range(command, args, message):
 
 @pytest.mark.parametrize("is_server", [False, True])
 def test_invocation_cli_refines_dense_ranges(servicer, set_env_client, is_server):
-    base = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    base = datetime(2026, 9, 15, 12, tzinfo=UTC)
     count_rpc = "ServerCountRequests" if is_server else "FunctionCallCount"
     fetch_rpc = "ServerRequestFetch" if is_server else "FunctionCallFetch"
     count_type = api_pb2.ServerCountRequestsResponse if is_server else api_pb2.FunctionCallCountResponse
@@ -6386,7 +6382,7 @@ def test_invocation_cli_relative_range(servicer, set_env_client, is_server):
         result = run_cli_command(command + ["fu-test", "--since", "2h", "--until", "1h", "--json"])
     assert json.loads(result.stdout) == []
     request = ctx.pop_request(count_rpc)
-    duration = request.until.ToDatetime(tzinfo=timezone.utc) - request.since.ToDatetime(tzinfo=timezone.utc)
+    duration = request.until.ToDatetime(tzinfo=UTC) - request.since.ToDatetime(tzinfo=UTC)
     assert duration.total_seconds() == 3600
     assert request.since.nanos == request.until.nanos == 0
 
@@ -6450,7 +6446,7 @@ def test_invocation_status_styles():
 
 
 def test_function_calls_json(servicer, set_env_client):
-    enqueued_at = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    enqueued_at = datetime(2026, 9, 15, 12, tzinfo=UTC)
     response = api_pb2.FunctionCallFetchResponse()
     call = response.function_call_inputs.add(
         function_call_id="fc-123",
@@ -6486,8 +6482,8 @@ def test_invocation_cli_validates_tail(command, tail):
 
 
 def test_function_stats_cli(servicer, set_env_client):
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.FunctionGetTimeRangeStatsResponse(
         input_success_count=1284,
         input_failure_count=17,
@@ -6530,8 +6526,8 @@ def test_function_stats_cli(servicer, set_env_client):
     request = ctx.pop_request("FunctionGetTimeRangeStats")
     assert request.function_id == "fu-test"
     assert request.rollup
-    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
-    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert request.since.ToDatetime(tzinfo=UTC) == since
+    assert request.until.ToDatetime(tzinfo=UTC) == until
     assert "Function stats for fu-test · all variants (4 variants)" in result.stdout
     assert "Function stats for my-app/my-function" not in result.stdout
     assert "Inputs" in result.stdout
@@ -6563,8 +6559,8 @@ def test_function_stats_cli(servicer, set_env_client):
 @pytest.mark.parametrize("live_count", [0, 17])
 def test_function_stats_cli_json_uses_object_id(servicer, set_env_client, live_count):
     servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.FunctionGetTimeRangeStatsResponse(container_total_count=live_count)
     response.since.FromDatetime(since)
     response.until.FromDatetime(until)
@@ -6911,8 +6907,8 @@ def test_function_stats_cli_class_lookup_error_details(servicer, set_env_client,
 
 
 def test_function_stats_cli_resolves_fu_prefixed_app_name(servicer, set_env_client):
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.FunctionGetTimeRangeStatsResponse()
     response.since.FromDatetime(since)
     response.until.FromDatetime(until)
@@ -6940,8 +6936,8 @@ def test_function_stats_cli_resolves_fu_prefixed_app_name(servicer, set_env_clie
 
 def test_function_stats_cli_filters_by_container(servicer, set_env_client):
     servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.FunctionGetTimeRangeStatsResponse()
     response.since.FromDatetime(since)
     response.until.FromDatetime(until)
@@ -6969,8 +6965,8 @@ def test_function_stats_cli_filters_by_container(servicer, set_env_client):
 
 def test_function_stats_cli_renders_server_defined_percentile_metrics(servicer, set_env_client):
     servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.FunctionGetTimeRangeStatsResponse(
         input_percentile_stats={
             "Queue time (s)": _stats_distribution("seconds", 1.234, 2.345, 3.456),
@@ -7014,8 +7010,8 @@ def test_function_stats_cli_renders_server_defined_percentile_metrics(servicer, 
 
 
 def test_server_stats_cli(servicer, set_env_client):
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
         request_count=1284,
         request_count_by_status_code=[
@@ -7079,8 +7075,8 @@ def test_server_stats_cli(servicer, set_env_client):
     assert function_get_request.object_tag == "my-server"
     request = ctx.pop_request("ServerGetTimeRangeStats")
     assert request.function_id == "fu-server"
-    assert request.since.ToDatetime(tzinfo=timezone.utc) == since
-    assert request.until.ToDatetime(tzinfo=timezone.utc) == until
+    assert request.since.ToDatetime(tzinfo=UTC) == since
+    assert request.until.ToDatetime(tzinfo=UTC) == until
     assert "Server stats for fu-server" in result.stdout
     assert "1,284 total (0.36 req/s)" in result.stdout
     assert "2xx: 1,241 · 4xx: 37 · 5xx: 6" in result.stdout
@@ -7113,8 +7109,8 @@ def test_server_stats_cli(servicer, set_env_client):
 @pytest.mark.parametrize("live_count", [0, 17])
 def test_server_stats_cli_json(servicer, set_env_client, live_count):
     servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
         request_count=1,
         request_count_by_status_code=[
@@ -7173,8 +7169,8 @@ def test_server_stats_cli_json(servicer, set_env_client, live_count):
 
 def test_server_stats_cli_json_preserves_unknown_inference_enums(servicer, set_env_client):
     servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
         inference=api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats(
             engine=cast(api_pb2.LLMEngine.ValueType, 123),
@@ -7209,8 +7205,8 @@ def test_server_stats_cli_json_preserves_unknown_inference_enums(servicer, set_e
 
 def test_server_stats_cli_filters_by_container(servicer, set_env_client):
     servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.ServerGetTimeRangeStatsResponse()
     response.since.FromDatetime(since)
     response.until.FromDatetime(until)
@@ -7238,8 +7234,8 @@ def test_server_stats_cli_filters_by_container(servicer, set_env_client):
 
 def test_server_stats_cli_inference_status(servicer, set_env_client):
     servicer.app_functions["fu-server"] = api_pb2.FunctionData(is_server=True)
-    since = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    since = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     response = api_pb2.ServerGetTimeRangeStatsResponse(
         inference=api_pb2.ServerGetTimeRangeStatsResponse.ServerInferenceStats(
             engine=api_pb2.LLM_ENGINE_VLLM,
@@ -7285,13 +7281,13 @@ def test_server_stats_cli_nonexistent_id(servicer, set_env_client):
 
 def test_function_stats_cli_relative_since(servicer, set_env_client):
     servicer.app_functions["fu-test"] = api_pb2.FunctionData(is_server=False)
-    until = datetime(2026, 8, 18, 13, tzinfo=timezone.utc)
+    until = datetime(2026, 8, 18, 13, tzinfo=UTC)
     since = until - timedelta(minutes=30)
     response = api_pb2.FunctionGetTimeRangeStatsResponse()
     response.since.FromDatetime(since)
     response.until.FromDatetime(until)
 
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     with servicer.intercept() as ctx:
         ctx.add_response("FunctionGetTimeRangeStats", response)
         result = run_cli_command(
@@ -7303,11 +7299,11 @@ def test_function_stats_cli_relative_since(servicer, set_env_client):
                 "30m",
             ]
         )
-    after = datetime.now(timezone.utc)
+    after = datetime.now(UTC)
 
     request = ctx.pop_request("FunctionGetTimeRangeStats")
-    requested_since = request.since.ToDatetime(tzinfo=timezone.utc)
-    requested_until = request.until.ToDatetime(tzinfo=timezone.utc)
+    requested_since = request.since.ToDatetime(tzinfo=UTC)
+    requested_until = request.until.ToDatetime(tzinfo=UTC)
     assert before - timedelta(minutes=30) <= requested_since <= after - timedelta(minutes=30)
     assert before <= requested_until <= after
     assert not request.rollup
@@ -8576,7 +8572,7 @@ def test_service_users_cli(set_env_client):
 def test_function_calls_total_input_limit(servicer, set_env_client, monkeypatch, count):
     # Isolate the total-input limit from per-bucket refinement.
     monkeypatch.setattr("modal._logs._FETCH_LIMIT", 2_000_000)
-    base = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+    base = datetime(2026, 9, 15, 12, tzinfo=UTC)
     counted = api_pb2.FunctionCallCountResponse()
     counted.buckets.add(count=count).bucket_start_at.FromDatetime(base)
     with servicer.intercept() as ctx:
@@ -9057,7 +9053,7 @@ def test_metrics_schema_uses_server_rows(servicer, set_env_client, monkeypatch, 
 
 
 def test_workspace_members_cli(set_env_client, servicer: MockClientServicer, monkeypatch):
-    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: UTC)
 
     resp = run_cli_command(["workspace", "member-tokens", "list"])
     deformatted = re.sub(r"\s+", " ", resp.stdout)
@@ -9277,7 +9273,7 @@ def workspace_audit_log_entries(servicer):
     servicer.audit_log_entries = [
         api_pb2.AuditLogEntry(
             id=f"al-{n}",
-            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, n, tzinfo=timezone.utc).timestamp())),
+            event_at_timestamp=Timestamp(seconds=int(datetime(2026, 10, 11, 14, n, tzinfo=UTC).timestamp())),
             action="app.deploy",
             status="success",
             actor=api_pb2.AuditLogActor(type="user", id="us-1"),
@@ -9497,7 +9493,7 @@ def test_workspace_audit_logs_csv_empty(workspace_audit_log_entries, set_env_cli
 def test_workspace_audit_logs_json_prints_each_full_event_on_one_line_without_a_header(
     workspace_audit_log_entries, set_env_client, monkeypatch
 ):
-    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: UTC)
     res = run_cli_command(["workspace", "audit-logs", "-n", "2"])
     events = [json.loads(line) for line in res.stdout.splitlines()]
     assert events == [

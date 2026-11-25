@@ -457,7 +457,7 @@ async def create_channel_with_fallbacks(
             # candidate has already failed.
             try:
                 await asyncio.wait_for(failed[index - 1].wait(), timeout=index * stagger_delay)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
         channel = create_channel(url, metadata, metadata_provider)
         try:
@@ -673,14 +673,7 @@ async def _retry_transient_errors(
         try:
             with suppress_tb_frame():
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
-        except (
-            StreamTerminatedError,
-            GRPCError,
-            OSError,
-            asyncio.TimeoutError,
-            AttributeError,
-            H2ProtocolError,
-        ) as exc:
+        except (TimeoutError, StreamTerminatedError, GRPCError, OSError, AttributeError, H2ProtocolError) as exc:
             # Note that we only catch AttributeError to handle a specific case that works around a bug
             # in grpclib<=0.4.7. See above (search for `write_appdata`).
 

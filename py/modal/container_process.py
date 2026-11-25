@@ -226,7 +226,7 @@ class _ContainerProcess(Generic[T]):
                     await stdout_task
                     await stderr_task
 
-            except (asyncio.TimeoutError, TimeoutError):
+            except TimeoutError:
                 connecting_status.stop()
                 stdout_task.cancel()
                 stderr_task.cancel()

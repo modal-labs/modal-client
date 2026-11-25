@@ -5,7 +5,7 @@ import csv
 import io
 import json
 import shlex
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import groupby
 from typing import Literal
 
@@ -86,7 +86,7 @@ def _count_with_percentage(count: int, total: int, label: str) -> str:
 
 def _timestamp(value: datetime) -> Timestamp:
     timestamp = Timestamp()
-    timestamp.FromDatetime(value.astimezone(timezone.utc))
+    timestamp.FromDatetime(value.astimezone(UTC))
     return timestamp
 
 
@@ -182,7 +182,7 @@ async def _export_metrics(
             bucket_duration = parse_duration(bucket_size)
         except (ValueError, OverflowError):
             raise click.BadParameter("Use a duration such as 1m, 8h, or 1d.", param_hint="--bucket-size") from None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         window = _metrics_request(
             _parse_time_arg(since, default=now, now=now) if since is not None else None,
@@ -194,8 +194,8 @@ async def _export_metrics(
         if str(exc).startswith("`bucket_size`"):
             raise click.BadParameter(str(exc), param_hint="--bucket-size") from None
         raise click.UsageError(str(exc)) from None
-    since_dt = window.since.ToDatetime(tzinfo=timezone.utc)
-    until_dt = window.until.ToDatetime(tzinfo=timezone.utc)
+    since_dt = window.since.ToDatetime(tzinfo=UTC)
+    until_dt = window.until.ToDatetime(tzinfo=UTC)
     environment_name = _get_environment_name(ensure_env(env))
     client = await _Client.from_env()
     function_id, metadata, _ = await _resolve_function_id(
@@ -218,8 +218,8 @@ async def _export_metrics(
         stop = int(until_dt.timestamp()) // resolved_bucket * resolved_bucket
         output = OutputManager.get()
         output.print(Text(f"Metrics schema for {function_id}{' (all variants)' if all_variants else ''}\n"))
-        since_label = datetime.fromtimestamp(start, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        until_label = datetime.fromtimestamp(stop, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        since_label = datetime.fromtimestamp(start, UTC).strftime("%Y-%m-%d %H:%M:%S")
+        until_label = datetime.fromtimestamp(stop, UTC).strftime("%Y-%m-%d %H:%M:%S")
         series_count = len({metric.name for group in schema_groups for metric in group.metrics})
         summary = Table.grid(padding=(0, 2))
         summary.add_column(no_wrap=True)

@@ -2,7 +2,7 @@
 import builtins
 import os
 from collections.abc import Collection
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 
@@ -560,7 +560,7 @@ class _Secret(_Object, type_prefixes=("st",)):
 
         metadata = self._get_metadata()
         creation_info = metadata.creation_info
-        last_used = datetime.fromtimestamp(metadata.last_used_at, tz=timezone.utc)
+        last_used = datetime.fromtimestamp(metadata.last_used_at, tz=UTC)
 
         return SecretInfo(
             name=metadata.name or None,

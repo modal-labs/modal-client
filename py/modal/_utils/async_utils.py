@@ -514,7 +514,7 @@ class TaskContext:
             if self._grace is not None and unfinished_tasks:
                 gather_future = asyncio.gather(*unfinished_tasks, return_exceptions=True)
                 await asyncio.wait_for(gather_future, timeout=self._grace)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         finally:
             # asyncio.wait_for cancels the future, but the CancelledError
@@ -540,7 +540,7 @@ class TaskContext:
             cancellation_gather = asyncio.gather(*cancelled_tasks, return_exceptions=True)
             try:
                 await asyncio.wait_for(cancellation_gather, timeout=self._cancellation_grace)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 warnings.warn(f"Internal warning: Tasks did not cancel in a timely manner: {cancelled_tasks}")
 
             await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
@@ -597,7 +597,7 @@ class TaskContext:
                         logger.exception(f"Loop attempt for {function_name} failed")
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
 
             logger.debug(f"Exiting infinite loop for {function_name}")
@@ -700,7 +700,7 @@ class TimestampPriorityQueue(Generic[T]):
                 # wait until either the timeout or a new item is added
                 try:
                     await asyncio.wait_for(self.condition.wait(), timeout=sleep_time)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
 
     def empty(self) -> bool:
@@ -1163,7 +1163,7 @@ async def async_merge(
                 ),
                 timeout=cancellation_timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("Timed out while cleaning up async_merge")
 
 

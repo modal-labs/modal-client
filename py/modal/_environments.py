@@ -3,7 +3,7 @@ import asyncio
 import builtins
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from google.protobuf.empty_pb2 import Empty
@@ -530,16 +530,16 @@ class _EnvironmentBillingManager:
             tag_names = []
 
         if end is None:
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
 
         if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
-        elif start.tzinfo != timezone.utc:
+            start = start.replace(tzinfo=UTC)
+        elif start.tzinfo != UTC:
             raise InvalidError("Timezone-aware 'start' parameter must be in UTC.")
 
         if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        elif end.tzinfo != timezone.utc:
+            end = end.replace(tzinfo=UTC)
+        elif end.tzinfo != UTC:
             raise InvalidError("Timezone-aware 'end' parameter must be in UTC.")
 
         if not self._environment._is_hydrated:
@@ -592,7 +592,7 @@ class _EnvironmentBillingManager:
         """
 
         if cycle is None:
-            cycle = datetime.now(timezone.utc).replace(
+            cycle = datetime.now(UTC).replace(
                 day=1,
                 hour=0,
                 minute=0,
@@ -603,14 +603,14 @@ class _EnvironmentBillingManager:
             cycle = parse_billing_cycle(cycle)
 
         if cycle.tzinfo is None:
-            cycle = cycle.replace(tzinfo=timezone.utc)
-        elif cycle.tzinfo != timezone.utc:
+            cycle = cycle.replace(tzinfo=UTC)
+        elif cycle.tzinfo != UTC:
             raise InvalidError("Timezone-aware 'cycle' parameter must be in UTC.")
 
         if not is_utc_month_aligned(cycle):
             raise InvalidError("Provided 'cycle' parameter must be the first of a month.")
 
-        if cycle > datetime.now(timezone.utc):
+        if cycle > datetime.now(UTC):
             raise InvalidError("Provided 'cycle' parameter cannot be in the future.")
 
         if not self._environment._is_hydrated:
