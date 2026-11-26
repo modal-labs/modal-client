@@ -5351,6 +5351,67 @@ message StringMap {
   map<string, string> contents = 1;
 }
 
+message SxSandboxCreateRequest {
+  string app_id = 1;
+  Sandbox definition = 2;
+}
+
+message SxSandboxCreateResponse {
+  string sx_id = 1;
+  // The Sandbox running the first session.
+  string sandbox_id = 2;
+}
+
+message SxSandboxGetRequest {
+  oneof lookup {
+    string sx_id = 1;
+    SxSandboxNameLookup name = 2;
+  }
+}
+
+message SxSandboxGetResponse {
+  string sx_id = 1;
+  // The Sandbox running the current session. Empty while no session runs.
+  string sandbox_id = 2;
+  // Set once the SX Sandbox is terminated; unset otherwise.
+  google.protobuf.Timestamp terminated_at = 3;
+}
+
+message SxSandboxNameLookup {
+  string app_name = 1;
+  string environment_name = 2;
+  string name = 3;
+}
+
+message SxSandboxPauseRequest {
+  string sx_id = 1;
+}
+
+message SxSandboxPauseResponse {}
+
+message SxSandboxResumeRequest {
+  string sx_id = 1;
+}
+
+message SxSandboxResumeResponse {
+  // The Sandbox running the new session.
+  string sandbox_id = 1;
+}
+
+message SxSandboxTerminateRequest {
+  string sx_id = 1;
+}
+
+message SxSandboxTerminateResponse {}
+
+message SxSandboxTunnelsListRequest {
+  string sx_id = 1;
+}
+
+message SxSandboxTunnelsListResponse {
+  repeated TunnelData tunnels = 1;
+}
+
 message TaskClusterHelloRequest {
   string task_id = 1;
   string container_ip = 2;
@@ -6371,6 +6432,14 @@ service ModalClient {
   rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
   rpc SharedVolumePutFile(SharedVolumePutFileRequest) returns (SharedVolumePutFileResponse);
   rpc SharedVolumeRemoveFile(SharedVolumeRemoveFileRequest) returns (google.protobuf.Empty);
+
+  // SX Sandboxes
+  rpc SxSandboxCreate(SxSandboxCreateRequest) returns (SxSandboxCreateResponse);
+  rpc SxSandboxGet(SxSandboxGetRequest) returns (SxSandboxGetResponse);
+  rpc SxSandboxPause(SxSandboxPauseRequest) returns (SxSandboxPauseResponse);
+  rpc SxSandboxResume(SxSandboxResumeRequest) returns (SxSandboxResumeResponse);
+  rpc SxSandboxTerminate(SxSandboxTerminateRequest) returns (SxSandboxTerminateResponse);
+  rpc SxSandboxTunnelsList(SxSandboxTunnelsListRequest) returns (SxSandboxTunnelsListResponse);
 
   // Tasks
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);

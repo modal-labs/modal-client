@@ -260,6 +260,12 @@ const (
 	ModalClient_SharedVolumeListFilesStream_FullMethodName            = "/modal.client.ModalClient/SharedVolumeListFilesStream"
 	ModalClient_SharedVolumePutFile_FullMethodName                    = "/modal.client.ModalClient/SharedVolumePutFile"
 	ModalClient_SharedVolumeRemoveFile_FullMethodName                 = "/modal.client.ModalClient/SharedVolumeRemoveFile"
+	ModalClient_SxSandboxCreate_FullMethodName                        = "/modal.client.ModalClient/SxSandboxCreate"
+	ModalClient_SxSandboxGet_FullMethodName                           = "/modal.client.ModalClient/SxSandboxGet"
+	ModalClient_SxSandboxPause_FullMethodName                         = "/modal.client.ModalClient/SxSandboxPause"
+	ModalClient_SxSandboxResume_FullMethodName                        = "/modal.client.ModalClient/SxSandboxResume"
+	ModalClient_SxSandboxTerminate_FullMethodName                     = "/modal.client.ModalClient/SxSandboxTerminate"
+	ModalClient_SxSandboxTunnelsList_FullMethodName                   = "/modal.client.ModalClient/SxSandboxTunnelsList"
 	ModalClient_TaskClusterHello_FullMethodName                       = "/modal.client.ModalClient/TaskClusterHello"
 	ModalClient_TaskCurrentInputs_FullMethodName                      = "/modal.client.ModalClient/TaskCurrentInputs"
 	ModalClient_TaskGetCommandRouterAccess_FullMethodName             = "/modal.client.ModalClient/TaskGetCommandRouterAccess"
@@ -584,6 +590,13 @@ type ModalClientClient interface {
 	SharedVolumeListFilesStream(ctx context.Context, in *SharedVolumeListFilesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SharedVolumeListFilesResponse], error)
 	SharedVolumePutFile(ctx context.Context, in *SharedVolumePutFileRequest, opts ...grpc.CallOption) (*SharedVolumePutFileResponse, error)
 	SharedVolumeRemoveFile(ctx context.Context, in *SharedVolumeRemoveFileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// SX Sandboxes
+	SxSandboxCreate(ctx context.Context, in *SxSandboxCreateRequest, opts ...grpc.CallOption) (*SxSandboxCreateResponse, error)
+	SxSandboxGet(ctx context.Context, in *SxSandboxGetRequest, opts ...grpc.CallOption) (*SxSandboxGetResponse, error)
+	SxSandboxPause(ctx context.Context, in *SxSandboxPauseRequest, opts ...grpc.CallOption) (*SxSandboxPauseResponse, error)
+	SxSandboxResume(ctx context.Context, in *SxSandboxResumeRequest, opts ...grpc.CallOption) (*SxSandboxResumeResponse, error)
+	SxSandboxTerminate(ctx context.Context, in *SxSandboxTerminateRequest, opts ...grpc.CallOption) (*SxSandboxTerminateResponse, error)
+	SxSandboxTunnelsList(ctx context.Context, in *SxSandboxTunnelsListRequest, opts ...grpc.CallOption) (*SxSandboxTunnelsListResponse, error)
 	// Tasks
 	TaskClusterHello(ctx context.Context, in *TaskClusterHelloRequest, opts ...grpc.CallOption) (*TaskClusterHelloResponse, error)
 	TaskCurrentInputs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TaskCurrentInputsResponse, error)
@@ -3067,6 +3080,66 @@ func (c *modalClientClient) SharedVolumeRemoveFile(ctx context.Context, in *Shar
 	return out, nil
 }
 
+func (c *modalClientClient) SxSandboxCreate(ctx context.Context, in *SxSandboxCreateRequest, opts ...grpc.CallOption) (*SxSandboxCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SxSandboxCreateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SxSandboxCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SxSandboxGet(ctx context.Context, in *SxSandboxGetRequest, opts ...grpc.CallOption) (*SxSandboxGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SxSandboxGetResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SxSandboxGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SxSandboxPause(ctx context.Context, in *SxSandboxPauseRequest, opts ...grpc.CallOption) (*SxSandboxPauseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SxSandboxPauseResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SxSandboxPause_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SxSandboxResume(ctx context.Context, in *SxSandboxResumeRequest, opts ...grpc.CallOption) (*SxSandboxResumeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SxSandboxResumeResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SxSandboxResume_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SxSandboxTerminate(ctx context.Context, in *SxSandboxTerminateRequest, opts ...grpc.CallOption) (*SxSandboxTerminateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SxSandboxTerminateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SxSandboxTerminate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SxSandboxTunnelsList(ctx context.Context, in *SxSandboxTunnelsListRequest, opts ...grpc.CallOption) (*SxSandboxTunnelsListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SxSandboxTunnelsListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SxSandboxTunnelsList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) TaskClusterHello(ctx context.Context, in *TaskClusterHelloRequest, opts ...grpc.CallOption) (*TaskClusterHelloResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TaskClusterHelloResponse)
@@ -3893,6 +3966,13 @@ type ModalClientServer interface {
 	SharedVolumeListFilesStream(*SharedVolumeListFilesRequest, grpc.ServerStreamingServer[SharedVolumeListFilesResponse]) error
 	SharedVolumePutFile(context.Context, *SharedVolumePutFileRequest) (*SharedVolumePutFileResponse, error)
 	SharedVolumeRemoveFile(context.Context, *SharedVolumeRemoveFileRequest) (*emptypb.Empty, error)
+	// SX Sandboxes
+	SxSandboxCreate(context.Context, *SxSandboxCreateRequest) (*SxSandboxCreateResponse, error)
+	SxSandboxGet(context.Context, *SxSandboxGetRequest) (*SxSandboxGetResponse, error)
+	SxSandboxPause(context.Context, *SxSandboxPauseRequest) (*SxSandboxPauseResponse, error)
+	SxSandboxResume(context.Context, *SxSandboxResumeRequest) (*SxSandboxResumeResponse, error)
+	SxSandboxTerminate(context.Context, *SxSandboxTerminateRequest) (*SxSandboxTerminateResponse, error)
+	SxSandboxTunnelsList(context.Context, *SxSandboxTunnelsListRequest) (*SxSandboxTunnelsListResponse, error)
 	// Tasks
 	TaskClusterHello(context.Context, *TaskClusterHelloRequest) (*TaskClusterHelloResponse, error)
 	TaskCurrentInputs(context.Context, *emptypb.Empty) (*TaskCurrentInputsResponse, error)
@@ -4665,6 +4745,24 @@ func (UnimplementedModalClientServer) SharedVolumePutFile(context.Context, *Shar
 }
 func (UnimplementedModalClientServer) SharedVolumeRemoveFile(context.Context, *SharedVolumeRemoveFileRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SharedVolumeRemoveFile not implemented")
+}
+func (UnimplementedModalClientServer) SxSandboxCreate(context.Context, *SxSandboxCreateRequest) (*SxSandboxCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SxSandboxCreate not implemented")
+}
+func (UnimplementedModalClientServer) SxSandboxGet(context.Context, *SxSandboxGetRequest) (*SxSandboxGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SxSandboxGet not implemented")
+}
+func (UnimplementedModalClientServer) SxSandboxPause(context.Context, *SxSandboxPauseRequest) (*SxSandboxPauseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SxSandboxPause not implemented")
+}
+func (UnimplementedModalClientServer) SxSandboxResume(context.Context, *SxSandboxResumeRequest) (*SxSandboxResumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SxSandboxResume not implemented")
+}
+func (UnimplementedModalClientServer) SxSandboxTerminate(context.Context, *SxSandboxTerminateRequest) (*SxSandboxTerminateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SxSandboxTerminate not implemented")
+}
+func (UnimplementedModalClientServer) SxSandboxTunnelsList(context.Context, *SxSandboxTunnelsListRequest) (*SxSandboxTunnelsListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SxSandboxTunnelsList not implemented")
 }
 func (UnimplementedModalClientServer) TaskClusterHello(context.Context, *TaskClusterHelloRequest) (*TaskClusterHelloResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskClusterHello not implemented")
@@ -9002,6 +9100,114 @@ func _ModalClient_SharedVolumeRemoveFile_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SxSandboxCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SxSandboxCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SxSandboxCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SxSandboxCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SxSandboxCreate(ctx, req.(*SxSandboxCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SxSandboxGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SxSandboxGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SxSandboxGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SxSandboxGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SxSandboxGet(ctx, req.(*SxSandboxGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SxSandboxPause_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SxSandboxPauseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SxSandboxPause(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SxSandboxPause_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SxSandboxPause(ctx, req.(*SxSandboxPauseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SxSandboxResume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SxSandboxResumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SxSandboxResume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SxSandboxResume_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SxSandboxResume(ctx, req.(*SxSandboxResumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SxSandboxTerminate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SxSandboxTerminateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SxSandboxTerminate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SxSandboxTerminate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SxSandboxTerminate(ctx, req.(*SxSandboxTerminateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SxSandboxTunnelsList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SxSandboxTunnelsListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SxSandboxTunnelsList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SxSandboxTunnelsList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SxSandboxTunnelsList(ctx, req.(*SxSandboxTunnelsListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_TaskClusterHello_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TaskClusterHelloRequest)
 	if err := dec(in); err != nil {
@@ -10845,6 +11051,30 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SharedVolumeRemoveFile",
 			Handler:    _ModalClient_SharedVolumeRemoveFile_Handler,
+		},
+		{
+			MethodName: "SxSandboxCreate",
+			Handler:    _ModalClient_SxSandboxCreate_Handler,
+		},
+		{
+			MethodName: "SxSandboxGet",
+			Handler:    _ModalClient_SxSandboxGet_Handler,
+		},
+		{
+			MethodName: "SxSandboxPause",
+			Handler:    _ModalClient_SxSandboxPause_Handler,
+		},
+		{
+			MethodName: "SxSandboxResume",
+			Handler:    _ModalClient_SxSandboxResume_Handler,
+		},
+		{
+			MethodName: "SxSandboxTerminate",
+			Handler:    _ModalClient_SxSandboxTerminate_Handler,
+		},
+		{
+			MethodName: "SxSandboxTunnelsList",
+			Handler:    _ModalClient_SxSandboxTunnelsList_Handler,
 		},
 		{
 			MethodName: "TaskClusterHello",
