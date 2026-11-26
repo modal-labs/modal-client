@@ -94,6 +94,7 @@ function serveLogs(
 
 test("attaching to a Sandbox reads no logs", async () => {
   const { mockClient, mockCpClient } = createMockModalClients();
+  mockCpClient.handleUnary("SandboxWait", () => ({}));
   const { reads } = serveLogs(mockCpClient, [["line-0\n"]]);
 
   const sandbox = await mockClient.sandboxes.fromId(V1_SANDBOX_ID);
@@ -105,6 +106,7 @@ test("attaching to a Sandbox reads no logs", async () => {
 
 test("reaching for Sandbox.stdout without reading reads no logs", async () => {
   const { mockClient, mockCpClient } = createMockModalClients();
+  mockCpClient.handleUnary("SandboxWait", () => ({}));
   const { reads } = serveLogs(mockCpClient, [["line-0\n"]]);
 
   const sandbox = await mockClient.sandboxes.fromId(V1_SANDBOX_ID);
@@ -117,6 +119,7 @@ test("reaching for Sandbox.stdout without reading reads no logs", async () => {
 
 test("reading Sandbox.stdout reads that descriptor only, and returns the output", async () => {
   const { mockClient, mockCpClient } = createMockModalClients();
+  mockCpClient.handleUnary("SandboxWait", () => ({}));
   const { reads } = serveLogs(mockCpClient, [
     ["line-0\n", "line-1\n"],
     ["line-2\n"],
@@ -130,6 +133,7 @@ test("reading Sandbox.stdout reads that descriptor only, and returns the output"
 
 test("reading Sandbox.stderr reads stderr", async () => {
   const { mockClient, mockCpClient } = createMockModalClients();
+  mockCpClient.handleUnary("SandboxWait", () => ({}));
   const { reads } = serveLogs(mockCpClient, [["oh dear\n"]]);
 
   const sandbox = await mockClient.sandboxes.fromId(V1_SANDBOX_ID);

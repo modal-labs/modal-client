@@ -20,12 +20,10 @@ import {
   FunctionCall,
   FunctionCallLogsManager,
   FunctionLogsManager,
-  Sandbox,
   type ModalClient,
 } from "modal";
 import { ClientError, Status } from "nice-grpc";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { newSandboxImpl } from "../src/sandbox_common";
 
 const now = new Date("2026-07-17T12:00:00Z");
 
@@ -181,7 +179,7 @@ test("Sandbox.logs.tail reads completed V1 Sandbox logs by task ID", async () =>
     });
   });
 
-  const sandbox = new Sandbox(newSandboxImpl(mockClient, sandboxId));
+  const sandbox = await mockClient.sandboxes.fromId(sandboxId);
   const entries = [];
   for await (const entry of sandbox.logs.tail({
     entries: 1,
@@ -255,7 +253,7 @@ test("Sandbox.logs.fetch resolves V2 IDs and filters by task ID", async () => {
     });
   });
 
-  const sandbox = new Sandbox(newSandboxImpl(mockClient, sandboxId));
+  const sandbox = await mockClient.sandboxes.fromId(sandboxId);
   const entries = [];
   for await (const entry of sandbox.logs.fetch({
     since,
@@ -308,7 +306,7 @@ test("Sandbox logs fail promptly when a task ID is not available", async () => {
     return {};
   });
 
-  const sandbox = new Sandbox(newSandboxImpl(mockClient, sandboxId));
+  const sandbox = await mockClient.sandboxes.fromId(sandboxId);
   const consumeLogs = async () => {
     for await (const _entry of sandbox.logs.tail()) {
       // The task ID resolution fails before logs are fetched.

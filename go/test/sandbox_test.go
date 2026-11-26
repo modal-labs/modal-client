@@ -2908,11 +2908,11 @@ func TestSandboxCreateHydratesCloudBucketMountSecret(t *testing.T) {
 
 func TestSandboxFromIDLookupMock(t *testing.T) {
 	t.Parallel()
-	for _, version := range []struct{ name, id, rpc string }{
-		{"v1", validV1SandboxID, "SandboxWait"},
-		{"v2", validV2SandboxID, "SandboxWaitV2"},
+	for _, version := range []struct{ name, id, rpc, taskRPC string }{
+		{"v1", validV1SandboxID, "SandboxWait", "SandboxGetTaskId"},
+		{"v2", validV2SandboxID, "SandboxWaitV2", "SandboxGetTaskIdV2"},
 	} {
-		for _, state := range []string{"running", "terminated", "missing"} {
+		for _, state := range []string{"running", "terminated", "metadata-result", "missing"} {
 			t.Run(version.name+"/"+state, func(t *testing.T) {
 				t.Parallel()
 				g := gomega.NewWithT(t)
@@ -2926,26 +2926,56 @@ func TestSandboxFromIDLookupMock(t *testing.T) {
 					if state == "missing" {
 						return nil, status.Error(codes.NotFound, "unknown sandbox")
 					}
+					metadata := pb.SandboxHandleMetadata_builder{AppId: "ap-lookup"}
 					resp := pb.SandboxWaitResponse_builder{}
+					result := pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_TERMINATED}.Build()
 					if state == "terminated" {
-						resp.Result = pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_TERMINATED}.Build()
+						resp.Result = result
 					}
+					if state == "metadata-result" {
+						metadata.Result = result
+					}
+					resp.Metadata = metadata.Build()
 					return resp.Build(), nil
 				})
 				sb, err := mock.Sandboxes.FromID(ctx, version.id, nil)
-				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(sb.SandboxID).To(gomega.Equal(version.id))
 				g.Expect(calls.Load()).To(gomega.BeZero())
-				result, err := sb.Poll(ctx, nil)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
 				if state == "missing" {
+					_, err = sb.Poll(ctx, nil)
 					g.Expect(status.Code(err)).To(gomega.Equal(codes.NotFound))
 				} else {
 					g.Expect(err).NotTo(gomega.HaveOccurred())
+					g.Expect(sb.SandboxID).To(gomega.Equal(version.id))
 					if state == "running" {
+						result, err := sb.Poll(ctx, nil)
+						g.Expect(err).NotTo(gomega.HaveOccurred())
 						g.Expect(result).To(gomega.BeNil())
 					} else {
+						result, err := sb.Poll(ctx, nil)
+						g.Expect(err).NotTo(gomega.HaveOccurred())
 						g.Expect(result).NotTo(gomega.BeNil())
 						g.Expect(*result).To(gomega.Equal(137))
+						exitCode, err := sb.Wait(ctx, nil)
+						g.Expect(err).NotTo(gomega.HaveOccurred())
+						g.Expect(exitCode).To(gomega.Equal(137))
+					}
+					grpcmock.HandleUnary(mock, version.taskRPC, func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+						taskID := "ta-lookup"
+						return pb.SandboxGetTaskIdResponse_builder{TaskId: &taskID}.Build(), nil
+					})
+					grpcmock.HandleUnary(mock, "AppFetchLogs", func(req *pb.AppFetchLogsRequest) (*pb.AppFetchLogsResponse, error) {
+						g.Expect(req.GetAppId()).To(gomega.Equal("ap-lookup"))
+						return pb.AppFetchLogsResponse_builder{Batches: []*pb.TaskLogsBatch{
+							pb.TaskLogsBatch_builder{TaskId: "ta-lookup", Items: []*pb.TaskLogs{
+								pb.TaskLogs_builder{Data: "lookup log\n", Timestamp: float64(time.Now().Unix())}.Build(),
+							}}.Build(),
+						}}.Build(), nil
+					})
+					entries, err := sb.Logs.Tail(ctx, &modal.LogTailParams{Entries: 1})
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					for _, err := range entries {
+						g.Expect(err).NotTo(gomega.HaveOccurred())
 					}
 				}
 				g.Expect(mock.AssertExhausted()).To(gomega.Succeed())

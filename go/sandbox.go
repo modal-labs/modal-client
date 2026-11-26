@@ -751,7 +751,7 @@ func newSandboxFromImpl(impl sandboxImpl) *Sandbox {
 
 // FromID constructs a Sandbox handle from a Sandbox ID of a previously created Sandbox, as retrieved by `sandbox.SandboxID`
 func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error) {
-	return newSandbox(s.client, sandboxID), nil
+	return newSandboxFromImpl(newSandboxImpl(s.client, sandboxID, sandboxImplParams{})), nil
 }
 
 // SandboxFromIDParams are options for SandboxService.FromID.

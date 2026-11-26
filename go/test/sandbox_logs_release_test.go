@@ -8,6 +8,7 @@ import (
 	"time"
 
 	modal "github.com/modal-labs/modal-client/go"
+	"github.com/modal-labs/modal-client/go/internal/grpcmock"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
 	"go.uber.org/goleak"
@@ -31,6 +32,153 @@ import (
 // V1-shaped, so the Sandbox reads its output through the control plane.
 const logsSandboxID = "sb-nGEijt9WbBMlGrsPH9FOaC"
 
+func TestSandboxLogsReuseImplMetadataMock(t *testing.T) {
+	for _, v2 := range []bool{false, true} {
+		for _, path := range []string{"create", "create-fallback", "name", "list", "restore", "lazy", "lazy-error"} {
+			suffix := ""
+			sandboxID := logsSandboxID
+			if v2 {
+				suffix = "V2"
+				sandboxID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+			}
+			t.Run(suffix+"/"+path, func(t *testing.T) {
+				backend := "0"
+				if v2 {
+					backend = "1"
+				}
+				t.Setenv("MODAL_SANDBOX_V2", backend)
+				g := gomega.NewWithT(t)
+				ctx := t.Context()
+				mock := newGRPCMockClient(t)
+				metadata := pb.SandboxHandleMetadata_builder{
+					AppId:  "ap-known",
+					Result: pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_TERMINATED}.Build(),
+				}.Build()
+				fallback := path == "lazy" || path == "lazy-error" || (path == "restore" && !v2)
+				taskID := "ta-known"
+				handleTaskID := func() {
+					grpcmock.HandleUnary(mock, "SandboxGetTaskId"+suffix, func(*pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+						return pb.SandboxGetTaskIdResponse_builder{TaskId: &taskID}.Build(), nil
+					})
+				}
+				var sb *modal.Sandbox
+				var err error
+				switch path {
+				case "create", "create-fallback":
+					createMetadata := metadata
+					if path == "create-fallback" {
+						createMetadata = nil
+					}
+					if v2 {
+						grpcmock.HandleUnary(mock, "SandboxCreateV2", func(*pb.SandboxCreateV2Request) (*pb.SandboxCreateV2Response, error) {
+							return pb.SandboxCreateV2Response_builder{SandboxId: sandboxID, Metadata: createMetadata}.Build(), nil
+						})
+						sb, err = mock.Sandboxes.Create(ctx, &modal.App{AppID: "ap-create"}, &modal.Image{ImageID: "im-known"}, nil)
+					} else {
+						grpcmock.HandleUnary(mock, "SandboxCreate", func(*pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
+							return pb.SandboxCreateResponse_builder{SandboxId: sandboxID, Metadata: createMetadata}.Build(), nil
+						})
+						handleTaskID()
+						sb, err = mock.Sandboxes.Create(ctx, &modal.App{AppID: "ap-create"}, &modal.Image{ImageID: "im-known"}, nil)
+					}
+				case "list":
+					grpcmock.HandleUnary(mock, "SandboxList"+suffix, func(*pb.SandboxListRequest) (*pb.SandboxListResponse, error) {
+						return pb.SandboxListResponse_builder{Sandboxes: []*pb.SandboxInfo{
+							pb.SandboxInfo_builder{Id: sandboxID, Metadata: metadata}.Build(),
+						}}.Build(), nil
+					})
+					sandboxes, listErr := mock.Sandboxes.List(ctx, &modal.SandboxListParams{AppID: "ap-known"})
+					g.Expect(listErr).NotTo(gomega.HaveOccurred())
+					for sandbox, listErr := range sandboxes {
+						sb, err = sandbox, listErr
+						break
+					}
+				case "restore":
+					grpcmock.HandleUnary(mock, "SandboxSnapshotGet", func(*pb.SandboxSnapshotGetRequest) (*pb.SandboxSnapshotGetResponse, error) {
+						return pb.SandboxSnapshotGetResponse_builder{
+							HandleMetadata: pb.SandboxSnapshotHandleMetadata_builder{IsV2: v2}.Build(),
+						}.Build(), nil
+					})
+					if v2 {
+						grpcmock.HandleUnary(mock, "SandboxRestoreV2", func(*pb.SandboxRestoreV2Request) (*pb.SandboxRestoreV2Response, error) {
+							return pb.SandboxRestoreV2Response_builder{SandboxId: sandboxID, Metadata: metadata}.Build(), nil
+						})
+					} else {
+						grpcmock.HandleUnary(mock, "SandboxRestore", func(*pb.SandboxRestoreRequest) (*pb.SandboxRestoreResponse, error) {
+							return pb.SandboxRestoreResponse_builder{SandboxId: sandboxID}.Build(), nil
+						})
+						handleTaskID()
+					}
+					snapshot, snapshotErr := mock.SandboxSnapshots.FromID(ctx, "sn-01BX5ZZKBKACTAV9WEVGEMMVRY", nil)
+					g.Expect(snapshotErr).NotTo(gomega.HaveOccurred())
+					sb, err = mock.Sandboxes.ExperimentalFromSnapshot(ctx, snapshot, nil)
+				default:
+					nameMetadata := metadata
+					if fallback {
+						nameMetadata = nil
+					}
+					grpcmock.HandleUnary(mock, "SandboxGetFromName"+suffix, func(*pb.SandboxGetFromNameRequest) (*pb.SandboxGetFromNameResponse, error) {
+						return pb.SandboxGetFromNameResponse_builder{SandboxId: sandboxID, Metadata: nameMetadata}.Build(), nil
+					})
+					sb, err = mock.Sandboxes.FromName(ctx, "libmodal-test", "sandbox", nil)
+				}
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(sb).NotTo(gomega.BeNil())
+				if fallback {
+					grpcmock.HandleUnary(mock, "SandboxWait"+suffix, func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+						g.Expect(req.GetTimeout()).To(gomega.BeZero())
+						if path == "lazy-error" {
+							return nil, status.Error(codes.NotFound, "missing")
+						}
+						return pb.SandboxWaitResponse_builder{Metadata: metadata}.Build(), nil
+					})
+				} else if path != "create-fallback" {
+					result, pollErr := sb.Poll(ctx, nil)
+					g.Expect(pollErr).NotTo(gomega.HaveOccurred())
+					g.Expect(result).NotTo(gomega.BeNil())
+					g.Expect(*result).To(gomega.Equal(137))
+					code, waitErr := sb.Wait(ctx, nil)
+					g.Expect(waitErr).NotTo(gomega.HaveOccurred())
+					g.Expect(code).To(gomega.Equal(137))
+				}
+				if path == "lazy-error" {
+					_, err := sb.Logs.Tail(ctx, &modal.LogTailParams{Entries: 1})
+					g.Expect(status.Code(err)).To(gomega.Equal(codes.NotFound))
+				} else {
+					handleTaskID()
+					grpcmock.HandleUnary(mock, "AppFetchLogs", func(req *pb.AppFetchLogsRequest) (*pb.AppFetchLogsResponse, error) {
+						appID := "ap-known"
+						if path == "create-fallback" {
+							appID = "ap-create"
+						}
+						g.Expect(req.GetAppId()).To(gomega.Equal(appID))
+						return pb.AppFetchLogsResponse_builder{Batches: []*pb.TaskLogsBatch{
+							pb.TaskLogsBatch_builder{TaskId: taskID, Items: []*pb.TaskLogs{
+								pb.TaskLogs_builder{Data: "known log\n", Timestamp: float64(time.Now().Unix())}.Build(),
+							}}.Build(),
+						}}.Build(), nil
+					})
+					entries, err := sb.Logs.Tail(ctx, &modal.LogTailParams{Entries: 1})
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					var messages []string
+					for entry, logErr := range entries {
+						g.Expect(logErr).NotTo(gomega.HaveOccurred())
+						messages = append(messages, entry.Message)
+					}
+					g.Expect(messages).To(gomega.Equal([]string{"known log\n"}))
+					if fallback {
+						result, pollErr := sb.Poll(ctx, nil)
+						g.Expect(pollErr).NotTo(gomega.HaveOccurred())
+						g.Expect(result).NotTo(gomega.BeNil())
+						g.Expect(*result).To(gomega.Equal(137))
+					}
+				}
+				g.Expect(mock.AssertExhausted()).To(gomega.Succeed())
+			})
+		}
+	}
+}
+
 type fakeLogsControlPlane struct {
 	pb.UnimplementedModalClientServer
 	line        string
@@ -42,6 +190,10 @@ type fakeLogsControlPlane struct {
 	calls           atomic.Int64
 	// Calls being served right now, which is what a leaked stream keeps alive.
 	live atomic.Int64
+}
+
+func (s *fakeLogsControlPlane) SandboxWait(context.Context, *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+	return pb.SandboxWaitResponse_builder{}.Build(), nil
 }
 
 // AppGetOrCreate gives the test a cheap call to open the connection with,

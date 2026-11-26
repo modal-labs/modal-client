@@ -2,6 +2,7 @@ import { ClientError, Status } from "nice-grpc";
 import { v4 as uuidv4 } from "uuid";
 import {
   FileDescriptor,
+  type GenericResult,
   type SandboxGetFromNameResponse,
   Resources,
   Sandbox as SandboxDefinition,
@@ -120,6 +121,7 @@ export class SandboxImplV2 implements SandboxImpl {
   readonly sandboxId: string;
 
   #appId: string | undefined;
+  #result: GenericResult | undefined;
   #taskId: string | undefined;
   #tunnels: Record<number, Tunnel> | undefined;
   // Access returned at create or restore is only good for the first connection.
@@ -133,6 +135,8 @@ export class SandboxImplV2 implements SandboxImpl {
   ) {
     this.client = client;
     this.sandboxId = sandboxId;
+    this.#appId = params.appId || undefined;
+    this.#result = params.result;
     this.#taskId = params.taskId || undefined;
     this.#tunnels = params.tunnels;
     this.#initCommandRouterAccess = params.initCommandRouterAccess;
@@ -363,20 +367,29 @@ export class SandboxImplV2 implements SandboxImpl {
     this.#commandRouter.close();
   }
 
+  async #waitAndHydrate(timeout: number) {
+    const resp = await this.client.cpClient.sandboxWaitV2({
+      sandboxId: this.sandboxId,
+      timeout,
+    });
+    if (resp.metadata?.appId) this.#appId = resp.metadata.appId;
+    const result = resp.result?.status ? resp.result : resp.metadata?.result;
+    if (result?.status) this.#result = result;
+    return { ...resp, result };
+  }
+
   async wait(): Promise<number> {
+    const returnCode = getReturnCode(this.#result);
+    if (returnCode !== null) return returnCode;
     return waitForReturnCode(this, (timeoutSecs) =>
-      this.client.cpClient.sandboxWaitV2({
-        sandboxId: this.sandboxId,
-        timeout: timeoutSecs,
-      }),
+      this.#waitAndHydrate(timeoutSecs),
     );
   }
 
   async poll(): Promise<number | null> {
-    const resp = await this.client.cpClient.sandboxWaitV2({
-      sandboxId: this.sandboxId,
-      timeout: 0,
-    });
+    const returnCode = getReturnCode(this.#result);
+    if (returnCode !== null) return returnCode;
+    const resp = await this.#waitAndHydrate(0);
     return getReturnCode(resp.result);
   }
 
@@ -409,6 +422,8 @@ export class SandboxImplV2 implements SandboxImpl {
       timeout: 0,
     });
     this.#appId = appIdFromWaitResponse(resp);
+    const result = resp.result?.status ? resp.result : resp.metadata?.result;
+    if (result?.status) this.#result = result;
     return this.#appId;
   }
 

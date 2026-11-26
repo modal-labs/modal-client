@@ -71,6 +71,7 @@ export async function startFakeWorker(chunks?: Uint8Array[]) {
   const port = await server.listen("127.0.0.1:0");
 
   const { mockClient, mockCpClient } = createMockModalClients();
+  mockCpClient.handleUnary("SandboxWaitV2", () => ({}));
   // A localhost server URL is what makes the SDK dial the worker without TLS.
   mockClient.profile.serverUrl = "http://127.0.0.1:1";
   // Handlers are consumed as they are used, so register enough for any test here.

@@ -321,12 +321,13 @@ func TestPersistentSandboxUnsupportedOperationsMock(t *testing.T) {
 }
 
 func TestPauseResumeRequirePersistentSandboxMock(t *testing.T) {
+	const v1SandboxID = "sb-nGEijt9WbBMlGrsPH9FOaC"
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 	ctx := t.Context()
 
-	for _, id := range []string{"sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"} {
+	for _, id := range []string{v1SandboxID, "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"} {
 		sb, err := mock.Sandboxes.FromID(ctx, id, nil)
 		g.Expect(err).ShouldNot(gomega.HaveOccurred())
 		var invalid modal.InvalidError

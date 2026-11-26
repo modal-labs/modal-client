@@ -30,11 +30,15 @@ import {
   SandboxCreateV2Response,
   SandboxGetExitSnapshotResponse_ErrorCode,
   SandboxRestoreV2Response,
-  SandboxRestoreResponse,
-  SandboxGetTaskIdResponse,
   SandboxSetOutboundPolicyRequest,
   SandboxSnapshotGetResponse,
+  SandboxHandleMetadata,
+  SandboxGetFromNameResponse,
+  SandboxListResponse,
+  SandboxRestoreResponse,
   SandboxWaitResponse,
+  SandboxGetTaskIdResponse,
+  AppFetchLogsResponse,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
@@ -1800,11 +1804,6 @@ test("V2 Create routes lifecycle calls to V2 RPCs", async () => {
       },
     };
   });
-  mock.handleUnary("/SandboxWaitV2", (req: any) => {
-    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
-    expect(req.timeout).toBe(0);
-    return {};
-  });
   mock.handleUnary("/SandboxGetTunnelsV2", (req: any) => {
     expect(req.sandboxId).toBe(V2_SANDBOX_ID);
     return { tunnels: [] };
@@ -1834,7 +1833,7 @@ test("V2 Create routes lifecycle calls to V2 RPCs", async () => {
   const sb = await mc.sandboxes.create(app, image);
   expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
   expect(await sb.wait()).toBe(0);
-  expect(await sb.poll()).toBeNull();
+  expect(await sb.poll()).toBe(0);
   expect(await sb.tunnels()).toEqual({});
   await sb.terminate();
 
@@ -4169,22 +4168,174 @@ test("experimentalUpdateOutboundPolicy sends correct request via mocked command 
   expect(replacements[0].headers).toEqual({ Authorization: "Bearer $API_KEY" });
 });
 
+test.each(
+  [V1_SANDBOX_ID, V2_SANDBOX_ID].flatMap((id) =>
+    [
+      "create",
+      "create-fallback",
+      "name",
+      "list",
+      "restore",
+      "lazy",
+      "lazy-error",
+    ].map((path) => ({ id, path })),
+  ),
+)("logs reuse impl metadata for $id via $path", async ({ id, path }) => {
+  vi.stubEnv("MODAL_SANDBOX_V2", "0");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const v2 = id === V2_SANDBOX_ID;
+  mc.profile.sandboxV2 = v2;
+  const suffix = v2 ? "V2" : "";
+  const metadata = SandboxHandleMetadata.create({
+    appId: "ap-known",
+    result: { status: GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED },
+  });
+  const fallback = path.startsWith("lazy") || (path === "restore" && !v2);
+  let sb: Sandbox | undefined;
+  if (path.startsWith("create")) {
+    const response = {
+      sandboxId: id,
+      metadata: path === "create-fallback" ? undefined : metadata,
+    };
+    mock.handleUnary("/SandboxCreate" + suffix, () =>
+      v2
+        ? SandboxCreateV2Response.create(response)
+        : SandboxCreateResponse.create(response),
+    );
+    if (!v2) {
+      mock.handleUnary("/SandboxGetTaskId", () =>
+        SandboxGetTaskIdResponse.create({ taskId: "ta-known" }),
+      );
+    }
+    const app = new App("ap-create");
+    const image = new Image(mc, "im-known", "");
+    sb = await mc.sandboxes.create(app, image);
+  } else if (path === "list") {
+    mock.handleUnary("/SandboxList" + suffix, () =>
+      SandboxListResponse.create({ sandboxes: [{ id, metadata }] }),
+    );
+    const sandboxes = mc.sandboxes.list({ appId: "ap-known" });
+    for await (const sandbox of sandboxes) {
+      sb = sandbox;
+      break;
+    }
+  } else if (path === "restore") {
+    mock.handleUnary("/SandboxRestore" + suffix, () =>
+      v2
+        ? SandboxRestoreV2Response.create({ sandboxId: id, metadata })
+        : SandboxRestoreResponse.create({ sandboxId: id }),
+    );
+    if (!v2) {
+      mock.handleUnary("/SandboxGetTaskId", () =>
+        SandboxGetTaskIdResponse.create({ taskId: "ta-known" }),
+      );
+    }
+    sb = await mc.sandboxes.experimentalFromSnapshot(
+      new SandboxSnapshot(mc, "sn-01BX5ZZKBKACTAV9WEVGEMMVRY", { isV2: v2 }),
+    );
+  } else {
+    mock.handleUnary("/SandboxGetFromName" + suffix, () =>
+      SandboxGetFromNameResponse.create({
+        sandboxId: id,
+        metadata: fallback ? undefined : metadata,
+      }),
+    );
+    sb = await mc.sandboxes.fromName("libmodal-test", "sandbox");
+  }
+  if (!sb) throw new Error("No Sandbox returned");
+  if (fallback) {
+    mock.handleUnary("/SandboxWait" + suffix, (req: any) => {
+      expect(req.timeout).toBe(0);
+      if (path === "lazy-error") {
+        throw new ClientError(
+          "/SandboxWait" + suffix,
+          Status.NOT_FOUND,
+          "missing",
+        );
+      }
+      return SandboxWaitResponse.create({ metadata });
+    });
+  } else if (path !== "create-fallback") {
+    expect(await sb.poll()).toBe(137);
+    expect(await sb.wait()).toBe(137);
+  }
+  if (path === "lazy-error") {
+    await expect(
+      sb.logs.tail({ entries: 1 })[Symbol.asyncIterator]().next(),
+    ).rejects.toMatchObject({
+      code: Status.NOT_FOUND,
+    });
+  } else {
+    if (v2 || (!path.startsWith("create") && path !== "restore")) {
+      mock.handleUnary("/SandboxGetTaskId" + suffix, () =>
+        SandboxGetTaskIdResponse.create({ taskId: "ta-known" }),
+      );
+    }
+    mock.handleUnary("/AppFetchLogs", (req: any) => {
+      expect(req.appId).toBe(
+        path === "create-fallback" ? "ap-create" : "ap-known",
+      );
+      return AppFetchLogsResponse.create({
+        batches: [
+          {
+            taskId: "ta-known",
+            items: [{ data: "known log\n", timestamp: Date.now() / 1000 }],
+          },
+        ],
+      });
+    });
+    const entries = [];
+    for await (const entry of sb.logs.tail({ entries: 1 }))
+      entries.push(entry.message);
+    expect(entries).toEqual(["known log\n"]);
+    if (fallback) expect(await sb.poll()).toBe(137);
+  }
+  mock.assertExhausted();
+});
+
 test.each([V1_SANDBOX_ID, V2_SANDBOX_ID])(
-  "fromId then poll makes one RPC for %s",
+  "fromId defers NOT_FOUND until poll for %s",
+  async (sandboxId) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    const rpc = sandboxId === V1_SANDBOX_ID ? "/SandboxWait" : "/SandboxWaitV2";
+    mock.handleUnary(rpc, (req: any) => {
+      expect(req.sandboxId).toBe(sandboxId);
+      expect(req.timeout).toBe(0);
+      throw new ClientError(rpc, Status.NOT_FOUND, "unknown sandbox");
+    });
+    const sb = await mc.sandboxes.fromId(sandboxId);
+    await expect(sb.poll()).rejects.toMatchObject({
+      code: Status.NOT_FOUND,
+    });
+    mock.assertExhausted();
+  },
+);
+
+test.each([V1_SANDBOX_ID, V2_SANDBOX_ID])(
+  "fromId then poll makes one RPC and caches terminal metadata for %s",
   async (sandboxId) => {
     const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
     const rpc = sandboxId === V1_SANDBOX_ID ? "/SandboxWait" : "/SandboxWaitV2";
     let calls = 0;
-    mock.handleUnary(rpc, (req: any) => {
+    mock.handleUnary(rpc, () => {
       calls++;
-      expect(req.sandboxId).toBe(sandboxId);
-      expect(req.timeout).toBe(0);
-      return SandboxWaitResponse.create({});
+      return {
+        metadata: {
+          appId: "ap-lookup",
+          result: {
+            status: GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED,
+          },
+        },
+      };
     });
     const sb = await mc.sandboxes.fromId(sandboxId);
     expect(calls).toBe(0);
-    expect(await sb.poll()).toBeNull();
+    expect(await sb.poll()).toBe(137);
     expect(calls).toBe(1);
+    expect(await sb.wait()).toBe(137);
     mock.assertExhausted();
   },
 );

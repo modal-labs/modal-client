@@ -6,6 +6,7 @@ import (
 	"io"
 	"iter"
 	"slices"
+	"sync"
 	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
@@ -17,8 +18,11 @@ import (
 // sandboxImplV1 is the Sandbox backend whose control plane RPCs are the
 // original (V1) Sandbox RPCs.
 type sandboxImplV1 struct {
-	client *Client
-	id     string
+	client  *Client
+	id      string
+	stateMu sync.RWMutex
+	appID   string
+	result  *pb.GenericResult
 	taskState
 }
 
@@ -32,6 +36,8 @@ func newSandboxImplV1(client *Client, sandboxID string, params sandboxImplParams
 	s := &sandboxImplV1{
 		client: client,
 		id:     sandboxID,
+		appID:  params.appID,
+		result: params.result,
 		taskState: taskState{
 			taskID:                  params.taskID,
 			tunnels:                 params.tunnels,
@@ -180,6 +186,7 @@ func (sandboxImplV1Class) restoreFromMemorySnapshot(ctx context.Context, client 
 		return nil, ExecutionError{Exception: result.GetException()}
 	}
 	return newSandboxImpl(client, resp.GetSandboxId(), sandboxImplParams{
+		taskID: taskResp.GetTaskId(),
 		result: taskResp.GetTaskResult(),
 	}), nil
 }
@@ -205,12 +212,45 @@ func (s *sandboxImplV1) rpcWait(ctx context.Context, timeoutSecs float32) (*pb.S
 	return s.client.cpClient.SandboxWait(ctx, pb.SandboxWaitRequest_builder{SandboxId: s.id, Timeout: timeoutSecs}.Build())
 }
 
+func (s *sandboxImplV1) waitAndHydrate(ctx context.Context, timeoutSecs float32) (*pb.SandboxWaitResponse, error) {
+	resp, err := s.rpcWait(ctx, timeoutSecs)
+	if err != nil {
+		return nil, err
+	}
+	result := resp.GetResult()
+	if getReturnCode(result) == nil {
+		result = resp.GetMetadata().GetResult()
+	}
+	s.stateMu.Lock()
+	if appID := resp.GetMetadata().GetAppId(); appID != "" {
+		s.appID = appID
+	}
+	if getReturnCode(result) != nil {
+		s.result = result
+	}
+	s.stateMu.Unlock()
+	resp.SetResult(result)
+	return resp, nil
+}
+
 func (s *sandboxImplV1) wait(ctx context.Context) (int, error) {
-	return waitForReturnCode(ctx, s, s.rpcWait)
+	s.stateMu.RLock()
+	result := getReturnCode(s.result)
+	s.stateMu.RUnlock()
+	if result != nil {
+		return *result, nil
+	}
+	return waitForReturnCode(ctx, s, s.waitAndHydrate)
 }
 
 func (s *sandboxImplV1) poll(ctx context.Context) (*int, error) {
-	resp, err := s.rpcWait(ctx, 0)
+	s.stateMu.RLock()
+	result := getReturnCode(s.result)
+	s.stateMu.RUnlock()
+	if result != nil {
+		return result, nil
+	}
+	resp, err := s.waitAndHydrate(ctx, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -243,8 +283,24 @@ func (s *sandboxImplV1) tunnels(ctx context.Context, timeout time.Duration) (map
 }
 
 func (s *sandboxImplV1) getAppID(ctx context.Context) (string, error) {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if s.appID != "" {
+		return s.appID, nil
+	}
 	resp, err := s.rpcWait(ctx, 0)
-	return resp.GetMetadata().GetAppId(), err
+	if err != nil {
+		return "", err
+	}
+	s.appID = resp.GetMetadata().GetAppId()
+	result := resp.GetResult()
+	if result.GetStatus() == pb.GenericResult_GENERIC_STATUS_UNSPECIFIED {
+		result = resp.GetMetadata().GetResult()
+	}
+	if result.GetStatus() != pb.GenericResult_GENERIC_STATUS_UNSPECIFIED {
+		s.result = result
+	}
+	return s.appID, nil
 }
 
 func (s *sandboxImplV1) rpcGetTaskID(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error) {

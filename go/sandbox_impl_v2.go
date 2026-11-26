@@ -35,8 +35,11 @@ func controlPlaneSidecarCreateEnabled() bool {
 // sandboxImplV2 is the Sandbox backend whose control plane RPCs are the V2
 // Sandbox RPCs and whose stdio goes through the task command router.
 type sandboxImplV2 struct {
-	client *Client
-	id     string
+	client  *Client
+	id      string
+	stateMu sync.RWMutex
+	appID   string
+	result  *pb.GenericResult
 	taskState
 }
 
@@ -50,6 +53,8 @@ func newSandboxImplV2(client *Client, sandboxID string, params sandboxImplParams
 	s := &sandboxImplV2{
 		client: client,
 		id:     sandboxID,
+		appID:  params.appID,
+		result: params.result,
 		taskState: taskState{
 			taskID:                  params.taskID,
 			tunnels:                 params.tunnels,
@@ -246,12 +251,45 @@ func (s *sandboxImplV2) rpcWait(ctx context.Context, timeoutSecs float32) (*pb.S
 	return s.client.cpClient.SandboxWaitV2(ctx, pb.SandboxWaitRequest_builder{SandboxId: s.id, Timeout: timeoutSecs}.Build())
 }
 
+func (s *sandboxImplV2) waitAndHydrate(ctx context.Context, timeoutSecs float32) (*pb.SandboxWaitResponse, error) {
+	resp, err := s.rpcWait(ctx, timeoutSecs)
+	if err != nil {
+		return nil, err
+	}
+	result := resp.GetResult()
+	if getReturnCode(result) == nil {
+		result = resp.GetMetadata().GetResult()
+	}
+	s.stateMu.Lock()
+	if appID := resp.GetMetadata().GetAppId(); appID != "" {
+		s.appID = appID
+	}
+	if getReturnCode(result) != nil {
+		s.result = result
+	}
+	s.stateMu.Unlock()
+	resp.SetResult(result)
+	return resp, nil
+}
+
 func (s *sandboxImplV2) wait(ctx context.Context) (int, error) {
-	return waitForReturnCode(ctx, s, s.rpcWait)
+	s.stateMu.RLock()
+	result := getReturnCode(s.result)
+	s.stateMu.RUnlock()
+	if result != nil {
+		return *result, nil
+	}
+	return waitForReturnCode(ctx, s, s.waitAndHydrate)
 }
 
 func (s *sandboxImplV2) poll(ctx context.Context) (*int, error) {
-	resp, err := s.rpcWait(ctx, 0)
+	s.stateMu.RLock()
+	result := getReturnCode(s.result)
+	s.stateMu.RUnlock()
+	if result != nil {
+		return result, nil
+	}
+	resp, err := s.waitAndHydrate(ctx, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -284,8 +322,24 @@ func (s *sandboxImplV2) tunnels(ctx context.Context, timeout time.Duration) (map
 }
 
 func (s *sandboxImplV2) getAppID(ctx context.Context) (string, error) {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if s.appID != "" {
+		return s.appID, nil
+	}
 	resp, err := s.rpcWait(ctx, 0)
-	return resp.GetMetadata().GetAppId(), err
+	if err != nil {
+		return "", err
+	}
+	s.appID = resp.GetMetadata().GetAppId()
+	result := resp.GetResult()
+	if result.GetStatus() == pb.GenericResult_GENERIC_STATUS_UNSPECIFIED {
+		result = resp.GetMetadata().GetResult()
+	}
+	if result.GetStatus() != pb.GenericResult_GENERIC_STATUS_UNSPECIFIED {
+		s.result = result
+	}
+	return s.appID, nil
 }
 
 func (s *sandboxImplV2) rpcGetTaskID(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error) {

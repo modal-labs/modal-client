@@ -5,7 +5,8 @@ import {
   type SandboxGetLogsRequest,
   TaskLogsBatch,
 } from "../proto/modal_proto/api";
-import { ModalClient } from "modal";
+import { ModalClient, Sandbox } from "modal";
+import { newSandboxImpl } from "../src/sandbox_common";
 
 /**
  * A V1 Sandbox's output comes from the control plane, not from the worker, so
@@ -84,6 +85,9 @@ async function startFakeControlPlane(
   const server = createServer();
   server.add(ModalClientDefinition, {
     ...unimplemented,
+    async sandboxWait() {
+      return {};
+    },
     async authTokenGet() {
       authenticating = true;
       await authGate;
@@ -215,7 +219,7 @@ test("explicit cancellation during authentication opens no log call", async () =
   });
   const cp = await startFakeControlPlane(true, gate);
   try {
-    const sandbox = await cp.client.sandboxes.fromId(SANDBOX_ID);
+    const sandbox = new Sandbox(newSandboxImpl(cp.client, SANDBOX_ID));
     const reader = sandbox.stdout.getReader();
     const pending = reader.read();
     expect(await waitFor(cp.authenticating, 5000)).toBe(true);
@@ -283,6 +287,9 @@ async function startMultiItemControlPlane() {
   const server = createServer();
   server.add(ModalClientDefinition, {
     ...unimplemented,
+    async sandboxWait() {
+      return {};
+    },
     async authTokenGet() {
       return { token: mockJwt() };
     },
