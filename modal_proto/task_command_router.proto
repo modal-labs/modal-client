@@ -327,6 +327,10 @@ message TaskSetNetworkAccessRequest {
 
 message TaskSetNetworkAccessResponse {}
 
+// A task that is shutting down. As the detail of an error, the task never
+// started the rejected request, so it is safe to send it elsewhere.
+message TaskShuttingDown {}
+
 message TaskSnapshotDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
