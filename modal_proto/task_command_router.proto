@@ -36,6 +36,16 @@ enum TaskExecStdoutConfig {
   TASK_EXEC_STDOUT_CONFIG_PIPE = 1;
 }
 
+// Why Modal ended a command. A reason a client doesn't know counts as
+// UNSPECIFIED.
+enum TaskExecStopReason {
+  // The command exited on its own, or the task can't tell.
+  TASK_EXEC_STOP_REASON_UNSPECIFIED = 0;
+  // The task was shutting down when the command exited, so the shutdown may
+  // have ended it.
+  TASK_EXEC_STOP_REASON_TASK_SHUTDOWN = 1;
+}
+
 message SandboxStdinWriteV2Request {
   string task_id = 1;
   uint64 offset = 2;
@@ -160,7 +170,10 @@ message TaskExecPollResponse {
     int32 signal = 2;
   }
   // TODO(saltzm): Give a way for the user to distinguish between normal exit
-  // and termination by Modal (due to task timeout, exec exceeded deadline, etc.)
+  // and an exec Modal ended for exceeding its deadline.
+
+  // Why Modal ended the command, if it did.
+  TaskExecStopReason stop_reason = 3;
 }
 
 message TaskExecStartRequest {
@@ -288,7 +301,10 @@ message TaskExecWaitResponse {
     int32 signal = 2;
   }
   // TODO(saltzm): Give a way for the user to distinguish between normal exit
-  // and termination by Modal (due to task timeout, exec exceeded deadline, etc.)
+  // and an exec Modal ended for exceeding its deadline.
+
+  // As in TaskExecPollResponse.
+  TaskExecStopReason stop_reason = 3;
 }
 
 message TaskMountDirectoryRequest {
