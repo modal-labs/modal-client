@@ -67,7 +67,7 @@ class Pickler(cloudpickle.Pickler):
         else:
             return
 
-        if not obj._is_hydrated:
+        if not obj._is_serializable():
             raise InvalidError(f"Can't serialize object {obj} which hasn't been hydrated.")
 
         return (obj.object_id, flag, obj._get_metadata())

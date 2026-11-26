@@ -34,6 +34,7 @@ import {
   SandboxGetTaskIdResponse,
   SandboxSetOutboundPolicyRequest,
   SandboxSnapshotGetResponse,
+  SandboxWaitResponse,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { TaskCommandRouterClientImpl } from "../src/task_command_router_client";
@@ -4167,3 +4168,23 @@ test("experimentalUpdateOutboundPolicy sends correct request via mocked command 
   expect(replacements[0].secretId).toBe("st-1");
   expect(replacements[0].headers).toEqual({ Authorization: "Bearer $API_KEY" });
 });
+
+test.each([V1_SANDBOX_ID, V2_SANDBOX_ID])(
+  "fromId then poll makes one RPC for %s",
+  async (sandboxId) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+    const rpc = sandboxId === V1_SANDBOX_ID ? "/SandboxWait" : "/SandboxWaitV2";
+    let calls = 0;
+    mock.handleUnary(rpc, (req: any) => {
+      calls++;
+      expect(req.sandboxId).toBe(sandboxId);
+      expect(req.timeout).toBe(0);
+      return SandboxWaitResponse.create({});
+    });
+    const sb = await mc.sandboxes.fromId(sandboxId);
+    expect(calls).toBe(0);
+    expect(await sb.poll()).toBeNull();
+    expect(calls).toBe(1);
+    mock.assertExhausted();
+  },
+);

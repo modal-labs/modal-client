@@ -27,7 +27,7 @@ async def test_held_server_output_reader_can_reopen_after_detach(servicer, clien
 
     with servicer.intercept() as ctx:
         ctx.set_responder("SandboxGetLogs", logs)
-        sandbox = await Sandbox.from_id.aio(SANDBOX_ID, client=client)
+        sandbox = Sandbox.from_id(SANDBOX_ID, client=client)
         reader = getattr(sandbox, descriptor)
         await sandbox.detach.aio()
 
@@ -37,7 +37,7 @@ async def test_held_server_output_reader_can_reopen_after_detach(servicer, clien
 
 @pytest.mark.asyncio
 async def test_held_server_stdin_writer_remains_usable_after_detach(servicer, client):
-    sandbox = await Sandbox.from_id.aio(SANDBOX_ID, client=client)
+    sandbox = Sandbox.from_id(SANDBOX_ID, client=client)
     writer = sandbox.stdin
     writer.write(b"before")
     await sandbox.detach.aio()

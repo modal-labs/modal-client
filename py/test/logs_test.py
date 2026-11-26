@@ -1407,6 +1407,30 @@ def test_sandbox_logs_tail_after_detach(client, servicer, monkeypatch):
     assert fetch_requests[0].limit == 1
 
 
+@pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+def test_sandbox_from_id_logs_tail_after_detach(client, servicer, sandbox_id):
+    servicer.sandbox_app_id = "ap-sandbox"
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_fetch_response(function_id="", task_id=req.task_id))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+        sandbox = modal.Sandbox.from_id(sandbox_id, client=client)
+        sandbox.detach()
+        assert sandbox.hydrate().object_id == sandbox_id
+
+        logs = list(sandbox.logs.tail(1))
+
+    assert [str(log) for log in logs] == ["hello\n"]
+    assert len(fetch_requests) == 1
+    assert fetch_requests[0].app_id == "ap-sandbox"
+    assert fetch_requests[0].task_id
+
+
 def test_sandbox_logs_fetch(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
     app = modal.App()

@@ -679,11 +679,16 @@ class SandboxImpl(Protocol):
     from the Sandbox type when the handle is created or looked up.
     """
 
-    client: _Client
+    client: _Client | None
     sandbox_id: str
     # The Sandbox's final result once known; `None` while it is running.
     result: api_pb2.GenericResult | None
     app_id: str
+
+    @property
+    def is_hydrated(self) -> bool: ...
+
+    async def hydrate(self, client: _Client | None = None) -> None: ...
 
     async def _get_client(self) -> _Client: ...
 
@@ -696,7 +701,7 @@ class SandboxImpl(Protocol):
 
     def __init__(
         self,
-        client: _Client,
+        client: _Client | None,
         sandbox_id: str,
         *,
         result: api_pb2.GenericResult | None = None,
@@ -903,6 +908,12 @@ def wait_poll_request(sandbox_id: str) -> tuple[api_pb2.SandboxWaitRequest, Retr
     """Build one `Sandbox.wait` long poll and the retry policy that bounds it."""
     req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=_WAIT_LONG_POLL_TIMEOUT)
     return req, Retry(attempt_timeout=_WAIT_LONG_POLL_TIMEOUT + _WAIT_POLL_DEADLINE_MARGIN)
+
+
+def apply_wait_response(impl: SandboxImpl, resp: api_pb2.SandboxWaitResponse) -> None:
+    impl.app_id = resp.metadata.app_id or impl.app_id
+    if resp.result.status:
+        impl.result = resp.result
 
 
 def raise_for_wait_result(sandbox_id: str, result: api_pb2.GenericResult, raise_on_termination: bool) -> None:

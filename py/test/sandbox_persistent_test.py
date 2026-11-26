@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2026
 import pytest
+from unittest import mock
 
 from grpclib import GRPCError, Status
 
@@ -48,6 +49,20 @@ def test_persistent_sandbox_create(app, client, servicer):
     assert req.definition.idle_timeout_secs == PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT
     assert not servicer.sandbox_create_v2_requests
     assert sb.poll() is None
+
+
+@pytest.mark.parametrize("explicit_client", [False, True])
+def test_persistent_sandbox_hydrates_client(app, client, container_client, servicer, monkeypatch, explicit_client):
+    sb = _create(app, client)
+    monkeypatch.setattr(synchronizer._translate_in(client), "_snapshotted", True)
+    from_env = mock.AsyncMock(return_value=synchronizer._translate_in(container_client))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    with servicer.intercept() as ctx:
+        sb.hydrate(container_client if explicit_client else None)
+        assert sb.client is container_client
+        assert sb._is_hydrated
+        assert ctx.calls == []
+    assert from_env.await_count == (0 if explicit_client else 1)
 
 
 def test_persistent_sandbox_rejects_name(app, client, servicer):

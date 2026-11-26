@@ -6,6 +6,8 @@ import pytest
 import random
 import typing
 
+from grpclib import GRPCError, Status
+
 from modal import Queue, Sandbox
 from modal._serialization import (
     apply_defaults,
@@ -22,7 +24,7 @@ from modal._serialization import (
 from modal._type_manager import parameter_serde_registry
 from modal._utils.async_utils import synchronize_api
 from modal._utils.rand_pb_testing import rand_pb
-from modal.exception import DeserializationError, InvalidError
+from modal.exception import DeserializationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 
@@ -48,6 +50,41 @@ def _serialize_sandbox_with_metadata(sandbox, metadata):
 class ObjectMetadataUnpickler(pickle.Unpickler):
     def persistent_load(self, pid):
         return pid
+
+
+@pytest.mark.parametrize(
+    "sandbox_id,wait_rpc,task_rpc",
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", "SandboxWait", "SandboxGetTaskId"),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", "SandboxWaitV2", "SandboxGetTaskIdV2"),
+    ],
+)
+def test_fresh_sandbox_serialization_and_logs(client, servicer, sandbox_id, wait_rpc, task_rpc):
+    sb = Sandbox.from_id(sandbox_id)
+    assert not sb._is_hydrated
+    with servicer.intercept() as ctx:
+        data = serialize(sb)
+        assert ObjectMetadataUnpickler(io.BytesIO(data)).load() == (sandbox_id, "o", api_pb2.SandboxHandleMetadata())
+        restored = deserialize_on_synchronizer(data, client)
+        assert restored.object_id == sandbox_id
+        assert restored.client is client
+        assert restored._is_hydrated
+        assert ctx.calls == []
+        ctx.add_response(
+            wait_rpc,
+            api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id="ap-lazy")),
+        )
+        ctx.add_response(task_rpc, api_pb2.SandboxGetTaskIdResponse(task_id="ta-lazy"))
+        ctx.add_response(
+            "AppFetchLogs",
+            api_pb2.AppFetchLogsResponse(
+                batches=[api_pb2.TaskLogsBatch(task_id="ta-lazy", items=[api_pb2.TaskLogs(data="lazy log\n")])]
+            ),
+        )
+        assert [str(entry) for entry in restored.logs.tail(1)] == ["lazy log\n"]
+        (req,) = ctx.get_requests("AppFetchLogs")
+        assert req.app_id == "ap-lazy"
+        assert len(ctx.get_requests(wait_rpc)) == 1
 
 
 @pytest.mark.asyncio
@@ -112,8 +149,9 @@ def test_sandbox_serialization_payload(servicer, client, sandbox_id, is_v2, has_
     ids=["v1", "v2"],
 )
 @pytest.mark.parametrize("has_result", [False, True])
-@pytest.mark.parametrize("operation", ["poll", "logs"])
-def test_sandbox_metadata_roundtrip(servicer, client, sandbox_id, is_v2, has_result, operation):
+@pytest.mark.parametrize("operation", ["poll", "logs", "detached_logs"])
+@pytest.mark.parametrize("metadata_kind", ["complete", "id_only", "missing_app_id"])
+def test_sandbox_metadata_roundtrip(servicer, client, sandbox_id, is_v2, has_result, operation, metadata_kind):
     servicer.sandbox_app_id = "ap-from-main"
     result = (
         api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=42) if has_result else None
@@ -128,11 +166,12 @@ def test_sandbox_metadata_roundtrip(servicer, client, sandbox_id, is_v2, has_res
             )
         )
 
-    with servicer.intercept() as ctx:
-        ctx.set_responder("SandboxWaitV2" if is_v2 else "SandboxWait", wait_handler)
-        sandbox = Sandbox.from_id(sandbox_id, client=client)
-
-    metadata = api_pb2.SandboxHandleMetadata(app_id="ap-from-main", result=result)
+    sandbox = Sandbox.from_id(sandbox_id, client=client)
+    metadata: api_pb2.SandboxHandleMetadata | None = api_pb2.SandboxHandleMetadata(app_id="ap-from-main", result=result)
+    if metadata_kind == "id_only":
+        metadata = None
+    elif metadata_kind == "missing_app_id":
+        metadata = api_pb2.SandboxHandleMetadata(result=result)
     data = _serialize_sandbox_with_metadata(sandbox, metadata)
 
     async def get_task_id(self, stream):
@@ -159,14 +198,17 @@ def test_sandbox_metadata_roundtrip(servicer, client, sandbox_id, is_v2, has_res
         assert isinstance(sandbox_roundtrip, Sandbox)
         assert sandbox_roundtrip.object_id == sandbox.object_id
         assert not ctx.get_requests(wait_rpc)
-        assert sandbox_roundtrip.returncode == (42 if has_result else None)
+        cached_result = has_result and metadata is not None
+        assert sandbox_roundtrip.returncode == (42 if cached_result else None)
+        if operation == "detached_logs":
+            sandbox_roundtrip.detach()
         if operation == "poll":
             assert sandbox_roundtrip.poll() == (42 if has_result else None)
-            needs_lookup = True
+            needs_lookup = not cached_result
         else:
             assert [str(entry) for entry in sandbox_roundtrip.logs.tail(1)] == ["serialized log\n"]
             assert sandbox_roundtrip.returncode == (42 if has_result else None)
-            needs_lookup = False
+            needs_lookup = metadata is None or not metadata.app_id
         requests = ctx.get_requests(wait_rpc)
         assert len(requests) == int(needs_lookup)
         if needs_lookup:
@@ -183,6 +225,56 @@ def test_sandbox_metadata_preserves_empty_result(client, sandbox_id):
     _, _, restored_metadata = ObjectMetadataUnpickler(io.BytesIO(serialize(restored))).load()
     assert restored_metadata.HasField("result")
     assert restored_metadata.SerializeToString() == metadata.SerializeToString()
+
+
+@pytest.mark.parametrize(
+    ("sandbox_id", "wait_rpc"),
+    [("sb-nGEijt9WbBMlGrsPH9FOaC", "SandboxWait"), ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", "SandboxWaitV2")],
+)
+@pytest.mark.parametrize("operation", ["poll", "wait"])
+def test_sandbox_empty_result_observes_exit(servicer, client, sandbox_id, wait_rpc, operation):
+    sandbox = Sandbox.from_id(sandbox_id, client=client)
+    metadata = api_pb2.SandboxHandleMetadata(app_id="ap-main", result=api_pb2.GenericResult())
+    restored = deserialize_on_synchronizer(_serialize_sandbox_with_metadata(sandbox, metadata), client)
+    assert restored.returncode is None
+
+    async def exited(servicer, stream):
+        await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxWaitResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=42)
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder(wait_rpc, exited)
+        if operation == "poll":
+            assert restored.poll() == 42
+        else:
+            restored.wait()
+        assert restored.returncode == 42
+        assert len(ctx.get_requests(wait_rpc)) == 1
+
+
+@pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+@pytest.mark.parametrize("operation", ["poll", "detached_logs"])
+def test_deserialized_sandbox_lookup_error(servicer, client, sandbox_id, operation):
+    sandbox = Sandbox.from_id(sandbox_id, client=client)
+    data = _serialize_sandbox_with_metadata(sandbox, None)
+
+    async def missing(self, stream):
+        raise GRPCError(Status.NOT_FOUND, "unknown sandbox")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWait", missing)
+        ctx.set_responder("SandboxWaitV2", missing)
+        restored = deserialize_on_synchronizer(data, client)
+        with pytest.raises(NotFoundError, match="unknown sandbox"):
+            if operation == "poll":
+                restored.poll()
+            else:
+                restored.detach()
+                list(restored.logs.tail(1))
 
 
 @pytest.mark.asyncio

@@ -81,7 +81,7 @@ class SandboxImplPersistent:
 
     def __init__(
         self,
-        client: _Client,
+        client: _Client | None,
         sandbox_id: str,
         *,
         result: api_pb2.GenericResult | None = None,
@@ -105,7 +105,22 @@ class SandboxImplPersistent:
     async def get_app_id(self) -> str:
         return self.app_id
 
+    @property
+    def is_hydrated(self) -> bool:
+        # An impl always has an object id, while its client is optional, so having a client
+        # is equivalent to being hydrated.
+        return self.client is not None
+
+    async def hydrate(self, client: _Client | None = None) -> None:
+        if self.client is not None and self.client._snapshotted:
+            self.client = client or await _Client.from_env()
+        else:
+            self.client = client or self.client or await _Client.from_env()
+        await self._session.hydrate(self.client)
+
     async def _get_client(self) -> _Client:
+        await self.hydrate()
+        assert self.client is not None
         return self.client
 
     def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:

@@ -397,7 +397,7 @@ async def test_repeated_detach_closes_channel_once(client, make_client):
     from modal._utils.async_utils import synchronizer
     from modal.sandbox import Sandbox
 
-    sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
+    sandbox = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
     raw_sandbox = synchronizer._translate_in(sandbox)
     router = await make_client(idle_timeout=3600)
     raw_sandbox._impl._command_router._client = router
@@ -423,7 +423,7 @@ async def test_detach_suppresses_router_cleanup_errors(client):
             close_calls.append("router")
             raise RuntimeError("router close failed")
 
-    sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
+    sandbox = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
     raw_sandbox = synchronizer._translate_in(sandbox)
     raw_sandbox._impl._command_router._client = Router()  # type: ignore[assignment]
 
@@ -459,7 +459,7 @@ async def test_router_initialized_during_detach_is_closed(client, monkeypatch):
 
     monkeypatch.setattr(TaskCommandRouterClient, "connect", connect)
 
-    sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
+    sandbox = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
     raw_sandbox = synchronizer._translate_in(sandbox)
     get_router = asyncio.create_task(raw_sandbox._get_command_router_client("ta-1"))
     await started.wait()
@@ -490,7 +490,7 @@ async def test_concurrent_first_operations_share_one_channel(servicer, client, m
 
     monkeypatch.setattr(TaskCommandRouterClient, "connect", _count)
 
-    sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
+    sandbox = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
     processes = await asyncio.gather(*(sandbox.exec.aio("echo", "hello") for _ in range(5)))
     for process in processes:
         assert await process.wait.aio() == 0
@@ -671,7 +671,7 @@ async def test_detach_does_not_rebuild_the_router_client(servicer, client, monke
 
     monkeypatch.setattr(TaskCommandRouterClient, "connect", _count)
 
-    sandbox = await Sandbox.from_id.aio(_V2_SANDBOX_ID, client=client)
+    sandbox = Sandbox.from_id(_V2_SANDBOX_ID, client=client)
     await sandbox.detach.aio()
 
     inner = synchronizer._translate_in(sandbox)

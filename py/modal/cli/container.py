@@ -208,7 +208,7 @@ async def logs(
 
         if is_v2_sandbox:
             assert sandbox_id is not None
-            sandbox = await _Sandbox.from_id(sandbox_id, client)
+            sandbox = _Sandbox._from_id(sandbox_id, client)
             app_id = await sandbox._get_app_id()
             try:
                 task_id = await asyncio.wait_for(

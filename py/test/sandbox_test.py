@@ -11,6 +11,7 @@ import re
 import time
 import typing
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -294,20 +295,27 @@ def test_sandbox_create_hydrates_app_id(app, monkeypatch, sandbox_version):
 @pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
 @pytest.mark.parametrize("app_id", ["ap-cached", ""])
 def test_sandbox_get_app_id_from_metadata(client, servicer, sandbox_id, app_id):
+    wait_rpc = "SandboxWaitV2" if _get_sandbox_version(sandbox_id) == SandboxVersion.V2 else "SandboxWait"
+
     async def wait_handler(self, stream):
         await stream.recv_message()
         await stream.send_message(api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id=app_id)))
 
     with servicer.intercept() as ctx:
-        ctx.set_responder(
-            "SandboxWaitV2" if _get_sandbox_version(sandbox_id) == SandboxVersion.V2 else "SandboxWait", wait_handler
-        )
+        ctx.set_responder(wait_rpc, wait_handler)
         sb = Sandbox.from_id(sandbox_id, client=client)
+        assert ctx.calls == []
+        sb.poll()
 
     with servicer.intercept() as ctx:
-        assert sb._get_app_id() == app_id
+        if not app_id:
+            ctx.add_response(
+                wait_rpc,
+                api_pb2.SandboxWaitResponse(metadata=api_pb2.SandboxHandleMetadata(app_id="ap-refreshed")),
+            )
+        assert sb._get_app_id() == (app_id or "ap-refreshed")
 
-    assert ctx.calls == []
+    assert [rpc for rpc, _ in ctx.calls] == ([] if app_id else [wait_rpc])
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
@@ -334,6 +342,8 @@ def test_sandbox_from_id(app, client, servicer, sandbox_subprocess):
     sb.wait()
 
     sb2 = Sandbox.from_id(sb.object_id, client=client)
+    assert sb2.returncode is None
+    sb2.poll()
     assert sb2.stdout.read() == "foo\n"
     assert sb2.returncode == 42
 
@@ -370,6 +380,173 @@ def test_is_v2_task_id(task_id, expected):
 
 
 @pytest.mark.parametrize(
+    "sandbox_id,wait_rpc",
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", "SandboxWait"),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", "SandboxWaitV2"),
+    ],
+)
+@pytest.mark.parametrize("exitcode", [None, 0, 42])
+def test_sandbox_from_id_poll_one_rpc(client, servicer, sandbox_id, wait_rpc, exitcode):
+    client.get_input_plane_metadata("us-east")
+    result = (
+        api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, exitcode=exitcode or 0)
+        if exitcode is not None
+        else None
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(wait_rpc, api_pb2.SandboxWaitResponse(result=result))
+        sb = Sandbox.from_id(sandbox_id, client=client)
+        assert sb.returncode is None
+        assert ctx.calls == []
+        assert sb.poll() == exitcode
+        assert sb.returncode == exitcode
+    assert [rpc for rpc, _ in ctx.calls] == [wait_rpc]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_client", [False, True])
+@pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2])
+async def test_sandbox_from_id_is_not_async(client, servicer, monkeypatch, explicit_client, sandbox_version):
+    from_env = mock.AsyncMock(return_value=synchronizer._translate_in(client))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    if sandbox_version == SandboxVersion.V2:
+        await client.get_input_plane_metadata.aio("us-east")
+    sandbox_id = (
+        "sb-nGEijt9WbBMlGrsPH9FOaC" if sandbox_version == SandboxVersion.V1 else "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    )
+    kwargs = {"client": client} if explicit_client else {}
+    with (
+        mock.patch.object(synchronizer, "_run_function_sync") as run_sync,
+        mock.patch.object(synchronizer, "_run_function_async") as run_async,
+    ):
+        with pytest.warns(DeprecationError, match=r"Please use Sandbox\.from_id\("):
+            deprecated = await Sandbox.from_id.aio(sandbox_id, **kwargs)
+        sandbox = Sandbox.from_id(sandbox_id, **kwargs)
+        assert isinstance(deprecated, Sandbox)
+        assert isinstance(sandbox, Sandbox)
+        assert sandbox.object_id == sandbox_id
+        assert sandbox.returncode is None
+        run_sync.assert_not_called()
+        run_async.assert_not_called()
+        from_env.assert_not_called()
+    with servicer.intercept() as ctx:
+        assert await sandbox.poll.aio() == 0
+    assert [rpc for rpc, _ in ctx.calls] == ["SandboxWait" if sandbox_version == SandboxVersion.V1 else "SandboxWaitV2"]
+    assert from_env.await_count == (0 if explicit_client else 1)
+
+
+@pytest.mark.parametrize("descriptor", ["stdout", "stderr"])
+@pytest.mark.parametrize("output", ["", "output\n"])
+def test_sandbox_from_id_reads_before_client_resolution(client, servicer, monkeypatch, descriptor, output):
+    from_env = mock.AsyncMock(return_value=synchronizer._translate_in(client))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetLogs",
+            api_pb2.TaskLogsBatch(items=[api_pb2.TaskLogs(data=output)], eof=True),
+        )
+        sandbox = Sandbox.from_id("sb-nGEijt9WbBMlGrsPH9FOaC")
+        reader = getattr(sandbox, descriptor)
+        from_env.assert_not_called()
+        assert ctx.calls == []
+        assert reader.read() == output
+    from_env.assert_awaited_once()
+
+
+@pytest.mark.parametrize("running_loop", [False, True], ids=["sync-thread", "asyncio-run"])
+@pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
+def test_sandbox_from_id_stdio_constructed_off_loop(client, servicer, running_loop, sandbox_version):
+    sandbox_id = (
+        "sb-nGEijt9WbBMlGrsPH9FOaC" if sandbox_version == SandboxVersion.V1 else "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    )
+
+    def construct():
+        sandbox = Sandbox.from_id(sandbox_id, client=client)
+        return sandbox.stdout, sandbox.stdin
+
+    async def construct_in_loop():
+        assert asyncio.get_running_loop() != synchronizer._get_loop(start=False)
+        return construct()
+
+    with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            reader, writer = asyncio.run(construct_in_loop()) if running_loop else executor.submit(construct).result()
+        assert ctx.calls == []
+        assert tcr_ctx.calls == []
+        if sandbox_version == SandboxVersion.V1:
+            ctx.add_response(
+                "SandboxGetLogs", api_pb2.TaskLogsBatch(items=[api_pb2.TaskLogs(data="output\n")], eof=True)
+            )
+        else:
+            tcr_ctx.add_response(
+                "SandboxStdioReadV2", sr_pb2.SandboxStdioReadV2Response(data=b"output\n", starting_offset=0)
+            )
+            tcr_ctx.add_response("SandboxStdinWriteV2", sr_pb2.SandboxStdinWriteV2Response())
+        assert reader.read() == "output\n"
+        writer.write(b"input")
+        writer.write_eof()
+        writer.drain()
+        if sandbox_version == SandboxVersion.V1:
+            (request,) = ctx.get_requests("SandboxStdinWrite")
+            assert request.input == b"input"
+        else:
+            (request,) = tcr_ctx.get_requests("SandboxStdinWriteV2")
+            assert request.data == b"input"
+        assert request.eof
+
+
+@pytest.mark.parametrize("data", [b"", b"input", "input"])
+def test_sandbox_from_id_buffers_stdin_before_client_resolution(client, servicer, monkeypatch, data):
+    from_env = mock.AsyncMock(return_value=synchronizer._translate_in(client))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    with servicer.intercept() as ctx:
+        sandbox = Sandbox.from_id("sb-nGEijt9WbBMlGrsPH9FOaC")
+        writer = sandbox.stdin
+        writer.write(data)
+        writer.write_eof()
+        from_env.assert_not_called()
+        assert ctx.calls == []
+        writer.drain()
+        (request,) = ctx.get_requests("SandboxStdinWrite")
+        assert request.input == (data.encode() if isinstance(data, str) else data)
+        assert request.eof
+    from_env.assert_awaited_once()
+
+
+def test_sandbox_from_id_retries_client_resolution(client, servicer, monkeypatch):
+    from_env = mock.AsyncMock(
+        side_effect=[modal.exception.AuthError("no credentials"), synchronizer._translate_in(client)]
+    )
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    sandbox = Sandbox.from_id("sb-nGEijt9WbBMlGrsPH9FOaC")
+    with pytest.raises(modal.exception.AuthError, match="no credentials"):
+        sandbox.poll()
+    assert sandbox.returncode is None
+    assert sandbox.poll() == 0
+
+
+@pytest.mark.parametrize(
+    "sandbox_id,wait_rpc",
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", "SandboxWait"),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", "SandboxWaitV2"),
+    ],
+)
+def test_sandbox_from_id_defers_not_found(client, servicer, sandbox_id, wait_rpc):
+    async def missing(self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.NOT_FOUND, "unknown sandbox")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder(wait_rpc, missing)
+        sb = Sandbox.from_id(sandbox_id, client=client)
+        assert ctx.calls == []
+        with pytest.raises(modal.exception.NotFoundError, match="unknown sandbox"):
+            sb.poll()
+
+
+@pytest.mark.parametrize(
     ("sandbox_id", "method"),
     [
         ("sb-nGEijt9WbBMlGrsPH9FOaC", "SandboxWait"),
@@ -385,8 +562,53 @@ def test_sandbox_from_id_preserves_exit_code_without_metadata_result(client, ser
             api_pb2.SandboxWaitResponse(result=result, metadata=api_pb2.SandboxHandleMetadata(app_id="ap-from-id")),
         )
         sandbox = Sandbox.from_id(sandbox_id, client=client)
+        assert sandbox.returncode is None
+        assert sandbox.poll() == 42
 
     assert sandbox.returncode == 42
+
+
+@pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+@pytest.mark.parametrize("operation", ["poll", "wait"])
+@pytest.mark.parametrize("app_id", ["", "ap-refreshed"])
+@pytest.mark.parametrize("terminated", [False, True])
+def test_sandbox_wait_response_uses_top_level_result(client, servicer, sandbox_id, operation, app_id, terminated):
+    method = "SandboxWaitV2" if _get_sandbox_version(sandbox_id) == SandboxVersion.V2 else "SandboxWait"
+    sandbox = Sandbox.from_id(sandbox_id, client=client)
+    calls = 0
+
+    async def wait_handler(self, stream):
+        nonlocal calls
+        await stream.recv_message()
+        assert sandbox.returncode is None
+        calls += 1
+        metadata = api_pb2.SandboxHandleMetadata(
+            app_id="ap-cached" if calls == 1 else app_id,
+            result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=99),
+        )
+        result = api_pb2.GenericResult()
+        if calls > 1:
+            result.status = (
+                api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+                if terminated
+                else api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+            )
+        await stream.send_message(api_pb2.SandboxWaitResponse(metadata=metadata, result=result))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder(method, wait_handler)
+        if operation == "poll":
+            assert sandbox.poll() is None
+            assert sandbox._get_app_id() == "ap-cached"
+            assert sandbox.poll() == (137 if terminated else 0)
+        elif terminated:
+            with pytest.raises(modal.exception.SandboxTerminatedError):
+                sandbox.wait()
+        else:
+            sandbox.wait()
+        assert sandbox._get_app_id() == (app_id or "ap-cached")
+        assert sandbox.returncode == (137 if terminated else 0)
+        assert calls == 2
 
 
 def test_sandbox_from_id_routes_v1(client, servicer):
@@ -395,6 +617,9 @@ def test_sandbox_from_id_routes_v1(client, servicer):
 
     with servicer.intercept() as ctx:
         sb = Sandbox.from_id(sandbox_id, client=client)
+        assert sb.returncode is None
+        assert ctx.calls == []
+        assert sb.poll() == 0
 
     assert sb.returncode == 0
     assert synchronizer._translate_in(sb)._impl.app_id == "ap-from-id-v1"
@@ -416,8 +641,7 @@ def test_sandbox_from_id_routes_v2(client, servicer):
     assert ctx.get_requests("SandboxWait") == []
 
     wait_reqs = ctx.get_requests("SandboxWaitV2")
-    assert [req.sandbox_id for req in wait_reqs] == [sandbox_id, sandbox_id]
-    assert wait_reqs[0].timeout == 0
+    assert [req.sandbox_id for req in wait_reqs] == [sandbox_id]
 
     (terminate_req,) = ctx.get_requests("SandboxTerminateV2")
     assert terminate_req.sandbox_id == sandbox_id
@@ -469,6 +693,78 @@ def test_sandbox_from_name_hydrates_app_id(app, client, servicer, sandbox_versio
     assert request.sandbox_name == "my-sandbox"
 
 
+@pytest.mark.parametrize("sandbox_id", ["", "fu-123", "unknown-123"])
+def test_sandbox_from_id_rejects_unknown_prefix(sandbox_id):
+    with pytest.raises(InvalidError, match="does not start with any"):
+        Sandbox.from_id(sandbox_id)
+
+
+def test_sandbox_from_id_preserves_handle_repr():
+    sandbox_id = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    sb = Sandbox.from_id(sandbox_id)
+    assert repr(sb) == f"modal.Sandbox.from_id({sandbox_id!r})"
+
+
+@pytest.mark.parametrize("constructor", ["from_id", "create"])
+def test_sandbox_constructs_filesystem(app, client, constructor):
+    if constructor == "from_id":
+        sb = Sandbox.from_id("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", client=client)
+    else:
+        sb = Sandbox.create(app=app)
+    assert sb.filesystem is sb.filesystem
+
+
+@pytest.mark.parametrize("explicit_client", [False, True])
+def test_sandbox_hydrate_resolves_client_without_rpc(client, servicer, monkeypatch, explicit_client):
+    from_env = mock.AsyncMock(return_value=synchronizer._translate_in(client))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    sandbox_id = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    sb = Sandbox.from_id(sandbox_id, client=client if explicit_client else None)
+    with servicer.intercept() as ctx:
+        assert sb.hydrate().object_id == sandbox_id
+        assert ctx.calls == []
+    assert from_env.await_count == (0 if explicit_client else 1)
+
+
+@pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+@pytest.mark.parametrize("explicit_client", [False, True])
+def test_sandbox_from_id_hydration_state(client, servicer, monkeypatch, sandbox_id, explicit_client):
+    from_env = mock.AsyncMock(return_value=synchronizer._translate_in(client))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    with servicer.intercept() as ctx:
+        sb = Sandbox.from_id(sandbox_id, client=client if explicit_client else None)
+        assert sb.object_id == sandbox_id
+        assert sb._is_hydrated == explicit_client
+        if explicit_client:
+            assert sb.client is client
+        else:
+            with pytest.raises(AttributeError, match="client of unhydrated"):
+                _ = sb.client
+        from_env.assert_not_called()
+        assert ctx.calls == []
+        assert sb.poll() == 0
+        assert sb._is_hydrated
+        assert sb.client is client
+
+
+@pytest.mark.parametrize("sandbox_id", ["sb-nGEijt9WbBMlGrsPH9FOaC", "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"])
+@pytest.mark.parametrize("explicit_client", [False, True])
+def test_sandbox_snapshot_rehydrates_client(
+    client, container_client, servicer, monkeypatch, sandbox_id, explicit_client
+):
+    sb = Sandbox.from_id(sandbox_id, client=client)
+    monkeypatch.setattr(synchronizer._translate_in(client), "_snapshotted", True)
+    from_env = mock.AsyncMock(return_value=synchronizer._translate_in(container_client))
+    monkeypatch.setattr("modal.client._Client.from_env", from_env)
+    with servicer.intercept() as ctx:
+        sb.hydrate(container_client if explicit_client else None)
+        assert sb.client is container_client
+        sb.hydrate()
+        assert sb.client is container_client
+        assert ctx.calls == []
+    assert from_env.await_count == (0 if explicit_client else 1)
+
+
 def test_sandbox_from_id_routes_unrecognized_id_to_v2(client, servicer):
     # An ID that matches neither known shape (e.g. a format introduced after
     # this client version) routes to the V2 backend instead of erroring.
@@ -476,6 +772,8 @@ def test_sandbox_from_id_routes_unrecognized_id_to_v2(client, servicer):
 
     with servicer.intercept() as ctx:
         sb = Sandbox.from_id(sandbox_id, client=client)
+        assert ctx.calls == []
+        sb.poll()
 
     assert sb.returncode == 0
     assert ctx.get_requests("SandboxWait") == []
@@ -3624,7 +3922,15 @@ detach_error_funcs = {
     "stdin": lambda sb: sb.stdin,
     "filesystem": lambda sb: sb.filesystem,
 }
-ALLOW_AFTER_DETACH = {"detach", "returncode", "wait", "_experimental_get_exit_snapshot", "logs", "_experimental_stats"}
+ALLOW_AFTER_DETACH = {
+    "detach",
+    "hydrate",
+    "returncode",
+    "wait",
+    "_experimental_get_exit_snapshot",
+    "logs",
+    "_experimental_stats",
+}
 
 
 def test_func_map_covers_all_public_methods_and_properties():
@@ -3637,6 +3943,7 @@ def test_func_map_covers_all_public_methods_and_properties():
             or (attr.name.startswith("_experimental") and attr.name not in ALLOW_AFTER_DETACH)
         )
         and attr.kind in ("method", "property")
+        and not getattr(inspect.getattr_static(modal.sandbox._sandbox._Sandbox, attr.name), "_is_classmethod", False)
     }
     assert set(detach_error_funcs) == attributes_to_raise_on_detached
 

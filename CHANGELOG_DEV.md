@@ -6,6 +6,7 @@ Draft releases notes should be added as part of the PR introducing the change. D
 
 ## Python
 
+- Minor **breaking** change: `Sandbox.from_id()` now constructs a Sandbox handle without any server side validation or status inspection. The `returncode` attribute is now `None` until the first `poll()` or `wait()` operation, even if the sandbox has terminated. Errors for unknown IDs surface on the first operation. `Sandbox.from_id.aio()` is deprecated; use `Sandbox.from_id()` directly, including in async code.
 - NetworkFileSystem has been retired. Removed `modal.NetworkFileSystem`, the `network_file_systems` parameter of `App.function()`, `App.cls()`, `Image.run_function()` and `Sandbox.create()`, and the `modal nfs` CLI.
 - The client requires Python >=3.11; Python 3.10 and Images using Python 3.10 are not supported. The minimum supported protobuf version is 4.21.3.
 - Added `modal.Image.objects.delete(image_id)` to delete an Image or a Sandbox filesystem or directory snapshot by ID. It replaces the deprecated `modal.experimental.image_delete()`.

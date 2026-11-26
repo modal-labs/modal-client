@@ -50,6 +50,7 @@ from ._common import (
     SandboxCreateCommon,
     SandboxImpl,
     _format_sandbox_create_timing_log,
+    apply_wait_response,
     create_sidecar_via_tcr,
     exec_via_tcr,
     get_sidecar_via_tcr,
@@ -113,7 +114,7 @@ class SandboxImplV1:
 
     def __init__(
         self,
-        client: _Client,
+        client: _Client | None,
         sandbox_id: str,
         *,
         result: api_pb2.GenericResult | None = None,
@@ -128,7 +129,21 @@ class SandboxImplV1:
         self._command_router = LazyCommandRouterClient(self._open_command_router_client)
         self._tunnels = None
 
+    @property
+    def is_hydrated(self) -> bool:
+        # An impl always has an object id, while its client is optional, so having a client
+        # is equivalent to being hydrated.
+        return self.client is not None
+
+    async def hydrate(self, client: _Client | None = None) -> None:
+        if self.client is not None and self.client._snapshotted:
+            self.client = client or await _Client.from_env()
+        else:
+            self.client = client or self.client or await _Client.from_env()
+
     async def _get_client(self) -> _Client:
+        await self.hydrate()
+        assert self.client is not None
         return self.client
 
     def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:
@@ -147,6 +162,8 @@ class SandboxImplV1:
         )
 
     async def get_app_id(self) -> str:
+        if not self.app_id:
+            await self.poll()
         return self.app_id
 
     def clone(self) -> "SandboxImplV1":
@@ -210,9 +227,8 @@ class SandboxImplV1:
     @classmethod
     async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> "SandboxImpl":
         resp = await client._stub.SandboxWait(api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0))
-        impl = cls._from_object_metadata(client, sandbox_id, resp.metadata)
-        if resp.result.status:
-            impl.result = resp.result
+        impl = cls(client, sandbox_id)
+        apply_wait_response(impl, resp)
         return impl
 
     @classmethod
@@ -241,9 +257,6 @@ class SandboxImplV1:
         restore_resp: api_pb2.SandboxRestoreResponse = await client._stub.SandboxRestore(restore_req)
 
         impl = await cls.lookup_by_id(client, restore_resp.sandbox_id)
-        # Metadata preserves empty results, but restore only caches final results.
-        if impl.result is not None and not impl.result.status:
-            impl.result = None
 
         task_id_req = api_pb2.SandboxGetTaskIdRequest(
             sandbox_id=restore_resp.sandbox_id, wait_until_ready=True, timeout=55.0
@@ -382,8 +395,8 @@ class SandboxImplV1:
         req, poll_retry = wait_poll_request(self.sandbox_id)
         while True:
             resp = await client._stub.SandboxWait(req, retry=poll_retry)
+            apply_wait_response(self, resp)
             if resp.result.status:
-                self.result = resp.result
                 raise_for_wait_result(self.sandbox_id, resp.result, raise_on_termination)
                 return
 
@@ -391,8 +404,7 @@ class SandboxImplV1:
         client = await self._get_client()
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.sandbox_id, timeout=0)
         resp = await client._stub.SandboxWait(req)
-        if resp.result.status:
-            self.result = resp.result
+        apply_wait_response(self, resp)
 
     async def tunnels(self, timeout: int) -> dict[int, Tunnel]:
         client = await self._get_client()

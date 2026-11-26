@@ -1001,7 +1001,12 @@ def test_snapshot_client_refs(servicer, credentials, client, tmp_path):
             assert [list(req.command_args) for req in router_ctx.get_requests("TaskExecStart")] == [["echo", "before"]]
             await stream.send_message(Empty())
 
+        async def sandbox_wait(servicer, stream):
+            await stream.recv_message()
+            await stream.send_message(api_pb2.SandboxWaitResponse())
+
         ctx.set_responder("ContainerCheckpoint", capture_checkpoint)
+        ctx.set_responder("SandboxWaitV2", sandbox_wait)
         process = _run_container_process_auto(
             servicer,
             tmp_path,
@@ -1058,6 +1063,17 @@ def test_snapshot_sandbox_handle(servicer, credentials, client, tmp_path):
     restore_state_path.write_text(json.dumps({"task_id": "ta-restored", "function_id": "fu-restored"}))
 
     with servicer.intercept() as ctx:
+
+        async def sandbox_wait(servicer, stream):
+            await stream.recv_message()
+            result = (
+                api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+                if ctx.get_requests("ContainerCheckpoint")
+                else None
+            )
+            await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+
+        ctx.set_responder("SandboxWaitV2", sandbox_wait)
         process = _run_container_process_auto(
             servicer,
             tmp_path,

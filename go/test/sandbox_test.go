@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2903,4 +2904,53 @@ func TestSandboxCreateHydratesCloudBucketMountSecret(t *testing.T) {
 	g.Expect(bucketSecret.SecretID).To(gomega.Equal("st-bucket"))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxFromIDLookupMock(t *testing.T) {
+	t.Parallel()
+	for _, version := range []struct{ name, id, rpc string }{
+		{"v1", validV1SandboxID, "SandboxWait"},
+		{"v2", validV2SandboxID, "SandboxWaitV2"},
+	} {
+		for _, state := range []string{"running", "terminated", "missing"} {
+			t.Run(version.name+"/"+state, func(t *testing.T) {
+				t.Parallel()
+				g := gomega.NewWithT(t)
+				ctx := t.Context()
+				mock := newGRPCMockClient(t)
+				var calls atomic.Int32
+				grpcmock.HandleUnary(mock, version.rpc, func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+					calls.Add(1)
+					g.Expect(req.GetSandboxId()).To(gomega.Equal(version.id))
+					g.Expect(req.GetTimeout()).To(gomega.BeZero())
+					if state == "missing" {
+						return nil, status.Error(codes.NotFound, "unknown sandbox")
+					}
+					resp := pb.SandboxWaitResponse_builder{}
+					if state == "terminated" {
+						resp.Result = pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_TERMINATED}.Build()
+					}
+					return resp.Build(), nil
+				})
+				sb, err := mock.Sandboxes.FromID(ctx, version.id, nil)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(sb.SandboxID).To(gomega.Equal(version.id))
+				g.Expect(calls.Load()).To(gomega.BeZero())
+				result, err := sb.Poll(ctx, nil)
+				if state == "missing" {
+					g.Expect(status.Code(err)).To(gomega.Equal(codes.NotFound))
+				} else {
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					if state == "running" {
+						g.Expect(result).To(gomega.BeNil())
+					} else {
+						g.Expect(result).NotTo(gomega.BeNil())
+						g.Expect(*result).To(gomega.Equal(137))
+					}
+				}
+				g.Expect(mock.AssertExhausted()).To(gomega.Succeed())
+				g.Expect(calls.Load()).To(gomega.Equal(int32(1)))
+			})
+		}
+	}
 }

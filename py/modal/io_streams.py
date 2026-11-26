@@ -502,6 +502,8 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(_StreamReaderImpl[T]):
         self,
         reader: _TextStreamReaderThroughCommandRouter | _BytesStreamReaderThroughCommandRouter,
     ) -> None:
+        # This reader starts a task, so it must be constructed on the synchronizer loop.
+        assert asyncio.get_running_loop() == synchronizer._get_loop(start=False)
         self._reader = reader
         self._task: asyncio.Task[None] | None = None
         # Kick off a background task that reads from the underlying text stream and prints to stdout.
@@ -581,9 +583,6 @@ class _StreamReader(Generic[T]):
         by_line: bool = False,
     ) -> None:
         """mdmd:hidden"""
-        # we can remove this once we ensure no constructors use async code
-        assert asyncio.get_running_loop() == synchronizer._get_loop(start=False)
-
         if by_line and not text:
             raise ValueError("line-buffering is only supported when text=True")
 
@@ -716,12 +715,13 @@ class _StreamWriterThroughServer:
         This is a flow control method that blocks until data is sent. It returns
         when it is appropriate to continue writing data to the stream.
         """
+        client = await self._get_client()
         data = bytes(self._buffer)
         self._buffer.clear()
         index = self._get_next_index()
 
         try:
-            await (await self._get_client())._stub.SandboxStdinWrite(
+            await client._stub.SandboxStdinWrite(
                 api_pb2.SandboxStdinWriteRequest(
                     sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
                 ),

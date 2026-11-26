@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, Self, cast, overload
 
 from google.protobuf.message import Message
 
@@ -20,6 +20,7 @@ from .._image import _Image
 from .._object import _get_environment_name, _Object
 from .._outbound_policy import _OutboundPolicy
 from .._output.pty import get_pty_info
+from .._utils.async_utils import deprecate_aio_usage, synchronizer
 from .._utils.deprecation import deprecation_warning
 from .._utils.name_utils import check_object_name
 from ..client import _Client
@@ -375,10 +376,45 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
     def _get_metadata(self) -> Message | None:
         return self._impl._get_object_metadata()
 
-    def _hydrate_metadata(self, handle_metadata: Message | None) -> None:
-        self._filesystem = None
-        impl_cls = impl_class_for_sandbox_id(self.object_id)
-        self._adopt_impl(impl_cls._from_object_metadata(self.client, self.object_id, handle_metadata))
+    @property
+    def _object_id(self) -> str | None:
+        return self._impl.sandbox_id if hasattr(self, "_impl") else None
+
+    @_object_id.setter
+    def _object_id(self, value: str | None) -> None:
+        # _Object initializes and unhydrates with defaults; the impl owns the identity.
+        assert value is None
+
+    @property
+    def _client(self) -> _Client | None:
+        return self._impl.client if hasattr(self, "_impl") else None
+
+    @_client.setter
+    def _client(self, value: _Client | None) -> None:
+        if hasattr(self, "_impl"):
+            self._impl.client = value
+        else:
+            assert value is None
+
+    @property
+    def _is_hydrated(self) -> bool:
+        return hasattr(self, "_impl") and self._impl.is_hydrated
+
+    @_is_hydrated.setter
+    def _is_hydrated(self, value: bool) -> None:
+        assert not value
+
+    def _is_serializable(self) -> bool:
+        return self._object_id is not None
+
+    async def hydrate(self, client: _Client | None = None) -> Self:
+        await self._impl.hydrate(client)
+        return self
+
+    def _hydrate(self, object_id: str, client: _Client, metadata: Message | None) -> None:
+        if not self._has_type_prefix(object_id):
+            raise InvalidError(f"Object {object_id} does not start with any of {self._type_prefixes}")
+        self._adopt_impl(impl_class_for_sandbox_id(object_id)._from_object_metadata(client, object_id, metadata))
 
     def _adopt_impl(self, impl: SandboxImpl) -> None:
         """Back this Sandbox with `impl`, which owns all of its backend state."""
@@ -387,19 +423,22 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
 
     @staticmethod
     def _from_impl(impl: SandboxImpl) -> "_Sandbox":
-        """Create a hydrated handle for the Sandbox that `impl` was constructed for."""
-        obj = _Sandbox._new_hydrated(impl.sandbox_id, impl.client, impl._get_object_metadata())
+        """Create a handle for the Sandbox that `impl` was constructed for."""
+        if not _Sandbox._has_type_prefix(impl.sandbox_id):
+            raise InvalidError(f"Object {impl.sandbox_id} does not start with any of {_Sandbox._type_prefixes}")
+        obj = _Object.__new__(_Sandbox)
+        obj._init(f"modal.Sandbox.from_id({impl.sandbox_id!r})")
         obj._adopt_impl(impl)
         return obj
 
     def _initialize_from_other(self, other):
-        super()._initialize_from_other(other)
         self._attached = other._attached
-        self._impl = other._impl.clone()
+        self._adopt_impl(other._impl.clone())
 
     def _initialize_from_empty(self):
         super()._initialize_from_empty()
         self._attached = True
+        self._filesystem = None
 
     async def detach(self):
         """Disconnects your client from the sandbox and cleans up resources associated with the connection.
@@ -422,7 +461,7 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         """Raise `ClientClosed` if the Sandbox is detached.
 
         Every public operation calls this on entry, except those that remain available after
-        `detach`: `wait`, `returncode`, `logs`, `_experimental_stats` and `_experimental_get_exit_snapshot`.
+        `detach`: `hydrate`, `wait`, `returncode`, `logs`, `_experimental_stats` and `_experimental_get_exit_snapshot`.
         """
         if not self._attached:
             raise ClientClosed("Unable to perform operation on a detached sandbox")
@@ -496,23 +535,27 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         return _Sandbox._from_impl(impl)
 
     @staticmethod
-    async def from_id(sandbox_id: str, client: _Client | None = None) -> "_Sandbox":
-        """Construct a Sandbox from an id and look up the Sandbox result.
+    def _from_id(sandbox_id: str, client: _Client | None) -> "_Sandbox":
+        return _Sandbox._from_impl(impl_class_for_sandbox_id(sandbox_id)(client, sandbox_id))
 
+    @deprecate_aio_usage((2026, 11, 24), "Sandbox.from_id")
+    @classmethod
+    def from_id(cls, sandbox_id: str, client: "modal.client.Client | None" = None) -> "modal.Sandbox":
+        """Construct a Sandbox handle from an id of a previously created Sandbox.
+
+        This operation does not run any server side validation or status inspection of the Sandbox.
         The ID of a Sandbox object can be accessed using `.object_id`.
 
         Args:
             sandbox_id: Sandbox object ID to attach to.
-            client: Modal client to use for the lookup; defaults to the environment client when omitted.
+            client: Modal client to use for operations; defaults to the environment client when omitted.
 
         Returns:
-            A `Sandbox` handle with any available result metadata populated from the server.
+            A `Sandbox` handle.
         """
-        if client is None:
-            client = await _Client.from_env()
-
-        impl = await impl_class_for_sandbox_id(sandbox_id).lookup_by_id(client, sandbox_id)
-        return _Sandbox._from_impl(impl)
+        _client = cast(_Client | None, synchronizer._translate_in(client))
+        obj = _Sandbox._from_id(sandbox_id, _client)
+        return cast("modal.Sandbox", synchronizer._translate_out(obj))
 
     async def _experimental_stats(
         self, *, since: datetime | None = None, until: datetime | None = None
@@ -1026,7 +1069,8 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             `None` if the Sandbox is still running, otherwise the exit code.
         """
         self._ensure_attached()
-        await self._impl.poll()
+        if self.returncode is None:
+            await self._impl.poll()
         return self.returncode
 
     async def _get_app_id(self) -> str:
@@ -1358,12 +1402,6 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
 
     async def _get_log_query_data(self) -> _LogQueryData:
         app_id = await self._get_app_id()
-        if not app_id:
-            if not self._attached:
-                raise ExecutionError("Cannot fetch logs for a detached Sandbox without hydrated app_id")
-            await self.hydrate()
-            app_id = await self._get_app_id()
-
         if not app_id:
             raise ExecutionError("app_id should have been set during sandbox hydration")
 

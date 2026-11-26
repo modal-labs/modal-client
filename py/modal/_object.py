@@ -108,11 +108,21 @@ class _Object:
 
     @property
     def _is_hydrated(self) -> bool:
+        """Whether the object has a client, identity, and any static metadata needed for interaction."""
         return self.__is_hydrated
 
     @_is_hydrated.setter
     def _is_hydrated(self, value: bool):
         self.__is_hydrated = value
+
+    def _is_serializable(self) -> bool:
+        """Whether the object can be serialized
+
+        Serializability can be more relaxed than hydration: clients are not serialized,
+        and many types need only an object_id, allowing handles created with from_id()
+        to be serialized before hydration.
+        """
+        return self._is_hydrated
 
     @classmethod
     def __init_subclass__(cls, type_prefixes: Sequence[str] = ()):
@@ -180,6 +190,9 @@ class _Object:
         self._client = other._client
 
     def _hydrate(self, object_id: str, client: _Client, metadata: Message | None):
+        """Hydration makes an object usable: it has a valid Client and object_id, and for some
+        types static metadata required or recommended for interaction.
+        """
         assert isinstance(object_id, str) and self._type_prefixes
         if not self._has_type_prefix(object_id):
             raise ExecutionError(

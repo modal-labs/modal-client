@@ -874,7 +874,8 @@ export class SandboxService {
     return new Sandbox(impl);
   }
 
-  /** Returns a running {@link Sandbox} object from an ID.
+  /** Constructs a {@link Sandbox} handle from a Sandbox ID of a previously created
+   * Sandbox, as retrieved by {@link Sandbox#sandboxId sandbox.sandboxId}.
    *
    * @returns Sandbox with ID
    */
