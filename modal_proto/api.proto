@@ -308,6 +308,17 @@ enum ObjectCreationType {
   OBJECT_CREATION_TYPE_EPHEMERAL = 5;
 }
 
+// Layout of the `sub` claim in a sandbox's OIDC identity tokens. Customer
+// trust policies match on the layout, so each value's layout is fixed once
+// released. See server/modal_server/oidc/README.md.
+enum OidcSubjectVersion {
+  // Keyed on the sandbox and container ids.
+  OIDC_SUBJECT_VERSION_LEGACY = 0;
+  // Keyed on the sandbox's create-time name and the container name, and ends
+  // with the container id. 1 is unused so that the value matches the name.
+  OIDC_SUBJECT_VERSION_V2 = 2;
+}
+
 // OS that an image is built for and runs on.
 enum Os {
   OS_UNSPECIFIED = 0;
@@ -4413,6 +4424,12 @@ message Sandbox {
   // experimental_outbound_policy (superseded, experimental API) and with any
   // network_access other than OPEN.
   optional OutboundPolicy outbound_policy = 44;
+
+  // Layout of the `sub` claim in the sandbox's OIDC identity tokens. Values
+  // other than those of OidcSubjectVersion are rejected. Sidecars added to a
+  // sandbox use the value from the sandbox's create request, and the value on
+  // a sidecar's own definition is ignored.
+  OidcSubjectVersion oidc_subject_version = 45;
 }
 
 message SandboxContainerCreateV2Request {
