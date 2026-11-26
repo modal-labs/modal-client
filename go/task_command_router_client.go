@@ -869,9 +869,20 @@ func (c *taskCommandRouterClient) ContainerWait(ctx context.Context, request *pb
 
 // ExecStart starts a command execution.
 func (c *taskCommandRouterClient) ExecStart(ctx context.Context, request *pb.TaskExecStartRequest) (*pb.TaskExecStartResponse, error) {
-	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStartResponse, error) {
-		return c.stubValue.TaskExecStart(authCtx, request)
+	var uncertainErr error
+	response, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStartResponse, error) {
+		response, err := c.stubValue.TaskExecStart(authCtx, request)
+		if _, retryable := commandRouterRetryableCodes[status.Code(err)]; retryable && uncertainErr == nil {
+			uncertainErr = err
+		}
+		return response, err
 	})
+	// A later rejection says nothing about whether an earlier attempt ran.
+	// Preserve that uncertainty before callers consider another session.
+	if err != nil && uncertainErr != nil && (status.Code(err) == codes.NotFound || rejectedByShuttingDownSession(err)) {
+		return nil, uncertainErr
+	}
+	return response, err
 }
 
 // ExecStdinWrite writes data to stdin of an exec.

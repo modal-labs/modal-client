@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2026
 import asyncio
 import pytest
+import sys
 from unittest import mock
 
 from grpclib import GRPCError, Status
@@ -8,13 +9,20 @@ from grpclib import GRPCError, Status
 import modal
 from modal import App, Image, Sandbox
 from modal._utils.async_utils import synchronizer
-from modal.exception import ClientClosed, InvalidError, NotFoundError, SandboxTerminatedError
+from modal.exception import (
+    ClientClosed,
+    InvalidError,
+    NotFoundError,
+    ResourceExhaustedError,
+    SandboxTerminatedError,
+    ServiceError,
+)
 from modal.experimental import OutboundPolicy
 from modal.sandbox._impl_persistent import (
     PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT,
     PERSISTENT_SANDBOX_SESSION_TIMEOUT,
 )
-from modal_proto import api_pb2
+from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from .supports.skip import skip_windows
 
@@ -130,6 +138,112 @@ def test_persistent_sandbox_resumes_on_failed_operation(app, client, servicer):
         assert len(ctx.get_requests("PersistentSandboxResume")) == 1
         assert len(tcr_ctx.get_requests("TaskExecStart")) == 2
     assert servicer.persistent_sandbox_resumes == 1
+
+
+@skip_windows("Needs subprocess support")
+def test_persistent_sandbox_exec_moves_off_a_shutting_down_session(app, client, servicer):
+    sb = _create(app, client)
+
+    with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
+        # The session is shutting down, so the control plane no longer reports it as running.
+        servicer._sandbox_terminated = True
+        tcr_ctx.add_response(
+            "TaskExecStart",
+            GRPCError(Status.FAILED_PRECONDITION, "Modal Sandbox is shutting down.", [sr_pb2.TaskShuttingDown()]),
+        )
+        p = sb.exec("echo", "hello")
+        assert p.stdout.read() == "hello\n"
+        assert p.wait() == 0
+
+        assert len(ctx.get_requests("PersistentSandboxResume")) == 1
+        assert len(tcr_ctx.get_requests("TaskExecStart")) == 2
+
+
+@pytest.mark.parametrize(
+    "rejection",
+    [
+        (
+            "SandboxGetTaskIdV2",
+            api_pb2.SandboxGetTaskIdResponse(
+                task_result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+            ),
+        ),
+        ("SandboxGetCommandRouterAccess", GRPCError(Status.FAILED_PRECONDITION, "Sandbox has finished")),
+    ],
+    ids=["task-finished", "router-access-refused"],
+)
+@skip_windows("Needs subprocess support")
+def test_persistent_sandbox_exec_moves_off_a_session_it_cannot_reach(app, client, servicer, rejection):
+    sb = _create(app, client)
+    servicer._sandbox_terminated = True
+
+    with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
+        # The old session's command router can't be reached, so the command is only sent to the new session.
+        ctx.add_response(*rejection)
+        p = sb.exec("echo", "hello")
+        assert p.stdout.read() == "hello\n"
+        assert p.wait() == 0
+
+        assert len(ctx.get_requests("PersistentSandboxResume")) == 1
+        assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
+
+
+def test_persistent_sandbox_exec_not_repeated_after_it_may_have_run(app, client, servicer):
+    sb = _create(app, client)
+
+    with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
+        servicer._sandbox_terminated = True
+        # Nothing in this error says the command didn't run before the session stopped.
+        tcr_ctx.add_response("TaskExecStart", GRPCError(Status.RESOURCE_EXHAUSTED, "exec failed"))
+        with pytest.raises(ResourceExhaustedError, match="exec failed"):
+            sb.exec("echo", "hello")
+
+        assert ctx.get_requests("PersistentSandboxResume") == []
+        assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
+
+
+@pytest.mark.parametrize("terminal_status", [Status.NOT_FOUND, Status.FAILED_PRECONDITION])
+@skip_windows("Needs subprocess support")
+def test_persistent_exec_keeps_uncertainty_across_retries(app, client, servicer, tmp_path, terminal_status):
+    sb = _create(app, client)
+    marker = tmp_path / "executions"
+    command = (
+        sys.executable,
+        "-c",
+        "import sys\nwith open(sys.argv[1], 'a') as f:\n    f.write('ran\\n')\n",
+        str(marker),
+    )
+    attempts = []
+
+    async def exec_start(_router, stream):
+        request = await stream.recv_message()
+        attempts.append(request)
+        if len(attempts) == 2:
+            details = [sr_pb2.TaskShuttingDown()] if terminal_status == Status.FAILED_PRECONDITION else None
+            raise GRPCError(terminal_status, "session stopped", details)
+
+        # A start succeeds before its acknowledgement is lost. Replaying the
+        # command in another session repeats its externally visible effect.
+        proc = await asyncio.create_subprocess_exec(*request.command_args)
+        assert await proc.wait() == 0
+        if len(attempts) == 1:
+            servicer._sandbox_terminated = True
+            raise GRPCError(Status.UNAVAILABLE, "start acknowledgement lost")
+        await stream.send_message(sr_pb2.TaskExecStartResponse())
+
+    with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
+        tcr_ctx.set_responder("TaskExecStart", exec_start)
+        error = None
+        try:
+            sb.exec(*command)
+        except modal.Error as exc:
+            error = exc
+
+        assert marker.read_text().splitlines() == ["ran"]
+        assert ctx.get_requests("PersistentSandboxResume") == []
+        assert isinstance(error, ServiceError)
+        assert error._grpc_status == Status.UNAVAILABLE
+        assert attempts[0].exec_id == attempts[1].exec_id
 
 
 @pytest.mark.timeout(5)

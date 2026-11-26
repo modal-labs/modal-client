@@ -5,6 +5,7 @@ import {
   callWithRetriesOnTransientErrors,
   ServerThrottledError,
   TaskCommandRouterClientImpl,
+  TaskShuttingDownError,
   throttleMiddleware,
   type StdinSource,
 } from "../src/task_command_router_client";
@@ -19,6 +20,7 @@ import {
   TaskExecStdinStatusResponse,
   TaskExecStdinWriteStreamRequest,
   TaskExecStartRequest,
+  TaskShuttingDown,
   TaskSnapshotFilesystemRequest,
 } from "../proto/modal_proto/task_command_router";
 import { FileDescriptor } from "../proto/modal_proto/api";
@@ -103,6 +105,51 @@ test("closeWhenIdle keeps a unary lease through backoff and auth refresh", async
   expect(client.refreshJwt).toHaveBeenCalledTimes(1);
   expect(close).toHaveBeenCalledTimes(1);
   expect(client.inFlight).toBe(0);
+});
+
+test.each([
+  new ClientError("/test", Status.NOT_FOUND, "session stopped"),
+  new TaskShuttingDownError("/test", "session stopped"),
+])("execStart preserves uncertainty before %s", async (rejection) => {
+  const lost = unavailable();
+  const start = vi
+    .fn()
+    .mockRejectedValueOnce(lost)
+    .mockRejectedValue(rejection);
+  const client = makeTestClient({ taskExecStart: start });
+  const request = TaskExecStartRequest.create({ execId: "exec-1" });
+  try {
+    await expect(client.execStart(request)).rejects.toBe(lost);
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(start.mock.calls.every(([actual]) => actual === request)).toBe(true);
+  } finally {
+    client.close();
+  }
+});
+
+test("execStart can recover and keeps uncertainty per call", async () => {
+  const rejection = new ClientError(
+    "/test",
+    Status.NOT_FOUND,
+    "session stopped",
+  );
+  const start = vi
+    .fn()
+    .mockRejectedValueOnce(unavailable())
+    .mockResolvedValueOnce({})
+    .mockRejectedValue(rejection);
+  const client = makeTestClient({ taskExecStart: start });
+  try {
+    await expect(
+      client.execStart(TaskExecStartRequest.create({ execId: "exec-1" })),
+    ).resolves.toEqual({});
+    await expect(
+      client.execStart(TaskExecStartRequest.create({ execId: "exec-2" })),
+    ).rejects.toBe(rejection);
+    expect(start).toHaveBeenCalledTimes(3);
+  } finally {
+    client.close();
+  }
 });
 
 test("closeWhenIdle keeps a pending stdio pull leased across retries", async () => {
@@ -536,6 +583,39 @@ test("throttleMiddleware surfaces a retry policy as ServerThrottledError", async
   expect(err).toBeInstanceOf(ClientError);
   expect(err.code).toBe(Status.RESOURCE_EXHAUSTED);
   expect(err.retryAfterSecs).toBe(1.5);
+});
+
+test("throttleMiddleware surfaces a shutdown detail as TaskShuttingDownError", async () => {
+  const statusBytes = RPCStatus.encode(
+    RPCStatus.create({
+      code: Status.FAILED_PRECONDITION,
+      message: "Modal Sandbox is shutting down.",
+      details: [
+        Any.create({
+          typeUrl: "type.modal.com/modal.task_command_router.TaskShuttingDown",
+          value: TaskShuttingDown.encode(TaskShuttingDown.create()).finish(),
+        }),
+      ],
+    }),
+  ).finish();
+  const trailer = new Metadata();
+  trailer.set("grpc-status-details-bin", Buffer.from(statusBytes));
+  const rejection = new ClientError(
+    "/test",
+    Status.FAILED_PRECONDITION,
+    "Modal Sandbox is shutting down.",
+  );
+
+  const { call } = makeMiddlewareCall(trailer, rejection);
+  const err = await drain(throttleMiddleware()(call, {})).catch((e) => e);
+  expect(err).toBeInstanceOf(TaskShuttingDownError);
+  expect(err.code).toBe(Status.FAILED_PRECONDITION);
+
+  const { call: plainCall } = makeMiddlewareCall(new Metadata(), rejection);
+  const plainErr = await drain(throttleMiddleware()(plainCall, {})).catch(
+    (e) => e,
+  );
+  expect(plainErr).toBe(rejection);
 });
 
 test("throttleMiddleware leaves RESOURCE_EXHAUSTED without a policy alone", async () => {

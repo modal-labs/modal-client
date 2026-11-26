@@ -18,6 +18,7 @@ from modal.exception import (
     AuthError,
     ClientClosed,
     ExecTimeoutError,
+    NotFoundError,
     ResourceExhaustedError,
     ServiceError,
     TimeoutError as ModalTimeoutError,
@@ -97,6 +98,60 @@ async def make_router_client():
 
     for client in clients:
         await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "initial_error",
+    [
+        GRPCError(Status.UNAVAILABLE, "start acknowledgement lost"),
+        StreamTerminatedError("connection lost"),
+        OSError("connection reset"),
+        TimeoutError("start timed out"),
+        AttributeError("'NoneType' object has no attribute '_write_appdata'"),
+    ],
+)
+@pytest.mark.parametrize("terminal_status", [Status.NOT_FOUND, Status.FAILED_PRECONDITION])
+async def test_exec_start_preserves_uncertainty(make_router_client, initial_error, terminal_status):
+    client = make_router_client()
+    details = [sr_pb2.TaskShuttingDown()] if terminal_status == Status.FAILED_PRECONDITION else None
+    rejection = GRPCError(terminal_status, "session stopped", details)
+    start = AsyncMock(side_effect=[initial_error, rejection])
+    client._stub = Mock(TaskExecStart=start)
+    request = sr_pb2.TaskExecStartRequest(task_id="task-1", exec_id="exec-1")
+
+    expected_type = ServiceError if isinstance(initial_error, GRPCError) else type(initial_error)
+    with pytest.raises(expected_type) as exc_info:
+        await client.exec_start(request)
+
+    if isinstance(initial_error, GRPCError):
+        assert isinstance(exc_info.value, ServiceError)
+        assert exc_info.value._grpc_status == Status.UNAVAILABLE
+        assert exc_info.value._grpc_details is None
+    else:
+        assert exc_info.value is initial_error
+    assert start.await_count == 2
+    assert all(call.args[0] == request for call in start.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_exec_start_can_recover_and_keeps_uncertainty_per_call(make_router_client):
+    client = make_router_client()
+    response = sr_pb2.TaskExecStartResponse()
+    start = AsyncMock(
+        side_effect=[
+            GRPCError(Status.UNAVAILABLE, "start acknowledgement lost"),
+            response,
+            GRPCError(Status.NOT_FOUND, "session stopped"),
+        ]
+    )
+    client._stub = Mock(TaskExecStart=start)
+
+    assert await client.exec_start(sr_pb2.TaskExecStartRequest(exec_id="exec-1")) == response
+    with pytest.raises(NotFoundError) as exc_info:
+        await client.exec_start(sr_pb2.TaskExecStartRequest(exec_id="exec-2"))
+    assert exc_info.value._grpc_status == Status.NOT_FOUND
+    assert start.await_count == 3
 
 
 @pytest.mark.asyncio

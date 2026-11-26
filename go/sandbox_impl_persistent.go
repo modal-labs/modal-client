@@ -40,6 +40,51 @@ func isNonRecoverableError(err error) bool {
 	return errors.As(err, &invalid) || errors.As(err, &closed)
 }
 
+// rejectedByShuttingDownSession reports whether the session was shutting down
+// and never started the failed request.
+func rejectedByShuttingDownSession(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	for _, detail := range st.Details() {
+		if _, ok := detail.(*pb.TaskShuttingDown); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func maySucceedOnNewSession(err error) bool {
+	return rejectedByShuttingDownSession(err) || !isNonRecoverableError(err)
+}
+
+// execNotSentError marks a failure to reach a session's command router, which
+// comes before the command is sent to it.
+type execNotSentError struct{ err error }
+
+func (e execNotSentError) Error() string { return e.err.Error() }
+func (e execNotSentError) Unwrap() error { return e.err }
+
+// execNeverRan reports whether a failed exec certainly didn't run its command,
+// so it can be started on another session.
+func execNeverRan(err error) bool {
+	var notSent execNotSentError
+	if errors.As(err, &notSent) {
+		// Reaching the router takes no input from the caller, so only a
+		// closed client is their doing.
+		var closed ClientClosedError
+		return !errors.As(notSent.err, &closed)
+	}
+	if rejectedByShuttingDownSession(err) {
+		return true
+	}
+	// A NotFound status means the session was gone before the command could
+	// reach it. Any other failure, including a dropped connection, may come
+	// after the command started.
+	return !isNonRecoverableError(err) && status.Code(err) == codes.NotFound
+}
+
 // sandboxImplPersistent backs a persistent Sandbox, whose object ID is the ID
 // of its first session.
 //
@@ -154,15 +199,20 @@ func (p *sandboxImplPersistent) isTerminated() bool {
 // Session replacement
 
 // run runs op on the session, switching to the running session and retrying
-// once if it fails.
-func run[T any](ctx context.Context, p *sandboxImplPersistent, op func(session *sandboxImplV2) (T, error)) (T, error) {
+// once if it fails. Only failures accepted by canRetry are retried.
+func run[T any](
+	ctx context.Context,
+	p *sandboxImplPersistent,
+	canRetry func(error) bool,
+	op func(session *sandboxImplV2) (T, error),
+) (T, error) {
 	session := p.currentSession()
 	result, err := op(session)
 	if err == nil {
 		return result, nil
 	}
 	// A terminated persistent Sandbox is stopped for good, so it isn't resumed on use.
-	if isNonRecoverableError(err) || ctx.Err() != nil || p.isTerminated() {
+	if !canRetry(err) || ctx.Err() != nil || p.isTerminated() {
 		return result, err
 	}
 	replacement, replaceErr := p.replaceSession(ctx, session)
@@ -178,7 +228,7 @@ func run[T any](ctx context.Context, p *sandboxImplPersistent, op func(session *
 }
 
 func runErr(ctx context.Context, p *sandboxImplPersistent, op func(session *sandboxImplV2) error) error {
-	_, err := run(ctx, p, func(session *sandboxImplV2) (struct{}, error) {
+	_, err := run(ctx, p, maySucceedOnNewSession, func(session *sandboxImplV2) (struct{}, error) {
 		return struct{}{}, op(session)
 	})
 	return err
@@ -317,7 +367,7 @@ func (p *sandboxImplPersistent) setName(ctx context.Context, name string) error 
 }
 
 func (p *sandboxImplPersistent) createConnectToken(ctx context.Context, port uint32, userMetadata string) (*SandboxCreateConnectCredentials, error) {
-	return run(ctx, p, func(s *sandboxImplV2) (*SandboxCreateConnectCredentials, error) {
+	return run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (*SandboxCreateConnectCredentials, error) {
 		return s.createConnectToken(ctx, port, userMetadata)
 	})
 }
@@ -423,7 +473,7 @@ func (p *sandboxImplPersistent) tunnels(ctx context.Context, _ time.Duration) (m
 }
 
 func (p *sandboxImplPersistent) getAppID(ctx context.Context) (string, error) {
-	return run(ctx, p, func(s *sandboxImplV2) (string, error) { return s.getAppID(ctx) })
+	return run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (string, error) { return s.getAppID(ctx) })
 }
 
 func (p *sandboxImplPersistent) resolveTaskIDForLogs(ctx context.Context) (string, error) {
@@ -446,7 +496,7 @@ func (p *sandboxImplPersistent) getCommandRouter(ctx context.Context) (string, *
 		taskID string
 		client *taskCommandRouterClient
 	}
-	r, err := run(ctx, p, func(s *sandboxImplV2) (router, error) {
+	r, err := run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (router, error) {
 		taskID, client, err := s.getCommandRouter(ctx)
 		return router{taskID, client}, err
 	})
@@ -470,13 +520,13 @@ func (p *sandboxImplPersistent) setOutboundPolicy(ctx context.Context, req *pb.S
 }
 
 func (p *sandboxImplPersistent) snapshotFilesystem(ctx context.Context, timeout, ttl time.Duration, containerID string) (*Image, error) {
-	return run(ctx, p, func(s *sandboxImplV2) (*Image, error) {
+	return run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (*Image, error) {
 		return s.snapshotFilesystem(ctx, timeout, ttl, containerID)
 	})
 }
 
 func (p *sandboxImplPersistent) snapshotDirectory(ctx context.Context, path string, timeout, ttl time.Duration, params *SandboxSnapshotDirectoryParams) (*Image, error) {
-	return run(ctx, p, func(s *sandboxImplV2) (*Image, error) {
+	return run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (*Image, error) {
 		return s.snapshotDirectory(ctx, path, timeout, ttl, params)
 	})
 }
@@ -494,9 +544,17 @@ func (p *sandboxImplPersistent) reloadVolumes(ctx context.Context, containerID s
 }
 
 func (p *sandboxImplPersistent) exec(ctx context.Context, command []string, params *SandboxExecParams, containerID string) (*ContainerProcess, error) {
-	return run(ctx, p, func(s *sandboxImplV2) (*ContainerProcess, error) {
+	process, err := run(ctx, p, execNeverRan, func(s *sandboxImplV2) (*ContainerProcess, error) {
+		if _, _, err := s.getCommandRouter(ctx); err != nil {
+			return nil, execNotSentError{err}
+		}
 		return s.exec(ctx, command, params, containerID)
 	})
+	var notSent execNotSentError
+	if errors.As(err, &notSent) {
+		err = notSent.err
+	}
+	return process, err
 }
 
 func (p *sandboxImplPersistent) validateSidecarCreate(params *SidecarCreateParams) error {
@@ -504,5 +562,5 @@ func (p *sandboxImplPersistent) validateSidecarCreate(params *SidecarCreateParam
 }
 
 func (p *sandboxImplPersistent) createSidecar(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {
-	return run(ctx, p, func(s *sandboxImplV2) (sidecarCreateResult, error) { return s.createSidecar(ctx, in) })
+	return run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (sidecarCreateResult, error) { return s.createSidecar(ctx, in) })
 }

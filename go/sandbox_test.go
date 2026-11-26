@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"log/slog"
@@ -3131,4 +3132,26 @@ func TestWarnDeprecatedNetworkParamsWarnsOncePerParameter(t *testing.T) {
 	g.Expect(strings.Count(logs.String(), "OutboundCIDRAllowlist is deprecated and will be removed in a future release")).To(gomega.Equal(1))
 	g.Expect(strings.Count(logs.String(), "OutboundDomainAllowlist is deprecated and will be removed in a future release")).To(gomega.Equal(1))
 	g.Expect(strings.Count(logs.String(), "ExperimentalOutboundPolicy is deprecated and will be removed in version 0.12.0")).To(gomega.Equal(1))
+}
+
+func TestPersistentExecNeverRan(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	shuttingDown, err := status.New(codes.FailedPrecondition, "Modal Sandbox is shutting down.").WithDetails(
+		pb.TaskShuttingDown_builder{}.Build(),
+	)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	g.Expect(execNeverRan(shuttingDown.Err())).To(gomega.BeTrue())
+	g.Expect(execNeverRan(fmt.Errorf("exec: %w", shuttingDown.Err()))).To(gomega.BeTrue())
+	g.Expect(execNeverRan(status.Error(codes.NotFound, "sandbox has stopped"))).To(gomega.BeTrue())
+	g.Expect(execNeverRan(execNotSentError{status.Error(codes.FailedPrecondition, "Sandbox has finished")})).To(gomega.BeTrue())
+	g.Expect(execNeverRan(execNotSentError{InvalidError{Exception: "Sandbox has finished"}})).To(gomega.BeTrue())
+	g.Expect(execNeverRan(execNotSentError{ClientClosedError{Exception: "client closed"}})).To(gomega.BeFalse())
+
+	g.Expect(execNeverRan(errors.New("connection reset"))).To(gomega.BeFalse())
+	g.Expect(execNeverRan(status.Error(codes.FailedPrecondition, "Modal Sandbox is shutting down."))).To(gomega.BeFalse())
+	g.Expect(execNeverRan(status.Error(codes.Internal, "exec failed"))).To(gomega.BeFalse())
+	g.Expect(execNeverRan(InvalidError{Exception: "bad workdir"})).To(gomega.BeFalse())
 }

@@ -540,10 +540,31 @@ class TaskCommandRouterClient:
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         """Start an exec'd command, properly retrying on transient errors."""
+        uncertain_error: Exception | None = None
+
+        async def attempt() -> sr_pb2.TaskExecStartResponse:
+            nonlocal uncertain_error
+            try:
+                return await self._call_with_auth_retry(self._stub.TaskExecStart, request)
+            except Exception as exc:
+                if not isinstance(exc, GRPCError) or exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                    if uncertain_error is None:
+                        uncertain_error = exc
+                raise
+
         with grpc_error_converter():
-            return await call_with_retries_on_transient_errors(
-                lambda: self._call_with_auth_retry(self._stub.TaskExecStart, request)
-            )
+            try:
+                return await call_with_retries_on_transient_errors(attempt)
+            except GRPCError as exc:
+                # A rejection of a later attempt cannot establish whether an
+                # earlier attempt ran. Preserve that uncertainty for callers
+                # deciding whether to start the command in another session.
+                if uncertain_error is not None and (
+                    exc.status == Status.NOT_FOUND
+                    or any(isinstance(detail, sr_pb2.TaskShuttingDown) for detail in exc.details or [])
+                ):
+                    raise uncertain_error from exc
+                raise
 
     async def container_create(self, request: sr_pb2.TaskContainerCreateRequest) -> sr_pb2.TaskContainerCreateResponse:
         """Create an additional container via task command router."""

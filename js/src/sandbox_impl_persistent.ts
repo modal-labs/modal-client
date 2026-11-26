@@ -54,7 +54,10 @@ import {
   toModalReadStream,
   toModalWriteStream,
 } from "./streams";
-import type { TaskCommandRouterClientImpl } from "./task_command_router_client";
+import {
+  TaskShuttingDownError,
+  type TaskCommandRouterClientImpl,
+} from "./task_command_router_client";
 
 /**
  * Lifetime limits of each session of a persistent Sandbox. A session that hits
@@ -81,6 +84,37 @@ const TERMINATED_RESULT = GenericResult.create({
 /** Errors caused by the caller rather than by the session, which a new session can't fix. */
 function isNonRecoverableError(err: unknown): boolean {
   return err instanceof InvalidError || err instanceof ClientClosedError;
+}
+
+function maySucceedOnNewSession(err: unknown): boolean {
+  return err instanceof TaskShuttingDownError || !isNonRecoverableError(err);
+}
+
+/**
+ * A failure to reach a session's command router, which comes before the
+ * command is sent to it.
+ */
+class ExecNotSentError extends Error {
+  constructor(readonly inner: unknown) {
+    super(String(inner));
+  }
+}
+
+/**
+ * Whether a failed exec certainly didn't run its command, so it can be started
+ * on another session.
+ */
+function execNeverRan(err: unknown): boolean {
+  // Reaching the router takes no input from the caller, so only a closed
+  // client is their doing.
+  if (err instanceof ExecNotSentError) {
+    return !(err.inner instanceof ClientClosedError);
+  }
+  if (err instanceof TaskShuttingDownError) return true;
+  // A NOT_FOUND status means the session was gone before the command could
+  // reach it. Any other failure, including a dropped connection, may come
+  // after the command started.
+  return err instanceof ClientError && err.code === Status.NOT_FOUND;
 }
 
 /**
@@ -215,14 +249,20 @@ export class SandboxImplPersistent implements SandboxImpl {
 
   // Session replacement
 
-  /** Run `op` on the session, switching to the running session and retrying once if it fails. */
-  async #run<T>(op: (session: SandboxImplV2) => Promise<T>): Promise<T> {
+  /**
+   * Run `op` on the session, switching to the running session and retrying
+   * once if it fails. Only failures accepted by `canRetry` are retried.
+   */
+  async #run<T>(
+    op: (session: SandboxImplV2) => Promise<T>,
+    canRetry: (err: unknown) => boolean = maySucceedOnNewSession,
+  ): Promise<T> {
     const session = this.#session;
     try {
       return await op(session);
     } catch (err) {
       // A terminated persistent Sandbox is stopped for good, so it isn't resumed on use.
-      if (isNonRecoverableError(err) || this.#terminated) {
+      if (!canRetry(err) || this.#terminated) {
         throw err;
       }
       const replacement = await this.#replaceSession(session);
@@ -536,7 +576,18 @@ export class SandboxImplPersistent implements SandboxImpl {
     params: SandboxExecParams | undefined,
     containerId?: string,
   ): Promise<ContainerProcess> {
-    return await this.#run((s) => s.exec(command, params, containerId));
+    try {
+      return await this.#run(async (s) => {
+        try {
+          await s.getCommandRouter();
+        } catch (err) {
+          throw new ExecNotSentError(err);
+        }
+        return await s.exec(command, params, containerId);
+      }, execNeverRan);
+    } catch (err) {
+      throw err instanceof ExecNotSentError ? err.inner : err;
+    }
   }
 
   validateSidecarCreate(options: SidecarCreateOptions): void {

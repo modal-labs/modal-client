@@ -58,6 +58,7 @@ import {
 import {
   TaskGetCommandRouterAccessRequest,
   FileDescriptor,
+  RPCStatus,
   SandboxGetCommandRouterAccessRequest,
 } from "../proto/modal_proto/api";
 import type { ModalGrpcClient } from "./client";
@@ -140,6 +141,31 @@ export function serverRetryAfterMs(err: unknown): number | null {
   return null;
 }
 
+/**
+ * A request that a shutting-down task rejected without starting it.
+ *
+ * @internal
+ * @hidden
+ */
+export class TaskShuttingDownError extends ClientError {
+  constructor(path: string, details: string) {
+    super(path, Status.FAILED_PRECONDITION, details);
+  }
+}
+
+function hasTaskShuttingDownDetail(
+  statusDetails: Uint8Array | undefined,
+): boolean {
+  if (!statusDetails) return false;
+  try {
+    return RPCStatus.decode(statusDetails).details.some((detail) =>
+      detail.typeUrl.endsWith("/modal.task_command_router.TaskShuttingDown"),
+    );
+  } catch {
+    return false;
+  }
+}
+
 const throttleRetryAttempt = new AsyncLocalStorage<{ attempt: number }>();
 
 /**
@@ -178,6 +204,13 @@ export function throttleMiddleware(): ClientMiddleware {
             policy.retryAfterSecs,
           );
         }
+      }
+      if (
+        err instanceof ClientError &&
+        err.code === Status.FAILED_PRECONDITION &&
+        hasTaskShuttingDownDetail(statusDetails)
+      ) {
+        throw new TaskShuttingDownError(err.path, err.details);
       }
       throw err;
     }
@@ -685,7 +718,33 @@ export class TaskCommandRouterClientImpl {
   async execStart(
     request: TaskExecStartRequest,
   ): Promise<TaskExecStartResponse> {
-    return await this.callUnary(() => this.stub.taskExecStart(request));
+    let uncertainError: ClientError | undefined;
+    try {
+      return await this.callUnary(async () => {
+        try {
+          return await this.stub.taskExecStart(request);
+        } catch (err) {
+          if (
+            err instanceof ClientError &&
+            RETRYABLE_GRPC_STATUS_CODES.has(err.code)
+          ) {
+            uncertainError ??= err;
+          }
+          throw err;
+        }
+      });
+    } catch (err) {
+      // A later rejection says nothing about whether an earlier attempt ran.
+      // Preserve that uncertainty before callers consider another session.
+      if (
+        uncertainError &&
+        (err instanceof TaskShuttingDownError ||
+          (err instanceof ClientError && err.code === Status.NOT_FOUND))
+      ) {
+        throw uncertainError;
+      }
+      throw err;
+    }
   }
 
   async containerCreate(

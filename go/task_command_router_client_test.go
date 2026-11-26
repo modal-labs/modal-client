@@ -128,6 +128,58 @@ func TestDetachKeepsUnaryLeaseAcrossRetries(t *testing.T) {
 	g.Expect(client.closed.Load()).To(gomega.BeTrue())
 }
 
+func TestExecStartPreservesUncertainty(t *testing.T) {
+	t.Parallel()
+	for _, terminalCode := range []codes.Code{codes.NotFound, codes.FailedPrecondition} {
+		t.Run(terminalCode.String(), func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			lost := status.Error(codes.Unavailable, "start acknowledgement lost")
+			rejection := status.New(terminalCode, "session stopped")
+			if terminalCode == codes.FailedPrecondition {
+				var err error
+				rejection, err = rejection.WithDetails(pb.TaskShuttingDown_builder{}.Build())
+				g.Expect(err).ToNot(gomega.HaveOccurred())
+			}
+			calls := 0
+			client := newStubClient(t, &drainingRouterStub{start: func(context.Context) (*pb.TaskExecStartResponse, error) {
+				calls++
+				if calls == 1 {
+					return nil, lost
+				}
+				return nil, rejection.Err()
+			}})
+
+			_, err := client.ExecStart(t.Context(), pb.TaskExecStartRequest_builder{ExecId: "exec-1"}.Build())
+			g.Expect(err).To(gomega.BeIdenticalTo(lost))
+			g.Expect(calls).To(gomega.Equal(2))
+		})
+	}
+}
+
+func TestExecStartCanRecoverAndKeepsUncertaintyPerCall(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	calls := 0
+	client := newStubClient(t, &drainingRouterStub{start: func(context.Context) (*pb.TaskExecStartResponse, error) {
+		calls++
+		switch calls {
+		case 1:
+			return nil, status.Error(codes.Unavailable, "start acknowledgement lost")
+		case 2:
+			return pb.TaskExecStartResponse_builder{}.Build(), nil
+		default:
+			return nil, status.Error(codes.NotFound, "session stopped")
+		}
+	}})
+
+	_, err := client.ExecStart(t.Context(), pb.TaskExecStartRequest_builder{ExecId: "exec-1"}.Build())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	_, err = client.ExecStart(t.Context(), pb.TaskExecStartRequest_builder{ExecId: "exec-2"}.Build())
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.NotFound))
+	g.Expect(calls).To(gomega.Equal(3))
+}
+
 func TestDetachKeepsStdioLeaseAcrossRetries(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

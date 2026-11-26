@@ -13,6 +13,7 @@ import (
 	"github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -445,4 +446,43 @@ func TestPersistentSandboxDetachedStreamsMock(t *testing.T) {
 			g.Expect(mock.AssertExhausted()).To(gomega.Succeed())
 		})
 	}
+}
+
+func TestPersistentSandboxExecMovesOffASessionItCannotReachMock(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	mock := newGRPCMockClient(t)
+	ctx := t.Context()
+	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
+
+	// The old session's command router can't be reached, so no command was
+	// sent and the exec moves to a resumed session. That one refuses too, and
+	// its error is what the caller gets.
+	handleRouterAccess := func(wantSandboxID string, err error) {
+		grpcmock.HandleUnary(mock, "SandboxGetTaskIdV2",
+			func(req *pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
+				g.Expect(req.GetSandboxId()).To(gomega.Equal(wantSandboxID))
+				return pb.SandboxGetTaskIdResponse_builder{TaskId: proto.String("ta-" + wantSandboxID)}.Build(), nil
+			})
+		grpcmock.HandleUnary(mock, "SandboxGetCommandRouterAccess",
+			func(req *pb.SandboxGetCommandRouterAccessRequest) (*pb.SandboxGetCommandRouterAccessResponse, error) {
+				g.Expect(req.GetSandboxId()).To(gomega.Equal(wantSandboxID))
+				return nil, err
+			})
+	}
+	handleRouterAccess(persistentSessionID, status.Error(codes.FailedPrecondition, "Sandbox has finished"))
+	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
+		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
+			return pb.PersistentSandboxGetResponse_builder{PersistentSandboxId: persistentSandboxID}.Build(), nil
+		})
+	grpcmock.HandleUnary(mock, "PersistentSandboxResume",
+		func(req *pb.PersistentSandboxResumeRequest) (*pb.PersistentSandboxResumeResponse, error) {
+			return pb.PersistentSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
+		})
+	handleRouterAccess(persistentSecondSessionID, status.Error(codes.PermissionDenied, "second session"))
+
+	_, err := sb.Exec(ctx, []string{"echo", "hello"}, nil)
+	g.Expect(status.Code(err)).To(gomega.Equal(codes.PermissionDenied))
+	g.Expect(err.Error()).To(gomega.ContainSubstring("second session"))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }

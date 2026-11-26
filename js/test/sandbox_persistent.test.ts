@@ -389,3 +389,47 @@ test.each(["stdin", "stdout", "stderr"] as const)(
     mock.assertExhausted();
   },
 );
+
+test("an exec moves off a session whose command router it cannot reach", async () => {
+  const { sb, mock } = await createPersistent();
+
+  // The old session's command router can't be reached, so no command was
+  // sent and the exec moves to a resumed session. That one refuses too, and
+  // its error is what the caller gets.
+  const refuseRouterAccess = (sandboxId: string, err: ClientError) => {
+    mock.handleUnary("/SandboxGetTaskIdV2", (req: any) => {
+      expect(req.sandboxId).toBe(sandboxId);
+      return { taskId: `ta-${sandboxId}` };
+    });
+    mock.handleUnary("/SandboxGetCommandRouterAccess", (req: any) => {
+      expect(req.sandboxId).toBe(sandboxId);
+      throw err;
+    });
+  };
+  refuseRouterAccess(
+    SESSION_1,
+    new ClientError(
+      "/SandboxGetCommandRouterAccess",
+      Status.FAILED_PRECONDITION,
+      "Sandbox has finished",
+    ),
+  );
+  mock.handleUnary("/PersistentSandboxGet", () => ({
+    persistentSandboxId: PERSISTENT_ID,
+    sandboxId: "",
+  }));
+  mock.handleUnary("/PersistentSandboxResume", () => ({
+    sandboxId: SESSION_2,
+  }));
+  refuseRouterAccess(
+    SESSION_2,
+    new ClientError(
+      "/SandboxGetCommandRouterAccess",
+      Status.PERMISSION_DENIED,
+      "second session",
+    ),
+  );
+
+  await expect(sb.exec(["echo", "hello"])).rejects.toThrow("second session");
+  mock.assertExhausted();
+});

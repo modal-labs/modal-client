@@ -28,7 +28,7 @@ from ..client import _Client
 from ..cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from ..config import logger
 from ..container_process import _ContainerProcess
-from ..exception import ClientClosed, InvalidError, SandboxTerminatedError
+from ..exception import ClientClosed, InvalidError, NotFoundError, SandboxTerminatedError
 from ..io_streams import (
     StreamReader,
     StreamWriter,
@@ -69,6 +69,37 @@ _RESUME_RETRY_INTERVAL = 1.0
 _WAIT_POLL_INTERVAL = 1.0
 
 _TERMINATED_RESULT = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+
+
+def _rejected_by_shutting_down_session(exc: Exception) -> bool:
+    """Whether the session was shutting down and never started the failed request."""
+    details = getattr(exc, "_grpc_details", None) or []
+    return any(isinstance(detail, sr_pb2.TaskShuttingDown) for detail in details)
+
+
+def _may_succeed_on_new_session(exc: Exception) -> bool:
+    return _rejected_by_shutting_down_session(exc) or not isinstance(exc, _NON_RECOVERABLE_ERRORS)
+
+
+class _ExecNotSentError(Exception):
+    """A failure to reach a session's command router, which comes before the command is sent to it."""
+
+    def __init__(self, inner: Exception) -> None:
+        super().__init__(str(inner))
+        self.inner = inner
+
+
+def _exec_never_ran(exc: Exception) -> bool:
+    """Whether a failed exec certainly didn't run its command, so it can be started on another session."""
+    if isinstance(exc, _ExecNotSentError):
+        # Reaching the router takes no input from the caller, so only a closed client is their doing.
+        return not isinstance(exc.inner, ClientClosed)
+    if _rejected_by_shutting_down_session(exc):
+        return True
+    # A NOT_FOUND status means the session was gone before the command could
+    # reach it. Any other failure, including a dropped connection, may come
+    # after the command started.
+    return isinstance(exc, NotFoundError)
 
 
 class SandboxImplPersistent:
@@ -226,16 +257,24 @@ class SandboxImplPersistent:
 
     # Session replacement
 
-    async def _run(self, op: Callable[[SandboxImplV2], Awaitable[_T]]) -> _T:
-        """Run `op` on the session, switching to the running session and retrying once if it fails."""
+    async def _run(
+        self,
+        op: Callable[[SandboxImplV2], Awaitable[_T]],
+        *,
+        can_retry: Callable[[Exception], bool] = _may_succeed_on_new_session,
+    ) -> _T:
+        """Run `op` on the session, switching to the running session and retrying once if it fails.
+
+        Only failures accepted by `can_retry` are retried.
+        """
         session = self._delegate
         try:
             return await op(session)
-        except _NON_RECOVERABLE_ERRORS:
-            raise
         except Exception as exc:
             if self._terminated:
                 # A terminated persistent Sandbox is stopped for good, so it isn't resumed on use.
+                raise
+            if not can_retry(exc):
                 raise
             replacement = await self._replace_session(session)
             if replacement is None:
@@ -463,8 +502,13 @@ class SandboxImplPersistent:
         bufsize: Literal[-1, 1],
         container_id: str | None,
     ) -> _ContainerProcess[bytes] | _ContainerProcess[str]:
-        return await self._run(
-            lambda d: d.exec(
+        async def start(d: SandboxImplV2) -> _ContainerProcess[bytes] | _ContainerProcess[str]:
+            try:
+                task_id = await d.get_task_id(raise_if_task_complete=True)
+                await d.get_command_router_client(task_id)
+            except Exception as exc:
+                raise _ExecNotSentError(exc) from exc
+            return await d.exec(
                 *args,
                 pty_info=pty_info,
                 stdout=stdout,
@@ -477,7 +521,11 @@ class SandboxImplPersistent:
                 bufsize=bufsize,
                 container_id=container_id,
             )
-        )
+
+        try:
+            return await self._run(start, can_retry=_exec_never_ran)
+        except _ExecNotSentError as exc:
+            raise exc.inner from None
 
     # Sidecar containers
 
