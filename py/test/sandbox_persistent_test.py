@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2026
+import asyncio
 import pytest
 from unittest import mock
 
@@ -7,7 +8,7 @@ from grpclib import GRPCError, Status
 import modal
 from modal import App, Image, Sandbox
 from modal._utils.async_utils import synchronizer
-from modal.exception import ClientClosed, InvalidError
+from modal.exception import ClientClosed, InvalidError, NotFoundError, SandboxTerminatedError
 from modal.experimental import OutboundPolicy
 from modal.sandbox._impl_persistent import (
     PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT,
@@ -211,3 +212,86 @@ def test_persistent_sandbox_tunnels(app, client, servicer):
         8080: "sp-1-8080.tunnel.modal.host",
         8443: "sp-1-8443.tunnel.modal.host",
     }
+
+
+@pytest.mark.parametrize("paused", [False, True])
+def test_persistent_sandbox_poll_observes_external_termination(app, client, servicer, paused):
+    sandbox_a = _create(app, client)
+    if paused:
+        sandbox_a._experimental_pause()
+    sandbox_b = sandbox_a
+    with servicer.intercept() as ctx:
+        assert sandbox_b.poll() is None
+        [request] = ctx.get_requests("PersistentSandboxGet")
+    servicer.persistent_sandbox_terminated.add(request.persistent_sandbox_id)
+    with servicer.intercept() as ctx:
+        assert sandbox_b.poll() == 137
+        assert sandbox_b.poll() == 137
+        assert len(ctx.get_requests("PersistentSandboxGet")) == 1
+        assert not ctx.get_requests("PersistentSandboxResume")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("paused", [False, True])
+@pytest.mark.parametrize("raise_on_termination", [False, True])
+async def test_persistent_sandbox_wait_observes_external_termination(
+    app, client, servicer, paused, raise_on_termination
+):
+    sandbox_a = await Sandbox.create.aio(app=app, client=client, timeout=None, _experimental_persistent=True)
+    if paused:
+        await sandbox_a._experimental_pause.aio()
+    sandbox_b = sandbox_a
+    first_get = True
+
+    async def get(self, stream):
+        nonlocal first_get
+        await stream.recv_message()
+        response = api_pb2.PersistentSandboxGetResponse()
+        if first_get:
+            first_get = False
+        else:
+            response.terminated_at.SetInParent()
+        await stream.send_message(response)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("PersistentSandboxGet", get)
+        waited = sandbox_b.wait.aio(raise_on_termination=raise_on_termination)
+        if raise_on_termination:
+            with pytest.raises(SandboxTerminatedError):
+                await asyncio.wait_for(waited, 3)
+        else:
+            await asyncio.wait_for(waited, 3)
+        assert sandbox_b.returncode == 137
+        assert len(ctx.get_requests("PersistentSandboxGet")) == 2
+        assert not ctx.get_requests("PersistentSandboxResume")
+
+
+@pytest.mark.parametrize("operation", ["poll", "wait"])
+def test_persistent_sandbox_refresh_error(app, client, servicer, operation):
+    sandbox = _create(app, client)
+
+    async def get(self, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.NOT_FOUND, "unknown")
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("PersistentSandboxGet", get)
+        with pytest.raises(NotFoundError):
+            getattr(sandbox, operation)()
+
+
+@pytest.mark.parametrize("stream_name", ["stdin", "stdout", "stderr"])
+def test_detached_persistent_stream_does_not_resume(app, client, servicer, stream_name):
+    sandbox = _create(app, client)
+    sandbox._experimental_pause()
+    stream = getattr(sandbox, stream_name)
+    sandbox.detach()
+    with servicer.intercept() as ctx:
+        with pytest.raises(ClientClosed, match="detached sandbox"):
+            if stream_name == "stdin":
+                stream.write(b"hello")
+                stream.drain()
+            else:
+                stream.read()
+        assert not ctx.get_requests("PersistentSandboxGet")
+        assert not ctx.get_requests("PersistentSandboxResume")

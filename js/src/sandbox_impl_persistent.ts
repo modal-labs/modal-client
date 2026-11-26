@@ -103,6 +103,7 @@ export class SandboxImplPersistent implements SandboxImpl {
 
   #session: SandboxImplV2;
   #terminated = false;
+  #closed = false;
   // Session replacements run one at a time, so concurrent failures on the same
   // session trigger a single lookup/resume.
   #replaceChain: Promise<unknown> = Promise.resolve();
@@ -245,7 +246,8 @@ export class SandboxImplPersistent implements SandboxImpl {
         persistentSandboxId: this.persistentSandboxId,
       }),
     );
-    return resp.sandboxId;
+    if (resp.terminatedAt !== undefined) this.#terminated = true;
+    return this.#terminated ? "" : resp.sandboxId;
   }
 
   /** Resume the persistent Sandbox, returning the ID of its running session. */
@@ -288,6 +290,8 @@ export class SandboxImplPersistent implements SandboxImpl {
       return this.#session;
     }
     let sessionId = await this.#getRunningSessionId();
+    this.#checkOpen();
+    this.#checkNotTerminated();
     if (sessionId === failed.sandboxId) {
       return undefined;
     }
@@ -305,6 +309,14 @@ export class SandboxImplPersistent implements SandboxImpl {
     this.#session = replacement;
     failed.close();
     return replacement;
+  }
+
+  #checkOpen(): void {
+    if (this.#closed) {
+      throw new ClientClosedError(
+        "Unable to perform operation on a detached sandbox",
+      );
+    }
   }
 
   #checkNotTerminated(): void {
@@ -398,18 +410,19 @@ export class SandboxImplPersistent implements SandboxImpl {
   }
 
   close(): void {
-    this.#session.close();
+    this.#closed = true;
+    this.#session?.close();
   }
 
   async wait(): Promise<number> {
-    // A persistent Sandbox keeps running across sessions, until it is terminated.
-    while (!this.#terminated) {
+    while ((await this.poll()) === null) {
       await setTimeout(WAIT_POLL_INTERVAL_MS);
     }
     return getReturnCode(TERMINATED_RESULT)!;
   }
 
   async poll(): Promise<number | null> {
+    if (!this.#terminated) await this.#getRunningSessionId();
     return this.#terminated ? getReturnCode(TERMINATED_RESULT) : null;
   }
 
@@ -451,6 +464,7 @@ export class SandboxImplPersistent implements SandboxImpl {
   async getCommandRouter(
     signal?: AbortSignal,
   ): Promise<[string, TaskCommandRouterClientImpl]> {
+    this.#checkOpen();
     return await this.#run((s) => s.getCommandRouter(signal));
   }
 

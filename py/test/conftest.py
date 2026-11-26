@@ -3887,7 +3887,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         running = not self._sandbox_terminated and not terminated
         await stream.send_message(
             api_pb2.PersistentSandboxGetResponse(
-                persistent_sandbox_id=request.persistent_sandbox_id, sandbox_id="sb-v2-123" if running else ""
+                persistent_sandbox_id=request.persistent_sandbox_id,
+                sandbox_id="sb-v2-123" if running else "",
+                terminated_at=_timestamp_now() if terminated else None,
             )
         )
 

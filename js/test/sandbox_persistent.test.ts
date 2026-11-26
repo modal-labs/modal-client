@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import {
   App,
+  ClientClosedError,
   ExperimentalOutboundPolicy,
   Image,
   InvalidError,
@@ -75,6 +76,7 @@ test("create sends a PersistentSandboxCreate with the session timeouts", async (
   expect(createReq.definition.timeoutSecs).toBe(3600);
   expect(createReq.definition.idleTimeoutSecs).toBe(300);
   expect(sb.sandboxId).toBe(SESSION_1);
+  mock.handleUnary("/PersistentSandboxGet", () => ({ sandboxId: SESSION_1 }));
   expect(await sb.poll()).toBeNull();
   mock.assertExhausted();
 });
@@ -113,6 +115,7 @@ test("pause stops the session and resume starts a new one", async () => {
   });
   await sb.experimentalPause();
   // Pausing ends a session, not the persistent Sandbox.
+  mock.handleUnary("/PersistentSandboxGet", () => ({ sandboxId: "" }));
   expect(await sb.poll()).toBeNull();
 
   mock.handleUnary("/PersistentSandboxResume", (req: any) => {
@@ -270,6 +273,7 @@ test("wait resolves once the persistent Sandbox is terminated", async () => {
   const { sb, mock } = await createPersistent();
   mock.handleUnary("/PersistentSandboxTerminate", () => ({}));
 
+  mock.handleUnary("/PersistentSandboxGet", () => ({ sandboxId: SESSION_1 }));
   const waited = sb.wait();
   await sb.terminate();
   expect(await waited).toBe(137);
@@ -317,3 +321,71 @@ test.each([
     /requires a persistent Sandbox/,
   );
 });
+
+test.each(["running", "paused"])(
+  "existing %s handle polls for external termination",
+  async (state) => {
+    const { sb, mock } = await createPersistent();
+    mock.handleUnary("/PersistentSandboxGet", () => ({
+      sandboxId: state === "running" ? SESSION_1 : "",
+    }));
+    expect(await sb.poll()).toBeNull();
+    mock.handleUnary("/PersistentSandboxGet", () => ({
+      terminatedAt: new Date(0),
+    }));
+    expect(await sb.poll()).toBe(137);
+    expect(await sb.poll()).toBe(137);
+    mock.assertExhausted();
+  },
+);
+
+test.each(["running", "paused"])(
+  "existing %s handle waits for external termination",
+  async (state) => {
+    const { sb, mock } = await createPersistent();
+    mock.handleUnary("/PersistentSandboxGet", () => ({
+      sandboxId: state === "running" ? SESSION_1 : "",
+    }));
+    mock.handleUnary("/PersistentSandboxGet", () => ({
+      terminatedAt: new Date(0),
+    }));
+    expect(await sb.wait()).toBe(137);
+    mock.assertExhausted();
+  },
+);
+
+test.each(["poll", "wait"] as const)(
+  "%s propagates persistent lookup errors",
+  async (operation) => {
+    const { sb, mock } = await createPersistent();
+    const error = new ClientError(
+      "/PersistentSandboxGet",
+      Status.NOT_FOUND,
+      "unknown",
+    );
+    mock.handleUnary("/PersistentSandboxGet", () => {
+      throw error;
+    });
+    await expect(sb[operation]()).rejects.toBe(error);
+    mock.assertExhausted();
+  },
+);
+
+test.each(["stdin", "stdout", "stderr"] as const)(
+  "detached persistent %s does not resume",
+  async (streamName) => {
+    const { sb: sandbox, mock } = await createPersistent();
+    if (streamName === "stdin") {
+      const stream = sandbox.stdin;
+      sandbox.detach();
+      await expect(stream.writeText("hello")).rejects.toBeInstanceOf(
+        ClientClosedError,
+      );
+    } else {
+      const stream = sandbox[streamName];
+      sandbox.detach();
+      await expect(stream.readText()).rejects.toBeInstanceOf(ClientClosedError);
+    }
+    mock.assertExhausted();
+  },
+);

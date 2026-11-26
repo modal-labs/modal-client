@@ -54,9 +54,10 @@ type sandboxImplPersistent struct {
 	id                  string
 	persistentSandboxID string
 
-	mu         sync.Mutex // protects session, terminated
+	mu         sync.Mutex // protects session, terminated, closed
 	session    *sandboxImplV2
 	terminated bool
+	closed     bool
 	// replaceMu serializes session replacements, so concurrent failures on
 	// the same session trigger a single lookup/resume.
 	replaceMu sync.Mutex
@@ -190,6 +191,12 @@ func (p *sandboxImplPersistent) getRunningSessionID(ctx context.Context) (string
 	if err != nil {
 		return "", err
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.terminated = p.terminated || resp.HasTerminatedAt()
+	if p.terminated {
+		return "", nil
+	}
 	return resp.GetSandboxId(), nil
 }
 
@@ -230,6 +237,12 @@ func (p *sandboxImplPersistent) replaceSession(ctx context.Context, failed *sand
 	if err != nil {
 		return nil, err
 	}
+	if err := p.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := p.checkNotTerminated(); err != nil {
+		return nil, err
+	}
 	if sessionID == failed.id {
 		return nil, nil
 	}
@@ -249,6 +262,15 @@ func (p *sandboxImplPersistent) replaceSession(ctx context.Context, failed *sand
 	return replacement, nil
 }
 
+func (p *sandboxImplPersistent) checkOpen() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
+	}
+	return nil
+}
+
 func (p *sandboxImplPersistent) checkNotTerminated() error {
 	if p.isTerminated() {
 		return InvalidError{Exception: fmt.Sprintf("Persistent Sandbox %s has been terminated.", p.persistentSandboxID)}
@@ -266,8 +288,16 @@ func (p *sandboxImplPersistent) stdin() io.WriteCloser {
 func (p *sandboxImplPersistent) outputStream(fd pb.FileDescriptor) io.ReadCloser {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &lazyStreamReader{
-		readCheck: func() error { return p.currentSession().commandRouter.ensureOpen() },
-		cancel:    cancel,
+		readCheck: func() error {
+			if err := p.checkOpen(); err != nil {
+				return err
+			}
+			if session := p.currentSession(); session != nil {
+				return session.commandRouter.ensureOpen()
+			}
+			return nil
+		},
+		cancel: cancel,
 		initFunc: func() io.ReadCloser {
 			return outputStreamSbV2(ctx, p.getCommandRouter, fd)
 		},
@@ -339,22 +369,37 @@ func (p *sandboxImplPersistent) resume(ctx context.Context) error {
 }
 
 func (p *sandboxImplPersistent) close() {
-	p.currentSession().close()
+	p.mu.Lock()
+	p.closed = true
+	p.mu.Unlock()
+	if session := p.currentSession(); session != nil {
+		session.close()
+	}
 }
 
 func (p *sandboxImplPersistent) wait(ctx context.Context) (int, error) {
-	// A persistent Sandbox keeps running across sessions, until it is terminated.
-	for !p.isTerminated() {
+	for {
+		result, err := p.poll(ctx)
+		if err != nil {
+			return 0, err
+		}
+		if result != nil {
+			return *result, nil
+		}
 		select {
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		case <-time.After(persistentWaitPollInterval):
 		}
 	}
-	return *getReturnCode(persistentTerminatedResult), nil
 }
 
 func (p *sandboxImplPersistent) poll(ctx context.Context) (*int, error) {
+	if !p.isTerminated() {
+		if _, err := p.getRunningSessionID(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if p.isTerminated() {
 		return getReturnCode(persistentTerminatedResult), nil
 	}
@@ -394,6 +439,9 @@ func (p *sandboxImplPersistent) snapshotMemory(ctx context.Context) (*SandboxSna
 }
 
 func (p *sandboxImplPersistent) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {
+	if err := p.checkOpen(); err != nil {
+		return "", nil, err
+	}
 	type router struct {
 		taskID string
 		client *taskCommandRouterClient

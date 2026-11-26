@@ -97,6 +97,7 @@ class SandboxImplPersistent:
         self._session = session if session is not None else SandboxImplV2(client, sandbox_id)
         self._replace_lock: asyncio.Lock | None = None
         self._terminated = result is not None
+        self._closed = False
 
     @property
     def _delegate(self) -> SandboxImplV2:
@@ -207,6 +208,7 @@ class SandboxImplPersistent:
             this = weak_self()
             if this is None:
                 raise RuntimeError("Sandbox was garbage collected before its stdio reader connected")
+            this._check_open()
             return await command_router(this)
 
         def reader(file_descriptor: "api_pb2.FileDescriptor.ValueType") -> StreamReader[str]:
@@ -245,7 +247,10 @@ class SandboxImplPersistent:
         client = await self._get_client()
         req = api_pb2.PersistentSandboxGetRequest(persistent_sandbox_id=self._persistent_sandbox_id)
         resp = await client._stub.PersistentSandboxGet(req, metadata=await auth_metadata(client))
-        return resp.sandbox_id
+        if resp.HasField("terminated_at"):
+            self._terminated = True
+            self._set_terminated_result()
+        return "" if self._terminated else resp.sandbox_id
 
     async def _resume_session(self) -> str:
         """Resume the persistent Sandbox, returning the ID of its running session."""
@@ -274,6 +279,8 @@ class SandboxImplPersistent:
                 return self._session
 
             session_id = await self._get_running_session_id()
+            self._check_open()
+            self._check_not_terminated()
             if failed is not None and session_id == failed.sandbox_id:
                 return None
             if not session_id:
@@ -290,23 +297,27 @@ class SandboxImplPersistent:
     # Operations
 
     async def close(self) -> None:
+        self._closed = True
         await self._session.close()
 
     def ensure_attached(self) -> None:
-        self._delegate.ensure_attached()
+        self._check_open()
 
     def _set_terminated_result(self) -> None:
         self.result = _TERMINATED_RESULT
 
     async def wait(self, raise_on_termination: bool) -> None:
-        # A persistent Sandbox keeps running across sessions, until it is terminated.
+        await self.poll()
         while not self._terminated:
             await asyncio.sleep(_WAIT_POLL_INTERVAL)
+            await self.poll()
         self._set_terminated_result()
         if raise_on_termination:
             raise SandboxTerminatedError()
 
     async def poll(self) -> None:
+        if not self._terminated:
+            await self._get_running_session_id()
         if self._terminated:
             self._set_terminated_result()
         else:
@@ -335,6 +346,10 @@ class SandboxImplPersistent:
         if session_id != session.sandbox_id:
             self._session = SandboxImplV2(client, session_id)
             await session.close()
+
+    def _check_open(self) -> None:
+        if self._closed:
+            raise ClientClosed("Unable to perform operation on a detached sandbox")
 
     def _check_not_terminated(self) -> None:
         if self._terminated:
