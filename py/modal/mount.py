@@ -631,7 +631,11 @@ class _Mount(_Object, type_prefixes=("mo",)):
                 async with blob_upload_concurrency:
                     with file_spec.source() as fp:
                         blob_id = await blob_upload_file(
-                            fp, load_context.client._stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
+                            fp,
+                            load_context.client._stub,
+                            sha256_hex=file_spec.sha256_hex,
+                            md5_hex=file_spec.md5_hex,
+                            byte_budget=resolver.mount_upload_byte_budget,
                         )
 
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")

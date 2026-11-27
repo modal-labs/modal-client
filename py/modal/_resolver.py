@@ -4,11 +4,13 @@ import os
 import tempfile
 from asyncio import Future
 from collections.abc import Hashable
+from functools import cached_property
 
 import modal._object
 from modal._traceback import suppress_tb_frame
 
 from ._load_context import LoadContext
+from ._utils.blob_utils import _ByteBudget
 
 
 class Resolver:
@@ -28,6 +30,10 @@ class Resolver:
     @property
     def build_start(self) -> float:
         return self._build_start
+
+    @cached_property
+    def mount_upload_byte_budget(self) -> _ByteBudget:
+        return _ByteBudget.from_system_memory()
 
     async def preload(
         self, obj: "modal._object._Object", parent_load_context: "LoadContext", existing_object_id: str | None

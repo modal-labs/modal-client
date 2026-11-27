@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import hashlib
 import os
 import platform
@@ -6,6 +7,7 @@ import pytest
 import random
 import re
 import time
+from contextlib import suppress
 from math import ceil
 from pathlib import Path, PurePosixPath
 
@@ -13,6 +15,7 @@ import modal
 from modal import App, FilePatternMatcher
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
+from modal._utils import blob_utils
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.mount import Mount, client_mount_name, module_mount_condition, module_mount_ignore_condition
@@ -60,6 +63,74 @@ async def test_get_files(servicer, client, tmpdir):
         "data": small_content,
         "data_blob_id": "",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("separate_mounts", [False, True])
+async def test_mount_multipart_upload_limits_concurrent_parts(servicer, client, monkeypatch, tmp_path, separate_mounts):
+    chunk_size = 256 * 1024
+    part_size = 1024 * 1024
+    servicer.blob_multipart_threshold = part_size
+    monkeypatch.setattr(blob_utils, "DEFAULT_SEGMENT_CHUNK_SIZE", chunk_size)
+    monkeypatch.setattr(blob_utils, "_get_multipart_inflight_budget", lambda: 4 * chunk_size)
+
+    contents = [byte * (LARGE_FILE_LIMIT + 1) for byte in (b"a", b"b")]
+    for index, content in enumerate(contents):
+        (tmp_path / f"file{index}").write_bytes(content)
+
+    pending_blobs = len(contents)
+    both_blobs_created = asyncio.Event()
+    blob_create = client._stub.BlobCreate
+
+    async def synchronize_blob_create(*args, **kwargs):
+        nonlocal pending_blobs
+        response = await blob_create(*args, **kwargs)
+        pending_blobs -= 1
+        if pending_blobs == 0:
+            both_blobs_created.set()
+        await asyncio.wait_for(both_blobs_created.wait(), timeout=10)
+        return response
+
+    monkeypatch.setattr(client._stub, "BlobCreate", synchronize_blob_create)
+
+    active_parts = peak_active_parts = 0
+    first_part_started = asyncio.Event()
+    parts_overlapped = asyncio.Event()
+    upload_part = blob_utils._upload_to_s3_url
+
+    async def track_upload_part(*args, **kwargs):
+        nonlocal active_parts, peak_active_parts
+        active_parts += 1
+        peak_active_parts = max(peak_active_parts, active_parts)
+        try:
+            if active_parts > 1:
+                parts_overlapped.set()
+            elif not first_part_started.is_set():
+                first_part_started.set()
+                with suppress(TimeoutError):
+                    await asyncio.wait_for(parts_overlapped.wait(), timeout=2)
+            return await upload_part(*args, **kwargs)
+        finally:
+            active_parts -= 1
+
+    monkeypatch.setattr(blob_utils, "_upload_to_s3_url", track_upload_part)
+
+    if separate_mounts:
+        image = (
+            modal.Image.debian_slim()
+            .add_local_file(tmp_path / "file0", "/file0")
+            .add_local_file(tmp_path / "file1", "/file1")
+        )
+        async with App().run.aio(client=client) as app:
+            await image.build.aio(app)
+    else:
+        mount = Mount._from_local_dir(tmp_path, remote_path="/")
+        await mount._deploy.aio("my-mount", client=client)
+
+    assert peak_active_parts == 1
+    for content in contents:
+        file_data = servicer.files_sha2data[hashlib.sha256(content).hexdigest()]
+        assert servicer.blobs[file_data["data_blob_id"]] == content
 
 
 def rand_string(rng: random.Random, len: int):
