@@ -400,10 +400,18 @@ func (p *sandboxImplPersistent) setName(ctx context.Context, name string) error 
 	return InvalidError{Exception: "The name of a persistent Sandbox can't be changed."}
 }
 
+// createConnectToken addresses the persistent Sandbox, not a session, so its
+// tokens keep working across sessions and are created without resuming it.
 func (p *sandboxImplPersistent) createConnectToken(ctx context.Context, port uint32, userMetadata string) (*SandboxCreateConnectCredentials, error) {
-	return run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (*SandboxCreateConnectCredentials, error) {
-		return s.createConnectToken(ctx, port, userMetadata)
-	})
+	resp, err := p.client.cpClient.PersistentSandboxCreateConnectToken(ctx, pb.PersistentSandboxCreateConnectTokenRequest_builder{
+		PersistentSandboxId: p.persistentSandboxID,
+		UserMetadata:        userMetadata,
+		Port:                &port,
+	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	return &SandboxCreateConnectCredentials{URL: resp.GetUrl(), Token: resp.GetToken()}, nil
 }
 
 func (p *sandboxImplPersistent) terminate(ctx context.Context) error {

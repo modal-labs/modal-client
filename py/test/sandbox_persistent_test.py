@@ -438,3 +438,19 @@ def test_detached_persistent_stream_does_not_resume(app, client, servicer, strea
                 stream.read()
         assert not ctx.get_requests("PersistentSandboxGet")
         assert not ctx.get_requests("PersistentSandboxResume")
+
+
+def test_persistent_sandbox_create_connect_token(app, client, servicer):
+    sb = _create(app, client)
+    sb._experimental_pause()
+
+    with servicer.intercept() as ctx:
+        creds = sb.create_connect_token(user_metadata={"user": "alice"}, port=3000)
+    assert creds.url == "https://a-sp-1-3000.tunnel.modal.host"
+    assert creds.token == 'token-sp-1-{"user": "alice"}'
+    (req,) = ctx.get_requests("PersistentSandboxCreateConnectToken")
+    assert req.persistent_sandbox_id == "sp-1"
+    assert req.port == 3000
+    # The token is addressed by the persistent Sandbox, so creating it doesn't resume a paused one.
+    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert ctx.get_requests("SandboxCreateConnectTokenV2") == []

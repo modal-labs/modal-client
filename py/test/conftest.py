@@ -3908,6 +3908,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]
         await stream.send_message(api_pb2.PersistentSandboxTunnelsListResponse(tunnels=tunnels))
 
+    async def PersistentSandboxCreateConnectToken(self, stream):
+        request: api_pb2.PersistentSandboxCreateConnectTokenRequest = await stream.recv_message()
+        port = request.port if request.HasField("port") else 8080
+        await stream.send_message(
+            api_pb2.PersistentSandboxCreateConnectTokenResponse(
+                url=f"https://a-{request.persistent_sandbox_id}-{port}.tunnel.modal.host",
+                token=f"token-{request.persistent_sandbox_id}-{request.user_metadata}",
+            )
+        )
+
     async def PersistentSandboxResume(self, stream):
         request: api_pb2.PersistentSandboxResumeRequest = await stream.recv_message()
         if request.persistent_sandbox_id in self.persistent_sandbox_terminated:

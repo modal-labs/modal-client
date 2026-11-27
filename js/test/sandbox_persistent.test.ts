@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   App,
   ClientClosedError,
@@ -56,16 +56,36 @@ async function createPersistent(
   return { sb, mock, createReq };
 }
 
-function expectConnectToken(
+// Sidecar create is a single RPC on the current session, which makes it a
+// convenient probe for the operations that follow the persistent Sandbox to its
+// running session.
+const SIDECAR_ID = "sb-ctr-1";
+
+beforeEach(() => {
+  vi.stubEnv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+function expectSidecarCreate(
   mock: MockGrpcClient,
   sandboxId: string,
   err?: ClientError,
 ) {
-  mock.handleUnary("/SandboxCreateConnectTokenV2", (req: any) => {
+  mock.handleUnary("/SandboxContainerCreateV2", (req: any) => {
     expect(req.sandboxId).toBe(sandboxId);
     if (err) throw err;
-    return { url: "https://connect", token: "tok" };
+    return { containerId: SIDECAR_ID };
   });
+}
+
+async function createSidecar(sb: Sandbox): Promise<string> {
+  const { mockClient } = createMockModalClients();
+  const image = new Image(mockClient, "im-123", "");
+  const sidecar = await sb.experimentalSidecars.create("worker", image);
+  return sidecar.containerId;
 }
 
 test("create sends a PersistentSandboxCreate with the session timeouts", async () => {
@@ -166,22 +186,16 @@ test("pause stops the session and resume starts a new one", async () => {
   await sb.experimentalResume();
 
   // Operations now target the new session.
-  mock.handleUnary("/SandboxCreateConnectTokenV2", (req: any) => {
-    expect(req.sandboxId).toBe(SESSION_2);
-    return { url: "https://connect", token: "tok" };
-  });
-  expect(await sb.createConnectToken()).toEqual({
-    url: "https://connect",
-    token: "tok",
-  });
+  expectSidecarCreate(mock, SESSION_2);
+  expect(await createSidecar(sb)).toBe(SIDECAR_ID);
 
   // Resuming a running persistent Sandbox keeps its session.
   mock.handleUnary("/PersistentSandboxResume", () => ({
     sandboxId: SESSION_2,
   }));
   await sb.experimentalResume();
-  expectConnectToken(mock, SESSION_2);
-  expect((await sb.createConnectToken()).token).toBe("tok");
+  expectSidecarCreate(mock, SESSION_2);
+  expect(await createSidecar(sb)).toBe(SIDECAR_ID);
 
   mock.assertExhausted();
 });
@@ -201,17 +215,28 @@ test("tunnels are listed for the persistent Sandbox, not its session", async () 
   mock.assertExhausted();
 });
 
+test("connect tokens are created for the persistent Sandbox, not its session", async () => {
+  const { sb, mock } = await createPersistent();
+
+  mock.handleUnary("/PersistentSandboxCreateConnectToken", (req: any) => {
+    expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
+    expect(req.port).toBe(3000);
+    expect(req.userMetadata).toBe("alice");
+    return { url: "https://a-1-abcde.modal.host", token: "tok" };
+  });
+  expect(
+    await sb.createConnectToken({ port: 3000, userMetadata: "alice" }),
+  ).toEqual({ url: "https://a-1-abcde.modal.host", token: "tok" });
+  mock.assertExhausted();
+});
+
 test("a failed operation resumes the persistent Sandbox and is retried", async () => {
   const { sb, mock } = await createPersistent();
 
-  expectConnectToken(
+  expectSidecarCreate(
     mock,
     SESSION_1,
-    new ClientError(
-      "/SandboxCreateConnectTokenV2",
-      Status.NOT_FOUND,
-      "stopped",
-    ),
+    new ClientError("/SandboxContainerCreateV2", Status.NOT_FOUND, "stopped"),
   );
   mock.handleUnary("/PersistentSandboxGet", (req: any) => {
     expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
@@ -220,31 +245,27 @@ test("a failed operation resumes the persistent Sandbox and is retried", async (
   mock.handleUnary("/PersistentSandboxResume", () => ({
     sandboxId: SESSION_2,
   }));
-  expectConnectToken(mock, SESSION_2);
+  expectSidecarCreate(mock, SESSION_2);
 
-  expect((await sb.createConnectToken()).token).toBe("tok");
+  expect(await createSidecar(sb)).toBe(SIDECAR_ID);
   mock.assertExhausted();
 });
 
 test("a failed operation switches to an already-running session without resuming", async () => {
   const { sb, mock } = await createPersistent();
 
-  expectConnectToken(
+  expectSidecarCreate(
     mock,
     SESSION_1,
-    new ClientError(
-      "/SandboxCreateConnectTokenV2",
-      Status.NOT_FOUND,
-      "stopped",
-    ),
+    new ClientError("/SandboxContainerCreateV2", Status.NOT_FOUND, "stopped"),
   );
   mock.handleUnary("/PersistentSandboxGet", () => ({
     persistentSandboxId: PERSISTENT_ID,
     sandboxId: SESSION_2,
   }));
-  expectConnectToken(mock, SESSION_2);
+  expectSidecarCreate(mock, SESSION_2);
 
-  expect((await sb.createConnectToken()).token).toBe("tok");
+  expect(await createSidecar(sb)).toBe(SIDECAR_ID);
   mock.assertExhausted();
 });
 
@@ -252,17 +273,17 @@ test("a failed operation is not retried while its session is still running", asy
   const { sb, mock } = await createPersistent();
 
   const err = new ClientError(
-    "/SandboxCreateConnectTokenV2",
+    "/SandboxContainerCreateV2",
     Status.NOT_FOUND,
     "no tunnels",
   );
-  expectConnectToken(mock, SESSION_1, err);
+  expectSidecarCreate(mock, SESSION_1, err);
   mock.handleUnary("/PersistentSandboxGet", () => ({
     persistentSandboxId: PERSISTENT_ID,
     sandboxId: SESSION_1,
   }));
 
-  await expect(sb.createConnectToken()).rejects.toBe(err);
+  await expect(createSidecar(sb)).rejects.toBe(err);
   mock.assertExhausted();
 });
 
@@ -281,8 +302,8 @@ test("resume retries while the previous session is still pausing", async () => {
   }));
   await sb.experimentalResume();
 
-  expectConnectToken(mock, SESSION_2);
-  expect((await sb.createConnectToken()).token).toBe("tok");
+  expectSidecarCreate(mock, SESSION_2);
+  expect(await createSidecar(sb)).toBe(SIDECAR_ID);
   mock.assertExhausted();
 });
 
@@ -301,12 +322,12 @@ test("terminate stops the persistent Sandbox for good", async () => {
 
   // Failed operations are no longer retried on a new session.
   const err = new ClientError(
-    "/SandboxCreateConnectTokenV2",
+    "/SandboxContainerCreateV2",
     Status.NOT_FOUND,
     "stopped",
   );
-  expectConnectToken(mock, SESSION_1, err);
-  await expect(sb.createConnectToken()).rejects.toBe(err);
+  expectSidecarCreate(mock, SESSION_1, err);
+  await expect(createSidecar(sb)).rejects.toBe(err);
   mock.assertExhausted();
 });
 

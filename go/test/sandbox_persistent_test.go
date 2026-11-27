@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -70,15 +71,36 @@ func mockPersistentSandboxCreate(t *testing.T, g *gomega.WithT, mock *grpcmock.M
 	return sb
 }
 
-func handleConnectToken(mock *grpcmock.MockClient, g *gomega.WithT, wantSandboxID string, err error) {
-	grpcmock.HandleUnary(mock, "SandboxCreateConnectTokenV2",
-		func(req *pb.SandboxCreateConnectTokenRequest) (*pb.SandboxCreateConnectTokenResponse, error) {
+const persistentSidecarID = "sb-ctr-1"
+
+// handleSidecarCreate serves one sidecar create. Sidecar create is a single RPC
+// on the current session, which makes it a convenient probe for the operations
+// that follow the persistent Sandbox to its running session. Tests using it set
+// the sidecar create opt-out env var, so they can't run in parallel.
+func handleSidecarCreate(mock *grpcmock.MockClient, g *gomega.WithT, wantSandboxID string, err error) {
+	grpcmock.HandleUnary(mock, "SandboxContainerCreateV2",
+		func(req *pb.SandboxContainerCreateV2Request) (*pb.SandboxContainerCreateV2Response, error) {
 			g.Expect(req.GetSandboxId()).To(gomega.Equal(wantSandboxID))
 			if err != nil {
 				return nil, err
 			}
-			return pb.SandboxCreateConnectTokenResponse_builder{Url: "https://connect", Token: "tok"}.Build(), nil
+			return pb.SandboxContainerCreateV2Response_builder{ContainerId: persistentSidecarID}.Build(), nil
 		})
+}
+
+func createSidecar(t *testing.T, sb *modal.Sandbox) (string, error) {
+	t.Helper()
+	// An empty value still opts out, so the variable is removed after t.Setenv
+	// arranges for it to be restored.
+	t.Setenv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE", "")
+	if err := os.Unsetenv("MODAL_USE_CONTROL_PLANE_SIDECAR_CREATE"); err != nil {
+		t.Fatal(err)
+	}
+	sidecar, err := sb.ExperimentalSidecars.Create(t.Context(), "worker", &modal.Image{ImageID: "im-1"}, nil)
+	if err != nil {
+		return "", err
+	}
+	return sidecar.ContainerID, nil
 }
 
 func TestPersistentSandboxCreateMock(t *testing.T) {
@@ -127,7 +149,6 @@ func TestPersistentSandboxCreateRejectsUnsupportedOptionsMock(t *testing.T) {
 }
 
 func TestPersistentSandboxPauseAndResumeMock(t *testing.T) {
-	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 	ctx := t.Context()
@@ -163,10 +184,10 @@ func TestPersistentSandboxPauseAndResumeMock(t *testing.T) {
 	g.Expect(sb.ExperimentalResume(ctx, nil)).To(gomega.Succeed())
 
 	// Operations now go to the new session; the handle's ID is unchanged.
-	handleConnectToken(mock, g, persistentSecondSessionID, nil)
-	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{})
+	handleSidecarCreate(mock, g, persistentSecondSessionID, nil)
+	sidecarID, err := createSidecar(t, sb)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(creds.Token).To(gomega.Equal("tok"))
+	g.Expect(sidecarID).To(gomega.Equal(persistentSidecarID))
 	g.Expect(sb.SandboxID).To(gomega.Equal(persistentSessionID))
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
@@ -192,16 +213,36 @@ func TestPersistentSandboxTunnelsMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-func TestPersistentSandboxRetriesOnReplacementSessionMock(t *testing.T) {
+func TestPersistentSandboxCreateConnectTokenMock(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 	ctx := t.Context()
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
+	// Connect tokens are created for the persistent Sandbox, not its current session.
+	grpcmock.HandleUnary(mock, "PersistentSandboxCreateConnectToken",
+		func(req *pb.PersistentSandboxCreateConnectTokenRequest) (*pb.PersistentSandboxCreateConnectTokenResponse, error) {
+			g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
+			g.Expect(req.GetPort()).To(gomega.Equal(uint32(3000)))
+			g.Expect(req.GetUserMetadata()).To(gomega.Equal("alice"))
+			return pb.PersistentSandboxCreateConnectTokenResponse_builder{Url: "https://a-1-abcde.modal.host", Token: "tok"}.Build(), nil
+		})
+	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{Port: 3000, UserMetadata: "alice"})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(creds.URL).To(gomega.Equal("https://a-1-abcde.modal.host"))
+	g.Expect(creds.Token).To(gomega.Equal("tok"))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestPersistentSandboxRetriesOnReplacementSessionMock(t *testing.T) {
+	g := gomega.NewWithT(t)
+	mock := newGRPCMockClient(t)
+	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
+
 	// The session stopped: the first attempt fails, the Sandbox is resumed
 	// into a new session and the operation is retried there.
-	handleConnectToken(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
+	handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
 	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
 		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
 			g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
@@ -215,22 +256,20 @@ func TestPersistentSandboxRetriesOnReplacementSessionMock(t *testing.T) {
 		func(req *pb.PersistentSandboxResumeRequest) (*pb.PersistentSandboxResumeResponse, error) {
 			return pb.PersistentSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
 		})
-	handleConnectToken(mock, g, persistentSecondSessionID, nil)
+	handleSidecarCreate(mock, g, persistentSecondSessionID, nil)
 
-	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{})
+	sidecarID, err := createSidecar(t, sb)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(creds.Token).To(gomega.Equal("tok"))
+	g.Expect(sidecarID).To(gomega.Equal(persistentSidecarID))
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestPersistentSandboxSwitchesToRunningSessionWithoutResumeMock(t *testing.T) {
-	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
-	ctx := t.Context()
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
-	handleConnectToken(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
+	handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
 	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
 		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
 			return pb.PersistentSandboxGetResponse_builder{
@@ -238,22 +277,20 @@ func TestPersistentSandboxSwitchesToRunningSessionWithoutResumeMock(t *testing.T
 				SandboxId:           persistentSecondSessionID,
 			}.Build(), nil
 		})
-	handleConnectToken(mock, g, persistentSecondSessionID, nil)
+	handleSidecarCreate(mock, g, persistentSecondSessionID, nil)
 
-	_, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{})
+	_, err := createSidecar(t, sb)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestPersistentSandboxDoesNotRetryOnRunningSessionMock(t *testing.T) {
-	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
-	ctx := t.Context()
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
 	// The failure wasn't caused by the session having stopped, so it surfaces.
-	handleConnectToken(mock, g, persistentSessionID, status.Error(codes.Internal, "boom"))
+	handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.Internal, "boom"))
 	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
 		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
 			return pb.PersistentSandboxGetResponse_builder{
@@ -262,13 +299,12 @@ func TestPersistentSandboxDoesNotRetryOnRunningSessionMock(t *testing.T) {
 			}.Build(), nil
 		})
 
-	_, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{})
-	g.Expect(status.Code(err)).To(gomega.Equal(codes.Internal))
+	_, err := createSidecar(t, sb)
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("boom")))
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestPersistentSandboxTerminateMock(t *testing.T) {
-	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 	ctx := t.Context()
@@ -295,9 +331,9 @@ func TestPersistentSandboxTerminateMock(t *testing.T) {
 	g.Expect(code).To(gomega.HaveValue(gomega.Equal(137)))
 
 	// A terminated persistent Sandbox is not resumed on use.
-	handleConnectToken(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
-	_, err = sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{})
-	g.Expect(status.Code(err)).To(gomega.Equal(codes.NotFound))
+	handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
+	_, err = createSidecar(t, sb)
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("sandbox not found")))
 
 	var invalid modal.InvalidError
 	g.Expect(errors.As(sb.ExperimentalResume(ctx, nil), &invalid)).To(gomega.BeTrue())

@@ -4,6 +4,7 @@ import {
   FileDescriptor,
   GenericResult,
   GenericResult_GenericStatus,
+  PersistentSandboxCreateConnectTokenRequest,
   PersistentSandboxCreateRequest,
   PersistentSandboxGetRequest,
   PersistentSandboxResumeRequest,
@@ -459,7 +460,16 @@ export class SandboxImplPersistent implements SandboxImpl {
     port: number,
     userMetadata: string | undefined,
   ): Promise<SandboxCreateConnectCredentials> {
-    return await this.#run((s) => s.createConnectToken(port, userMetadata));
+    // Connect tokens are addressed by the persistent Sandbox, not a session, so
+    // they keep working across sessions and are created without resuming it.
+    const resp = await this.client.cpClient.persistentSandboxCreateConnectToken(
+      PersistentSandboxCreateConnectTokenRequest.create({
+        persistentSandboxId: this.persistentSandboxId,
+        userMetadata,
+        port,
+      }),
+    );
+    return { url: resp.url, token: resp.token };
   }
 
   async terminate(): Promise<void> {

@@ -446,13 +446,18 @@ class SandboxImplPersistent:
     async def create_connect_token(
         self, req: api_pb2.SandboxCreateConnectTokenRequest
     ) -> api_pb2.SandboxCreateConnectTokenResponse:
-        def create(d: SandboxImplV2) -> Awaitable[api_pb2.SandboxCreateConnectTokenResponse]:
-            delegate_req = api_pb2.SandboxCreateConnectTokenRequest()
-            delegate_req.CopyFrom(req)
-            delegate_req.sandbox_id = d.sandbox_id
-            return d.create_connect_token(delegate_req)
-
-        return await self._run(create)
+        # Connect tokens are addressed by the persistent Sandbox, not a session, so they keep working across
+        # sessions and are created without resuming it.
+        persistent_req = api_pb2.PersistentSandboxCreateConnectTokenRequest(
+            persistent_sandbox_id=self._persistent_sandbox_id, user_metadata=req.user_metadata
+        )
+        if req.HasField("port"):
+            persistent_req.port = req.port
+        client = await self._get_client()
+        resp = await client._stub.PersistentSandboxCreateConnectToken(
+            persistent_req, metadata=await auth_metadata(client)
+        )
+        return api_pb2.SandboxCreateConnectTokenResponse(url=resp.url, token=resp.token)
 
     async def wait_until_ready(self, timeout: int) -> None:
         await self._run(lambda d: d.wait_until_ready(timeout))
