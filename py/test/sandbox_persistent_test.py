@@ -19,6 +19,7 @@ from modal.exception import (
 )
 from modal.experimental import OutboundPolicy
 from modal.sandbox._impl_persistent import (
+    PERSISTENT_SANDBOX_DRAIN_TIMEOUT,
     PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT,
     PERSISTENT_SANDBOX_SESSION_TIMEOUT,
 )
@@ -56,6 +57,7 @@ def test_persistent_sandbox_create(app, client, servicer):
     assert not req.definition.name
     assert req.definition.timeout_secs == PERSISTENT_SANDBOX_SESSION_TIMEOUT
     assert req.definition.idle_timeout_secs == PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT
+    assert req.definition.drain_timeout_secs == PERSISTENT_SANDBOX_DRAIN_TIMEOUT
     assert not servicer.sandbox_create_v2_requests
     assert sb.poll() is None
 
@@ -72,6 +74,33 @@ def test_persistent_sandbox_hydrates_client(app, client, container_client, servi
         assert sb._is_hydrated
         assert ctx.calls == []
     assert from_env.await_count == (0 if explicit_client else 1)
+
+
+def test_persistent_sandbox_drain_timeout(app, client, servicer):
+    _create(app, client, experimental_options={"drain_timeout_secs": 300, "enable_exit_snapshot": True})
+
+    [req] = servicer.persistent_sandbox_create_requests
+    assert req.definition.drain_timeout_secs == 300
+    assert dict(req.definition.experimental_options_v2) == {"enable_exit_snapshot": "True"}
+
+
+def test_persistent_sandbox_rejects_drain_timeout_of_wrong_type(app, client, servicer):
+    with pytest.raises(InvalidError, match="must be an int"):
+        _create(app, client, experimental_options={"drain_timeout_secs": "60"})
+    assert not servicer.persistent_sandbox_create_requests
+
+
+@pytest.mark.parametrize("drain_timeout", [0, 601])
+def test_persistent_sandbox_rejects_drain_timeout_out_of_range(app, client, servicer, drain_timeout):
+    with pytest.raises(InvalidError, match="must be between 1 and 600 seconds"):
+        _create(app, client, experimental_options={"drain_timeout_secs": drain_timeout})
+    assert not servicer.persistent_sandbox_create_requests
+
+
+def test_regular_sandbox_rejects_drain_timeout(app, client, servicer):
+    with pytest.raises(InvalidError, match="only supported for experimental persistent Sandboxes"):
+        Sandbox.create(app=app, experimental_options={"drain_timeout_secs": 60}, client=client)
+    assert not servicer.sandbox_create_v2_requests
 
 
 def test_persistent_sandbox_rejects_name(app, client, servicer):

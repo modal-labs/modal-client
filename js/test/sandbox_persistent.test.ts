@@ -75,10 +75,38 @@ test("create sends a PersistentSandboxCreate with the session timeouts", async (
   expect(createReq.definition.name).toBeFalsy();
   expect(createReq.definition.timeoutSecs).toBe(3600);
   expect(createReq.definition.idleTimeoutSecs).toBe(300);
+  expect(createReq.definition.drainTimeoutSecs).toBe(60);
   expect(sb.sandboxId).toBe(SESSION_1);
   mock.handleUnary("/PersistentSandboxGet", () => ({ sandboxId: SESSION_1 }));
   expect(await sb.poll()).toBeNull();
   mock.assertExhausted();
+});
+
+test("create sends the requested drain timeout", async () => {
+  const { createReq } = await createPersistent({
+    experimentalOptions: {
+      drain_timeout_secs: 300,
+      enable_exit_snapshot: true,
+    },
+  });
+  expect(createReq.definition.drainTimeoutSecs).toBe(300);
+  expect(createReq.definition.experimentalOptionsV2).toEqual({
+    enable_exit_snapshot: "true",
+  });
+});
+
+test("create sends the default drain timeout", async () => {
+  const { createReq } = await createPersistent();
+  expect(createReq.definition.drainTimeoutSecs).toBe(60);
+});
+
+test("create rejects a drain timeout for an ordinary Sandbox", async () => {
+  const { mc, app, image } = setup();
+  await expect(
+    mc.sandboxes.create(app, image, {
+      experimentalOptions: { drain_timeout_secs: 60 },
+    }),
+  ).rejects.toThrow(InvalidError);
 });
 
 test.each<[string, SandboxCreateParams]>([
@@ -90,6 +118,19 @@ test.each<[string, SandboxCreateParams]>([
   ["env", { env: { A: "1" } }],
   ["tags", { tags: { a: "b" } }],
   ["experimentalEnableSnapshot", { experimentalEnableSnapshot: true }],
+  ["a zero drain timeout", { experimentalOptions: { drain_timeout_secs: 0 } }],
+  [
+    "a drain timeout over 10 minutes",
+    { experimentalOptions: { drain_timeout_secs: 601 } },
+  ],
+  [
+    "a fractional drain timeout",
+    { experimentalOptions: { drain_timeout_secs: 1.5 } },
+  ],
+  [
+    "a drain timeout that isn't a number",
+    { experimentalOptions: { drain_timeout_secs: "60" } },
+  ],
 ])("create rejects %s for persistent Sandboxes", async (_name, params) => {
   const { mc, app, image } = setup();
   // No RPC handlers are registered, so any request would fail with a

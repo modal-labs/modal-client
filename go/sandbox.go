@@ -239,7 +239,7 @@ type SandboxCreateParams struct {
 	ReadinessProbe             *Probe            // Probe used to determine when the Sandbox is ready. If not configured, the Sandbox is ready when it starts.
 	Name                       string            // Optional name for the Sandbox. Unique within an App.
 	Tags                       map[string]string // Tags to attach to the Sandbox. Filterable via SandboxList.
-	ExperimentalOptions        map[string]any    // Experimental options. Values must be bool or string. Set "enable_exit_snapshot" to true to capture a filesystem snapshot when the Sandbox exits, retrievable with Sandbox.ExperimentalGetExitSnapshot.
+	ExperimentalOptions        map[string]any    // Experimental options. Values must be bool or string, except as noted. Set "enable_exit_snapshot" to true to capture a filesystem snapshot when the Sandbox exits, retrievable with Sandbox.ExperimentalGetExitSnapshot. For persistent Sandboxes, set "drain_timeout_secs" to an int to choose how many seconds running exec commands may finish when the Sandbox pauses at its session or idle timeout; new exec commands are refused meanwhile. It defaults to 60.
 	CustomDomain               string            // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
 	IncludeOidcIdentityToken   bool              // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
 	ExperimentalEnableSnapshot bool              // Enable memory snapshots.
@@ -249,6 +249,9 @@ type SandboxCreateParams struct {
 	// Deprecated: Use OutboundPolicy with OutboundRouteHTTPS routes that set HeaderReplacements instead. ExperimentalOutboundPolicy will be removed in version 0.12.0.
 	ExperimentalOutboundPolicy *ExperimentalOutboundPolicy
 	OutboundPolicy             *OutboundPolicy // Route-based outbound network policy. Nil keeps all outbound traffic allowed. Cannot be used with BlockNetwork, OutboundCIDRAllowlist, OutboundDomainAllowlist or ExperimentalOutboundPolicy. Can be replaced later with Sandbox.SetOutboundPolicy.
+
+	// How long a persistent Sandbox session drains, from the "drain_timeout_secs" experimental option or its default.
+	drainTimeout time.Duration
 }
 
 // buildOutboundNetworkAccess builds the outbound network policy for the given
@@ -488,6 +491,15 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		idleTimeoutSecs = &v
 	}
 
+	if _, set := params.ExperimentalOptions[drainTimeoutSecsOption]; set && !params.ExperimentalPersistent {
+		return nil, InvalidError{Exception: `Experimental option "drain_timeout_secs" is only supported for experimental persistent Sandboxes.`}
+	}
+	var drainTimeoutSecs *uint32
+	if params.drainTimeout != 0 {
+		v := uint32(params.drainTimeout / time.Second)
+		drainTimeoutSecs = &v
+	}
+
 	var milliCPU, milliCPUMax *uint32
 	if params.CPU == 0 && params.CPULimit > 0 {
 		return nil, fmt.Errorf("must also specify non-zero CPU request when CPULimit is specified")
@@ -545,6 +557,9 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	// but for now we deliberately restrict values to booleans and strings.
 	protoExperimentalOptions := map[string]string{}
 	for name, value := range params.ExperimentalOptions {
+		if name == drainTimeoutSecsOption {
+			continue
+		}
 		switch v := value.(type) {
 		case bool:
 			protoExperimentalOptions[name] = strconv.FormatBool(v)
@@ -574,6 +589,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			SecretIds:                  secretIds,
 			TimeoutSecs:                timeoutSecs,
 			IdleTimeoutSecs:            idleTimeoutSecs,
+			DrainTimeoutSecs:           drainTimeoutSecs,
 			Workdir:                    workdir,
 			NetworkAccess:              networkAccess,
 			ExperimentalOutboundPolicy: params.ExperimentalOutboundPolicy.toProto(),

@@ -288,7 +288,9 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
                 Probe used to determine when the Sandbox is ready.
                 If not configured, the Sandbox is ready when it starts.
             verbose: Enable verbose logging for sandbox operations.
-            experimental_options: Experimental options to pass to the sandbox.
+            experimental_options: Experimental options to pass to the sandbox. For persistent Sandboxes,
+                `drain_timeout_secs` sets how long, in seconds, running exec commands may finish when the Sandbox
+                pauses at its session or idle timeout. New exec commands are refused meanwhile. Defaults to 60.
             _experimental_enable_snapshot: Enable memory snapshots.
             client: Modal Client to use for the sandbox.
             environment_name: *DEPRECATED* Optionally override the default environment
@@ -333,6 +335,13 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             )
             outbound_cidr_allowlist = cidr_allowlist
 
+        experimental_options = dict(experimental_options or {})
+        drain_timeout = experimental_options.pop("drain_timeout_secs", None)
+        if drain_timeout is not None and (isinstance(drain_timeout, bool) or not isinstance(drain_timeout, int)):
+            raise InvalidError(
+                f'`experimental_options["drain_timeout_secs"]` must be an int, got {type(drain_timeout).__name__}.'
+            )
+
         create_args = SandboxCreateArgs(
             args=args,
             image=image,
@@ -369,6 +378,7 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
             include_oidc_identity_token=include_oidc_identity_token,
             runtime=runtime,
             persistent=_experimental_persistent,
+            drain_timeout=drain_timeout,
         )
         impl = await impl_class_for_create_args(create_args).create(create_args, app=app, client=client)
         return _Sandbox._from_impl(impl)

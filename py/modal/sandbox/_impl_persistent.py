@@ -60,6 +60,9 @@ _NON_RECOVERABLE_ERRORS = (InvalidError, ClientClosed)
 # Lifetime limits of each session. A session that hits one is paused, and resumed on next use.
 PERSISTENT_SANDBOX_SESSION_TIMEOUT = 60 * 60
 PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT = 5 * 60
+# How long a session lets running commands finish before it stops, by default and at most.
+PERSISTENT_SANDBOX_DRAIN_TIMEOUT = 60
+PERSISTENT_SANDBOX_MAX_DRAIN_TIMEOUT = 10 * 60
 
 # How long to retry resuming while the previous session is still saving its exit snapshot.
 _RESUME_RETRY_TIMEOUT = 120.0
@@ -178,10 +181,19 @@ class SandboxImplPersistent:
     ) -> "SandboxImpl":
         if create_args.timeout is not None or create_args.idle_timeout is not None:
             raise InvalidError("Persistent Sandboxes require `timeout=None` and don't support `idle_timeout`.")
+        drain_timeout = create_args.drain_timeout
+        if drain_timeout is None:
+            drain_timeout = PERSISTENT_SANDBOX_DRAIN_TIMEOUT
+        elif not 0 < drain_timeout <= PERSISTENT_SANDBOX_MAX_DRAIN_TIMEOUT:
+            raise InvalidError(
+                '`experimental_options["drain_timeout_secs"]` must be between 1 and '
+                f"{PERSISTENT_SANDBOX_MAX_DRAIN_TIMEOUT} seconds."
+            )
         create_args = dataclasses.replace(
             create_args,
             timeout=PERSISTENT_SANDBOX_SESSION_TIMEOUT,
             idle_timeout=PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT,
+            drain_timeout=drain_timeout,
         )
         if create_args.name is not None:
             raise InvalidError("Named persistent Sandboxes are not supported yet.")

@@ -3155,3 +3155,42 @@ func TestPersistentExecNeverRan(t *testing.T) {
 	g.Expect(execNeverRan(status.Error(codes.Internal, "exec failed"))).To(gomega.BeFalse())
 	g.Expect(execNeverRan(InvalidError{Exception: "bad workdir"})).To(gomega.BeFalse())
 }
+
+func TestSandboxCreateDrainTimeout(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		ExperimentalPersistent: true,
+		ExperimentalOptions:    map[string]any{"drain_timeout_secs": 300, "enable_exit_snapshot": true},
+		drainTimeout:           5 * time.Minute,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetDrainTimeoutSecs()).To(gomega.Equal(uint32(300)))
+	g.Expect(req.GetDefinition().GetExperimentalOptionsV2()).To(gomega.Equal(map[string]string{"enable_exit_snapshot": "true"}))
+
+	var invalidErr InvalidError
+	_, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		ExperimentalOptions: map[string]any{"drain_timeout_secs": 60},
+	})
+	g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue(), "ordinary Sandboxes don't drain")
+}
+
+func TestPersistentDrainTimeout(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	drainTimeout, err := persistentDrainTimeout(nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(drainTimeout).To(gomega.Equal(time.Minute))
+
+	drainTimeout, err = persistentDrainTimeout(map[string]any{"drain_timeout_secs": 300})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(drainTimeout).To(gomega.Equal(5 * time.Minute))
+
+	for _, value := range []any{0, -1, 601, "60", 60.0, time.Minute} {
+		_, err := persistentDrainTimeout(map[string]any{"drain_timeout_secs": value})
+		var invalidErr InvalidError
+		g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue(), "%#v", value)
+	}
+}

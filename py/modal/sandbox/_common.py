@@ -452,6 +452,7 @@ class SandboxCreateArgs:
     include_oidc_identity_token: bool = False
     runtime: SandboxRuntime | None = None
     persistent: bool = False
+    drain_timeout: int | None = None
 
 
 class SandboxCreateCommon:
@@ -465,6 +466,10 @@ class SandboxCreateCommon:
         a = create_args
         if a.timeout is None:
             raise InvalidError("`timeout=None` is only supported for experimental persistent Sandboxes.")
+        if a.drain_timeout is not None and not a.persistent:
+            raise InvalidError(
+                '`experimental_options["drain_timeout_secs"]` is only supported for experimental persistent Sandboxes.'
+            )
         _validate_exec_args(a.args)
         if a.name is not None:
             check_object_name(a.name, "Sandbox")
@@ -563,6 +568,7 @@ class SandboxCreateCommon:
             resources=convert_fn_config_to_resources_config(cpu=a.cpu, memory=a.memory, gpu=a.gpu, ephemeral_disk=None),
             timeout_secs=self.timeout,
             idle_timeout_secs=a.idle_timeout,
+            drain_timeout_secs=a.drain_timeout,
             workdir=a.workdir,
             cloud_provider_str=a.cloud if a.cloud else None,  # pyright: ignore[reportArgumentType]
             runtime=a.runtime or config.get("function_runtime"),

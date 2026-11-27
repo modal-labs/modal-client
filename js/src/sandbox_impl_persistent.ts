@@ -28,6 +28,7 @@ import {
   type SandboxUpdateNetworkPolicyParams,
   type Tunnel,
   buildSandboxCreateV2RequestProto,
+  DRAIN_TIMEOUT_SECS_OPTION,
   getReturnCode,
   hydrateSandboxSecrets,
   warnDeprecatedNetworkParams,
@@ -69,6 +70,41 @@ import {
 export const PERSISTENT_SANDBOX_SESSION_TIMEOUT_MS = 60 * 60 * 1000;
 /** @internal @hidden */
 export const PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * How long a session lets running commands finish before it stops, by default
+ * and at most.
+ *
+ * @internal
+ * @hidden
+ */
+export const PERSISTENT_SANDBOX_DRAIN_TIMEOUT_MS = 60 * 1000;
+/** @internal @hidden */
+export const PERSISTENT_SANDBOX_MAX_DRAIN_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * The drain timeout the `drain_timeout_secs` experimental option sets, in
+ * seconds, or the default when it is unset.
+ */
+function persistentDrainTimeoutSecs(
+  options: Record<string, any> | undefined,
+): number {
+  const value: unknown = options?.[DRAIN_TIMEOUT_SECS_OPTION];
+  if (value === undefined) {
+    return PERSISTENT_SANDBOX_DRAIN_TIMEOUT_MS / 1000;
+  }
+  const maxSecs = PERSISTENT_SANDBOX_MAX_DRAIN_TIMEOUT_MS / 1000;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value <= 0 ||
+    value > maxSecs
+  ) {
+    throw new InvalidError(
+      `Experimental option "drain_timeout_secs" must be a whole number between 1 and ${maxSecs}, got ${String(value)}.`,
+    );
+  }
+  return value;
+}
 
 // How long to retry resuming while the previous session is still saving its state.
 const RESUME_RETRY_TIMEOUT_MS = 120_000;
@@ -170,6 +206,9 @@ export class SandboxImplPersistent implements SandboxImpl {
         "Named persistent Sandboxes are not supported yet.",
       );
     }
+    const drainTimeoutSecs = persistentDrainTimeoutSecs(
+      params.experimentalOptions,
+    );
     if (params.gpu || params.pty) {
       throw new InvalidError(
         "GPUs and PTYs are not supported by persistent Sandboxes yet.",
@@ -220,6 +259,8 @@ export class SandboxImplPersistent implements SandboxImpl {
         secrets: resolvable,
         timeoutMs: PERSISTENT_SANDBOX_SESSION_TIMEOUT_MS,
         idleTimeoutMs: PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT_MS,
+        experimentalPersistent: true,
+        drainTimeoutSecs,
       },
       sources,
     );

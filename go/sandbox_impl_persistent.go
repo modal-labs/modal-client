@@ -21,6 +21,35 @@ const (
 	persistentSandboxSessionIdleTimeout = 5 * time.Minute
 )
 
+// How long a session lets running commands finish before it stops, by
+// default and at most.
+const (
+	persistentSandboxDrainTimeout    = time.Minute
+	persistentSandboxMaxDrainTimeout = 10 * time.Minute
+)
+
+// The experimental option that sets a persistent Sandbox's drain timeout, in
+// whole seconds.
+const drainTimeoutSecsOption = "drain_timeout_secs"
+
+// persistentDrainTimeout returns the drain timeout the "drain_timeout_secs"
+// experimental option sets, or the default when it is unset.
+func persistentDrainTimeout(options map[string]any) (time.Duration, error) {
+	value, set := options[drainTimeoutSecsOption]
+	if !set {
+		return persistentSandboxDrainTimeout, nil
+	}
+	secs, ok := value.(int)
+	if !ok {
+		return 0, InvalidError{Exception: fmt.Sprintf(`Experimental option "drain_timeout_secs" must be an int, got %T.`, value)}
+	}
+	drainTimeout := time.Duration(secs) * time.Second
+	if drainTimeout <= 0 || drainTimeout > persistentSandboxMaxDrainTimeout {
+		return 0, InvalidError{Exception: fmt.Sprintf(`Experimental option "drain_timeout_secs" must be between 1 and %d, got %d.`, int(persistentSandboxMaxDrainTimeout/time.Second), secs)}
+	}
+	return drainTimeout, nil
+}
+
 // How long to retry resuming while the previous session is still saving its state.
 const (
 	persistentResumeRetryTimeout  = 120 * time.Second
@@ -135,8 +164,12 @@ func createSandboxPersistent(ctx context.Context, client *Client, app *App, imag
 	if len(params.Env) > 0 || len(params.Tags) > 0 {
 		return nil, InvalidError{Exception: "Env and Tags are not supported by persistent Sandboxes yet."}
 	}
+	drainTimeout, err := persistentDrainTimeout(params.ExperimentalOptions)
+	if err != nil {
+		return nil, err
+	}
 
-	image, err := image.Build(ctx, app, nil)
+	image, err = image.Build(ctx, app, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +194,7 @@ func createSandboxPersistent(ctx context.Context, client *Client, app *App, imag
 	definitionParams.Secrets = resolvable
 	definitionParams.Timeout = persistentSandboxSessionTimeout
 	definitionParams.IdleTimeout = persistentSandboxSessionIdleTimeout
+	definitionParams.drainTimeout = drainTimeout
 	v2Req, err := buildSandboxCreateV2RequestProto(app.AppID, image.ImageID, definitionParams, sources)
 	if err != nil {
 		return nil, err

@@ -422,7 +422,11 @@ export type SandboxCreateParams = {
   tags?: Record<string, string>;
 
   /**
-   * Optional experimental options. Values must be booleans or strings.
+   * Optional experimental options. Values must be booleans or strings, except
+   * as noted. For persistent Sandboxes, set `drain_timeout_secs` to a whole
+   * number to choose how many seconds running exec commands may finish when
+   * the Sandbox pauses at its session or idle timeout. New exec commands are
+   * refused meanwhile. It defaults to 60.
    */
   experimentalOptions?: Record<string, any>;
 
@@ -437,6 +441,28 @@ export type SandboxCreateParams = {
   /** Enable memory snapshots. */
   experimentalEnableSnapshot?: boolean;
   experimentalPersistent?: boolean;
+};
+
+/**
+ * The experimental option that sets a persistent Sandbox's drain timeout, in
+ * whole seconds.
+ * @internal
+ * @hidden
+ */
+export const DRAIN_TIMEOUT_SECS_OPTION = "drain_timeout_secs";
+
+/**
+ * {@link SandboxCreateParams}, plus what the SDK derives from them for the
+ * Sandbox's definition.
+ * @internal
+ * @hidden
+ */
+export type SandboxDefinitionParams = SandboxCreateParams & {
+  /**
+   * How long a persistent Sandbox session drains, from the
+   * `drain_timeout_secs` experimental option or its default.
+   */
+  drainTimeoutSecs?: number;
 };
 
 /**
@@ -573,7 +599,7 @@ export function warnDeprecatedNetworkParams(
 export async function buildSandboxCreateRequestProto(
   appId: string,
   imageId: string,
-  params: SandboxCreateParams = {},
+  params: SandboxDefinitionParams = {},
 ): Promise<SandboxCreateRequest> {
   checkForRenamedParams(params, {
     memory: "memoryMiB",
@@ -602,6 +628,15 @@ export async function buildSandboxCreateRequestProto(
   if (params.idleTimeoutMs && params.idleTimeoutMs % 1000 !== 0) {
     throw new Error(
       `idleTimeoutMs must be a multiple of 1000ms, got ${params.idleTimeoutMs}`,
+    );
+  }
+
+  if (
+    params.experimentalOptions?.[DRAIN_TIMEOUT_SECS_OPTION] !== undefined &&
+    !params.experimentalPersistent
+  ) {
+    throw new InvalidError(
+      'Experimental option "drain_timeout_secs" is only supported for experimental persistent Sandboxes.',
     );
   }
 
@@ -761,6 +796,9 @@ export async function buildSandboxCreateRequestProto(
     params.experimentalOptions
       ? Object.entries(params.experimentalOptions).reduce(
           (acc, [name, value]) => {
+            if (name === DRAIN_TIMEOUT_SECS_OPTION) {
+              return acc;
+            }
             if (typeof value !== "boolean" && typeof value !== "string") {
               throw new Error(
                 `experimental option '${name}' must be a boolean or string, got ${value}`,
@@ -792,6 +830,7 @@ export async function buildSandboxCreateRequestProto(
         params.idleTimeoutMs != undefined
           ? params.idleTimeoutMs / 1000
           : undefined,
+      drainTimeoutSecs: params.drainTimeoutSecs,
       workdir: params.workdir ?? undefined,
       networkAccess,
       // eslint-disable-next-line @typescript-eslint/no-deprecated -- implements the deprecated parameter
@@ -829,7 +868,7 @@ export async function buildSandboxCreateRequestProto(
 export async function buildSandboxCreateV2RequestProto(
   appId: string,
   imageId: string,
-  params: SandboxCreateParams = {},
+  params: SandboxDefinitionParams = {},
   secretSources: SecretSource[] = [],
 ): Promise<SandboxCreateV2Request> {
   if (params.gpu) {

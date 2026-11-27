@@ -4430,6 +4430,11 @@ message Sandbox {
   // sandbox use the value from the sandbox's create request, and the value on
   // a sidecar's own definition is ignored.
   OidcSubjectVersion oidc_subject_version = 45;
+
+  // How long the Sandbox drains before it stops at its timeout or when idle:
+  // it refuses new exec commands and lets running ones finish for up to this
+  // long. Only persistent Sandboxes accept it for now.
+  optional uint32 drain_timeout_secs = 46;
 }
 
 message SandboxContainerCreateV2Request {
