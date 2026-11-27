@@ -3989,6 +3989,20 @@ message PTYInfo {
   bool no_terminate_on_idle_stdin = 8;
 }
 
+message PersistentSandboxCreateConnectTokenRequest {
+  string persistent_sandbox_id = 1;
+  string user_metadata = 2;
+  // Uses port 8080 if unspecified.
+  optional uint32 port = 3;
+}
+
+message PersistentSandboxCreateConnectTokenResponse {
+  // Stays the same across the persistent sandbox's sessions for a given port
+  // and user metadata.
+  string url = 1;
+  string token = 2;
+}
+
 message PersistentSandboxCreateRequest {
   string app_id = 1;
   Sandbox definition = 2;
@@ -6352,6 +6366,7 @@ service ModalClient {
 
   // Persistent sandboxes
   rpc PersistentSandboxCreate(PersistentSandboxCreateRequest) returns (PersistentSandboxCreateResponse);
+  rpc PersistentSandboxCreateConnectToken(PersistentSandboxCreateConnectTokenRequest) returns (PersistentSandboxCreateConnectTokenResponse);
   rpc PersistentSandboxGet(PersistentSandboxGetRequest) returns (PersistentSandboxGetResponse);
   rpc PersistentSandboxResume(PersistentSandboxResumeRequest) returns (PersistentSandboxResumeResponse);
   rpc PersistentSandboxTerminate(PersistentSandboxTerminateRequest) returns (PersistentSandboxTerminateResponse);

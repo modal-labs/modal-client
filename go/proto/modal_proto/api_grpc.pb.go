@@ -173,6 +173,7 @@ const (
 	ModalClient_MountPutFile_FullMethodName                           = "/modal.client.ModalClient/MountPutFile"
 	ModalClient_ObjectSuggest_FullMethodName                          = "/modal.client.ModalClient/ObjectSuggest"
 	ModalClient_PersistentSandboxCreate_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxCreate"
+	ModalClient_PersistentSandboxCreateConnectToken_FullMethodName    = "/modal.client.ModalClient/PersistentSandboxCreateConnectToken"
 	ModalClient_PersistentSandboxGet_FullMethodName                   = "/modal.client.ModalClient/PersistentSandboxGet"
 	ModalClient_PersistentSandboxResume_FullMethodName                = "/modal.client.ModalClient/PersistentSandboxResume"
 	ModalClient_PersistentSandboxTerminate_FullMethodName             = "/modal.client.ModalClient/PersistentSandboxTerminate"
@@ -495,6 +496,7 @@ type ModalClientClient interface {
 	ObjectSuggest(ctx context.Context, in *ObjectSuggestRequest, opts ...grpc.CallOption) (*ObjectSuggestResponse, error)
 	// Persistent sandboxes
 	PersistentSandboxCreate(ctx context.Context, in *PersistentSandboxCreateRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateResponse, error)
+	PersistentSandboxCreateConnectToken(ctx context.Context, in *PersistentSandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateConnectTokenResponse, error)
 	PersistentSandboxGet(ctx context.Context, in *PersistentSandboxGetRequest, opts ...grpc.CallOption) (*PersistentSandboxGetResponse, error)
 	PersistentSandboxResume(ctx context.Context, in *PersistentSandboxResumeRequest, opts ...grpc.CallOption) (*PersistentSandboxResumeResponse, error)
 	PersistentSandboxTerminate(ctx context.Context, in *PersistentSandboxTerminateRequest, opts ...grpc.CallOption) (*PersistentSandboxTerminateResponse, error)
@@ -2192,6 +2194,16 @@ func (c *modalClientClient) PersistentSandboxCreate(ctx context.Context, in *Per
 	return out, nil
 }
 
+func (c *modalClientClient) PersistentSandboxCreateConnectToken(ctx context.Context, in *PersistentSandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*PersistentSandboxCreateConnectTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersistentSandboxCreateConnectTokenResponse)
+	err := c.cc.Invoke(ctx, ModalClient_PersistentSandboxCreateConnectToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) PersistentSandboxGet(ctx context.Context, in *PersistentSandboxGetRequest, opts ...grpc.CallOption) (*PersistentSandboxGetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PersistentSandboxGetResponse)
@@ -3871,6 +3883,7 @@ type ModalClientServer interface {
 	ObjectSuggest(context.Context, *ObjectSuggestRequest) (*ObjectSuggestResponse, error)
 	// Persistent sandboxes
 	PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error)
+	PersistentSandboxCreateConnectToken(context.Context, *PersistentSandboxCreateConnectTokenRequest) (*PersistentSandboxCreateConnectTokenResponse, error)
 	PersistentSandboxGet(context.Context, *PersistentSandboxGetRequest) (*PersistentSandboxGetResponse, error)
 	PersistentSandboxResume(context.Context, *PersistentSandboxResumeRequest) (*PersistentSandboxResumeResponse, error)
 	PersistentSandboxTerminate(context.Context, *PersistentSandboxTerminateRequest) (*PersistentSandboxTerminateResponse, error)
@@ -4484,6 +4497,9 @@ func (UnimplementedModalClientServer) ObjectSuggest(context.Context, *ObjectSugg
 }
 func (UnimplementedModalClientServer) PersistentSandboxCreate(context.Context, *PersistentSandboxCreateRequest) (*PersistentSandboxCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxCreate not implemented")
+}
+func (UnimplementedModalClientServer) PersistentSandboxCreateConnectToken(context.Context, *PersistentSandboxCreateConnectTokenRequest) (*PersistentSandboxCreateConnectTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxCreateConnectToken not implemented")
 }
 func (UnimplementedModalClientServer) PersistentSandboxGet(context.Context, *PersistentSandboxGetRequest) (*PersistentSandboxGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PersistentSandboxGet not implemented")
@@ -7544,6 +7560,24 @@ func _ModalClient_PersistentSandboxCreate_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).PersistentSandboxCreate(ctx, req.(*PersistentSandboxCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_PersistentSandboxCreateConnectToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersistentSandboxCreateConnectTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).PersistentSandboxCreateConnectToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_PersistentSandboxCreateConnectToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).PersistentSandboxCreateConnectToken(ctx, req.(*PersistentSandboxCreateConnectTokenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -10711,6 +10745,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PersistentSandboxCreate",
 			Handler:    _ModalClient_PersistentSandboxCreate_Handler,
+		},
+		{
+			MethodName: "PersistentSandboxCreateConnectToken",
+			Handler:    _ModalClient_PersistentSandboxCreateConnectToken_Handler,
 		},
 		{
 			MethodName: "PersistentSandboxGet",
