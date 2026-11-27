@@ -218,6 +218,14 @@ export class SandboxTimeoutError extends Error {
   }
 }
 
+/** A persistent Sandbox's session has stopped and the Sandbox can be resumed. */
+export class SandboxPaused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxPaused";
+  }
+}
+
 /** Snapshot operation is done and failed. Polling again will not produce an Image; filesystem state is gone. */
 export class SnapshotCreationError extends Error {
   constructor(message: string) {

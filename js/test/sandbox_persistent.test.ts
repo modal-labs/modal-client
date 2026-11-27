@@ -8,6 +8,7 @@ import {
   OutboundPolicy,
   OutboundRoute,
   Sandbox,
+  SandboxPaused,
   type SandboxCreateParams,
   TimeoutError,
 } from "modal";
@@ -151,9 +152,12 @@ test.each(["running", "paused", "terminated", "missing", "stale"])(
           mock.handleUnary("/PersistentSandboxGet", () => ({
             currentSandboxId: undefined,
           }));
+          await expect(createSidecar(sb)).rejects.toThrow(SandboxPaused);
+          mock.assertExhausted();
           mock.handleUnary("/PersistentSandboxResume", () => ({
             sandboxId: SESSION_2,
           }));
+          await sb.experimentalResume();
         }
         expectSidecarCreate(mock, state === "running" ? SESSION_1 : SESSION_2);
         expect(await createSidecar(sb)).toBe(SIDECAR_ID);
@@ -385,7 +389,7 @@ test("connect tokens are created for the persistent Sandbox, not its session", a
   mock.assertExhausted();
 });
 
-test("a failed operation resumes the persistent Sandbox and is retried", async () => {
+test("a failed operation on a stopped session requires explicit resume", async () => {
   const { sb, mock } = await createPersistent();
 
   expectSidecarCreate(
@@ -397,19 +401,25 @@ test("a failed operation resumes the persistent Sandbox and is retried", async (
     expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
     return {
       persistentSandboxId: PERSISTENT_ID,
-      currentSandboxId: undefined,
+      currentSandboxId: SESSION_1,
     };
   });
+  mock.handleUnary("/SandboxWaitV2", () => ({ result: TERMINATED }));
+
+  await expect(createSidecar(sb)).rejects.toThrow(SandboxPaused);
+  mock.assertExhausted();
+
   mock.handleUnary("/PersistentSandboxResume", () => ({
     sandboxId: SESSION_2,
   }));
   expectSidecarCreate(mock, SESSION_2);
 
+  await sb.experimentalResume();
   expect(await createSidecar(sb)).toBe(SIDECAR_ID);
   mock.assertExhausted();
 });
 
-test("a failed operation switches to an already-running session without resuming", async () => {
+test("a stale handle requires explicit resume even if another session is running", async () => {
   const { sb, mock } = await createPersistent();
 
   expectSidecarCreate(
@@ -421,9 +431,7 @@ test("a failed operation switches to an already-running session without resuming
     persistentSandboxId: PERSISTENT_ID,
     currentSandboxId: SESSION_2,
   }));
-  expectSidecarCreate(mock, SESSION_2);
-
-  expect(await createSidecar(sb)).toBe(SIDECAR_ID);
+  await expect(createSidecar(sb)).rejects.toThrow(SandboxPaused);
   mock.assertExhausted();
 });
 
@@ -440,10 +448,7 @@ test("a failed operation is not retried while its session is still running", asy
     persistentSandboxId: PERSISTENT_ID,
     currentSandboxId: SESSION_1,
   }));
-  // The current session may have finished, so the client resumes to find the running one.
-  mock.handleUnary("/PersistentSandboxResume", () => ({
-    sandboxId: SESSION_1,
-  }));
+  mock.handleUnary("/SandboxWaitV2", () => ({}));
 
   await expect(createSidecar(sb)).rejects.toBe(err);
   mock.assertExhausted();
@@ -623,12 +628,9 @@ test.each([
   );
 });
 
-test("an exec moves off a session whose command router it cannot reach", async () => {
+test("an exec reports a stopped session whose command router it cannot reach", async () => {
   const { sb, mock } = await createPersistent();
 
-  // The old session's command router can't be reached, so no command was
-  // sent and the exec moves to a resumed session. That one refuses too, and
-  // its error is what the caller gets.
   const refuseRouterAccess = (sandboxId: string, err: ClientError) => {
     mock.handleUnary("/SandboxGetTaskIdV2", (req: any) => {
       expect(req.sandboxId).toBe(sandboxId);
@@ -649,19 +651,10 @@ test("an exec moves off a session whose command router it cannot reach", async (
   );
   mock.handleUnary("/PersistentSandboxGet", () => ({
     persistentSandboxId: PERSISTENT_ID,
+    currentSandboxId: SESSION_1,
   }));
-  mock.handleUnary("/PersistentSandboxResume", () => ({
-    sandboxId: SESSION_2,
-  }));
-  refuseRouterAccess(
-    SESSION_2,
-    new ClientError(
-      "/SandboxGetCommandRouterAccess",
-      Status.PERMISSION_DENIED,
-      "second session",
-    ),
-  );
+  mock.handleUnary("/SandboxWaitV2", () => ({ result: TERMINATED }));
 
-  await expect(sb.exec(["echo", "hello"])).rejects.toThrow("second session");
+  await expect(sb.exec(["echo", "hello"])).rejects.toThrow(SandboxPaused);
   mock.assertExhausted();
 });

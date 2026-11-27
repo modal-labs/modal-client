@@ -14,7 +14,12 @@ import {
 } from "../proto/modal_proto/api";
 import type { App } from "./app";
 import type { ModalClient } from "./client";
-import { ClientClosedError, InvalidError, TimeoutError } from "./errors";
+import {
+  ClientClosedError,
+  InvalidError,
+  SandboxPaused,
+  TimeoutError,
+} from "./errors";
 import type { Image } from "./image";
 import type { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
 import {
@@ -64,7 +69,7 @@ import {
 
 /**
  * Lifetime limits of each session of a persistent Sandbox. A session that hits
- * one is paused, and resumed on next use.
+ * one is paused.
  *
  * @internal
  * @hidden
@@ -118,13 +123,15 @@ const WAIT_POLL_INTERVAL_MS = 1000;
 const TERMINATED_RESULT = GenericResult.create({
   status: GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED,
 });
+const PAUSED_MESSAGE =
+  "The current Sandbox session has stopped or is shutting down. Call experimentalResume() and retry.";
 
 /** Errors caused by the caller rather than by the session, which a new session can't fix. */
 function isNonRecoverableError(err: unknown): boolean {
   return err instanceof InvalidError || err instanceof ClientClosedError;
 }
 
-function maySucceedOnNewSession(err: unknown): boolean {
+function canReportPaused(err: unknown): boolean {
   return err instanceof TaskShuttingDownError || !isNonRecoverableError(err);
 }
 
@@ -158,9 +165,7 @@ function execNeverRan(err: unknown): boolean {
 /**
  * Backs a persistent Sandbox, whose object ID is its persistent Sandbox ID.
  *
- * A missing session is resumed from saved state on the first operation that
- * needs one. Failed session operations are retried once on a replacement
- * session unless the failure is non-recoverable.
+ * A stopped session requires an explicit resume before running more work.
  *
  * @internal
  * @hidden
@@ -173,9 +178,6 @@ export class SandboxImplPersistent implements SandboxImpl {
   #session: SandboxImplV2 | undefined;
   #terminated = false;
   #closed = false;
-  // Session replacements run one at a time, so concurrent failures on the same
-  // session trigger a single lookup/resume.
-  #replaceChain: Promise<unknown> = Promise.resolve();
 
   constructor(
     client: ModalClient,
@@ -287,45 +289,59 @@ export class SandboxImplPersistent implements SandboxImpl {
     return this.#session;
   }
 
-  // Session replacement
+  // Session lookup and resume
 
   async #currentSession(): Promise<SandboxImplV2> {
-    // A terminated Sandbox keeps its last session only for reading the exit
-    // snapshot and logs.
-    this.#checkNotTerminated();
-    if (this.#session) return this.#session;
     this.#checkOpen();
-    return (await this.#replaceSession(undefined))!;
+    const session = await this.#sessionForReads();
+    this.#checkNotTerminated();
+    if (!session) throw new SandboxPaused(PAUSED_MESSAGE);
+    return session;
   }
 
-  /**
-   * Run `op` on the session, switching to the running session and retrying
-   * once if it fails. Only failures accepted by `canRetry` are retried.
-   */
+  /** Report a session that stopped accepting work if the operation can safely be retried. */
   async #run<T>(
     op: (session: SandboxImplV2) => Promise<T>,
-    canRetry: (err: unknown) => boolean = maySucceedOnNewSession,
+    canReport: (err: unknown) => boolean = canReportPaused,
   ): Promise<T> {
     const session = await this.#currentSession();
     try {
       return await op(session);
     } catch (err) {
-      // A terminated persistent Sandbox is stopped for good, so it isn't resumed on use.
-      if (!canRetry(err) || this.#terminated) {
-        throw err;
+      if (
+        !this.#terminated &&
+        canReport(err) &&
+        (await this.#sessionHasStopped(session, err))
+      ) {
+        throw new SandboxPaused(PAUSED_MESSAGE);
       }
-      const replacement = await this.#replaceSession(session);
-      if (replacement === undefined) {
-        throw err;
+      throw err;
+    }
+  }
+
+  async #sessionHasStopped(
+    session: SandboxImplV2,
+    err: unknown,
+  ): Promise<boolean> {
+    try {
+      const sessionId = await this.#getCurrentSessionId();
+      if (this.#terminated) return false;
+      if (
+        sessionId !== session.sandboxId ||
+        err instanceof TaskShuttingDownError
+      )
+        return true;
+      try {
+        return (await session.poll()) !== null;
+      } catch (pollError) {
+        return (
+          pollError instanceof ClientError &&
+          pollError.code === Status.NOT_FOUND
+        );
       }
-      this.client.logger.debug(
-        "Retrying operation on persistent Sandbox",
-        "persistent_sandbox_id",
-        this.sandboxId,
-        "error",
-        err,
-      );
-      return await op(replacement);
+    } catch {
+      // Preserve the operation's error if its session status could not be checked.
+      return false;
     }
   }
 
@@ -401,7 +417,10 @@ export class SandboxImplPersistent implements SandboxImpl {
 
   /** Return the last known session for reading its logs or metadata, without resuming. */
   async #sessionForReads(): Promise<SandboxImplV2 | undefined> {
-    if (!this.#session && !this.#terminated) await this.#adoptCurrentSession();
+    if (!this.#session && !this.#terminated) {
+      const sessionId = await this.#getCurrentSessionId();
+      if (!this.#session && sessionId) this.#setSession(sessionId);
+    }
     return this.#session;
   }
 
@@ -413,40 +432,6 @@ export class SandboxImplPersistent implements SandboxImpl {
       );
     }
     return session;
-  }
-
-  /**
-   * Switch from the `failed` session, or return undefined if it is still the
-   * running session. With no `failed` session the handle has no session yet
-   * and takes the most recent one, which may have finished: the first
-   * operation on it then fails and switches again, resuming the Sandbox.
-   */
-  #replaceSession(
-    failed: SandboxImplV2 | undefined,
-  ): Promise<SandboxImplV2 | undefined> {
-    const run = this.#replaceChain.then(() => this.#doReplaceSession(failed));
-    this.#replaceChain = run.catch(() => undefined);
-    return run;
-  }
-
-  async #doReplaceSession(
-    failed: SandboxImplV2 | undefined,
-  ): Promise<SandboxImplV2 | undefined> {
-    if (this.#session !== failed) {
-      // A concurrent operation has already replaced the session.
-      return this.#session;
-    }
-    let sessionId = await this.#getCurrentSessionId();
-    this.#checkOpen();
-    this.#checkNotTerminated();
-    // The lookup can't tell whether `failed` is still running. Resuming
-    // returns the running session, which is `failed` itself if it never
-    // stopped.
-    if (!sessionId || sessionId === failed?.sandboxId) {
-      sessionId = await this.#resumeSession();
-      if (sessionId === failed?.sandboxId) return undefined;
-    }
-    return this.#setSession(sessionId);
   }
 
   #checkOpen(): void {
@@ -576,7 +561,8 @@ export class SandboxImplPersistent implements SandboxImpl {
 
   async poll(): Promise<number | null> {
     if (!this.#terminated) {
-      await this.#adoptCurrentSession();
+      if (this.#session) await this.#getCurrentSessionId();
+      else await this.#sessionForReads();
     }
     return this.#terminated ? getReturnCode(TERMINATED_RESULT) : null;
   }

@@ -18,6 +18,7 @@ from modal.exception import (
     InvalidError,
     NotFoundError,
     ResourceExhaustedError,
+    SandboxPaused,
     SandboxTerminatedError,
     ServiceError,
 )
@@ -294,13 +295,18 @@ def test_persistent_sandbox_pause_resume(app, client, servicer):
 
 
 @skip_windows("Needs subprocess support")
-def test_persistent_sandbox_resumes_on_failed_operation(app, client, servicer):
+def test_persistent_sandbox_requires_explicit_resume_on_failed_operation(app, client, servicer):
     sb = _create(app, client)
     sb._experimental_pause()
 
     with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
-        # The paused session no longer accepts commands, so the exec is retried on a resumed session.
         tcr_ctx.add_response("TaskExecStart", GRPCError(Status.NOT_FOUND, "sandbox has stopped"))
+        with pytest.raises(SandboxPaused):
+            sb.exec("echo", "hello")
+        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
+
+        sb._experimental_resume()
         p = sb.exec("echo", "hello")
         assert p.stdout.read() == "hello\n"
         assert p.wait() == 0
@@ -311,21 +317,31 @@ def test_persistent_sandbox_resumes_on_failed_operation(app, client, servicer):
 
 
 @skip_windows("Needs subprocess support")
-def test_persistent_sandbox_from_id_resumes_on_failed_operation(app, client, servicer):
+def test_persistent_sandbox_from_id_requires_resume_to_switch_sessions(app, client, servicer):
     sb = _create(app, client)
     sb2 = Sandbox.from_id(sb.object_id, client=client)
     sb2.poll()
     sb._experimental_pause()
     servicer.sandbox_task_ids["sb-v2-resumed"] = "ta-v2-resumed"
+    replacement = api_pb2.PersistentSandboxGetResponse(
+        persistent_sandbox_id=sb.object_id, current_sandbox_id="sb-v2-resumed"
+    )
 
     with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
-        ctx.add_response("PersistentSandboxResume", api_pb2.PersistentSandboxResumeResponse(sandbox_id="sb-v2-resumed"))
+        ctx.add_response("PersistentSandboxGet", replacement)
         tcr_ctx.add_response("TaskExecStart", GRPCError(Status.NOT_FOUND, "task no longer exists"))
+        assert sb2.poll() is None
+        ctx.add_response("PersistentSandboxGet", replacement)
+        with pytest.raises(SandboxPaused):
+            sb2.exec("echo", "hello")
+        assert not ctx.get_requests("PersistentSandboxResume")
+
+        ctx.add_response("PersistentSandboxResume", api_pb2.PersistentSandboxResumeResponse(sandbox_id="sb-v2-resumed"))
+        sb2._experimental_resume()
         p = sb2.exec("echo", "hello")
         assert p.stdout.read() == "hello\n"
         assert p.wait() == 0
 
-    assert len(ctx.get_requests("PersistentSandboxGet")) == 1
     [resume] = ctx.get_requests("PersistentSandboxResume")
     assert resume.persistent_sandbox_id == sb.object_id
     first, retried = tcr_ctx.get_requests("TaskExecStart")
@@ -364,18 +380,11 @@ def test_persistent_sandbox_from_id_paused(app, client, servicer):
     assert servicer.persistent_sandbox_resumes == 0
 
     with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
-        # The paused session no longer accepts commands, so the first operation resumes the Sandbox.
         tcr_ctx.add_response("TaskExecStart", GRPCError(Status.NOT_FOUND, "sandbox has stopped"))
-        p = sb2.exec("echo", "hello")
-        assert p.stdout.read() == "hello\n"
-        assert p.wait() == 0
-    assert len(ctx.get_requests("PersistentSandboxResume")) == 1
-    assert len(tcr_ctx.get_requests("TaskExecStart")) == 2
-    assert servicer.persistent_sandbox_resumes == 1
-
-    # Both handles now use the resumed session.
-    sb._experimental_resume()
-    assert servicer.persistent_sandbox_resumes == 1
+        with pytest.raises(SandboxPaused):
+            sb2.exec("echo", "hello")
+        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
 
 
 def test_persistent_sandbox_from_id_terminated(app, client, servicer):
@@ -442,22 +451,18 @@ def test_persistent_sandbox_from_id_not_found(client, servicer):
 
 
 @skip_windows("Needs subprocess support")
-def test_persistent_sandbox_exec_moves_off_a_shutting_down_session(app, client, servicer):
+def test_persistent_sandbox_exec_reports_a_shutting_down_session(app, client, servicer):
     sb = _create(app, client)
 
     with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
-        # The session is shutting down, so the control plane no longer reports it as running.
-        servicer._sandbox_terminated = True
         tcr_ctx.add_response(
             "TaskExecStart",
             GRPCError(Status.FAILED_PRECONDITION, "Modal Sandbox is shutting down.", [sr_pb2.TaskShuttingDown()]),
         )
-        p = sb.exec("echo", "hello")
-        assert p.stdout.read() == "hello\n"
-        assert p.wait() == 0
-
-        assert len(ctx.get_requests("PersistentSandboxResume")) == 1
-        assert len(tcr_ctx.get_requests("TaskExecStart")) == 2
+        with pytest.raises(SandboxPaused):
+            sb.exec("echo", "hello")
+        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
 
 
 @pytest.mark.parametrize(
@@ -474,19 +479,17 @@ def test_persistent_sandbox_exec_moves_off_a_shutting_down_session(app, client, 
     ids=["task-finished", "router-access-refused"],
 )
 @skip_windows("Needs subprocess support")
-def test_persistent_sandbox_exec_moves_off_a_session_it_cannot_reach(app, client, servicer, rejection):
+def test_persistent_sandbox_exec_reports_a_stopped_session_it_cannot_reach(app, client, servicer, rejection):
     sb = _create(app, client)
     servicer._sandbox_terminated = True
 
     with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
-        # The old session's command router can't be reached, so the command is only sent to the new session.
         ctx.add_response(*rejection)
-        p = sb.exec("echo", "hello")
-        assert p.stdout.read() == "hello\n"
-        assert p.wait() == 0
 
-        assert len(ctx.get_requests("PersistentSandboxResume")) == 1
-        assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
+        with pytest.raises(SandboxPaused):
+            sb.exec("echo", "hello")
+        assert not ctx.get_requests("PersistentSandboxResume")
+        assert not tcr_ctx.get_requests("TaskExecStart")
 
 
 def test_persistent_sandbox_exec_not_repeated_after_it_may_have_run(app, client, servicer):

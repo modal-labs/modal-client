@@ -24,7 +24,7 @@ from ..client import _Client
 from ..cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from ..config import logger
 from ..container_process import _ContainerProcess
-from ..exception import ClientClosed, InvalidError, NotFoundError, SandboxTerminatedError
+from ..exception import ClientClosed, InvalidError, NotFoundError, SandboxPaused, SandboxTerminatedError
 from ..io_streams import (
     StreamReader,
     StreamWriter,
@@ -54,7 +54,7 @@ _T = TypeVar("_T")
 # Errors caused by the caller rather than by the session, which a new session can't fix.
 _NON_RECOVERABLE_ERRORS = (InvalidError, ClientClosed)
 
-# Lifetime limits of each session. A session that hits one is paused, and resumed on next use.
+# Lifetime limits of each session. A session that hits one is paused.
 PERSISTENT_SANDBOX_SESSION_TIMEOUT = 60 * 60
 PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT = 5 * 60
 # How long a session lets running commands finish before it stops, by default and at most.
@@ -69,6 +69,7 @@ _RESUME_RETRY = Retry(base_delay=1.0, max_delay=1.0, max_retries=None, total_tim
 _WAIT_POLL_INTERVAL = 1.0
 
 _TERMINATED_RESULT = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+_PAUSED_MESSAGE = "The Sandbox session has stopped or is shutting down. Call `_experimental_resume()` and retry."
 
 
 def _rejected_by_shutting_down_session(exc: Exception) -> bool:
@@ -77,7 +78,7 @@ def _rejected_by_shutting_down_session(exc: Exception) -> bool:
     return any(isinstance(detail, sr_pb2.TaskShuttingDown) for detail in details)
 
 
-def _may_succeed_on_new_session(exc: Exception) -> bool:
+def _can_report_paused(exc: Exception) -> bool:
     return _rejected_by_shutting_down_session(exc) or not isinstance(exc, _NON_RECOVERABLE_ERRORS)
 
 
@@ -105,8 +106,7 @@ def _exec_never_ran(exc: Exception) -> bool:
 class SandboxImplPersistent:
     """Backs a persistent Sandbox, whose object ID is its persistent Sandbox ID (`sx-...`).
 
-    A missing session is resumed from saved state on the first operation that needs one. Failed session
-    operations are retried once on a replacement session unless the failure is non-recoverable.
+    A stopped session requires an explicit resume before running more work.
     """
 
     def __init__(
@@ -123,7 +123,7 @@ class SandboxImplPersistent:
         self.result = result
         self.app_id = app_id
         self._session = session
-        self._replace_lock: asyncio.Lock | None = None
+        self._session_lookup_lock: asyncio.Lock | None = None
         self._terminated = result is not None and bool(result.status)
         self._hydrated = session is not None or self._terminated
         self._closed = False
@@ -132,11 +132,13 @@ class SandboxImplPersistent:
         await self._get_client()
         if self._hydrated:
             return
-        if self._replace_lock is None:
-            self._replace_lock = asyncio.Lock()
-        async with self._replace_lock:
+        if self._session_lookup_lock is None:
+            self._session_lookup_lock = asyncio.Lock()
+        async with self._session_lookup_lock:
             if not self._hydrated:
-                await self._adopt_current_session()
+                session_id = await self._get_current_session_id()
+                if self._session is None and session_id:
+                    await self._set_session(session_id)
 
     async def get_app_id(self) -> str:
         if not self.app_id and (session := await self._session_for_reads()) is not None:
@@ -251,7 +253,7 @@ class SandboxImplPersistent:
             if this is None:
                 raise RuntimeError("Sandbox was garbage collected before its stdio reader connected")
             this._check_open()
-            return await command_router(this)
+            return await this._run(command_router)
 
         def reader(file_descriptor: "api_pb2.FileDescriptor.ValueType") -> StreamReader[str]:
             return StreamReader(
@@ -266,43 +268,47 @@ class SandboxImplPersistent:
         )
         return reader(api_pb2.FILE_DESCRIPTOR_STDOUT), reader(api_pb2.FILE_DESCRIPTOR_STDERR), stdin
 
-    # Session replacement
+    # Session lookup and resume
 
     async def _current_session(self) -> SandboxImplV2:
-        """Return the current session, resuming from saved state if needed."""
-        # A terminated Sandbox keeps its last session only for reading the exit snapshot and logs.
-        self._check_not_terminated()
-        if self._session is not None:
-            return self._session
+        """Return the session this handle is attached to."""
         self._check_open()
-        session = await self._replace_session(None)
-        assert session is not None
-        return session
+        await self._ensure_hydrated()
+        self._check_not_terminated()
+        if self._session is None:
+            raise SandboxPaused(_PAUSED_MESSAGE)
+        return self._session
 
     async def _run(
         self,
         op: Callable[[SandboxImplV2], Awaitable[_T]],
         *,
-        can_retry: Callable[[Exception], bool] = _may_succeed_on_new_session,
+        can_report_paused: Callable[[Exception], bool] = _can_report_paused,
     ) -> _T:
-        """Run `op` on the session, switching to the running session and retrying once if it fails.
-
-        Only failures accepted by `can_retry` are retried.
-        """
+        """Report a session that has stopped accepting work if the operation can safely be retried."""
         session = await self._current_session()
         try:
             return await op(session)
         except Exception as exc:
+            if not self._terminated and can_report_paused(exc) and await self._session_has_stopped(session, exc):
+                raise SandboxPaused(_PAUSED_MESSAGE) from exc
+            raise
+
+    async def _session_has_stopped(self, session: SandboxImplV2, exc: Exception) -> bool:
+        try:
+            session_id = await self._get_current_session_id()
             if self._terminated:
-                # A terminated persistent Sandbox is stopped for good, so it isn't resumed on use.
-                raise
-            if not can_retry(exc):
-                raise
-            replacement = await self._replace_session(session)
-            if replacement is None:
-                raise
-            logger.debug(f"Retrying operation on persistent Sandbox {self.sandbox_id} after: {exc!r}")
-            return await op(replacement)
+                return False
+            if session_id != session.sandbox_id or _rejected_by_shutting_down_session(exc):
+                return True
+            try:
+                await session.poll()
+            except NotFoundError:
+                return True
+            return session.result is not None and bool(session.result.status)
+        except Exception:
+            # Preserve the operation's error if its session status could not be checked.
+            return False
 
     async def _get_current_session_id(self) -> str:
         """Look up the most recent session, which may have finished already. Returns "" if there is none.
@@ -357,35 +363,8 @@ class SandboxImplPersistent:
 
     async def _session_for_reads(self) -> SandboxImplV2 | None:
         """Return the last known session for reading its logs or metadata, without resuming."""
-        if self._session is None and not self._terminated:
-            await self._adopt_current_session()
+        await self._ensure_hydrated()
         return self._session
-
-    async def _replace_session(self, failed: SandboxImplV2 | None) -> SandboxImplV2 | None:
-        """Switch from the `failed` session, or return None if it is still the running session.
-
-        With `failed=None` the handle has no session yet and takes the most recent one, which may have
-        finished: the first operation on it then fails and switches again, resuming the Sandbox.
-        """
-        await self._get_client()
-        # Lazily create the lock on the event loop that first uses the Sandbox.
-        if self._replace_lock is None:
-            self._replace_lock = asyncio.Lock()
-        async with self._replace_lock:
-            if self._session is not failed:
-                # A concurrent operation has already replaced the session.
-                return self._session
-
-            session_id = await self._get_current_session_id()
-            self._check_open()
-            self._check_not_terminated()
-            # The lookup can't tell whether `failed` is still running. Resuming returns the running
-            # session, which is `failed` itself if it never stopped.
-            if not session_id or (failed is not None and session_id == failed.sandbox_id):
-                session_id = await self._resume_session()
-                if failed is not None and session_id == failed.sandbox_id:
-                    return None
-            return await self._set_session(session_id)
 
     # Operations
 
@@ -413,7 +392,7 @@ class SandboxImplPersistent:
         if not self._hydrated:
             await self._ensure_hydrated()
         elif not self._terminated:
-            await self._adopt_current_session()
+            await self._get_current_session_id()
         if self._terminated:
             self._set_terminated_result()
         else:
@@ -610,7 +589,7 @@ class SandboxImplPersistent:
             )
 
         try:
-            return await self._run(start, can_retry=_exec_never_ran)
+            return await self._run(start, can_report_paused=_exec_never_ran)
         except _ExecNotSentError as exc:
             raise exc.inner from None
 

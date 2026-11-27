@@ -54,6 +54,7 @@ export {
   QueueFullError,
   ResourceExhaustedError,
   SandboxTimeoutError,
+  SandboxPaused,
   ClientClosedError,
   SandboxFilesystemDirectoryNotEmptyError,
   SandboxFilesystemError,

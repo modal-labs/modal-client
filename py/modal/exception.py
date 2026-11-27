@@ -206,6 +206,10 @@ class SandboxTerminatedError(Error):
     """Raised when a Sandbox is terminated for an internal reason."""
 
 
+class SandboxPaused(Error):
+    """Raised when a persistent Sandbox's session has stopped and the Sandbox can be resumed."""
+
+
 class FunctionTimeoutError(TimeoutError):
     """Raised when a Function exceeds its execution duration limit and times out."""
 

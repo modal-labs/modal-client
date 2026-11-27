@@ -195,6 +195,16 @@ func (e SandboxTimeoutError) Error() string {
 	return "SandboxTimeoutError: " + e.Exception
 }
 
+// SandboxPaused is returned when a persistent Sandbox's session has stopped
+// and the Sandbox can be resumed.
+type SandboxPaused struct {
+	Exception string
+}
+
+func (e SandboxPaused) Error() string {
+	return "SandboxPaused: " + e.Exception
+}
+
 // TimeoutError is returned when an operation exceeds the allowed time limit.
 type TimeoutError struct {
 	Exception string
