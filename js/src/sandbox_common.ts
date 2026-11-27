@@ -71,6 +71,7 @@ import {
 import type { SandboxSnapshot } from "./sandbox_snapshot";
 import { SandboxImplV1 } from "./sandbox_impl_v1";
 import { SandboxImplV2 } from "./sandbox_impl_v2";
+import { SandboxImplPersistent } from "./sandbox_impl_persistent";
 import {
   hydrateSecrets,
   resolvableSecrets,
@@ -90,7 +91,8 @@ import {
  */
 export function implClassForSandboxId(
   sandboxId: string,
-): typeof SandboxImplV1 | typeof SandboxImplV2 {
+): typeof SandboxImplV1 | typeof SandboxImplV2 | typeof SandboxImplPersistent {
+  if (sandboxId.startsWith("sx-")) return SandboxImplPersistent;
   return implClassForSandboxVersion(getSandboxVersion(sandboxId));
 }
 
@@ -110,6 +112,17 @@ export function implClassForSnapshot(
   return implClassForSandboxVersion(
     snapshot._isV2 ? SandboxVersion.V2 : SandboxVersion.V1,
   );
+}
+
+/** @internal @hidden */
+export function newSandboxImplFromId(
+  client: ModalClient,
+  sandboxId: string,
+): SandboxImpl {
+  if (sandboxId.startsWith("sx-")) {
+    return new SandboxImplPersistent(client, sandboxId, {});
+  }
+  return newSandboxImpl(client, sandboxId);
 }
 
 /**

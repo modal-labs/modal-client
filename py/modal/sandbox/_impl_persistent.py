@@ -1,9 +1,5 @@
 # Copyright Modal Labs 2026
-"""Persistent Sandboxes, managed by the `PersistentSandbox*` control-plane RPCs.
-
-A persistent Sandbox runs as a sequence of regular V2 Sandboxes, its sessions. The control plane starts each
-session from the exit snapshot of the previous one.
-"""
+"""Persistent Sandbox lifecycle and session operations."""
 
 import asyncio
 import copy
@@ -15,7 +11,6 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -24,6 +19,7 @@ from .._image import _Image
 from .._outbound_policy import _OutboundPolicy
 from .._resolver import Resolver
 from .._tunnel import Tunnel
+from .._utils.grpc_utils import Retry
 from ..client import _Client
 from ..cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from ..config import logger
@@ -38,6 +34,7 @@ from ..io_streams import (
 from ..secret import _resolvable_secrets, _Secret, _secret_sources
 from ..stream_type import StreamType
 from ._common import (
+    ExitSnapshotPoll,
     SandboxCreateArgs,
     SandboxCreateCommon,
     SandboxImpl,
@@ -64,9 +61,9 @@ PERSISTENT_SANDBOX_SESSION_IDLE_TIMEOUT = 5 * 60
 PERSISTENT_SANDBOX_DRAIN_TIMEOUT = 60
 PERSISTENT_SANDBOX_MAX_DRAIN_TIMEOUT = 10 * 60
 
-# How long to retry resuming while the previous session is still saving its exit snapshot.
-_RESUME_RETRY_TIMEOUT = 120.0
-_RESUME_RETRY_INTERVAL = 1.0
+# Resuming is UNAVAILABLE while the previous session is still saving its exit snapshot or another resume is
+# in progress, so it is retried this long at this interval.
+_RESUME_RETRY = Retry(base_delay=1.0, max_delay=1.0, max_retries=None, total_timeout=120.0)
 
 # How often `wait()` checks whether the persistent Sandbox has been terminated.
 _WAIT_POLL_INTERVAL = 1.0
@@ -106,11 +103,10 @@ def _exec_never_ran(exc: Exception) -> bool:
 
 
 class SandboxImplPersistent:
-    """Backs a persistent Sandbox, whose object ID is the ID of its first session.
+    """Backs a persistent Sandbox, whose object ID is its persistent Sandbox ID (`sx-...`).
 
-    Operations are forwarded to the current session. When one fails and the Sandbox hasn't been terminated
-    through this handle, the control plane is asked for the running session, resuming the Sandbox from its
-    latest exit snapshot if there is none. The operation is then retried once on the new session.
+    A missing session is resumed from saved state on the first operation that needs one. Failed session
+    operations are retried once on a replacement session unless the failure is non-recoverable.
     """
 
     def __init__(
@@ -120,24 +116,31 @@ class SandboxImplPersistent:
         *,
         result: api_pb2.GenericResult | None = None,
         app_id: str = "",
-        persistent_sandbox_id: str = "",
         session: SandboxImplV2 | None = None,
     ) -> None:
         self.client = client
         self.sandbox_id = sandbox_id
         self.result = result
         self.app_id = app_id
-        self._persistent_sandbox_id = persistent_sandbox_id
-        self._session = session if session is not None else SandboxImplV2(client, sandbox_id)
+        self._session = session
         self._replace_lock: asyncio.Lock | None = None
-        self._terminated = result is not None
+        self._terminated = result is not None and bool(result.status)
+        self._hydrated = session is not None or self._terminated
         self._closed = False
 
-    @property
-    def _delegate(self) -> SandboxImplV2:
-        return self._session
+    async def _ensure_hydrated(self) -> None:
+        await self._get_client()
+        if self._hydrated:
+            return
+        if self._replace_lock is None:
+            self._replace_lock = asyncio.Lock()
+        async with self._replace_lock:
+            if not self._hydrated:
+                await self._adopt_current_session()
 
     async def get_app_id(self) -> str:
+        if not self.app_id and (session := await self._session_for_reads()) is not None:
+            self.app_id = await session.get_app_id()
         return self.app_id
 
     @property
@@ -151,29 +154,22 @@ class SandboxImplPersistent:
             self.client = client or await _Client.from_env()
         else:
             self.client = client or self.client or await _Client.from_env()
-        await self._session.hydrate(self.client)
+        if self._session is not None:
+            await self._session.hydrate(self.client)
 
     async def _get_client(self) -> _Client:
         await self.hydrate()
         assert self.client is not None
         return self.client
 
-    def _get_object_metadata(self) -> api_pb2.SandboxHandleMetadata:
-        metadata = api_pb2.SandboxHandleMetadata(app_id=self.app_id)
-        if self.result is not None:
-            metadata.result.CopyFrom(self.result)
-        return metadata
+    def _get_object_metadata(self) -> None:
+        return None
 
     @classmethod
     def _from_object_metadata(
         cls, client: _Client, sandbox_id: str, metadata: Message | None
     ) -> "SandboxImplPersistent":
-        if metadata is None:
-            return cls(client, sandbox_id)
-        assert isinstance(metadata, api_pb2.SandboxHandleMetadata)
-        return cls(
-            client, sandbox_id, app_id=metadata.app_id, result=metadata.result if metadata.HasField("result") else None
-        )
+        return cls(client, sandbox_id)
 
     @classmethod
     async def create(
@@ -219,17 +215,20 @@ class SandboxImplPersistent:
             )
             resp = await client._stub.PersistentSandboxCreate(req, metadata=await auth_metadata(client))
             app_id = load_context.app_id or ""
-        impl = cls(client, resp.sandbox_id, persistent_sandbox_id=resp.persistent_sandbox_id, app_id=app_id)
+        session = SandboxImplV2(client, resp.sandbox_id)
+        impl = cls(client, resp.persistent_sandbox_id, session=session, app_id=app_id)
         return impl
 
-    # Persistent Sandboxes are only created through `create`, and can't be looked up yet.
+    @classmethod
+    async def lookup_by_id(cls, client: _Client, sandbox_id: str) -> "SandboxImplPersistent":
+        impl = cls(client, sandbox_id)
+        await impl._ensure_hydrated()
+        return impl
+
+    # Persistent Sandboxes can't be looked up by name or listed yet.
 
     @classmethod
     async def lookup_by_name(cls, *args: Any, **kwargs: Any) -> api_pb2.SandboxGetFromNameResponse:
-        raise NotImplementedError
-
-    @classmethod
-    async def lookup_by_id(cls, *args: Any, **kwargs: Any) -> "SandboxImpl":
         raise NotImplementedError
 
     @classmethod
@@ -269,6 +268,17 @@ class SandboxImplPersistent:
 
     # Session replacement
 
+    async def _current_session(self) -> SandboxImplV2:
+        """Return the current session, resuming from saved state if needed."""
+        # A terminated Sandbox keeps its last session only for reading the exit snapshot and logs.
+        self._check_not_terminated()
+        if self._session is not None:
+            return self._session
+        self._check_open()
+        session = await self._replace_session(None)
+        assert session is not None
+        return session
+
     async def _run(
         self,
         op: Callable[[SandboxImplV2], Awaitable[_T]],
@@ -279,7 +289,7 @@ class SandboxImplPersistent:
 
         Only failures accepted by `can_retry` are retried.
         """
-        session = self._delegate
+        session = await self._current_session()
         try:
             return await op(session)
         except Exception as exc:
@@ -291,36 +301,73 @@ class SandboxImplPersistent:
             replacement = await self._replace_session(session)
             if replacement is None:
                 raise
-            logger.debug(f"Retrying operation on persistent Sandbox {self._persistent_sandbox_id} after: {exc!r}")
+            logger.debug(f"Retrying operation on persistent Sandbox {self.sandbox_id} after: {exc!r}")
             return await op(replacement)
 
     async def _get_current_session_id(self) -> str:
+        """Look up the most recent session, which may have finished already. Returns "" if there is none.
+
+        Only termination is final: whether the session is still running is learned from the session itself.
+        """
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxGetRequest(persistent_sandbox_id=self._persistent_sandbox_id)
+        req = api_pb2.PersistentSandboxGetRequest(persistent_sandbox_id=self.sandbox_id)
         resp = await client._stub.PersistentSandboxGet(req, metadata=await auth_metadata(client))
+        self._hydrated = True
         if resp.HasField("terminated_at"):
             self._terminated = True
             self._set_terminated_result()
-        return "" if self._terminated else resp.current_sandbox_id
+        if self._terminated and resp.HasField("current_sandbox_id"):
+            # The last session, which holds the exit snapshot and logs.
+            await self._set_session(resp.current_sandbox_id)
+        return resp.current_sandbox_id
 
     async def _resume_session(self) -> str:
         """Resume the persistent Sandbox, returning the ID of its running session."""
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxResumeRequest(persistent_sandbox_id=self._persistent_sandbox_id)
-        deadline = time.monotonic() + _RESUME_RETRY_TIMEOUT
-        while True:
-            try:
-                resp = await client._stub.PersistentSandboxResume(req, metadata=await auth_metadata(client))
-                return resp.sandbox_id
-            except GRPCError as exc:
-                # UNAVAILABLE means the previous session is still pausing or another resume is in progress.
-                if exc.status != Status.UNAVAILABLE or time.monotonic() > deadline:
-                    raise
-            await asyncio.sleep(_RESUME_RETRY_INTERVAL)
+        req = api_pb2.PersistentSandboxResumeRequest(persistent_sandbox_id=self.sandbox_id)
+        resp = await client._stub.PersistentSandboxResume(
+            req, metadata=await auth_metadata(client), retry=_RESUME_RETRY
+        )
+        return resp.sandbox_id
 
-    async def _replace_session(self, failed: SandboxImplV2 | None, *, resume: bool = True) -> SandboxImplV2 | None:
-        """Switch from the `failed` session, or return None if it is still the running session."""
-        client = await self._get_client()
+    async def _set_session(self, session_id: str) -> SandboxImplV2:
+        """Make `session_id` the current session and close the session it replaces.
+
+        Every session switch goes through here, so a replaced session never keeps a connection open, and a
+        detached Sandbox only ever holds closed sessions.
+        """
+        previous = self._session
+        if previous is not None and previous.sandbox_id == session_id:
+            return previous
+        logger.debug(f"Switching persistent Sandbox {self.sandbox_id} to session {session_id}")
+        session = SandboxImplV2(await self._get_client(), session_id)
+        self._session = session
+        if previous is not None:
+            await previous.close()
+        if self._closed:
+            await session.close()
+        return session
+
+    async def _adopt_current_session(self) -> SandboxImplV2 | None:
+        """Switch to the most recent session without resuming. Returns None if there has never been one."""
+        session_id = await self._get_current_session_id()
+        if not session_id:
+            return None
+        return await self._set_session(session_id)
+
+    async def _session_for_reads(self) -> SandboxImplV2 | None:
+        """Return the last known session for reading its logs or metadata, without resuming."""
+        if self._session is None and not self._terminated:
+            await self._adopt_current_session()
+        return self._session
+
+    async def _replace_session(self, failed: SandboxImplV2 | None) -> SandboxImplV2 | None:
+        """Switch from the `failed` session, or return None if it is still the running session.
+
+        With `failed=None` the handle has no session yet and takes the most recent one, which may have
+        finished: the first operation on it then fails and switches again, resuming the Sandbox.
+        """
+        await self._get_client()
         # Lazily create the lock on the event loop that first uses the Sandbox.
         if self._replace_lock is None:
             self._replace_lock = asyncio.Lock()
@@ -332,27 +379,20 @@ class SandboxImplPersistent:
             session_id = await self._get_current_session_id()
             self._check_open()
             self._check_not_terminated()
-            # The current session may have finished already, so the lookup can't tell
-            # whether `failed` is still running. Resuming returns the running session,
-            # which is `failed` itself if it never stopped.
+            # The lookup can't tell whether `failed` is still running. Resuming returns the running
+            # session, which is `failed` itself if it never stopped.
             if not session_id or (failed is not None and session_id == failed.sandbox_id):
-                if not resume:
-                    return None
                 session_id = await self._resume_session()
                 if failed is not None and session_id == failed.sandbox_id:
                     return None
-            logger.debug(f"Switching persistent Sandbox {self._persistent_sandbox_id} to session {session_id}")
-            replacement = SandboxImplV2(client, session_id)
-            self._session = replacement
-            if failed is not None:
-                await failed.close()
-            return replacement
+            return await self._set_session(session_id)
 
     # Operations
 
     async def close(self) -> None:
         self._closed = True
-        await self._session.close()
+        if self._session is not None:
+            await self._session.close()
 
     def ensure_attached(self) -> None:
         self._check_open()
@@ -370,8 +410,10 @@ class SandboxImplPersistent:
             raise SandboxTerminatedError()
 
     async def poll(self) -> None:
-        if not self._terminated:
-            await self._get_current_session_id()
+        if not self._hydrated:
+            await self._ensure_hydrated()
+        elif not self._terminated:
+            await self._adopt_current_session()
         if self._terminated:
             self._set_terminated_result()
         else:
@@ -379,27 +421,35 @@ class SandboxImplPersistent:
 
     async def terminate(self) -> None:
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxTerminateRequest(persistent_sandbox_id=self._persistent_sandbox_id)
-        await client._stub.PersistentSandboxTerminate(req, metadata=await auth_metadata(client))
+        req = api_pb2.PersistentSandboxTerminateRequest(persistent_sandbox_id=self.sandbox_id)
+        resp = await client._stub.PersistentSandboxTerminate(req, metadata=await auth_metadata(client))
         self._terminated = True
+        self._hydrated = True
         self._set_terminated_result()
+        if resp.HasField("last_session_sandbox_id"):
+            # The last session, which holds the exit snapshot and logs.
+            await self._set_session(resp.last_session_sandbox_id)
 
     async def pause(self) -> None:
-        """Stop the current session, which saves its exit snapshot for the next `resume`."""
+        """Stop the current session, which saves its state for the next `resume`.
+
+        Does nothing if there is no session or it has already stopped. A paused Sandbox is never resumed
+        in order to pause it.
+        """
         self._check_not_terminated()
-        session = self._delegate
+        session = await self._adopt_current_session()
+        self._check_not_terminated()
+        if session is None:
+            return
         await session.terminate()
         await session.wait(raise_on_termination=False)
 
     async def resume(self) -> None:
-        """Start a session from the latest exit snapshot, unless one is already running."""
-        client = await self._get_client()
+        """Start a session from the latest saved state, unless one is already running."""
+        await self._get_client()
         self._check_not_terminated()
-        session = self._delegate
-        session_id = await self._resume_session()
-        if session_id != session.sandbox_id:
-            self._session = SandboxImplV2(client, session_id)
-            await session.close()
+        await self._set_session(await self._resume_session())
+        self._hydrated = True
 
     def _check_open(self) -> None:
         if self._closed:
@@ -407,11 +457,11 @@ class SandboxImplPersistent:
 
     def _check_not_terminated(self) -> None:
         if self._terminated:
-            raise InvalidError(f"Persistent Sandbox {self._persistent_sandbox_id} has been terminated.")
+            raise InvalidError(f"Persistent Sandbox {self.sandbox_id} has been terminated.")
 
     async def tunnels(self, timeout: int) -> dict[int, Tunnel]:
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxTunnelsListRequest(persistent_sandbox_id=self._persistent_sandbox_id)
+        req = api_pb2.PersistentSandboxTunnelsListRequest(persistent_sandbox_id=self.sandbox_id)
         resp = await client._stub.PersistentSandboxTunnelsList(req, metadata=await auth_metadata(client))
         return tunnels_from_protos(resp.tunnels)
 
@@ -425,17 +475,34 @@ class SandboxImplPersistent:
         )
 
     async def resolve_task_id_for_logs(self) -> str:
-        return await self._delegate.resolve_task_id_for_logs()
+        # Logs are read from the last known session, so reading them never resumes a paused Sandbox.
+        session = await self._session_for_reads()
+        if session is None:
+            raise InvalidError(f"Persistent Sandbox {self.sandbox_id} has no session to read logs from.")
+        return await session.resolve_task_id_for_logs()
 
     async def get_exit_snapshot(self, timeout: float | None) -> _Image:
-        return await self._delegate.get_exit_snapshot(timeout)
+        # Pausing a persistent Sandbox is not an exit: only termination produces its exit snapshot.
+        deadline = None if timeout is None else time.monotonic() + timeout
+        await self.poll()
+        while not self._terminated:
+            if deadline is not None and time.monotonic() + _WAIT_POLL_INTERVAL > deadline:
+                raise ExitSnapshotPoll(self.sandbox_id, timeout).timeout_error()
+            await asyncio.sleep(_WAIT_POLL_INTERVAL)
+            await self.poll()
+        if self._session is None:
+            raise InvalidError(
+                f"Persistent Sandbox {self.sandbox_id} has no exit snapshot: it was terminated without a session."
+            )
+        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+        return await self._session.get_exit_snapshot(remaining)
 
     async def snapshot_memory(self) -> _SandboxSnapshot:
         raise NotImplementedError("Memory snapshots aren't supported for persistent Sandboxes.")
 
     async def get_command_router_client(self, task_id: str) -> TaskCommandRouterClient:
-        # The task ID belongs to the current delegate, so this can't be retried on a replacement.
-        return await self._delegate.get_command_router_client(task_id)
+        # The task ID belongs to the current session, so this can't be retried on a replacement.
+        return await (await self._current_session()).get_command_router_client(task_id)
 
     async def get_tags(self) -> dict[str, str]:
         raise NotImplementedError("Tags aren't supported for persistent Sandboxes yet.")
@@ -452,7 +519,7 @@ class SandboxImplPersistent:
         # Connect tokens are addressed by the persistent Sandbox, not a session, so they keep working across
         # sessions and are created without resuming it.
         persistent_req = api_pb2.PersistentSandboxCreateConnectTokenRequest(
-            persistent_sandbox_id=self._persistent_sandbox_id, user_metadata=req.user_metadata
+            persistent_sandbox_id=self.sandbox_id, user_metadata=req.user_metadata
         )
         if req.HasField("port"):
             persistent_req.port = req.port
@@ -556,7 +623,7 @@ class SandboxImplPersistent:
         has_proxy: bool,
         include_oidc_identity_token: bool,
     ) -> None:
-        self._delegate.validate_sidecar_create(
+        SandboxImplV2.validate_sidecar_create(
             cloud_bucket_mounts=cloud_bucket_mounts,
             has_proxy=has_proxy,
             include_oidc_identity_token=include_oidc_identity_token,
@@ -603,8 +670,8 @@ class SandboxImplPersistent:
         return await self._run(lambda d: d.list_sidecars(include_terminated))
 
     async def wait_sidecar(self, container_id: str, timeout: float) -> api_pb2.GenericResult | None:
-        # Sidecar containers don't carry over to a replacement delegate.
-        return await self._delegate.wait_sidecar(container_id, timeout)
+        # Sidecar containers don't carry over to a replacement session.
+        return await (await self._current_session()).wait_sidecar(container_id, timeout)
 
     async def terminate_sidecar(self, container_id: str) -> None:
-        await self._delegate.terminate_sidecar(container_id)
+        await (await self._current_session()).terminate_sidecar(container_id)

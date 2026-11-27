@@ -42,6 +42,7 @@ from ._common import (
     _format_sandbox_create_timing_log as _format_sandbox_create_timing_log,
     _get_sandbox_version as _get_sandbox_version,
     _image_id_for_mount,
+    _is_persistent_sandbox_id,
     _is_v1_sandbox_id as _is_v1_sandbox_id,
     _result_returncode,
     check_experimental_outbound_policy_type,
@@ -66,6 +67,8 @@ _SANDBOX_SCHEDULING_TIMEOUT: float = 21 * 60
 
 def impl_class_for_sandbox_id(sandbox_id: str) -> type[SandboxImpl]:
     """Select the implementation backing the Sandbox with the given ID."""
+    if _is_persistent_sandbox_id(sandbox_id):
+        return SandboxImplPersistent
     if _get_sandbox_version(sandbox_id) == SandboxVersion.V1:
         return SandboxImplV1
     return SandboxImplV2
@@ -167,7 +170,7 @@ class Probe:
         raise InvalidError("Probe must be created with Probe.with_tcp(...) or Probe.with_exec(...)")
 
 
-class _Sandbox(_Object, type_prefixes=("sb",)):
+class _Sandbox(_Object, type_prefixes=("sb", "sx")):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
 

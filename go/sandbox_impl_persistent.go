@@ -115,18 +115,14 @@ func execNeverRan(err error) bool {
 }
 
 // sandboxImplPersistent backs a persistent Sandbox, whose object ID is the ID
-// of its first session.
+// of the persistent Sandbox.
 //
-// A persistent Sandbox runs as a sequence of regular V2 Sandboxes, its
-// sessions, each started from the saved state of the previous one. Operations
-// are forwarded to the current session. When one fails and the Sandbox hasn't
-// been terminated through this handle, the running session is looked up,
-// resuming the Sandbox from its latest saved state if there is none, and the
-// operation is retried once on the new session.
+// A missing session is resumed from saved state on the first operation that
+// needs one. Failed session operations are retried once on a replacement
+// session unless the failure is non-recoverable.
 type sandboxImplPersistent struct {
-	client              *Client
-	id                  string
-	persistentSandboxID string
+	client *Client
+	id     string // the persistent Sandbox ID
 
 	mu         sync.Mutex // protects session, terminated, closed
 	session    *sandboxImplV2
@@ -137,13 +133,34 @@ type sandboxImplPersistent struct {
 	replaceMu sync.Mutex
 }
 
-func newSandboxImplPersistent(client *Client, sandboxID, persistentSandboxID string) *sandboxImplPersistent {
-	return &sandboxImplPersistent{
-		client:              client,
-		id:                  sandboxID,
-		persistentSandboxID: persistentSandboxID,
-		session:             newSandboxImplV2(client, sandboxID, sandboxImplParams{}),
+// sandboxImplPersistentParams is optional metadata already known about a
+// persistent Sandbox. Anything left out is looked up on first use.
+type sandboxImplPersistentParams struct {
+	// sessionID is the ID of the running session.
+	sessionID string
+}
+
+func newSandboxImplPersistent(client *Client, id string, params sandboxImplPersistentParams) *sandboxImplPersistent {
+	p := &sandboxImplPersistent{client: client, id: id}
+	if params.sessionID != "" {
+		p.session = newSandboxImplV2(client, params.sessionID, sandboxImplParams{})
 	}
+	return p
+}
+
+func (p *sandboxImplPersistent) ensureSession(ctx context.Context) (*sandboxImplV2, error) {
+	// A terminated Sandbox keeps its last session only for reading the exit
+	// snapshot and logs.
+	if err := p.checkNotTerminated(); err != nil {
+		return nil, err
+	}
+	if session := p.currentSession(); session != nil {
+		return session, nil
+	}
+	if err := p.checkOpen(); err != nil {
+		return nil, err
+	}
+	return p.replaceSession(ctx, nil)
 }
 
 // createSandboxPersistent creates a persistent Sandbox and returns the
@@ -211,7 +228,7 @@ func createSandboxPersistent(ctx context.Context, client *Client, app *App, imag
 	client.logger.DebugContext(ctx, "Created persistent Sandbox",
 		"persistent_sandbox_id", resp.GetPersistentSandboxId(),
 		"sandbox_id", resp.GetSandboxId())
-	return newSandboxImplPersistent(client, resp.GetSandboxId(), resp.GetPersistentSandboxId()), nil
+	return newSandboxImplPersistent(client, resp.GetPersistentSandboxId(), sandboxImplPersistentParams{sessionID: resp.GetSandboxId()}), nil
 }
 
 func (p *sandboxImplPersistent) sandboxID() string    { return p.id }
@@ -240,7 +257,11 @@ func run[T any](
 	canRetry func(error) bool,
 	op func(session *sandboxImplV2) (T, error),
 ) (T, error) {
-	session := p.currentSession()
+	session, sessionErr := p.ensureSession(ctx)
+	if sessionErr != nil {
+		var zero T
+		return zero, sessionErr
+	}
 	result, err := op(session)
 	if err == nil {
 		return result, nil
@@ -257,7 +278,7 @@ func run[T any](
 		return result, err
 	}
 	p.client.logger.DebugContext(ctx, "Retrying operation on persistent Sandbox",
-		"persistent_sandbox_id", p.persistentSandboxID, "error", err)
+		"persistent_sandbox_id", p.id, "error", err)
 	return op(replacement)
 }
 
@@ -268,18 +289,24 @@ func runErr(ctx context.Context, p *sandboxImplPersistent, op func(session *sand
 	return err
 }
 
+// getCurrentSessionID looks up the most recent session, which may have
+// finished already. It returns "" if there has never been one. Only
+// termination is final: whether the session is still running is learned from
+// the session itself.
 func (p *sandboxImplPersistent) getCurrentSessionID(ctx context.Context) (string, error) {
 	resp, err := p.client.cpClient.PersistentSandboxGet(ctx, pb.PersistentSandboxGetRequest_builder{
-		PersistentSandboxId: &p.persistentSandboxID,
+		PersistentSandboxId: &p.id,
 	}.Build())
 	if err != nil {
 		return "", err
 	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.terminated = p.terminated || resp.HasTerminatedAt()
-	if p.terminated {
-		return "", nil
+	terminated := p.terminated
+	p.mu.Unlock()
+	if terminated && resp.HasCurrentSandboxId() {
+		// The last session, which holds the exit snapshot and logs.
+		p.setSession(ctx, resp.GetCurrentSandboxId())
 	}
 	return resp.GetCurrentSandboxId(), nil
 }
@@ -287,16 +314,17 @@ func (p *sandboxImplPersistent) getCurrentSessionID(ctx context.Context) (string
 // resumeSession resumes the persistent Sandbox, returning the ID of its
 // running session.
 func (p *sandboxImplPersistent) resumeSession(ctx context.Context) (string, error) {
-	req := pb.PersistentSandboxResumeRequest_builder{PersistentSandboxId: p.persistentSandboxID}.Build()
+	req := pb.PersistentSandboxResumeRequest_builder{PersistentSandboxId: p.id}.Build()
 	deadline := time.Now().Add(persistentResumeRetryTimeout)
 	for {
 		resp, err := p.client.cpClient.PersistentSandboxResume(ctx, req)
 		if err == nil {
 			return resp.GetSandboxId(), nil
 		}
-		// Unavailable means the previous session is still pausing or another
+		// Resuming is idempotent, so any retryable error is retried. It is
+		// unavailable while the previous session is still pausing or another
 		// resume is in progress.
-		if status.Code(err) != codes.Unavailable || time.Now().After(deadline) {
+		if !isRetryableGrpc(err) || time.Now().After(deadline) {
 			return "", err
 		}
 		select {
@@ -307,8 +335,59 @@ func (p *sandboxImplPersistent) resumeSession(ctx context.Context) (string, erro
 	}
 }
 
+// setSession makes sessionID the current session and closes the session it
+// replaces.
+//
+// Every session switch goes through here, so a replaced session never keeps a
+// connection open, and a detached Sandbox only ever holds closed sessions.
+func (p *sandboxImplPersistent) setSession(ctx context.Context, sessionID string) *sandboxImplV2 {
+	p.mu.Lock()
+	previous := p.session
+	if previous != nil && previous.id == sessionID {
+		p.mu.Unlock()
+		return previous
+	}
+	session := newSandboxImplV2(p.client, sessionID, sandboxImplParams{})
+	p.session = session
+	closed := p.closed
+	p.mu.Unlock()
+	p.client.logger.DebugContext(ctx, "Switching persistent Sandbox to session",
+		"persistent_sandbox_id", p.id, "sandbox_id", sessionID)
+	if previous != nil {
+		previous.close()
+	}
+	if closed {
+		session.close()
+	}
+	return session
+}
+
+// adoptCurrentSession switches to the most recent session without resuming.
+// It returns nil if there has never been one.
+func (p *sandboxImplPersistent) adoptCurrentSession(ctx context.Context) (*sandboxImplV2, error) {
+	sessionID, err := p.getCurrentSessionID(ctx)
+	if err != nil || sessionID == "" {
+		return nil, err
+	}
+	return p.setSession(ctx, sessionID), nil
+}
+
+// sessionForReads returns the last known session for reading its logs or
+// metadata, without resuming. It returns nil if there is none.
+func (p *sandboxImplPersistent) sessionForReads(ctx context.Context) (*sandboxImplV2, error) {
+	if session := p.currentSession(); session != nil || p.isTerminated() {
+		return session, nil
+	}
+	if _, err := p.adoptCurrentSession(ctx); err != nil {
+		return nil, err
+	}
+	return p.currentSession(), nil
+}
+
 // replaceSession switches from the failed session, or returns nil if it is
-// still the running session.
+// still the running session. With a nil failed session the handle has no
+// session yet and takes the most recent one, which may have finished: the
+// first operation on it then fails and switches again, resuming the Sandbox.
 func (p *sandboxImplPersistent) replaceSession(ctx context.Context, failed *sandboxImplV2) (*sandboxImplV2, error) {
 	p.replaceMu.Lock()
 	defer p.replaceMu.Unlock()
@@ -327,26 +406,19 @@ func (p *sandboxImplPersistent) replaceSession(ctx context.Context, failed *sand
 	if err := p.checkNotTerminated(); err != nil {
 		return nil, err
 	}
-	// The current session may have finished already, so the lookup can't tell
-	// whether failed is still running. Resuming returns the running session,
-	// which is failed itself if it never stopped.
-	if sessionID == "" || sessionID == failed.id {
+	// The lookup can't tell whether the failed session is still running.
+	// Resuming returns the running session, which is the failed one itself if
+	// it never stopped.
+	if sessionID == "" || (failed != nil && sessionID == failed.id) {
 		sessionID, err = p.resumeSession(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if sessionID == failed.id {
+		if failed != nil && sessionID == failed.id {
 			return nil, nil
 		}
 	}
-	p.client.logger.DebugContext(ctx, "Switching persistent Sandbox to session",
-		"persistent_sandbox_id", p.persistentSandboxID, "sandbox_id", sessionID)
-	replacement := newSandboxImplV2(p.client, sessionID, sandboxImplParams{})
-	p.mu.Lock()
-	p.session = replacement
-	p.mu.Unlock()
-	failed.close()
-	return replacement, nil
+	return p.setSession(ctx, sessionID), nil
 }
 
 func (p *sandboxImplPersistent) checkOpen() error {
@@ -360,7 +432,7 @@ func (p *sandboxImplPersistent) checkOpen() error {
 
 func (p *sandboxImplPersistent) checkNotTerminated() error {
 	if p.isTerminated() {
-		return InvalidError{Exception: fmt.Sprintf("Persistent Sandbox %s has been terminated.", p.persistentSandboxID)}
+		return InvalidError{Exception: fmt.Sprintf("Persistent Sandbox %s has been terminated.", p.id)}
 	}
 	return nil
 }
@@ -407,7 +479,7 @@ func (p *sandboxImplPersistent) setName(ctx context.Context, name string) error 
 // tokens keep working across sessions and are created without resuming it.
 func (p *sandboxImplPersistent) createConnectToken(ctx context.Context, port uint32, userMetadata string) (*SandboxCreateConnectCredentials, error) {
 	resp, err := p.client.cpClient.PersistentSandboxCreateConnectToken(ctx, pb.PersistentSandboxCreateConnectTokenRequest_builder{
-		PersistentSandboxId: p.persistentSandboxID,
+		PersistentSandboxId: p.id,
 		UserMetadata:        userMetadata,
 		Port:                &port,
 	}.Build())
@@ -418,8 +490,8 @@ func (p *sandboxImplPersistent) createConnectToken(ctx context.Context, port uin
 }
 
 func (p *sandboxImplPersistent) terminate(ctx context.Context) error {
-	_, err := p.client.cpClient.PersistentSandboxTerminate(ctx, pb.PersistentSandboxTerminateRequest_builder{
-		PersistentSandboxId: p.persistentSandboxID,
+	resp, err := p.client.cpClient.PersistentSandboxTerminate(ctx, pb.PersistentSandboxTerminateRequest_builder{
+		PersistentSandboxId: p.id,
 	}.Build())
 	if err != nil {
 		return err
@@ -427,19 +499,32 @@ func (p *sandboxImplPersistent) terminate(ctx context.Context) error {
 	p.mu.Lock()
 	p.terminated = true
 	p.mu.Unlock()
+	// The last session, which holds the exit snapshot and logs.
+	if resp.HasLastSessionSandboxId() {
+		p.setSession(ctx, resp.GetLastSessionSandboxId())
+	}
 	return nil
 }
 
 // pause stops the current session, which saves its state for the next resume.
+//
+// It does nothing if there is no session or it has already stopped. A paused
+// Sandbox is never resumed in order to pause it.
 func (p *sandboxImplPersistent) pause(ctx context.Context) error {
 	if err := p.checkNotTerminated(); err != nil {
 		return err
 	}
-	session := p.currentSession()
+	session, err := p.adoptCurrentSession(ctx)
+	if err != nil || session == nil {
+		return err
+	}
+	if err := p.checkNotTerminated(); err != nil {
+		return err
+	}
 	if err := session.terminate(ctx); err != nil {
 		return err
 	}
-	_, err := session.wait(ctx)
+	_, err = session.wait(ctx)
 	return err
 }
 
@@ -449,17 +534,11 @@ func (p *sandboxImplPersistent) resume(ctx context.Context) error {
 	if err := p.checkNotTerminated(); err != nil {
 		return err
 	}
-	session := p.currentSession()
 	sessionID, err := p.resumeSession(ctx)
 	if err != nil {
 		return err
 	}
-	if sessionID != session.id {
-		p.mu.Lock()
-		p.session = newSandboxImplV2(p.client, sessionID, sandboxImplParams{})
-		p.mu.Unlock()
-		session.close()
-	}
+	p.setSession(ctx, sessionID)
 	return nil
 }
 
@@ -491,7 +570,7 @@ func (p *sandboxImplPersistent) wait(ctx context.Context) (int, error) {
 
 func (p *sandboxImplPersistent) poll(ctx context.Context) (*int, error) {
 	if !p.isTerminated() {
-		if _, err := p.getCurrentSessionID(ctx); err != nil {
+		if _, err := p.adoptCurrentSession(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -502,14 +581,18 @@ func (p *sandboxImplPersistent) poll(ctx context.Context) (*int, error) {
 }
 
 func (p *sandboxImplPersistent) waitForScheduling(ctx context.Context, timeout time.Duration) error {
-	return p.currentSession().waitForScheduling(ctx, timeout)
+	session, err := p.ensureSession(ctx)
+	if err != nil {
+		return err
+	}
+	return session.waitForScheduling(ctx, timeout)
 }
 
 // tunnels are addressed by the persistent Sandbox, not a session, so they are
 // served without a running session and never go stale across sessions.
 func (p *sandboxImplPersistent) tunnels(ctx context.Context, _ time.Duration) (map[int]*Tunnel, error) {
 	resp, err := p.client.cpClient.PersistentSandboxTunnelsList(ctx, pb.PersistentSandboxTunnelsListRequest_builder{
-		PersistentSandboxId: p.persistentSandboxID,
+		PersistentSandboxId: p.id,
 	}.Build())
 	if err != nil {
 		return nil, err
@@ -517,16 +600,70 @@ func (p *sandboxImplPersistent) tunnels(ctx context.Context, _ time.Duration) (m
 	return tunnelsFromProtos(resp.GetTunnels()), nil
 }
 
+// getAppID and resolveTaskIDForLogs read from the last known session, so
+// reading logs never resumes a paused Sandbox.
 func (p *sandboxImplPersistent) getAppID(ctx context.Context) (string, error) {
-	return run(ctx, p, maySucceedOnNewSession, func(s *sandboxImplV2) (string, error) { return s.getAppID(ctx) })
+	session, err := p.sessionForLogs(ctx)
+	if err != nil {
+		return "", err
+	}
+	return session.getAppID(ctx)
 }
 
 func (p *sandboxImplPersistent) resolveTaskIDForLogs(ctx context.Context) (string, error) {
-	return p.currentSession().resolveTaskIDForLogs(ctx)
+	session, err := p.sessionForLogs(ctx)
+	if err != nil {
+		return "", err
+	}
+	return session.resolveTaskIDForLogs(ctx)
 }
 
+func (p *sandboxImplPersistent) sessionForLogs(ctx context.Context) (*sandboxImplV2, error) {
+	session, err := p.sessionForReads(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, InvalidError{Exception: fmt.Sprintf("Persistent Sandbox %s has no session to read logs from.", p.id)}
+	}
+	return session, nil
+}
+
+// getExitSnapshot waits for the persistent Sandbox to be terminated. Pausing
+// is not an exit: only termination produces its exit snapshot.
 func (p *sandboxImplPersistent) getExitSnapshot(ctx context.Context, params *SandboxExperimentalGetExitSnapshotParams) (*Image, error) {
-	return p.currentSession().getExitSnapshot(ctx, params)
+	var deadline time.Time
+	hasDeadline := params != nil && params.Timeout != nil
+	if hasDeadline {
+		deadline = time.Now().Add(*params.Timeout)
+	}
+	for {
+		result, err := p.poll(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if result != nil {
+			break
+		}
+		if hasDeadline && time.Now().Add(persistentWaitPollInterval).After(deadline) {
+			return nil, TimeoutError{Exception: fmt.Sprintf("timed out waiting for exit snapshot for Sandbox %s", p.id)}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(persistentWaitPollInterval):
+		}
+	}
+	session := p.currentSession()
+	if session == nil {
+		return nil, InvalidError{Exception: fmt.Sprintf("Persistent Sandbox %s has no exit snapshot: it was terminated without a session.", p.id)}
+	}
+	sessionParams := &SandboxExperimentalGetExitSnapshotParams{}
+	if hasDeadline {
+		remaining := max(time.Until(deadline), 0)
+		sessionParams.Timeout = &remaining
+	}
+	return session.getExitSnapshot(ctx, sessionParams)
 }
 
 func (p *sandboxImplPersistent) snapshotMemory(ctx context.Context) (*SandboxSnapshot, error) {
@@ -603,7 +740,7 @@ func (p *sandboxImplPersistent) exec(ctx context.Context, command []string, para
 }
 
 func (p *sandboxImplPersistent) validateSidecarCreate(params *SidecarCreateParams) error {
-	return p.currentSession().validateSidecarCreate(params)
+	return newSandboxImplV2(p.client, "", sandboxImplParams{}).validateSidecarCreate(params)
 }
 
 func (p *sandboxImplPersistent) createSidecar(ctx context.Context, in sidecarCreateInputs) (sidecarCreateResult, error) {

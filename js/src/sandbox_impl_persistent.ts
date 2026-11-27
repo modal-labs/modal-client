@@ -1,4 +1,5 @@
 import { ClientError, Status } from "nice-grpc";
+import { isRetryableGrpc } from "./client";
 import { setTimeout } from "timers/promises";
 import {
   FileDescriptor,
@@ -13,7 +14,7 @@ import {
 } from "../proto/modal_proto/api";
 import type { App } from "./app";
 import type { ModalClient } from "./client";
-import { ClientClosedError, InvalidError } from "./errors";
+import { ClientClosedError, InvalidError, TimeoutError } from "./errors";
 import type { Image } from "./image";
 import type { ExperimentalOutboundPolicy } from "./experimental_outbound_policy";
 import {
@@ -155,24 +156,21 @@ function execNeverRan(err: unknown): boolean {
 }
 
 /**
- * Backs a persistent Sandbox, whose object ID is the ID of its first session.
+ * Backs a persistent Sandbox, whose object ID is its persistent Sandbox ID.
  *
- * A persistent Sandbox runs as a sequence of regular V2 Sandboxes, its
- * sessions, each started from the saved state of the previous one. Operations
- * are forwarded to the current session. When one fails and the Sandbox hasn't
- * been terminated through this handle, the running session is looked up,
- * resuming the Sandbox from its latest saved state if there is none, and the
- * operation is retried once on the new session.
+ * A missing session is resumed from saved state on the first operation that
+ * needs one. Failed session operations are retried once on a replacement
+ * session unless the failure is non-recoverable.
  *
  * @internal
  * @hidden
  */
 export class SandboxImplPersistent implements SandboxImpl {
   readonly client: ModalClient;
+  /** The persistent Sandbox ID. */
   readonly sandboxId: string;
-  readonly persistentSandboxId: string;
 
-  #session: SandboxImplV2;
+  #session: SandboxImplV2 | undefined;
   #terminated = false;
   #closed = false;
   // Session replacements run one at a time, so concurrent failures on the same
@@ -182,12 +180,12 @@ export class SandboxImplPersistent implements SandboxImpl {
   constructor(
     client: ModalClient,
     sandboxId: string,
-    params: { persistentSandboxId: string; session?: SandboxImplV2 },
+    params: { session?: SandboxImplV2; terminated?: boolean },
   ) {
     this.client = client;
     this.sandboxId = sandboxId;
-    this.persistentSandboxId = params.persistentSandboxId;
-    this.#session = params.session ?? new SandboxImplV2(client, sandboxId);
+    this.#session = params.session;
+    this.#terminated = params.terminated ?? false;
   }
 
   /** Create a persistent Sandbox and return the implementation for its first session. */
@@ -279,17 +277,26 @@ export class SandboxImplPersistent implements SandboxImpl {
       "sandbox_id",
       resp.sandboxId,
     );
-    return new SandboxImplPersistent(client, resp.sandboxId, {
-      persistentSandboxId: resp.persistentSandboxId,
+    return new SandboxImplPersistent(client, resp.persistentSandboxId, {
+      session: new SandboxImplV2(client, resp.sandboxId),
     });
   }
 
   /** The session operations are currently forwarded to. */
-  get session(): SandboxImplV2 {
+  get session(): SandboxImplV2 | undefined {
     return this.#session;
   }
 
   // Session replacement
+
+  async #currentSession(): Promise<SandboxImplV2> {
+    // A terminated Sandbox keeps its last session only for reading the exit
+    // snapshot and logs.
+    this.#checkNotTerminated();
+    if (this.#session) return this.#session;
+    this.#checkOpen();
+    return (await this.#replaceSession(undefined))!;
+  }
 
   /**
    * Run `op` on the session, switching to the running session and retrying
@@ -299,7 +306,7 @@ export class SandboxImplPersistent implements SandboxImpl {
     op: (session: SandboxImplV2) => Promise<T>,
     canRetry: (err: unknown) => boolean = maySucceedOnNewSession,
   ): Promise<T> {
-    const session = this.#session;
+    const session = await this.#currentSession();
     try {
       return await op(session);
     } catch (err) {
@@ -314,7 +321,7 @@ export class SandboxImplPersistent implements SandboxImpl {
       this.client.logger.debug(
         "Retrying operation on persistent Sandbox",
         "persistent_sandbox_id",
-        this.persistentSandboxId,
+        this.sandboxId,
         "error",
         err,
       );
@@ -322,20 +329,29 @@ export class SandboxImplPersistent implements SandboxImpl {
     }
   }
 
+  /**
+   * Look up the most recent session, which may have finished already. Returns
+   * "" if there has never been one. Only termination is final: whether the
+   * session is still running is learned from the session itself.
+   */
   async #getCurrentSessionId(): Promise<string> {
     const resp = await this.client.cpClient.persistentSandboxGet(
       PersistentSandboxGetRequest.create({
-        persistentSandboxId: this.persistentSandboxId,
+        persistentSandboxId: this.sandboxId,
       }),
     );
     if (resp.terminatedAt !== undefined) this.#terminated = true;
-    return this.#terminated ? "" : (resp.currentSandboxId ?? "");
+    if (this.#terminated && resp.currentSandboxId !== undefined) {
+      // The last session, which holds the exit snapshot and logs.
+      this.#setSession(resp.currentSandboxId);
+    }
+    return resp.currentSandboxId ?? "";
   }
 
   /** Resume the persistent Sandbox, returning the ID of its running session. */
   async #resumeSession(): Promise<string> {
     const req = PersistentSandboxResumeRequest.create({
-      persistentSandboxId: this.persistentSandboxId,
+      persistentSandboxId: this.sandboxId,
     });
     const deadline = Date.now() + RESUME_RETRY_TIMEOUT_MS;
     while (true) {
@@ -343,13 +359,10 @@ export class SandboxImplPersistent implements SandboxImpl {
         const resp = await this.client.cpClient.persistentSandboxResume(req);
         return resp.sandboxId;
       } catch (err) {
-        // UNAVAILABLE means the previous session is still pausing or another
+        // Resuming is idempotent, so any retryable error is retried. It is
+        // UNAVAILABLE while the previous session is still pausing or another
         // resume is in progress.
-        if (
-          !(err instanceof ClientError) ||
-          err.code !== Status.UNAVAILABLE ||
-          Date.now() > deadline
-        ) {
+        if (!isRetryableGrpc(err) || Date.now() > deadline) {
           throw err;
         }
       }
@@ -357,15 +370,67 @@ export class SandboxImplPersistent implements SandboxImpl {
     }
   }
 
-  /** Switch from the `failed` session, or return undefined if it is still the running session. */
-  #replaceSession(failed: SandboxImplV2): Promise<SandboxImplV2 | undefined> {
+  /**
+   * Make `sessionId` the current session and close the session it replaces.
+   *
+   * Every session switch goes through here, so a replaced session never keeps
+   * a connection open, and a detached Sandbox only ever holds closed sessions.
+   */
+  #setSession(sessionId: string): SandboxImplV2 {
+    const previous = this.#session;
+    if (previous?.sandboxId === sessionId) return previous;
+    this.client.logger.debug(
+      "Switching persistent Sandbox to session",
+      "persistent_sandbox_id",
+      this.sandboxId,
+      "sandbox_id",
+      sessionId,
+    );
+    const session = new SandboxImplV2(this.client, sessionId);
+    this.#session = session;
+    previous?.close();
+    if (this.#closed) session.close();
+    return session;
+  }
+
+  /** Switch to the most recent session, if there has been one, without resuming. */
+  async #adoptCurrentSession(): Promise<SandboxImplV2 | undefined> {
+    const sessionId = await this.#getCurrentSessionId();
+    return sessionId ? this.#setSession(sessionId) : undefined;
+  }
+
+  /** Return the last known session for reading its logs or metadata, without resuming. */
+  async #sessionForReads(): Promise<SandboxImplV2 | undefined> {
+    if (!this.#session && !this.#terminated) await this.#adoptCurrentSession();
+    return this.#session;
+  }
+
+  async #sessionForLogs(): Promise<SandboxImplV2> {
+    const session = await this.#sessionForReads();
+    if (!session) {
+      throw new InvalidError(
+        `Persistent Sandbox ${this.sandboxId} has no session to read logs from.`,
+      );
+    }
+    return session;
+  }
+
+  /**
+   * Switch from the `failed` session, or return undefined if it is still the
+   * running session. With no `failed` session the handle has no session yet
+   * and takes the most recent one, which may have finished: the first
+   * operation on it then fails and switches again, resuming the Sandbox.
+   */
+  #replaceSession(
+    failed: SandboxImplV2 | undefined,
+  ): Promise<SandboxImplV2 | undefined> {
     const run = this.#replaceChain.then(() => this.#doReplaceSession(failed));
     this.#replaceChain = run.catch(() => undefined);
     return run;
   }
 
   async #doReplaceSession(
-    failed: SandboxImplV2,
+    failed: SandboxImplV2 | undefined,
   ): Promise<SandboxImplV2 | undefined> {
     if (this.#session !== failed) {
       // A concurrent operation has already replaced the session.
@@ -374,26 +439,14 @@ export class SandboxImplPersistent implements SandboxImpl {
     let sessionId = await this.#getCurrentSessionId();
     this.#checkOpen();
     this.#checkNotTerminated();
-    // The current session may have finished already, so the lookup can't tell
-    // whether `failed` is still running. Resuming returns the running session,
-    // which is `failed` itself if it never stopped.
-    if (!sessionId || sessionId === failed.sandboxId) {
+    // The lookup can't tell whether `failed` is still running. Resuming
+    // returns the running session, which is `failed` itself if it never
+    // stopped.
+    if (!sessionId || sessionId === failed?.sandboxId) {
       sessionId = await this.#resumeSession();
-      if (sessionId === failed.sandboxId) {
-        return undefined;
-      }
+      if (sessionId === failed?.sandboxId) return undefined;
     }
-    this.client.logger.debug(
-      "Switching persistent Sandbox to session",
-      "persistent_sandbox_id",
-      this.persistentSandboxId,
-      "sandbox_id",
-      sessionId,
-    );
-    const replacement = new SandboxImplV2(this.client, sessionId);
-    this.#session = replacement;
-    failed.close();
-    return replacement;
+    return this.#setSession(sessionId);
   }
 
   #checkOpen(): void {
@@ -407,7 +460,7 @@ export class SandboxImplPersistent implements SandboxImpl {
   #checkNotTerminated(): void {
     if (this.#terminated) {
       throw new InvalidError(
-        `Persistent Sandbox ${this.persistentSandboxId} has been terminated.`,
+        `Persistent Sandbox ${this.sandboxId} has been terminated.`,
       );
     }
   }
@@ -467,7 +520,7 @@ export class SandboxImplPersistent implements SandboxImpl {
     // they keep working across sessions and are created without resuming it.
     const resp = await this.client.cpClient.persistentSandboxCreateConnectToken(
       PersistentSandboxCreateConnectTokenRequest.create({
-        persistentSandboxId: this.persistentSandboxId,
+        persistentSandboxId: this.sandboxId,
         userMetadata,
         port,
       }),
@@ -476,18 +529,29 @@ export class SandboxImplPersistent implements SandboxImpl {
   }
 
   async terminate(): Promise<void> {
-    await this.client.cpClient.persistentSandboxTerminate(
+    const resp = await this.client.cpClient.persistentSandboxTerminate(
       PersistentSandboxTerminateRequest.create({
-        persistentSandboxId: this.persistentSandboxId,
+        persistentSandboxId: this.sandboxId,
       }),
     );
     this.#terminated = true;
+    // The last session, which holds the exit snapshot and logs.
+    if (resp.lastSessionSandboxId !== undefined) {
+      this.#setSession(resp.lastSessionSandboxId);
+    }
   }
 
-  /** Stop the current session, which saves its state for the next `resume`. */
+  /**
+   * Stop the current session, which saves its state for the next `resume`.
+   *
+   * Does nothing if there is no session or it has already stopped. A paused
+   * Sandbox is never resumed in order to pause it.
+   */
   async pause(): Promise<void> {
     this.#checkNotTerminated();
-    const session = this.#session;
+    const session = await this.#adoptCurrentSession();
+    this.#checkNotTerminated();
+    if (!session) return;
     await session.terminate();
     await session.wait();
   }
@@ -495,12 +559,7 @@ export class SandboxImplPersistent implements SandboxImpl {
   /** Start a session from the latest saved state, unless one is already running. */
   async resume(): Promise<void> {
     this.#checkNotTerminated();
-    const session = this.#session;
-    const sessionId = await this.#resumeSession();
-    if (sessionId !== session.sandboxId) {
-      this.#session = new SandboxImplV2(this.client, sessionId);
-      session.close();
-    }
+    this.#setSession(await this.#resumeSession());
   }
 
   close(): void {
@@ -516,12 +575,14 @@ export class SandboxImplPersistent implements SandboxImpl {
   }
 
   async poll(): Promise<number | null> {
-    if (!this.#terminated) await this.#getCurrentSessionId();
+    if (!this.#terminated) {
+      await this.#adoptCurrentSession();
+    }
     return this.#terminated ? getReturnCode(TERMINATED_RESULT) : null;
   }
 
   async waitForScheduling(timeoutMs: number): Promise<void> {
-    await this.#session.waitForScheduling(timeoutMs);
+    await (await this.#currentSession()).waitForScheduling(timeoutMs);
   }
 
   async tunnels(_timeoutMs: number): Promise<Record<number, Tunnel>> {
@@ -529,24 +590,51 @@ export class SandboxImplPersistent implements SandboxImpl {
     // are served without a running session and never go stale across sessions.
     const resp = await this.client.cpClient.persistentSandboxTunnelsList(
       PersistentSandboxTunnelsListRequest.create({
-        persistentSandboxId: this.persistentSandboxId,
+        persistentSandboxId: this.sandboxId,
       }),
     );
     return tunnelsFromProtos(resp.tunnels);
   }
 
+  // The app ID and task ID for logs are read from the last known session, so
+  // reading logs never resumes a paused Sandbox.
   async getAppId(): Promise<string> {
-    return await this.#run((s) => s.getAppId());
+    return await (await this.#sessionForLogs()).getAppId();
   }
 
   async resolveTaskIdForLogs(): Promise<string> {
-    return await this.#session.resolveTaskIdForLogs();
+    return await (await this.#sessionForLogs()).resolveTaskIdForLogs();
   }
 
   async getExitSnapshot(
     params: SandboxExperimentalGetExitSnapshotParams | undefined,
   ): Promise<Image> {
-    return await this.#session.getExitSnapshot(params);
+    // Pausing a persistent Sandbox is not an exit: only termination produces
+    // its exit snapshot.
+    const timeoutMs = params?.timeoutMs;
+    const deadline =
+      timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+    while ((await this.poll()) === null) {
+      if (
+        deadline !== undefined &&
+        Date.now() + WAIT_POLL_INTERVAL_MS > deadline
+      ) {
+        throw new TimeoutError(
+          `Timed out waiting for exit snapshot for Sandbox ${this.sandboxId}`,
+        );
+      }
+      await setTimeout(WAIT_POLL_INTERVAL_MS);
+    }
+    if (!this.#session) {
+      throw new InvalidError(
+        `Persistent Sandbox ${this.sandboxId} has no exit snapshot: it was terminated without a session.`,
+      );
+    }
+    return await this.#session.getExitSnapshot(
+      deadline === undefined
+        ? undefined
+        : { timeoutMs: Math.max(0, deadline - Date.now()) },
+    );
   }
 
   async snapshotMemory(): Promise<SandboxSnapshot> {
@@ -645,7 +733,7 @@ export class SandboxImplPersistent implements SandboxImpl {
   }
 
   validateSidecarCreate(options: SidecarCreateOptions): void {
-    this.#session.validateSidecarCreate(options);
+    new SandboxImplV2(this.client, "").validateSidecarCreate(options);
   }
 
   async createSidecar(

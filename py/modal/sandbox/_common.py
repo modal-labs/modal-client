@@ -231,6 +231,10 @@ def _is_v1_sandbox_id(sandbox_id: str) -> bool:
     )
 
 
+def _is_persistent_sandbox_id(sandbox_id: str) -> bool:
+    return sandbox_id.startswith("sx-")
+
+
 def _get_sandbox_version(sandbox_id: str) -> SandboxVersion:
     # IDs that don't match the V1 shape are assumed to be V2, so that Sandbox
     # IDs minted in newer formats route to the newer backend instead of

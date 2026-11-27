@@ -65,6 +65,7 @@ import {
   type SandboxImpl,
   implClassForSnapshot,
   newSandboxImpl,
+  newSandboxImplFromId,
 } from "./sandbox_common";
 import { SandboxImplV1 } from "./sandbox_impl_v1";
 import { SandboxImplV2 } from "./sandbox_impl_v2";
@@ -919,7 +920,7 @@ export class SandboxService {
    * @returns Sandbox with ID
    */
   async fromId(sandboxId: string): Promise<Sandbox> {
-    return new Sandbox(newSandboxImpl(this.#client, sandboxId));
+    return new Sandbox(newSandboxImplFromId(this.#client, sandboxId));
   }
 
   /** Get a running {@link Sandbox} by name from a deployed {@link App}.

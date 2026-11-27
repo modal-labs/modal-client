@@ -413,19 +413,20 @@ class SandboxImplV2:
     async def resume(self) -> None:
         raise NotImplementedError(_PERSISTENT_ONLY_MESSAGE.format("_experimental_resume()"))
 
-    def _create_sidecar_via_control_plane(self) -> bool:
+    @staticmethod
+    def _create_sidecar_via_control_plane() -> bool:
         # Opt out via the `use_control_plane_sidecar_create` config setting to create
         # sidecars over the task command router instead.
         return config.get("use_control_plane_sidecar_create")
 
+    @staticmethod
     def validate_sidecar_create(
-        self,
         *,
         cloud_bucket_mounts: Sequence[tuple[str, _CloudBucketMount]],
         has_proxy: bool,
         include_oidc_identity_token: bool,
     ) -> None:
-        if self._create_sidecar_via_control_plane():
+        if SandboxImplV2._create_sidecar_via_control_plane():
             return
         if cloud_bucket_mounts:
             raise InvalidError(

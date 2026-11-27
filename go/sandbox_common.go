@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -674,6 +675,14 @@ func pollExitSnapshot(ctx context.Context, impl sandboxImpl, params *SandboxExpe
 			return nil, timeoutErr
 		}
 	}
+}
+
+// newSandboxImplFromID constructs a lazy persistent or session implementation from an ID.
+func newSandboxImplFromID(client *Client, sandboxID string) sandboxImpl {
+	if strings.HasPrefix(sandboxID, "sx-") {
+		return newSandboxImplPersistent(client, sandboxID, sandboxImplPersistentParams{})
+	}
+	return newSandboxImpl(client, sandboxID, sandboxImplParams{})
 }
 
 // newSandboxImpl constructs a session implementation, deducing the backend from its ID.
