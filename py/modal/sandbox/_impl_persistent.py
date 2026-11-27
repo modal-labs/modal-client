@@ -62,8 +62,8 @@ PERSISTENT_SANDBOX_DRAIN_TIMEOUT = 60
 PERSISTENT_SANDBOX_MAX_DRAIN_TIMEOUT = 10 * 60
 
 # Resuming is UNAVAILABLE while the previous session is still saving its exit snapshot or another resume is
-# in progress, so it is retried this long at this interval.
-_RESUME_RETRY = Retry(base_delay=1.0, max_delay=1.0, max_retries=None, total_timeout=120.0)
+# in progress, and pausing is while a session is starting, so both are retried this long at this interval.
+_BUSY_RETRY = Retry(base_delay=1.0, max_delay=1.0, max_retries=None, total_timeout=120.0)
 
 # How often `wait()` checks whether the persistent Sandbox has been terminated.
 _WAIT_POLL_INTERVAL = 1.0
@@ -211,14 +211,14 @@ class SandboxImplPersistent:
             )
             if cloud_bucket_credentials or any(source.HasField("env") for source in _secret_sources(secrets)):
                 raise InvalidError("Ephemeral credentials are not supported by persistent Sandboxes yet.")
-            req = api_pb2.PersistentSandboxCreateRequest(
+            req = api_pb2.SxSandboxCreateRequest(
                 app_id=load_context.app_id or "",
                 definition=common.definition(cloud_bucket_mounts=cloud_bucket_mount_protos),
             )
-            resp = await client._stub.PersistentSandboxCreate(req, metadata=await auth_metadata(client))
+            resp = await client._stub.SxSandboxCreate(req, metadata=await auth_metadata(client))
             app_id = load_context.app_id or ""
         session = SandboxImplV2(client, resp.sandbox_id)
-        impl = cls(client, resp.persistent_sandbox_id, session=session, app_id=app_id)
+        impl = cls(client, resp.sx_id, session=session, app_id=app_id)
         return impl
 
     @classmethod
@@ -316,8 +316,8 @@ class SandboxImplPersistent:
         Only termination is final: whether the session is still running is learned from the session itself.
         """
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxGetRequest(persistent_sandbox_id=self.sandbox_id)
-        resp = await client._stub.PersistentSandboxGet(req, metadata=await auth_metadata(client))
+        req = api_pb2.SxSandboxGetRequest(sx_id=self.sandbox_id)
+        resp = await client._stub.SxSandboxGet(req, metadata=await auth_metadata(client))
         self._hydrated = True
         if resp.HasField("terminated_at"):
             self._terminated = True
@@ -330,10 +330,8 @@ class SandboxImplPersistent:
     async def _resume_session(self) -> str:
         """Resume the persistent Sandbox, returning the ID of its running session."""
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxResumeRequest(persistent_sandbox_id=self.sandbox_id)
-        resp = await client._stub.PersistentSandboxResume(
-            req, metadata=await auth_metadata(client), retry=_RESUME_RETRY
-        )
+        req = api_pb2.SxSandboxResumeRequest(sx_id=self.sandbox_id)
+        resp = await client._stub.SxSandboxResume(req, metadata=await auth_metadata(client), retry=_BUSY_RETRY)
         return resp.sandbox_id
 
     async def _set_session(self, session_id: str) -> SandboxImplV2:
@@ -353,13 +351,6 @@ class SandboxImplPersistent:
         if self._closed:
             await session.close()
         return session
-
-    async def _adopt_current_session(self) -> SandboxImplV2 | None:
-        """Switch to the most recent session without resuming. Returns None if there has never been one."""
-        session_id = await self._get_current_session_id()
-        if not session_id:
-            return None
-        return await self._set_session(session_id)
 
     async def _session_for_reads(self) -> SandboxImplV2 | None:
         """Return the last known session for reading its logs or metadata, without resuming."""
@@ -400,8 +391,8 @@ class SandboxImplPersistent:
 
     async def terminate(self) -> None:
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxTerminateRequest(persistent_sandbox_id=self.sandbox_id)
-        resp = await client._stub.PersistentSandboxTerminate(req, metadata=await auth_metadata(client))
+        req = api_pb2.SxSandboxTerminateRequest(sx_id=self.sandbox_id)
+        resp = await client._stub.SxSandboxTerminate(req, metadata=await auth_metadata(client))
         self._terminated = True
         self._hydrated = True
         self._set_terminated_result()
@@ -410,17 +401,18 @@ class SandboxImplPersistent:
             await self._set_session(resp.last_session_sandbox_id)
 
     async def pause(self) -> None:
-        """Stop the current session, which saves its state for the next `resume`.
+        """Stop the current session, which saves its state for the next `resume`, and wait for it to stop.
 
-        Does nothing if there is no session or it has already stopped. A paused Sandbox is never resumed
-        in order to pause it.
+        Does nothing if the Sandbox is already paused. A paused Sandbox is never resumed in order to pause it.
         """
         self._check_not_terminated()
-        session = await self._adopt_current_session()
-        self._check_not_terminated()
-        if session is None:
+        client = await self._get_client()
+        req = api_pb2.SxSandboxPauseRequest(sx_id=self.sandbox_id)
+        resp = await client._stub.SxSandboxPause(req, metadata=await auth_metadata(client), retry=_BUSY_RETRY)
+        if not resp.HasField("sandbox_id"):
             return
-        await session.terminate()
+        # Wait on the session the pause stops, even if another handle has resumed the Sandbox since.
+        session = await self._set_session(resp.sandbox_id)
         await session.wait(raise_on_termination=False)
 
     async def resume(self) -> None:
@@ -440,8 +432,8 @@ class SandboxImplPersistent:
 
     async def tunnels(self, timeout: int) -> dict[int, Tunnel]:
         client = await self._get_client()
-        req = api_pb2.PersistentSandboxTunnelsListRequest(persistent_sandbox_id=self.sandbox_id)
-        resp = await client._stub.PersistentSandboxTunnelsList(req, metadata=await auth_metadata(client))
+        req = api_pb2.SxSandboxTunnelsListRequest(sx_id=self.sandbox_id)
+        resp = await client._stub.SxSandboxTunnelsList(req, metadata=await auth_metadata(client))
         return tunnels_from_protos(resp.tunnels)
 
     async def get_task_id(
@@ -497,15 +489,13 @@ class SandboxImplPersistent:
     ) -> api_pb2.SandboxCreateConnectTokenResponse:
         # Connect tokens are addressed by the persistent Sandbox, not a session, so they keep working across
         # sessions and are created without resuming it.
-        persistent_req = api_pb2.PersistentSandboxCreateConnectTokenRequest(
-            persistent_sandbox_id=self.sandbox_id, user_metadata=req.user_metadata
+        persistent_req = api_pb2.SxSandboxCreateConnectTokenRequest(
+            sx_id=self.sandbox_id, user_metadata=req.user_metadata
         )
         if req.HasField("port"):
             persistent_req.port = req.port
         client = await self._get_client()
-        resp = await client._stub.PersistentSandboxCreateConnectToken(
-            persistent_req, metadata=await auth_metadata(client)
-        )
+        resp = await client._stub.SxSandboxCreateConnectToken(persistent_req, metadata=await auth_metadata(client))
         return api_pb2.SandboxCreateConnectTokenResponse(url=resp.url, token=resp.token)
 
     async def wait_until_ready(self, timeout: int) -> None:

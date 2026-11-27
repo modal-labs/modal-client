@@ -107,10 +107,10 @@ def test_persistent_sandbox_id_roundtrip(app, client, servicer, terminated, from
     with servicer.intercept() as ctx:
         restored = _deserialize(data, client)
         assert restored.object_id == sb.object_id
-        assert not ctx.get_requests("PersistentSandboxGet")
+        assert not ctx.get_requests("SxSandboxGet")
         assert restored.poll() == sb.poll()
-        assert len(ctx.get_requests("PersistentSandboxGet")) == (1 if terminated and not from_id else 2)
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(ctx.get_requests("SxSandboxGet")) == (1 if terminated and not from_id else 2)
+        assert not ctx.get_requests("SxSandboxResume")
         if terminated:
             with pytest.raises(InvalidError, match="has been terminated"):
                 restored._experimental_resume()
@@ -144,10 +144,10 @@ def test_persistent_sandbox_ignores_serialized_metadata(app, client, servicer, h
     with servicer.intercept() as ctx:
         restored = _deserialize(buf.getvalue(), client)
         assert restored.returncode is None
-        assert not ctx.get_requests("PersistentSandboxGet")
+        assert not ctx.get_requests("SxSandboxGet")
         assert restored.poll() is None
-        assert len(ctx.get_requests("PersistentSandboxGet")) == 1
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(ctx.get_requests("SxSandboxGet")) == 1
+        assert not ctx.get_requests("SxSandboxResume")
 
 
 @pytest.mark.parametrize("terminated", [False, True])
@@ -158,7 +158,7 @@ def test_deserialized_persistent_sandbox_adopts_lookup_session(app, client, serv
         sb.terminate()
     with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
         restored = _deserialize(serialize(sb), client)
-        assert not ctx.get_requests("PersistentSandboxGet")
+        assert not ctx.get_requests("SxSandboxGet")
         if terminated:
             with pytest.raises(InvalidError, match="has been terminated"):
                 restored.exec("echo", "hello")
@@ -167,8 +167,8 @@ def test_deserialized_persistent_sandbox_adopts_lookup_session(app, client, serv
             assert process.stdout.read() == "hello\n"
             assert process.wait() == 0
             assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
-        assert len(ctx.get_requests("PersistentSandboxGet")) == 1
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(ctx.get_requests("SxSandboxGet")) == 1
+        assert not ctx.get_requests("SxSandboxResume")
 
 
 def test_deserialized_persistent_sandbox_unknown_id(app, client, servicer):
@@ -186,8 +186,8 @@ def test_deserialized_persistent_sandbox_wait_uses_lookup(app, client, servicer)
         restored = _deserialize(serialize(sb), client)
         restored.wait(raise_on_termination=False)
         assert restored.returncode is not None
-        assert len(ctx.get_requests("PersistentSandboxGet")) == 1
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(ctx.get_requests("SxSandboxGet")) == 1
+        assert not ctx.get_requests("SxSandboxResume")
 
 
 def test_persistent_sandbox_create(app, client, servicer):
@@ -303,7 +303,7 @@ def test_persistent_sandbox_requires_explicit_resume_on_failed_operation(app, cl
         tcr_ctx.add_response("TaskExecStart", GRPCError(Status.NOT_FOUND, "sandbox has stopped"))
         with pytest.raises(SandboxPaused):
             sb.exec("echo", "hello")
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert not ctx.get_requests("SxSandboxResume")
         assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
 
         sb._experimental_resume()
@@ -311,7 +311,7 @@ def test_persistent_sandbox_requires_explicit_resume_on_failed_operation(app, cl
         assert p.stdout.read() == "hello\n"
         assert p.wait() == 0
 
-        assert len(ctx.get_requests("PersistentSandboxResume")) == 1
+        assert len(ctx.get_requests("SxSandboxResume")) == 1
         assert len(tcr_ctx.get_requests("TaskExecStart")) == 2
     assert servicer.persistent_sandbox_resumes == 1
 
@@ -323,27 +323,25 @@ def test_persistent_sandbox_from_id_requires_resume_to_switch_sessions(app, clie
     sb2.poll()
     sb._experimental_pause()
     servicer.sandbox_task_ids["sb-v2-resumed"] = "ta-v2-resumed"
-    replacement = api_pb2.PersistentSandboxGetResponse(
-        persistent_sandbox_id=sb.object_id, current_sandbox_id="sb-v2-resumed"
-    )
+    replacement = api_pb2.SxSandboxGetResponse(sx_id=sb.object_id, current_sandbox_id="sb-v2-resumed")
 
     with servicer.intercept() as ctx, servicer.task_command_router.intercept() as tcr_ctx:
-        ctx.add_response("PersistentSandboxGet", replacement)
+        ctx.add_response("SxSandboxGet", replacement)
         tcr_ctx.add_response("TaskExecStart", GRPCError(Status.NOT_FOUND, "task no longer exists"))
         assert sb2.poll() is None
-        ctx.add_response("PersistentSandboxGet", replacement)
+        ctx.add_response("SxSandboxGet", replacement)
         with pytest.raises(SandboxPaused):
             sb2.exec("echo", "hello")
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert not ctx.get_requests("SxSandboxResume")
 
-        ctx.add_response("PersistentSandboxResume", api_pb2.PersistentSandboxResumeResponse(sandbox_id="sb-v2-resumed"))
+        ctx.add_response("SxSandboxResume", api_pb2.SxSandboxResumeResponse(sandbox_id="sb-v2-resumed"))
         sb2._experimental_resume()
         p = sb2.exec("echo", "hello")
         assert p.stdout.read() == "hello\n"
         assert p.wait() == 0
 
-    [resume] = ctx.get_requests("PersistentSandboxResume")
-    assert resume.persistent_sandbox_id == sb.object_id
+    [resume] = ctx.get_requests("SxSandboxResume")
+    assert resume.sx_id == sb.object_id
     first, retried = tcr_ctx.get_requests("TaskExecStart")
     assert first.task_id == "ta-v2-123"
     assert retried.task_id == "ta-v2-resumed"
@@ -363,8 +361,8 @@ def test_persistent_sandbox_from_id_running(app, client, servicer):
         assert p.stdout.read() == "hello\n"
         assert p.wait() == 0
     # The running session is adopted directly, without resuming.
-    assert len(ctx.get_requests("PersistentSandboxGet")) == 1
-    assert not ctx.get_requests("PersistentSandboxResume")
+    assert len(ctx.get_requests("SxSandboxGet")) == 1
+    assert not ctx.get_requests("SxSandboxResume")
 
 
 @skip_windows("Needs subprocess support")
@@ -383,7 +381,7 @@ def test_persistent_sandbox_from_id_paused(app, client, servicer):
         tcr_ctx.add_response("TaskExecStart", GRPCError(Status.NOT_FOUND, "sandbox has stopped"))
         with pytest.raises(SandboxPaused):
             sb2.exec("echo", "hello")
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert not ctx.get_requests("SxSandboxResume")
         assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
 
 
@@ -403,7 +401,7 @@ def test_persistent_sandbox_from_id_terminated(app, client, servicer):
         with pytest.raises(InvalidError, match="has been terminated"):
             sb2._experimental_pause()
     # The termination timestamp comes from the lookup; nothing is resumed.
-    assert not ctx.get_requests("PersistentSandboxResume")
+    assert not ctx.get_requests("SxSandboxResume")
 
 
 @pytest.mark.parametrize("state", ["running", "paused", "terminated"])
@@ -421,7 +419,7 @@ def test_persistent_sandbox_from_id_poll_one_rpc(app, client, servicer, state):
         code = sb.poll()
         assert code == (137 if state == "terminated" else None)
         assert sb.returncode == code
-    assert [rpc for rpc, _ in ctx.calls] == ["PersistentSandboxGet"]
+    assert [rpc for rpc, _ in ctx.calls] == ["SxSandboxGet"]
 
 
 @pytest.mark.asyncio
@@ -440,7 +438,7 @@ async def test_persistent_sandbox_from_id_is_not_async(app, client, servicer, mo
         from_env.assert_not_called()
         assert ctx.calls == []
         assert await sandbox.poll.aio() is None
-    assert [rpc for rpc, _ in ctx.calls] == ["PersistentSandboxGet"]
+    assert [rpc for rpc, _ in ctx.calls] == ["SxSandboxGet"]
 
 
 def test_persistent_sandbox_from_id_not_found(client, servicer):
@@ -461,7 +459,7 @@ def test_persistent_sandbox_exec_reports_a_shutting_down_session(app, client, se
         )
         with pytest.raises(SandboxPaused):
             sb.exec("echo", "hello")
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert not ctx.get_requests("SxSandboxResume")
         assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
 
 
@@ -488,7 +486,7 @@ def test_persistent_sandbox_exec_reports_a_stopped_session_it_cannot_reach(app, 
 
         with pytest.raises(SandboxPaused):
             sb.exec("echo", "hello")
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert not ctx.get_requests("SxSandboxResume")
         assert not tcr_ctx.get_requests("TaskExecStart")
 
 
@@ -502,7 +500,7 @@ def test_persistent_sandbox_exec_not_repeated_after_it_may_have_run(app, client,
         with pytest.raises(ResourceExhaustedError, match="exec failed"):
             sb.exec("echo", "hello")
 
-        assert ctx.get_requests("PersistentSandboxResume") == []
+        assert ctx.get_requests("SxSandboxResume") == []
         assert len(tcr_ctx.get_requests("TaskExecStart")) == 1
 
 
@@ -544,7 +542,7 @@ def test_persistent_exec_keeps_uncertainty_across_retries(app, client, servicer,
             error = exc
 
         assert marker.read_text().splitlines() == ["ran"]
-        assert ctx.get_requests("PersistentSandboxResume") == []
+        assert ctx.get_requests("SxSandboxResume") == []
         assert isinstance(error, ServiceError)
         assert error._grpc_status == Status.UNAVAILABLE
         assert attempts[0].exec_id == attempts[1].exec_id
@@ -565,8 +563,8 @@ def test_persistent_sandbox_detached_does_not_resume(app, client, servicer):
         with pytest.raises(ClientClosed):
             stdout.read()
     assert ctx.get_requests("SandboxGetTaskIdV2") == []
-    assert ctx.get_requests("PersistentSandboxGet") == []
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert ctx.get_requests("SxSandboxGet") == []
+    assert ctx.get_requests("SxSandboxResume") == []
     assert servicer.persistent_sandbox_resumes == 0
 
 
@@ -635,8 +633,8 @@ def test_persistent_sandbox_poll_observes_external_termination(app, client, serv
     with servicer.intercept() as ctx:
         assert sandbox_b.poll() == 137
         assert sandbox_b.poll() == 137
-        assert len(ctx.get_requests("PersistentSandboxGet")) == 1
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(ctx.get_requests("SxSandboxGet")) == 1
+        assert not ctx.get_requests("SxSandboxResume")
 
 
 @pytest.mark.asyncio
@@ -654,7 +652,7 @@ async def test_persistent_sandbox_wait_observes_external_termination(
     async def get(self, stream):
         nonlocal first_get
         await stream.recv_message()
-        response = api_pb2.PersistentSandboxGetResponse()
+        response = api_pb2.SxSandboxGetResponse()
         if first_get:
             first_get = False
             await sandbox_a.terminate.aio()
@@ -663,7 +661,7 @@ async def test_persistent_sandbox_wait_observes_external_termination(
         await stream.send_message(response)
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("PersistentSandboxGet", get)
+        ctx.set_responder("SxSandboxGet", get)
         waited = sandbox_b.wait.aio(raise_on_termination=raise_on_termination)
         if raise_on_termination:
             with pytest.raises(SandboxTerminatedError):
@@ -671,8 +669,8 @@ async def test_persistent_sandbox_wait_observes_external_termination(
         else:
             await asyncio.wait_for(waited, 3)
         assert sandbox_b.returncode == 137
-        assert len(ctx.get_requests("PersistentSandboxGet")) == 2
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert len(ctx.get_requests("SxSandboxGet")) == 2
+        assert not ctx.get_requests("SxSandboxResume")
 
 
 @pytest.mark.parametrize("operation", ["poll", "wait"])
@@ -701,8 +699,8 @@ def test_detached_sessionless_persistent_stream_does_not_resume(app, client, ser
                 stream.drain()
             else:
                 stream.read()
-        assert not ctx.get_requests("PersistentSandboxGet")
-        assert not ctx.get_requests("PersistentSandboxResume")
+        assert not ctx.get_requests("SxSandboxGet")
+        assert not ctx.get_requests("SxSandboxResume")
 
 
 def test_persistent_sandbox_tunnels(app, client, servicer):
@@ -720,11 +718,7 @@ def test_persistent_sandbox_pause_stops_session_started_elsewhere(app, client, s
 
     with servicer.intercept() as ctx:
         # Another handle paused and resumed the Sandbox, so a different session is running.
-        ctx.add_response(
-            "PersistentSandboxGet",
-            api_pb2.PersistentSandboxGetResponse(persistent_sandbox_id=sb.object_id, current_sandbox_id="sb-v2-other"),
-        )
-        ctx.add_response("SandboxTerminateV2", api_pb2.SandboxTerminateResponse())
+        ctx.add_response("SxSandboxPause", api_pb2.SxSandboxPauseResponse(sandbox_id="sb-v2-other"))
         ctx.add_response(
             "SandboxWaitV2",
             api_pb2.SandboxWaitResponse(
@@ -732,9 +726,11 @@ def test_persistent_sandbox_pause_stops_session_started_elsewhere(app, client, s
             ),
         )
         sb._experimental_pause()
-    assert [req.sandbox_id for req in ctx.get_requests("SandboxTerminateV2")] == ["sb-v2-other"]
+    # Pause waits for the session it stopped, not the one this handle started.
     assert [req.sandbox_id for req in ctx.get_requests("SandboxWaitV2")] == ["sb-v2-other"]
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert ctx.get_requests("SxSandboxGet") == []
+    assert ctx.get_requests("SandboxTerminateV2") == []
+    assert ctx.get_requests("SxSandboxResume") == []
 
 
 def test_persistent_sandbox_pause_does_not_resume(app, client, servicer):
@@ -743,9 +739,22 @@ def test_persistent_sandbox_pause_does_not_resume(app, client, servicer):
 
     with servicer.intercept() as ctx:
         sb._experimental_pause()
-    # Stopping the already finished session again has no effect.
-    assert [req.sandbox_id for req in ctx.get_requests("SandboxTerminateV2")] == ["sb-v2-123"]
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    # Pausing a paused Sandbox stops nothing, so there is nothing to wait for.
+    assert [req.sx_id for req in ctx.get_requests("SxSandboxPause")] == [sb.object_id]
+    assert ctx.get_requests("SandboxWaitV2") == []
+    assert ctx.get_requests("SandboxTerminateV2") == []
+    assert ctx.get_requests("SxSandboxResume") == []
+
+
+def test_persistent_sandbox_pause_retries_while_starting(app, client, servicer):
+    sb = _create(app, client)
+
+    with servicer.intercept() as ctx:
+        # A session is still starting, so the first attempt is turned away.
+        ctx.add_response("SxSandboxPause", GRPCError(Status.UNAVAILABLE, "starting"))
+        sb._experimental_pause()
+    assert len(ctx.get_requests("SxSandboxPause")) == 2
+    assert servicer._sandbox_terminated
     assert servicer.persistent_sandbox_resumes == 0
 
 
@@ -760,7 +769,7 @@ def test_persistent_sandbox_exit_snapshot_requires_termination(app, client, serv
     with servicer.intercept() as ctx:
         with pytest.raises(modal.exception.TimeoutError):
             sb._experimental_get_exit_snapshot(timeout=0)
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert ctx.get_requests("SxSandboxResume") == []
     assert ctx.get_requests("SandboxGetExitSnapshot") == []
 
 
@@ -786,8 +795,8 @@ def test_persistent_sandbox_from_id_exit_snapshot_after_terminate(app, client, s
     (req,) = ctx.get_requests("SandboxGetExitSnapshotV2")
     assert req.sandbox_id == "sb-v2-123"
     # Terminating reports the last session, so only the other handle's termination needs a lookup.
-    assert len(ctx.get_requests("PersistentSandboxGet")) == (0 if terminated_by == "this_handle" else 1)
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert len(ctx.get_requests("SxSandboxGet")) == (0 if terminated_by == "this_handle" else 1)
+    assert ctx.get_requests("SxSandboxResume") == []
 
 
 def test_persistent_sandbox_from_id_logs_do_not_resume(app, client, servicer):
@@ -805,7 +814,7 @@ def test_persistent_sandbox_from_id_logs_do_not_resume(app, client, servicer):
         assert list(sb2.logs.tail()) == []
     # Logs are read from the paused session.
     assert {req.task_id for req in ctx.get_requests("AppFetchLogs")} == {"ta-v2-123"}
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert ctx.get_requests("SxSandboxResume") == []
 
 
 @pytest.mark.parametrize("detached", [False, True])
@@ -824,7 +833,7 @@ def test_persistent_sandbox_logs_use_last_session(app, client, servicer, detache
         ctx.set_responder("AppFetchLogs", fetch_logs)
         assert list(sb.logs.tail()) == []
     assert all(request.task_id for request in ctx.get_requests("AppFetchLogs"))
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert ctx.get_requests("SxSandboxResume") == []
 
 
 def test_persistent_sandbox_create_connect_token(app, client, servicer):
@@ -835,9 +844,9 @@ def test_persistent_sandbox_create_connect_token(app, client, servicer):
         creds = sb.create_connect_token(user_metadata={"user": "alice"}, port=3000)
     assert creds.url == f"https://a-{sb.object_id}-3000.tunnel.modal.host"
     assert creds.token == f'token-{sb.object_id}-{{"user": "alice"}}'
-    (req,) = ctx.get_requests("PersistentSandboxCreateConnectToken")
-    assert req.persistent_sandbox_id == sb.object_id
+    (req,) = ctx.get_requests("SxSandboxCreateConnectToken")
+    assert req.sx_id == sb.object_id
     assert req.port == 3000
     # The token is addressed by the persistent Sandbox, so creating it doesn't resume a paused one.
-    assert ctx.get_requests("PersistentSandboxResume") == []
+    assert ctx.get_requests("SxSandboxResume") == []
     assert ctx.get_requests("SandboxCreateConnectTokenV2") == []

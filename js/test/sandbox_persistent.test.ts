@@ -47,9 +47,9 @@ async function createPersistent(
 ): Promise<{ sb: Sandbox; mock: MockGrpcClient; createReq: any }> {
   const { mc, mock, app, image } = setup();
   let createReq: any;
-  mock.handleUnary("/PersistentSandboxCreate", (req: any) => {
+  mock.handleUnary("/SxSandboxCreate", (req: any) => {
     createReq = req;
-    return { persistentSandboxId: PERSISTENT_ID, sandboxId: SESSION_1 };
+    return { sxId: PERSISTENT_ID, sandboxId: SESSION_1 };
   });
   const sb = await mc.sandboxes.create(app, image, {
     experimentalPersistent: true,
@@ -95,17 +95,13 @@ test.each(["running", "paused", "terminated", "missing", "stale"])(
   async (state) => {
     const { mc, mock } = setup();
     let calls = 0;
-    mock.handleUnary("/PersistentSandboxGet", (req: any) => {
+    mock.handleUnary("/SxSandboxGet", (req: any) => {
       calls++;
-      expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
+      expect(req.sxId).toBe(PERSISTENT_ID);
       if (state === "missing")
-        throw new ClientError(
-          "/PersistentSandboxGet",
-          Status.NOT_FOUND,
-          "unknown",
-        );
+        throw new ClientError("/SxSandboxGet", Status.NOT_FOUND, "unknown");
       return {
-        persistentSandboxId: PERSISTENT_ID,
+        sxId: PERSISTENT_ID,
         currentSandboxId:
           state === "running" || state === "stale" ? SESSION_1 : undefined,
         terminatedAt: state === "terminated" ? new Date(0) : undefined,
@@ -133,9 +129,7 @@ test.each(["running", "paused", "terminated", "missing", "stale"])(
         expect(calls).toBe(1);
         if (state === "paused") {
           mock.assertExhausted();
-          mock.handleUnary("/PersistentSandboxGet", () => ({
-            currentSandboxId: undefined,
-          }));
+          mock.handleUnary("/SxSandboxPause", () => ({}));
           await sb.experimentalPause();
         }
         if (state !== "running") {
@@ -149,12 +143,12 @@ test.each(["running", "paused", "terminated", "missing", "stale"])(
                 "task gone",
               ),
             );
-          mock.handleUnary("/PersistentSandboxGet", () => ({
+          mock.handleUnary("/SxSandboxGet", () => ({
             currentSandboxId: undefined,
           }));
           await expect(createSidecar(sb)).rejects.toThrow(SandboxPaused);
           mock.assertExhausted();
-          mock.handleUnary("/PersistentSandboxResume", () => ({
+          mock.handleUnary("/SxSandboxResume", () => ({
             sandboxId: SESSION_2,
           }));
           await sb.experimentalResume();
@@ -167,7 +161,7 @@ test.each(["running", "paused", "terminated", "missing", "stale"])(
   },
 );
 
-test("create sends a PersistentSandboxCreate with the session timeouts", async () => {
+test("create sends an SxSandboxCreate with the session timeouts", async () => {
   const { sb, mock, createReq } = await createPersistent();
 
   expect(createReq.appId).toBe("ap-1234");
@@ -176,7 +170,7 @@ test("create sends a PersistentSandboxCreate with the session timeouts", async (
   expect(createReq.definition.idleTimeoutSecs).toBe(300);
   expect(createReq.definition.drainTimeoutSecs).toBe(60);
   expect(sb.sandboxId).toBe(PERSISTENT_ID);
-  mock.handleUnary("/PersistentSandboxGet", () => ({
+  mock.handleUnary("/SxSandboxGet", () => ({
     currentSandboxId: SESSION_1,
   }));
   expect(await sb.poll()).toBeNull();
@@ -247,13 +241,10 @@ test.each<[string, SandboxCreateParams]>([
 test("pause stops the session and resume starts a new one", async () => {
   const { sb, mock } = await createPersistent();
 
-  // Pausing looks up the running session, and stops that one.
-  mock.handleUnary("/PersistentSandboxGet", () => ({
-    currentSandboxId: SESSION_1,
-  }));
-  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
-    expect(req.sandboxId).toBe(SESSION_1);
-    return {};
+  // Pausing stops the running session, then waits for it to stop.
+  mock.handleUnary("/SxSandboxPause", (req: any) => {
+    expect(req.sxId).toBe(PERSISTENT_ID);
+    return { sandboxId: SESSION_1 };
   });
   mock.handleUnary("/SandboxWaitV2", (req: any) => {
     expect(req.sandboxId).toBe(SESSION_1);
@@ -261,13 +252,13 @@ test("pause stops the session and resume starts a new one", async () => {
   });
   await sb.experimentalPause();
   // Pausing ends a session, not the persistent Sandbox.
-  mock.handleUnary("/PersistentSandboxGet", () => ({
+  mock.handleUnary("/SxSandboxGet", () => ({
     currentSandboxId: undefined,
   }));
   expect(await sb.poll()).toBeNull();
 
-  mock.handleUnary("/PersistentSandboxResume", (req: any) => {
-    expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
+  mock.handleUnary("/SxSandboxResume", (req: any) => {
+    expect(req.sxId).toBe(PERSISTENT_ID);
     return { sandboxId: SESSION_2 };
   });
   await sb.experimentalResume();
@@ -277,7 +268,7 @@ test("pause stops the session and resume starts a new one", async () => {
   expect(await createSidecar(sb)).toBe(SIDECAR_ID);
 
   // Resuming a running persistent Sandbox keeps its session.
-  mock.handleUnary("/PersistentSandboxResume", () => ({
+  mock.handleUnary("/SxSandboxResume", () => ({
     sandboxId: SESSION_2,
   }));
   await sb.experimentalResume();
@@ -287,17 +278,11 @@ test("pause stops the session and resume starts a new one", async () => {
   mock.assertExhausted();
 });
 
-test("pause stops a session that was started through another handle", async () => {
+test("pause waits for a session that was started through another handle", async () => {
   const { sb, mock } = await createPersistent();
 
   // Another handle paused and resumed the Sandbox, so a different session is running.
-  mock.handleUnary("/PersistentSandboxGet", () => ({
-    currentSandboxId: SESSION_2,
-  }));
-  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
-    expect(req.sandboxId).toBe(SESSION_2);
-    return {};
-  });
+  mock.handleUnary("/SxSandboxPause", () => ({ sandboxId: SESSION_2 }));
   mock.handleUnary("/SandboxWaitV2", (req: any) => {
     expect(req.sandboxId).toBe(SESSION_2);
     return { result: TERMINATED };
@@ -309,10 +294,20 @@ test("pause stops a session that was started through another handle", async () =
 test("pause does not resume a paused persistent Sandbox", async () => {
   const { sb, mock } = await createPersistent();
 
-  // With no running session there is nothing to pause, and no other request is made.
-  mock.handleUnary("/PersistentSandboxGet", () => ({
-    currentSandboxId: undefined,
-  }));
+  // Pausing a paused Sandbox stops nothing, so no other request is made.
+  mock.handleUnary("/SxSandboxPause", () => ({}));
+  await sb.experimentalPause();
+  mock.assertExhausted();
+});
+
+test("pause retries while a session is starting", async () => {
+  const { sb, mock } = await createPersistent();
+
+  mock.handleUnary("/SxSandboxPause", () => {
+    throw new ClientError("/SxSandboxPause", Status.UNAVAILABLE, "starting");
+  });
+  mock.handleUnary("/SxSandboxPause", () => ({ sandboxId: SESSION_1 }));
+  mock.handleUnary("/SandboxWaitV2", () => ({ result: TERMINATED }));
   await sb.experimentalPause();
   mock.assertExhausted();
 });
@@ -321,7 +316,7 @@ test("the exit snapshot is only available once the persistent Sandbox is termina
   const { sb, mock } = await createPersistent();
 
   // A paused Sandbox has not exited: it is neither resumed nor asked for a snapshot.
-  mock.handleUnary("/PersistentSandboxGet", () => ({
+  mock.handleUnary("/SxSandboxGet", () => ({
     currentSandboxId: undefined,
   }));
   await expect(
@@ -339,12 +334,12 @@ test.each(["this handle", "another handle"])(
 
     if (terminatedBy === "this handle") {
       // Terminating reports the last session, so no lookup is needed.
-      mock.handleUnary("/PersistentSandboxTerminate", () => ({
+      mock.handleUnary("/SxSandboxTerminate", () => ({
         lastSessionSandboxId: SESSION_2,
       }));
       await sb.terminate();
     } else {
-      mock.handleUnary("/PersistentSandboxGet", () => ({
+      mock.handleUnary("/SxSandboxGet", () => ({
         currentSandboxId: SESSION_2,
         terminatedAt: new Date(0),
       }));
@@ -362,8 +357,8 @@ test.each(["this handle", "another handle"])(
 test("tunnels are listed for the persistent Sandbox, not its session", async () => {
   const { sb, mock } = await createPersistent();
 
-  mock.handleUnary("/PersistentSandboxTunnelsList", (req: any) => {
-    expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
+  mock.handleUnary("/SxSandboxTunnelsList", (req: any) => {
+    expect(req.sxId).toBe(PERSISTENT_ID);
     return {
       tunnels: [{ containerPort: 8080, host: "tunnel.modal.host", port: 443 }],
     };
@@ -377,8 +372,8 @@ test("tunnels are listed for the persistent Sandbox, not its session", async () 
 test("connect tokens are created for the persistent Sandbox, not its session", async () => {
   const { sb, mock } = await createPersistent();
 
-  mock.handleUnary("/PersistentSandboxCreateConnectToken", (req: any) => {
-    expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
+  mock.handleUnary("/SxSandboxCreateConnectToken", (req: any) => {
+    expect(req.sxId).toBe(PERSISTENT_ID);
     expect(req.port).toBe(3000);
     expect(req.userMetadata).toBe("alice");
     return { url: "https://a-1-abcde.modal.host", token: "tok" };
@@ -397,10 +392,10 @@ test("a failed operation on a stopped session requires explicit resume", async (
     SESSION_1,
     new ClientError("/SandboxContainerCreateV2", Status.NOT_FOUND, "stopped"),
   );
-  mock.handleUnary("/PersistentSandboxGet", (req: any) => {
-    expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
+  mock.handleUnary("/SxSandboxGet", (req: any) => {
+    expect(req.sxId).toBe(PERSISTENT_ID);
     return {
-      persistentSandboxId: PERSISTENT_ID,
+      sxId: PERSISTENT_ID,
       currentSandboxId: SESSION_1,
     };
   });
@@ -409,7 +404,7 @@ test("a failed operation on a stopped session requires explicit resume", async (
   await expect(createSidecar(sb)).rejects.toThrow(SandboxPaused);
   mock.assertExhausted();
 
-  mock.handleUnary("/PersistentSandboxResume", () => ({
+  mock.handleUnary("/SxSandboxResume", () => ({
     sandboxId: SESSION_2,
   }));
   expectSidecarCreate(mock, SESSION_2);
@@ -427,8 +422,8 @@ test("a stale handle requires explicit resume even if another session is running
     SESSION_1,
     new ClientError("/SandboxContainerCreateV2", Status.NOT_FOUND, "stopped"),
   );
-  mock.handleUnary("/PersistentSandboxGet", () => ({
-    persistentSandboxId: PERSISTENT_ID,
+  mock.handleUnary("/SxSandboxGet", () => ({
+    sxId: PERSISTENT_ID,
     currentSandboxId: SESSION_2,
   }));
   await expect(createSidecar(sb)).rejects.toThrow(SandboxPaused);
@@ -444,8 +439,8 @@ test("a failed operation is not retried while its session is still running", asy
     "no tunnels",
   );
   expectSidecarCreate(mock, SESSION_1, err);
-  mock.handleUnary("/PersistentSandboxGet", () => ({
-    persistentSandboxId: PERSISTENT_ID,
+  mock.handleUnary("/SxSandboxGet", () => ({
+    sxId: PERSISTENT_ID,
     currentSandboxId: SESSION_1,
   }));
   mock.handleUnary("/SandboxWaitV2", () => ({}));
@@ -457,14 +452,10 @@ test("a failed operation is not retried while its session is still running", asy
 test("resume retries while the previous session is still pausing", async () => {
   const { sb, mock } = await createPersistent();
 
-  mock.handleUnary("/PersistentSandboxResume", () => {
-    throw new ClientError(
-      "/PersistentSandboxResume",
-      Status.UNAVAILABLE,
-      "pausing",
-    );
+  mock.handleUnary("/SxSandboxResume", () => {
+    throw new ClientError("/SxSandboxResume", Status.UNAVAILABLE, "pausing");
   });
-  mock.handleUnary("/PersistentSandboxResume", () => ({
+  mock.handleUnary("/SxSandboxResume", () => ({
     sandboxId: SESSION_2,
   }));
   await sb.experimentalResume();
@@ -477,8 +468,8 @@ test("resume retries while the previous session is still pausing", async () => {
 test("terminate stops the persistent Sandbox for good", async () => {
   const { sb, mock } = await createPersistent();
 
-  mock.handleUnary("/PersistentSandboxTerminate", (req: any) => {
-    expect(req.persistentSandboxId).toBe(PERSISTENT_ID);
+  mock.handleUnary("/SxSandboxTerminate", (req: any) => {
+    expect(req.sxId).toBe(PERSISTENT_ID);
     return {};
   });
   await sb.terminate();
@@ -494,8 +485,8 @@ test("terminate stops the persistent Sandbox for good", async () => {
 
 test("wait resolves once the persistent Sandbox is terminated", async () => {
   const { sb, mock } = await createPersistent();
-  mock.handleUnary("/PersistentSandboxTerminate", () => ({}));
-  mock.handleUnary("/PersistentSandboxGet", () => ({
+  mock.handleUnary("/SxSandboxTerminate", () => ({}));
+  mock.handleUnary("/SxSandboxGet", () => ({
     currentSandboxId: SESSION_1,
   }));
 
@@ -514,11 +505,11 @@ test.each(["running", "paused"])(
     };
     const sandboxA = await mc.sandboxes.fromId(PERSISTENT_ID);
     const sandboxB = await mc.sandboxes.fromId(PERSISTENT_ID);
-    mock.handleUnary("/PersistentSandboxGet", () => response);
+    mock.handleUnary("/SxSandboxGet", () => response);
     expect(await sandboxB.poll()).toBeNull();
-    mock.handleUnary("/PersistentSandboxTerminate", () => ({}));
+    mock.handleUnary("/SxSandboxTerminate", () => ({}));
     await sandboxA.terminate();
-    mock.handleUnary("/PersistentSandboxGet", () => ({
+    mock.handleUnary("/SxSandboxGet", () => ({
       terminatedAt: new Date(0),
     }));
     expect(await sandboxB.poll()).toBe(137);
@@ -536,12 +527,12 @@ test.each(["running", "paused"])(
     };
     const sandboxA = await mc.sandboxes.fromId(PERSISTENT_ID);
     const sandboxB = await mc.sandboxes.fromId(PERSISTENT_ID);
-    mock.handleUnary("/PersistentSandboxTerminate", () => ({}));
-    mock.handleUnary("/PersistentSandboxGet", async () => {
+    mock.handleUnary("/SxSandboxTerminate", () => ({}));
+    mock.handleUnary("/SxSandboxGet", async () => {
       await sandboxA.terminate();
       return response;
     });
-    mock.handleUnary("/PersistentSandboxGet", () => ({
+    mock.handleUnary("/SxSandboxGet", () => ({
       terminatedAt: new Date(0),
     }));
     expect(await sandboxB.wait()).toBe(137);
@@ -553,12 +544,8 @@ test.each(["poll", "wait"] as const)(
   "%s propagates persistent lookup errors",
   async (operation) => {
     const { sb, mock } = await createPersistent();
-    const error = new ClientError(
-      "/PersistentSandboxGet",
-      Status.NOT_FOUND,
-      "unknown",
-    );
-    mock.handleUnary("/PersistentSandboxGet", () => {
+    const error = new ClientError("/SxSandboxGet", Status.NOT_FOUND, "unknown");
+    mock.handleUnary("/SxSandboxGet", () => {
       throw error;
     });
     await expect(sb[operation]()).rejects.toBe(error);
@@ -649,8 +636,8 @@ test("an exec reports a stopped session whose command router it cannot reach", a
       "Sandbox has finished",
     ),
   );
-  mock.handleUnary("/PersistentSandboxGet", () => ({
-    persistentSandboxId: PERSISTENT_ID,
+  mock.handleUnary("/SxSandboxGet", () => ({
+    sxId: PERSISTENT_ID,
     currentSandboxId: SESSION_1,
   }));
   mock.handleUnary("/SandboxWaitV2", () => ({ result: TERMINATED }));

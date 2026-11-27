@@ -50,11 +50,31 @@ func persistentDrainTimeout(options map[string]any) (time.Duration, error) {
 	return drainTimeout, nil
 }
 
-// How long to retry resuming while the previous session is still saving its state.
+// Resuming is unavailable while the previous session is still saving its
+// state or another resume is in progress, and pausing is while a session is
+// starting, so both are retried this long at this interval.
 const (
-	persistentResumeRetryTimeout  = 120 * time.Second
-	persistentResumeRetryInterval = time.Second
+	persistentBusyRetryTimeout  = 120 * time.Second
+	persistentBusyRetryInterval = time.Second
 )
+
+// retryWhileBusy calls call until it succeeds, retrying retryable errors. Only
+// for calls that are idempotent.
+func retryWhileBusy[T any](ctx context.Context, call func() (T, error)) (T, error) {
+	deadline := time.Now().Add(persistentBusyRetryTimeout)
+	for {
+		resp, err := call()
+		if err == nil || !isRetryableGrpc(err) || time.Now().After(deadline) {
+			return resp, err
+		}
+		select {
+		case <-ctx.Done():
+			var zero T
+			return zero, ctx.Err()
+		case <-time.After(persistentBusyRetryInterval):
+		}
+	}
+}
 
 // How often wait checks whether the persistent Sandbox has been terminated.
 const persistentWaitPollInterval = time.Second
@@ -217,7 +237,7 @@ func createSandboxPersistent(ctx context.Context, client *Client, app *App, imag
 	}
 	warnDeprecatedNetworkParams(ctx, client.logger, params)
 
-	resp, err := client.cpClient.PersistentSandboxCreate(ctx, pb.PersistentSandboxCreateRequest_builder{
+	resp, err := client.cpClient.SxSandboxCreate(ctx, pb.SxSandboxCreateRequest_builder{
 		AppId:      v2Req.GetAppId(),
 		Definition: v2Req.GetDefinition(),
 	}.Build())
@@ -225,9 +245,9 @@ func createSandboxPersistent(ctx context.Context, client *Client, app *App, imag
 		return nil, err
 	}
 	client.logger.DebugContext(ctx, "Created persistent Sandbox",
-		"persistent_sandbox_id", resp.GetPersistentSandboxId(),
+		"persistent_sandbox_id", resp.GetSxId(),
 		"sandbox_id", resp.GetSandboxId())
-	return newSandboxImplPersistent(client, resp.GetPersistentSandboxId(), sandboxImplPersistentParams{sessionID: resp.GetSandboxId()}), nil
+	return newSandboxImplPersistent(client, resp.GetSxId(), sandboxImplPersistentParams{sessionID: resp.GetSandboxId()}), nil
 }
 
 func (p *sandboxImplPersistent) sandboxID() string    { return p.id }
@@ -296,8 +316,8 @@ func runErr(ctx context.Context, p *sandboxImplPersistent, op func(session *sand
 // termination is final: whether the session is still running is learned from
 // the session itself.
 func (p *sandboxImplPersistent) getCurrentSessionID(ctx context.Context) (string, error) {
-	resp, err := p.client.cpClient.PersistentSandboxGet(ctx, pb.PersistentSandboxGetRequest_builder{
-		PersistentSandboxId: &p.id,
+	resp, err := p.client.cpClient.SxSandboxGet(ctx, pb.SxSandboxGetRequest_builder{
+		SxId: &p.id,
 	}.Build())
 	if err != nil {
 		return "", err
@@ -316,25 +336,14 @@ func (p *sandboxImplPersistent) getCurrentSessionID(ctx context.Context) (string
 // resumeSession resumes the persistent Sandbox, returning the ID of its
 // running session.
 func (p *sandboxImplPersistent) resumeSession(ctx context.Context) (string, error) {
-	req := pb.PersistentSandboxResumeRequest_builder{PersistentSandboxId: p.id}.Build()
-	deadline := time.Now().Add(persistentResumeRetryTimeout)
-	for {
-		resp, err := p.client.cpClient.PersistentSandboxResume(ctx, req)
-		if err == nil {
-			return resp.GetSandboxId(), nil
-		}
-		// Resuming is idempotent, so any retryable error is retried. It is
-		// unavailable while the previous session is still pausing or another
-		// resume is in progress.
-		if !isRetryableGrpc(err) || time.Now().After(deadline) {
-			return "", err
-		}
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(persistentResumeRetryInterval):
-		}
+	req := pb.SxSandboxResumeRequest_builder{SxId: p.id}.Build()
+	resp, err := retryWhileBusy(ctx, func() (*pb.SxSandboxResumeResponse, error) {
+		return p.client.cpClient.SxSandboxResume(ctx, req)
+	})
+	if err != nil {
+		return "", err
 	}
+	return resp.GetSandboxId(), nil
 }
 
 // setSession makes sessionID the current session and closes the session it
@@ -445,10 +454,10 @@ func (p *sandboxImplPersistent) setName(ctx context.Context, name string) error 
 // createConnectToken addresses the persistent Sandbox, not a session, so its
 // tokens keep working across sessions and are created without resuming it.
 func (p *sandboxImplPersistent) createConnectToken(ctx context.Context, port uint32, userMetadata string) (*SandboxCreateConnectCredentials, error) {
-	resp, err := p.client.cpClient.PersistentSandboxCreateConnectToken(ctx, pb.PersistentSandboxCreateConnectTokenRequest_builder{
-		PersistentSandboxId: p.id,
-		UserMetadata:        userMetadata,
-		Port:                &port,
+	resp, err := p.client.cpClient.SxSandboxCreateConnectToken(ctx, pb.SxSandboxCreateConnectTokenRequest_builder{
+		SxId:         p.id,
+		UserMetadata: userMetadata,
+		Port:         &port,
 	}.Build())
 	if err != nil {
 		return nil, err
@@ -457,8 +466,8 @@ func (p *sandboxImplPersistent) createConnectToken(ctx context.Context, port uin
 }
 
 func (p *sandboxImplPersistent) terminate(ctx context.Context) error {
-	resp, err := p.client.cpClient.PersistentSandboxTerminate(ctx, pb.PersistentSandboxTerminateRequest_builder{
-		PersistentSandboxId: p.id,
+	resp, err := p.client.cpClient.SxSandboxTerminate(ctx, pb.SxSandboxTerminateRequest_builder{
+		SxId: p.id,
 	}.Build())
 	if err != nil {
 		return err
@@ -473,25 +482,25 @@ func (p *sandboxImplPersistent) terminate(ctx context.Context) error {
 	return nil
 }
 
-// pause stops the current session, which saves its state for the next resume.
+// pause stops the current session, which saves its state for the next resume,
+// and waits for it to stop.
 //
-// It does nothing if there is no session or it has already stopped. A paused
-// Sandbox is never resumed in order to pause it.
+// It does nothing if the Sandbox is already paused. A paused Sandbox is never
+// resumed in order to pause it.
 func (p *sandboxImplPersistent) pause(ctx context.Context) error {
 	if err := p.checkNotTerminated(); err != nil {
 		return err
 	}
-	session, err := p.adoptCurrentSession(ctx)
-	if err != nil || session == nil {
+	req := pb.SxSandboxPauseRequest_builder{SxId: p.id}.Build()
+	resp, err := retryWhileBusy(ctx, func() (*pb.SxSandboxPauseResponse, error) {
+		return p.client.cpClient.SxSandboxPause(ctx, req)
+	})
+	if err != nil || !resp.HasSandboxId() {
 		return err
 	}
-	if err := p.checkNotTerminated(); err != nil {
-		return err
-	}
-	if err := session.terminate(ctx); err != nil {
-		return err
-	}
-	_, err = session.wait(ctx)
+	// Wait on the session the pause stops, even if another handle has resumed
+	// the Sandbox since.
+	_, err = p.setSession(ctx, resp.GetSandboxId()).wait(ctx)
 	return err
 }
 
@@ -566,8 +575,8 @@ func (p *sandboxImplPersistent) waitForScheduling(ctx context.Context, timeout t
 // tunnels are addressed by the persistent Sandbox, not a session, so they are
 // served without a running session and never go stale across sessions.
 func (p *sandboxImplPersistent) tunnels(ctx context.Context, _ time.Duration) (map[int]*Tunnel, error) {
-	resp, err := p.client.cpClient.PersistentSandboxTunnelsList(ctx, pb.PersistentSandboxTunnelsListRequest_builder{
-		PersistentSandboxId: p.id,
+	resp, err := p.client.cpClient.SxSandboxTunnelsList(ctx, pb.SxSandboxTunnelsListRequest_builder{
+		SxId: p.id,
 	}.Build())
 	if err != nil {
 		return nil, err

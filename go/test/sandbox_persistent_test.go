@@ -32,13 +32,13 @@ func TestPersistentSandboxFromIDMock(t *testing.T) {
 			mock := newGRPCMockClient(t)
 			ctx := t.Context()
 			var calls atomic.Int32
-			get := func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
+			get := func(req *pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
 				calls.Add(1)
-				g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
+				g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
 				if state == "missing" {
 					return nil, status.Error(codes.NotFound, "unknown")
 				}
-				resp := pb.PersistentSandboxGetResponse_builder{PersistentSandboxId: persistentSandboxID}
+				resp := pb.SxSandboxGetResponse_builder{SxId: persistentSandboxID}
 				if state == "running" || state == "stale" {
 					resp.CurrentSandboxId = proto.String(persistentSessionID)
 				}
@@ -47,7 +47,7 @@ func TestPersistentSandboxFromIDMock(t *testing.T) {
 				}
 				return resp.Build(), nil
 			}
-			grpcmock.HandleUnary(mock, "PersistentSandboxGet", get)
+			grpcmock.HandleUnary(mock, "SxSandboxGet", get)
 			sb, err := mock.Sandboxes.FromID(ctx, persistentSandboxID, nil)
 			g.Expect(err).NotTo(gomega.HaveOccurred())
 			g.Expect(calls.Load()).To(gomega.BeZero())
@@ -72,9 +72,7 @@ func TestPersistentSandboxFromIDMock(t *testing.T) {
 					g.Expect(result).To(gomega.BeNil())
 					if state == "paused" {
 						g.Expect(mock.AssertExhausted()).To(gomega.Succeed())
-						grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-							return pb.PersistentSandboxGetResponse_builder{}.Build(), nil
-						})
+						handlePersistentPause(mock, g, "")
 						g.Expect(sb.ExperimentalPause(ctx, nil)).To(gomega.Succeed())
 					}
 					sessionID := persistentSessionID
@@ -82,16 +80,16 @@ func TestPersistentSandboxFromIDMock(t *testing.T) {
 						if state == "stale" {
 							handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.NotFound, "task gone"))
 						}
-						grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-							return pb.PersistentSandboxGetResponse_builder{}.Build(), nil
+						grpcmock.HandleUnary(mock, "SxSandboxGet", func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+							return pb.SxSandboxGetResponse_builder{}.Build(), nil
 						})
 						_, err := createSidecar(t, sb)
 						var paused modal.SandboxPaused
 						g.Expect(errors.As(err, &paused)).To(gomega.BeTrue())
 						g.Expect(mock.AssertExhausted()).To(gomega.Succeed())
-						grpcmock.HandleUnary(mock, "PersistentSandboxResume", func(req *pb.PersistentSandboxResumeRequest) (*pb.PersistentSandboxResumeResponse, error) {
-							g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
-							return pb.PersistentSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
+						grpcmock.HandleUnary(mock, "SxSandboxResume", func(req *pb.SxSandboxResumeRequest) (*pb.SxSandboxResumeResponse, error) {
+							g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
+							return pb.SxSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
 						})
 						g.Expect(sb.ExperimentalResume(ctx, nil)).To(gomega.Succeed())
 						sessionID = persistentSecondSessionID
@@ -110,7 +108,7 @@ func TestPersistentSandboxFromIDMock(t *testing.T) {
 // mockPersistentSandboxCreate serves the RPCs behind creating a persistent
 // Sandbox and returns the created Sandbox. The create request is recorded
 // into gotCreate when non-nil.
-func mockPersistentSandboxCreate(t *testing.T, g *gomega.WithT, mock *grpcmock.MockClient, params *modal.SandboxCreateParams, gotCreate **pb.PersistentSandboxCreateRequest) *modal.Sandbox {
+func mockPersistentSandboxCreate(t *testing.T, g *gomega.WithT, mock *grpcmock.MockClient, params *modal.SandboxCreateParams, gotCreate **pb.SxSandboxCreateRequest) *modal.Sandbox {
 	t.Helper()
 	grpcmock.HandleUnary(mock, "AppGetOrCreate",
 		func(req *pb.AppGetOrCreateRequest) (*pb.AppGetOrCreateResponse, error) {
@@ -130,14 +128,14 @@ func mockPersistentSandboxCreate(t *testing.T, g *gomega.WithT, mock *grpcmock.M
 				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
 			}.Build(), nil
 		})
-	grpcmock.HandleUnary(mock, "PersistentSandboxCreate",
-		func(req *pb.PersistentSandboxCreateRequest) (*pb.PersistentSandboxCreateResponse, error) {
+	grpcmock.HandleUnary(mock, "SxSandboxCreate",
+		func(req *pb.SxSandboxCreateRequest) (*pb.SxSandboxCreateResponse, error) {
 			if gotCreate != nil {
 				*gotCreate = req
 			}
-			return pb.PersistentSandboxCreateResponse_builder{
-				PersistentSandboxId: persistentSandboxID,
-				SandboxId:           persistentSessionID,
+			return pb.SxSandboxCreateResponse_builder{
+				SxId:      persistentSandboxID,
+				SandboxId: persistentSessionID,
 			}.Build(), nil
 		})
 
@@ -191,7 +189,7 @@ func TestPersistentSandboxCreateMock(t *testing.T) {
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 
-	var createReq *pb.PersistentSandboxCreateRequest
+	var createReq *pb.SxSandboxCreateRequest
 	sb := mockPersistentSandboxCreate(t, g, mock, &modal.SandboxCreateParams{Command: []string{"sleep", "infinity"}}, &createReq)
 
 	g.Expect(sb.SandboxID).To(gomega.Equal(persistentSandboxID))
@@ -237,13 +235,8 @@ func TestPersistentSandboxPauseAndResumeMock(t *testing.T) {
 	ctx := t.Context()
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
-	// Pausing looks up the running session, and stops that one.
-	handlePersistentGet(mock, persistentSessionID)
-	grpcmock.HandleUnary(mock, "SandboxTerminateV2",
-		func(req *pb.SandboxTerminateRequest) (*pb.SandboxTerminateResponse, error) {
-			g.Expect(req.GetSandboxId()).To(gomega.Equal(persistentSessionID))
-			return pb.SandboxTerminateResponse_builder{}.Build(), nil
-		})
+	// Pausing stops the running session, then waits for it to stop.
+	handlePersistentPause(mock, g, persistentSessionID)
 	grpcmock.HandleUnary(mock, "SandboxWaitV2",
 		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
 			g.Expect(req.GetSandboxId()).To(gomega.Equal(persistentSessionID))
@@ -254,17 +247,17 @@ func TestPersistentSandboxPauseAndResumeMock(t *testing.T) {
 	g.Expect(sb.ExperimentalPause(ctx, nil)).To(gomega.Succeed())
 
 	// Pausing a session doesn't finish the persistent Sandbox.
-	grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-		return pb.PersistentSandboxGetResponse_builder{}.Build(), nil
+	grpcmock.HandleUnary(mock, "SxSandboxGet", func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+		return pb.SxSandboxGetResponse_builder{}.Build(), nil
 	})
 	code, err := sb.Poll(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(code).To(gomega.BeNil())
 
-	grpcmock.HandleUnary(mock, "PersistentSandboxResume",
-		func(req *pb.PersistentSandboxResumeRequest) (*pb.PersistentSandboxResumeResponse, error) {
-			g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
-			return pb.PersistentSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
+	grpcmock.HandleUnary(mock, "SxSandboxResume",
+		func(req *pb.SxSandboxResumeRequest) (*pb.SxSandboxResumeResponse, error) {
+			g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
+			return pb.SxSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
 		})
 	g.Expect(sb.ExperimentalResume(ctx, nil)).To(gomega.Succeed())
 
@@ -277,27 +270,35 @@ func TestPersistentSandboxPauseAndResumeMock(t *testing.T) {
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
-// handlePersistentGet answers one lookup with the given running session, or a
-// paused persistent Sandbox if it is empty.
-func handlePersistentGet(mock *grpcmock.MockClient, sessionID string) {
-	grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-		return pb.PersistentSandboxGetResponse_builder{PersistentSandboxId: persistentSandboxID, CurrentSandboxId: proto.String(sessionID)}.Build(), nil
+// handlePersistentPause answers one pause request, which stops the given
+// session, or nothing if it is empty.
+func handlePersistentPause(mock *grpcmock.MockClient, g *gomega.WithT, sessionID string) {
+	grpcmock.HandleUnary(mock, "SxSandboxPause", func(req *pb.SxSandboxPauseRequest) (*pb.SxSandboxPauseResponse, error) {
+		g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
+		resp := pb.SxSandboxPauseResponse_builder{}.Build()
+		if sessionID != "" {
+			resp.SetSandboxId(sessionID)
+		}
+		return resp, nil
 	})
 }
 
-func TestPersistentSandboxPauseStopsSessionStartedElsewhereMock(t *testing.T) {
+// handlePersistentGet answers one lookup with the given running session, or a
+// paused persistent Sandbox if it is empty.
+func handlePersistentGet(mock *grpcmock.MockClient, sessionID string) {
+	grpcmock.HandleUnary(mock, "SxSandboxGet", func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+		return pb.SxSandboxGetResponse_builder{SxId: persistentSandboxID, CurrentSandboxId: proto.String(sessionID)}.Build(), nil
+	})
+}
+
+func TestPersistentSandboxPauseWaitsForSessionStartedElsewhereMock(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
 	mock := newGRPCMockClient(t)
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
 	// Another handle paused and resumed the Sandbox, so a different session is running.
-	handlePersistentGet(mock, persistentSecondSessionID)
-	grpcmock.HandleUnary(mock, "SandboxTerminateV2",
-		func(req *pb.SandboxTerminateRequest) (*pb.SandboxTerminateResponse, error) {
-			g.Expect(req.GetSandboxId()).To(gomega.Equal(persistentSecondSessionID))
-			return pb.SandboxTerminateResponse_builder{}.Build(), nil
-		})
+	handlePersistentPause(mock, g, persistentSecondSessionID)
 	grpcmock.HandleUnary(mock, "SandboxWaitV2",
 		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
 			g.Expect(req.GetSandboxId()).To(gomega.Equal(persistentSecondSessionID))
@@ -314,9 +315,30 @@ func TestPersistentSandboxPauseDoesNotResumeMock(t *testing.T) {
 	mock := newGRPCMockClient(t)
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
-	// With no running session there is nothing to pause, and no other request is made.
-	handlePersistentGet(mock, "")
+	// Pausing a paused Sandbox stops nothing, so no other request is made.
+	handlePersistentPause(mock, g, "")
 	g.Expect(sb.ExperimentalPause(t.Context(), nil)).To(gomega.Succeed())
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestPersistentSandboxPauseRetriesWhileStartingMock(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	mock := newGRPCMockClient(t)
+	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
+
+	// A session is still starting, so the first attempt is turned away.
+	grpcmock.HandleUnary(mock, "SxSandboxPause", func(*pb.SxSandboxPauseRequest) (*pb.SxSandboxPauseResponse, error) {
+		return nil, status.Error(codes.Unavailable, "starting")
+	})
+	handlePersistentPause(mock, g, persistentSessionID)
+	grpcmock.HandleUnary(mock, "SandboxWaitV2", func(*pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+		return pb.SandboxWaitResponse_builder{
+			Result: pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+		}.Build(), nil
+	})
+	g.Expect(sb.ExperimentalPause(t.Context(), nil)).To(gomega.Succeed())
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestPersistentSandboxExitSnapshotRequiresTerminationMock(t *testing.T) {
@@ -345,15 +367,15 @@ func TestPersistentSandboxExitSnapshotAfterTerminateMock(t *testing.T) {
 
 			if terminatedBy == "this handle" {
 				// Terminating reports the last session, so no lookup is needed.
-				grpcmock.HandleUnary(mock, "PersistentSandboxTerminate",
-					func(*pb.PersistentSandboxTerminateRequest) (*pb.PersistentSandboxTerminateResponse, error) {
-						return pb.PersistentSandboxTerminateResponse_builder{LastSessionSandboxId: proto.String(persistentSecondSessionID)}.Build(), nil
+				grpcmock.HandleUnary(mock, "SxSandboxTerminate",
+					func(*pb.SxSandboxTerminateRequest) (*pb.SxSandboxTerminateResponse, error) {
+						return pb.SxSandboxTerminateResponse_builder{LastSessionSandboxId: proto.String(persistentSecondSessionID)}.Build(), nil
 					})
 				_, err = sb.Terminate(ctx, nil)
 				g.Expect(err).ToNot(gomega.HaveOccurred())
 			} else {
-				grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-					return pb.PersistentSandboxGetResponse_builder{
+				grpcmock.HandleUnary(mock, "SxSandboxGet", func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+					return pb.SxSandboxGetResponse_builder{
 						CurrentSandboxId: proto.String(persistentSecondSessionID),
 						TerminatedAt:     timestamppb.Now(),
 					}.Build(), nil
@@ -396,10 +418,10 @@ func TestPersistentSandboxTunnelsMock(t *testing.T) {
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
 	// Tunnels are listed for the persistent Sandbox, not its current session.
-	grpcmock.HandleUnary(mock, "PersistentSandboxTunnelsList",
-		func(req *pb.PersistentSandboxTunnelsListRequest) (*pb.PersistentSandboxTunnelsListResponse, error) {
-			g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
-			return pb.PersistentSandboxTunnelsListResponse_builder{
+	grpcmock.HandleUnary(mock, "SxSandboxTunnelsList",
+		func(req *pb.SxSandboxTunnelsListRequest) (*pb.SxSandboxTunnelsListResponse, error) {
+			g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
+			return pb.SxSandboxTunnelsListResponse_builder{
 				Tunnels: []*pb.TunnelData{pb.TunnelData_builder{Host: "tunnel.modal.host", Port: 443, ContainerPort: 8080}.Build()},
 			}.Build(), nil
 		})
@@ -417,12 +439,12 @@ func TestPersistentSandboxCreateConnectTokenMock(t *testing.T) {
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
 	// Connect tokens are created for the persistent Sandbox, not its current session.
-	grpcmock.HandleUnary(mock, "PersistentSandboxCreateConnectToken",
-		func(req *pb.PersistentSandboxCreateConnectTokenRequest) (*pb.PersistentSandboxCreateConnectTokenResponse, error) {
-			g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
+	grpcmock.HandleUnary(mock, "SxSandboxCreateConnectToken",
+		func(req *pb.SxSandboxCreateConnectTokenRequest) (*pb.SxSandboxCreateConnectTokenResponse, error) {
+			g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
 			g.Expect(req.GetPort()).To(gomega.Equal(uint32(3000)))
 			g.Expect(req.GetUserMetadata()).To(gomega.Equal("alice"))
-			return pb.PersistentSandboxCreateConnectTokenResponse_builder{Url: "https://a-1-abcde.modal.host", Token: "tok"}.Build(), nil
+			return pb.SxSandboxCreateConnectTokenResponse_builder{Url: "https://a-1-abcde.modal.host", Token: "tok"}.Build(), nil
 		})
 	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{Port: 3000, UserMetadata: "alice"})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -437,12 +459,12 @@ func TestPersistentSandboxRequiresExplicitResumeMock(t *testing.T) {
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
 	handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
-	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
-		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-			g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
-			return pb.PersistentSandboxGetResponse_builder{
-				PersistentSandboxId: persistentSandboxID,
-				CurrentSandboxId:    proto.String(persistentSessionID),
+	grpcmock.HandleUnary(mock, "SxSandboxGet",
+		func(req *pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+			g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
+			return pb.SxSandboxGetResponse_builder{
+				SxId:             persistentSandboxID,
+				CurrentSandboxId: proto.String(persistentSessionID),
 			}.Build(), nil
 		})
 	grpcmock.HandleUnary(mock, "SandboxWaitV2",
@@ -457,13 +479,13 @@ func TestPersistentSandboxRequiresExplicitResumeMock(t *testing.T) {
 	g.Expect(errors.As(err, &paused)).To(gomega.BeTrue())
 	g.Expect(mock.AssertExhausted()).To(gomega.Succeed())
 
-	grpcmock.HandleUnary(mock, "PersistentSandboxResume",
-		func(req *pb.PersistentSandboxResumeRequest) (*pb.PersistentSandboxResumeResponse, error) {
+	grpcmock.HandleUnary(mock, "SxSandboxResume",
+		func(req *pb.SxSandboxResumeRequest) (*pb.SxSandboxResumeResponse, error) {
 			return nil, status.Error(codes.Unavailable, "still pausing")
 		})
-	grpcmock.HandleUnary(mock, "PersistentSandboxResume",
-		func(req *pb.PersistentSandboxResumeRequest) (*pb.PersistentSandboxResumeResponse, error) {
-			return pb.PersistentSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
+	grpcmock.HandleUnary(mock, "SxSandboxResume",
+		func(req *pb.SxSandboxResumeRequest) (*pb.SxSandboxResumeResponse, error) {
+			return pb.SxSandboxResumeResponse_builder{SandboxId: persistentSecondSessionID}.Build(), nil
 		})
 	handleSidecarCreate(mock, g, persistentSecondSessionID, nil)
 
@@ -480,11 +502,11 @@ func TestPersistentSandboxStaleHandleRequiresExplicitResumeMock(t *testing.T) {
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
 	handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.NotFound, "sandbox not found"))
-	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
-		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-			return pb.PersistentSandboxGetResponse_builder{
-				PersistentSandboxId: persistentSandboxID,
-				CurrentSandboxId:    proto.String(persistentSecondSessionID),
+	grpcmock.HandleUnary(mock, "SxSandboxGet",
+		func(req *pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+			return pb.SxSandboxGetResponse_builder{
+				SxId:             persistentSandboxID,
+				CurrentSandboxId: proto.String(persistentSecondSessionID),
 			}.Build(), nil
 		})
 	_, err := createSidecar(t, sb)
@@ -500,11 +522,11 @@ func TestPersistentSandboxDoesNotRetryOnRunningSessionMock(t *testing.T) {
 
 	// The failure wasn't caused by the session having stopped, so it surfaces.
 	handleSidecarCreate(mock, g, persistentSessionID, status.Error(codes.Internal, "boom"))
-	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
-		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-			return pb.PersistentSandboxGetResponse_builder{
-				PersistentSandboxId: persistentSandboxID,
-				CurrentSandboxId:    proto.String(persistentSessionID),
+	grpcmock.HandleUnary(mock, "SxSandboxGet",
+		func(req *pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+			return pb.SxSandboxGetResponse_builder{
+				SxId:             persistentSandboxID,
+				CurrentSandboxId: proto.String(persistentSessionID),
 			}.Build(), nil
 		})
 	grpcmock.HandleUnary(mock, "SandboxWaitV2",
@@ -523,17 +545,17 @@ func TestPersistentSandboxTerminateMock(t *testing.T) {
 	ctx := t.Context()
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
-	grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-		return pb.PersistentSandboxGetResponse_builder{CurrentSandboxId: proto.String(persistentSessionID)}.Build(), nil
+	grpcmock.HandleUnary(mock, "SxSandboxGet", func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+		return pb.SxSandboxGetResponse_builder{CurrentSandboxId: proto.String(persistentSessionID)}.Build(), nil
 	})
 	code, err := sb.Poll(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(code).To(gomega.BeNil())
 
-	grpcmock.HandleUnary(mock, "PersistentSandboxTerminate",
-		func(req *pb.PersistentSandboxTerminateRequest) (*pb.PersistentSandboxTerminateResponse, error) {
-			g.Expect(req.GetPersistentSandboxId()).To(gomega.Equal(persistentSandboxID))
-			return pb.PersistentSandboxTerminateResponse_builder{}.Build(), nil
+	grpcmock.HandleUnary(mock, "SxSandboxTerminate",
+		func(req *pb.SxSandboxTerminateRequest) (*pb.SxSandboxTerminateResponse, error) {
+			g.Expect(req.GetSxId()).To(gomega.Equal(persistentSandboxID))
+			return pb.SxSandboxTerminateResponse_builder{}.Build(), nil
 		})
 	exitCode, err := sb.Terminate(ctx, &modal.SandboxTerminateParams{Wait: true})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -561,32 +583,32 @@ func TestPersistentSandboxExternalTerminationMock(t *testing.T) {
 				mock := newGRPCMockClient(t)
 				ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 				defer cancel()
-				get := func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-					return pb.PersistentSandboxGetResponse_builder{CurrentSandboxId: proto.String(sessionID)}.Build(), nil
+				get := func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+					return pb.SxSandboxGetResponse_builder{CurrentSandboxId: proto.String(sessionID)}.Build(), nil
 				}
 				sandboxA, err := mock.Sandboxes.FromID(ctx, persistentSandboxID, nil)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				sandboxB, err := mock.Sandboxes.FromID(ctx, persistentSandboxID, nil)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
-				grpcmock.HandleUnary(mock, "PersistentSandboxTerminate", func(*pb.PersistentSandboxTerminateRequest) (*pb.PersistentSandboxTerminateResponse, error) {
-					return pb.PersistentSandboxTerminateResponse_builder{}.Build(), nil
+				grpcmock.HandleUnary(mock, "SxSandboxTerminate", func(*pb.SxSandboxTerminateRequest) (*pb.SxSandboxTerminateResponse, error) {
+					return pb.SxSandboxTerminateResponse_builder{}.Build(), nil
 				})
 				if operation == "poll" {
-					grpcmock.HandleUnary(mock, "PersistentSandboxGet", get)
+					grpcmock.HandleUnary(mock, "SxSandboxGet", get)
 					code, err := sandboxB.Poll(ctx, nil)
 					g.Expect(err).NotTo(gomega.HaveOccurred())
 					g.Expect(code).To(gomega.BeNil())
 					_, err = sandboxA.Terminate(ctx, nil)
 					g.Expect(err).NotTo(gomega.HaveOccurred())
 				} else {
-					grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
+					grpcmock.HandleUnary(mock, "SxSandboxGet", func(req *pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
 						_, err := sandboxA.Terminate(ctx, nil)
 						g.Expect(err).NotTo(gomega.HaveOccurred())
 						return get(req)
 					})
 				}
-				grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-					return pb.PersistentSandboxGetResponse_builder{TerminatedAt: timestamppb.New(time.Unix(0, 0))}.Build(), nil
+				grpcmock.HandleUnary(mock, "SxSandboxGet", func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+					return pb.SxSandboxGetResponse_builder{TerminatedAt: timestamppb.New(time.Unix(0, 0))}.Build(), nil
 				})
 				if operation == "wait" {
 					code, err := sandboxB.Wait(ctx, nil)
@@ -615,10 +637,10 @@ func TestPersistentSandboxRefreshErrorMock(t *testing.T) {
 			defer cancel()
 			sandbox := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 			wantErr := status.Error(codes.NotFound, "unknown")
-			grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
+			grpcmock.HandleUnary(mock, "SxSandboxGet", func(*pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
 				if operation == "cancel" {
 					cancel()
-					return pb.PersistentSandboxGetResponse_builder{}.Build(), nil
+					return pb.SxSandboxGetResponse_builder{}.Build(), nil
 				}
 				return nil, wantErr
 			})
@@ -726,9 +748,9 @@ func TestPersistentSandboxExecReportsStoppedSessionItCannotReachMock(t *testing.
 			})
 	}
 	handleRouterAccess(persistentSessionID, status.Error(codes.FailedPrecondition, "Sandbox has finished"))
-	grpcmock.HandleUnary(mock, "PersistentSandboxGet",
-		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-			return pb.PersistentSandboxGetResponse_builder{PersistentSandboxId: persistentSandboxID}.Build(), nil
+	grpcmock.HandleUnary(mock, "SxSandboxGet",
+		func(req *pb.SxSandboxGetRequest) (*pb.SxSandboxGetResponse, error) {
+			return pb.SxSandboxGetResponse_builder{SxId: persistentSandboxID}.Build(), nil
 		})
 	_, err := sb.Exec(ctx, []string{"echo", "hello"}, nil)
 	var paused modal.SandboxPaused

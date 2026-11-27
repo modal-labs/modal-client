@@ -5,12 +5,13 @@ import {
   FileDescriptor,
   GenericResult,
   GenericResult_GenericStatus,
-  PersistentSandboxCreateConnectTokenRequest,
-  PersistentSandboxCreateRequest,
-  PersistentSandboxGetRequest,
-  PersistentSandboxResumeRequest,
-  PersistentSandboxTerminateRequest,
-  PersistentSandboxTunnelsListRequest,
+  SxSandboxCreateConnectTokenRequest,
+  SxSandboxCreateRequest,
+  SxSandboxGetRequest,
+  SxSandboxPauseRequest,
+  SxSandboxResumeRequest,
+  SxSandboxTerminateRequest,
+  SxSandboxTunnelsListRequest,
 } from "../proto/modal_proto/api";
 import type { App } from "./app";
 import type { ModalClient } from "./client";
@@ -113,9 +114,29 @@ function persistentDrainTimeoutSecs(
   return value;
 }
 
-// How long to retry resuming while the previous session is still saving its state.
-const RESUME_RETRY_TIMEOUT_MS = 120_000;
-const RESUME_RETRY_INTERVAL_MS = 1000;
+// Resuming is UNAVAILABLE while the previous session is still saving its state
+// or another resume is in progress, and pausing is while a session is starting,
+// so both are retried this long at this interval.
+const BUSY_RETRY_TIMEOUT_MS = 120_000;
+const BUSY_RETRY_INTERVAL_MS = 1000;
+
+/**
+ * Call `call` until it succeeds, retrying retryable errors. Only for calls that
+ * are idempotent.
+ */
+async function retryWhileBusy<T>(call: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + BUSY_RETRY_TIMEOUT_MS;
+  while (true) {
+    try {
+      return await call();
+    } catch (err) {
+      if (!isRetryableGrpc(err) || Date.now() > deadline) {
+        throw err;
+      }
+    }
+    await setTimeout(BUSY_RETRY_INTERVAL_MS);
+  }
+}
 
 // How often wait() checks whether the persistent Sandbox has been terminated.
 const WAIT_POLL_INTERVAL_MS = 1000;
@@ -266,8 +287,8 @@ export class SandboxImplPersistent implements SandboxImpl {
       sources,
     );
     warnDeprecatedNetworkParams(client.logger, params);
-    const resp = await client.cpClient.persistentSandboxCreate(
-      PersistentSandboxCreateRequest.create({
+    const resp = await client.cpClient.sxSandboxCreate(
+      SxSandboxCreateRequest.create({
         appId: v2Req.appId,
         definition: v2Req.definition,
       }),
@@ -275,11 +296,11 @@ export class SandboxImplPersistent implements SandboxImpl {
     client.logger.debug(
       "Created persistent Sandbox",
       "persistent_sandbox_id",
-      resp.persistentSandboxId,
+      resp.sxId,
       "sandbox_id",
       resp.sandboxId,
     );
-    return new SandboxImplPersistent(client, resp.persistentSandboxId, {
+    return new SandboxImplPersistent(client, resp.sxId, {
       session: new SandboxImplV2(client, resp.sandboxId),
     });
   }
@@ -351,9 +372,9 @@ export class SandboxImplPersistent implements SandboxImpl {
    * session is still running is learned from the session itself.
    */
   async #getCurrentSessionId(): Promise<string> {
-    const resp = await this.client.cpClient.persistentSandboxGet(
-      PersistentSandboxGetRequest.create({
-        persistentSandboxId: this.sandboxId,
+    const resp = await this.client.cpClient.sxSandboxGet(
+      SxSandboxGetRequest.create({
+        sxId: this.sandboxId,
       }),
     );
     if (resp.terminatedAt !== undefined) this.#terminated = true;
@@ -366,24 +387,13 @@ export class SandboxImplPersistent implements SandboxImpl {
 
   /** Resume the persistent Sandbox, returning the ID of its running session. */
   async #resumeSession(): Promise<string> {
-    const req = PersistentSandboxResumeRequest.create({
-      persistentSandboxId: this.sandboxId,
+    const req = SxSandboxResumeRequest.create({
+      sxId: this.sandboxId,
     });
-    const deadline = Date.now() + RESUME_RETRY_TIMEOUT_MS;
-    while (true) {
-      try {
-        const resp = await this.client.cpClient.persistentSandboxResume(req);
-        return resp.sandboxId;
-      } catch (err) {
-        // Resuming is idempotent, so any retryable error is retried. It is
-        // UNAVAILABLE while the previous session is still pausing or another
-        // resume is in progress.
-        if (!isRetryableGrpc(err) || Date.now() > deadline) {
-          throw err;
-        }
-      }
-      await setTimeout(RESUME_RETRY_INTERVAL_MS);
-    }
+    const resp = await retryWhileBusy(() =>
+      this.client.cpClient.sxSandboxResume(req),
+    );
+    return resp.sandboxId;
   }
 
   /**
@@ -407,12 +417,6 @@ export class SandboxImplPersistent implements SandboxImpl {
     previous?.close();
     if (this.#closed) session.close();
     return session;
-  }
-
-  /** Switch to the most recent session, if there has been one, without resuming. */
-  async #adoptCurrentSession(): Promise<SandboxImplV2 | undefined> {
-    const sessionId = await this.#getCurrentSessionId();
-    return sessionId ? this.#setSession(sessionId) : undefined;
   }
 
   /** Return the last known session for reading its logs or metadata, without resuming. */
@@ -503,9 +507,9 @@ export class SandboxImplPersistent implements SandboxImpl {
   ): Promise<SandboxCreateConnectCredentials> {
     // Connect tokens are addressed by the persistent Sandbox, not a session, so
     // they keep working across sessions and are created without resuming it.
-    const resp = await this.client.cpClient.persistentSandboxCreateConnectToken(
-      PersistentSandboxCreateConnectTokenRequest.create({
-        persistentSandboxId: this.sandboxId,
+    const resp = await this.client.cpClient.sxSandboxCreateConnectToken(
+      SxSandboxCreateConnectTokenRequest.create({
+        sxId: this.sandboxId,
         userMetadata,
         port,
       }),
@@ -514,9 +518,9 @@ export class SandboxImplPersistent implements SandboxImpl {
   }
 
   async terminate(): Promise<void> {
-    const resp = await this.client.cpClient.persistentSandboxTerminate(
-      PersistentSandboxTerminateRequest.create({
-        persistentSandboxId: this.sandboxId,
+    const resp = await this.client.cpClient.sxSandboxTerminate(
+      SxSandboxTerminateRequest.create({
+        sxId: this.sandboxId,
       }),
     );
     this.#terminated = true;
@@ -527,18 +531,22 @@ export class SandboxImplPersistent implements SandboxImpl {
   }
 
   /**
-   * Stop the current session, which saves its state for the next `resume`.
+   * Stop the current session, which saves its state for the next `resume`,
+   * and wait for it to stop.
    *
-   * Does nothing if there is no session or it has already stopped. A paused
-   * Sandbox is never resumed in order to pause it.
+   * Does nothing if the Sandbox is already paused. A paused Sandbox is never
+   * resumed in order to pause it.
    */
   async pause(): Promise<void> {
     this.#checkNotTerminated();
-    const session = await this.#adoptCurrentSession();
-    this.#checkNotTerminated();
-    if (!session) return;
-    await session.terminate();
-    await session.wait();
+    const req = SxSandboxPauseRequest.create({ sxId: this.sandboxId });
+    const resp = await retryWhileBusy(() =>
+      this.client.cpClient.sxSandboxPause(req),
+    );
+    if (resp.sandboxId === undefined) return;
+    // Wait on the session the pause stops, even if another handle has resumed
+    // the Sandbox since.
+    await this.#setSession(resp.sandboxId).wait();
   }
 
   /** Start a session from the latest saved state, unless one is already running. */
@@ -574,9 +582,9 @@ export class SandboxImplPersistent implements SandboxImpl {
   async tunnels(_timeoutMs: number): Promise<Record<number, Tunnel>> {
     // Tunnels are addressed by the persistent Sandbox, not a session, so they
     // are served without a running session and never go stale across sessions.
-    const resp = await this.client.cpClient.persistentSandboxTunnelsList(
-      PersistentSandboxTunnelsListRequest.create({
-        persistentSandboxId: this.sandboxId,
+    const resp = await this.client.cpClient.sxSandboxTunnelsList(
+      SxSandboxTunnelsListRequest.create({
+        sxId: this.sandboxId,
       }),
     );
     return tunnelsFromProtos(resp.tunnels);

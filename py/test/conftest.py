@@ -1114,7 +1114,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # that could not mint a token does.
         self.sandbox_create_v2_omits_router_access = False
         self.sandbox_create_v2_requests: list[api_pb2.SandboxCreateV2Request] = []
-        self.persistent_sandbox_create_requests: list[api_pb2.PersistentSandboxCreateRequest] = []
+        self.persistent_sandbox_create_requests: list[api_pb2.SxSandboxCreateRequest] = []
         self.persistent_sandbox_terminated: set[str] = set()
         self.persistent_sandbox_resumes = 0
         self.persistent_sandbox_session_id = "sb-v2-123"
@@ -3870,61 +3870,70 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._sandbox_terminated = True
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
-    async def PersistentSandboxCreate(self, stream):
-        request: api_pb2.PersistentSandboxCreateRequest = await stream.recv_message()
-        persistent_sandbox_id = f"sx-{len(self.persistent_sandbox_create_requests) + 1:025d}"
+    async def SxSandboxCreate(self, stream):
+        request: api_pb2.SxSandboxCreateRequest = await stream.recv_message()
+        sx_id = f"sx-{len(self.persistent_sandbox_create_requests) + 1:025d}"
         self.persistent_sandbox_create_requests.append(request)
         self._sandbox_terminated = False
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
         self.sandbox_task_ids["sb-v2-123"] = "ta-v2-123"
-        await stream.send_message(
-            api_pb2.PersistentSandboxCreateResponse(persistent_sandbox_id=persistent_sandbox_id, sandbox_id="sb-v2-123")
-        )
+        await stream.send_message(api_pb2.SxSandboxCreateResponse(sx_id=sx_id, sandbox_id="sb-v2-123"))
 
-    async def PersistentSandboxGet(self, stream):
-        request: api_pb2.PersistentSandboxGetRequest = await stream.recv_message()
+    async def SxSandboxGet(self, stream):
+        request: api_pb2.SxSandboxGetRequest = await stream.recv_message()
         known_ids = {f"sx-{i + 1:025d}" for i in range(len(self.persistent_sandbox_create_requests))}
-        if request.persistent_sandbox_id not in known_ids:
-            raise GRPCError(Status.NOT_FOUND, f"persistent sandbox {request.persistent_sandbox_id} not found")
-        terminated = request.persistent_sandbox_id in self.persistent_sandbox_terminated
+        if request.sx_id not in known_ids:
+            raise GRPCError(Status.NOT_FOUND, f"persistent sandbox {request.sx_id} not found")
+        terminated = request.sx_id in self.persistent_sandbox_terminated
         await stream.send_message(
-            api_pb2.PersistentSandboxGetResponse(
-                persistent_sandbox_id=request.persistent_sandbox_id,
+            api_pb2.SxSandboxGetResponse(
+                sx_id=request.sx_id,
                 # The most recent session, whether or not it is still running.
                 current_sandbox_id=self.persistent_sandbox_session_id,
                 terminated_at=_timestamp_now() if terminated else None,
             )
         )
 
-    async def PersistentSandboxTunnelsList(self, stream):
-        request: api_pb2.PersistentSandboxTunnelsListRequest = await stream.recv_message()
-        index = int(request.persistent_sandbox_id.removeprefix("sx-")) - 1
+    async def SxSandboxTunnelsList(self, stream):
+        request: api_pb2.SxSandboxTunnelsListRequest = await stream.recv_message()
+        index = int(request.sx_id.removeprefix("sx-")) - 1
         definition = self.persistent_sandbox_create_requests[index].definition
         tunnels = [
             api_pb2.TunnelData(
-                host=f"{request.persistent_sandbox_id.removeprefix('sx-')}-{spec.port}.tunnel.modal.host",
+                host=f"{request.sx_id.removeprefix('sx-')}-{spec.port}.tunnel.modal.host",
                 port=443,
                 container_port=spec.port,
             )
             for spec in definition.open_ports.ports
             if not spec.unencrypted
         ]
-        await stream.send_message(api_pb2.PersistentSandboxTunnelsListResponse(tunnels=tunnels))
+        await stream.send_message(api_pb2.SxSandboxTunnelsListResponse(tunnels=tunnels))
 
-    async def PersistentSandboxCreateConnectToken(self, stream):
-        request: api_pb2.PersistentSandboxCreateConnectTokenRequest = await stream.recv_message()
+    async def SxSandboxCreateConnectToken(self, stream):
+        request: api_pb2.SxSandboxCreateConnectTokenRequest = await stream.recv_message()
         port = request.port if request.HasField("port") else 8080
         await stream.send_message(
-            api_pb2.PersistentSandboxCreateConnectTokenResponse(
-                url=f"https://a-{request.persistent_sandbox_id}-{port}.tunnel.modal.host",
-                token=f"token-{request.persistent_sandbox_id}-{request.user_metadata}",
+            api_pb2.SxSandboxCreateConnectTokenResponse(
+                url=f"https://a-{request.sx_id}-{port}.tunnel.modal.host",
+                token=f"token-{request.sx_id}-{request.user_metadata}",
             )
         )
 
-    async def PersistentSandboxResume(self, stream):
-        request: api_pb2.PersistentSandboxResumeRequest = await stream.recv_message()
-        if request.persistent_sandbox_id in self.persistent_sandbox_terminated:
+    async def SxSandboxPause(self, stream):
+        request: api_pb2.SxSandboxPauseRequest = await stream.recv_message()
+        if request.sx_id in self.persistent_sandbox_terminated:
+            raise GRPCError(Status.FAILED_PRECONDITION, "persistent sandbox is terminated")
+        # Stopping the session saves its state. A paused Sandbox has no session to stop.
+        resp = api_pb2.SxSandboxPauseResponse()
+        if not self._sandbox_terminated:
+            resp.sandbox_id = self.persistent_sandbox_session_id
+        self._sandbox_terminated = True
+        await stream.send_message(resp)
+
+    async def SxSandboxResume(self, stream):
+        request: api_pb2.SxSandboxResumeRequest = await stream.recv_message()
+        if request.sx_id in self.persistent_sandbox_terminated:
             raise GRPCError(Status.FAILED_PRECONDITION, "persistent sandbox is terminated")
         if self._sandbox_terminated:
             # Each resume of a stopped persistent Sandbox starts a new session.
@@ -3932,16 +3941,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.persistent_sandbox_session_id = f"sb-v2-resumed-{self.persistent_sandbox_resumes}"
             self.sandbox_task_ids[self.persistent_sandbox_session_id] = "ta-v2-123"
         self._sandbox_terminated = False
-        await stream.send_message(
-            api_pb2.PersistentSandboxResumeResponse(sandbox_id=self.persistent_sandbox_session_id)
-        )
+        await stream.send_message(api_pb2.SxSandboxResumeResponse(sandbox_id=self.persistent_sandbox_session_id))
 
-    async def PersistentSandboxTerminate(self, stream):
-        request: api_pb2.PersistentSandboxTerminateRequest = await stream.recv_message()
-        self.persistent_sandbox_terminated.add(request.persistent_sandbox_id)
+    async def SxSandboxTerminate(self, stream):
+        request: api_pb2.SxSandboxTerminateRequest = await stream.recv_message()
+        self.persistent_sandbox_terminated.add(request.sx_id)
         self._sandbox_terminated = True
         await stream.send_message(
-            api_pb2.PersistentSandboxTerminateResponse(last_session_sandbox_id=self.persistent_sandbox_session_id)
+            api_pb2.SxSandboxTerminateResponse(last_session_sandbox_id=self.persistent_sandbox_session_id)
         )
 
     async def SandboxTerminateV2(self, stream):
