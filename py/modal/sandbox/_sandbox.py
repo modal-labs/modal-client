@@ -27,7 +27,7 @@ from ..client import _Client
 from ..cloud_bucket_mount import _CloudBucketMount
 from ..config import config, logger as logger
 from ..container_process import _ContainerProcess
-from ..exception import ClientClosed, ConflictError, ExecutionError, InvalidError, NotFoundError
+from ..exception import ClientClosed, ExecutionError, InvalidError, NotFoundError
 from ..io_streams import _StreamReader, _StreamWriter
 from ..proxy import _Proxy
 from ..secret import _Secret
@@ -911,16 +911,11 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
     async def wait(self, raise_on_termination: bool = True):
         """Wait for the Sandbox to finish running.
 
-        Raises `modal.exception.ConflictError` if the Sandbox fails to start.
-
         Args:
             raise_on_termination: If True, raise when the sandbox is terminated externally.
 
         """
         await self._impl.wait(raise_on_termination)
-        result = self._impl.result
-        if result is not None and result.status == api_pb2.GenericResult.GENERIC_STATUS_INIT_FAILURE:
-            raise ConflictError(result.exception or "Sandbox failed to start")
 
     async def wait_until_ready(self, *, timeout: int = 300) -> None:
         """Wait until the Sandbox is ready.
@@ -1044,7 +1039,7 @@ class _Sandbox(_Object, type_prefixes=("sb",)):
         self._ensure_attached()
         await self._impl.terminate()
         if wait:
-            await self._impl.wait(raise_on_termination=False)
+            await self.wait(raise_on_termination=False)
             return self.returncode
         return None
 

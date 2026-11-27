@@ -4800,25 +4800,6 @@ def test_sandbox_wait_allowed_after_detached(app, servicer):
 
 
 @pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
-def test_sandbox_wait_raises_startup_error(app, servicer, monkeypatch, sandbox_version):
-    monkeypatch.setenv("MODAL_SANDBOX_V2", "1" if sandbox_version == SandboxVersion.V2 else "0")
-    sb = _create_wait_until_ready_sandbox(app, sandbox_version)
-    method = "SandboxWaitV2" if sandbox_version == SandboxVersion.V2 else "SandboxWait"
-    result = api_pb2.GenericResult(
-        status=api_pb2.GenericResult.GENERIC_STATUS_INIT_FAILURE,
-        exception="Sandbox startup error",
-        exitcode=1,
-    )
-
-    with servicer.intercept() as ctx:
-        ctx.add_response(method, api_pb2.SandboxWaitResponse(result=result))
-        with pytest.raises(ConflictError, match="Sandbox startup error"):
-            sb.wait()
-
-    assert sb.returncode == 1
-
-
-@pytest.mark.parametrize("sandbox_version", [SandboxVersion.V1, SandboxVersion.V2], ids=["v1", "v2"])
 def test_sandbox_wait_retries_poll_the_server_never_answers(app, servicer, monkeypatch, sandbox_version):
     monkeypatch.setattr("modal.sandbox._common._WAIT_LONG_POLL_TIMEOUT", 0.1)
     monkeypatch.setattr("modal.sandbox._common._WAIT_POLL_DEADLINE_MARGIN", 0.2)
