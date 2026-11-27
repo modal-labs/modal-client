@@ -170,7 +170,7 @@ func TestPersistentSandboxPauseAndResumeMock(t *testing.T) {
 
 	// Pausing a session doesn't finish the persistent Sandbox.
 	grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-		return pb.PersistentSandboxGetResponse_builder{SandboxId: persistentSessionID}.Build(), nil
+		return pb.PersistentSandboxGetResponse_builder{CurrentSandboxId: proto.String(persistentSessionID)}.Build(), nil
 	})
 	code, err := sb.Poll(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -274,7 +274,7 @@ func TestPersistentSandboxSwitchesToRunningSessionWithoutResumeMock(t *testing.T
 		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
 			return pb.PersistentSandboxGetResponse_builder{
 				PersistentSandboxId: persistentSandboxID,
-				SandboxId:           persistentSecondSessionID,
+				CurrentSandboxId:    proto.String(persistentSecondSessionID),
 			}.Build(), nil
 		})
 	handleSidecarCreate(mock, g, persistentSecondSessionID, nil)
@@ -295,8 +295,13 @@ func TestPersistentSandboxDoesNotRetryOnRunningSessionMock(t *testing.T) {
 		func(req *pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
 			return pb.PersistentSandboxGetResponse_builder{
 				PersistentSandboxId: persistentSandboxID,
-				SandboxId:           persistentSessionID,
+				CurrentSandboxId:    proto.String(persistentSessionID),
 			}.Build(), nil
+		})
+	// The current session may have finished, so the client resumes to find the running one.
+	grpcmock.HandleUnary(mock, "PersistentSandboxResume",
+		func(req *pb.PersistentSandboxResumeRequest) (*pb.PersistentSandboxResumeResponse, error) {
+			return pb.PersistentSandboxResumeResponse_builder{SandboxId: persistentSessionID}.Build(), nil
 		})
 
 	_, err := createSidecar(t, sb)
@@ -311,7 +316,7 @@ func TestPersistentSandboxTerminateMock(t *testing.T) {
 	sb := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 
 	grpcmock.HandleUnary(mock, "PersistentSandboxGet", func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-		return pb.PersistentSandboxGetResponse_builder{SandboxId: persistentSessionID}.Build(), nil
+		return pb.PersistentSandboxGetResponse_builder{CurrentSandboxId: proto.String(persistentSessionID)}.Build(), nil
 	})
 	code, err := sb.Poll(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -393,7 +398,7 @@ func TestPersistentSandboxExternalTerminationMock(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 				defer cancel()
 				get := func(*pb.PersistentSandboxGetRequest) (*pb.PersistentSandboxGetResponse, error) {
-					return pb.PersistentSandboxGetResponse_builder{SandboxId: sessionID}.Build(), nil
+					return pb.PersistentSandboxGetResponse_builder{CurrentSandboxId: proto.String(sessionID)}.Build(), nil
 				}
 				sandboxB := mockPersistentSandboxCreate(t, g, mock, nil, nil)
 				if operation == "poll" {

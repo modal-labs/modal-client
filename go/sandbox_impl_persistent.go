@@ -268,7 +268,7 @@ func runErr(ctx context.Context, p *sandboxImplPersistent, op func(session *sand
 	return err
 }
 
-func (p *sandboxImplPersistent) getRunningSessionID(ctx context.Context) (string, error) {
+func (p *sandboxImplPersistent) getCurrentSessionID(ctx context.Context) (string, error) {
 	resp, err := p.client.cpClient.PersistentSandboxGet(ctx, pb.PersistentSandboxGetRequest_builder{
 		PersistentSandboxId: &p.persistentSandboxID,
 	}.Build())
@@ -281,7 +281,7 @@ func (p *sandboxImplPersistent) getRunningSessionID(ctx context.Context) (string
 	if p.terminated {
 		return "", nil
 	}
-	return resp.GetSandboxId(), nil
+	return resp.GetCurrentSandboxId(), nil
 }
 
 // resumeSession resumes the persistent Sandbox, returning the ID of its
@@ -317,7 +317,7 @@ func (p *sandboxImplPersistent) replaceSession(ctx context.Context, failed *sand
 		// A concurrent operation has already replaced the session.
 		return current, nil
 	}
-	sessionID, err := p.getRunningSessionID(ctx)
+	sessionID, err := p.getCurrentSessionID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -327,13 +327,16 @@ func (p *sandboxImplPersistent) replaceSession(ctx context.Context, failed *sand
 	if err := p.checkNotTerminated(); err != nil {
 		return nil, err
 	}
-	if sessionID == failed.id {
-		return nil, nil
-	}
-	if sessionID == "" {
+	// The current session may have finished already, so the lookup can't tell
+	// whether failed is still running. Resuming returns the running session,
+	// which is failed itself if it never stopped.
+	if sessionID == "" || sessionID == failed.id {
 		sessionID, err = p.resumeSession(ctx)
 		if err != nil {
 			return nil, err
+		}
+		if sessionID == failed.id {
+			return nil, nil
 		}
 	}
 	p.client.logger.DebugContext(ctx, "Switching persistent Sandbox to session",
@@ -488,7 +491,7 @@ func (p *sandboxImplPersistent) wait(ctx context.Context) (int, error) {
 
 func (p *sandboxImplPersistent) poll(ctx context.Context) (*int, error) {
 	if !p.isTerminated() {
-		if _, err := p.getRunningSessionID(ctx); err != nil {
+		if _, err := p.getCurrentSessionID(ctx); err != nil {
 			return nil, err
 		}
 	}

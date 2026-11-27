@@ -294,14 +294,14 @@ class SandboxImplPersistent:
             logger.debug(f"Retrying operation on persistent Sandbox {self._persistent_sandbox_id} after: {exc!r}")
             return await op(replacement)
 
-    async def _get_running_session_id(self) -> str:
+    async def _get_current_session_id(self) -> str:
         client = await self._get_client()
         req = api_pb2.PersistentSandboxGetRequest(persistent_sandbox_id=self._persistent_sandbox_id)
         resp = await client._stub.PersistentSandboxGet(req, metadata=await auth_metadata(client))
         if resp.HasField("terminated_at"):
             self._terminated = True
             self._set_terminated_result()
-        return "" if self._terminated else resp.sandbox_id
+        return "" if self._terminated else resp.current_sandbox_id
 
     async def _resume_session(self) -> str:
         """Resume the persistent Sandbox, returning the ID of its running session."""
@@ -329,15 +329,18 @@ class SandboxImplPersistent:
                 # A concurrent operation has already replaced the session.
                 return self._session
 
-            session_id = await self._get_running_session_id()
+            session_id = await self._get_current_session_id()
             self._check_open()
             self._check_not_terminated()
-            if failed is not None and session_id == failed.sandbox_id:
-                return None
-            if not session_id:
+            # The current session may have finished already, so the lookup can't tell
+            # whether `failed` is still running. Resuming returns the running session,
+            # which is `failed` itself if it never stopped.
+            if not session_id or (failed is not None and session_id == failed.sandbox_id):
                 if not resume:
                     return None
                 session_id = await self._resume_session()
+                if failed is not None and session_id == failed.sandbox_id:
+                    return None
             logger.debug(f"Switching persistent Sandbox {self._persistent_sandbox_id} to session {session_id}")
             replacement = SandboxImplV2(client, session_id)
             self._session = replacement
@@ -368,7 +371,7 @@ class SandboxImplPersistent:
 
     async def poll(self) -> None:
         if not self._terminated:
-            await self._get_running_session_id()
+            await self._get_current_session_id()
         if self._terminated:
             self._set_terminated_result()
         else:

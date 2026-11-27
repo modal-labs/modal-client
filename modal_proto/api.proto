@@ -4022,7 +4022,8 @@ message PersistentSandboxGetRequest {
 
 message PersistentSandboxGetResponse {
   string persistent_sandbox_id = 1;
-  string sandbox_id = 2;
+  // The most recent session, which may be running or already finished. Unset if there has never been one.
+  optional string current_sandbox_id = 2;
   // Set once the persistent Sandbox is terminated; unset otherwise.
   google.protobuf.Timestamp terminated_at = 3;
 }
@@ -4045,7 +4046,10 @@ message PersistentSandboxTerminateRequest {
   string persistent_sandbox_id = 1;
 }
 
-message PersistentSandboxTerminateResponse {}
+message PersistentSandboxTerminateResponse {
+  // The last session of the persistent Sandbox. Unset if it never had one.
+  optional string last_session_sandbox_id = 1;
+}
 
 message PersistentSandboxTunnelsListRequest {
   string persistent_sandbox_id = 1;

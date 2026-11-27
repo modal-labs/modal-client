@@ -322,14 +322,14 @@ export class SandboxImplPersistent implements SandboxImpl {
     }
   }
 
-  async #getRunningSessionId(): Promise<string> {
+  async #getCurrentSessionId(): Promise<string> {
     const resp = await this.client.cpClient.persistentSandboxGet(
       PersistentSandboxGetRequest.create({
         persistentSandboxId: this.persistentSandboxId,
       }),
     );
     if (resp.terminatedAt !== undefined) this.#terminated = true;
-    return this.#terminated ? "" : resp.sandboxId;
+    return this.#terminated ? "" : (resp.currentSandboxId ?? "");
   }
 
   /** Resume the persistent Sandbox, returning the ID of its running session. */
@@ -371,14 +371,17 @@ export class SandboxImplPersistent implements SandboxImpl {
       // A concurrent operation has already replaced the session.
       return this.#session;
     }
-    let sessionId = await this.#getRunningSessionId();
+    let sessionId = await this.#getCurrentSessionId();
     this.#checkOpen();
     this.#checkNotTerminated();
-    if (sessionId === failed.sandboxId) {
-      return undefined;
-    }
-    if (!sessionId) {
+    // The current session may have finished already, so the lookup can't tell
+    // whether `failed` is still running. Resuming returns the running session,
+    // which is `failed` itself if it never stopped.
+    if (!sessionId || sessionId === failed.sandboxId) {
       sessionId = await this.#resumeSession();
+      if (sessionId === failed.sandboxId) {
+        return undefined;
+      }
     }
     this.client.logger.debug(
       "Switching persistent Sandbox to session",
@@ -513,7 +516,7 @@ export class SandboxImplPersistent implements SandboxImpl {
   }
 
   async poll(): Promise<number | null> {
-    if (!this.#terminated) await this.#getRunningSessionId();
+    if (!this.#terminated) await this.#getCurrentSessionId();
     return this.#terminated ? getReturnCode(TERMINATED_RESULT) : null;
   }
 
