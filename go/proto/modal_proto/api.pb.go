@@ -64972,12 +64972,14 @@ func (*sxSandboxGetRequest_SxId) isSxSandboxGetRequest_Lookup() {}
 func (*sxSandboxGetRequest_Name) isSxSandboxGetRequest_Lookup() {}
 
 type SxSandboxGetResponse struct {
-	state                   protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_SxId         string                 `protobuf:"bytes,1,opt,name=sx_id,json=sxId,proto3"`
-	xxx_hidden_SandboxId    string                 `protobuf:"bytes,2,opt,name=sandbox_id,json=sandboxId,proto3"`
-	xxx_hidden_TerminatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=terminated_at,json=terminatedAt,proto3"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state                       protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_SxId             string                 `protobuf:"bytes,1,opt,name=sx_id,json=sxId,proto3"`
+	xxx_hidden_CurrentSandboxId *string                `protobuf:"bytes,2,opt,name=current_sandbox_id,json=currentSandboxId,proto3,oneof"`
+	xxx_hidden_TerminatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=terminated_at,json=terminatedAt,proto3"`
+	XXX_raceDetectHookData      protoimpl.RaceDetectHookData
+	XXX_presence                [1]uint32
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *SxSandboxGetResponse) Reset() {
@@ -65012,9 +65014,12 @@ func (x *SxSandboxGetResponse) GetSxId() string {
 	return ""
 }
 
-func (x *SxSandboxGetResponse) GetSandboxId() string {
+func (x *SxSandboxGetResponse) GetCurrentSandboxId() string {
 	if x != nil {
-		return x.xxx_hidden_SandboxId
+		if x.xxx_hidden_CurrentSandboxId != nil {
+			return *x.xxx_hidden_CurrentSandboxId
+		}
+		return ""
 	}
 	return ""
 }
@@ -65030,12 +65035,20 @@ func (x *SxSandboxGetResponse) SetSxId(v string) {
 	x.xxx_hidden_SxId = v
 }
 
-func (x *SxSandboxGetResponse) SetSandboxId(v string) {
-	x.xxx_hidden_SandboxId = v
+func (x *SxSandboxGetResponse) SetCurrentSandboxId(v string) {
+	x.xxx_hidden_CurrentSandboxId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
 }
 
 func (x *SxSandboxGetResponse) SetTerminatedAt(v *timestamppb.Timestamp) {
 	x.xxx_hidden_TerminatedAt = v
+}
+
+func (x *SxSandboxGetResponse) HasCurrentSandboxId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
 }
 
 func (x *SxSandboxGetResponse) HasTerminatedAt() bool {
@@ -65043,6 +65056,11 @@ func (x *SxSandboxGetResponse) HasTerminatedAt() bool {
 		return false
 	}
 	return x.xxx_hidden_TerminatedAt != nil
+}
+
+func (x *SxSandboxGetResponse) ClearCurrentSandboxId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_CurrentSandboxId = nil
 }
 
 func (x *SxSandboxGetResponse) ClearTerminatedAt() {
@@ -65053,8 +65071,9 @@ type SxSandboxGetResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	SxId string
-	// The Sandbox running the current session. Empty while no session runs.
-	SandboxId string
+	// The Sandbox of the most recent session that started, which may be running or already finished. Unset if no
+	// session has started.
+	CurrentSandboxId *string
 	// Set once the SX Sandbox is terminated; unset otherwise.
 	TerminatedAt *timestamppb.Timestamp
 }
@@ -65064,7 +65083,10 @@ func (b0 SxSandboxGetResponse_builder) Build() *SxSandboxGetResponse {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_SxId = b.SxId
-	x.xxx_hidden_SandboxId = b.SandboxId
+	if b.CurrentSandboxId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		x.xxx_hidden_CurrentSandboxId = b.CurrentSandboxId
+	}
 	x.xxx_hidden_TerminatedAt = b.TerminatedAt
 	return m0
 }
@@ -65427,9 +65449,12 @@ func (b0 SxSandboxTerminateRequest_builder) Build() *SxSandboxTerminateRequest {
 }
 
 type SxSandboxTerminateResponse struct {
-	state         protoimpl.MessageState `protogen:"opaque.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                           protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_LastSessionSandboxId *string                `protobuf:"bytes,1,opt,name=last_session_sandbox_id,json=lastSessionSandboxId,proto3,oneof"`
+	XXX_raceDetectHookData          protoimpl.RaceDetectHookData
+	XXX_presence                    [1]uint32
+	unknownFields                   protoimpl.UnknownFields
+	sizeCache                       protoimpl.SizeCache
 }
 
 func (x *SxSandboxTerminateResponse) Reset() {
@@ -65457,15 +65482,48 @@ func (x *SxSandboxTerminateResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
+func (x *SxSandboxTerminateResponse) GetLastSessionSandboxId() string {
+	if x != nil {
+		if x.xxx_hidden_LastSessionSandboxId != nil {
+			return *x.xxx_hidden_LastSessionSandboxId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *SxSandboxTerminateResponse) SetLastSessionSandboxId(v string) {
+	x.xxx_hidden_LastSessionSandboxId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *SxSandboxTerminateResponse) HasLastSessionSandboxId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *SxSandboxTerminateResponse) ClearLastSessionSandboxId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_LastSessionSandboxId = nil
+}
+
 type SxSandboxTerminateResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
+	// The Sandbox of the last session that started. Unset if no session started.
+	LastSessionSandboxId *string
 }
 
 func (b0 SxSandboxTerminateResponse_builder) Build() *SxSandboxTerminateResponse {
 	m0 := &SxSandboxTerminateResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
+	if b.LastSessionSandboxId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_LastSessionSandboxId = b.LastSessionSandboxId
+	}
 	return m0
 }
 
@@ -85693,12 +85751,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13SxSandboxGetRequest\x12\x15\n" +
 	"\x05sx_id\x18\x01 \x01(\tH\x00R\x04sxId\x127\n" +
 	"\x04name\x18\x02 \x01(\v2!.modal.client.SxSandboxNameLookupH\x00R\x04nameB\b\n" +
-	"\x06lookup\"\x8b\x01\n" +
+	"\x06lookup\"\xb6\x01\n" +
 	"\x14SxSandboxGetResponse\x12\x13\n" +
-	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\x12\x1d\n" +
-	"\n" +
-	"sandbox_id\x18\x02 \x01(\tR\tsandboxId\x12?\n" +
-	"\rterminated_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\fterminatedAt\"o\n" +
+	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\x121\n" +
+	"\x12current_sandbox_id\x18\x02 \x01(\tH\x00R\x10currentSandboxId\x88\x01\x01\x12?\n" +
+	"\rterminated_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\fterminatedAtB\x15\n" +
+	"\x13_current_sandbox_id\"o\n" +
 	"\x13SxSandboxNameLookup\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\x12)\n" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\x12\x12\n" +
@@ -85712,8 +85770,10 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"sandbox_id\x18\x01 \x01(\tR\tsandboxId\"0\n" +
 	"\x19SxSandboxTerminateRequest\x12\x13\n" +
-	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\"\x1c\n" +
-	"\x1aSxSandboxTerminateResponse\"2\n" +
+	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\"t\n" +
+	"\x1aSxSandboxTerminateResponse\x12:\n" +
+	"\x17last_session_sandbox_id\x18\x01 \x01(\tH\x00R\x14lastSessionSandboxId\x88\x01\x01B\x1a\n" +
+	"\x18_last_session_sandbox_id\"2\n" +
 	"\x1bSxSandboxTunnelsListRequest\x12\x13\n" +
 	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\"R\n" +
 	"\x1cSxSandboxTunnelsListResponse\x122\n" +
@@ -89325,6 +89385,8 @@ func file_modal_proto_api_proto_init() {
 		(*sxSandboxGetRequest_SxId)(nil),
 		(*sxSandboxGetRequest_Name)(nil),
 	}
+	file_modal_proto_api_proto_msgTypes[564].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[571].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[602].OneofWrappers = []any{
 		(*tokenInfoGetResponse_UserIdentity)(nil),
 		(*tokenInfoGetResponse_ServiceUserIdentity)(nil),

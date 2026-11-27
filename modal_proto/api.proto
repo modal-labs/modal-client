@@ -5411,8 +5411,9 @@ message SxSandboxGetRequest {
 
 message SxSandboxGetResponse {
   string sx_id = 1;
-  // The Sandbox running the current session. Empty while no session runs.
-  string sandbox_id = 2;
+  // The Sandbox of the most recent session that started, which may be running or already finished. Unset if no
+  // session has started.
+  optional string current_sandbox_id = 2;
   // Set once the SX Sandbox is terminated; unset otherwise.
   google.protobuf.Timestamp terminated_at = 3;
 }
@@ -5442,7 +5443,10 @@ message SxSandboxTerminateRequest {
   string sx_id = 1;
 }
 
-message SxSandboxTerminateResponse {}
+message SxSandboxTerminateResponse {
+  // The Sandbox of the last session that started. Unset if no session started.
+  optional string last_session_sandbox_id = 1;
+}
 
 message SxSandboxTunnelsListRequest {
   string sx_id = 1;
