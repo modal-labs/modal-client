@@ -262,6 +262,7 @@ const (
 	ModalClient_SharedVolumePutFile_FullMethodName                    = "/modal.client.ModalClient/SharedVolumePutFile"
 	ModalClient_SharedVolumeRemoveFile_FullMethodName                 = "/modal.client.ModalClient/SharedVolumeRemoveFile"
 	ModalClient_SxSandboxCreate_FullMethodName                        = "/modal.client.ModalClient/SxSandboxCreate"
+	ModalClient_SxSandboxCreateConnectToken_FullMethodName            = "/modal.client.ModalClient/SxSandboxCreateConnectToken"
 	ModalClient_SxSandboxGet_FullMethodName                           = "/modal.client.ModalClient/SxSandboxGet"
 	ModalClient_SxSandboxPause_FullMethodName                         = "/modal.client.ModalClient/SxSandboxPause"
 	ModalClient_SxSandboxResume_FullMethodName                        = "/modal.client.ModalClient/SxSandboxResume"
@@ -594,6 +595,7 @@ type ModalClientClient interface {
 	SharedVolumeRemoveFile(ctx context.Context, in *SharedVolumeRemoveFileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// SX Sandboxes
 	SxSandboxCreate(ctx context.Context, in *SxSandboxCreateRequest, opts ...grpc.CallOption) (*SxSandboxCreateResponse, error)
+	SxSandboxCreateConnectToken(ctx context.Context, in *SxSandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*SxSandboxCreateConnectTokenResponse, error)
 	SxSandboxGet(ctx context.Context, in *SxSandboxGetRequest, opts ...grpc.CallOption) (*SxSandboxGetResponse, error)
 	SxSandboxPause(ctx context.Context, in *SxSandboxPauseRequest, opts ...grpc.CallOption) (*SxSandboxPauseResponse, error)
 	SxSandboxResume(ctx context.Context, in *SxSandboxResumeRequest, opts ...grpc.CallOption) (*SxSandboxResumeResponse, error)
@@ -3102,6 +3104,16 @@ func (c *modalClientClient) SxSandboxCreate(ctx context.Context, in *SxSandboxCr
 	return out, nil
 }
 
+func (c *modalClientClient) SxSandboxCreateConnectToken(ctx context.Context, in *SxSandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*SxSandboxCreateConnectTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SxSandboxCreateConnectTokenResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SxSandboxCreateConnectToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SxSandboxGet(ctx context.Context, in *SxSandboxGetRequest, opts ...grpc.CallOption) (*SxSandboxGetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SxSandboxGetResponse)
@@ -3981,6 +3993,7 @@ type ModalClientServer interface {
 	SharedVolumeRemoveFile(context.Context, *SharedVolumeRemoveFileRequest) (*emptypb.Empty, error)
 	// SX Sandboxes
 	SxSandboxCreate(context.Context, *SxSandboxCreateRequest) (*SxSandboxCreateResponse, error)
+	SxSandboxCreateConnectToken(context.Context, *SxSandboxCreateConnectTokenRequest) (*SxSandboxCreateConnectTokenResponse, error)
 	SxSandboxGet(context.Context, *SxSandboxGetRequest) (*SxSandboxGetResponse, error)
 	SxSandboxPause(context.Context, *SxSandboxPauseRequest) (*SxSandboxPauseResponse, error)
 	SxSandboxResume(context.Context, *SxSandboxResumeRequest) (*SxSandboxResumeResponse, error)
@@ -4764,6 +4777,9 @@ func (UnimplementedModalClientServer) SharedVolumeRemoveFile(context.Context, *S
 }
 func (UnimplementedModalClientServer) SxSandboxCreate(context.Context, *SxSandboxCreateRequest) (*SxSandboxCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SxSandboxCreate not implemented")
+}
+func (UnimplementedModalClientServer) SxSandboxCreateConnectToken(context.Context, *SxSandboxCreateConnectTokenRequest) (*SxSandboxCreateConnectTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SxSandboxCreateConnectToken not implemented")
 }
 func (UnimplementedModalClientServer) SxSandboxGet(context.Context, *SxSandboxGetRequest) (*SxSandboxGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SxSandboxGet not implemented")
@@ -9152,6 +9168,24 @@ func _ModalClient_SxSandboxCreate_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SxSandboxCreateConnectToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SxSandboxCreateConnectTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SxSandboxCreateConnectToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SxSandboxCreateConnectToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SxSandboxCreateConnectToken(ctx, req.(*SxSandboxCreateConnectTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SxSandboxGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SxSandboxGetRequest)
 	if err := dec(in); err != nil {
@@ -11093,6 +11127,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SxSandboxCreate",
 			Handler:    _ModalClient_SxSandboxCreate_Handler,
+		},
+		{
+			MethodName: "SxSandboxCreateConnectToken",
+			Handler:    _ModalClient_SxSandboxCreateConnectToken_Handler,
 		},
 		{
 			MethodName: "SxSandboxGet",
