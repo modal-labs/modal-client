@@ -5441,7 +5441,11 @@ message SxSandboxPauseRequest {
   string sx_id = 1;
 }
 
-message SxSandboxPauseResponse {}
+message SxSandboxPauseResponse {
+  // The Sandbox of the session being paused, which is stopped unless it has already finished. Unset if the SX Sandbox
+  // was already paused.
+  optional string sandbox_id = 1;
+}
 
 message SxSandboxResumeRequest {
   string sx_id = 1;

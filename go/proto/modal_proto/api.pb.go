@@ -65410,9 +65410,12 @@ func (b0 SxSandboxPauseRequest_builder) Build() *SxSandboxPauseRequest {
 }
 
 type SxSandboxPauseResponse struct {
-	state         protoimpl.MessageState `protogen:"opaque.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_SandboxId   *string                `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3,oneof"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *SxSandboxPauseResponse) Reset() {
@@ -65440,15 +65443,49 @@ func (x *SxSandboxPauseResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
+func (x *SxSandboxPauseResponse) GetSandboxId() string {
+	if x != nil {
+		if x.xxx_hidden_SandboxId != nil {
+			return *x.xxx_hidden_SandboxId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *SxSandboxPauseResponse) SetSandboxId(v string) {
+	x.xxx_hidden_SandboxId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *SxSandboxPauseResponse) HasSandboxId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *SxSandboxPauseResponse) ClearSandboxId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_SandboxId = nil
+}
+
 type SxSandboxPauseResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
+	// The Sandbox of the session being paused, which is stopped unless it has already finished. Unset if the SX Sandbox
+	// was already paused.
+	SandboxId *string
 }
 
 func (b0 SxSandboxPauseResponse_builder) Build() *SxSandboxPauseResponse {
 	m0 := &SxSandboxPauseResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
+	if b.SandboxId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_SandboxId = b.SandboxId
+	}
 	return m0
 }
 
@@ -85946,8 +85983,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x10environment_name\x18\x02 \x01(\tR\x0fenvironmentName\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\",\n" +
 	"\x15SxSandboxPauseRequest\x12\x13\n" +
-	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\"\x18\n" +
-	"\x16SxSandboxPauseResponse\"-\n" +
+	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\"K\n" +
+	"\x16SxSandboxPauseResponse\x12\"\n" +
+	"\n" +
+	"sandbox_id\x18\x01 \x01(\tH\x00R\tsandboxId\x88\x01\x01B\r\n" +
+	"\v_sandbox_id\"-\n" +
 	"\x16SxSandboxResumeRequest\x12\x13\n" +
 	"\x05sx_id\x18\x01 \x01(\tR\x04sxId\"8\n" +
 	"\x17SxSandboxResumeResponse\x12\x1d\n" +
@@ -89576,6 +89616,7 @@ func file_modal_proto_api_proto_init() {
 		(*sxSandboxGetRequest_Name)(nil),
 	}
 	file_modal_proto_api_proto_msgTypes[566].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[569].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[573].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[604].OneofWrappers = []any{
 		(*tokenInfoGetResponse_UserIdentity)(nil),
